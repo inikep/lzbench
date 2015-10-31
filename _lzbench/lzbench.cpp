@@ -286,10 +286,6 @@ void benchmark(FILE* in, int iters, uint32_t chunk_size, int cspeed)
 	qlz150_state_compress* state;
 	int state_size, dstate_size;
 
-	if (cspeed <= 200) bench_test("lz5 r131", 0, bench_lz5_compress, bench_lz5_decompress, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
-	if (cspeed <= 40) bench_test("lz5hc r131 -1", 0, bench_lz5hc_compress, bench_lz5_decompress, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
-	if (cspeed <= 15) bench_test("lz5hc r131 -4", 0, bench_lz5hc_compress, bench_lz5_decompress, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4, 0, 0);
-	if (cspeed <= 3) bench_test("lz5hc r131 -9", 0, bench_lz5hc_compress, bench_lz5_decompress, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 9, 0, 0);
 
 /*
 	if (cspeed <= 487) bench_test("lz4 r131", 0, bench_lz4_compress, bench_lz4_decompress, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
