@@ -43,21 +43,15 @@ crush 1.0
 csc 3.3
 density 0.12.5 beta
 fastlz 0.1
-lz4 r131
-lz4hc r131
-lz5 r131
-lz5hc r131
+lz4/lz4hc r131
+lz5/lz5hc r131
 lzf
 lzham 1.0
 lzjb 2010
 lzma 9.38
 lzmat 1.01
 lzo 2.09
-lzrw1
-lzrw1a
-lzrw2
-lzrw3
-lzrw3a
+lzrw
 pithy 2011-12-24
 quicklz 1.5.0
 quicklz 1.5.1 b7
