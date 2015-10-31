@@ -8,12 +8,17 @@ This approach has a big advantage of using the same compiler with the same optim
 The disadvantage is that it requires source code of each compressor (therefore Slug or lzturbo are not included).
 
 
-Options
+Usage
 -------------------------
 
-- The "-iX" option selects number of iterations (default 1) and displays best time of X iterations.
-- The "-bX" option divides input data in blocks/chunks of size X KB (default = 2097152 KB)
-- The "-sX" selects only compressors with compression speed over X MB (default = 100 MB) - so far it's only approximation
+```
+usage: lzbench [options] input_file
+
+where options are:
+ -iX: selects number of iterations (default 1) and displays best time of X iterations.
+ -bX: divides input data in blocks/chunks of size X KB (default = 2097152 KB)
+ -sX: selects only compressors with compression speed over X MB (default = 100 MB) - so far it's only approximation
+```
 
 
 Compilation
