@@ -67,18 +67,10 @@ zstd_HC v0.3
 ```
 
 Benchmarks
-
 -------------------------
 
-
-
-The following results are obtained with [lzbench] using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 4.8.3) with 3 iterations. 
-
+The following results are obtained with lzbench using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 4.8.3) with 3 iterations. 
 The ["win81"] input file (100 MB) is a concatanation of carefully selected files from installed version of Windows 8.1 64-bit. 
-
-
-
-[lzbench]: https://github.com/inikep/lzbench
 
 ["win81"]: https://docs.google.com/uc?id=0BwX7dtyRLxThRzBwT0xkUy1TMFE&export=download 
 
@@ -198,4 +190,3 @@ The ["win81"] input file (100 MB) is a concatanation of carefully selected files
 | zstd_HC v0.3 -13            |  9.97 MB/s |   487 MB/s |    43114895 | 41.12 |
 | zstd_HC v0.3 -17            |  6.48 MB/s |   494 MB/s |    42989971 | 41.00 |
 | zstd_HC v0.3 -21            |  3.63 MB/s |   478 MB/s |    42956964 | 40.97 |
-done... (3 iterations, chunk_size=100 MB, min_compr_speed=0 MB)
