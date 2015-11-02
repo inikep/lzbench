@@ -66,6 +66,10 @@ LZ5_compress_HC :
    Decompression functions are provided within LZ5 source code (see "lz5.h") (BSD license)
 */
 
+typedef struct LZ5HC_Data_s LZ5HC_Data_Structure;
+
+int LZ5_alloc_mem_HC(LZ5HC_Data_Structure* statePtr);
+void LZ5_free_mem_HC(LZ5HC_Data_Structure* statePtr);
 
 int LZ5_sizeofStateHC(void);
 int LZ5_compress_HC_extStateHC(void* state, const char* src, char* dst, int srcSize, int maxDstSize, int compressionLevel);
@@ -165,15 +169,10 @@ int LZ5_saveDictHC (LZ5_streamHC_t* streamHCPtr, char* safeBuffer, int maxDictSi
 /* these functions are planned to trigger warning messages by r131 approximately */
 int LZ5_compressHC                (const char* source, char* dest, int inputSize);
 int LZ5_compressHC_limitedOutput  (const char* source, char* dest, int inputSize, int maxOutputSize);
-int LZ5_compressHC2               (const char* source, char* dest, int inputSize, int compressionLevel);
-int LZ5_compressHC2_limitedOutput (const char* source, char* dest, int inputSize, int maxOutputSize, int compressionLevel);
-int LZ5_compressHC_withStateHC               (void* state, const char* source, char* dest, int inputSize);
-int LZ5_compressHC_limitedOutput_withStateHC (void* state, const char* source, char* dest, int inputSize, int maxOutputSize);
-int LZ5_compressHC2_withStateHC              (void* state, const char* source, char* dest, int inputSize, int compressionLevel);
-int LZ5_compressHC2_limitedOutput_withStateHC(void* state, const char* source, char* dest, int inputSize, int maxOutputSize, int compressionLevel);
 int LZ5_compressHC_continue               (LZ5_streamHC_t* LZ5_streamHCPtr, const char* source, char* dest, int inputSize);
 int LZ5_compressHC_limitedOutput_continue (LZ5_streamHC_t* LZ5_streamHCPtr, const char* source, char* dest, int inputSize, int maxOutputSize);
-
+int LZ5_compressHC_withStateHC               (void* state, const char* source, char* dest, int inputSize);
+int LZ5_compressHC_limitedOutput_withStateHC (void* state, const char* source, char* dest, int inputSize, int maxOutputSize); 
 
 #if defined (__cplusplus)
 }

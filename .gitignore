@@ -2,6 +2,9 @@
 _codelite/
 _visual/
 
+# Archives
+*.zip
+
 # Object files
 *.o
 *.ko

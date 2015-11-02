@@ -305,6 +305,7 @@ static const int LZ5_minLength = (MFLIMIT+1);
 
 #define MAXD_LOG 22
 #define MAX_DISTANCE ((1 << MAXD_LOG) - 1)
+#define LZ5_DICT_SIZE (1 << MAXD_LOG)
 
 #define ML_BITS  3
 #define ML_MASK  ((1U<<ML_BITS)-1)
@@ -906,14 +907,29 @@ static int LZ5_compress_destSize_generic(
                 op--;
                 goto _last_literals;
             }
-            if (litLength>=RUN_MASK)
+            
+            if (ip-match < (1<<10))
             {
-                unsigned len = litLength - RUN_MASK;
-                *token=(RUN_MASK<<ML_BITS);
-                for(; len >= 255 ; len-=255) *op++ = 255;
-                *op++ = (BYTE)len;
+                if (litLength>=RUN_MASK2)
+                {
+                    int len = (int)litLength-RUN_MASK2;
+                    *token=(RUN_MASK2<<ML_BITS);
+                    for(; len >= 255 ; len-=255) *op++ = 255;
+                    *op++ = (BYTE)len;
+                }
+                else *token = (BYTE)(litLength<<ML_BITS);
             }
-            else *token = (BYTE)(litLength<<ML_BITS);
+            else
+            {
+                if (litLength>=RUN_MASK)
+                {
+                    int len = (int)litLength-RUN_MASK;
+                    *token=(RUN_MASK<<ML_BITS);
+                    for(; len >= 255 ; len-=255) *op++ = 255;
+                    *op++ = (BYTE)len;
+                }
+                else *token = (BYTE)(litLength<<ML_BITS);
+            }
 
             /* Copy Literals */
             LZ5_wildCopy(op, anchor, op+litLength);
@@ -922,7 +938,21 @@ static int LZ5_compress_destSize_generic(
 
 _next_match:
         /* Encode Offset */
-        LZ5_writeLE16(op, (U16)(ip-match)); op+=2;
+        if (ip-match < (1<<10))
+        {
+            *token+=((4+((ip-match)>>8))<<ML_RUN_BITS2);
+            *op++=(ip-match);
+        }
+        else
+        if (ip-match < (1<<16))
+        {
+            LZ5_writeLE16(op, (U16)(ip-match)); op+=2;
+        }
+        else
+        {
+            *token+=(1<<ML_RUN_BITS);
+            LZ5_writeLE24(op, (U32)(ip-match)); op+=3;
+        }
 
         /* Encode MatchLength */
         {
@@ -1079,8 +1109,8 @@ int LZ5_loadDict (LZ5_stream_t* LZ5_dict, const char* dictionary, int dictSize)
         return 0;
     }
 
-    if ((dictEnd - p) > 64 KB) p = dictEnd - 64 KB;
-    dict->currentOffset += 64 KB;
+    if ((dictEnd - p) > LZ5_DICT_SIZE) p = dictEnd - LZ5_DICT_SIZE;
+    dict->currentOffset += LZ5_DICT_SIZE;
     base = p - dict->currentOffset;
     dict->dictionary = p;
     dict->dictSize = (U32)(dictEnd - p);
@@ -1102,7 +1132,7 @@ static void LZ5_renormDictT(LZ5_stream_t_internal* LZ5_dict, const BYTE* src)
         ((size_t)LZ5_dict->currentOffset > (size_t)src))   /* address space overflow */
     {
         /* rescale hash table */
-        U32 delta = LZ5_dict->currentOffset - 64 KB;
+        U32 delta = LZ5_dict->currentOffset - LZ5_DICT_SIZE;
         const BYTE* dictEnd = LZ5_dict->dictionary + LZ5_dict->dictSize;
         int i;
         for (i=0; i<HASH_SIZE_U32; i++)
@@ -1110,8 +1140,8 @@ static void LZ5_renormDictT(LZ5_stream_t_internal* LZ5_dict, const BYTE* src)
             if (LZ5_dict->hashTable[i] < delta) LZ5_dict->hashTable[i]=0;
             else LZ5_dict->hashTable[i] -= delta;
         }
-        LZ5_dict->currentOffset = 64 KB;
-        if (LZ5_dict->dictSize > 64 KB) LZ5_dict->dictSize = 64 KB;
+        LZ5_dict->currentOffset = LZ5_DICT_SIZE;
+        if (LZ5_dict->dictSize > LZ5_DICT_SIZE) LZ5_dict->dictSize = LZ5_DICT_SIZE;
         LZ5_dict->dictionary = dictEnd - LZ5_dict->dictSize;
     }
 }
@@ -1134,7 +1164,7 @@ int LZ5_compress_fast_continue (LZ5_stream_t* LZ5_stream, const char* source, ch
         if ((sourceEnd > streamPtr->dictionary) && (sourceEnd < dictEnd))
         {
             streamPtr->dictSize = (U32)(dictEnd - sourceEnd);
-            if (streamPtr->dictSize > 64 KB) streamPtr->dictSize = 64 KB;
+            if (streamPtr->dictSize > LZ5_DICT_SIZE) streamPtr->dictSize = LZ5_DICT_SIZE;
             if (streamPtr->dictSize < 4) streamPtr->dictSize = 0;
             streamPtr->dictionary = dictEnd - streamPtr->dictSize;
         }
@@ -1144,7 +1174,7 @@ int LZ5_compress_fast_continue (LZ5_stream_t* LZ5_stream, const char* source, ch
     if (dictEnd == (const BYTE*)source)
     {
         int result;
-        if ((streamPtr->dictSize < 64 KB) && (streamPtr->dictSize < streamPtr->currentOffset))
+        if ((streamPtr->dictSize < LZ5_DICT_SIZE) && (streamPtr->dictSize < streamPtr->currentOffset))
             result = LZ5_compress_generic(LZ5_stream, source, dest, inputSize, maxOutputSize, limitedOutput, byU32, withPrefix64k, dictSmall, acceleration);
         else
             result = LZ5_compress_generic(LZ5_stream, source, dest, inputSize, maxOutputSize, limitedOutput, byU32, withPrefix64k, noDictIssue, acceleration);
@@ -1156,7 +1186,7 @@ int LZ5_compress_fast_continue (LZ5_stream_t* LZ5_stream, const char* source, ch
     /* external dictionary mode */
     {
         int result;
-        if ((streamPtr->dictSize < 64 KB) && (streamPtr->dictSize < streamPtr->currentOffset))
+        if ((streamPtr->dictSize < LZ5_DICT_SIZE) && (streamPtr->dictSize < streamPtr->currentOffset))
             result = LZ5_compress_generic(LZ5_stream, source, dest, inputSize, maxOutputSize, limitedOutput, byU32, usingExtDict, dictSmall, acceleration);
         else
             result = LZ5_compress_generic(LZ5_stream, source, dest, inputSize, maxOutputSize, limitedOutput, byU32, usingExtDict, noDictIssue, acceleration);
@@ -1194,7 +1224,7 @@ int LZ5_saveDict (LZ5_stream_t* LZ5_dict, char* safeBuffer, int dictSize)
     LZ5_stream_t_internal* dict = (LZ5_stream_t_internal*) LZ5_dict;
     const BYTE* previousDictEnd = dict->dictionary + dict->dictSize;
 
-    if ((U32)dictSize > 64 KB) dictSize = 64 KB;   /* useless to define a dictionary > 64 KB */
+    if ((U32)dictSize > LZ5_DICT_SIZE) dictSize = LZ5_DICT_SIZE;   /* useless to define a dictionary > LZ5_DICT_SIZE */
     if ((U32)dictSize > dict->dictSize) dictSize = dict->dictSize;
 
     memmove(safeBuffer, previousDictEnd - dictSize, dictSize);
@@ -1246,7 +1276,7 @@ FORCE_INLINE int LZ5_decompress_generic(
     const int dec64table[] = {0, 0, 0, -1, 0, 1, 2, 3};
 
     const int safeDecode = (endOnInput==endOnInputSize);
-    const int checkOffset = ((safeDecode) && (dictSize < (int)(64 KB)));
+    const int checkOffset = ((safeDecode) && (dictSize < (int)(LZ5_DICT_SIZE)));
 
 
     /* Special cases */
@@ -1298,7 +1328,7 @@ FORCE_INLINE int LZ5_decompress_generic(
 
         /* copy literals */
         cpy = op+length;
-        if (((endOnInput) && ((cpy>(partialDecoding?oexit:oend-MFLIMIT)) || (ip+length>iend-(2+1+LASTLITERALS))) )
+        if (((endOnInput) && ((cpy>(partialDecoding?oexit:oend-MFLIMIT)) || (ip+length>iend-(1+1+LASTLITERALS))) )
             || ((!endOnInput) && (cpy>oend-WILDCOPYLENGTH)))
         {
             if (partialDecoding)
@@ -1440,7 +1470,7 @@ int LZ5_decompress_safe_partial(const char* source, char* dest, int compressedSi
 
 int LZ5_decompress_fast(const char* source, char* dest, int originalSize)
 {
-    return LZ5_decompress_generic(source, dest, 0, originalSize, endOnOutputSize, full, 0, withPrefix64k, (BYTE*)(dest - 64 KB), NULL, 64 KB);
+    return LZ5_decompress_generic(source, dest, 0, originalSize, endOnOutputSize, full, 0, withPrefix64k, (BYTE*)(dest - LZ5_DICT_SIZE), NULL, LZ5_DICT_SIZE);
 }
 
 
@@ -1567,8 +1597,8 @@ FORCE_INLINE int LZ5_decompress_usingDict_generic(const char* source, char* dest
         return LZ5_decompress_generic(source, dest, compressedSize, maxOutputSize, safe, full, 0, noDict, (BYTE*)dest, NULL, 0);
     if (dictStart+dictSize == dest)
     {
-        if (dictSize >= (int)(64 KB - 1))
-            return LZ5_decompress_generic(source, dest, compressedSize, maxOutputSize, safe, full, 0, withPrefix64k, (BYTE*)dest-64 KB, NULL, 0);
+        if (dictSize >= (int)(LZ5_DICT_SIZE - 1))
+            return LZ5_decompress_generic(source, dest, compressedSize, maxOutputSize, safe, full, 0, withPrefix64k, (BYTE*)dest-LZ5_DICT_SIZE, NULL, 0);
         return LZ5_decompress_generic(source, dest, compressedSize, maxOutputSize, safe, full, 0, noDict, (BYTE*)dest-dictSize, NULL, 0);
     }
     return LZ5_decompress_generic(source, dest, compressedSize, maxOutputSize, safe, full, 0, usingExtDict, (BYTE*)dest, (const BYTE*)dictStart, dictSize);
@@ -1639,7 +1669,7 @@ void* LZ5_create (char* inputBuffer)
 char* LZ5_slideInputBuffer (void* LZ5_Data)
 {
     LZ5_stream_t_internal* ctx = (LZ5_stream_t_internal*)LZ5_Data;
-    int dictSize = LZ5_saveDict((LZ5_stream_t*)LZ5_Data, (char*)ctx->bufferStart, 64 KB);
+    int dictSize = LZ5_saveDict((LZ5_stream_t*)LZ5_Data, (char*)ctx->bufferStart, LZ5_DICT_SIZE);
     return (char*)(ctx->bufferStart + dictSize);
 }
 
@@ -1647,12 +1677,12 @@ char* LZ5_slideInputBuffer (void* LZ5_Data)
 
 int LZ5_decompress_safe_withPrefix64k(const char* source, char* dest, int compressedSize, int maxOutputSize)
 {
-    return LZ5_decompress_generic(source, dest, compressedSize, maxOutputSize, endOnInputSize, full, 0, withPrefix64k, (BYTE*)dest - 64 KB, NULL, 64 KB);
+    return LZ5_decompress_generic(source, dest, compressedSize, maxOutputSize, endOnInputSize, full, 0, withPrefix64k, (BYTE*)dest - LZ5_DICT_SIZE, NULL, LZ5_DICT_SIZE);
 }
 
 int LZ5_decompress_fast_withPrefix64k(const char* source, char* dest, int originalSize)
 {
-    return LZ5_decompress_generic(source, dest, 0, originalSize, endOnOutputSize, full, 0, withPrefix64k, (BYTE*)dest - 64 KB, NULL, 64 KB);
+    return LZ5_decompress_generic(source, dest, 0, originalSize, endOnOutputSize, full, 0, withPrefix64k, (BYTE*)dest - LZ5_DICT_SIZE, NULL, LZ5_DICT_SIZE);
 }
 
 #endif   /* LZ5_COMMONDEFS_ONLY */

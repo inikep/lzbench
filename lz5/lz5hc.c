@@ -92,7 +92,7 @@ static const int g_maxCompressionLevel = 16;
 /**************************************
 *  Local Types
 **************************************/
-typedef struct
+struct LZ5HC_Data_s
 {
     U32*   hashTable;
     U32*   chainTable;
@@ -104,7 +104,7 @@ typedef struct
     U32   lowLimit;         /* below that point, no more dict */
     U32   nextToUpdate;     /* index from which to continue dictionary update */
     U32   compressionLevel;
-} LZ5HC_Data_Structure;
+};
 
 
 /**************************************
@@ -584,6 +584,29 @@ int LZ5_compress_HC_extStateHC (void* state, const char* src, char* dst, int src
         return LZ5HC_compress_generic (state, src, dst, srcSize, maxDstSize, compressionLevel, noLimit);
 }
 
+int LZ5_alloc_mem_HC(LZ5HC_Data_Structure* statePtr)
+{
+    statePtr->hashTable = ALLOCATOR(1, sizeof(U32)*HASHTABLESIZE);
+    if (!statePtr->hashTable)
+        return 0;
+
+    statePtr->chainTable = ALLOCATOR(1, sizeof(U32)*MAXD);
+    if (!statePtr->chainTable)
+    {
+        FREEMEM(statePtr->hashTable);
+        statePtr->hashTable = NULL;
+        return 0;
+    }
+    
+    return 1;
+}
+
+void LZ5_free_mem_HC(LZ5HC_Data_Structure* statePtr)
+{
+    if (statePtr->chainTable) FREEMEM(statePtr->chainTable);
+    if (statePtr->hashTable) FREEMEM(statePtr->hashTable);    
+}
+
 int LZ5_compress_HC(const char* src, char* dst, int srcSize, int maxDstSize, int compressionLevel)
 {
 #if LZ5HC_HEAPMODE==1
@@ -594,17 +617,13 @@ int LZ5_compress_HC(const char* src, char* dst, int srcSize, int maxDstSize, int
 #endif
 
     int cSize = 0;
-    statePtr->hashTable = ALLOCATOR(1, sizeof(U32)*HASHTABLESIZE);
-    if (statePtr->hashTable)
-    {
-        statePtr->chainTable = ALLOCATOR(1, sizeof(U32)*MAXD);
-        if (statePtr->chainTable)
-        {
-            cSize = LZ5_compress_HC_extStateHC(statePtr, src, dst, srcSize, maxDstSize, compressionLevel);
-            FREEMEM(statePtr->chainTable);
-        }
-        FREEMEM(statePtr->hashTable);
-    }
+    
+    if (!LZ5_alloc_mem_HC(statePtr))
+        return 0;
+        
+    cSize = LZ5_compress_HC_extStateHC(statePtr, src, dst, srcSize, maxDstSize, compressionLevel);
+
+    LZ5_free_mem_HC(statePtr);
 
 #if LZ5HC_HEAPMODE==1
     free(statePtr);
@@ -624,17 +643,8 @@ LZ5_streamHC_t* LZ5_createStreamHC(void)
     if (!statePtr)
         return NULL;
 
-    statePtr->hashTable = ALLOCATOR(1, sizeof(U32)*HASHTABLESIZE);
-    if (!statePtr->hashTable)
+    if (!LZ5_alloc_mem_HC(statePtr))
     {
-        FREEMEM(statePtr);
-        return NULL;
-    }
-
-    statePtr->chainTable = ALLOCATOR(1, sizeof(U32)*MAXD);
-    if (!statePtr->chainTable)
-    {
-        FREEMEM(statePtr->hashTable);
         FREEMEM(statePtr);
         return NULL;
     }
@@ -642,11 +652,10 @@ LZ5_streamHC_t* LZ5_createStreamHC(void)
     return (LZ5_streamHC_t*) statePtr; 
 }
 
-int LZ5_freeStreamHC (LZ5_streamHC_t* LZ5_streamHCPtr) 
+int LZ5_freeStreamHC (LZ5_streamHC_t* LZ5_streamHCPtr)
 {
     LZ5HC_Data_Structure* statePtr = (LZ5HC_Data_Structure*)LZ5_streamHCPtr;
-    FREEMEM(statePtr->chainTable);
-    FREEMEM(statePtr->hashTable);    
+    LZ5_free_mem_HC(statePtr);
     free(LZ5_streamHCPtr); 
     return 0; 
 }
@@ -663,10 +672,10 @@ void LZ5_resetStreamHC (LZ5_streamHC_t* LZ5_streamHCPtr, int compressionLevel)
 int LZ5_loadDictHC (LZ5_streamHC_t* LZ5_streamHCPtr, const char* dictionary, int dictSize)
 {
     LZ5HC_Data_Structure* ctxPtr = (LZ5HC_Data_Structure*) LZ5_streamHCPtr;
-    if (dictSize > 64 KB)
+    if (dictSize > LZ5_DICT_SIZE)
     {
-        dictionary += dictSize - 64 KB;
-        dictSize = 64 KB;
+        dictionary += dictSize - LZ5_DICT_SIZE;
+        dictSize = LZ5_DICT_SIZE;
     }
     LZ5HC_init (ctxPtr, (const BYTE*)dictionary);
     if (dictSize >= 4) LZ5HC_Insert (ctxPtr, (const BYTE*)dictionary +(dictSize-3));
@@ -702,7 +711,7 @@ static int LZ5_compressHC_continue_generic (LZ5HC_Data_Structure* ctxPtr,
     if ((size_t)(ctxPtr->end - ctxPtr->base) > 2 GB)
     {
         size_t dictSize = (size_t)(ctxPtr->end - ctxPtr->base) - ctxPtr->dictLimit;
-        if (dictSize > 64 KB) dictSize = 64 KB;
+        if (dictSize > LZ5_DICT_SIZE) dictSize = LZ5_DICT_SIZE;
 
         LZ5_loadDictHC((LZ5_streamHC_t*)ctxPtr, (const char*)(ctxPtr->end) - dictSize, (int)dictSize);
     }
@@ -742,7 +751,7 @@ int LZ5_saveDictHC (LZ5_streamHC_t* LZ5_streamHCPtr, char* safeBuffer, int dictS
 {
     LZ5HC_Data_Structure* streamPtr = (LZ5HC_Data_Structure*)LZ5_streamHCPtr;
     int prefixSize = (int)(streamPtr->end - (streamPtr->base + streamPtr->dictLimit));
-    if (dictSize > 64 KB) dictSize = 64 KB;
+    if (dictSize > LZ5_DICT_SIZE) dictSize = LZ5_DICT_SIZE;
     if (dictSize < 4) dictSize = 0;
     if (dictSize > prefixSize) dictSize = prefixSize;
     memmove(safeBuffer, streamPtr->end - dictSize, dictSize);
@@ -757,3 +766,14 @@ int LZ5_saveDictHC (LZ5_streamHC_t* LZ5_streamHCPtr, char* safeBuffer, int dictS
     return dictSize;
 }
 
+/***********************************
+*  Deprecated Functions
+***********************************/
+/* Deprecated compression functions */
+/* These functions are planned to start generate warnings by r131 approximately */
+int LZ5_compressHC(const char* src, char* dst, int srcSize) { return LZ5_compress_HC (src, dst, srcSize, LZ5_compressBound(srcSize), 0); }
+int LZ5_compressHC_limitedOutput(const char* src, char* dst, int srcSize, int maxDstSize) { return LZ5_compress_HC(src, dst, srcSize, maxDstSize, 0); }
+int LZ5_compressHC_continue (LZ5_streamHC_t* ctx, const char* src, char* dst, int srcSize) { return LZ5_compress_HC_continue (ctx, src, dst, srcSize, LZ5_compressBound(srcSize)); }
+int LZ5_compressHC_limitedOutput_continue (LZ5_streamHC_t* ctx, const char* src, char* dst, int srcSize, int maxDstSize) { return LZ5_compress_HC_continue (ctx, src, dst, srcSize, maxDstSize); } 
+int LZ5_compressHC_withStateHC (void* state, const char* src, char* dst, int srcSize) { return LZ5_compress_HC_extStateHC (state, src, dst, srcSize, LZ5_compressBound(srcSize), 0); }
+int LZ5_compressHC_limitedOutput_withStateHC (void* state, const char* src, char* dst, int srcSize, int maxDstSize) { return LZ5_compress_HC_extStateHC (state, src, dst, srcSize, maxDstSize, 0); } 
