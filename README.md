@@ -1,7 +1,7 @@
 Introduction
 -------------------------
 
-lzbench is an in-memory benchmark of the fastest open-source LZ77/LZSS compressors. It joins all compressors into a single exe. 
+lzbench is an in-memory benchmark of open-source LZ77/LZSS/LZMA compressors. It joins all compressors into a single exe. 
 At the beginning an input file is read to memory. 
 Then all compressors are used to compress and decompress the file and decompressed file is verified. 
 This approach has a big advantage of using the same compiler with the same optimizations for all compressors. 
@@ -17,7 +17,7 @@ usage: lzbench [options] input_file
 where options are:
  -iX: selects number of iterations (default 1) and displays best time of X iterations.
  -bX: divides input data in blocks/chunks of size X KB (default = 2097152 KB)
- -sX: selects only compressors with compression speed over X MB (default = 100 MB) - so far it's only approximation
+ -sX: selects only compressors with compression speed over X MB (default = 100 MB)
 ```
 
 
@@ -44,7 +44,7 @@ csc 3.3
 density 0.12.5 beta
 fastlz 0.1
 lz4/lz4hc r131
-lz5/lz5hc r131
+lz5/lz5hc r131b
 lzf
 lzham 1.0
 lzjb 2010
@@ -57,7 +57,7 @@ quicklz 1.5.0
 quicklz 1.5.1 b7
 shrinker
 snappy 1.1.3
-tornado 0.6
+tornado 0.6a
 ucl 1.03
 yappy
 zlib 1.2.8

@@ -1,2 +1,6 @@
+v.0.7.1 
+- tornado updated to version 0.6a
+- lz5/lz5hc updated to version r131b
+
 v0.7
 The first release for GitHub

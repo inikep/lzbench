@@ -3,7 +3,7 @@
 //
 
 #ifdef _MSC_VER
-#define _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECECURE_NO_WARNINGS
 #define _CRT_DISABLE_PERFCRIT_LOCKS
 #else
 #define _FILE_OFFSET_BITS 64
@@ -306,54 +306,54 @@ uint32_t compress(int level, uint8_t* buf, int size, uint8_t* outbuf)
 
 uint32_t decompress(uint8_t* inbuf, uint8_t* outbuf, int outsize)
 {
-		if ((outsize<1))
-		{
-			fprintf(stderr, "File corrupted: size=%d\n", outsize);
-			exit(1);
-		}
+    if ((outsize<1))
+    {
+        fprintf(stderr, "File corrupted: size=%d\n", outsize);
+        return 0;
+    }
 
-		init_bits(inbuf, NULL);
+    init_bits(inbuf, NULL);
 
-		int p=0;
-		while (p<outsize)
-		{
-			if (get_bits(1))
-			{
-				int len;
-				if (get_bits(1))
-					len=get_bits(A_BITS);
-				else if (get_bits(1))
-					len=get_bits(B_BITS)+A;
-				else if (get_bits(1))
-					len=get_bits(C_BITS)+B;
-				else if (get_bits(1))
-					len=get_bits(D_BITS)+C;
-				else if (get_bits(1))
-					len=get_bits(E_BITS)+D;
-				else
-					len=get_bits(F_BITS)+E;
+    int p=0;
+    while (p<outsize)
+    {
+        if (get_bits(1))
+        {
+            int len;
+            if (get_bits(1))
+                len=get_bits(A_BITS);
+            else if (get_bits(1))
+                len=get_bits(B_BITS)+A;
+            else if (get_bits(1))
+                len=get_bits(C_BITS)+B;
+            else if (get_bits(1))
+                len=get_bits(D_BITS)+C;
+            else if (get_bits(1))
+                len=get_bits(E_BITS)+D;
+            else
+                len=get_bits(F_BITS)+E;
 
-				const int log=get_bits(SLOT_BITS)+(W_BITS-NUM_SLOTS);
-				int s=~(log>(W_BITS-NUM_SLOTS)
-					?get_bits(log)+(1<<log)
-					:get_bits(W_BITS-(NUM_SLOTS-1)))+p;
-				if (s<0)
-				{
-					fprintf(stderr, "File corrupted: s=%d\n", s);
-					exit(1);
-				}
+            const int log=get_bits(SLOT_BITS)+(W_BITS-NUM_SLOTS);
+            int s=~(log>(W_BITS-NUM_SLOTS)
+                ?get_bits(log)+(1<<log)
+                :get_bits(W_BITS-(NUM_SLOTS-1)))+p;
+            if (s<0)
+            {
+                fprintf(stderr, "File corrupted: s=%d p=%d outsize=%d\n", s, p, outsize);
+                return 0;
+            }
 
-				outbuf[p++]=outbuf[s++];
-				outbuf[p++]=outbuf[s++];
-				outbuf[p++]=outbuf[s++];
-				while (len--!=0)
-					outbuf[p++]=outbuf[s++];
-			}
-			else
-				outbuf[p++]=get_bits(8);
-		}
+            outbuf[p++]=outbuf[s++];
+            outbuf[p++]=outbuf[s++];
+            outbuf[p++]=outbuf[s++];
+            while (len--!=0)
+                outbuf[p++]=outbuf[s++];
+        }
+        else
+            outbuf[p++]=get_bits(8);
+    }
 
-		return p;
+    return p;
 }
 
 } // namespace crush

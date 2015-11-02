@@ -364,6 +364,7 @@ size_t pithy_Compress(const char *uncompressed, size_t uncompressedLength, char 
     const char *uncompressedPtr = uncompressed, *uncompressedEnd = uncompressed + uncompressedLength, *nextEmitUncompressedPtr = uncompressedPtr;
     DCHECK((hashTableSize & (hashTableSize - 1l)) == 0);
     const int shift = 32 - pithy_Log2Floor(hashTableSize);
+#define UINT32_MAX 0xffffffff
     DCHECK((UINT32_MAX >> shift) == (hashTableSize - 1l));
     size_t skip = 32ul;
     

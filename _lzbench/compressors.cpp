@@ -7,7 +7,7 @@
 #include "brotli/enc/encode.h"
 #include "brotli/dec/decode.h"
 
-size_t bench_brotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_brotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
     brotli::BrotliParams p;
 	p.quality = level;
@@ -16,7 +16,7 @@ size_t bench_brotli_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
     size_t actual_osize = outsize;
     return brotli::BrotliCompressBuffer(p, insize, (const uint8_t*)inbuf, &actual_osize, (uint8_t*)outbuf) == 0 ? 0 : actual_osize;
 }
-size_t bench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
     size_t actual_osize = outsize;
     return BrotliDecompressBuffer(insize, (const uint8_t*)inbuf, &actual_osize, (uint8_t*)outbuf) == 0 ? 0 : actual_osize;
@@ -30,12 +30,12 @@ size_t bench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 #ifndef BENCH_REMOVE_CRUSH
 #include "crush/crush.hpp"
 
-size_t bench_crush_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_crush_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return crush::compress(level, (uint8_t*)inbuf, insize, (uint8_t*)outbuf);
 }
 
-size_t bench_crush_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_crush_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return crush::decompress((uint8_t*)inbuf, (uint8_t*)outbuf, outsize);
 }
@@ -82,7 +82,7 @@ size_t stdio_write(void *p, const void *buf, size_t size)
     return size;
 }
 
-size_t bench_csc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dict_size, size_t)
+int64_t lzbench_csc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dict_size, size_t)
 {
 	MemSeqStream isss, osss;
 	CSCProps p;
@@ -113,7 +113,7 @@ size_t bench_csc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsi
 	return osss.len;
 }
 
-size_t bench_csc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_csc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	MemSeqStream isss, osss;
 	CSCProps p;
@@ -145,7 +145,7 @@ extern "C"
 	#include "density/density_api.h"
 }
 
-size_t bench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	density_buffer_processing_result result = density_buffer_compress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize, (DENSITY_COMPRESSION_MODE)level, DENSITY_BLOCK_TYPE_DEFAULT, NULL, NULL);
 	if (result.state) 
@@ -154,7 +154,7 @@ size_t bench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 	return result.bytesWritten;
 }
 
-size_t bench_density_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
     density_buffer_processing_result result = density_buffer_decompress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize, NULL, NULL);
 	if (result.state) 
@@ -173,12 +173,12 @@ extern "C"
 	#include "fastlz/fastlz.h"
 }
 
-size_t bench_fastlz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_fastlz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return fastlz_compress_level(level, inbuf, insize, outbuf);
 }
 
-size_t bench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return fastlz_decompress(inbuf, insize, outbuf, outsize);
 }
@@ -192,22 +192,22 @@ size_t bench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 #include "lz4/lz4.h"
 #include "lz4/lz4hc.h"
 
-size_t bench_lz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_lz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return LZ4_compress_default(inbuf, outbuf, insize, outsize);
 }
 
-size_t bench_lz4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_lz4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return LZ4_compress_fast(inbuf, outbuf, insize, outsize, level);
 }
 
-size_t bench_lz4hc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_lz4hc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return LZ4_compress_HC(inbuf, outbuf, insize, outsize, level);
 }
 
-size_t bench_lz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_lz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return LZ4_decompress_safe(inbuf, outbuf, insize, outsize);
 }
@@ -220,22 +220,22 @@ size_t bench_lz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t out
 #include "lz5/lz5.h"
 #include "lz5/lz5hc.h"
 
-size_t bench_lz5_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_lz5_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return LZ5_compress_default(inbuf, outbuf, insize, outsize);
 }
 
-size_t bench_lz5fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_lz5fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return LZ5_compress_fast(inbuf, outbuf, insize, outsize, level);
 }
 
-size_t bench_lz5hc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_lz5hc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return LZ5_compress_HC(inbuf, outbuf, insize, outsize, level);
 }
 
-size_t bench_lz5_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_lz5_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return LZ5_decompress_safe(inbuf, outbuf, insize, outsize);
 }
@@ -250,14 +250,14 @@ extern "C"
 	#include "lzf/lzf.h"
 }
 
-size_t bench_lzf_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_lzf_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	if (level == 0)
 		return lzf_compress(inbuf, insize, outbuf, outsize); 
 	return lzf_compress_very(inbuf, insize, outbuf, outsize); 
 }
 
-size_t bench_lzf_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_lzf_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return lzf_decompress(inbuf, insize, outbuf, outsize);
 }
@@ -270,7 +270,7 @@ size_t bench_lzf_decompress(char *inbuf, size_t insize, char *outbuf, size_t out
 #include "lzham/lzham.h"
 #include <memory.h>
 
-size_t bench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dict_size, size_t)
+int64_t lzbench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dict_size, size_t)
 {
 	lzham_compress_params comp_params;
 	memset(&comp_params, 0, sizeof(comp_params));
@@ -291,7 +291,7 @@ size_t bench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t out
 	return outsize;
 }
 
-size_t bench_lzham_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t dict_size, size_t)
+int64_t lzbench_lzham_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t dict_size, size_t)
 {
 	lzham_uint32 comp_adler32 = 0;
 	lzham_decompress_params decomp_params;
@@ -311,12 +311,12 @@ size_t bench_lzham_decompress(char *inbuf, size_t insize, char *outbuf, size_t o
 #ifndef BENCH_REMOVE_LZJB
 #include "lzjb/lzjb2010.h"
 
-size_t bench_lzjb_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_lzjb_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return lzjb_compress2010((uint8_t*)inbuf, (uint8_t*)outbuf, insize, outsize, 0); 
 }
 
-size_t bench_lzjb_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_lzjb_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return lzjb_decompress2010((uint8_t*)inbuf, (uint8_t*)outbuf, insize, outsize, 0);
 }
@@ -337,7 +337,7 @@ static void *SzAlloc(void *p, size_t size) { p = p; return MyAlloc(size); }
 static void SzFree(void *p, void *address) { p = p; MyFree(address); }
 static ISzAlloc g_Alloc = { SzAlloc, SzFree };
 
-size_t bench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	char rs[800] = { 0 };
 	CLzmaEncProps props;
@@ -363,7 +363,7 @@ size_t bench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t outs
 	return LZMA_PROPS_SIZE + out_len;
 }
 
-size_t bench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	char rs[800] = { 0 };
 	int res;
@@ -386,7 +386,7 @@ size_t bench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t ou
 #ifndef BENCH_REMOVE_LZMAT
 #include "lzmat/lzmat.h"
 
-size_t bench_lzmat_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_lzmat_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	uint32_t complen = outsize;
 	if (lzmat_encode((uint8_t*)outbuf, &complen, (uint8_t*)inbuf, insize) != 0)
@@ -394,7 +394,7 @@ size_t bench_lzmat_compress(char *inbuf, size_t insize, char *outbuf, size_t out
 	return complen;
 }
 
-size_t bench_lzmat_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_lzmat_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	uint32_t decomplen = outsize;
 	if (lzmat_decode((uint8_t*)outbuf, &decomplen, (uint8_t*)inbuf, insize) != 0)
@@ -416,7 +416,7 @@ size_t bench_lzmat_decompress(char *inbuf, size_t insize, char *outbuf, size_t o
 #include "lzo/lzo1z.h"
 #include "lzo/lzo2a.h"
 
-size_t bench_lzo_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t workmem, size_t)
+int64_t lzbench_lzo_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t workmem, size_t)
 {
 	lzo_uint lzo_complen = 0;
 	int res;
@@ -447,7 +447,7 @@ size_t bench_lzo_compress(char *inbuf, size_t insize, char *outbuf, size_t outsi
 	return lzo_complen; 
 }
 
-size_t bench_lzo_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_lzo_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	lzo_uint decomplen = 0;
 
@@ -485,7 +485,7 @@ extern "C"
 	#include "lzrw/lzrw.h"
 }
 
-size_t bench_lzrw_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t workmem, size_t)
+int64_t lzbench_lzrw_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t workmem, size_t)
 {
 	uint32_t complen = 0;
 	switch (level)
@@ -501,7 +501,7 @@ size_t bench_lzrw_compress(char *inbuf, size_t insize, char *outbuf, size_t outs
 	return complen;
 }
 
-size_t bench_lzrw_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t workmem, size_t)
+int64_t lzbench_lzrw_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t workmem, size_t)
 {
 	uint32_t decomplen = 0;
 	switch (level)
@@ -523,12 +523,12 @@ size_t bench_lzrw_decompress(char *inbuf, size_t insize, char *outbuf, size_t ou
 #ifndef BENCH_REMOVE_PITHY
 #include "pithy/pithy.h"
 
-size_t bench_pithy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_pithy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return pithy_Compress(inbuf, insize, outbuf, outsize, level);
 }
 
-size_t bench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	size_t res = pithy_Decompress(inbuf, insize, outbuf, outsize);
 //	printf("insize=%lld outsize=%lld res=%lld\n", insize, outsize, res);
@@ -544,7 +544,7 @@ size_t bench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_t o
 #include "quicklz/quicklz151b7.h"
 #include "quicklz/quicklz.h"
 
-size_t bench_quicklz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t state, size_t)
+int64_t lzbench_quicklz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t state, size_t)
 {
 	switch (level)
 	{
@@ -556,7 +556,7 @@ size_t bench_quicklz_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 	}
 }
 
-size_t bench_quicklz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dstate, size_t)
+int64_t lzbench_quicklz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dstate, size_t)
 {
 	switch (level)
 	{
@@ -575,12 +575,12 @@ size_t bench_quicklz_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 #ifndef BENCH_REMOVE_SHRINKER
 #include "shrinker/shrinker.h"
 
-size_t bench_shrinker_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_shrinker_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return shrinker_compress(inbuf, outbuf, insize); 
 }
 
-size_t bench_shrinker_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_shrinker_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return shrinker_decompress(inbuf, outbuf, outsize); 
 }
@@ -591,13 +591,13 @@ size_t bench_shrinker_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #ifndef BENCH_REMOVE_SNAPPY
 #include "snappy/snappy.h"
 
-size_t bench_snappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_snappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	snappy::RawCompress(inbuf, insize, outbuf, &outsize);
 	return outsize;
 }
 
-size_t bench_snappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_snappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	snappy::RawUncompress(inbuf, insize, outbuf);
 	return outsize;
@@ -611,12 +611,12 @@ size_t bench_snappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 #ifndef BENCH_REMOVE_TORNADO
 #include "tornado/tor_test.h"
 
-size_t bench_tornado_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_tornado_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return tor_compress(level, (uint8_t*)inbuf, (uint8_t*)outbuf, insize); 
 }
 
-size_t bench_tornado_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_tornado_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return tor_decompress((uint8_t*)inbuf, (uint8_t*)outbuf, insize); 
 }
@@ -628,7 +628,7 @@ size_t bench_tornado_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 #ifndef BENCH_REMOVE_UCL
 #include "ucl/ucl.h"
 
-size_t bench_ucl_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t algo, size_t level, size_t)
+int64_t lzbench_ucl_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t algo, size_t level, size_t)
 {
 	ucl_uint complen;
 	int res;
@@ -645,7 +645,7 @@ size_t bench_ucl_compress(char *inbuf, size_t insize, char *outbuf, size_t outsi
 	return complen;
 }
 
-size_t bench_ucl_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t algo, size_t level, size_t)
+int64_t lzbench_ucl_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t algo, size_t level, size_t)
 {
 	ucl_uint decomplen;
 	int res;
@@ -669,7 +669,7 @@ size_t bench_ucl_decompress(char *inbuf, size_t insize, char *outbuf, size_t out
 #ifndef BENCH_REMOVE_WFLZ
 #include "wflz/wfLZ.h"
 
-size_t bench_wflz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t workmem, size_t)
+int64_t lzbench_wflz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t workmem, size_t)
 {
     if (level == 1) 
 		return wfLZ_CompressFast((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, (uint8_t*)workmem, 0);
@@ -677,7 +677,7 @@ size_t bench_wflz_compress(char *inbuf, size_t insize, char *outbuf, size_t outs
     return wfLZ_Compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, (uint8_t*)workmem, 0);
 }
 
-size_t bench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
     wfLZ_Decompress((const uint8_t*)inbuf, (uint8_t*)outbuf);
     return outsize;
@@ -690,12 +690,12 @@ size_t bench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t ou
 #ifndef BENCH_REMOVE_YAPPY
 #include "yappy/yappy.hpp"
 
-size_t bench_yappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_yappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return YappyCompress((uint8_t*)inbuf, (uint8_t*)outbuf, insize, level) - (uint8_t*)outbuf; 
 }
 
-size_t bench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return YappyUnCompress((uint8_t*)inbuf, (uint8_t*)inbuf+insize, (uint8_t*)outbuf) - (uint8_t*)outbuf; 
 }
@@ -707,7 +707,7 @@ size_t bench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t o
 #ifndef BENCH_REMOVE_ZLIB
 #include "zlib/zlib.h"
 
-size_t bench_zlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_zlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	uLongf zcomplen = insize;
 	int err = compress2((uint8_t*)outbuf, &zcomplen, (uint8_t*)inbuf, insize, level);
@@ -716,7 +716,7 @@ size_t bench_zlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outs
 	return zcomplen;
 }
 
-size_t bench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	uLongf zdecomplen = outsize;
 	int err = uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize); 
@@ -784,7 +784,7 @@ private:
 }  // namespace zling
 }  // namespace baidu
 
-size_t bench_zling_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_zling_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	baidu::zling::MemInputter  inputter((uint8_t*)inbuf, insize);
 	baidu::zling::MemOutputter outputter((uint8_t*)outbuf, outsize);
@@ -793,7 +793,7 @@ size_t bench_zling_compress(char *inbuf, size_t insize, char *outbuf, size_t out
 	return outputter.GetOutputSize();
 }
 
-size_t bench_zling_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_zling_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	baidu::zling::MemInputter  inputter((uint8_t*)inbuf, insize);
 	baidu::zling::MemOutputter outputter((uint8_t*)outbuf, outsize);
@@ -809,12 +809,12 @@ size_t bench_zling_decompress(char *inbuf, size_t insize, char *outbuf, size_t o
 #ifndef BENCH_REMOVE_ZSTD
 #include "zstd/zstd.h"
 
-size_t bench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return ZSTD_compress(outbuf, outsize, inbuf, insize);
 }
 
-size_t bench_zstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_zstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return ZSTD_decompress(outbuf, outsize, inbuf, insize);
 }
@@ -827,12 +827,12 @@ size_t bench_zstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t ou
 #ifndef BENCH_REMOVE_ZSTDHC
 #include "zstd/zstdhc.h"
 
-size_t bench_zstdhc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+int64_t lzbench_zstdhc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	return ZSTD_HC_compress(outbuf, outsize, inbuf, insize, level);
 }
 
-size_t bench_zstdhc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+int64_t lzbench_zstdhc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
 	return ZSTD_decompress(outbuf, outsize, inbuf, insize);
 }
