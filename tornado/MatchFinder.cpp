@@ -10,11 +10,6 @@ typedef uint   HashVal;      // Result of hashing function
 typedef uint32 PtrVal;       // Pointers to buf stored in HTable
 typedef uint32 HintVal;      // Cached bytes from buf stored in HTable
 
-// Maximum number of bytes used for hashing in any match finder.
-// If this value will be smaller than real, we can hash bytes in buf that are not yet read
-// Also it's number of bytes reserved after bufend in order to simplify p+N<=bufend checks
-#define MAX_HASHED_BYTES 12
-
 
 #ifdef DEBUG
 void check_match (BYTE *p, BYTE *q, int len)
@@ -220,7 +215,7 @@ struct MatchFinder1 : BaseMatchFinder
             return MINLEN-1;
         }
     }
-    void update_hash (BYTE *p, UINT len, UINT step)
+    void update_hash (BYTE *p, UINT len, BYTE *bufend, UINT step)
     {
 // No hash update in fastest mode!
 /*        uint h;
@@ -270,7 +265,7 @@ struct MatchFinder2 : BaseMatchFinder
         }
     }
 
-    void update_hash (BYTE *p, UINT len, UINT step)
+    void update_hash (BYTE *p, UINT len, BYTE *bufend, UINT step)
     {   // len may be as low as 1 if LazyMatching and Hash3 are used together
         UINT h;
         h = hash(value(p+1)),  HTable[h+1] = HTable[h],  HTable[h] = fromPtr(p+1);
@@ -297,8 +292,8 @@ struct MatchFinderN : BaseMatchFinder
     // Fill the `matches` buffer with len/dist of all found matches
     DISTANCE *find_all_matches (byte *p, void *bufend, DISTANCE *matches)
     {
-        UINT h = hashx (N, p, HashShift, HashMask);
         UINT maxLen = MINLEN-1;
+        UINT h = hashx (N, p, HashShift, HashMask);
         PtrVal x1, x0 = HTable[h];  HTable[h] = fromPtr(p);
         BYTE *q = toPtr(x0);
         // Start with checking the first element of the hash row
@@ -330,8 +325,8 @@ struct MatchFinderN : BaseMatchFinder
 
     uint find_matchlen (byte *p, void *bufend, UINT prevlen)
     {
-        UINT h = hashx (N, p, HashShift, HashMask);
         UINT len = MINLEN-1;
+        UINT h = hashx (N, p, HashShift, HashMask);
         PtrVal x1, x0 = HTable[h];  HTable[h] = fromPtr(p);
         q = toPtr(x0);
         // Start with checking the first element of the hash row
@@ -363,7 +358,7 @@ struct MatchFinderN : BaseMatchFinder
             HTable[h+j] = HTable[h+j-1];
         HTable[h] = fromPtr(p);
     }
-    void update_hash (BYTE *p, UINT len, UINT step)
+    void update_hash (BYTE *p, UINT len, BYTE *bufend, UINT step)
     {
         if (len>1)                         update_hash1 (p+1);
         for (int i=2; i<len-1; i+=step)    update_hash1 (p+i);
@@ -430,7 +425,7 @@ struct ExactMatchFinder : BaseMatchFinder
         UINT h = hashx (N, p, HashShift, HashMask);
         HTable[h] = fromPtr(p);
     }
-    void update_hash (BYTE *p, UINT len, UINT step)
+    void update_hash (BYTE *p, UINT len, BYTE *bufend, UINT step)
     {
         if (len>1)                         update_hash1 (p+1);
         for (int i=2; i<len-1; i+=step)    update_hash1 (p+i);
@@ -652,7 +647,7 @@ len7:   q = toPtr(x1);
         HTable[h+1] = key(p);
     }
     // Skip match starting from p with length len and update hash with strings using given step
-    void update_hash (BYTE *p, UINT len, UINT step)
+    void update_hash (BYTE *p, UINT len, BYTE *bufend, UINT step)
     {
         // Update hash with strings at the start and end of match plus part of strings inside match
         if (len>1)                         update_hash1 (p+1);
@@ -833,7 +828,7 @@ len7:   len = MINLEN-1;
         table[1] = key(p);
     }
     // Skip match starting from p with length len and update hash with strings using given step
-    void update_hash (BYTE *p, UINT len, UINT step)
+    void update_hash (BYTE *p, UINT len, BYTE *bufend, UINT step)
     {
         for (int i=1; i<len; i++)
             update_hash1 (p+i);
@@ -924,6 +919,7 @@ struct BinaryTreeMatchFinder : BaseMatchFinder
         HTable[h]   = PtrVal(p-base);
         UINT *ptr1  = & BinaryTree[size_t(p-base)*2],  *ptr0 = ptr1 + 1;
         UINT len0 = 0,  len1 = 0,  lenLimit = (byte*)bufend-p;
+        if (bufend <= p  ||  lenLimit <= maxLen)  { *ptr0 = *ptr1 = kEmptyHashValue;  return matches; }
         for (;;)
         {
           if (depth-- == 0  ||  n == kEmptyHashValue)    { *ptr0 = *ptr1 = kEmptyHashValue;  break; }
@@ -940,7 +936,7 @@ struct BinaryTreeMatchFinder : BaseMatchFinder
             {
               *matches++ = maxLen = len;
               *matches++ = p-q;
-              if (len == lenLimit) { *ptr1 = pair[0];  *ptr0 = pair[1];  break; }
+              if (len == lenLimit)    { *ptr0 = *ptr1 = kEmptyHashValue;  break; }
             }
           }
           if (q[len] < p[len])    *ptr1 = n,  ptr1 = pair + 1,  n = *ptr1,  len1 = len;
@@ -977,7 +973,7 @@ struct BinaryTreeMatchFinder : BaseMatchFinder
                 maxLen = len;
                 q = q1;
               }
-              if (len == lenLimit) { *ptr1 = pair[0];  *ptr0 = pair[1];  break; }
+              if (len == lenLimit)    { *ptr0 = *ptr1 = kEmptyHashValue;  break; }
             }
           }
           if (q1[len] < p[len])    *ptr1 = n,  ptr1 = pair + 1,  n = *ptr1,  len1 = len;
@@ -988,18 +984,17 @@ struct BinaryTreeMatchFinder : BaseMatchFinder
 
     // Update hash row corresponding to string pointed by p
     // (hash updated via this procedure only when skipping match contents)
-    void update_hash1 (BYTE *p, UINT maxLen = 256*kb)
+    void update_hash1 (BYTE *p, BYTE *bufend)
     {
-        void *bufend = (LastBufEnd > p  &&  LastBufEnd-p > maxLen)?  p + maxLen  :  LastBufEnd;
         find_matchlen (p, bufend, MINLEN-1);
     }
     // Skip match starting from p with length len and update hash with strings using given step
-    void update_hash (BYTE *p, UINT len, UINT step)
+    void update_hash (BYTE *p, UINT len, BYTE *bufend, UINT step)
     {
         step  =  mymax (step, len/2503);   // optimization to avoid O(n^2) time behavior after a very long match
-        if (len>1)                         update_hash1 (p+1);
-        for (int i=2; i<len-1; i+=step)    update_hash1 (p+i);
-        if (len>3)                         update_hash1 (p+len-1);
+        if (len>1)                         update_hash1 (p+1    , bufend);
+        for (int i=2; i<len-1; i+=step)    update_hash1 (p+i    , bufend);
+        if (len>3)                         update_hash1 (p+len-1, bufend);
     }
 };
 
@@ -1098,9 +1093,9 @@ struct LazyMatching
         }
     }
 
-    void update_hash (BYTE *p, UINT len, UINT step)
+    void update_hash (BYTE *p, UINT len, BYTE *bufend, UINT step)
     {
-        mf.update_hash (p+1, len-1, step);
+        mf.update_hash (p+1, len-1, bufend, step);
         nextlen = 0;
     }
 
@@ -1192,9 +1187,9 @@ struct Hash3
         UINT              h = hash(value24(p));  HTable[h]  = p;
         if (FULL_UPDATE) {h = hash2(value16(p)); HTable2[h] = p;}
     }
-    void update_hash (BYTE *p, UINT len, UINT step)
+    void update_hash (BYTE *p, UINT len, BYTE *bufend, UINT step)
     {
-        mf.update_hash (p, len, step);
+        mf.update_hash (p, len, bufend, step);
         if (FULL_UPDATE) {
             for (int i=1; i<len; i++)
                 update_hash1 (p+i);
@@ -1324,10 +1319,10 @@ struct CombineMF
         mf2.update_hash1 (p);
     }
 
-    void update_hash (BYTE *p, UINT len, UINT step)
+    void update_hash (BYTE *p, UINT len, BYTE *bufend, UINT step)
     {
-        mf1.update_hash (p, len, step);
-        mf2.update_hash (p, len, step);
+        mf1.update_hash (p, len, bufend, step);
+        mf2.update_hash (p, len, bufend, step);
     }
 
     void invalidate_match ()

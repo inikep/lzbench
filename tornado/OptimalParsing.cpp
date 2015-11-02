@@ -39,7 +39,7 @@ struct OptimalParser : Coder
     DISTANCE *stack_buf;   // Stack used as temporary storage of optimal path from end of block to the beginning
     int       fast_bytes;
 
-    BYTE     *buf, *endbuf;  // Buffer boundaries
+    BYTE     *buf, *bufend;  // Buffer boundaries
     BYTE     *basep;
     BYTE     *lastp;
     CALLBACK_FUNC *callback;
@@ -49,8 +49,8 @@ struct OptimalParser : Coder
     // Returns error code if there were any problems in memory allocation or Coder
     int error()               {return (errcode != FREEARC_OK?  errcode  :  Coder::error());}
 
-    OptimalParser (BYTE *_buf, BYTE *_endbuf, int _coder, CALLBACK_FUNC *_callback, void *_auxdata, UINT chunk, UINT pad, int _fast_bytes)
-          : Coder (_coder, _callback, _auxdata, chunk, pad),  buf(_buf),  endbuf(_endbuf),  callback(_callback),  auxdata(_auxdata),  fast_bytes(_fast_bytes)
+    OptimalParser (BYTE *_buf, BYTE *_bufend, int _coder, CALLBACK_FUNC *_callback, void *_auxdata, UINT chunk, UINT pad, int _fast_bytes)
+          : Coder (_coder, _callback, _auxdata, chunk, pad),  buf(_buf),  bufend(_bufend),  callback(_callback),  auxdata(_auxdata),  fast_bytes(_fast_bytes)
     {
         x         = (Info*)     MidAlloc (sizeof(Info)     * (OPTIMAL_WINDOW+1));
         stack_buf = (DISTANCE*) MidAlloc (sizeof(DISTANCE) * (OPTIMAL_WINDOW*2));
@@ -161,6 +161,20 @@ struct OptimalParser : Coder
         }
         return len;
     }
+
+    // Report to the host program number of input and output bytes processed so far
+    void report_progress (int inbytes)
+    {
+        PROGRESS(inbytes, Coder::outsize()-prev_outsize);
+        prev_outsize = Coder::outsize();
+    }
+
+    // Limit matches to the end of actual data in the buffer
+    void set_bufend (BYTE *_bufend)
+    {
+        bufend = _bufend;
+        lastp = basep + mymin(bufend-basep, OPTIMAL_WINDOW);
+    }
 };
 
 // Prepare to collect statistics, required to optimally encode the block starting at address _basep, with the size up to OPTIMAL_WINDOW bytes
@@ -169,7 +183,7 @@ void OptimalParser<Coder> :: start_block (BYTE *_basep)
 {
     // Pointers to the boundaries of the block we are going to optimally encode
     basep = _basep;
-    lastp = basep + mymin(endbuf-basep, OPTIMAL_WINDOW);
+    set_bufend(bufend);
     // First block position has the zero price, since we are already here
     prices[0] = 0;
     // We overprice the remaining positions to ensure that these prices will be overbid by the real encoding opportunities
@@ -200,15 +214,13 @@ void OptimalParser<Coder> :: encode_block (BYTE *endp)
         Coder::encode (len, p, p-dist, OPTIMAL_PARSER_MIN_MATCH_LEN);
         p += len;
     }
-
-    PROGRESS(endp-basep, Coder::outsize()-prev_outsize);
-    prev_outsize = Coder::outsize();
+    report_progress(endp-basep);
 }
 
 
 // Optimally compress the single chunk of data
 template <class MatchFinder, class Coder>
-int tor_compress_chunk_optimal (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, byte *buf, int bytes_to_compress)
+int tor_compress_chunk_optimal (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, byte *buf, int bytes_to_compress)
 {
     // Read data in these chunks
     int chunk = compress_all_at_once? m.buffer : mymin (m.shift>0? m.shift:m.buffer, LARGE_BUFFER_SIZE);
@@ -223,7 +235,7 @@ int tor_compress_chunk_optimal (PackMethod m, CALLBACK_FUNC *callback, void *aux
     if (mf.error() != FREEARC_OK)  return mf.error();
     // Coder will encode LZ output into bits and put them to outstream
     // Data should be written in HUGE_BUFFER_SIZE chunks (at least) plus chunk*2 bytes should be allocated to ensure that no buffer overflow may occur (because we flush() data only after processing each 'chunk' input bytes)
-    OptimalParser<Coder>  coder (buf, buf+m.buffer, m.encoding_method, callback, auxdata, tornado_compressor_outbuf_size (m.buffer, bytes_to_compress), compress_all_at_once? 0:chunk*2, m.fast_bytes);
+    OptimalParser<Coder>  coder (buf, bufend, m.encoding_method, callback, auxdata, tornado_compressor_outbuf_size (m.buffer, bytes_to_compress), compress_all_at_once? 0:chunk*2, m.fast_bytes);
     if (coder.error() != FREEARC_OK)  return coder.error();
     BYTE *table_end  = coder.support_tables && m.find_tables? buf : buf+m.buffer+LOOKAHEAD;    // The end of last data table processed
     BYTE *last_found = buf;                             // Last position where data table was found
@@ -239,17 +251,18 @@ int tor_compress_chunk_optimal (PackMethod m, CALLBACK_FUNC *callback, void *aux
         if (p>=bufend)  goto finished;
         coder.encode (0, p, buf, mf.min_length());
     }
-    coder.start_block(p);
+    coder.start_block(p);  coder.report_progress(p-buf);
 
     // ========================================================================
     // MAIN CYCLE: FIND AND ENCODE MATCHES UNTIL DATA END
     for (; TRUE; p++) {
-        // Read next chunk of data if all data up to read_point was already processed
+        // Read next chunk of data if all data up to the read_point are already processed
         if (p >= read_point) {
             if (bytes_to_compress!=-1)  goto finished;  // We shouldn't read/write any data!
             byte *p1=p;  // This trick allows to not take address of p and this buys us a bit better program optimization
             int res = read_next_chunk (m, callback, auxdata, mf, coder, p1, buf, bufend, table_end, last_found, read_point, bytes, chunk, offset, last_checked);
             p=p1, matchend = bufend - mymin (MAX_HASHED_BYTES, bufend-buf);
+            coder.set_bufend(bufend);
             if (res==0)  break;            // All input data were successfully compressed
             if (res<0)   return res;       // Error occurred while reading data
             silence = buf;
@@ -290,13 +303,13 @@ finished:
     if (mf.error()    != FREEARC_OK)   return mf.error();
     if (coder.error() != FREEARC_OK)   return coder.error();
     coder.encode (IMPOSSIBLE_LEN, buf, buf-IMPOSSIBLE_DIST, mf.min_length());
-    coder.finish();
+    coder.finish();  coder.report_progress(0);
     return coder.error();
 }
 
 // tor_compress template parameterized by MatchFinder and Coder
 template <class MatchFinder, class Coder>
-int tor_compress0_optimal (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *buf0, int bytes_to_compress)
+int tor_compress0_optimal (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, void *buf0, int bytes_to_compress)
 {
     //SET_JMP_POINT( FREEARC_ERRCODE_GENERAL);
     CHECK (FREEARC_ERRCODE_INTERNAL,  MatchFinder::min_length() == OPTIMAL_PARSER_MIN_MATCH_LEN,  (s,"Fatal error: Unsupported MatchFinder type: MatchFinder::min_length()==%d but only value %d is supported by the OptimalParser", MatchFinder::min_length(), OPTIMAL_PARSER_MIN_MATCH_LEN));

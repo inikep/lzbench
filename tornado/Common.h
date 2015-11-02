@@ -211,8 +211,9 @@ static inline int is_subdir_of (char *subdir, char *dir)
 #include <share.h>
 typedef TCHAR* CFILENAME;
 static inline int create_dir (CFILENAME name)   {return _tmkdir(name);}
-#define file_open_read_binary(filename)         _fsopen ((filename), "rb", _SH_DENYWR)
-#define file_open_write_binary(filename)        _fsopen ((filename), "wb", _SH_DENYWR)
+//The following definitions makes file open operations sometimes failing
+//#define file_open_read_binary(filename)         _fsopen ((filename), "rb", _SH_DENYWR)
+//#define file_open_write_binary(filename)        _fsopen ((filename), "wb", _SH_DENYWR)
 #ifndef __GNUC__
 #define file_seek(stream,pos)                   (_fseeki64(stream, (pos), SEEK_SET))
 #define file_seek_cur(stream,pos)               (_fseeki64(stream, (pos), SEEK_CUR))
@@ -269,8 +270,6 @@ typedef char  TCHAR;
 typedef int (*FARPROC) (void);
 
 static inline int create_dir (CFILENAME name)   {return mkdir(name,0777);}
-#define file_open_read_binary(filename)         fopen ((filename), "rb")
-#define file_open_write_binary(filename)        fopen ((filename), "wb")
 #define file_seek(stream,pos)                   (fseek(stream, (pos), SEEK_SET))
 #define get_flen(stream)                        (myfilelength( fileno (stream)))
 #define set_binary_mode(file)
@@ -285,6 +284,8 @@ static inline off_t myfilelength (int h)
 
 #endif // FREEARC_UNIX
 
+#define file_open_read_binary(filename)         fopen ((filename), "rb")
+#define file_open_write_binary(filename)        fopen ((filename), "wb")
 #define file_read(file, buf, size)              fread  (buf, 1, size, file)
 #define file_write(file, buf, size)             fwrite (buf, 1, size, file)
 
@@ -653,6 +654,7 @@ char*subst (char *original, char *from, char *to);                     // Заменя
 char*trim_spaces (char *s);                                            // Пропускает пробелы в начале строки и убирает их в конце, модифицируя строку
 char *str_replace_n (char *orig, char *from, int how_many, char *to);  // Replace from:how_many substring and put result in new allocated area
 char *str_replace   (char *orig, char *from, char *to);                // Replace substring and put result in new allocated area
+double  parseDouble(char *param, int *error);                          // If the string param contains a double, return it - otherwise set error=1
 MemSize parseInt   (char *param, int *error);                          // If the string param contains an integer, return it - otherwise set error=1
 MemSize parseMem   (char *param, int *error, DEFAULT(char spec,'^'));  // Similar, but the string param may have a suffix b/k/m/g/^, representing units of memory, or in the case of '^' (default, overridden by spec parameter), the relevant power of 2
 uint64  parseMem64 (char *param, int *error, DEFAULT(char spec,'^'));  // Similar, but the string param may have a suffix b/k/m/g/^, representing units of memory, or in the case of '^' (default, overridden by spec parameter), the relevant power of 2

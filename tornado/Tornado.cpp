@@ -27,7 +27,7 @@ struct PackMethod
     bool find_tables;       // Enable searching for MM tables
     int  hash_row_width;    // Length of hash row
     uint hashsize;          // Hash size
-    int  caching_finder;    // Match finder type and hashed bytes
+    int  match_finder;      // Match finder type and number of hashed bytes
     uint buffer;            // Buffer (dictionary) size
     int  match_parser;      // Match parser (1 - greedy, 2 - lazy, 3 - flexible, 4 - optimal, 5 - even better)
     int  hash3;             // 2/3-byte hash presence and size
@@ -40,7 +40,7 @@ struct PackMethod
 
 extern "C" {
 // Main compression and decompression routines
-int tor_compress   (PackMethod m, CALLBACK_FUNC *callback, void *auxdata);
+int tor_compress   (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata);
 int tor_decompress (CALLBACK_FUNC *callback, void *auxdata);
 }
 
@@ -51,26 +51,31 @@ enum { NON_CACHING_MF=0, CACHING_MF4_DUB=1, CYCLED_MF4_DUB=2
      , CACHING_MF4=14, CACHING_MF5=15, CACHING_MF6=16, CACHING_MF7=17
      ,      BT_MF4=24,      BT_MF5=25,      BT_MF6=26,      BT_MF7=27 };
 
+const int64 MIN_BUFFER_SIZE = 4*kb,  MAX_BUFFER_SIZE = 1*gb,
+            MIN_HASH_SIZE   = 4*kb,  MAX_HASH_SIZE   = UINT_MAX,
+            MAX_HASH_ROW_WIDTH = 64*kb,  MAX_UPDATE_STEP = 64*kb,
+            MIN_FAST_BYTES = 1,  MAX_FAST_BYTES = 64*kb;
+
 // Preconfigured compression modes
 PackMethod std_Tornado_method[] =
-    //                 tables row  hashsize  matchfinder       buffer  parser hash3 shift update      auxhash  fast_bytes
-    { {  0, STORING,   false,   0,        0, NON_CACHING_MF,    1*mb,  0     ,   0,    0,  999,       0,    0,  128 }
-    , {  1, BYTECODER, false,   1,    16*kb, NON_CACHING_MF,    1*mb,  GREEDY,   0,    0,  999,       0,    0,  128 }
-    , {  2, BITCODER,  false,   1,    64*kb, NON_CACHING_MF,    2*mb,  GREEDY,   0,    0,  999,       0,    0,  128 }
-    , {  3, HUFCODER,  true,    2,   128*kb, NON_CACHING_MF,    4*mb,  GREEDY,   0,    0,  999,       0,    0,  128 }
-    , {  4, HUFCODER,  true,    2,     2*mb,    CACHING_MF4,    8*mb,  GREEDY,   0,    0,  999,       0,    0,  128 }
-    , {  5, ARICODER,  true,    4,     8*mb,    CACHING_MF4,   16*mb,  LAZY  ,   1,    0,  999,       0,    0,  128 }
-    , {  6, ARICODER,  true,    8,    32*mb,    CACHING_MF4,   64*mb,  LAZY  ,   1,    0,    4,       0,    0,  128 }
-    , {  7, ARICODER,  true,   32,   128*mb,     CYCLED_MF5,  256*mb,  LAZY  ,   2,    0,    1,  128*kb,    4,  128 }
-    , {  8, ARICODER,  true,  128,   512*mb,     CYCLED_MF5,    1*gb,  LAZY  ,   2,    0,    1,  128*kb,    4,  128 }
-    , {  9, ARICODER,  true,  256,     2*gb,     CYCLED_MF5,    1*gb,  LAZY  ,   2,    0,    1,  512*kb,    4,  128 }
-    , { 10, ARICODER,  true,  256,     2*gb,     CYCLED_MF7,    1*gb,  LAZY  ,   2,    0,    1,   16*mb,  128,  128 }
-    , { 11, ARICODER,  true,    8,   256*mb,    CACHING_MF5,  128*mb,  OPTIMAL,  1,    0,    1,   64*kb,    1,   16 }
-    , { 12, ARICODER,  true,   16,   256*mb,    CACHING_MF5,  128*mb,  OPTIMAL,  1,    0,    1,   64*kb,    1,   32 }
-    , { 13, ARICODER,  true,   24,   384*mb,    CACHING_MF5,  128*mb,  OPTIMAL,  1,    0,    1,  128*kb,    1,   64 }
-    , { 14, ARICODER,  true,   32,   512*mb,    CACHING_MF6,  128*mb,  OPTIMAL,  2,    0,    1,    2*mb,    2,   64 }
-    , { 15, ARICODER,  true,   64,   512*mb,    CACHING_MF6,  128*mb,  OPTIMAL,  2,    0,    1,    2*mb,    4,  128 }
-    , { 16, ARICODER,  true,  128,   128*mb,         BT_MF5,  128*mb,  OPTIMAL,  2,    0,    1,    4*mb,    8,  512 }
+    //                 tables row  hashsize  matchfinder       buffer   parser hash3 shift update     auxhash  fast_bytes
+    { {  0, STORING,   false,   0,        0, NON_CACHING_MF,    1*mb,        0,  0,    0,  999,       0,    0,  128 }
+    , {  1, BYTECODER, false,   1,    16*kb, NON_CACHING_MF,    1*mb,   GREEDY,  0,    0,  999,       0,    0,  128 }
+    , {  2, BITCODER,  false,   1,    64*kb, NON_CACHING_MF,    2*mb,   GREEDY,  0,    0,  999,       0,    0,  128 }
+    , {  3, HUFCODER,   true,   2,   128*kb, NON_CACHING_MF,    4*mb,   GREEDY,  0,    0,  999,       0,    0,  128 }
+    , {  4, HUFCODER,   true,   2,     2*mb,    CACHING_MF4,    8*mb,   GREEDY,  0,    0,  999,       0,    0,  128 }
+    , {  5, ARICODER,   true,   4,     8*mb,    CACHING_MF4,   16*mb,     LAZY,  1,    0,  999,       0,    0,  128 }
+    , {  6, ARICODER,   true,   8,    32*mb,    CACHING_MF4,   64*mb,     LAZY,  1,    0,    4,       0,    0,  128 }
+    , {  7, ARICODER,   true,  32,   128*mb,     CYCLED_MF5,  256*mb,     LAZY,  2,    0,    1,  128*kb,    4,  128 }
+    , {  8, ARICODER,   true, 128,   512*mb,     CYCLED_MF5,    1*gb,     LAZY,  2,    0,    1,  128*kb,    4,  128 }
+    , {  9, ARICODER,   true, 256,     2*gb,     CYCLED_MF5,    1*gb,     LAZY,  2,    0,    1,  512*kb,    4,  128 }
+    , { 10, ARICODER,   true, 256,     2*gb,     CYCLED_MF7,    1*gb,     LAZY,  2,    0,    1,   16*mb,  128,  128 }
+    , { 11, ARICODER,  false,   8,   256*mb,    CACHING_MF5,  128*mb,  OPTIMAL,  1,    0,    1,   64*kb,    1,   16 }
+    , { 12, ARICODER,  false,  16,   256*mb,    CACHING_MF5,  128*mb,  OPTIMAL,  1,    0,    1,   64*kb,    1,   32 }
+    , { 13, ARICODER,  false,  24,   384*mb,    CACHING_MF5,  128*mb,  OPTIMAL,  1,    0,    1,  128*kb,    1,   64 }
+    , { 14, ARICODER,  false,  32,   512*mb,    CACHING_MF6,  128*mb,  OPTIMAL,  2,    0,    1,    2*mb,    2,   64 }
+    , { 15, ARICODER,  false,  64,   512*mb,    CACHING_MF6,  128*mb,  OPTIMAL,  2,    0,    1,    2*mb,    4,  128 }
+    , { 16, ARICODER,  false, 128,   128*mb,         BT_MF5,  128*mb,  OPTIMAL,  2,    0,    1,    4*mb,    8,  512 }
     };
 
 // Default compression parameters are equivalent to option -5
@@ -81,7 +86,12 @@ const int table_dist=256*1024, table_shift=128;
 
 // Minimum lookahead for next match which compressor tries to guarantee.
 // Also minimum amount of allocated space after end of buf (this allows to use things like p[11] without additional checks)
-#define LOOKAHEAD 256
+#define LOOKAHEAD 1200
+
+// Maximum number of bytes used for hashing in any match finder.
+// If this value will be smaller than real, we can hash bytes in buf that are not yet read
+// Also it's number of bytes reserved after bufend in order to simplify p+N<=bufend checks
+#define MAX_HASHED_BYTES 600
 
 
 // Округлим размер хеша с учётом hash_row_width
@@ -106,6 +116,25 @@ uint tornado_decompressor_outbuf_size (uint buffer)
 
 
 #ifndef FREEARC_DECOMPRESS_ONLY
+
+// Returns true if compression parameters are invalid
+bool is_tornado_method_valid (PackMethod &method)
+{
+    if (!(MIN_BUFFER_SIZE<=method.buffer          && method.buffer         <=MAX_BUFFER_SIZE))          return false;
+    if (!(  MIN_HASH_SIZE<=method.hashsize        && method.hashsize-1     <=MAX_HASH_SIZE-1))          return false;
+    if (!(              1<=method.hash_row_width  && method.hash_row_width <=MAX_HASH_ROW_WIDTH))       return false;
+    if (!(              1<=method.update_step     && method.update_step    <=MAX_UPDATE_STEP))          return false;
+    if (!(      BYTECODER<=method.encoding_method && method.encoding_method<=ARICODER))                 return false;
+    if (!(              0<=method.hash3           && method.hash3          <=2))                        return false;
+    if (!(method.match_parser==GREEDY || method.match_parser==LAZY  || method.match_parser==OPTIMAL))   return false;
+    if (method.hash3==0 && method.match_parser==OPTIMAL)                                                return false;
+    int mf = method.match_finder;
+    if (!(mf==NON_CACHING_MF || (CYCLED_MF4<=mf && mf<=CYCLED_MF7) || (CACHING_MF4<=mf && mf<=CACHING_MF7) || (BT_MF4<=mf && mf<=BT_MF7)))   return false;
+    if (mf%10 >= 5  &&  (method.auxhash_size==0 || method.auxhash_row_width==0))                        return false;
+    if (method.find_tables  &&  method.match_parser==OPTIMAL)                                           return false;
+    if (method.find_tables  &&  (BT_MF4<=mf && mf<=BT_MF7))                                             return false;
+    return true;
+}
 
 // Check for data table with N byte elements at current pos
 #define CHECK_FOR_DATA_TABLE(N)                                                                         \
@@ -169,7 +198,7 @@ int read_next_chunk (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, Matc
 
 // Compress one chunk of data
 template <class MatchFinder, class Coder>
-int tor_compress_chunk (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, byte *buf, int bytes_to_compress)
+int tor_compress_chunk (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, byte *buf, int bytes_to_compress)
 {
     // Read data in these chunks
     int chunk = compress_all_at_once? m.buffer : mymin (m.shift>0? m.shift:m.buffer, LARGE_BUFFER_SIZE);
@@ -196,14 +225,14 @@ int tor_compress_chunk (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, by
     coder.put8 (mf.min_length());
     coder.put32(m.buffer);
     // Encode first four bytes directly (at least 2 bytes should be saved directly in order to avoid problems with using p-2 in MatchFinder.update())
-    for (BYTE *p=buf; p<buf+4; p++) {
+    BYTE *p; for (p=buf; p<buf+4; p++) {
         if (p>=bufend)  goto finished;
         coder.encode (0, p, buf, mf.min_length());
     }
 
     // ========================================================================
     // MAIN CYCLE: FIND AND ENCODE MATCHES UNTIL DATA END
-    for (BYTE *p=buf+4; TRUE; ) {
+    while (TRUE) {
         if (p >= next_special_p) {
             // Read next chunk of data if all data up to read_point was already processed
             if (p >= read_point) {
@@ -246,7 +275,7 @@ int tor_compress_chunk (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, by
             // Update hash and skip matched data
             check_match (p, q, len);
             print_match (p-buf+offset, len, p-q);
-            mf.update_hash (p, len, m.update_step);
+            mf.update_hash (p, len, bufend, m.update_step);
             p += len;
         }
     }
@@ -260,12 +289,13 @@ finished:
     if (coder.error() != FREEARC_OK)   return coder.error();
     coder.encode (IMPOSSIBLE_LEN, buf, buf-IMPOSSIBLE_DIST, mf.min_length());
     coder.finish();
+    PROGRESS((offset+(p-buf)) - prev_insize, coder.outsize()-prev_outsize);
     return coder.error();
 }
 
 // tor_compress template parameterized by MatchFinder and Coder
 template <class MatchFinder, class Coder>
-int tor_compress0 (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *buf0, int bytes_to_compress)
+int tor_compress0 (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, void *buf0, int bytes_to_compress)
 {
     //SET_JMP_POINT( FREEARC_ERRCODE_GENERAL);
     // Make buffer at least 32kb long and round its size up to 4kb chunk
@@ -293,7 +323,7 @@ int tor_compress0 (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *b
 #include "OptimalParsing.cpp"
 
 template <class MatchFinder, class Coder>
-int tor_compress4 (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
+int tor_compress4 (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
 {
     switch (m.match_parser) {
     case GREEDY: return tor_compress0 <             MatchFinder,  Coder> (m, callback, auxdata, buf, bytes_to_compress);
@@ -303,7 +333,7 @@ int tor_compress4 (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *b
 }
 
 template <class MatchFinder, class Coder>
-int tor_compress3 (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
+int tor_compress3 (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
 {
     switch (m.hash3) {
     case 0: return tor_compress4 <MatchFinder, Coder> (m, callback, auxdata, buf, bytes_to_compress);
@@ -314,7 +344,7 @@ int tor_compress3 (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *b
 }
 
 template <class MatchFinder, class Coder>
-int tor_compress3o (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
+int tor_compress3o (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
 {
     switch (m.hash3) {
     case 1: return tor_compress0_optimal <Hash3<MatchFinder,14,10,FALSE>, Coder> (m, callback, auxdata, buf, bytes_to_compress);
@@ -324,7 +354,7 @@ int tor_compress3o (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *
 }
 
 template <class MatchFinder>
-int tor_compress2o (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
+int tor_compress2o (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
 {
     switch (m.encoding_method) {
     case BYTECODER: // Byte-aligned encoding
@@ -340,7 +370,7 @@ int tor_compress2o (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *
 }
 
 template <class MatchFinder>
-int tor_compress2 (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
+int tor_compress2 (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
 {
     switch (m.encoding_method) {
     case STORING:   // Storing - go to any tor_compress2 call
@@ -357,20 +387,37 @@ int tor_compress2 (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *b
 }
 
 template <class MatchFinder>
-int tor_compress2d (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
+int tor_compress2d (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
 {
     return tor_compress3 <MatchFinder, LZ77_DynamicCoder> (m, callback, auxdata, buf, bytes_to_compress);
 }
 
 // Compress data using compression method m and callback for i/o
-int tor_compress (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
+int tor_compress (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, void *buf, int bytes_to_compress)
 {
-// When FULL_COMPILE is defined, we compile 4*4*3*2+7*3*2+9*4*2=210 variants of compressor
-// Otherwise, we compile only variants actually used by the -0..-16 predefined modes
+    if (! is_tornado_method_valid(m))
+        return FREEARC_ERRCODE_INVALID_COMPRESSOR;
+
+// When FULL_COMPILE is defined, we compile (5*4+8)*3*2 + 9*4*2 = 222 variants of compressor
+// Otherwise, we compile only variants actually used by the predefined -0..-16 modes
 #ifdef FULL_COMPILE
     if (m.match_parser == GREEDY  ||  m.match_parser == LAZY)
     {
-        switch (m.caching_finder) {
+        switch (m.match_finder) {
+        case NON_CACHING_MF: switch (m.hash_row_width) {
+                             case 1:    return tor_compress2 <MatchFinder1>     (m, callback, auxdata, buf, bytes_to_compress);
+                             case 2:    return tor_compress2 <MatchFinder2>     (m, callback, auxdata, buf, bytes_to_compress);
+                             default:   return tor_compress2 <MatchFinderN<4> > (m, callback, auxdata, buf, bytes_to_compress);
+                             }
+
+        case CACHING_MF4:  return tor_compress2             <   CachingMatchFinder<4> >                                   (m, callback, auxdata, buf, bytes_to_compress);
+        case CACHING_MF5:  return tor_compress2d <CombineMF <   CachingMatchFinder<5>,            ExactMatchFinder<4> > > (m, callback, auxdata, buf, bytes_to_compress);
+        case CACHING_MF6:  return tor_compress2d <CombineMF <   CachingMatchFinder<6>,                MatchFinderN<4> > > (m, callback, auxdata, buf, bytes_to_compress);
+        case CACHING_MF7:  return tor_compress2d <CombineMF <   CachingMatchFinder<7>,          CachingMatchFinder<4> > > (m, callback, auxdata, buf, bytes_to_compress);
+
+        case BT_MF4:       return tor_compress2d            <BinaryTreeMatchFinder<4> >                                   (m, callback, auxdata, buf, bytes_to_compress);
+        case BT_MF5:       return tor_compress2d <CombineMF <BinaryTreeMatchFinder<5>,            ExactMatchFinder<4> > > (m, callback, auxdata, buf, bytes_to_compress);
+
         case CYCLED_MF4:   if (m.hash_row_width > 256)  return FREEARC_ERRCODE_INVALID_COMPRESSOR;
                            return tor_compress2             <CycledCachingMatchFinder<4> >                                (m, callback, auxdata, buf, bytes_to_compress);
         case CYCLED_MF5:   if (m.hash_row_width > 256)  return FREEARC_ERRCODE_INVALID_COMPRESSOR;
@@ -379,22 +426,11 @@ int tor_compress (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *bu
                            return tor_compress2d <CombineMF <CycledCachingMatchFinder<6>, CycledCachingMatchFinder<4> > > (m, callback, auxdata, buf, bytes_to_compress);
         case CYCLED_MF7:   if (m.hash_row_width > 256)  return FREEARC_ERRCODE_INVALID_COMPRESSOR;
                            return tor_compress2d <CombineMF <CycledCachingMatchFinder<7>, CycledCachingMatchFinder<4> > > (m, callback, auxdata, buf, bytes_to_compress);
-        case CACHING_MF4:  return tor_compress2             <   CachingMatchFinder<4> >                                   (m, callback, auxdata, buf, bytes_to_compress);
-        case CACHING_MF5:  return tor_compress2d <CombineMF <   CachingMatchFinder<5>,            ExactMatchFinder<4> > > (m, callback, auxdata, buf, bytes_to_compress);
-        case CACHING_MF6:  return tor_compress2d <CombineMF <   CachingMatchFinder<6>,                MatchFinderN<4> > > (m, callback, auxdata, buf, bytes_to_compress);
-        case CACHING_MF7:  return tor_compress2d <CombineMF <   CachingMatchFinder<7>,          CachingMatchFinder<4> > > (m, callback, auxdata, buf, bytes_to_compress);
-        case BT_MF4:       return tor_compress2d            <BinaryTreeMatchFinder<4> >                                   (m, callback, auxdata, buf, bytes_to_compress);
-        case BT_MF5:       return tor_compress2d <CombineMF <BinaryTreeMatchFinder<5>,            ExactMatchFinder<4> > > (m, callback, auxdata, buf, bytes_to_compress);
-        case NON_CACHING_MF: switch (m.hash_row_width) {
-                             case 1:    return tor_compress2 <MatchFinder1>     (m, callback, auxdata, buf, bytes_to_compress);
-                             case 2:    return tor_compress2 <MatchFinder2>     (m, callback, auxdata, buf, bytes_to_compress);
-                             default:   return tor_compress2 <MatchFinderN<4> > (m, callback, auxdata, buf, bytes_to_compress);
-                             }
         }
     }
     else if (m.match_parser == OPTIMAL)
     {
-        switch (m.caching_finder) {
+        switch (m.match_finder) {
         case NON_CACHING_MF:  return tor_compress2o                                       <         MatchFinderN<4> >   (m, callback, auxdata, buf, bytes_to_compress);
         case CACHING_MF4:     return tor_compress2o                                       <   CachingMatchFinder<4> >   (m, callback, auxdata, buf, bytes_to_compress);
         case CACHING_MF5:     return tor_compress2o <CombineMF <   CachingMatchFinder<5>,       ExactMatchFinder<4> > > (m, callback, auxdata, buf, bytes_to_compress);
@@ -408,49 +444,44 @@ int tor_compress (PackMethod m, CALLBACK_FUNC *callback, void *auxdata, void *bu
     }
 #else
     // -1..-5(-6)
-    if (m.encoding_method==BYTECODER && m.hash_row_width==1 && m.hash3==0 && m.caching_finder==NON_CACHING_MF && m.match_parser==GREEDY ||
+    if (m.encoding_method==BYTECODER && m.hash_row_width==1 && m.hash3==0 && m.match_finder==NON_CACHING_MF && m.match_parser==GREEDY ||
         m.encoding_method==STORING ) {
         return tor_compress0 <MatchFinder1, LZ77_ByteCoder> (m, callback, auxdata, buf, bytes_to_compress);
-    } else if (m.encoding_method==BITCODER && m.hash_row_width==1 && m.hash3==0 && m.caching_finder==NON_CACHING_MF && m.match_parser==GREEDY ) {
+    } else if (m.encoding_method==BITCODER && m.hash_row_width==1 && m.hash3==0 && m.match_finder==NON_CACHING_MF && m.match_parser==GREEDY ) {
         return tor_compress0 <MatchFinder1, LZ77_BitCoder > (m, callback, auxdata, buf, bytes_to_compress);
-    } else if (m.encoding_method==HUFCODER && m.hash_row_width==2 && m.hash3==0 && m.caching_finder==NON_CACHING_MF && m.match_parser==GREEDY ) {
+    } else if (m.encoding_method==HUFCODER && m.hash_row_width==2 && m.hash3==0 && m.match_finder==NON_CACHING_MF && m.match_parser==GREEDY ) {
         return tor_compress0 <MatchFinder2, LZ77_Coder< HuffmanEncoder<EOB_CODE> > > (m, callback, auxdata, buf, bytes_to_compress);
-    } else if (m.encoding_method==HUFCODER && m.hash3==0 && m.caching_finder==CACHING_MF4 && m.match_parser==GREEDY ) {
+    } else if (m.encoding_method==HUFCODER && m.hash3==0 && m.match_finder==CACHING_MF4 && m.match_parser==GREEDY ) {
         return tor_compress0 <CachingMatchFinder<4>, LZ77_Coder< HuffmanEncoder<EOB_CODE> > > (m, callback, auxdata, buf, bytes_to_compress);
-    } else if (m.encoding_method==ARICODER && m.hash3==1 && m.caching_finder==CACHING_MF4 && m.match_parser==LAZY ) {
+    } else if (m.encoding_method==ARICODER && m.hash3==1 && m.match_finder==CACHING_MF4 && m.match_parser==LAZY ) {
         return tor_compress0 <LazyMatching<Hash3<CachingMatchFinder<4>,14,10,FALSE> >, LZ77_Coder<ArithCoder<EOB_CODE> > > (m, callback, auxdata, buf, bytes_to_compress);
     // -5 -c3 - used for FreeArc -m4$compressed
-    } else if (m.encoding_method==HUFCODER && m.hash3==1 && m.caching_finder==CACHING_MF4 && m.match_parser==LAZY ) {
+    } else if (m.encoding_method==HUFCODER && m.hash3==1 && m.match_finder==CACHING_MF4 && m.match_parser==LAZY ) {
         return tor_compress0 <LazyMatching<Hash3<CachingMatchFinder<4>,14,10,FALSE> >, LZ77_Coder< HuffmanEncoder<EOB_CODE> > > (m, callback, auxdata, buf, bytes_to_compress);
 
     // -7..-9
-    } else if (m.hash3==2 && m.caching_finder==CYCLED_MF5 && m.match_parser==LAZY ) {
-        return tor_compress0 <LazyMatching <CombineMF <CycledCachingMatchFinder<5>, Hash3<ExactMatchFinder<4>,16,12,TRUE> > >,
+    } else if (m.hash3==2 && m.match_finder==CYCLED_MF5 && m.match_parser==LAZY ) {
+        return tor_compress0 <LazyMatching <Hash3 <CombineMF <CycledCachingMatchFinder<5>, ExactMatchFinder<4> >,16,12,TRUE> >,
                               LZ77_DynamicCoder > (m, callback, auxdata, buf, bytes_to_compress);
     // -10
-    } else if (m.hash3==2 && m.caching_finder==CYCLED_MF7 && m.match_parser==LAZY ) {
-        return tor_compress0 <LazyMatching <CombineMF <CycledCachingMatchFinder<7>, Hash3<CycledCachingMatchFinder<4>,16,12,TRUE> > >,
-                              LZ77_DynamicCoder > (m, callback, auxdata, buf, bytes_to_compress);
-
-    // -10 -x14
-    } else if (m.hash3==2 && m.caching_finder==BT_MF4 && m.match_parser==LAZY ) {
-        return tor_compress0 <LazyMatching < Hash3<BinaryTreeMatchFinder<4>,16,12,TRUE> >,
+    } else if (m.hash3==2 && m.match_finder==CYCLED_MF7 && m.match_parser==LAZY ) {
+        return tor_compress0 <LazyMatching <Hash3 <CombineMF <CycledCachingMatchFinder<7>, CycledCachingMatchFinder<4> >,16,12,TRUE> >,
                               LZ77_DynamicCoder > (m, callback, auxdata, buf, bytes_to_compress);
 
     // -11..-13 -c4
-    } else if (m.hash3==1 && m.caching_finder==CACHING_MF5 && m.match_parser==OPTIMAL && m.encoding_method==ARICODER ) {
+    } else if (m.hash3==1 && m.match_finder==CACHING_MF5 && m.match_parser==OPTIMAL && m.encoding_method==ARICODER ) {
         return tor_compress0_optimal <CombineMF <CachingMatchFinder<5>, Hash3<ExactMatchFinder<4>,14,10,FALSE> > ,
                                       LZ77_Coder<ArithCoder<EOB_CODE> > > (m, callback, auxdata, buf, bytes_to_compress);
     // -14..-15 -c4
-    } else if (m.hash3==2 && m.caching_finder==CACHING_MF6 && m.match_parser==OPTIMAL && m.encoding_method==ARICODER ) {
+    } else if (m.hash3==2 && m.match_finder==CACHING_MF6 && m.match_parser==OPTIMAL && m.encoding_method==ARICODER ) {
         return tor_compress0_optimal <CombineMF <CachingMatchFinder<6>, Hash3<MatchFinderN<4>,16,12,TRUE> > ,
                                       LZ77_Coder<ArithCoder<EOB_CODE> > > (m, callback, auxdata, buf, bytes_to_compress);
     // -14..-15
-    } else if (m.hash3==2 && m.caching_finder==CACHING_MF6 && m.match_parser==OPTIMAL ) {
+    } else if (m.hash3==2 && m.match_finder==CACHING_MF6 && m.match_parser==OPTIMAL ) {
         return tor_compress0_optimal <CombineMF <CachingMatchFinder<6>, Hash3<MatchFinderN<4>,16,12,TRUE> > ,
                                       LZ77_DynamicCoder > (m, callback, auxdata, buf, bytes_to_compress);
     // -16
-    } else if (m.hash3==2 && m.caching_finder==BT_MF5 && m.match_parser==OPTIMAL ) {
+    } else if (m.hash3==2 && m.match_finder==BT_MF5 && m.match_parser==OPTIMAL ) {
         return tor_compress0_optimal <CombineMF <BinaryTreeMatchFinder<5>, Hash3<ExactMatchFinder<4>,16,12,TRUE> > ,
                                       LZ77_DynamicCoder > (m, callback, auxdata, buf, bytes_to_compress);
     }
@@ -567,6 +598,7 @@ int tor_decompress0 (CALLBACK_FUNC *callback, void *auxdata, int _bufsize, int m
         }
     }
 finished:
+    PROGRESS(decoder.insize()-prev_insize, output-write_start);
     BigFree(outbuf-PAD_FOR_TABLES);
     // Return decoder error code, errcode or FREEARC_OK
     return decoder.error() < 0 ?  decoder.error() :

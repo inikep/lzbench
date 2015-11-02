@@ -40,11 +40,10 @@ struct OutputByteStream
     // pad   - how many bytes may be put to buffer between flush()/putbuf() calls
     OutputByteStream (CALLBACK_FUNC *_callback, void *_auxdata, UINT _chunk, UINT pad)
     {
-        callback = _callback;  auxdata = _auxdata;  chunk = _chunk;
+        callback = _callback;  auxdata = _auxdata;  chunk = _chunk;  shifted_out = 0;
         // Add 512 bytes for LZ77_ByteCoder (its LZSS scheme needs to overwrite old flag words) and 4096 for rounding written chunks
         last_qwrite = output = buf = (byte*) BigAlloc (chunk+pad+512+4096);
         errcode = buf==NULL?  FREEARC_ERRCODE_NOT_ENOUGH_MEMORY : FREEARC_OK;
-        shifted_out = 0;
     }
     ~OutputByteStream()       {BigFree(buf);}
     // Returns error code if there was any problems in stream work
@@ -124,7 +123,7 @@ struct InputByteStream
     // starting from its MAXELEM position
     InputByteStream (CALLBACK_FUNC *_callback, void *_auxdata, UINT _bufsize)
     {
-        callback   = _callback;  auxdata = _auxdata;
+        callback   = _callback;  auxdata = _auxdata;  shifted_out = 0;
         bufsize    = compress_all_at_once? _bufsize+(_bufsize/4) : LARGE_BUFFER_SIZE;  // For all-at-once compression input buffer should be large enough to hold all compressed data
         buf        = (byte*) BigAlloc (MAXELEM+bufsize);
         errcode    = buf==NULL?  FREEARC_ERRCODE_NOT_ENOUGH_MEMORY : FREEARC_OK;

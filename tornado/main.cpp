@@ -20,7 +20,7 @@ static const char *codec_name[]  = {"storing", "bytecoder", "bitcoder", "hufcode
 static const char *parser_name[] = {"", "greedy", "lazy", "flexible", "optimal"};
 
 // Returns human-readable method description
-static char *name (PackMethod method)
+static char *name (PackMethod &method)
 {
     static char namebuf[200], h[100], b[100], bt[100], bth[100], auxhash_size[100], u[100], ah[100], fb[100];
     const char*hashname[] = {"hash4", "???", "???", "???", "cchash4", "cchash5", "cchash6", "cchash7", "???", "???", "???", "???", "???", "???", "chash4", "chash5", "chash6", "chash7", "???", "???", "???", "???", "???", "???", "bt4", "bt5", "bt6", "bt7"};
@@ -29,7 +29,7 @@ static char *name (PackMethod method)
     showMem (method.hashsize,     h);
     showMem (method.buffer,       b);
     showMem (method.auxhash_size, auxhash_size);
-    int x  = method.caching_finder;
+    int x  = method.match_finder;
     int p  = method.match_parser;
     int h3 = method.hash3;
     int hb  =  (x==NON_CACHING_MF? 4 : x%10);  // MINLEN for the primary match finder
@@ -39,7 +39,7 @@ static char *name (PackMethod method)
     sprintf (u, !(CYCLED_MF4<=x && x<=CYCLED_MF7) && method.update_step!=999 && p!=OPTIMAL? "/u%d":"", method.update_step);  // Cycled MF ignore `step` in the update_hash()
     sprintf (ah, method.auxhash_size && hb>4? " + %s:%d %s":"", auxhash_size, method.auxhash_row_width, hb>5? (p==OPTIMAL? "chash4":"cchash4") : "exhash4");
     sprintf (namebuf, c==STORING? codec_name[c] : "%s parser%s, %s%s:%d%s %s%s%s, buffer %s, %s%s",
-             parser_name[p], fb, bth, h, l, u, hashname[x], ah, h3==2?" + 256kb hash3 + 16kb hash2":h3?" + 64kb hash3 + 4kb hash2":"", b, codec_name[c], method.find_tables? "" : " w/o tables");
+             parser_name[p], fb, bth, h, l, u, hashname[x], ah, h3==2?" + 256kb hash3 + 16kb hash2":h3?" + 64kb hash3 + 4kb hash2":"", b, codec_name[c], (method.find_tables || p==OPTIMAL? "" : " w/o tables"));
     return namebuf;
 }
 
@@ -228,11 +228,6 @@ static int ReadWriteCallback (const char *what, void *buf, int size, void *_r)
 // Checking option values *****************************************************************************************************
 // ****************************************************************************************************************************
 
-const int64 MIN_BUFFER_SIZE = 4*kb,  MAX_BUFFER_SIZE = 1*gb,
-            MIN_HASH_SIZE = 4*kb,  MAX_HASH_SIZE = UINT_MAX,
-            MAX_HASH_ROW_WIDTH = 64*kb,  MAX_UPDATE_STEP = 64*kb,
-            MIN_FAST_BYTES = 1,  MAX_FAST_BYTES = 64*kb;
-
 static int64 check_int (int64 x, int error, int64 minVal, int64 maxVal, char *option)
 {
   if (error) {
@@ -314,10 +309,10 @@ int main (int argc, char **argv)
 #endif
             else if (strcasecmp(param,"h")==0)      global_mode=HELP;
             else if (strcasecmp(param,"b")==0)      r.method.buffer = MAX_BUFFER_SIZE;         // set buffer size to the maximum supported by LZ coders
-            else if (strcasecmp(param,"x")==0)      r.method.caching_finder = CACHING_MF4;
-            else if (strcasecmp(param,"xx")==0)     r.method.caching_finder = CYCLED_MF4;
-            else if (strcasecmp(param,"x+")==0)     r.method.caching_finder = CACHING_MF4;
-            else if (strcasecmp(param,"x-")==0)     r.method.caching_finder = NON_CACHING_MF;
+            else if (strcasecmp(param,"x")==0)      r.method.match_finder = CACHING_MF4;
+            else if (strcasecmp(param,"xx")==0)     r.method.match_finder = CYCLED_MF4;
+            else if (strcasecmp(param,"x+")==0)     r.method.match_finder = CACHING_MF4;
+            else if (strcasecmp(param,"x-")==0)     r.method.match_finder = NON_CACHING_MF;
             else if (strcasecmp(param,"t+")==0)     r.method.find_tables = TRUE;
             else if (strcasecmp(param,"t-")==0)     r.method.find_tables = FALSE;
             else if (strcasecmp(param,"t1")==0)     r.method.find_tables = TRUE;
@@ -342,7 +337,7 @@ int main (int argc, char **argv)
                 case 'c': r.method.encoding_method = check_parse_int (param, BYTECODER,       ARICODER,           *argv_ptr);  break;
                 case 's': r.method.hash3           = check_parse_int (param, 0,               2,                  *argv_ptr);  break;
                 case 'p': r.method.match_parser    = parseInt (param, &error);  break;
-                case 'x': r.method.caching_finder  = parseInt (param, &error);  break;
+                case 'x': r.method.match_finder    = parseInt (param, &error);  break;
                 case 'o': output_filename          = param;                     break;
                 case 'q':
 #ifndef FREEARC_NO_TIMING
@@ -369,14 +364,29 @@ check_for_errors:
                 fprintf (stderr, "ERROR: bad option value: '%s'\n", *argv_ptr);
                 exit(FREEARC_EXIT_ERROR);
             }
-            int mf = r.method.caching_finder;
-            r.method.caching_finder = mf = (mf==CACHING_MF4_DUB? CACHING_MF4 : (mf==CYCLED_MF4_DUB? CYCLED_MF4 : mf));
+            int mf = r.method.match_finder;
+            r.method.match_finder = mf = (mf==CACHING_MF4_DUB? CACHING_MF4 : (mf==CYCLED_MF4_DUB? CYCLED_MF4 : mf));
             if (!(mf==NON_CACHING_MF || (CYCLED_MF4<=mf && mf<=CYCLED_MF7) || (CACHING_MF4<=mf && mf<=CACHING_MF7) || (BT_MF4<=mf && mf<=BT_MF7))) {
                 fprintf (stderr, "ERROR: non-existing match finder: '%s'\n", *argv_ptr);
                 exit(FREEARC_EXIT_ERROR);
             }
         }
     }
+    int mf = r.method.match_finder;
+    if (mf%10 >= 5  &&  (r.method.auxhash_size==0 || r.method.auxhash_row_width==0)) {
+        char ah[100];  showMem64(r.method.auxhash_size,ah);
+        fprintf (stderr, "ERROR: empty auxhash (-ah%s -al%d) while MINLEN=%d (-x%d)\n", ah, r.method.auxhash_row_width, mf%10, mf);
+        exit(FREEARC_EXIT_ERROR);
+    }
+    if (r.method.find_tables  &&  r.method.match_parser==OPTIMAL) {
+        fprintf (stderr, "ERROR: optimal parser (-p4) isn't compatible with table preprocessing (-t1)\n");
+        exit(FREEARC_EXIT_ERROR);
+    }
+    if (r.method.find_tables  &&  (BT_MF4<=mf && mf<=BT_MF7)) {
+        fprintf (stderr, "ERROR: binary tree match finder (-x%d) isn't compatible with table preprocessing (-t1)\n", mf);
+        exit(FREEARC_EXIT_ERROR);
+    }
+
 
     // No files to compress: read from stdin and write to stdout
     if (global_mode!=HELP && fcount==0 &&
@@ -395,7 +405,7 @@ check_for_errors:
         showMem64 (MAX_HASH_SIZE+1, MaxHashSizeStr);
         showMem64 (MIN_BUFFER_SIZE, MinBufSizeStr);
         showMem64 (MAX_BUFFER_SIZE, MaxBufSizeStr);
-        printf( "Tornado compressor v0.6  (c) Bulat.Ziganshin@gmail.com  http://freearc.org  2014-03-08\n"
+        printf( "Tornado compressor v0.6a  (c) Bulat.Ziganshin@gmail.com  http://freearc.org  2014-03-21\n"
                 "\n"
                 " Usage: tor [options and files in any order]\n"
                 "   -#      -- compression level (1..%d), default %d\n", int(elements(std_Tornado_method))-1, default_Tornado_method);
@@ -428,7 +438,7 @@ check_for_errors:
         printf( "   -c#     -- coder (1-bytes, 2-bits, 3-huf, 4-arith), default %d\n", r.method.encoding_method);
         printf( "   -p#     -- parser (1-greedy, 2-lazy, 4-optimal), default %d\n", r.method.match_parser);
         printf( "   -x#     -- match finder (0: non-caching ht4, 4-7: cycling cached ht4..ht7,\n"
-                "                            14-17: shifting cached ht4..ht7, 24-27: bt4..bt7), default %d\n", r.method.caching_finder);
+                "                            14-17: shifting cached ht4..ht7, 24-27: bt4..bt7), default %d\n", r.method.match_finder);
         printf( "   -s#     -- 2/3-byte hash (0-disabled, 1-fast, 2-max), default %d\n", r.method.hash3);
         printf( "   -t#     -- table diffing (0-disabled, 1-enabled), default %d\n", r.method.find_tables);
         printf( "   -fb#    -- fast bytes in the optimal parser (%d..%d), default %d\n", int(MIN_FAST_BYTES), int(MAX_FAST_BYTES), r.method.fast_bytes);
@@ -546,7 +556,11 @@ add_remove_ext: // Remove COMPRESS_EXT on the end of name or add DECOMPRESS_EXT 
             if (!strequ(r.outname,"-") && !strequ(r.outname,""))  delete_file(r.outname);
             switch (result) {
             case FREEARC_ERRCODE_INVALID_COMPRESSOR:
-                fprintf (stderr, "\nThis compression mode isn't supported by small Tornado version, use full version instead!");
+#ifdef FULL_COMPILE
+                fprintf (stderr, "\nThis compression mode isn't supported even by the full Tornado version, you need to modify sources in order to enable it!");
+#else
+                fprintf (stderr, "\nThis compression mode isn't supported by the small Tornado version, use the full version instead!");
+#endif
                 break;
             case FREEARC_ERRCODE_NOT_ENOUGH_MEMORY:
                 fprintf (stderr, "\nNot enough memory for (de)compression!");

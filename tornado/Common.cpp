@@ -3,7 +3,7 @@
 #include "Common.h"
 #include "Compression.h"
 
-// Для обработки ошибок во вложенных процедурах - longjmp сигнализирует процедуре верхнего уровня о произошедшей ошибке
+// Г„Г«Гї Г®ГЎГ°Г ГЎГ®ГІГЄГЁ Г®ГёГЁГЎГ®ГЄ ГўГ® ГўГ«Г®Г¦ГҐГ­Г­Г»Гµ ГЇГ°Г®Г¶ГҐГ¤ГіГ°Г Гµ - longjmp Г±ГЁГЈГ­Г Г«ГЁГ§ГЁГ°ГіГҐГІ ГЇГ°Г®Г¶ГҐГ¤ГіГ°ГҐ ГўГҐГ°ГµГ­ГҐГЈГ® ГіГ°Г®ГўГ­Гї Г® ГЇГ°Г®ГЁГ§Г®ГёГҐГ¤ГёГҐГ© Г®ГёГЁГЎГЄГҐ
 int jmpready = FALSE;
 jmp_buf jumper;
 
@@ -117,19 +117,19 @@ void BigFree(void *address) throw()
 
 
 // ****************************************************************************
-// Функции парсинга и арифметики **********************************************
+// Г”ГіГ­ГЄГ¶ГЁГЁ ГЇГ Г°Г±ГЁГ­ГЈГ  ГЁ Г Г°ГЁГґГ¬ГҐГІГЁГЄГЁ **********************************************
 // ****************************************************************************
 
-// Копирует строчку from в to, но не более len символов
+// ГЉГ®ГЇГЁГ°ГіГҐГІ Г±ГІГ°Г®Г·ГЄГі from Гў to, Г­Г® Г­ГҐ ГЎГ®Г«ГҐГҐ len Г±ГЁГ¬ГўГ®Г«Г®Гў
 void strncopy( char *to, char *from, int len ) {
   for (int i = len; --i && *from; )     *to++ = *from++;
   *to = '\0';
 }
 
-// Разбить строку str на подстроки, разделённые символом splitter.
-// Результат - в строке str splitter заменяется на '\0'
-//   и массив result заполняется ссылками на выделенные в str подстроки + NULL (аналогично argv)
-// Возвращает число найденных подстрок
+// ГђГ Г§ГЎГЁГІГј Г±ГІГ°Г®ГЄГі str Г­Г  ГЇГ®Г¤Г±ГІГ°Г®ГЄГЁ, Г°Г Г§Г¤ГҐГ«ВёГ­Г­Г»ГҐ Г±ГЁГ¬ГўГ®Г«Г®Г¬ splitter.
+// ГђГҐГ§ГіГ«ГјГІГ ГІ - Гў Г±ГІГ°Г®ГЄГҐ str splitter Г§Г Г¬ГҐГ­ГїГҐГІГ±Гї Г­Г  '\0'
+//   ГЁ Г¬Г Г±Г±ГЁГў result Г§Г ГЇГ®Г«Г­ГїГҐГІГ±Гї Г±Г±Г»Г«ГЄГ Г¬ГЁ Г­Г  ГўГ»Г¤ГҐГ«ГҐГ­Г­Г»ГҐ Гў str ГЇГ®Г¤Г±ГІГ°Г®ГЄГЁ + NULL (Г Г­Г Г«Г®ГЈГЁГ·Г­Г® argv)
+// Г‚Г®Г§ГўГ°Г Г№Г ГҐГІ Г·ГЁГ±Г«Г® Г­Г Г©Г¤ГҐГ­Г­Г»Гµ ГЇГ®Г¤Г±ГІГ°Г®ГЄ
 int split (char *str, char splitter, char **result_base, int result_size)
 {
   char **result      = result_base;
@@ -147,7 +147,7 @@ int split (char *str, char splitter, char **result_base, int result_size)
   return result-result_base;
 }
 
-// Объединить NULL-terminated массив строк src в строку result, ставя между строками разделитель splitter
+// ГЋГЎГєГҐГ¤ГЁГ­ГЁГІГј NULL-terminated Г¬Г Г±Г±ГЁГў Г±ГІГ°Г®ГЄ src Гў Г±ГІГ°Г®ГЄГі result, Г±ГІГ ГўГї Г¬ГҐГ¦Г¤Гі Г±ГІГ°Г®ГЄГ Г¬ГЁ Г°Г Г§Г¤ГҐГ«ГЁГІГҐГ«Гј splitter
 void join (char **src, char splitter, char *result, int result_size)
 {
   char *dst = result;  *dst = '\0';
@@ -159,7 +159,7 @@ void join (char **src, char splitter, char *result, int result_size)
   }
 }
 
-// Найти параметр с заданным именем в массиве параметров алгоритма
+// ГЌГ Г©ГІГЁ ГЇГ Г°Г Г¬ГҐГІГ° Г± Г§Г Г¤Г Г­Г­Г»Г¬ ГЁГ¬ГҐГ­ГҐГ¬ Гў Г¬Г Г±Г±ГЁГўГҐ ГЇГ Г°Г Г¬ГҐГІГ°Г®Гў Г Г«ГЈГ®Г°ГЁГІГ¬Г 
 char *search_param(char **param, char *prefix)
 {
   for ( ; *param; param++)
@@ -168,8 +168,8 @@ char *search_param(char **param, char *prefix)
   return NULL;
 }
 
-// Заменяет в строке original все вхождения from на to,
-// возвращая вновь выделенную new строку и освобождая оригинал, если была хоть одна замена
+// Г‡Г Г¬ГҐГ­ГїГҐГІ Гў Г±ГІГ°Г®ГЄГҐ original ГўГ±ГҐ ГўГµГ®Г¦Г¤ГҐГ­ГЁГї from Г­Г  to,
+// ГўГ®Г§ГўГ°Г Г№Г Гї ГўГ­Г®ГўГј ГўГ»Г¤ГҐГ«ГҐГ­Г­ГіГѕ new Г±ГІГ°Г®ГЄГі ГЁ Г®Г±ГўГ®ГЎГ®Г¦Г¤Г Гї Г®Г°ГЁГЈГЁГ­Г Г«, ГҐГ±Г«ГЁ ГЎГ»Г«Г  ГµГ®ГІГј Г®Г¤Г­Г  Г§Г Г¬ГҐГ­Г 
 char *subst (char *original, char *from, char *to)
 {
   while(1) {
@@ -184,7 +184,7 @@ char *subst (char *original, char *from, char *to)
   }
 }
 
-// Пропускает пробелы в начале строки и убирает их в конце, модифицируя строку
+// ГЏГ°Г®ГЇГіГ±ГЄГ ГҐГІ ГЇГ°Г®ГЎГҐГ«Г» Гў Г­Г Г·Г Г«ГҐ Г±ГІГ°Г®ГЄГЁ ГЁ ГіГЎГЁГ°Г ГҐГІ ГЁГµ Гў ГЄГ®Г­Г¶ГҐ, Г¬Г®Г¤ГЁГґГЁГ¶ГЁГ°ГіГї Г±ГІГ°Г®ГЄГі
 char *trim_spaces(char *s)
 {
   while(isspace(*s)) s++;
@@ -209,6 +209,12 @@ char *str_replace (char *orig, char *from, char *to)
   char *p = strstr(orig, from);
   if (p)  return str_replace_n (orig, p, strlen(from), to);
   else    return strdup_msg (orig);
+}
+
+// If the string param contains a double, return it - otherwise set error=1
+double parseDouble(char *param, int *error)
+{
+  return atof(param) ;
 }
 
 // If the string param contains an integer, return it - otherwise set error=1
@@ -248,7 +254,8 @@ MemSize parseMem (char *param, int *error, char spec)
 // Returns a string with the amount of memory
 void showMem (MemSize mem, char *result)
 {
-       if (mem%gb==0) sprintf (result, "%.0lfgb", double(mem/gb));
+       if (mem   ==0) sprintf (result, "0b");
+  else if (mem%gb==0) sprintf (result, "%.0lfgb", double(mem/gb));
   else if (mem%mb==0) sprintf (result, "%.0lfmb", double(mem/mb));
   else if (mem%kb==0) sprintf (result, "%.0lfkb", double(mem/kb));
   else                sprintf (result, "%.0lfb",  double(mem));
@@ -257,6 +264,8 @@ void showMem (MemSize mem, char *result)
 // Returns a string with the amount of memory
 void showMem64 (uint64 mem, char *result)
 {
+       if (mem   ==0) sprintf (result, "0b");
+  else
   if(mem%terabyte==0) sprintf (result, "%.0lftb", double(mem/terabyte));
   else if (mem%gb==0) sprintf (result, "%.0lfgb", double(mem/gb));
   else if (mem%mb==0) sprintf (result, "%.0lfmb", double(mem/mb));
@@ -265,7 +274,7 @@ void showMem64 (uint64 mem, char *result)
 }
 
 
-// Кодирование строки в шестнадцатеричный вид плюс \0
+// ГЉГ®Г¤ГЁГ°Г®ГўГ Г­ГЁГҐ Г±ГІГ°Г®ГЄГЁ Гў ГёГҐГ±ГІГ­Г Г¤Г¶Г ГІГҐГ°ГЁГ·Г­Г»Г© ГўГЁГ¤ ГЇГ«ГѕГ± \0
 void encode16 (const BYTE *src, int srcSize, char *dst)
 {
     for( ; srcSize--; src++)
@@ -274,21 +283,21 @@ void encode16 (const BYTE *src, int srcSize, char *dst)
     *dst++ = '\0';
 }
 
-// Декодирование строки, записанной в шестнадцатеричном виде, в последовательность байт
+// Г„ГҐГЄГ®Г¤ГЁГ°Г®ГўГ Г­ГЁГҐ Г±ГІГ°Г®ГЄГЁ, Г§Г ГЇГЁГ±Г Г­Г­Г®Г© Гў ГёГҐГ±ГІГ­Г Г¤Г¶Г ГІГҐГ°ГЁГ·Г­Г®Г¬ ГўГЁГ¤ГҐ, Гў ГЇГ®Г±Г«ГҐГ¤Г®ГўГ ГІГҐГ«ГјГ­Г®Г±ГІГј ГЎГ Г©ГІ
 void decode16 (const char *src, BYTE *dst)
 {
     for( ; src[0] && src[1]; src+=2)
         *dst++ = char2int(src[0]) * 16 + char2int(src[1]);
 }
 
-// ОШИБОЧНОЕ декодирование строки, записанной в шестнадцатеричном виде, в последовательность байт
+// ГЋГГ€ГЃГЋГ—ГЌГЋГ… Г¤ГҐГЄГ®Г¤ГЁГ°Г®ГўГ Г­ГЁГҐ Г±ГІГ°Г®ГЄГЁ, Г§Г ГЇГЁГ±Г Г­Г­Г®Г© Гў ГёГҐГ±ГІГ­Г Г¤Г¶Г ГІГҐГ°ГЁГ·Г­Г®Г¬ ГўГЁГ¤ГҐ, Гў ГЇГ®Г±Г«ГҐГ¤Г®ГўГ ГІГҐГ«ГјГ­Г®Г±ГІГј ГЎГ Г©ГІ
 void buggy_decode16 (const char *src, BYTE *dst)
 {
     for( ; src[0] && src[1]; src+=2)
         *dst++ = buggy_char2int(src[0]) * 16 + buggy_char2int(src[1]);
 }
 
-// Округляет размер памяти вниз до удобной величины
+// ГЋГЄГ°ГіГЈГ«ГїГҐГІ Г°Г Г§Г¬ГҐГ° ГЇГ Г¬ГїГІГЁ ГўГ­ГЁГ§ Г¤Г® ГіГ¤Г®ГЎГ­Г®Г© ГўГҐГ«ГЁГ·ГЁГ­Г»
 MemSize rounddown_mem (MemSize n)
 {
          if (n < 32*kb) return n;
@@ -516,7 +525,7 @@ int GetProcessorsCount (void)
 
 void SetFileDateTime (CFILENAME Filename, time_t t)
 {
-  if (t<0)  t=INT_MAX;  // Иначе получаем вылет :(
+  if (t<0)  t=INT_MAX;  // Г€Г­Г Г·ГҐ ГЇГ®Г«ГіГ·Г ГҐГ¬ ГўГ»Г«ГҐГІ :(
   struct tm* t2 = gmtime(&t);
 
   SYSTEMTIME t3;
@@ -571,7 +580,7 @@ int RunCommand (CFILENAME command, CFILENAME curdir, int wait_finish, SIMPLE_CAL
   si.hStdError   = (HANDLE) _get_osfhandle(2);
   PROCESS_INFORMATION pi;
   ZeroMemory (&pi, sizeof(pi));
-  DWORD ExitCode = 0;  // код возврата вызываемой программы
+  DWORD ExitCode = 0;  // ГЄГ®Г¤ ГўГ®Г§ГўГ°Г ГІГ  ГўГ»Г§Г»ГўГ ГҐГ¬Г®Г© ГЇГ°Г®ГЈГ°Г Г¬Г¬Г»
 
   BOOL process_created = CreateProcessW (NULL, command, NULL, NULL, TRUE, 0, NULL, curdir, &si, &pi);
   if (callback)
@@ -606,7 +615,7 @@ void RunFile (CFILENAME filename, CFILENAME curdir, int wait_finish)
     CloseHandle (sei.hProcess);
 }
 
-// Версия Windows
+// Г‚ГҐГ°Г±ГЁГї Windows
 #define CheckWinVersion(ver)  (GetWinVersion() >= ver)
 
 #define WIN_VERSION_VISTA 0x600
@@ -631,15 +640,15 @@ int GetWinVersion()
 #define THREAD_MODE_BACKGROUND_END      0x00020000
 #endif
 
-// Установить приоритет треда какой полагается для тредов сжатия (распаковки, шифрования...).
-// Используется для тредов, которые выполняют только сжатие
+// Г“Г±ГІГ Г­Г®ГўГЁГІГј ГЇГ°ГЁГ®Г°ГЁГІГҐГІ ГІГ°ГҐГ¤Г  ГЄГ ГЄГ®Г© ГЇГ®Г«Г ГЈГ ГҐГІГ±Гї Г¤Г«Гї ГІГ°ГҐГ¤Г®Гў Г±Г¦Г ГІГЁГї (Г°Г Г±ГЇГ ГЄГ®ГўГЄГЁ, ГёГЁГґГ°Г®ГўГ Г­ГЁГї...).
+// Г€Г±ГЇГ®Г«ГјГ§ГіГҐГІГ±Гї Г¤Г«Гї ГІГ°ГҐГ¤Г®Гў, ГЄГ®ГІГ®Г°Г»ГҐ ГўГ»ГЇГ®Г«Г­ГїГѕГІ ГІГ®Г«ГјГЄГ® Г±Г¦Г ГІГЁГҐ
 void SetCompressionThreadPriority (void)
 {
    SetThreadPriority (GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
 }
 
-// Временно установить приоритет треда какой полагается для тредов сжатия (распаковки, шифрования...)
-// и возвратить старое значение уровня приоритета. Используется для тредов, временно выполняющих задачи сжатия
+// Г‚Г°ГҐГ¬ГҐГ­Г­Г® ГіГ±ГІГ Г­Г®ГўГЁГІГј ГЇГ°ГЁГ®Г°ГЁГІГҐГІ ГІГ°ГҐГ¤Г  ГЄГ ГЄГ®Г© ГЇГ®Г«Г ГЈГ ГҐГІГ±Гї Г¤Г«Гї ГІГ°ГҐГ¤Г®Гў Г±Г¦Г ГІГЁГї (Г°Г Г±ГЇГ ГЄГ®ГўГЄГЁ, ГёГЁГґГ°Г®ГўГ Г­ГЁГї...)
+// ГЁ ГўГ®Г§ГўГ°Г ГІГЁГІГј Г±ГІГ Г°Г®ГҐ Г§Г­Г Г·ГҐГ­ГЁГҐ ГіГ°Г®ГўГ­Гї ГЇГ°ГЁГ®Г°ГЁГІГҐГІГ . Г€Г±ГЇГ®Г«ГјГ§ГіГҐГІГ±Гї Г¤Г«Гї ГІГ°ГҐГ¤Г®Гў, ГўГ°ГҐГ¬ГҐГ­Г­Г® ГўГ»ГЇГ®Г«Г­ГїГѕГ№ГЁГµ Г§Г Г¤Г Г·ГЁ Г±Г¦Г ГІГЁГї
 int BeginCompressionThreadPriority (void)
 {
    DWORD dwThreadPriority = GetThreadPriority(GetCurrentThread());
@@ -647,7 +656,7 @@ int BeginCompressionThreadPriority (void)
    return dwThreadPriority;
 }
 
-// Восстановить приоритет треда таким, как мы его запомнили
+// Г‚Г®Г±Г±ГІГ Г­Г®ГўГЁГІГј ГЇГ°ГЁГ®Г°ГЁГІГҐГІ ГІГ°ГҐГ¤Г  ГІГ ГЄГЁГ¬, ГЄГ ГЄ Г¬Г» ГҐГЈГ® Г§Г ГЇГ®Г¬Г­ГЁГ«ГЁ
 void EndCompressionThreadPriority (int old_priority)
 {
    SetThreadPriority (GetCurrentThread(), old_priority);
@@ -658,6 +667,7 @@ void EndCompressionThreadPriority (int old_priority)
 
 #include <unistd.h>
 #include <sys/resource.h>
+#include <sys/sysctl.h>
 
 uint64 GetPhysicalMemory (void)
 {
@@ -666,7 +676,16 @@ uint64 GetPhysicalMemory (void)
 
 uint64 GetAvailablePhysicalMemory (void)
 {
+#if defined(_SC_AVPHYS_PAGES)
   return uint64(sysconf(_SC_AVPHYS_PAGES)) * sysconf(_SC_PAGE_SIZE);
+#elif defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__minix)
+  unsigned long page_count = 0;
+  size_t page_count_size = sizeof(page_count);
+  sysctlbyname("hw.availpages", &page_count, &page_count, NULL, 0);
+  return page_count * sysconf(_SC_PAGE_SIZE);
+#else
+#  error "There's no support for memory stats on your system."
+#endif
 }
 
 int GetProcessorsCount (void)
@@ -676,7 +695,7 @@ int GetProcessorsCount (void)
 
 void SetFileDateTime(CFILENAME Filename, time_t t)
 {
-  if (t<0)  t=INT_MAX;  // Иначе получаем вылет :(
+  if (t<0)  t=INT_MAX;  // Г€Г­Г Г·ГҐ ГЇГ®Г«ГіГ·Г ГҐГ¬ ГўГ»Г«ГҐГІ :(
   struct stat st;
     stat (Filename, &st);
   struct utimbuf times;
@@ -715,23 +734,23 @@ void RunFile (CFILENAME filename, CFILENAME curdir, int wait_finish)
   RunCommand (filename, curdir, wait_finish, NULL, NULL);
 }
 
-// Установить приоритет треда какой полагается для тредов сжатия (распаковки, шифрования...).
-// Используется для тредов, которые выполняют только сжатие
+// Г“Г±ГІГ Г­Г®ГўГЁГІГј ГЇГ°ГЁГ®Г°ГЁГІГҐГІ ГІГ°ГҐГ¤Г  ГЄГ ГЄГ®Г© ГЇГ®Г«Г ГЈГ ГҐГІГ±Гї Г¤Г«Гї ГІГ°ГҐГ¤Г®Гў Г±Г¦Г ГІГЁГї (Г°Г Г±ГЇГ ГЄГ®ГўГЄГЁ, ГёГЁГґГ°Г®ГўГ Г­ГЁГї...).
+// Г€Г±ГЇГ®Г«ГјГ§ГіГҐГІГ±Гї Г¤Г«Гї ГІГ°ГҐГ¤Г®Гў, ГЄГ®ГІГ®Г°Г»ГҐ ГўГ»ГЇГ®Г«Г­ГїГѕГІ ГІГ®Г«ГјГЄГ® Г±Г¦Г ГІГЁГҐ
 void SetCompressionThreadPriority (void)
 {
   int old = getpriority(PRIO_PROCESS, 0);
   setpriority(PRIO_PROCESS, 0, old+1);
 }
 
-// Временно установить приоритет треда какой полагается для тредов сжатия (распаковки, шифрования...)
+// Г‚Г°ГҐГ¬ГҐГ­Г­Г® ГіГ±ГІГ Г­Г®ГўГЁГІГј ГЇГ°ГЁГ®Г°ГЁГІГҐГІ ГІГ°ГҐГ¤Г  ГЄГ ГЄГ®Г© ГЇГ®Г«Г ГЈГ ГҐГІГ±Гї Г¤Г«Гї ГІГ°ГҐГ¤Г®Гў Г±Г¦Г ГІГЁГї (Г°Г Г±ГЇГ ГЄГ®ГўГЄГЁ, ГёГЁГґГ°Г®ГўГ Г­ГЁГї...)
 int BeginCompressionThreadPriority (void)
 {
   int old = getpriority(PRIO_PROCESS, 0);
-  //setpriority(PRIO_PROCESS, 0, old+1);        закомментировано из-за проблем с восстановлением старого приоритета :(
+  //setpriority(PRIO_PROCESS, 0, old+1);        Г§Г ГЄГ®Г¬Г¬ГҐГ­ГІГЁГ°Г®ГўГ Г­Г® ГЁГ§-Г§Г  ГЇГ°Г®ГЎГ«ГҐГ¬ Г± ГўГ®Г±Г±ГІГ Г­Г®ГўГ«ГҐГ­ГЁГҐГ¬ Г±ГІГ Г°Г®ГЈГ® ГЇГ°ГЁГ®Г°ГЁГІГҐГІГ  :(
   return old;
 }
 
-// Восстановить приоритет треда таким, как мы его запомнили
+// Г‚Г®Г±Г±ГІГ Г­Г®ГўГЁГІГј ГЇГ°ГЁГ®Г°ГЁГІГҐГІ ГІГ°ГҐГ¤Г  ГІГ ГЄГЁГ¬, ГЄГ ГЄ Г¬Г» ГҐГЈГ® Г§Г ГЇГ®Г¬Г­ГЁГ«ГЁ
 void EndCompressionThreadPriority (int old_priority)
 {
   //setpriority(PRIO_PROCESS, 0, old_priority);
@@ -740,7 +759,7 @@ void EndCompressionThreadPriority (int old_priority)
 #endif // Windows/Unix
 
 
-// Создать каталоги на пути к name
+// Г‘Г®Г§Г¤Г ГІГј ГЄГ ГІГ Г«Г®ГЈГЁ Г­Г  ГЇГіГІГЁ ГЄ name
 void BuildPathTo (CFILENAME name)
 {
   CFILENAME path_ptr = NULL;
@@ -762,7 +781,7 @@ void BuildPathTo (CFILENAME name)
 
 
 // ****************************************************************************************************************************
-// ПОДДЕРЖКА СПИСКА ВРЕМЕННЫХ ФАЙЛОВ И УДАЛЕНИЕ ИХ ПРИ АВАРИЙНОМ ВЫХОДЕ ИЗ ПРОГРАММЫ ******************************************
+// ГЏГЋГ„Г„Г…ГђГ†ГЉГЂ Г‘ГЏГ€Г‘ГЉГЂ Г‚ГђГ…ГЊГ…ГЌГЌГ›Г• Г”ГЂГ‰Г‹ГЋГ‚ Г€ Г“Г„ГЂГ‹Г…ГЌГ€Г… Г€Г• ГЏГђГ€ ГЂГ‚ГЂГђГ€Г‰ГЌГЋГЊ Г‚Г›Г•ГЋГ„Г… Г€Г‡ ГЏГђГЋГѓГђГЂГЊГЊГ› ******************************************
 // ****************************************************************************************************************************
 
 // Table of temporary files that should be deleted on ^Break
@@ -801,7 +820,7 @@ void removeTemporaryFiles (void)
 #ifndef FREEARC_NO_TIMING
 
 //*****************************************************************************
-// Вывод заголовка окна *******************************************************
+// Г‚Г»ГўГ®Г¤ Г§Г ГЈГ®Г«Г®ГўГЄГ  Г®ГЄГ­Г  *******************************************************
 //*****************************************************************************
 
 #ifdef FREEARC_WIN
@@ -810,7 +829,7 @@ void removeTemporaryFiles (void)
 TCHAR Saved_Title[MY_FILENAME_MAX+1000];
 bool Saved = FALSE,  SavedA = FALSE;
 
-// Установить заголовок консольного окна
+// Г“Г±ГІГ Г­Г®ГўГЁГІГј Г§Г ГЈГ®Г«Г®ГўГ®ГЄ ГЄГ®Г­Г±Г®Г«ГјГ­Г®ГЈГ® Г®ГЄГ­Г 
 void EnvSetConsoleTitle (TCHAR *title)
 {
   if (!Saved && !SavedA) {
@@ -828,7 +847,7 @@ void EnvSetConsoleTitleA (char *title)
   SetConsoleTitleA (title);
 }
 
-// Восстановить заголовок, который был в начале работы программы
+// Г‚Г®Г±Г±ГІГ Г­Г®ГўГЁГІГј Г§Г ГЈГ®Г«Г®ГўГ®ГЄ, ГЄГ®ГІГ®Г°Г»Г© ГЎГ»Г« Гў Г­Г Г·Г Г«ГҐ Г°Г ГЎГ®ГІГ» ГЇГ°Г®ГЈГ°Г Г¬Г¬Г»
 void EnvResetConsoleTitle (void)
 {
   if (Saved) {
@@ -950,7 +969,7 @@ void Install_signal_handler (void (__cdecl *signal_handler)(int))
 // Windows 7 taskbar progress indicator ***************************************
 //*****************************************************************************
 
-#ifdef FREEARC_WIN2
+#ifdef FREEARC_WIN_VSTUDIO
 
 // Include Win7-specific defines unless on GCC3
 #if !defined(__GNUC__) || __GNUC__>=4
