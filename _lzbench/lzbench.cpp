@@ -18,7 +18,7 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 #define PROGNAME "lzbench"
-#define PROGVERSION "0.7.1"
+#define PROGVERSION "0.7.2"
 #define LZBENCH_DEBUG(fmt, args...) ;// printf(fmt, ##args)
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
@@ -491,11 +491,11 @@ middle:
     for (int level=0; level<=4; level+=1)
         lzbench_test("zling 2015-09-15 level 0", level, lzbench_zling_compress, lzbench_zling_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
 
-	lzbench_test("zstd v0.3", 0, lzbench_zstd_compress, lzbench_zstd_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
+	lzbench_test("zstd v0.3.2", 0, lzbench_zstd_compress, lzbench_zstd_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
     for (int level=1; level<=9; level+=4)
-        lzbench_test("zstd_HC v0.3 -0", level, lzbench_zstdhc_compress, lzbench_zstdhc_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
+        lzbench_test("zstd_HC v0.3.2 -0", level, lzbench_zstdhc_compress, lzbench_zstdhc_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
     for (int level=13; level<=21; level+=4)
-        lzbench_test("zstd_HC v0.3 -00", level, lzbench_zstdhc_compress, lzbench_zstdhc_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
+        lzbench_test("zstd_HC v0.3.2 -00", level, lzbench_zstdhc_compress, lzbench_zstdhc_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
 
 
 done:
