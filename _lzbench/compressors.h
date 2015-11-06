@@ -1,3 +1,6 @@
+#ifndef LZBENCH_COMPRESSORS_H
+#define LZBENCH_COMPRESSORS_H
+
 #include <stdlib.h> 
 #include <stdint.h> // int64_t
 
@@ -246,3 +249,4 @@ typedef int64_t (*compress_func)(char *in, size_t insize, char *out, size_t outs
 	#define lzbench_zstdhc_decompress NULL
 #endif
 
+#endif

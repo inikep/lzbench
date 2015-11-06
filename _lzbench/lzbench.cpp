@@ -42,15 +42,6 @@
 #include <stdint.h> 
 #include <string.h> 
 #include "compressors.h"
-#include "pithy/pithy.h"
-#include "lzo/lzo1b.h"
-#include "yappy/yappy.hpp"
-#include "quicklz/quicklz.h"
-#include "wflz/wfLZ.h"
-extern "C"
-{
-	#include "lzrw/lzrw.h"
-}
 
 #ifdef WINDOWS
 	#include <windows.h>
@@ -305,7 +296,7 @@ void benchmark(FILE* in, int iters, uint32_t chunk_size, int cspeed)
 	std::vector<uint32_t> ctime, dtime;
 	LARGE_INTEGER ticksPerSecond, start_ticks, mid_ticks, end_ticks;
 	uint32_t comprsize, insize;
-	uint8_t *inbuf, *compbuf, *decomp, *work;
+	uint8_t *inbuf, *compbuf, *decomp;
 
 	InitTimer(ticksPerSecond);
 
@@ -313,7 +304,7 @@ void benchmark(FILE* in, int iters, uint32_t chunk_size, int cspeed)
 	insize = ftell(in);
 	rewind(in);
 
-	comprsize = insize + (insize>>4) + 2048;
+	comprsize = insize + insize/6 + 2048; // for pithy
 
 //	printf("insize=%lld comprsize=%lld\n", insize, comprsize);
 	inbuf = (uint8_t*)malloc(insize + 2048);
@@ -390,56 +381,41 @@ middle:
 
 	lzbench_test("lzmat 1.01", 0, lzbench_lzmat_compress, lzbench_lzmat_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
 
-	work=(uint8_t*)calloc(1, LZO1B_999_MEM_COMPRESS);
-	if (work)
-	{
-		lzo_init();
-		lzbench_test("lzo1b 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, (size_t)work, 0);
-		lzbench_test("lzo1b 2.09 -9", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 9, (size_t)work, 0);
-		lzbench_test("lzo1b 2.09 -99", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 99, (size_t)work, 0);
-		lzbench_test("lzo1b 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 999, (size_t)work, 0);
-		lzbench_test("lzo1c 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1001, (size_t)work, 0);
-		lzbench_test("lzo1c 2.09 -9", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1009, (size_t)work, 0);
-		lzbench_test("lzo1c 2.09 -99", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1099, (size_t)work, 0);
-		lzbench_test("lzo1c 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1999, (size_t)work, 0);
-		lzbench_test("lzo1f 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2001, (size_t)work, 0);
-		lzbench_test("lzo1f 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2999, (size_t)work, 0);
-		lzbench_test("lzo1x 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3001, (size_t)work, 0);
-		lzbench_test("lzo1x 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3999, (size_t)work, 0);
-		lzbench_test("lzo1y 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4001, (size_t)work, 0);
-		lzbench_test("lzo1y 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4999, (size_t)work, 0);
-		lzbench_test("lzo1z 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 5999, (size_t)work, 0);
-		lzbench_test("lzo2a 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 6999, (size_t)work, 0);
-		free(work);
-	}
 
-	work=(uint8_t*)calloc(1, lzrw2_req_mem());
-	if (work)
-	{
-		lzbench_test("lzrw1", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, (size_t)work, 0);
-		lzbench_test("lzrw1a", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2, (size_t)work, 0);
-		lzbench_test("lzrw2", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, (size_t)work, 0);
-		lzbench_test("lzrw3", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4, (size_t)work, 0);
-		lzbench_test("lzrw3a", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 5, (size_t)work, 0);
-		free(work);
-	}
-	
+    lzbench_test("lzo1b 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
+    lzbench_test("lzo1b 2.09 -9", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 9, 0, 0);
+    lzbench_test("lzo1b 2.09 -99", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 99, 0, 0);
+    lzbench_test("lzo1b 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 999, 0, 0);
+    lzbench_test("lzo1c 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1001, 0, 0);
+    lzbench_test("lzo1c 2.09 -9", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1009, 0, 0);
+    lzbench_test("lzo1c 2.09 -99", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1099, 0, 0);
+    lzbench_test("lzo1c 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1999, 0, 0);
+    lzbench_test("lzo1f 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2001, 0, 0);
+    lzbench_test("lzo1f 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2999, 0, 0);
+    lzbench_test("lzo1x 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3001, 0, 0);
+    lzbench_test("lzo1x 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3999, 0, 0);
+    lzbench_test("lzo1y 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4001, 0, 0);
+    lzbench_test("lzo1y 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4999, 0, 0);
+    lzbench_test("lzo1z 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 5999, 0, 0);
+    lzbench_test("lzo2a 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 6999, 0, 0);
+
+
+
+    lzbench_test("lzrw1", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
+    lzbench_test("lzrw1a", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2, 0, 0);
+    lzbench_test("lzrw2", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, 0, 0);
+    lzbench_test("lzrw3", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4, 0, 0);
+    lzbench_test("lzrw3a", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 5, 0, 0);
+
+
     for (int level=0; level<=9; level+=3)
         lzbench_test("pithy 2011-12-24 level 0", level, lzbench_pithy_compress, lzbench_pithy_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
 
-    {
-        qlz150_state_compress* state;
-        int state_size, dstate_size;
-        state_size = MAX(qlz_get_setting_3(1),MAX(qlz_get_setting_1(1), qlz_get_setting_2(1)));
-        dstate_size = MAX(qlz_get_setting_3(2),MAX(qlz_get_setting_1(2), qlz_get_setting_2(2)));
-        state_size = MAX(state_size, dstate_size);
-        state = (qlz150_state_compress*) calloc(1, state_size);
-        //	memset(state,0,state_size);
-        lzbench_test("quicklz 1.5.0 -1", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, (size_t)state, 0);
-        lzbench_test("quicklz 1.5.0 -2", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2, (size_t)state, 0);
-        lzbench_test("quicklz 1.5.0 -3", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, (size_t)state, 0);
-        lzbench_test("quicklz 1.5.1 b7 -1", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4, (size_t)state, 0);
-    }
+    lzbench_test("quicklz 1.5.0 -1", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
+    lzbench_test("quicklz 1.5.0 -2", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2, 0, 0);
+    lzbench_test("quicklz 1.5.0 -3", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, 0, 0);
+    lzbench_test("quicklz 1.5.1 b7 -1", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4, 0, 0);
+        
 	
 	lzbench_test("shrinker", 0, lzbench_shrinker_compress, lzbench_shrinker_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
 
@@ -466,14 +442,8 @@ middle:
 	lzbench_test("ucl_nrv2e 1.03 -1", 0, lzbench_ucl_compress, lzbench_ucl_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, 1, 0);
 	lzbench_test("ucl_nrv2e 1.03 -6", 0, lzbench_ucl_compress, lzbench_ucl_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, 6, 0);
 
-	work=(uint8_t*)calloc(1, wfLZ_GetWorkMemSize());
-	if (work)
-	{
-		lzbench_test("wflz 2015-09-16", 0, lzbench_wflz_compress, lzbench_wflz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, (size_t)work, 0);
-		free(work);
-	}
-	
-	YappyFillTables();
+	lzbench_test("wflz 2015-09-16", 0, lzbench_wflz_compress, lzbench_wflz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
+
 	lzbench_test("yappy 1", 0, lzbench_yappy_compress, lzbench_yappy_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
 	lzbench_test("yappy 10", 0, lzbench_yappy_compress, lzbench_yappy_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 10, 0, 0);
 	lzbench_test("yappy 100", 0, lzbench_yappy_compress, lzbench_yappy_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 100, 0, 0);
