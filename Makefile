@@ -16,7 +16,7 @@ endif
 
 
 ifeq ($(BUILD_ARCH),64-bit)
-	DEFINES	+= -D__x86_64__
+	DEFINES	+= -D__x86_64__ -D__SSE2__
 	LDFLAGS	+= -static  -L C:\Aplikacje\win-builds64\lib
 else
 	LDFLAGS	+= -static  -L C:\Aplikacje\win-builds32\lib

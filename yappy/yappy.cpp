@@ -6,7 +6,7 @@
 #include <memory.h>
 #include <time.h>
 
-#ifdef FSBENCH_SSE2
+#ifdef __SSE2__
 #include <emmintrin.h>
 #endif
 
@@ -17,7 +17,7 @@ ui8 maps[32][16];
 size_t infos[256];
 
 void inline Copy(const ui8 *data, ui8 *to) {
-#ifdef FSBENCH_SSE2
+#ifdef __SSE2__
   _mm_storeu_si128((__m128i *)(to), _mm_loadu_si128((const __m128i *)(data)));
 #else
     *(ui64*)to = *(const ui64*)data;

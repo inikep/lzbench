@@ -275,7 +275,7 @@ int64_t lzbench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t 
 	lzham_compress_params comp_params;
 	memset(&comp_params, 0, sizeof(comp_params));
 	comp_params.m_struct_size = sizeof(lzham_compress_params);
-	comp_params.m_dict_size_log2 = dict_size;
+	comp_params.m_dict_size_log2 = 26;
 	comp_params.m_max_helper_threads = 0;
 	comp_params.m_level = (lzham_compress_level)level;
 
@@ -298,7 +298,7 @@ int64_t lzbench_lzham_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 	memset(&decomp_params, 0, sizeof(decomp_params));
 	decomp_params.m_struct_size = sizeof(decomp_params);
-	decomp_params.m_dict_size_log2 = dict_size;
+	decomp_params.m_dict_size_log2 = 26;
 
 	lzham_decompress_memory(&decomp_params, (uint8_t*)outbuf, &outsize, (const lzham_uint8 *)inbuf, insize, &comp_adler32);
 	return outsize;
@@ -712,8 +712,8 @@ int64_t lzbench_wflz_compress(char *inbuf, size_t insize, char *outbuf, size_t o
     uint8_t *workmem=(uint8_t*)malloc(wfLZ_GetWorkMemSize());
     if (!workmem)
         return 0;
-    
-    if (level == 1) 
+
+    if (level == 0) 
 		res = wfLZ_CompressFast((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, workmem, 0);
     else
         res = wfLZ_Compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, workmem, 0);

@@ -335,7 +335,7 @@ void benchmark(FILE* in, int iters, uint32_t chunk_size, int cspeed)
 
 middle:
 
-    const char fast[] = "brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz4hc,1,4,9";
+    const char fast[] = "brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz4hc,1,4,9/lz5/lz5hc,1,4,9/lzf,0,1/lzham,0,1/lzjb/lzma,0,1,2,3,4,5/lzmat/pithy,0,3,6,9/quicklz,1,2,3/shrinker/snappy/wflz/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd/zstd_HC,1,5,9,13,17,21";
     const char delimiters[] = "/";
     const char delimiters2[] = ",";
     char *token, *cp, *token2, *token3, *cp2, *save_ptr, *save_ptr2;
@@ -375,27 +375,9 @@ middle:
     }
 
     free(cp);
+
     
-/*	
-	lzbench_test("lz5 r131b", 0, lzbench_lz5_compress, lzbench_lz5_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
-	lzbench_test("lz5hc r131b -1", 0, lzbench_lz5hc_compress, lzbench_lz5_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
-	lzbench_test("lz5hc r131b -4", 0, lzbench_lz5hc_compress, lzbench_lz5_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4, 0, 0);
-	lzbench_test("lz5hc r131b -9", 0, lzbench_lz5hc_compress, lzbench_lz5_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 9, 0, 0);
-
-	lzbench_test("lzf level 0", 0, lzbench_lzf_compress, lzbench_lzf_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
-	lzbench_test("lzf level 1", 0, lzbench_lzf_compress, lzbench_lzf_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
-
-	lzbench_test("lzham 1.0 -m0d26 -0", 0, lzbench_lzham_compress, lzbench_lzham_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 26, 0);
-	lzbench_test("lzham 1.0 -m0d26 -0", 1, lzbench_lzham_compress, lzbench_lzham_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 26, 0);
-
-	lzbench_test("lzjb 2010", 0, lzbench_lzjb_compress, lzbench_lzjb_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
-
-    for (int level=0; level<=5; level+=1)
-        lzbench_test("lzma 9.38 level 0", level, lzbench_lzma_compress, lzbench_lzma_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
-
-	lzbench_test("lzmat 1.01", 0, lzbench_lzmat_compress, lzbench_lzmat_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
-
-
+/*
     lzbench_test("lzo1b 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
     lzbench_test("lzo1b 2.09 -9", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 9, 0, 0);
     lzbench_test("lzo1b 2.09 -99", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 99, 0, 0);
@@ -413,27 +395,12 @@ middle:
     lzbench_test("lzo1z 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 5999, 0, 0);
     lzbench_test("lzo2a 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 6999, 0, 0);
 
-
-
     lzbench_test("lzrw1", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
     lzbench_test("lzrw1a", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2, 0, 0);
     lzbench_test("lzrw2", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, 0, 0);
     lzbench_test("lzrw3", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4, 0, 0);
     lzbench_test("lzrw3a", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 5, 0, 0);
 
-
-    for (int level=0; level<=9; level+=3)
-        lzbench_test("pithy 2011-12-24 level 0", level, lzbench_pithy_compress, lzbench_pithy_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
-
-    lzbench_test("quicklz 1.5.0 -1", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
-    lzbench_test("quicklz 1.5.0 -2", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2, 0, 0);
-    lzbench_test("quicklz 1.5.0 -3", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, 0, 0);
-    lzbench_test("quicklz 1.5.1 b7 -1", 0, lzbench_quicklz_compress, lzbench_quicklz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4, 0, 0);
-        
-	
-	lzbench_test("shrinker", 0, lzbench_shrinker_compress, lzbench_shrinker_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
-
-	lzbench_test("snappy 1.1.3", 0, lzbench_snappy_compress, lzbench_snappy_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
 
     for (int level=1; level<=7; level+=1)
         lzbench_test("tornado 0.6a -0", level, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
@@ -456,25 +423,7 @@ middle:
 	lzbench_test("ucl_nrv2e 1.03 -1", 0, lzbench_ucl_compress, lzbench_ucl_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, 1, 0);
 	lzbench_test("ucl_nrv2e 1.03 -6", 0, lzbench_ucl_compress, lzbench_ucl_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, 6, 0);
 
-	lzbench_test("wflz 2015-09-16", 0, lzbench_wflz_compress, lzbench_wflz_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
 
-	lzbench_test("yappy 1", 0, lzbench_yappy_compress, lzbench_yappy_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
-	lzbench_test("yappy 10", 0, lzbench_yappy_compress, lzbench_yappy_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 10, 0, 0);
-	lzbench_test("yappy 100", 0, lzbench_yappy_compress, lzbench_yappy_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 100, 0, 0);
-
-	lzbench_test("zlib 1.2.8 -1", 0, lzbench_zlib_compress, lzbench_zlib_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
-	lzbench_test("zlib 1.2.8 -6", 0, lzbench_zlib_compress, lzbench_zlib_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 6, 0, 0);
-	lzbench_test("zlib 1.2.8 -9", 0, lzbench_zlib_compress, lzbench_zlib_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 9, 0, 0);
-
-    for (int level=0; level<=4; level+=1)
-        lzbench_test("zling 2015-09-16 level 0", level, lzbench_zling_compress, lzbench_zling_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
-
-
-	lzbench_test("zstd v0.3.4", 0, lzbench_zstd_compress, lzbench_zstd_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0, 0);
-    for (int level=1; level<=9; level+=4)
-        lzbench_test("zstd_HC v0.3.4 -0", level, lzbench_zstdhc_compress, lzbench_zstdhc_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
-    for (int level=13; level<=21; level+=4)
-        lzbench_test("zstd_HC v0.3.4 -00", level, lzbench_zstdhc_compress, lzbench_zstdhc_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
 */
     goto done;
 done:
