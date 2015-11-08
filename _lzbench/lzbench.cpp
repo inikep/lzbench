@@ -18,7 +18,7 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 #define PROGNAME "lzbench"
-#define PROGVERSION "0.7.2"
+#define PROGVERSION "0.8"
 #define LZBENCH_DEBUG(level, fmt, args...) if (verbose >= level) printf(fmt, ##args)
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
@@ -284,10 +284,83 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
         if (decomp_error) break;
     }
     print_stats(desc, level, ctime, dtime, insize, complen, decomp_error, cspeed);
+};
+
+
+void lzbench_test_with_params(char *namesWithParams, int cspeed, size_t chunk_size, int iters, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond)
+{
+    const char delimiters[] = "/";
+    const char delimiters2[] = ",";
+    char *copy, *copy2, *token, *token2, *token3, *save_ptr, *save_ptr2;
+
+    copy = (char*)strdup(namesWithParams);
+    token = strtok_r(copy, delimiters, &save_ptr);
+
+    while (token != NULL) 
+    {
+        if (strcmp(token, "fast")==0)
+        {
+            lzbench_test_with_params(compr_fast, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+            token = strtok_r(NULL, delimiters, &save_ptr);
+            continue;
+        }
+
+        if (strcmp(token, "opt")==0)
+        {
+            lzbench_test_with_params(compr_opt, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+            token = strtok_r(NULL, delimiters, &save_ptr);
+            continue;
+        }
+
+        if (strcmp(token, "all")==0)
+        {
+            lzbench_test_with_params(compr_all, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+            token = strtok_r(NULL, delimiters, &save_ptr);
+            continue;
+        }
+        
+        copy2 = (char*)strdup(token);
+        printf("params = %s\n", token);
+        token2 = strtok_r(copy2, delimiters2, &save_ptr2);
+
+        if (token2)
+        {
+            token3 = strtok_r(NULL, delimiters2, &save_ptr2);
+            do
+            {
+                bool found = false;
+                for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
+                {
+                    if (strcmp(comp_desc[i].name, token2) == 0)
+                    {
+                        found = true;
+    //                        printf("%s %s %s\n", token2, comp_desc[i].version, token3);
+                        if (!token3)
+                        {                          
+                            for (int level=comp_desc[i].first_level; level<=comp_desc[i].last_level; level++)
+                                lzbench_test(&comp_desc[i], level, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
+                        }
+                        else
+                            lzbench_test(&comp_desc[i], atoi(token3), cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, atoi(token3), 0, 0);
+                        break;
+                    }
+                }
+                if (!found) printf("NOT FOUND: %s %s\n", token2, token3);
+                token3 = strtok_r(NULL, delimiters2, &save_ptr2);
+            }
+            while (token3 != NULL);
+        }
+
+        free(copy2);
+        
+        token = strtok_r(NULL, delimiters, &save_ptr);
+    }
+
+    free(copy);
 }
 
 
-void benchmark(FILE* in, int iters, uint32_t chunk_size, int cspeed)
+void lzbenchmark(FILE* in, char* encoder_list, int iters, uint32_t chunk_size, int cspeed)
 {
 	std::vector<uint32_t> ctime, dtime;
 	LARGE_INTEGER ticksPerSecond, start_ticks, mid_ticks, end_ticks;
@@ -328,105 +401,7 @@ void benchmark(FILE* in, int iters, uint32_t chunk_size, int cspeed)
     printf("| Compressor name             | Compression| Decompress.| Compr. size | Ratio |\n");
 	print_stats(&comp_desc[0], 0, ctime, dtime, insize, insize, false, 0);
 
-
-//	goto done;
-
-    goto middle;
-
-middle:
-
-    const char fast[] = "brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz4hc,1,4,9/lz5/lz5hc,1,4,9/lzf,0,1/lzham,0,1/lzjb/lzma,0,1,2,3,4,5/lzmat/pithy,0,3,6,9/quicklz,1,2,3/shrinker/snappy/wflz/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd/zstd_HC,1,5,9,13,17,21";
-    const char delimiters[] = "/";
-    const char delimiters2[] = ",";
-    char *token, *cp, *token2, *token3, *cp2, *save_ptr, *save_ptr2;
-    cp = strdup(fast);
-    token = strtok_r(cp, delimiters, &save_ptr);
-    
-    while (token != NULL) 
-    {
-        cp2 = strdup(token);
-        token2 = strtok_r(cp2, delimiters2, &save_ptr2);
-        
-        if (token2)
-        {
-            token3 = strtok_r(NULL, delimiters2, &save_ptr2);
-            do
-            {
-                bool found = false;
-                for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
-                {
-                    if (strcmp(comp_desc[i].name, token2) == 0)
-                    {
-//                        printf("%s %s %s\n", token2, comp_desc[i].version, token3);
-                        int level = (token3)?atoi(token3):0;
-                        lzbench_test(&comp_desc[i], level, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) printf("NOT FOUND: %s %s\n", token2, token3);
-                token3 = strtok_r(NULL, delimiters2, &save_ptr2);
-            }
-            while (token3 != NULL);
-        }
-        free(cp2);
-        
-        token = strtok_r(NULL, delimiters, &save_ptr);
-    }
-
-    free(cp);
-
-    
-/*
-    lzbench_test("lzo1b 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
-    lzbench_test("lzo1b 2.09 -9", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 9, 0, 0);
-    lzbench_test("lzo1b 2.09 -99", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 99, 0, 0);
-    lzbench_test("lzo1b 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 999, 0, 0);
-    lzbench_test("lzo1c 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1001, 0, 0);
-    lzbench_test("lzo1c 2.09 -9", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1009, 0, 0);
-    lzbench_test("lzo1c 2.09 -99", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1099, 0, 0);
-    lzbench_test("lzo1c 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1999, 0, 0);
-    lzbench_test("lzo1f 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2001, 0, 0);
-    lzbench_test("lzo1f 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2999, 0, 0);
-    lzbench_test("lzo1x 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3001, 0, 0);
-    lzbench_test("lzo1x 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3999, 0, 0);
-    lzbench_test("lzo1y 2.09 -1", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4001, 0, 0);
-    lzbench_test("lzo1y 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4999, 0, 0);
-    lzbench_test("lzo1z 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 5999, 0, 0);
-    lzbench_test("lzo2a 2.09 -999", 0, lzbench_lzo_compress, lzbench_lzo_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 6999, 0, 0);
-
-    lzbench_test("lzrw1", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 0, 0);
-    lzbench_test("lzrw1a", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2, 0, 0);
-    lzbench_test("lzrw2", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, 0, 0);
-    lzbench_test("lzrw3", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 4, 0, 0);
-    lzbench_test("lzrw3a", 0, lzbench_lzrw_compress, lzbench_lzrw_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 5, 0, 0);
-
-
-    for (int level=1; level<=7; level+=1)
-        lzbench_test("tornado 0.6a -0", level, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
-	lzbench_test("tornado 0.6a -10", 0, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 10, 0, 0);
-	lzbench_test("tornado 0.6a -13", 0, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 13, 0, 0);
-	lzbench_test("tornado 0.6a -16", 0, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 16, 0, 0);
-
-	lzbench_test("tornado 0.6a h16k b1m", 0, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 21, 0, 0);
-	lzbench_test("tornado 0.6a h128k b2m", 0, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 22, 0, 0);
-	lzbench_test("tornado 0.6a h128k b8m", 0, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 23, 0, 0);
-	lzbench_test("tornado 0.6a h4m b8m", 0, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 24, 0, 0);
-	lzbench_test("tornado h128k b8m bitio", 0, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 25, 0, 0);
-	lzbench_test("tornado h4m b8m bitio", 0, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 26, 0, 0);
-	lzbench_test("tornado h4m b32m bitio", 0, lzbench_tornado_compress, lzbench_tornado_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 27, 0, 0);
-
-	lzbench_test("ucl_nrv2b 1.03 -1", 0, lzbench_ucl_compress, lzbench_ucl_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 1, 0);
-	lzbench_test("ucl_nrv2b 1.03 -6", 0, lzbench_ucl_compress, lzbench_ucl_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 1, 6, 0);
-	lzbench_test("ucl_nrv2d 1.03 -1", 0, lzbench_ucl_compress, lzbench_ucl_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2, 1, 0);
-	lzbench_test("ucl_nrv2d 1.03 -6", 0, lzbench_ucl_compress, lzbench_ucl_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 2, 6, 0);
-	lzbench_test("ucl_nrv2e 1.03 -1", 0, lzbench_ucl_compress, lzbench_ucl_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, 1, 0);
-	lzbench_test("ucl_nrv2e 1.03 -6", 0, lzbench_ucl_compress, lzbench_ucl_decompress, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 3, 6, 0);
-
-
-*/
-    goto done;
-done:
+    lzbench_test_with_params(encoder_list?encoder_list:compr_fast, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
 
 	free(inbuf);
 	free(compbuf);
@@ -481,6 +456,7 @@ int main( int argc, char** argv)
 {
 	FILE *in;
 	uint32_t iterations, chunk_size, cspeed;
+    char* encoder_list = NULL;
 
 	iterations = 1;
 	chunk_size = 1 << 31;
@@ -506,6 +482,9 @@ int main( int argc, char** argv)
 	case 'b':
 		chunk_size = atoi(argv[1] + 2) << 10;
 		break;
+	case 'e':
+		encoder_list = strdup(argv[1] + 2);
+		break;
 	case 's':
 		cspeed = atoi(argv[1] + 2);
 		break;
@@ -526,9 +505,23 @@ int main( int argc, char** argv)
 
 	if (argc<2) {
 		fprintf(stderr, "usage: " PROGNAME " [options] input\n");
-		fprintf(stderr, " -iX: number of iterations (default = %d)\n", iterations);
 		fprintf(stderr, " -bX: set block/chunk size to X KB (default = %d KB)\n", chunk_size>>10);
+		fprintf(stderr, " -eX: X = compressors separated by '/' with parameters specified after ','\n");
+		fprintf(stderr, " -iX: number of iterations (default = %d)\n", iterations);
 		fprintf(stderr, " -sX: use only compressors with compression speed over X MB (default = %d MB)\n", cspeed);
+
+        fprintf(stderr,"\nExamples:\n");
+        fprintf(stderr,PROGNAME " -ebrotli,0,2,5,8,11/zstd filename - selects given compressors\n");
+
+        printf("\nAvailable compressors:\n");
+        printf("all - alias for all available compressors\n");
+        printf("fast - alias for compressors with compression speed over 100 MB/s\n");
+        printf("opt - alias for compressors with optimal parsing (slow compression, fast decompression)\n");
+        for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
+        {
+            printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
+        }
+                    
 		exit(1);
 	}
 
@@ -537,7 +530,9 @@ int main( int argc, char** argv)
 		exit(1);
 	}
 
-	benchmark(in, iterations, chunk_size, cspeed);
+	lzbenchmark(in, encoder_list, iterations, chunk_size, cspeed);
+
+    if (encoder_list) free(encoder_list);
 
 	fclose(in);
 }

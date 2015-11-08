@@ -665,11 +665,14 @@ int64_t lzbench_tornado_decompress(char *inbuf, size_t insize, char *outbuf, siz
 #ifndef BENCH_REMOVE_UCL
 #include "ucl/ucl.h"
 
-int64_t lzbench_ucl_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t algo, size_t level, size_t)
+int64_t lzbench_ucl_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	ucl_uint complen;
 	int res;
-	
+
+    size_t algo = level/10;
+    level = level%10;
+
 	switch (algo)
 	{
 		default:
@@ -682,11 +685,13 @@ int64_t lzbench_ucl_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
 	return complen;
 }
 
-int64_t lzbench_ucl_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t algo, size_t level, size_t)
+int64_t lzbench_ucl_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
 	ucl_uint decomplen;
 	int res;
-	
+
+    size_t algo = level/10;
+    
 	switch (algo)
 	{
 		default:

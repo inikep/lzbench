@@ -1,4 +1,5 @@
-v.0.7.2 
+v.0.8
+ -the "-eX" option where X = compressors separated by '/' with parameters specified after ','
 - zstd updated to v0.3.4
 
 v.0.7.1 
