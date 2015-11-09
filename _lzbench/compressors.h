@@ -105,6 +105,15 @@ typedef int64_t (*compress_func)(char *in, size_t insize, char *out, size_t outs
 #endif
 
 
+#ifndef BENCH_REMOVE_LZLIB
+	int64_t lzbench_lzlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t);
+	int64_t lzbench_lzlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t);
+#else
+	#define lzbench_lzlib_compress NULL
+	#define lzbench_lzlib_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_LZMA
 	int64_t lzbench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t);
 	int64_t lzbench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t);

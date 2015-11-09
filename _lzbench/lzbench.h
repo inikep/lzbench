@@ -13,7 +13,7 @@ typedef struct
     compress_func decompress;
 } compressor_desc_t;
 
-#define LZBENCH_COMPRESSOR_COUNT 30
+#define LZBENCH_COMPRESSOR_COUNT 31
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
@@ -31,6 +31,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lzf",      "3.6",         0, 1,  lzbench_lzf_compress,      lzbench_lzf_decompress },
     { "lzham",    "1.0 -d26",    0, 4,  lzbench_lzham_compress,    lzbench_lzham_decompress },
     { "lzjb",     "2010",        0, 0,  lzbench_lzjb_compress,     lzbench_lzjb_decompress },
+    { "lzlib",    "1.7",         0, 9,  lzbench_lzlib_compress,    lzbench_lzlib_decompress },
     { "lzma",     "9.38",        0, 9,  lzbench_lzma_compress,     lzbench_lzma_decompress },
     { "lzmat",    "1.01",        0, 0,  lzbench_lzmat_compress,    lzbench_lzmat_decompress },
     { "lzo",      "2.09",        1, 1,  lzbench_lzo_compress,      lzbench_lzo_decompress },
@@ -51,7 +52,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 
 char fast[] = "";
 char compr_all[] = "brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz4hc,1,4,9/lz5/lz5hc,1,4,9/" \
-              "lzf,0,1/lzham,0,1/lzjb/lzma,0,1,2,3,4,5/lzmat/lzo,1,9,99,999,1001,1009,1099,1999,2001,2999,3001,3999,4001,4999,5999,6999/" \
+              "lzf,0,1/lzham,0,1/lzjb/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5/lzmat/lzo,1,9,99,999,1001,1009,1099,1999,2001,2999,3001,3999,4001,4999,5999,6999/" \
               "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2,3/shrinker/snappy/tornado,1,2,3,4,5,6,7,10,13,16/ucl,11,16,19,21,26,29,31,36,39/" \
               "wflz/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd/zstd_HC,1,5,9,13,17,20";
 char compr_fast[] = "density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz5/" \
@@ -59,7 +60,7 @@ char compr_fast[] = "density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz5/" \
               "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/" \
               "wflz/zstd";
 char compr_opt[] = "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/" \
-              "lzham,0,1,2,3,4/lzma,0,1,2,3,4,5,6,7/" \
+              "lzham,0,1,2,3,4/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7/" \
               "tornado,5,6,7,8,9,10,11,12,13,14,15,16/" \
               "zstd_HC,10,11,12,13,14,15,16,17,18,19,20";
 #endif

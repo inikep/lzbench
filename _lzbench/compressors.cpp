@@ -325,6 +325,116 @@ int64_t lzbench_lzjb_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 
+#ifndef BENCH_REMOVE_LZLIB
+#include "lzlib/lzlib.h"
+
+int64_t lzbench_lzlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+{
+  struct Lzma_options
+  {
+      int dictionary_size;		/* 4 KiB .. 512 MiB */
+      int match_len_limit;		/* 5 .. 273 */
+  };
+
+  const struct Lzma_options option_mapping[10] = {
+    {   65535,  16 },		/* -0 */
+    { 1 << 20,   5 },		/* -1 */
+    { 3 << 19,   6 },		/* -2 */
+    { 1 << 21,   8 },		/* -3 */
+    { 3 << 20,  12 },		/* -4 */
+    { 1 << 22,  20 },		/* -5 */
+    { 1 << 23,  36 },		/* -6 */
+    { 1 << 24,  68 },		/* -7 */
+    { 3 << 23, 132 },		/* -8 */
+    { 1 << 25, 273 } };		/* -9 */ 
+    
+  struct LZ_Encoder * encoder;
+  const int match_len_limit = option_mapping[level].match_len_limit;
+  const unsigned long long member_size = 0x7FFFFFFFFFFFFFFFULL;	/* INT64_MAX */
+  int new_pos = 0;
+  int written = 0;
+  bool error = false;
+  int dict_size = option_mapping[level].dictionary_size;
+  uint8_t *buf = (uint8_t*)inbuf;
+  uint8_t *obuf = (uint8_t*)outbuf;
+  
+  
+  if( dict_size > insize ) dict_size = insize;		/* saves memory */
+  if( dict_size < LZ_min_dictionary_size() )
+    dict_size = LZ_min_dictionary_size();
+  encoder = LZ_compress_open( dict_size, match_len_limit, member_size );
+  if( !encoder || LZ_compress_errno( encoder ) != LZ_ok )
+    { LZ_compress_close( encoder ); return 0; }
+
+  while( true )
+    {
+    int rd;
+    if( LZ_compress_write_size( encoder ) > 0 )
+      {
+      if( written < insize )
+        {
+        const int wr = LZ_compress_write( encoder, buf + written, insize - written );
+        if( wr < 0 ) { error = true; break; }
+        written += wr;
+        }
+      if( written >= insize ) LZ_compress_finish( encoder );
+      }
+    rd = LZ_compress_read( encoder, obuf + new_pos, outsize - new_pos );
+    if( rd < 0 ) { error = true; break; }
+    new_pos += rd;
+    if( LZ_compress_finished( encoder ) == 1 ) break;
+    }
+    
+  if( LZ_compress_close( encoder ) < 0 ) error = true;
+  if (error) return 0;
+
+  return new_pos;
+}
+ 
+
+int64_t lzbench_lzlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+{
+  struct LZ_Decoder * const decoder = LZ_decompress_open();
+  uint8_t * new_data = (uint8_t*)outbuf;
+  int new_data_size = outsize;		/* initial size */
+  int new_pos = 0;
+  int written = 0;
+  bool error = false;
+  uint8_t *data = (uint8_t*)inbuf;
+  
+  
+  if( !decoder || LZ_decompress_errno( decoder ) != LZ_ok )
+    { LZ_decompress_close( decoder ); return 0; }
+
+  while( true )
+    {
+    int rd;
+    if( LZ_decompress_write_size( decoder ) > 0 )
+      {
+      if( written < insize )
+        {
+        const int wr = LZ_decompress_write( decoder, data + written, insize - written );
+     //   printf("write=%d written=%d left=%d\n", wr, written, insize - written);
+        if( wr < 0 ) { error = true; break; }
+        written += wr;
+        }
+      if( written >= insize ) LZ_decompress_finish( decoder );
+      }
+    rd = LZ_decompress_read( decoder, new_data + new_pos, new_data_size - new_pos );
+  //  printf("read=%d new_pos=%d\n", rd, new_pos);
+    if( rd < 0 ) { error = true; break; }
+    new_pos += rd;
+    if( LZ_decompress_finished( decoder ) == 1 ) break;
+    }
+
+  if( LZ_decompress_close( decoder ) < 0 ) error = true;
+
+  return new_pos;
+}
+
+#endif
+
+
 
 #ifndef BENCH_REMOVE_LZMA
 

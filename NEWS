@@ -1,5 +1,6 @@
 v.0.8
  -the "-eX" option where X = compressors separated by '/' with parameters specified after ','
+- added lzlib 1.7 (http://www.nongnu.org/lzip/lzlib.html)
 - zstd updated to v0.3.4
 
 v.0.7.1 

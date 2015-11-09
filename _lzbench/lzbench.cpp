@@ -511,12 +511,13 @@ int main( int argc, char** argv)
 		fprintf(stderr, " -sX: use only compressors with compression speed over X MB (default = %d MB)\n", cspeed);
 
         fprintf(stderr,"\nExamples:\n");
-        fprintf(stderr,PROGNAME " -ebrotli,0,2,5,8,11/zstd filename - selects given compressors\n");
+        fprintf(stderr,PROGNAME " -ebrotli filename - selects all levels of brotli\n");
+        fprintf(stderr,PROGNAME " -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd\n");
 
         printf("\nAvailable compressors:\n");
         printf("all - alias for all available compressors\n");
         printf("fast - alias for compressors with compression speed over 100 MB/s\n");
-        printf("opt - alias for compressors with optimal parsing (slow compression, fast decompression)\n");
+        printf("opt - compressors with optimal parsing (slow compression, fast decompression)\n");
         for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
         {
             printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
