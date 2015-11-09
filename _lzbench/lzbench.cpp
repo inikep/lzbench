@@ -37,6 +37,7 @@
 #include <vector>
 #include <numeric>
 #include <algorithm> // sort
+#include <string>
 #include <stdlib.h> 
 #include <stdio.h> 
 #include <stdint.h> 
@@ -68,12 +69,65 @@
 
 #define ITERS(count) for(int ii=0; ii<count; ii++)
 
-bool show_full_stats = false;
+
+typedef struct string_table
+{
+    std::string column1;
+    float column2, column3, column5;
+    size_t column4;
+    string_table(std::string c1, float c2, float c3, size_t c4, float c5) : column1(c1), column2(c2), column3(c3), column4(c4), column5(c5) {}
+} string_table_t;
+
+struct less_using_1st_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column1 < struct2.column1); } };
+struct less_using_2nd_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column2 > struct2.column2); } };
+struct less_using_3rd_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column3 > struct2.column3); } };
+struct less_using_4th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column4 < struct2.column4); } };
+struct less_using_5th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column5 < struct2.column5); } };
+
+std::vector<string_table_t> results;
 bool turbobench_format = false;
 int verbose = 0;
 
+
+void format(std::string& s,const char* formatstring, ...) 
+{
+   char buff[1024];
+   va_list args;
+   va_start(args, formatstring);
+
+#ifdef WIN32
+   _vsnprintf( buff, sizeof(buff), formatstring, args);
+#else
+   vsnprintf( buff, sizeof(buff), formatstring, args);
+#endif
+
+   va_end(args);
+
+   s=buff;
+} 
+
+
+void print_row(string_table_t& row)
+{
+    if (turbobench_format)
+    {
+        printf("%12d%6.1f%9.2f%9.2f  %s\n", row.column4, row.column5, row.column2, row.column3, row.column1.c_str());
+        return;
+    }
+
+    printf("| %-27s ", row.column1.c_str());
+    if (row.column2 < 10) printf("|%6.2f MB/s ", row.column2); else printf("|%6d MB/s ", (int)row.column2);
+    if (!row.column3)
+        printf("|      ERROR ");
+    else
+        if (row.column3 < 10) printf("|%6.2f MB/s ", row.column3); else printf("|%6d MB/s ", (int)row.column3); 
+    printf("|%12d |%6.2f |\n", row.column4, row.column5);
+}
+
+
 void print_stats(const compressor_desc_t* desc, int level, std::vector<uint32_t> &ctime, std::vector<uint32_t> &dtime, uint32_t insize, uint32_t outsize, bool decomp_error, int cspeed)
 {
+    std::string column1;
     std::sort(ctime.begin(), ctime.end());
     std::sort(dtime.begin(), dtime.end());
 
@@ -88,33 +142,13 @@ void print_stats(const compressor_desc_t* desc, int level, std::vector<uint32_t>
 
     if (cspeed > insize / cmili_fastest / 1024) { LZBENCH_DEBUG(9, "%s FULL slower than %d MB/s\n", desc->name, insize / cmili_fastest / 1024); return; } 
 
-    char text[256];
     if (desc->first_level == 0 && desc->last_level==0)
-        snprintf(text, sizeof(text), "%s %s", desc->name, desc->version);
+        format(column1, "%s %s", desc->name, desc->version);
     else
-        snprintf(text, sizeof(text), "%s %s level %d", desc->name, desc->version, level);
+        format(column1, "%s %s level %d", desc->name, desc->version, level);
 
-    if (show_full_stats)
-    {
-        printf("%-19s fastest %d ms (%d MB/s), %d, %d ms (%d MB/s)\n", text, cmili_fastest, insize / cmili_fastest / 1024, outsize, dmili_fastest, insize / dmili_fastest / 1024);
-        printf("%-19s median  %d ms (%d MB/s), %d, %d ms (%d MB/s)\n", text, cmili_med, insize / cmili_med / 1024, outsize, dmili_med, insize / dmili_med / 1024);
-        printf("%-19s average %d ms (%d MB/s), %d, %d ms (%d MB/s)\n", text, cmili_avg, insize / cmili_avg / 1024, outsize, dmili_avg, insize / dmili_avg / 1024);
-    }
-    else
-    {
-        if (turbobench_format)
-            printf("%12d%6.1f%9.2f%9.2f  %s\n", outsize, outsize * 100.0/ insize, insize / cmili_fastest / 1024.0, insize / dmili_fastest / 1024.0, text);
-        else
-        {
-            printf("| %-27s ", text);
-            if (insize / cmili_fastest / 1024 < 10) printf("|%6.2f MB/s ", insize / cmili_fastest / 1024.0); else printf("|%6d MB/s ", insize / cmili_fastest / 1024);
-            if (decomp_error)
-                printf("|      ERROR ");
-            else
-                if (insize / dmili_fastest / 1024 < 10) printf("|%6.2f MB/s ", insize / dmili_fastest / 1024.0); else printf("|%6d MB/s ", insize / dmili_fastest / 1024); 
-            printf("|%12d |%6.2f |\n", outsize, outsize * 100.0/ insize);
-        }
-    }
+    results.push_back(string_table_t(column1, insize / cmili_fastest / 1024.0, (decomp_error)?0:(insize / dmili_fastest / 1024.0), outsize, outsize * 100.0 / insize));
+    print_row(results[results.size()-1]);
 
     ctime.clear();
     dtime.clear();
@@ -452,11 +486,14 @@ void test_compressor(char* filename)
 }
 
 
+
+
 int main( int argc, char** argv) 
 {
 	FILE *in;
 	uint32_t iterations, chunk_size, cspeed;
     char* encoder_list = NULL;
+    int sort_col = 0;
 
 	iterations = 1;
 	chunk_size = 1 << 31;
@@ -464,6 +501,7 @@ int main( int argc, char** argv)
 
 //    test_compressor(argv[1]);
 //    exit(0);
+
 
 #ifdef WINDOWS
 //	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
@@ -478,6 +516,9 @@ int main( int argc, char** argv)
 		switch (argv[1][1]) {
 	case 'i':
 		iterations=atoi(argv[1]+2);
+		break;
+	case 'c':
+		sort_col = atoi(argv[1] + 2);
 		break;
 	case 'b':
 		chunk_size = atoi(argv[1] + 2) << 10;
@@ -506,15 +547,16 @@ int main( int argc, char** argv)
 	if (argc<2) {
 		fprintf(stderr, "usage: " PROGNAME " [options] input\n");
 		fprintf(stderr, " -bX: set block/chunk size to X KB (default = %d KB)\n", chunk_size>>10);
+		fprintf(stderr, " -cX: sort results by column numer X\n");
 		fprintf(stderr, " -eX: X = compressors separated by '/' with parameters specified after ','\n");
 		fprintf(stderr, " -iX: number of iterations (default = %d)\n", iterations);
 		fprintf(stderr, " -sX: use only compressors with compression speed over X MB (default = %d MB)\n", cspeed);
 
-        fprintf(stderr,"\nExamples:\n");
-        fprintf(stderr,PROGNAME " -ebrotli filename - selects all levels of brotli\n");
-        fprintf(stderr,PROGNAME " -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd\n");
+        fprintf(stderr,"\nExample usage:\n");
+        fprintf(stderr,"  " PROGNAME " -ebrotli filename - selects all levels of brotli\n");
+        fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd\n");
 
-        printf("\nAvailable compressors:\n");
+        printf("\nAvailable compressors for -e option:\n");
         printf("all - alias for all available compressors\n");
         printf("fast - alias for compressors with compression speed over 100 MB/s\n");
         printf("opt - compressors with optimal parsing (slow compression, fast decompression)\n");
@@ -536,6 +578,27 @@ int main( int argc, char** argv)
     if (encoder_list) free(encoder_list);
 
 	fclose(in);
+
+
+    if (sort_col <= 0) return 0;
+
+    printf("\nThe results sorted by column number %d:\n", sort_col);
+    printf("| Compressor name             | Compression| Decompress.| Compr. size | Ratio |\n");
+
+    switch (sort_col)
+    {
+        default:
+        case 1: std::sort(results.begin(), results.end(), less_using_1st_column()); break;
+        case 2: std::sort(results.begin(), results.end(), less_using_2nd_column()); break;
+        case 3: std::sort(results.begin(), results.end(), less_using_3rd_column()); break;
+        case 4: std::sort(results.begin(), results.end(), less_using_4th_column()); break;
+        case 5: std::sort(results.begin(), results.end(), less_using_5th_column()); break;
+    }
+
+    for (std::vector<string_table_t>::iterator it = results.begin(); it!=results.end(); it++)
+    {
+        print_row(*it);
+    }
 }
 
 

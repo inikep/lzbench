@@ -86,7 +86,7 @@ int64_t lzbench_csc_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
 {
 	MemSeqStream isss, osss;
 	CSCProps p;
-//	uint32_t dict_size = 64000000;
+	if (!dict_size) dict_size = 1<<26;
 
 	if (insize < dict_size)
 		dict_size = insize;
@@ -270,12 +270,12 @@ int64_t lzbench_lzf_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 #include "lzham/lzham.h"
 #include <memory.h>
 
-int64_t lzbench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dict_size, size_t)
+int64_t lzbench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dict_size_log, size_t)
 {
 	lzham_compress_params comp_params;
 	memset(&comp_params, 0, sizeof(comp_params));
 	comp_params.m_struct_size = sizeof(lzham_compress_params);
-	comp_params.m_dict_size_log2 = 26;
+	comp_params.m_dict_size_log2 = dict_size_log?dict_size_log:26;
 	comp_params.m_max_helper_threads = 0;
 	comp_params.m_level = (lzham_compress_level)level;
 
