@@ -28,8 +28,7 @@ int compress_all_at_once = 0;
 
 struct Results 
 {
-	uint32_t inlen, outlen;
-	uint32_t inpos;
+	uint32_t inpos, inlen, outpos, outlen;
 	uint8_t *inbuf, *outbuf;
 };
 
@@ -43,7 +42,7 @@ int ReadWriteCallback (const char *what, void *buf, int size, void *r_)
 
   if (strequ(what,"init")) {
   
-	  r.inpos = r.outlen = 0;
+	  r.inpos = r.outpos = 0;
 	  return FREEARC_OK;
 
   } else if (strequ(what,"read")) {
@@ -56,8 +55,10 @@ int ReadWriteCallback (const char *what, void *buf, int size, void *r_)
 
   } else if (strequ(what,"write") || strequ(what,"quasiwrite")) {
     if (strequ(what,"write")) {
-		memcpy(r.outbuf+r.outlen, buf, size);
-		r.outlen += size;
+        if (r.outpos + size > r.outlen)
+            return 0;
+		memcpy(r.outbuf+r.outpos, buf, size);
+		r.outpos += size;
 		return size;
 	}
 
@@ -69,46 +70,6 @@ int ReadWriteCallback (const char *what, void *buf, int size, void *r_)
     return FREEARC_ERRCODE_NOT_IMPLEMENTED;
   }
 }
-
-
-// #define CHUNK_SIZE 10240
-// 	GetTime(start_ticks); 
-// 	ReadWriteCallback("init", NULL, 0, &r);
-// 	ArithCoder<EOB_CODE> ari(ReadWriteCallback, &r, CHUNK_SIZE, CHUNK_SIZE, 256);
-// 	for (int i=0; i<size; i++)
-// 	{
-// 		if (i%CHUNK_SIZE == 0)
-// 			ari.flush();
-// 		ari.encode(inbuf[i]); 
-// 	}
-// 	outlen = r.outlen;
-// 	Print_Time("ArithCoder", &ticksPerSecond, &start_ticks, size, outlen);
-// 
-// 
-// 	GetTime(start_ticks); 
-// 	ReadWriteCallback("init", NULL, 0, &r);
-// 	HuffmanEncoder<EOB_CODE> huff(ReadWriteCallback, &r, CHUNK_SIZE, CHUNK_SIZE, 256);
-// 	for (int i=0; i<size; i++)
-// 	{
-// 		if (i%CHUNK_SIZE == 0)
-// 			huff.flush();
-// 		huff.encode(inbuf[i]); 
-// 	}
-// 	outlen = r.outlen;
-// 	Print_Time("HuffmanEncoder", &ticksPerSecond, &start_ticks, size, outlen);
-// 
-// 
-// 	GetTime(start_ticks); 
-// 	ReadWriteCallback("init", NULL, 0, &r);
-// 	HuffmanEncoderOrder1<256, EOB_CODE> huff1(ReadWriteCallback, &r, CHUNK_SIZE, CHUNK_SIZE, 256);
-// 	for (int i=0; i<size; i++)
-// 	{
-// 		if (i%CHUNK_SIZE == 0)
-// 			huff1.flush();
-// 		huff1.encode(inbuf[i-1], inbuf[i]); 
-// 	}
-// 	outlen = r.outlen;
-// 	Print_Time("HuffmanEncoderO1", &ticksPerSecond, &start_ticks, size, outlen);
 
 
 
@@ -124,14 +85,15 @@ PackMethod second_Tornado_method[] =
 , {  7, BITCODER,  false,   1,     4*mb, NON_CACHING_MF,  32*mb,  GREEDY,   0,    0,  999,       0,    0,  128 }
 };
 
-	
-uint32_t tor_compress(uint8_t method, uint8_t* inbuf, uint8_t* outbuf, uint32_t size)
+
+uint32_t tor_compress(uint8_t method, uint8_t* inbuf, uint32_t inlen, uint8_t* outbuf, uint32_t outlen)
 {
 	PackMethod m;
 	static Results r; 
 	r.inbuf = inbuf;
 	r.outbuf = outbuf;
-	r.inlen = size;
+	r.inlen = inlen;
+    r.outlen = outlen;
 
 	ReadWriteCallback ("init", NULL, 0, &r);
 	if (method >= 20)
@@ -142,18 +104,19 @@ uint32_t tor_compress(uint8_t method, uint8_t* inbuf, uint8_t* outbuf, uint32_t 
 	if (r.inlen >= 0)
 		m.buffer = mymin (m.buffer, r.inlen+LOOKAHEAD*2);
 	int result = tor_compress (m, ReadWriteCallback, &r, NULL, -1); 
-	return r.outlen;
+	return r.outpos;
 }
 
-uint32_t tor_decompress(uint8_t* inbuf, uint8_t* outbuf, uint32_t size)
+uint32_t tor_decompress(uint8_t* inbuf, uint32_t inlen, uint8_t* outbuf, uint32_t outlen)
 {
 	static Results r; 
 	r.inbuf = inbuf;
 	r.outbuf = outbuf;
-	r.inlen = size;
+	r.inlen = inlen;
+    r.outlen = outlen;
 
 	ReadWriteCallback ("init", NULL, 0, &r);
 	int result = tor_decompress(ReadWriteCallback, &r, NULL, -1); 
 	ReadWriteCallback ("done", NULL, 0, &r); 
-	return r.outlen;
+	return r.outpos;
 }

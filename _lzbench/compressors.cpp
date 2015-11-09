@@ -760,12 +760,12 @@ int64_t lzbench_snappy_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 int64_t lzbench_tornado_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
-	return tor_compress(level, (uint8_t*)inbuf, (uint8_t*)outbuf, insize); 
+	return tor_compress(level, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize); 
 }
 
 int64_t lzbench_tornado_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
 {
-	return tor_decompress((uint8_t*)inbuf, (uint8_t*)outbuf, insize); 
+	return tor_decompress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize); 
 }
 
 #endif
