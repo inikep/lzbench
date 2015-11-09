@@ -354,7 +354,7 @@ void lzbench_test_with_params(char *namesWithParams, int cspeed, size_t chunk_si
         }
         
         copy2 = (char*)strdup(token);
-        printf("params = %s\n", token);
+        LZBENCH_DEBUG(1, "params = %s\n", token);
         token2 = strtok_r(copy2, delimiters2, &save_ptr2);
 
         if (token2)
@@ -547,7 +547,7 @@ int main( int argc, char** argv)
 	if (argc<2) {
 		fprintf(stderr, "usage: " PROGNAME " [options] input\n");
 		fprintf(stderr, " -bX: set block/chunk size to X KB (default = %d KB)\n", chunk_size>>10);
-		fprintf(stderr, " -cX: sort results by column numer X\n");
+		fprintf(stderr, " -cX: sort results by column number X\n");
 		fprintf(stderr, " -eX: X = compressors separated by '/' with parameters specified after ','\n");
 		fprintf(stderr, " -iX: number of iterations (default = %d)\n", iterations);
 		fprintf(stderr, " -sX: use only compressors with compression speed over X MB (default = %d MB)\n", cspeed);

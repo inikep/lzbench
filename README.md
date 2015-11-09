@@ -16,7 +16,7 @@ usage: lzbench [options] input_file
 
 where options are:
  -bX: divides input data in blocks/chunks of size X KB (default = 2097152 KB)
- -cX: sort results by column numer X
+ -cX: sort results by column number X
  -eX: X = compressors separated by '/' with parameters specified after ','
  -iX: selects number of iterations (default 1) and displays best time of X iterations.
  -sX: use only compressors with compression speed over X MB (default = 0 MB)

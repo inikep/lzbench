@@ -36,7 +36,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lzmat",    "1.01",        0, 0,  lzbench_lzmat_compress,    lzbench_lzmat_decompress },
     { "lzo",      "2.09",        1, 1,  lzbench_lzo_compress,      lzbench_lzo_decompress },
     { "lzrw",     "15-Jul-1991", 1, 4,  lzbench_lzrw_compress,     lzbench_lzrw_decompress },
-    { "pithy",    "2011-12-24",  0, 0,  lzbench_pithy_compress,    lzbench_pithy_decompress },
+    { "pithy",    "2011-12-24",  0, 9,  lzbench_pithy_compress,    lzbench_pithy_decompress },
     { "quicklz",  "1.5.0",       1, 3,  lzbench_quicklz_compress,  lzbench_quicklz_decompress },
     { "shrinker", "0.1",         0, 0,  lzbench_shrinker_compress, lzbench_shrinker_decompress },
     { "snappy",   "1.1.3",       0, 0,  lzbench_snappy_compress,   lzbench_snappy_decompress },
