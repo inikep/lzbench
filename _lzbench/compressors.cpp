@@ -894,6 +894,25 @@ int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 
+
+#ifndef BENCH_REMOVE_XZ
+#include "xz/alone_encoder.h" 
+
+int64_t lzbench_xz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+{
+    return xz_alone_compress(inbuf, insize, outbuf, outsize, level, 0, 0);
+}
+
+int64_t lzbench_xz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+{
+    return xz_alone_decompress(inbuf, insize, outbuf, outsize, 0, 0, 0);
+}
+
+#endif
+
+
+
+
 #ifndef BENCH_REMOVE_YALZ77
 #include "yalz77/lz77.h"
 

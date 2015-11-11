@@ -232,6 +232,15 @@ typedef int64_t (*compress_func)(char *in, size_t insize, char *out, size_t outs
 #endif
 
 
+#ifndef BENCH_REMOVE_XZ
+	int64_t lzbench_xz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t);
+	int64_t lzbench_xz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t);
+#else
+	#define lzbench_xz_compress NULL
+	#define lzbench_xz_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_YALZ77
 	int64_t lzbench_yalz77_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t);
 	int64_t lzbench_yalz77_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t);

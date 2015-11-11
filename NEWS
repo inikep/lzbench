@@ -4,10 +4,11 @@ v.0.8
     Examples:
     lzbench -ebrotli filename - selects all levels of brotli
     lzbench -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd
-- added liblzg 1.0.8
+- added lzg 1.0.8
 - added lzlib 1.7 (http://www.nongnu.org/lzip/lzlib.html)
 - added brieflz 1.1.0
 - added yalz77 2015-09-19
+- added xz 5.2.2
 - zstd updated to v0.3.6
 
 v.0.7.1 
