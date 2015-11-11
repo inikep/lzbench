@@ -33,6 +33,7 @@
 #define __STDC_FORMAT_MACROS // now PRIu64 will work
 #include <inttypes.h> // now PRIu64 will work
 #define _FILE_OFFSET_BITS 64  // turn off_t into a 64-bit type for ftello() and fseeko()
+#define PAD_SIZE (16*1024)
 
 #include <vector>
 #include <numeric>
@@ -56,6 +57,7 @@
 	#endif
 	#define PROGOS "Windows"
 #else
+    #include <stdarg.h> // va_args
 	#include <time.h>   
 	#include <unistd.h>
 	#include <sys/resource.h>
@@ -111,7 +113,7 @@ void print_row(string_table_t& row)
 {
     if (turbobench_format)
     {
-        printf("%12d%6.1f%9.2f%9.2f  %s\n", row.column4, row.column5, row.column2, row.column3, row.column1.c_str());
+        printf("%12" PRId64" %6.1f%9.2f%9.2f  %s\n", row.column4, row.column5, row.column2, row.column3, row.column1.c_str());
         return;
     }
 
@@ -121,7 +123,7 @@ void print_row(string_table_t& row)
         printf("|      ERROR ");
     else
         if (row.column3 < 10) printf("|%6.2f MB/s ", row.column3); else printf("|%6d MB/s ", (int)row.column3); 
-    printf("|%12d |%6.2f |\n", row.column4, row.column5);
+    printf("|%12" PRId64 " |%6.2f |\n", row.column4, row.column5);
 }
 
 
@@ -184,7 +186,7 @@ int64_t lzbench_compress(compress_func compress, size_t chunk_size, std::vector<
     {
         part = MIN(insize, chunk_size);
         clen = compress((char*)inbuf, part, (char*)outbuf, outsize, param1, param2, param3);
-		LZBENCH_DEBUG(5,"ENC part=%lld clen=%lld in=%d\n", part, clen, inbuf-start);
+		LZBENCH_DEBUG(5,"ENC part=%d clen=%d in=%d\n", (int)part, (int)clen, (int)(inbuf-start));
 
         if (clen <= 0 || clen == part)
         {
@@ -223,7 +225,7 @@ int64_t lzbench_decompress(compress_func decompress, size_t chunk_size, std::vec
         {
             dlen = decompress((char*)inbuf, part, (char*)outbuf, MIN(chunk_size,outsize), param1, param2, param3);
         }
-		LZBENCH_DEBUG(5, "DEC part=%lld dlen=%lld out=%d\n", part, dlen, outbuf - outstart);
+		LZBENCH_DEBUG(5, "DEC part=%d dlen=%d out=%d\n", (int)part, (int)dlen, (int)(outbuf - outstart));
         if (dlen <= 0) return dlen;
 
         inbuf += part;
@@ -247,7 +249,7 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
 
     if (!desc->compress || !desc->decompress) return;
 
-    LZBENCH_DEBUG(1, "*** trying %s insize=%d comprsize=%d chunk_size=%d\n", desc->name, insize, comprsize, chunk_size);
+    LZBENCH_DEBUG(1, "*** trying %s insize=%d comprsize=%d chunk_size=%d\n", desc->name, (int)insize, (int)comprsize, (int)chunk_size);
 
     if (cspeed > 0)
     {
@@ -407,12 +409,12 @@ void lzbenchmark(FILE* in, char* encoder_list, int iters, uint32_t chunk_size, i
 	insize = ftell(in);
 	rewind(in);
 
-	comprsize = insize + insize/6 + 2048; // for pithy
+	comprsize = insize + insize/6 + PAD_SIZE; // for pithy
 
 //	printf("insize=%lld comprsize=%lld\n", insize, comprsize);
-	inbuf = (uint8_t*)malloc(insize + 2048);
+	inbuf = (uint8_t*)malloc(insize + PAD_SIZE);
 	compbuf = (uint8_t*)malloc(comprsize);
-	decomp = (uint8_t*)calloc(1, insize + 2048);
+	decomp = (uint8_t*)calloc(1, insize + PAD_SIZE);
 
 	if (!inbuf || !compbuf || !decomp)
 	{

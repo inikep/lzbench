@@ -44,7 +44,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "snappy",   "1.1.3",       0, 0,  lzbench_snappy_compress,   lzbench_snappy_decompress },
     { "tornado",  "0.6a",        1, 16, lzbench_tornado_compress,  lzbench_tornado_decompress },
     { "ucl",      "1.03",       11, 39, lzbench_ucl_compress,      lzbench_ucl_decompress },
-    { "wflz",     "2015-09-16",  0, 0,  lzbench_wflz_compress,     lzbench_wflz_decompress },
+    { "wflz",     "2015-09-16",  0, 0,  lzbench_wflz_compress,     lzbench_wflz_decompress }, // hangs on Ubuntu
     { "xz",       "5.2.2",       0, 9,  lzbench_xz_compress,       lzbench_xz_decompress },
     { "yalz77",   "2015-09-19",  1, 12, lzbench_yalz77_compress,   lzbench_yalz77_decompress },
     { "yappy",    "2014-03-22",  0, 99, lzbench_yappy_compress,    lzbench_yappy_decompress },
@@ -58,11 +58,11 @@ char fast[] = "";
 char compr_all[] = "brieflz/brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz4hc,1,4,9/lz5/lz5hc,1,4,9/" \
               "lzf,0,1/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5/lzmat/lzo,1,9,99,999,1001,1009,1099,1999,2001,2999,3001,3999,4001,4999,5999,6999/" \
               "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2,3/shrinker/snappy/tornado,1,2,3,4,5,6,7,10,13,16/ucl,11,16,19,21,26,29,31,36,39/" \
-              "wflz/xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd/zstd_HC,1,5,9,13,17,20";
+              "xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd/zstd_HC,1,5,9,13,17,20";
 char compr_fast[] = "density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz5/" \
               "lzf,0,1/lzjb/lzo,1,1001,2001,3001,4001/" \
               "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/" \
-              "wflz/zstd";
+              "zstd";
 char compr_opt[] = "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/" \
               "lzham,0,1,2,3,4/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7/" \
               "tornado,5,6,7,8,9,10,11,12,13,14,15,16/" \
