@@ -100,11 +100,13 @@ BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/strea
 
 ZSTD_FILES = zstd/fse.o zstd/huff0.o zstd/zstd.o zstd/zstdhc.o 
 
-LZIP_FILES = lzlib/lzlib.o
+LZLIB_FILES = lzlib/lzlib.o
+
+BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depacks.o 
 
 MISC_FILES = crush/crush.o shrinker/shrinker.o yappy/yappy.o fastlz/fastlz.o tornado/tor_test.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
 
-lzbench: $(LZIP_FILES) $(LZF_FILES) $(LZRW_FILES) $(ZSTD_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
+lzbench: $(BRIEFLZ_FILES) $(LZLIB_FILES) $(LZF_FILES) $(LZRW_FILES) $(ZSTD_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
 	$(GPP) $^ -o $@ $(LDFLAGS)
 
 .c.o:
@@ -117,4 +119,4 @@ lzbench: $(LZIP_FILES) $(LZF_FILES) $(LZRW_FILES) $(ZSTD_FILES) $(BROTLI_FILES) 
 	$(GPP) $(CFLAGS) $< -c -o $@
 
 clean:
-	rm -f _lzbench/*.o brotli/enc/*.o brotli/dec/*.o  libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/spookyhash/*.o density/*.o pithy/*.o zstd/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz5/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o *.o *.exe
+	rm -f _lzbench/*.o lzlib/*.o brieflz/*.o brotli/enc/*.o brotli/dec/*.o  libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/spookyhash/*.o density/*.o pithy/*.o zstd/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz5/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o *.o *.exe

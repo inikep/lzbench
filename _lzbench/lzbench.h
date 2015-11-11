@@ -13,11 +13,12 @@ typedef struct
     compress_func decompress;
 } compressor_desc_t;
 
-#define LZBENCH_COMPRESSOR_COUNT 31
+#define LZBENCH_COMPRESSOR_COUNT 32
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
     { "memcpy",   "",            0, 0,  NULL,                      NULL },
+    { "brieflz",  "1.1.0",       0, 0,  lzbench_brieflz_compress,  lzbench_brieflz_decompress },
     { "brotli",   "2015-10-29",  0, 11, lzbench_brotli_compress,   lzbench_brotli_decompress },
     { "crush",    "1.0",         0, 1,  lzbench_crush_compress,    lzbench_crush_decompress },
     { "csc",      "3.3",         1, 5,  lzbench_csc_compress,      lzbench_csc_decompress },
@@ -51,7 +52,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 };
 
 char fast[] = "";
-char compr_all[] = "brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz4hc,1,4,9/lz5/lz5hc,1,4,9/" \
+char compr_all[] = "brieflz/brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz4hc,1,4,9/lz5/lz5hc,1,4,9/" \
               "lzf,0,1/lzham,0,1/lzjb/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5/lzmat/lzo,1,9,99,999,1001,1009,1099,1999,2001,2999,3001,3999,4001,4999,5999,6999/" \
               "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2,3/shrinker/snappy/tornado,1,2,3,4,5,6,7,10,13,16/ucl,11,16,19,21,26,29,31,36,39/" \
               "wflz/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd/zstd_HC,1,5,9,13,17,20";

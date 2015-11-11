@@ -7,6 +7,15 @@
 typedef int64_t (*compress_func)(char *in, size_t insize, char *out, size_t outsize, size_t, size_t, size_t);
 
 
+#ifndef BENCH_REMOVE_BRIEFLZ
+	int64_t lzbench_brieflz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t);
+	int64_t lzbench_brieflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t);
+#else
+	#define lzbench_brieflz_compress NULL
+	#define lzbench_brieflz_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_BROTLI
 	int64_t lzbench_brotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t);
 	int64_t lzbench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t);
