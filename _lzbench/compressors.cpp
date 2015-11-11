@@ -899,7 +899,7 @@ int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 int64_t lzbench_yalz77_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
 {
-  lz77::compress_t compress;
+  lz77::compress_t compress(level, lz77::DEFAULT_BLOCKSIZE);
   std::string compressed = compress.feed((unsigned char*)inbuf, (unsigned char*)inbuf+insize);
   if (compressed.size() > outsize) return 0;
   memcpy(outbuf, compressed.c_str(), compressed.size());
