@@ -49,6 +49,8 @@ extern "C" {
 ****************************************/
 static size_t ZSTD_read_ARCH(const void* p) { size_t r; memcpy(&r, p, sizeof(r)); return r; }
 
+#define MIN(a,b) ((a)<(b) ? (a) : (b))
+
 static unsigned ZSTD_highbit(U32 val)
 {
 #   if defined(_MSC_VER)   /* Visual */
@@ -152,7 +154,7 @@ MEM_STATIC size_t ZSTD_count(const BYTE* pIn, const BYTE* pMatch, const BYTE* pI
         return (size_t)(pIn - pStart);
     }
 
-    if (MEM_32bits()) if ((pIn<(pInLimit-3)) && (MEM_read32(pMatch) == MEM_read32(pIn))) { pIn+=4; pMatch+=4; }
+    if (MEM_64bits()) if ((pIn<(pInLimit-3)) && (MEM_read32(pMatch) == MEM_read32(pIn))) { pIn+=4; pMatch+=4; }
     if ((pIn<(pInLimit-1)) && (MEM_read16(pMatch) == MEM_read16(pIn))) { pIn+=2; pMatch+=2; }
     if ((pIn<pInLimit) && (*pMatch == *pIn)) pIn++;
     return (size_t)(pIn - pStart);
@@ -169,7 +171,9 @@ static void ZSTD_wildcopy(void* dst, const void* src, size_t length)
     const BYTE* ip = (const BYTE*)src;
     BYTE* op = (BYTE*)dst;
     BYTE* const oend = op + length;
-    do COPY8(op, ip) while (op < oend);
+    do
+        COPY8(op, ip)
+    while (op < oend);
 }
 
 
@@ -202,6 +206,8 @@ typedef struct {
 
 void ZSTD_resetSeqStore(seqStore_t* ssPtr);
 
+static const U32 g_searchStrength = 8;
+
 #define REPCODE_STARTVALUE 4
 #define MLbits   7
 #define LLbits   6
@@ -210,6 +216,9 @@ void ZSTD_resetSeqStore(seqStore_t* ssPtr);
 #define MaxLL  ((1<<LLbits) - 1)
 #define MaxOff   31
 
+#define MIN_SEQUENCES_SIZE (2 /*seqNb*/ + 2 /*dumps*/ + 3 /*seqTables*/ + 1 /*bitStream*/)
+#define MIN_CBLOCK_SIZE (3 /*litCSize*/ + MIN_SEQUENCES_SIZE)
+
 /** ZSTD_storeSeq
     Store a sequence (literal length, literals, offset code and match length) into seqStore_t
     @offsetCode : distance to match, or 0 == repCode
@@ -217,6 +226,14 @@ void ZSTD_resetSeqStore(seqStore_t* ssPtr);
 */
 MEM_STATIC void ZSTD_storeSeq(seqStore_t* seqStorePtr, size_t litLength, const BYTE* literals, size_t offsetCode, size_t matchCode)
 {
+#if 0
+    static const BYTE* g_start = NULL;
+    if (g_start==NULL) g_start = literals;
+    if (literals - g_start == 8695)
+    printf("pos %6u : %3u literals & match %3u bytes at distance %6u \n",
+           (U32)(literals - g_start), (U32)litLength, (U32)matchCode+4, (U32)offsetCode);
+#endif
+
     /* copy Literals */
     ZSTD_wildcopy(seqStorePtr->lit, literals, litLength);
     seqStorePtr->lit += litLength;

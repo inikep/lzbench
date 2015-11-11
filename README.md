@@ -15,9 +15,15 @@ Usage
 usage: lzbench [options] input_file
 
 where options are:
- -iX: selects number of iterations (default 1) and displays best time of X iterations.
  -bX: divides input data in blocks/chunks of size X KB (default = 2097152 KB)
- -sX: selects only compressors with compression speed over X MB (default = 100 MB)
+ -cX: sort results by column number X
+ -eX: X = compressors separated by '/' with parameters specified after ','
+ -iX: selects number of iterations (default 1) and displays best time of X iterations.
+ -sX: use only compressors with compression speed over X MB (default = 0 MB)
+
+Example usage:
+  lzbench -ebrotli filename - selects all levels of brotli
+  lzbench -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd
 ```
 
 
@@ -38,6 +44,7 @@ To remove one of compressors you can add -DBENCH_REMOVE_XXX to $DEFINES in Makef
 Supported compressors
 -------------------------
 ```
+brieflz 1.1.0
 brotli 2015-10-29
 crush 1.0
 csc 3.3
@@ -45,25 +52,29 @@ density 0.12.5 beta
 fastlz 0.1
 lz4/lz4hc r131
 lz5/lz5hc r131b
-lzf
+lzf 3.6
+lzg 1.0.8
 lzham 1.0
 lzjb 2010
+lzlib 1.7
 lzma 9.38
 lzmat 1.01
 lzo 2.09
-lzrw
+lzrw 15-Jul-1991
 pithy 2011-12-24
 quicklz 1.5.0
-quicklz 1.5.1 b7
-shrinker
+shrinker 0.1
 snappy 1.1.3
 tornado 0.6a
 ucl 1.03
-yappy
+wflz 2015-09-16
+xz 5.2.2
+yalz77 2015-09-19
+yappy 2014-03-22
 zlib 1.2.8
 zling 2015-09-15
-zstd v0.3
-zstd_HC v0.3
+zstd v0.3.6
+zstd_HC v0.3.6
 ```
 
 Benchmarks

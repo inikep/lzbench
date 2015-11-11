@@ -120,14 +120,11 @@
 #define GB *(1U<<30)
 
 #define BLOCKSIZE (128 KB)                 /* define, for static allocation */
-#define MIN_SEQUENCES_SIZE (2 /*seqNb*/ + 2 /*dumps*/ + 3 /*seqTables*/ + 1 /*bitStream*/)
-#define MIN_CBLOCK_SIZE (3 /*litCSize*/ + MIN_SEQUENCES_SIZE)
 #define IS_RAW BIT0
 #define IS_RLE BIT1
 
 static const U32 g_maxDistance = 4 * BLOCKSIZE;
 static const U32 g_maxLimit = 1 GB;
-static const U32 g_searchStrength = 8;
 
 #define WORKPLACESIZE (BLOCKSIZE*3)
 #define MINMATCH 4
@@ -526,8 +523,6 @@ static U32   ZSTD_hashPtr(const void* p) { return ( (MEM_read64(p) * prime7bytes
 
 //static U32   ZSTD_hashPtr(const void* p) { return ( (*(U32*)p * KNUTH) >> (32-HASH_LOG)); }
 
-static void  ZSTD_addPtr(U32* table, const BYTE* p, const BYTE* start) { table[ZSTD_hashPtr(p)] = (U32)(p-start); }
-
 static const BYTE* ZSTD_updateMatch(U32* table, const BYTE* p, const BYTE* start)
 {
     U32 h = ZSTD_hashPtr(p);
@@ -541,6 +536,8 @@ static int ZSTD_checkMatch(const BYTE* match, const BYTE* ip)
 {
     return MEM_read32(match) == MEM_read32(ip);
 }
+
+static void  ZSTD_addPtr(U32* table, const BYTE* p, const BYTE* start) { table[ZSTD_hashPtr(p)] = (U32)(p-start); }
 
 
 static size_t ZSTD_compressBlock(ZSTD_CCtx* ctx, void* dst, size_t maxDstSize, const void* src, size_t srcSize)
@@ -570,7 +567,7 @@ static size_t ZSTD_compressBlock(ZSTD_CCtx* ctx, void* dst, size_t maxDstSize, c
     ZSTD_resetSeqStore(seqStorePtr);
 
     /* Main Search Loop */
-    while (ip <= ilimit)
+    while (ip < ilimit)  /* < instead of <=, because unconditionnal ZSTD_addPtr(ip+1) */
     {
         const BYTE* match = ZSTD_updateMatch(HashTable, ip, base);
 
@@ -591,7 +588,8 @@ static size_t ZSTD_compressBlock(ZSTD_CCtx* ctx, void* dst, size_t maxDstSize, c
             ZSTD_addPtr(HashTable, ip+1, base);
             ip += matchLength + MINMATCH;
             anchor = ip;
-            if (ip <= ilimit) ZSTD_addPtr(HashTable, ip-2, base);
+            if (ip < ilimit) /* same test as loop, for speed */
+                ZSTD_addPtr(HashTable, ip-2, base);
         }
     }
 
@@ -920,6 +918,7 @@ size_t ZSTD_decodeLiteralsBlock(void* ctx,
             {
                 if (litSize > srcSize-3) return ERROR(corruption_detected);
                 memcpy(dctx->litBuffer, istart, litSize);
+                dctx->litPtr = dctx->litBuffer;
                 dctx->litBufSize = BLOCKSIZE+8;
                 dctx->litSize = litSize;
                 return litSize+3;
