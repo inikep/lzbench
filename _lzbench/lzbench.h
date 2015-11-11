@@ -46,8 +46,8 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "yappy",    "2014-03-22",  0, 99, lzbench_yappy_compress,    lzbench_yappy_decompress },
     { "zlib",     "1.2.8",       1, 9,  lzbench_zlib_compress,     lzbench_zlib_decompress },
     { "zling",    "2015-09-16",  0, 4,  lzbench_zling_compress,    lzbench_zling_decompress },
-    { "zstd",     "v0.3.4",      0, 0,  lzbench_zstd_compress,     lzbench_zstd_decompress },
-    { "zstd_HC",  "v0.3.4",      1, 20, lzbench_zstdhc_compress,   lzbench_zstd_decompress },
+    { "zstd",     "v0.3.6",      0, 0,  lzbench_zstd_compress,     lzbench_zstd_decompress },
+    { "zstd_HC",  "v0.3.6",      1, 20, lzbench_zstdhc_compress,   lzbench_zstd_decompress },
 };
 
 char fast[] = "";

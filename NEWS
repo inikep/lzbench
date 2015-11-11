@@ -1,11 +1,11 @@
 v.0.8
-- the "-cX" option: sort results by X column
+- the "-cX" option: sort results by column number X
 - the "-eX" option where X = compressors separated by '/' with parameters specified after ','
     Examples:
     lzbench -ebrotli filename - selects all levels of brotli
     lzbench -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd
 - added lzlib 1.7 (http://www.nongnu.org/lzip/lzlib.html)
-- zstd updated to v0.3.4
+- zstd updated to v0.3.6
 
 v.0.7.1 
 - tornado updated to version 0.6a
