@@ -291,7 +291,29 @@ int64_t lzbench_lzf_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 
-#ifndef BENCH_REMOVE_LZF
+#ifndef BENCH_REMOVE_LZG
+#include "liblzg/lzg.h"
+
+int64_t lzbench_lzg_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+{
+    lzg_encoder_config_t cfg;
+    cfg.level = level;
+    cfg.fast = LZG_TRUE;
+    cfg.progressfun = NULL;
+    cfg.userdata = NULL;
+    return LZG_Encode((const unsigned char*)inbuf, insize, (unsigned char*)outbuf, outsize, &cfg);
+}
+
+int64_t lzbench_lzg_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+{
+    return LZG_Decode((const unsigned char*)inbuf, insize, (unsigned char*)outbuf, outsize);
+}
+
+#endif
+
+
+
+#ifndef BENCH_REMOVE_LZHAM
 #include "lzham/lzham.h"
 #include <memory.h>
 
@@ -866,6 +888,33 @@ int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 {
     wfLZ_Decompress((const uint8_t*)inbuf, (uint8_t*)outbuf);
     return outsize;
+}
+
+#endif
+
+
+
+#ifndef BENCH_REMOVE_YALZ77
+#include "yalz77/lz77.h"
+
+int64_t lzbench_yalz77_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, size_t)
+{
+  lz77::compress_t compress;
+  std::string compressed = compress.feed((unsigned char*)inbuf, (unsigned char*)inbuf+insize);
+  if (compressed.size() > outsize) return 0;
+  memcpy(outbuf, compressed.c_str(), compressed.size());
+  return compressed.size();
+}
+
+int64_t lzbench_yalz77_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, size_t)
+{
+  lz77::decompress_t decompress;
+  std::string temp;
+  decompress.feed((unsigned char*)inbuf, (unsigned char*)inbuf+insize, temp);
+  const std::string& decompressed = decompress.result();
+  if (decompressed.size() > outsize) return 0;
+  memcpy(outbuf, decompressed.c_str(), decompressed.size());
+  return decompressed.size();
 }
 
 #endif
