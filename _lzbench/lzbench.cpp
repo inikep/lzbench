@@ -175,7 +175,7 @@ void add_time(std::vector<uint32_t> &ctime, std::vector<uint32_t> &dtime, uint32
 }
 
 
-int64_t lzbench_compress(compress_func compress, size_t chunk_size, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, size_t param3)
+int64_t lzbench_compress(compress_func compress, size_t chunk_size, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
 {
     int64_t clen;
     size_t part, sum = 0;
@@ -185,7 +185,7 @@ int64_t lzbench_compress(compress_func compress, size_t chunk_size, std::vector<
     while (insize > 0)
     {
         part = MIN(insize, chunk_size);
-        clen = compress((char*)inbuf, part, (char*)outbuf, outsize, param1, param2, param3);
+        clen = compress((char*)inbuf, part, (char*)outbuf, outsize, param1, param2, workmem);
 		LZBENCH_DEBUG(5,"ENC part=%d clen=%d in=%d\n", (int)part, (int)clen, (int)(inbuf-start));
 
         if (clen <= 0 || clen == part)
@@ -205,7 +205,7 @@ int64_t lzbench_compress(compress_func compress, size_t chunk_size, std::vector<
 }
 
 
-int64_t lzbench_decompress(compress_func decompress, size_t chunk_size, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, uint8_t *origbuf, size_t param1, size_t param2, size_t param3)
+int64_t lzbench_decompress(compress_func decompress, size_t chunk_size, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, uint8_t *origbuf, size_t param1, size_t param2, char* workmem)
 {
     int64_t dlen;
     int num=0;
@@ -223,7 +223,7 @@ int64_t lzbench_decompress(compress_func decompress, size_t chunk_size, std::vec
         }
         else
         {
-            dlen = decompress((char*)inbuf, part, (char*)outbuf, MIN(chunk_size,outsize), param1, param2, param3);
+            dlen = decompress((char*)inbuf, part, (char*)outbuf, MIN(chunk_size,outsize), param1, param2, workmem);
         }
 		LZBENCH_DEBUG(5, "DEC part=%d dlen=%d out=%d\n", (int)part, (int)dlen, (int)(outbuf - outstart));
         if (dlen <= 0) return dlen;
@@ -239,15 +239,17 @@ int64_t lzbench_decompress(compress_func decompress, size_t chunk_size, std::vec
 }
 
 
-void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t chunk_size, int iters, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond, size_t param1, size_t param2, size_t param3)
+void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t chunk_size, int iters, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond, size_t param1, size_t param2)
 {
-    LARGE_INTEGER start_ticks, mid_ticks, end_ticks;
+    LARGE_INTEGER start_ticks, end_ticks;
     int64_t complen=0, decomplen;
     std::vector<uint32_t> ctime, dtime;
     std::vector<size_t> compr_lens;
     bool decomp_error = false;
+    char* workmem = NULL;
 
-    if (!desc->compress || !desc->decompress) return;
+    if (!desc->compress || !desc->decompress) goto done;
+    if (desc->init) workmem = desc->init(chunk_size);
 
     LZBENCH_DEBUG(1, "*** trying %s insize=%d comprsize=%d chunk_size=%d\n", desc->name, (int)insize, (int)comprsize, (int)chunk_size);
 
@@ -255,7 +257,7 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
     {
         uint32_t part = MIN(100*1024,chunk_size);
         GetTime(start_ticks);
-        int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, comprsize, param1, param2, param3);
+        int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
         uint32_t milisec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
   //      printf("\nclen=%d milisec=%d %s\n", clen, milisec, desc->name);
@@ -263,29 +265,29 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
         {
             part = part / milisec / 1024; // speed in MB/s
     //        printf("%s = %d MB/s, %d\n", desc->name, part, clen);
-            if (part < cspeed) { LZBENCH_DEBUG(9, "%s (100K) slower than %d MB/s\n", desc->name, part); return; }
+            if (part < cspeed) { LZBENCH_DEBUG(9, "%s (100K) slower than %d MB/s\n", desc->name, part); goto done; }
         }
     }
     
     ITERS(iters)
     {
         GetTime(start_ticks);
-        complen = lzbench_compress(desc->compress, chunk_size, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, param3);
-        GetTime(mid_ticks);
+        complen = lzbench_compress(desc->compress, chunk_size, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
+        GetTime(end_ticks);
         
-        uint32_t milisec = GetDiffTime(ticksPerSecond, start_ticks, mid_ticks);
+        uint32_t milisec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
         if (complen>0 && milisec>=3) // longer than 3 milisec
         {
             milisec = insize / milisec / 1024; // speed in MB/s
-            if (milisec < cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, milisec); return; }
+            if (milisec < cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, milisec); goto done; }
         }
 
-        GetTime(mid_ticks);
-        decomplen = lzbench_decompress(desc->decompress, chunk_size, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, param3);
+        GetTime(start_ticks);
+        decomplen = lzbench_decompress(desc->decompress, chunk_size, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
         GetTime(end_ticks);
 
 
-        add_time(ctime, dtime, GetDiffTime(ticksPerSecond, start_ticks, mid_ticks), GetDiffTime(ticksPerSecond, mid_ticks, end_ticks)); 
+        add_time(ctime, dtime, milisec, GetDiffTime(ticksPerSecond, start_ticks, end_ticks)); 
 
         if (insize != decomplen)
         {   
@@ -320,6 +322,8 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
         if (decomp_error) break;
     }
     print_stats(desc, level, ctime, dtime, insize, complen, decomp_error, cspeed);
+done:
+    if (desc->deinit) desc->deinit(workmem);
 };
 
 
@@ -374,10 +378,10 @@ void lzbench_test_with_params(char *namesWithParams, int cspeed, size_t chunk_si
                         if (!token3)
                         {                          
                             for (int level=comp_desc[i].first_level; level<=comp_desc[i].last_level; level++)
-                                lzbench_test(&comp_desc[i], level, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0, 0);
+                                lzbench_test(&comp_desc[i], level, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0);
                         }
                         else
-                            lzbench_test(&comp_desc[i], atoi(token3), cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, atoi(token3), 0, 0);
+                            lzbench_test(&comp_desc[i], atoi(token3), cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, atoi(token3), 0);
                         break;
                     }
                 }

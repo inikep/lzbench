@@ -1,4 +1,7 @@
-v.0.8
+v0.8.1
+- fixed: memory allocation cost for brieflz, lzo, lzrw, wflz is not included in timings
+ 
+v0.8
 - the "-cX" option: sort results by column number X
 - the "-eX" option where X = compressors separated by '/' with parameters specified after ','
     Examples:
@@ -11,7 +14,7 @@ v.0.8
 - added xz 5.2.2
 - zstd updated to v0.3.6
 
-v.0.7.1 
+v0.7.1 
 - tornado updated to version 0.6a
 - lz5/lz5hc updated to version r131b
 - a better error handling
