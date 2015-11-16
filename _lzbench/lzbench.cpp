@@ -278,8 +278,7 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
         uint32_t milisec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
         if (complen>0 && milisec>=3) // longer than 3 milisec
         {
-            milisec = insize / milisec / 1024; // speed in MB/s
-            if (milisec < cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, milisec); goto done; }
+            if (insize / milisec / 1024 < cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, insize / milisec / 1024); goto done; }
         }
 
         GetTime(start_ticks);
@@ -358,7 +357,56 @@ void lzbench_test_with_params(char *namesWithParams, int cspeed, size_t chunk_si
             token = strtok_r(NULL, delimiters, &save_ptr);
             continue;
         }
-        
+
+        if (strcmp(token, "ucl")==0)
+        {
+            lzbench_test_with_params(compr_ucl, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+            token = strtok_r(NULL, delimiters, &save_ptr);
+            continue;
+        }
+
+        if (strcmp(token, "lzo")==0)
+        {
+            lzbench_test_with_params(compr_lzo, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+            token = strtok_r(NULL, delimiters, &save_ptr);
+            continue;
+        }
+
+        if (strcmp(token, "lzo1b")==0)
+        {
+            lzbench_test_with_params(compr_lzo1b, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+            token = strtok_r(NULL, delimiters, &save_ptr);
+            continue;
+        }
+
+        if (strcmp(token, "lzo1c")==0)
+        {
+            lzbench_test_with_params(compr_lzo1c, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+            token = strtok_r(NULL, delimiters, &save_ptr);
+            continue;
+        }
+
+        if (strcmp(token, "lzo1f")==0)
+        {
+            lzbench_test_with_params(compr_lzo1f, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+            token = strtok_r(NULL, delimiters, &save_ptr);
+            continue;
+        }
+
+        if (strcmp(token, "lzo1x")==0)
+        {
+            lzbench_test_with_params(compr_lzo1x, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+            token = strtok_r(NULL, delimiters, &save_ptr);
+            continue;
+        }
+
+        if (strcmp(token, "lzo1y")==0)
+        {
+            lzbench_test_with_params(compr_lzo1y, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+            token = strtok_r(NULL, delimiters, &save_ptr);
+            continue;
+        }
+
         copy2 = (char*)strdup(token);
         LZBENCH_DEBUG(1, "params = %s\n", token);
         token2 = strtok_r(copy2, delimiters2, &save_ptr2);
@@ -569,6 +617,7 @@ int main( int argc, char** argv)
         printf("all - alias for all available compressors\n");
         printf("fast - alias for compressors with compression speed over 100 MB/s\n");
         printf("opt - compressors with optimal parsing (slow compression, fast decompression)\n");
+        printf("lzo / ucl - aliases for all levels of given compressors\n");
         for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
         {
             printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
