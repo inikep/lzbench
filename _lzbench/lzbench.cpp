@@ -18,7 +18,7 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 #define PROGNAME "lzbench"
-#define PROGVERSION "0.8"
+#define PROGVERSION "0.8.1"
 #define LZBENCH_DEBUG(level, fmt, args...) if (verbose >= level) printf(fmt, ##args)
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
@@ -541,6 +541,9 @@ int main( int argc, char** argv)
 	case 'v':
 		verbose = atoi(argv[1] + 2);
 		break;
+	case '-': // --help
+	case 'h':
+        break;
         
 	default:
 		fprintf(stderr, "unknown option: %s\n", argv[1]);
