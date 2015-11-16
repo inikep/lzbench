@@ -76,7 +76,7 @@ typedef struct string_table
 {
     std::string column1;
     float column2, column3, column5;
-    size_t column4;
+    uint64_t column4;
     string_table(std::string c1, float c2, float c3, size_t c4, float c5) : column1(c1), column2(c2), column3(c3), column4(c4), column5(c5) {}
 } string_table_t;
 
@@ -278,7 +278,7 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
         uint32_t milisec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
         if (complen>0 && milisec>=3) // longer than 3 milisec
         {
-            if (insize / milisec / 1024 < cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, insize / milisec / 1024); goto done; }
+            if (insize / milisec / 1024 < cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, (uint32_t)(insize / milisec / 1024)); goto done; }
         }
 
         GetTime(start_ticks);
@@ -308,7 +308,7 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
                 cmn /= chunk_size;
                 size_t err_size = MIN(insize, (cmn+1)*chunk_size);
                 err_size -= cmn*chunk_size;
-                printf("ERROR: fwrite %d-%d\n", (int32_t)(cmn*chunk_size), (int32_t)(cmn*chunk_size+err_size));
+                printf("ERROR: fwrite %d-%d to %s\n", (int32_t)(cmn*chunk_size), (int32_t)(cmn*chunk_size+err_size), text);
                 FILE *f = fopen(text, "wb");
                 if (f) fwrite(inbuf+cmn*chunk_size, 1, err_size, f), fclose(f);
                 exit(0);
