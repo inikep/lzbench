@@ -155,6 +155,10 @@
 #ifndef BENCH_REMOVE_LZO
     char* lzbench_lzo_init(size_t );
     void lzbench_lzo_deinit(char* workmem);
+    int64_t lzbench_lzo1_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem);
+    int64_t lzbench_lzo1_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+    int64_t lzbench_lzo1a_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem);
+    int64_t lzbench_lzo1a_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
     int64_t lzbench_lzo1b_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem);
     int64_t lzbench_lzo1b_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
     int64_t lzbench_lzo1c_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem);
@@ -172,6 +176,10 @@
 #else
 	#define lzbench_lzo_init NULL
 	#define lzbench_lzo_deinit NULL
+	#define lzbench_lzo1_compress NULL
+	#define lzbench_lzo1_decompress NULL
+	#define lzbench_lzo1a_compress NULL
+	#define lzbench_lzo1a_decompress NULL
 	#define lzbench_lzo1b_compress NULL
 	#define lzbench_lzo1b_decompress NULL
 	#define lzbench_lzo1c_compress NULL
@@ -297,9 +305,11 @@
 
 
 #ifndef BENCH_REMOVE_YAPPY
+    char* lzbench_yappy_init(size_t insize);
 	int64_t lzbench_yappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
 	int64_t lzbench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
 #else
+	#define lzbench_yappy_init NULL
 	#define lzbench_yappy_compress NULL
 	#define lzbench_yappy_decompress NULL
 #endif

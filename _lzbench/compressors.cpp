@@ -572,6 +572,8 @@ int64_t lzbench_lzmat_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 #ifndef BENCH_REMOVE_LZO
+#include "lzo/lzo1.h"
+#include "lzo/lzo1a.h"
 #include "lzo/lzo1b.h"
 #include "lzo/lzo1c.h"
 #include "lzo/lzo1f.h"
@@ -590,6 +592,60 @@ char* lzbench_lzo_init(size_t )
 void lzbench_lzo_deinit(char* workmem)
 {
     free(workmem);
+}
+
+int64_t lzbench_lzo1_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+{
+	lzo_uint lzo_complen = 0;
+	int res;
+
+    if (!workmem)
+        return 0;
+
+	if (level == 99)
+		res = lzo1_99_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
+    else
+		res = lzo1_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
+    
+	if (res != LZO_E_OK) return 0;
+		
+	return lzo_complen; 
+}
+
+int64_t lzbench_lzo1_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+	lzo_uint decomplen = 0;
+
+    if (lzo1_decompress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &decomplen, NULL) != LZO_E_OK) return 0;
+
+	return decomplen; 
+}
+
+int64_t lzbench_lzo1a_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+{
+	lzo_uint lzo_complen = 0;
+	int res;
+
+    if (!workmem)
+        return 0;
+
+	if (level == 99)
+		res = lzo1a_99_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
+    else
+		res = lzo1a_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
+    
+	if (res != LZO_E_OK) return 0;
+		
+	return lzo_complen; 
+}
+
+int64_t lzbench_lzo1a_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+	lzo_uint decomplen = 0;
+
+    if (lzo1a_decompress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &decomplen, NULL) != LZO_E_OK) return 0;
+
+	return decomplen; 
 }
 
 int64_t lzbench_lzo1b_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
@@ -703,10 +759,15 @@ int64_t lzbench_lzo1x_compress(char *inbuf, size_t insize, char *outbuf, size_t 
     if (!workmem)
         return 0;
 
-	if (level == 999)
-		res = lzo1x_999_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
-    else
-		res = lzo1x_1_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
+	switch (level)
+	{
+		default:
+		case 1: res = lzo1x_1_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem); break;
+		case 11: res = lzo1x_1_11_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem); break;
+		case 12: res = lzo1x_1_12_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem); break;
+		case 15: res = lzo1x_1_15_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem); break;
+		case 999: res = lzo1x_999_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem); break;
+    }
     
 	if (res != LZO_E_OK) return 0;
 		
@@ -1132,9 +1193,14 @@ int64_t lzbench_yalz77_decompress(char *inbuf, size_t insize, char *outbuf, size
 #ifndef BENCH_REMOVE_YAPPY
 #include "yappy/yappy.hpp"
 
-int64_t lzbench_yappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+char* lzbench_yappy_init(size_t insize)
 {
 	YappyFillTables();
+    return NULL;
+}
+
+int64_t lzbench_yappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
 	return YappyCompress((uint8_t*)inbuf, (uint8_t*)outbuf, insize, level) - (uint8_t*)outbuf; 
 }
 

@@ -34,9 +34,15 @@ For Linux/Unix:
 make BUILD_SYSTEM=linux
 ```
 
-For Windows (MinGW)
+For Windows (MinGW):
 ```
 make
+```
+
+For 32-bit compilation:
+```
+make BUILD_ARCH=32-bit
+
 ```
 
 To remove one of compressors you can add -DBENCH_REMOVE_XXX to $DEFINES in Makefile (e.g. DEFINES += -DBENCH_REMOVE_LZ5 to remove LZ5).

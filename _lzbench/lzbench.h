@@ -19,7 +19,7 @@ typedef struct
     deinit_func deinit;
 } compressor_desc_t;
 
-#define LZBENCH_COMPRESSOR_COUNT 43
+#define LZBENCH_COMPRESSOR_COUNT 45
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
@@ -42,6 +42,8 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lzlib",    "1.7",         0,   9, lzbench_lzlib_compress,    lzbench_lzlib_decompress,    NULL,                 NULL },
     { "lzma",     "9.38",        0,   9, lzbench_lzma_compress,     lzbench_lzma_decompress,     NULL,                 NULL },
     { "lzmat",    "1.01",        0,   0, lzbench_lzmat_compress,    lzbench_lzmat_decompress,    NULL,                 NULL }, // decompression error (returns 0) and SEGFAULT (?)
+    { "lzo1",     "2.09",        1,   1, lzbench_lzo1_compress,     lzbench_lzo1_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
+    { "lzo1a",    "2.09",        1,   1, lzbench_lzo1a_compress,    lzbench_lzo1a_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
     { "lzo1b",    "2.09",        1,   1, lzbench_lzo1b_compress,    lzbench_lzo1b_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
     { "lzo1c",    "2.09",        1,   1, lzbench_lzo1c_compress,    lzbench_lzo1c_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
     { "lzo1f",    "2.09",        1,   1, lzbench_lzo1f_compress,    lzbench_lzo1f_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
@@ -61,32 +63,46 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "wflz",     "2015-09-16",  0,   0, lzbench_wflz_compress,     lzbench_wflz_decompress,     lzbench_wflz_init,    lzbench_wflz_deinit }, // SEGFAULT on decompressiom with gcc 5+ -O3 on Ubuntu
     { "xz",       "5.2.2",       0,   9, lzbench_xz_compress,       lzbench_xz_decompress,       NULL,                 NULL },
     { "yalz77",   "2015-09-19",  1,  12, lzbench_yalz77_compress,   lzbench_yalz77_decompress,   NULL,                 NULL },
-    { "yappy",    "2014-03-22",  0,  99, lzbench_yappy_compress,    lzbench_yappy_decompress,    NULL,                 NULL },
+    { "yappy",    "2014-03-22",  0,  99, lzbench_yappy_compress,    lzbench_yappy_decompress,    lzbench_yappy_init,   NULL },
     { "zlib",     "1.2.8",       1,   9, lzbench_zlib_compress,     lzbench_zlib_decompress,     NULL,                 NULL },
     { "zling",    "2015-09-16",  0,   4, lzbench_zling_compress,    lzbench_zling_decompress,    NULL,                 NULL },
     { "zstd",     "v0.3.6",      0,   0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
     { "zstd_HC",  "v0.3.6",      1,  20, lzbench_zstdhc_compress,   lzbench_zstd_decompress,     NULL,                 NULL },
 };
 
-char compr_all[] = "brieflz/brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz4hc,1,4,9/lz5/lz5hc,1,4,9/" \
-              "lzf,0,1/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5/lzo/" \
+typedef struct
+{
+    const char* name;
+    const char* params;
+} alias_desc_t;
+
+#define LZBENCH_ALIASES_COUNT 12
+
+static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
+{
+    { "all",  "brieflz/brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz4hc,1,4,9/lz5/lz5hc,1,4,9/" \
+              "lzf,0,1/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo/" \
               "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2,3/shrinker/snappy/tornado,1,2,3,4,5,6,7,10,13,16/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
               "xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd/zstd_HC,1,5,9,13,17,20/" \
-              "wflz/lzmat"; // these can SEGFAULT
-char compr_fast[] = "density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz5/" \
+              "wflz/lzmat" // these can SEGFAULT 
+    },
+    { "fast", "density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz5/" \
               "lzf,0,1/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
               "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/" \
-              "zstd";
-char compr_opt[] = "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/" \
+              "zstd" },
+    { "opt",  "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/" \
               "lzham,0,1,2,3,4/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7/" \
               "tornado,5,6,7,8,9,10,11,12,13,14,15,16/" \
-              "xz,1,2,3,4,5,6,7,8,9/zstd_HC,10,11,12,13,14,15,16,17,18,19,20";
-char compr_lzo1b[] = "lzo1b,1,2,3,4,5,6,7,8,9,99,999";
-char compr_lzo1c[] = "lzo1c,1,2,3,4,5,6,7,8,9,99,999";
-char compr_lzo1f[] = "lzo1f,1,999";
-char compr_lzo1x[] = "lzo1x,1,999";
-char compr_lzo1y[] = "lzo1y,1,999";
-char compr_lzo[] = "lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a";
-char compr_ucl[] = "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e";
+              "xz,1,2,3,4,5,6,7,8,9/zstd_HC,10,11,12,13,14,15,16,17,18,19,20" },
+    { "lzo1",  "lzo1,1,99" },
+    { "lzo1a", "lzo1a,1,99" },
+    { "lzo1b", "lzo1b,1,2,3,4,5,6,7,8,9,99,999" },
+    { "lzo1c", "lzo1c,1,2,3,4,5,6,7,8,9,99,999" },
+    { "lzo1f", "lzo1f,1,999" },
+    { "lzo1x", "lzo1x,1,11,12,15,999" },
+    { "lzo1y", "lzo1y,1,999" },
+    { "lzo",   "lzo1/lzo1a/lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a" },
+    { "ucl",   "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },
+};
 
 #endif

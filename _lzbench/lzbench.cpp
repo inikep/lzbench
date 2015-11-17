@@ -337,74 +337,13 @@ void lzbench_test_with_params(char *namesWithParams, int cspeed, size_t chunk_si
 
     while (token != NULL) 
     {
-        if (strcmp(token, "fast")==0)
+        for (int i=0; i<LZBENCH_ALIASES_COUNT; i++)
         {
-            lzbench_test_with_params(compr_fast, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
-            token = strtok_r(NULL, delimiters, &save_ptr);
-            continue;
-        }
-
-        if (strcmp(token, "opt")==0)
-        {
-            lzbench_test_with_params(compr_opt, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
-            token = strtok_r(NULL, delimiters, &save_ptr);
-            continue;
-        }
-
-        if (strcmp(token, "all")==0)
-        {
-            lzbench_test_with_params(compr_all, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
-            token = strtok_r(NULL, delimiters, &save_ptr);
-            continue;
-        }
-
-        if (strcmp(token, "ucl")==0)
-        {
-            lzbench_test_with_params(compr_ucl, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
-            token = strtok_r(NULL, delimiters, &save_ptr);
-            continue;
-        }
-
-        if (strcmp(token, "lzo")==0)
-        {
-            lzbench_test_with_params(compr_lzo, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
-            token = strtok_r(NULL, delimiters, &save_ptr);
-            continue;
-        }
-
-        if (strcmp(token, "lzo1b")==0)
-        {
-            lzbench_test_with_params(compr_lzo1b, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
-            token = strtok_r(NULL, delimiters, &save_ptr);
-            continue;
-        }
-
-        if (strcmp(token, "lzo1c")==0)
-        {
-            lzbench_test_with_params(compr_lzo1c, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
-            token = strtok_r(NULL, delimiters, &save_ptr);
-            continue;
-        }
-
-        if (strcmp(token, "lzo1f")==0)
-        {
-            lzbench_test_with_params(compr_lzo1f, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
-            token = strtok_r(NULL, delimiters, &save_ptr);
-            continue;
-        }
-
-        if (strcmp(token, "lzo1x")==0)
-        {
-            lzbench_test_with_params(compr_lzo1x, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
-            token = strtok_r(NULL, delimiters, &save_ptr);
-            continue;
-        }
-
-        if (strcmp(token, "lzo1y")==0)
-        {
-            lzbench_test_with_params(compr_lzo1y, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
-            token = strtok_r(NULL, delimiters, &save_ptr);
-            continue;
+            if (strcmp(token, alias_desc[i].name)==0)
+            {
+                lzbench_test_with_params((char*)alias_desc[i].params, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+                goto next_token; 
+           }
         }
 
         copy2 = (char*)strdup(token);
@@ -440,7 +379,7 @@ void lzbench_test_with_params(char *namesWithParams, int cspeed, size_t chunk_si
         }
 
         free(copy2);
-        
+next_token:
         token = strtok_r(NULL, delimiters, &save_ptr);
     }
 
@@ -489,7 +428,7 @@ void lzbenchmark(FILE* in, char* encoder_list, int iters, uint32_t chunk_size, i
     printf("| Compressor name             | Compression| Decompress.| Compr. size | Ratio |\n");
 	print_stats(&comp_desc[0], 0, ctime, dtime, insize, insize, false, 0);
 
-    lzbench_test_with_params(encoder_list?encoder_list:compr_fast, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+    lzbench_test_with_params(encoder_list?encoder_list:(char*)alias_desc[1].params, cspeed, chunk_size, iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
 
 	free(inbuf);
 	free(compbuf);
