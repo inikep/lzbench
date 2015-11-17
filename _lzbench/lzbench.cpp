@@ -49,7 +49,7 @@
 	#include <windows.h>
 	#define InitTimer(x) if (!QueryPerformanceFrequency(&x)) { printf("QueryPerformance not present"); };
 	#define GetTime(x) QueryPerformanceCounter(&x); 
-	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000*(end_ticks.QuadPart - start_ticks.QuadPart)/ticksPerSecond.QuadPart)
+	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000000*(end_ticks.QuadPart - start_ticks.QuadPart)/ticksPerSecond.QuadPart)
 	void uni_sleep(UINT usec) { Sleep(usec); };
 	#ifndef __GNUC__
 		#define fseeko64 _fseeki64 
@@ -64,7 +64,7 @@
 	typedef struct timespec LARGE_INTEGER;
 	#define InitTimer(x) 
 	#define GetTime(x) if(clock_gettime( CLOCK_REALTIME, &x) == -1 ){ printf("clock_gettime error"); };
-	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec )/1000000)
+	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000000*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec )/1000)
 	void uni_sleep(uint32_t usec) { usleep(usec * 1000); };
 	#define PROGOS "Linux"
 #endif
@@ -142,14 +142,14 @@ void print_stats(const compressor_desc_t* desc, int level, std::vector<uint32_t>
     if (cmili_avg == 0) cmili_avg = 1;
     if (dmili_avg == 0) dmili_avg = 1;
 
-    if (cspeed > insize / cmili_fastest / 1024) { LZBENCH_DEBUG(9, "%s FULL slower than %d MB/s\n", desc->name, insize / cmili_fastest / 1024); return; } 
+    if (cspeed > insize/cmili_fastest) { LZBENCH_DEBUG(9, "%s FULL slower than %d MB/s\n", desc->name, insize/cmili_fastest); return; } 
 
     if (desc->first_level == 0 && desc->last_level==0)
         format(column1, "%s %s", desc->name, desc->version);
     else
         format(column1, "%s %s level %d", desc->name, desc->version, level);
 
-    results.push_back(string_table_t(column1, insize / cmili_fastest / 1024.0, (decomp_error)?0:(insize / dmili_fastest / 1024.0), outsize, outsize * 100.0 / insize));
+    results.push_back(string_table_t(column1, insize/cmili_fastest, (decomp_error)?0:(insize/dmili_fastest), outsize, outsize * 100.0 / insize));
     print_row(results[results.size()-1]);
 
     ctime.clear();
@@ -259,11 +259,11 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
         GetTime(start_ticks);
         int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
-        uint32_t milisec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+        uint32_t nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
   //      printf("\nclen=%d milisec=%d %s\n", clen, milisec, desc->name);
-        if (clen>0 && milisec>=3) // longer than 3 milisec = slower than 33 MB/s
+        if (clen>0 && nanosec>=3000) // longer than 3 milisec = slower than 33 MB/s
         {
-            part = part / milisec / 1024; // speed in MB/s
+            part = (part / nanosec); // speed in MB/s
     //        printf("%s = %d MB/s, %d\n", desc->name, part, clen);
             if (part < cspeed) { LZBENCH_DEBUG(9, "%s (100K) slower than %d MB/s\n", desc->name, part); goto done; }
         }
@@ -275,10 +275,10 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
         complen = lzbench_compress(desc->compress, chunk_size, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
         
-        uint32_t milisec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
-        if (complen>0 && milisec>=3) // longer than 3 milisec
+        uint32_t nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+        if (complen>0 && nanosec>=3000) // longer than 3 milisec
         {
-            if (insize / milisec / 1024 < cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, (uint32_t)(insize / milisec / 1024)); goto done; }
+            if ((insize/nanosec) < cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, (uint32_t)((insize/nanosec))); goto done; }
         }
 
         GetTime(start_ticks);
@@ -286,7 +286,7 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
         GetTime(end_ticks);
 
 
-        add_time(ctime, dtime, milisec, GetDiffTime(ticksPerSecond, start_ticks, end_ticks)); 
+        add_time(ctime, dtime, nanosec, GetDiffTime(ticksPerSecond, start_ticks, end_ticks)); 
 
         if (insize != decomplen)
         {   
