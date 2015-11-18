@@ -16,26 +16,6 @@
 
 */
 
-#define _CRT_SECURE_NO_WARNINGS
-#define PROGNAME "lzbench"
-#define PROGVERSION "0.8.1"
-#define LZBENCH_DEBUG(level, fmt, args...) if (verbose >= level) printf(fmt, ##args)
-
-#define MAX(a,b) ((a)>(b))?(a):(b)
-#ifndef MIN
-	#define MIN(a,b) ((a)<(b)?(a):(b))
-#endif
-
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(WIN64) || defined(_WIN64)
-	#define WINDOWS
-#endif
-
-#define __STDC_FORMAT_MACROS // now PRIu64 will work
-#include <inttypes.h> // now PRIu64 will work
-#define _FILE_OFFSET_BITS 64  // turn off_t into a 64-bit type for ftello() and fseeko()
-#define PAD_SIZE (16*1024)
-
-#include <vector>
 #include <numeric>
 #include <algorithm> // sort
 #include <string>
@@ -44,48 +24,6 @@
 #include <stdint.h> 
 #include <string.h> 
 #include "lzbench.h"
-
-#ifdef WINDOWS
-	#include <windows.h>
-	#define InitTimer(x) if (!QueryPerformanceFrequency(&x)) { printf("QueryPerformance not present"); };
-	#define GetTime(x) QueryPerformanceCounter(&x); 
-	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/ticksPerSecond.QuadPart)
-	void uni_sleep(UINT usec) { Sleep(usec); };
-	#ifndef __GNUC__
-		#define fseeko64 _fseeki64 
-		#define ftello64 _ftelli64
-	#endif
-	#define PROGOS "Windows"
-#else
-    #include <stdarg.h> // va_args
-	#include <time.h>   
-	#include <unistd.h>
-	#include <sys/resource.h>
-	typedef struct timespec LARGE_INTEGER;
-	#define InitTimer(x) 
-	#define GetTime(x) if(clock_gettime( CLOCK_MONOTONIC , &x) == -1 ){ printf("clock_gettime error"); };
-	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000000ULL*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec )/1000)
-	void uni_sleep(uint32_t usec) { usleep(usec * 1000); };
-	#define PROGOS "Linux"
-#endif
-
-typedef struct string_table
-{
-    std::string column1;
-    float column2, column3, column5;
-    uint64_t column4;
-    string_table(std::string c1, float c2, float c3, uint64_t c4, float c5) : column1(c1), column2(c2), column3(c3), column4(c4), column5(c5) {}
-} string_table_t;
-
-struct less_using_1st_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column1 < struct2.column1); } };
-struct less_using_2nd_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column2 > struct2.column2); } };
-struct less_using_3rd_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column3 > struct2.column3); } };
-struct less_using_4th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column4 < struct2.column4); } };
-struct less_using_5th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column5 < struct2.column5); } };
-
-std::vector<string_table_t> results;
-bool turbobench_format = false;
-int verbose = 0;
 
 
 void format(std::string& s,const char* formatstring, ...) 
@@ -105,14 +43,14 @@ void format(std::string& s,const char* formatstring, ...)
    s=buff;
 } 
 
-void print_header()
+void print_header(lzbench_params_t *params)
 {
     printf("| Compressor name             | Compression| Decompress.| Compr. size | Ratio |\n");
 }
 
-void print_row(string_table_t& row)
+void print_row(lzbench_params_t *params, string_table_t& row)
 {
-    if (turbobench_format)
+    if (params->textformat == TEXT)
     {
         printf("%12" PRId64" %6.1f%9.2f%9.2f  %s\n", row.column4, row.column5, row.column2, row.column3, row.column1.c_str());
         return;
@@ -128,7 +66,7 @@ void print_row(string_table_t& row)
 }
 
 
-void print_stats(const compressor_desc_t* desc, int level, std::vector<uint64_t> &ctime, std::vector<uint64_t> &dtime, uint32_t insize, uint32_t outsize, bool decomp_error, int cspeed)
+void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int level, std::vector<uint64_t> &ctime, std::vector<uint64_t> &dtime, uint32_t insize, uint32_t outsize, bool decomp_error)
 {
     std::string column1;
     std::sort(ctime.begin(), ctime.end());
@@ -143,15 +81,15 @@ void print_stats(const compressor_desc_t* desc, int level, std::vector<uint64_t>
     if (cmili_avg == 0) cmili_avg = 1;
     if (dmili_avg == 0) dmili_avg = 1;
 
-    if (cspeed > insize/cmili_fastest) { LZBENCH_DEBUG(9, "%s FULL slower than %d MB/s\n", desc->name, insize/cmili_fastest); return; } 
+    if (params->cspeed > insize/cmili_fastest) { LZBENCH_DEBUG(9, "%s FULL slower than %d MB/s\n", desc->name, insize/cmili_fastest); return; } 
 
     if (desc->first_level == 0 && desc->last_level==0)
         format(column1, "%s %s", desc->name, desc->version);
     else
         format(column1, "%s %s level %d", desc->name, desc->version, level);
 
-    results.push_back(string_table_t(column1, insize/cmili_fastest, (decomp_error)?0:(insize/dmili_fastest), outsize, outsize * 100.0 / insize));
-    print_row(results[results.size()-1]);
+    params->results.push_back(string_table_t(column1, insize/cmili_fastest, (decomp_error)?0:(insize/dmili_fastest), outsize, outsize * 100.0 / insize));
+    print_row(params, params->results[params->results.size()-1]);
 
     ctime.clear();
     dtime.clear();
@@ -169,7 +107,7 @@ size_t common(uint8_t *p1, uint8_t *p2)
 }
 
 
-int64_t lzbench_compress(compress_func compress, size_t chunk_size, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
+int64_t lzbench_compress(lzbench_params_t *params, compress_func compress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
 {
     int64_t clen;
     size_t part, sum = 0;
@@ -178,7 +116,7 @@ int64_t lzbench_compress(compress_func compress, size_t chunk_size, std::vector<
     
     while (insize > 0)
     {
-        part = MIN(insize, chunk_size);
+        part = MIN(insize, params->chunk_size);
         clen = compress((char*)inbuf, part, (char*)outbuf, outsize, param1, param2, workmem);
 		LZBENCH_DEBUG(5,"ENC part=%d clen=%d in=%d\n", (int)part, (int)clen, (int)(inbuf-start));
 
@@ -199,7 +137,7 @@ int64_t lzbench_compress(compress_func compress, size_t chunk_size, std::vector<
 }
 
 
-int64_t lzbench_decompress(compress_func decompress, size_t chunk_size, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, uint8_t *origbuf, size_t param1, size_t param2, char* workmem)
+int64_t lzbench_decompress(lzbench_params_t *params, compress_func decompress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, uint8_t *origbuf, size_t param1, size_t param2, char* workmem)
 {
     int64_t dlen;
     int num=0;
@@ -210,14 +148,14 @@ int64_t lzbench_decompress(compress_func decompress, size_t chunk_size, std::vec
     {
         part = compr_lens[num++];
         if (part > insize) return 0;
-        if (part == MIN(chunk_size,outsize)) // uncompressed
+        if (part == MIN(params->chunk_size, outsize)) // uncompressed
         {
             memcpy(outbuf, inbuf, part);
             dlen = part;
         }
         else
         {
-            dlen = decompress((char*)inbuf, part, (char*)outbuf, MIN(chunk_size,outsize), param1, param2, workmem);
+            dlen = decompress((char*)inbuf, part, (char*)outbuf, MIN(params->chunk_size, outsize), param1, param2, workmem);
         }
 		LZBENCH_DEBUG(5, "DEC part=%d dlen=%d out=%d\n", (int)part, (int)dlen, (int)(outbuf - outstart));
         if (dlen <= 0) return dlen;
@@ -233,7 +171,7 @@ int64_t lzbench_decompress(compress_func decompress, size_t chunk_size, std::vec
 }
 
 
-void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t chunk_size, int c_iters, int d_iters, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond, size_t param1, size_t param2)
+void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond, size_t param1, size_t param2)
 {
     LARGE_INTEGER start_ticks, end_ticks;
     int64_t complen=0, decomplen;
@@ -243,13 +181,13 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
     char* workmem = NULL;
 
     if (!desc->compress || !desc->decompress) goto done;
-    if (desc->init) workmem = desc->init(chunk_size);
+    if (desc->init) workmem = desc->init(params->chunk_size);
 
-    LZBENCH_DEBUG(1, "*** trying %s insize=%d comprsize=%d chunk_size=%d\n", desc->name, (int)insize, (int)comprsize, (int)chunk_size);
+    LZBENCH_DEBUG(1, "*** trying %s insize=%d comprsize=%d chunk_size=%d\n", desc->name, (int)insize, (int)comprsize, (int)params->chunk_size);
 
-    if (cspeed > 0)
+    if (params->cspeed > 0)
     {
-        uint64_t part = MIN(100*1024,chunk_size);
+        uint64_t part = MIN(100*1024, params->chunk_size);
         GetTime(start_ticks);
         int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
@@ -259,30 +197,30 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
         {
             part = (part / nanosec); // speed in MB/s
     //        printf("%s = %d MB/s, %d\n", desc->name, part, clen);
-            if (part < cspeed) { LZBENCH_DEBUG(9, "%s (100K) slower than %d MB/s\n", desc->name, (uint32_t)part); goto done; }
+            if (part < params->cspeed) { LZBENCH_DEBUG(9, "%s (100K) slower than %d MB/s\n", desc->name, (uint32_t)part); goto done; }
         }
     }
 
-    for (int ii=1; ii<=c_iters; ii++)
+    for (int ii=1; ii<=params->c_iters; ii++)
     {
-        printf("%s comp iter %d/%d\r", desc->name, ii, c_iters);
+        printf("%s comp iter %d/%d\r", desc->name, ii, params->c_iters);
         GetTime(start_ticks);
-        complen = lzbench_compress(desc->compress, chunk_size, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
+        complen = lzbench_compress(params, desc->compress, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
         
         uint64_t nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
         if (complen>0 && nanosec>=3000) // longer than 3 milisec
         {
-            if ((insize/nanosec) < cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, (uint32_t)((insize/nanosec))); goto done; }
+            if ((insize/nanosec) < params->cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, (uint32_t)((insize/nanosec))); goto done; }
         }
         ctime.push_back(nanosec);
     }
 
-    for (int ii=1; ii<=d_iters; ii++)
+    for (int ii=1; ii<=params->d_iters; ii++)
     {
-        printf("%s decomp iter %d/%d\r", desc->name, ii, d_iters);
+        printf("%s decomp iter %d/%d\r", desc->name, ii, params->d_iters);
         GetTime(start_ticks);
-        decomplen = lzbench_decompress(desc->decompress, chunk_size, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
+        decomplen = lzbench_decompress(params, desc->decompress, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
         GetTime(end_ticks);
 
         dtime.push_back(GetDiffTime(ticksPerSecond, start_ticks, end_ticks));
@@ -300,16 +238,16 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
             size_t cmn = common(inbuf, decomp);
             LZBENCH_DEBUG(1, "ERROR in %s: common=%d/%d\n", desc->name, (int32_t)cmn, (int32_t)insize);
             
-            if (verbose >= 10)
+            if (params->verbose >= 10)
             {
                 char text[256];
                 snprintf(text, sizeof(text), "%s_failed", desc->name);
-                cmn /= chunk_size;
-                size_t err_size = MIN(insize, (cmn+1)*chunk_size);
-                err_size -= cmn*chunk_size;
-                printf("ERROR: fwrite %d-%d to %s\n", (int32_t)(cmn*chunk_size), (int32_t)(cmn*chunk_size+err_size), text);
+                cmn /= params->chunk_size;
+                size_t err_size = MIN(insize, (cmn+1)*params->chunk_size);
+                err_size -= cmn*params->chunk_size;
+                printf("ERROR: fwrite %d-%d to %s\n", (int32_t)(cmn*params->chunk_size), (int32_t)(cmn*params->chunk_size+err_size), text);
                 FILE *f = fopen(text, "wb");
-                if (f) fwrite(inbuf+cmn*chunk_size, 1, err_size, f), fclose(f);
+                if (f) fwrite(inbuf+cmn*params->chunk_size, 1, err_size, f), fclose(f);
                 exit(0);
             }
         }
@@ -319,13 +257,13 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
         
         if (decomp_error) break;
     }
-    print_stats(desc, level, ctime, dtime, insize, complen, decomp_error, cspeed);
+    print_stats(params, desc, level, ctime, dtime, insize, complen, decomp_error);
 done:
     if (desc->deinit) desc->deinit(workmem);
 };
 
 
-void lzbench_test_with_params(char *namesWithParams, int cspeed, size_t chunk_size, int c_iters, int d_iters, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond)
+void lzbench_test_with_params(lzbench_params_t *params, char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond)
 {
     const char delimiters[] = "/";
     const char delimiters2[] = ",";
@@ -340,7 +278,7 @@ void lzbench_test_with_params(char *namesWithParams, int cspeed, size_t chunk_si
         {
             if (strcmp(token, alias_desc[i].name)==0)
             {
-                lzbench_test_with_params((char*)alias_desc[i].params, cspeed, chunk_size, c_iters, d_iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+                lzbench_test_with_params(params, (char*)alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
                 goto next_token; 
            }
         }
@@ -364,10 +302,10 @@ void lzbench_test_with_params(char *namesWithParams, int cspeed, size_t chunk_si
                         if (!token3)
                         {                          
                             for (int level=comp_desc[i].first_level; level<=comp_desc[i].last_level; level++)
-                                lzbench_test(&comp_desc[i], level, cspeed, chunk_size, c_iters, d_iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0);
+                                lzbench_test(params, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0);
                         }
                         else
-                            lzbench_test(&comp_desc[i], atoi(token3), cspeed, chunk_size, c_iters, d_iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, atoi(token3), 0);
+                            lzbench_test(params, &comp_desc[i], atoi(token3), inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, atoi(token3), 0);
                         break;
                     }
                 }
@@ -386,7 +324,7 @@ next_token:
 }
 
 
-void lzbenchmark(FILE* in, char* encoder_list, int c_iters, int d_iters, uint32_t chunk_size, int cspeed)
+void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list)
 {
 	LARGE_INTEGER ticksPerSecond, start_ticks, mid_ticks, end_ticks;
 	uint32_t comprsize, insize;
@@ -412,35 +350,36 @@ void lzbenchmark(FILE* in, char* encoder_list, int c_iters, int d_iters, uint32_
 	}
 
 	insize = fread(inbuf, 1, insize, in);
-	if (chunk_size > insize) chunk_size = insize;
+	if (params->chunk_size > insize) params->chunk_size = insize;
 
-    print_header();
+    print_header(params);
 
-    lzbench_test(&comp_desc[0], 0, cspeed, chunk_size, c_iters, d_iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0);
-    lzbench_test_with_params(encoder_list?encoder_list:(char*)alias_desc[1].params, cspeed, chunk_size, c_iters, d_iters, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+    lzbench_test(params, &comp_desc[0], 0, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0);
+    lzbench_test_with_params(params, encoder_list?encoder_list:(char*)alias_desc[1].params, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
 
 	free(inbuf);
 	free(compbuf);
 	free(decomp);
 
-	if (chunk_size > 10 * (1<<20))
-		printf("done... (%d comp/%d decomp iters, chunk_size=%d MB, min_compr_speed=%d MB)\n", c_iters, d_iters, chunk_size >> 20, cspeed);
+	if (params->chunk_size > 10 * (1<<20))
+		printf("done... (%d comp/%d decomp iters, chunk_size=%d MB, min_compr_speed=%d MB)\n", params->c_iters, params->d_iters, params->chunk_size >> 20, params->cspeed);
 	else
-		printf("done... (%d comp/%d decomp iters, chunk_size=%d KB, min_compr_speed=%d MB)\n", c_iters, d_iters, chunk_size >> 10, cspeed);
+		printf("done... (%d comp/%d decomp iters, chunk_size=%d KB, min_compr_speed=%d MB)\n", params->c_iters, params->d_iters, params->chunk_size >> 10, params->cspeed);
 }
 
 
 int main( int argc, char** argv) 
 {
 	FILE *in;
-	uint32_t c_iter, d_iter, chunk_size, cspeed;
+    lzbench_params_t params;
     char* encoder_list = NULL;
     int sort_col = 0;
-
-	d_iter = 3;
-    c_iter = 1;
-	chunk_size = 1 << 31;
-	cspeed = 0;
+    
+    params.verbose = 0;
+	params.d_iters = 3;
+    params.c_iters = 1;
+	params.chunk_size = 1 << 31;
+	params.cspeed = 0;
 
 #ifdef WINDOWS
 //	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
@@ -454,28 +393,28 @@ int main( int argc, char** argv)
 	while ((argc>1)&&(argv[1][0]=='-')) {
 		switch (argv[1][1]) {
 	case 'i':
-		d_iter=atoi(argv[1]+2);
+		params.d_iters=atoi(argv[1]+2);
 		break;
 	case 'j':
-		c_iter=atoi(argv[1]+2);
+		params.c_iters=atoi(argv[1]+2);
 		break;
 	case 'c':
 		sort_col = atoi(argv[1] + 2);
 		break;
 	case 'b':
-		chunk_size = atoi(argv[1] + 2) << 10;
+		params.chunk_size = atoi(argv[1] + 2) << 10;
 		break;
 	case 'e':
 		encoder_list = strdup(argv[1] + 2);
 		break;
 	case 's':
-		cspeed = atoi(argv[1] + 2);
+		params.cspeed = atoi(argv[1] + 2);
 		break;
 	case 't':
-		turbobench_format = true;
+        params.textformat = (textformat_e)atoi(argv[1] + 2);
 		break;
 	case 'v':
-		verbose = atoi(argv[1] + 2);
+		params.verbose = atoi(argv[1] + 2);
 		break;
 	case '-': // --help
 	case 'h':
@@ -501,14 +440,14 @@ int main( int argc, char** argv)
 
 	if (argc<2) {
 		fprintf(stderr, "usage: " PROGNAME " [options] input\n");
-		fprintf(stderr, " -bX  set block/chunk size to X KB (default = %d KB)\n", chunk_size>>10);
+		fprintf(stderr, " -bX  set block/chunk size to X KB (default = %d KB)\n", params.chunk_size>>10);
 		fprintf(stderr, " -cX  sort results by column number X\n");
 		fprintf(stderr, " -eX  X = compressors separated by '/' with parameters specified after ','\n");
-		fprintf(stderr, " -iX  number of decompression iterations (default = %d)\n", d_iter);
-		fprintf(stderr, " -jX  number of compression iterations (default = %d)\n", c_iter);
+		fprintf(stderr, " -iX  number of decompression iterations (default = %d)\n", params.d_iters);
+		fprintf(stderr, " -jX  number of compression iterations (default = %d)\n", params.c_iters);
 		fprintf(stderr, " -l   list of available compressors and aliases\n");
-        fprintf(stderr, " -tX  output text format 1=markdown, 2=text, 3=csv\n");
-		fprintf(stderr, " -sX  use only compressors with compression speed over X MB (default = %d MB)\n", cspeed);
+        fprintf(stderr, " -tX  output text format 1=markdown, 2=text, 3=CSV (default = %d)\n", params.textformat);
+		fprintf(stderr, " -sX  use only compressors with compression speed over X MB (default = %d MB)\n", params.cspeed);
         fprintf(stderr,"\nExample usage:\n");
         fprintf(stderr,"  " PROGNAME " -ebrotli filename - selects all levels of brotli\n");
         fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd\n");                    
@@ -520,7 +459,7 @@ int main( int argc, char** argv)
 		exit(1);
 	}
 
-	lzbenchmark(in, encoder_list, c_iter, d_iter, chunk_size, cspeed);
+	lzbenchmark(&params, in, encoder_list);
 
     if (encoder_list) free(encoder_list);
 
@@ -530,21 +469,21 @@ int main( int argc, char** argv)
     if (sort_col <= 0) return 0;
 
     printf("\nThe results sorted by column number %d:\n", sort_col);
-    print_header();
+    print_header(&params);
 
     switch (sort_col)
     {
         default:
-        case 1: std::sort(results.begin(), results.end(), less_using_1st_column()); break;
-        case 2: std::sort(results.begin(), results.end(), less_using_2nd_column()); break;
-        case 3: std::sort(results.begin(), results.end(), less_using_3rd_column()); break;
-        case 4: std::sort(results.begin(), results.end(), less_using_4th_column()); break;
-        case 5: std::sort(results.begin(), results.end(), less_using_5th_column()); break;
+        case 1: std::sort(params.results.begin(), params.results.end(), less_using_1st_column()); break;
+        case 2: std::sort(params.results.begin(), params.results.end(), less_using_2nd_column()); break;
+        case 3: std::sort(params.results.begin(), params.results.end(), less_using_3rd_column()); break;
+        case 4: std::sort(params.results.begin(), params.results.end(), less_using_4th_column()); break;
+        case 5: std::sort(params.results.begin(), params.results.end(), less_using_5th_column()); break;
     }
 
-    for (std::vector<string_table_t>::iterator it = results.begin(); it!=results.end(); it++)
+    for (std::vector<string_table_t>::iterator it = params.results.begin(); it!=params.results.end(); it++)
     {
-        print_row(*it);
+        print_row(&params, *it);
     }
 }
 

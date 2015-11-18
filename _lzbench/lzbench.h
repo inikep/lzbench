@@ -2,6 +2,75 @@
 #define LZBENCH_H
 
 #include "compressors.h"
+#include <vector>
+
+#define _CRT_SECURE_NO_WARNINGS
+#define PROGNAME "lzbench"
+#define PROGVERSION "0.8.1"
+#define LZBENCH_DEBUG(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
+
+#define MAX(a,b) ((a)>(b))?(a):(b)
+#ifndef MIN
+	#define MIN(a,b) ((a)<(b)?(a):(b))
+#endif
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(WIN64) || defined(_WIN64)
+	#define WINDOWS
+#endif
+
+#define __STDC_FORMAT_MACROS // now PRIu64 will work
+#include <inttypes.h> // now PRIu64 will work
+#define _FILE_OFFSET_BITS 64  // turn off_t into a 64-bit type for ftello() and fseeko()
+#define PAD_SIZE (16*1024)
+
+
+#ifdef WINDOWS
+	#include <windows.h>
+	#define InitTimer(x) if (!QueryPerformanceFrequency(&x)) { printf("QueryPerformance not present"); };
+	#define GetTime(x) QueryPerformanceCounter(&x); 
+	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/ticksPerSecond.QuadPart)
+	void uni_sleep(UINT usec) { Sleep(usec); };
+	#ifndef __GNUC__
+		#define fseeko64 _fseeki64 
+		#define ftello64 _ftelli64
+	#endif
+	#define PROGOS "Windows"
+#else
+    #include <stdarg.h> // va_args
+	#include <time.h>   
+	#include <unistd.h>
+	#include <sys/resource.h>
+	typedef struct timespec LARGE_INTEGER;
+	#define InitTimer(x) 
+	#define GetTime(x) if(clock_gettime( CLOCK_MONOTONIC , &x) == -1 ){ printf("clock_gettime error"); };
+	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000000ULL*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec )/1000)
+	void uni_sleep(uint32_t usec) { usleep(usec * 1000); };
+	#define PROGOS "Linux"
+#endif
+
+
+typedef struct string_table
+{
+    std::string column1;
+    float column2, column3, column5;
+    uint64_t column4;
+    string_table(std::string c1, float c2, float c3, uint64_t c4, float c5) : column1(c1), column2(c2), column3(c3), column4(c4), column5(c5) {}
+} string_table_t;
+
+enum textformat_e { MARKDOWN=1, TEXT, CSV };
+
+typedef struct
+{
+    textformat_e textformat;
+	uint32_t c_iters, d_iters, chunk_size, cspeed, verbose;
+    std::vector<string_table_t> results;
+} lzbench_params_t;
+
+struct less_using_1st_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column1 < struct2.column1); } };
+struct less_using_2nd_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column2 > struct2.column2); } };
+struct less_using_3rd_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column3 > struct2.column3); } };
+struct less_using_4th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column4 < struct2.column4); } };
+struct less_using_5th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column5 < struct2.column5); } };
 
 typedef int64_t (*compress_func)(char *in, size_t insize, char *out, size_t outsize, size_t, size_t, char*);
 typedef char* (*init_func)(size_t insize);
@@ -18,6 +87,15 @@ typedef struct
     init_func init;
     deinit_func deinit;
 } compressor_desc_t;
+
+
+typedef struct
+{
+    const char* name;
+    const char* params;
+} alias_desc_t;
+
+
 
 #define LZBENCH_COMPRESSOR_COUNT 45
 
@@ -70,11 +148,6 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "zstd_HC",  "v0.3.6",      1,  20, lzbench_zstdhc_compress,   lzbench_zstd_decompress,     NULL,                 NULL },
 };
 
-typedef struct
-{
-    const char* name;
-    const char* params;
-} alias_desc_t;
 
 #define LZBENCH_ALIASES_COUNT 12
 
