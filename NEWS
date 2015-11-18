@@ -1,5 +1,7 @@
-v0.8.1
+v0.9
 - added: lzo1 and lzo1a
+- added the "-tX" option: output text format 1=markdown, 2=text, 3=CSV 
+- added the "-pX" option: print time for all iterations: 1=fastest 2=average 3=median
 - added the "-jX" option: number of compression iterations
 - added the "-l" option: list of available compressors and aliases
 - fixed: memory allocation cost for brieflz, lzo, lzrw, wflz is now not included in timings
