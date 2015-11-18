@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include "csc_model.h"
 
-#if defined(__amd64__) || defined(_M_AMD64) || defined(__i386__) || defined(_M_IX86)
+#if defined(__SSE2__)
 #  include <emmintrin.h>
 #  define PREFETCH_T0(addr) _mm_prefetch(((char *)(addr)),_MM_HINT_T0)
 #elif defined(__GNUC__) && ((__GNUC__ > 3) || ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 2)))

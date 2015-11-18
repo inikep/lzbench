@@ -230,6 +230,42 @@ int64_t lzbench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size
 #endif
 
 
+#ifndef BENCH_REMOVE_GIPFELI
+#include "gipfeli/gipfeli.h"
+
+int64_t lzbench_gipfeli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    int64_t res;
+    util::compression::Compressor *gipfeli = util::compression::NewGipfeliCompressor();
+    if (gipfeli)
+    {
+        util::compression::UncheckedByteArraySink sink((char*)outbuf);
+        util::compression::ByteArraySource src((const char*)inbuf, insize);
+        res = gipfeli->CompressStream(&src, &sink); 
+        delete gipfeli; 
+    }
+    else res=0;
+    return res;
+}
+
+int64_t lzbench_gipfeli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+    int64_t res = 0;
+    util::compression::Compressor *gipfeli = util::compression::NewGipfeliCompressor();
+    if (gipfeli)
+    {
+        util::compression::UncheckedByteArraySink sink((char*)outbuf);
+        util::compression::ByteArraySource src((const char*)inbuf, insize);
+        if (gipfeli->UncompressStream(&src, &sink))
+            res = outsize;
+        delete gipfeli;
+    }
+    return res;
+}
+
+#endif
+
+
 
 
 #ifndef BENCH_REMOVE_LZ4

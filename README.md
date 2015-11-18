@@ -14,12 +14,16 @@ Usage
 ```
 usage: lzbench [options] input_file
 
-where options are:
- -bX: divides input data in blocks/chunks of size X KB (default = 2097152 KB)
- -cX: sort results by column number X
- -eX: X = compressors separated by '/' with parameters specified after ','
- -iX: selects number of iterations (default 1) and displays best time of X iterations.
- -sX: use only compressors with compression speed over X MB (default = 0 MB)
+where [options] are:
+ -bX  set block/chunk size to X KB (default = 2097152 KB)
+ -cX  sort results by column number X
+ -eX  X = compressors separated by '/' with parameters specified after ','
+ -iX  number of decompression iterations (default = 3)
+ -jX  number of compression iterations (default = 1)
+ -l   list of available compressors and aliases
+ -tX  output text format 1=markdown, 2=text, 3=CSV (default = 2)
+ -pX  print time for all iterations: 1=fastest 2=average 3=median (default = 1)
+ -sX  use only compressors with compression speed over X MB (default = 0 MB)
 
 Example usage:
   lzbench -ebrotli filename - selects all levels of brotli

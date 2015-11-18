@@ -474,14 +474,14 @@ int main( int argc, char** argv)
 	}
 
 	if (argc<2) {
-		fprintf(stderr, "usage: " PROGNAME " [options] input\n");
+		fprintf(stderr, "usage: " PROGNAME " [options] input_file\n\nwhere [options] are:\n");
 		fprintf(stderr, " -bX  set block/chunk size to X KB (default = %d KB)\n", params.chunk_size>>10);
 		fprintf(stderr, " -cX  sort results by column number X\n");
 		fprintf(stderr, " -eX  X = compressors separated by '/' with parameters specified after ','\n");
 		fprintf(stderr, " -iX  number of decompression iterations (default = %d)\n", params.d_iters);
 		fprintf(stderr, " -jX  number of compression iterations (default = %d)\n", params.c_iters);
 		fprintf(stderr, " -l   list of available compressors and aliases\n");
-        fprintf(stderr, " -tX  output text format 1=markdown, 2=text, 3=CSV (default = %d)\n", params.textformat);
+        fprintf(stderr, " -tX  output text format 1=Markdown, 2=text, 3=CSV (default = %d)\n", params.textformat);
 		fprintf(stderr, " -pX  print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params.timetype);
 		fprintf(stderr, " -sX  use only compressors with compression speed over X MB (default = %d MB)\n", params.cspeed);
         fprintf(stderr,"\nExample usage:\n");
