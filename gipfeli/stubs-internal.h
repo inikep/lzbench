@@ -16,7 +16,7 @@
 
 #if defined(__x86_64__)
 // Enable 64-bit optimized versions of some routines.
-    #define ARCH_K8 1
+#define ARCH_K8 1
 #endif
 
 // Static prediction hints.

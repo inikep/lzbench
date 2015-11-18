@@ -6,7 +6,7 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 #define PROGNAME "lzbench"
-#define PROGVERSION "0.8.1"
+#define PROGVERSION "0.9"
 #define LZBENCH_DEBUG(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
 
 #define MAX(a,b) ((a)>(b))?(a):(b)

@@ -153,9 +153,6 @@ void LZ77::CompressFragment(const char* input,
       // number of bytes to move ahead for each iteration.
       uint32 skip = 32;
 
-//      if (input_size == 1000)
- //       printf("input_size=%d ip=%p base_ip=%p end=%p\n", input_size, ip, base_ip, base_ip+input_size);
-
       const char* next_ip = ip;
       const char* candidate = NULL;
       bool in_prev_block = false;
@@ -178,8 +175,6 @@ void LZ77::CompressFragment(const char* input,
         }
         hash_table[hash] = ip - base_ip;
       } while (UNALIGNED_LOAD32(ip) != UNALIGNED_LOAD32(candidate));
-
-      //  printf("ip=%p base_ip=%p\n", ip, base_ip);
 
       // Step 2: A 4-byte match has been found.  We'll later see if more
       // than 4 bytes match.  But, prior to the match, input

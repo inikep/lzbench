@@ -54,12 +54,14 @@ To remove one of compressors you can add -DBENCH_REMOVE_XXX to $DEFINES in Makef
 Supported compressors
 -------------------------
 ```
+blosclz 2015-11-10
 brieflz 1.1.0
 brotli 2015-10-29
 crush 1.0
 csc 3.3
 density 0.12.5 beta
 fastlz 0.1
+gipfeli 2015-11-01 with bugfixes from https://github.com/jibsen/gipfeli
 lz4/lz4hc r131
 lz5/lz5hc r131b
 lzf 3.6

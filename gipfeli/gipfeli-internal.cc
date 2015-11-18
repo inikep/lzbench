@@ -238,7 +238,8 @@ size_t Gipfeli::CompressStream(
 
   string prev_block;
   while (input_block.size()) {
-    lz77->CompressFragment(input_block.data(), input_block.size(), prev_block.c_str(),
+    lz77->CompressFragment(input_block.data(), input_block.size(),
+                           prev_block.empty() ? NULL : prev_block.data(),
                            &content, &content_size, &commands, &commands_size);
 
     // We add 64 bytes for potential entropy overhead.

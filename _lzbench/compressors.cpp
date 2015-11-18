@@ -568,7 +568,6 @@ static ISzAlloc g_Alloc = { SzAlloc, SzFree };
 
 int64_t lzbench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
-	char rs[800] = { 0 };
 	CLzmaEncProps props;
 	int res;
     size_t headerSize = LZMA_PROPS_SIZE;
@@ -594,7 +593,6 @@ int64_t lzbench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 
 int64_t lzbench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
-	char rs[800] = { 0 };
 	int res;
 	SizeT out_len = outsize;
 	SizeT src_len = insize - LZMA_PROPS_SIZE;

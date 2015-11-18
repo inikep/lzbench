@@ -1,5 +1,6 @@
 v0.9
 - added: blosclz 2015-11-10
+- added: gipfeli 2015-11-01 with bugfixes from https://github.com/jibsen/gipfeli
 - added: lzo1 and lzo1a
 - added the "-tX" option: output text format 1=Markdown, 2=text, 3=CSV 
 - added the "-pX" option: print time for all iterations: 1=fastest 2=average 3=median
