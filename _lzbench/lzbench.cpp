@@ -45,24 +45,46 @@ void format(std::string& s,const char* formatstring, ...)
 
 void print_header(lzbench_params_t *params)
 {
-    printf("| Compressor name             | Compression| Decompress.| Compr. size | Ratio |\n");
+    switch (params->textformat)
+    {
+        case CSV:
+            printf("Compressor name,Compression speed,Decompression speed,Compressed size,Ratio\n"); break;
+        case TURBOBENCH:
+            printf("  Compressed  Ratio   Cspeed   Dspeed  Compressor name\n"); break;
+        case TEXT:
+            printf("Compressor name              Compression Decompress. Compr. size  Ratio \n"); break;
+        case MARKDOWN:
+            printf("| Compressor name             | Compression| Decompress.| Compr. size | Ratio |\n"); break;
+    }
 }
 
 void print_row(lzbench_params_t *params, string_table_t& row)
 {
-    if (params->textformat == TEXT)
+    switch (params->textformat)
     {
-        printf("%12" PRId64" %6.1f%9.2f%9.2f  %s\n", row.column4, row.column5, row.column2, row.column3, row.column1.c_str());
-        return;
+        case CSV:
+            printf("%s,%.2f,%.2f,%" PRId64 ",%.2f\n", row.column1.c_str(), row.column2, row.column3, row.column4, row.column5); break;
+        case TURBOBENCH:
+            printf("%12" PRId64 " %6.1f%9.2f%9.2f  %s\n", row.column4, row.column5, row.column2, row.column3, row.column1.c_str()); break;
+        case TEXT:
+            printf("%-27s ", row.column1.c_str());
+            if (row.column2 < 10) printf("%6.2f MB/s ", row.column2); else printf("%6d MB/s ", (int)row.column2);
+            if (!row.column3)
+                printf("      ERROR ");
+            else
+                if (row.column3 < 10) printf("%6.2f MB/s ", row.column3); else printf("%6d MB/s ", (int)row.column3); 
+            printf("%12" PRId64 " %6.2f\n", row.column4, row.column5);
+            break;
+        case MARKDOWN:
+            printf("| %-27s ", row.column1.c_str());
+            if (row.column2 < 10) printf("|%6.2f MB/s ", row.column2); else printf("|%6d MB/s ", (int)row.column2);
+            if (!row.column3)
+                printf("|      ERROR ");
+            else
+                if (row.column3 < 10) printf("|%6.2f MB/s ", row.column3); else printf("|%6d MB/s ", (int)row.column3); 
+            printf("|%12" PRId64 " |%6.2f |\n", row.column4, row.column5);
+            break;
     }
-
-    printf("| %-27s ", row.column1.c_str());
-    if (row.column2 < 10) printf("|%6.2f MB/s ", row.column2); else printf("|%6d MB/s ", (int)row.column2);
-    if (!row.column3)
-        printf("|      ERROR ");
-    else
-        if (row.column3 < 10) printf("|%6.2f MB/s ", row.column3); else printf("|%6d MB/s ", (int)row.column3); 
-    printf("|%12" PRId64 " |%6.2f |\n", row.column4, row.column5);
 }
 
 
@@ -71,24 +93,34 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
     std::string column1;
     std::sort(ctime.begin(), ctime.end());
     std::sort(dtime.begin(), dtime.end());
-
-    uint64_t cmili_fastest = ctime[0] + (ctime[0] == 0);
-    uint64_t dmili_fastest = dtime[0] + (dtime[0] == 0);
-    uint64_t cmili_med = ctime[ctime.size()/2] + (ctime[ctime.size()/2] == 0);
-    uint64_t dmili_med = dtime[dtime.size()/2] + (dtime[dtime.size()/2] == 0);
-    uint64_t cmili_avg = std::accumulate(ctime.begin(),ctime.end(),0) / ctime.size();
-    uint64_t dmili_avg = std::accumulate(dtime.begin(),dtime.end(),0) / dtime.size();
-    if (cmili_avg == 0) cmili_avg = 1;
-    if (dmili_avg == 0) dmili_avg = 1;
-
-    if (params->cspeed > insize/cmili_fastest) { LZBENCH_DEBUG(9, "%s FULL slower than %d MB/s\n", desc->name, insize/cmili_fastest); return; } 
+    uint64_t cnano, dnano;
+    
+    switch (params->timetype)
+    {
+        case FASTEST: 
+            cnano = ctime[0] + (ctime[0] == 0);
+            dnano = dtime[0] + (dtime[0] == 0);
+            break;
+        case AVERAGE: 
+            cnano = std::accumulate(ctime.begin(),ctime.end(),0) / ctime.size();
+            dnano = std::accumulate(dtime.begin(),dtime.end(),0) / dtime.size();
+            if (cnano == 0) cnano = 1;
+            if (dnano == 0) dnano = 1;
+            break;
+        case MEDIAN: 
+            cnano = ctime[ctime.size()/2] + (ctime[ctime.size()/2] == 0);
+            dnano = dtime[dtime.size()/2] + (dtime[dtime.size()/2] == 0);
+            break;
+    }
+    
+    if (params->cspeed > insize/cnano) { LZBENCH_DEBUG(9, "%s FULL slower than %d MB/s\n", desc->name, insize/cnano); return; } 
 
     if (desc->first_level == 0 && desc->last_level==0)
         format(column1, "%s %s", desc->name, desc->version);
     else
         format(column1, "%s %s level %d", desc->name, desc->version, level);
 
-    params->results.push_back(string_table_t(column1, insize/cmili_fastest, (decomp_error)?0:(insize/dmili_fastest), outsize, outsize * 100.0 / insize));
+    params->results.push_back(string_table_t(column1, (float)insize/cnano, (decomp_error)?0:((float)insize/dnano), outsize, outsize * 100.0 / insize));
     print_row(params, params->results[params->results.size()-1]);
 
     ctime.clear();
@@ -107,7 +139,7 @@ size_t common(uint8_t *p1, uint8_t *p2)
 }
 
 
-int64_t lzbench_compress(lzbench_params_t *params, compress_func compress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
+inline int64_t lzbench_compress(lzbench_params_t *params, compress_func compress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
 {
     int64_t clen;
     size_t part, sum = 0;
@@ -137,7 +169,7 @@ int64_t lzbench_compress(lzbench_params_t *params, compress_func compress, std::
 }
 
 
-int64_t lzbench_decompress(lzbench_params_t *params, compress_func decompress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, uint8_t *origbuf, size_t param1, size_t param2, char* workmem)
+inline int64_t lzbench_decompress(lzbench_params_t *params, compress_func decompress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, uint8_t *origbuf, size_t param1, size_t param2, char* workmem)
 {
     int64_t dlen;
     int num=0;
@@ -192,24 +224,22 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
         int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
         uint64_t nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
-  //      printf("\nclen=%d milisec=%d %s\n", clen, milisec, desc->name);
         if (clen>0 && nanosec>=3000) // longer than 3 milisec = slower than 33 MB/s
         {
             part = (part / nanosec); // speed in MB/s
-    //        printf("%s = %d MB/s, %d\n", desc->name, part, clen);
             if (part < params->cspeed) { LZBENCH_DEBUG(9, "%s (100K) slower than %d MB/s\n", desc->name, (uint32_t)part); goto done; }
         }
     }
 
     for (int ii=1; ii<=params->c_iters; ii++)
     {
-        printf("%s comp iter %d/%d\r", desc->name, ii, params->c_iters);
+        printf("%s compr iter %d/%d\r", desc->name, ii, params->c_iters);
         GetTime(start_ticks);
         complen = lzbench_compress(params, desc->compress, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
         
         uint64_t nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
-        if (complen>0 && nanosec>=3000) // longer than 3 milisec
+        if (complen>0 && nanosec>=3000) // longer than 3 nanosec
         {
             if ((insize/nanosec) < params->cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, (uint32_t)((insize/nanosec))); goto done; }
         }
@@ -218,7 +248,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
 
     for (int ii=1; ii<=params->d_iters; ii++)
     {
-        printf("%s decomp iter %d/%d\r", desc->name, ii, params->d_iters);
+        printf("%s decompr iter %d/%d\r", desc->name, ii, params->d_iters);
         GetTime(start_ticks);
         decomplen = lzbench_decompress(params, desc->decompress, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
         GetTime(end_ticks);
@@ -362,9 +392,9 @@ void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list)
 	free(decomp);
 
 	if (params->chunk_size > 10 * (1<<20))
-		printf("done... (%d comp/%d decomp iters, chunk_size=%d MB, min_compr_speed=%d MB)\n", params->c_iters, params->d_iters, params->chunk_size >> 20, params->cspeed);
+		printf("done... (%d compr/%d decompr iters, chunk_size=%d MB, min_compr_speed=%d MB)\n", params->c_iters, params->d_iters, params->chunk_size >> 20, params->cspeed);
 	else
-		printf("done... (%d comp/%d decomp iters, chunk_size=%d KB, min_compr_speed=%d MB)\n", params->c_iters, params->d_iters, params->chunk_size >> 10, params->cspeed);
+		printf("done... (%d compr/%d decompr iters, chunk_size=%d KB, min_compr_speed=%d MB)\n", params->c_iters, params->d_iters, params->chunk_size >> 10, params->cspeed);
 }
 
 
@@ -375,12 +405,14 @@ int main( int argc, char** argv)
     char* encoder_list = NULL;
     int sort_col = 0;
     
+    params.timetype = FASTEST;
+    params.textformat = TEXT;
     params.verbose = 0;
 	params.d_iters = 3;
     params.c_iters = 1;
 	params.chunk_size = 1 << 31;
 	params.cspeed = 0;
-
+    
 #ifdef WINDOWS
 //	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
 	SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
@@ -412,6 +444,9 @@ int main( int argc, char** argv)
 		break;
 	case 't':
         params.textformat = (textformat_e)atoi(argv[1] + 2);
+		break;
+	case 'p':
+        params.timetype = (timetype_e)atoi(argv[1] + 2);
 		break;
 	case 'v':
 		params.verbose = atoi(argv[1] + 2);
@@ -447,6 +482,7 @@ int main( int argc, char** argv)
 		fprintf(stderr, " -jX  number of compression iterations (default = %d)\n", params.c_iters);
 		fprintf(stderr, " -l   list of available compressors and aliases\n");
         fprintf(stderr, " -tX  output text format 1=markdown, 2=text, 3=CSV (default = %d)\n", params.textformat);
+		fprintf(stderr, " -pX  print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params.timetype);
 		fprintf(stderr, " -sX  use only compressors with compression speed over X MB (default = %d MB)\n", params.cspeed);
         fprintf(stderr,"\nExample usage:\n");
         fprintf(stderr,"  " PROGNAME " -ebrotli filename - selects all levels of brotli\n");

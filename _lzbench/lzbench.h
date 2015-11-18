@@ -57,12 +57,14 @@ typedef struct string_table
     string_table(std::string c1, float c2, float c3, uint64_t c4, float c5) : column1(c1), column2(c2), column3(c3), column4(c4), column5(c5) {}
 } string_table_t;
 
-enum textformat_e { MARKDOWN=1, TEXT, CSV };
+enum textformat_e { MARKDOWN=1, TEXT, CSV, TURBOBENCH };
+enum timetype_e { FASTEST=1, AVERAGE, MEDIAN };
 
 typedef struct
 {
+    timetype_e timetype;
     textformat_e textformat;
-	uint32_t c_iters, d_iters, chunk_size, cspeed, verbose;
+    uint32_t c_iters, d_iters, chunk_size, cspeed, verbose;
     std::vector<string_table_t> results;
 } lzbench_params_t;
 
@@ -101,7 +103,7 @@ typedef struct
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
-    { "memcpy",   "",            0,   0, lzbench_memcpy,            lzbench_memcpy,              NULL,                 NULL },
+    { "memcpy",   "",            0,   0, lzbench_return_0,          lzbench_memcpy,              NULL,                 NULL },
     { "brieflz",  "1.1.0",       0,   0, lzbench_brieflz_compress,  lzbench_brieflz_decompress,  lzbench_brieflz_init, lzbench_brieflz_deinit },
     { "brotli",   "2015-10-29",  0,  11, lzbench_brotli_compress,   lzbench_brotli_decompress,   NULL,                 NULL },
     { "crush",    "1.0",         0,   2, lzbench_crush_compress,    lzbench_crush_decompress,    NULL,                 NULL },
@@ -120,7 +122,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lzlib",    "1.7",         0,   9, lzbench_lzlib_compress,    lzbench_lzlib_decompress,    NULL,                 NULL },
     { "lzma",     "9.38",        0,   9, lzbench_lzma_compress,     lzbench_lzma_decompress,     NULL,                 NULL },
     { "lzmat",    "1.01",        0,   0, lzbench_lzmat_compress,    lzbench_lzmat_decompress,    NULL,                 NULL }, // decompression error (returns 0) and SEGFAULT (?)
-    { "lzo1",     "2.09",        1,   1, lzbench_lzo1_compress,     lzbench_lzo1_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
+    { "lzo1",     "2.09",        1,   1, lzbench_lzo1_compress,     lzbench_lzo1_decompress,     lzbench_lzo_init,     lzbench_lzo_deinit },
     { "lzo1a",    "2.09",        1,   1, lzbench_lzo1a_compress,    lzbench_lzo1a_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
     { "lzo1b",    "2.09",        1,   1, lzbench_lzo1b_compress,    lzbench_lzo1b_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
     { "lzo1c",    "2.09",        1,   1, lzbench_lzo1c_compress,    lzbench_lzo1c_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
