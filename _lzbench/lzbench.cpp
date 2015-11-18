@@ -139,7 +139,7 @@ size_t common(uint8_t *p1, uint8_t *p2)
 }
 
 
-inline int64_t lzbench_compress(lzbench_params_t *params, compress_func compress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
+inline int64_t lzbench_compress(lzbench_params_t *params, uint32_t chunk_size, compress_func compress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
 {
     int64_t clen;
     size_t part, sum = 0;
@@ -148,7 +148,7 @@ inline int64_t lzbench_compress(lzbench_params_t *params, compress_func compress
     
     while (insize > 0)
     {
-        part = MIN(insize, params->chunk_size);
+        part = MIN(insize, chunk_size);
         clen = compress((char*)inbuf, part, (char*)outbuf, outsize, param1, param2, workmem);
 		LZBENCH_DEBUG(5,"ENC part=%d clen=%d in=%d\n", (int)part, (int)clen, (int)(inbuf-start));
 
@@ -169,7 +169,7 @@ inline int64_t lzbench_compress(lzbench_params_t *params, compress_func compress
 }
 
 
-inline int64_t lzbench_decompress(lzbench_params_t *params, compress_func decompress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, uint8_t *origbuf, size_t param1, size_t param2, char* workmem)
+inline int64_t lzbench_decompress(lzbench_params_t *params, uint32_t chunk_size, compress_func decompress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, uint8_t *origbuf, size_t param1, size_t param2, char* workmem)
 {
     int64_t dlen;
     int num=0;
@@ -180,14 +180,14 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, compress_func decomp
     {
         part = compr_lens[num++];
         if (part > insize) return 0;
-        if (part == MIN(params->chunk_size, outsize)) // uncompressed
+        if (part == MIN(chunk_size, outsize)) // uncompressed
         {
             memcpy(outbuf, inbuf, part);
             dlen = part;
         }
         else
         {
-            dlen = decompress((char*)inbuf, part, (char*)outbuf, MIN(params->chunk_size, outsize), param1, param2, workmem);
+            dlen = decompress((char*)inbuf, part, (char*)outbuf, MIN(chunk_size, outsize), param1, param2, workmem);
         }
 		LZBENCH_DEBUG(5, "DEC part=%d dlen=%d out=%d\n", (int)part, (int)dlen, (int)(outbuf - outstart));
         if (dlen <= 0) return dlen;
@@ -211,6 +211,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     std::vector<size_t> compr_lens;
     bool decomp_error = false;
     char* workmem = NULL;
+    bool blosclz = strcmp(desc->name,"blosclz")==0;
 
     if (!desc->compress || !desc->decompress) goto done;
     if (desc->init) workmem = desc->init(params->chunk_size);
@@ -235,7 +236,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     {
         printf("%s compr iter %d/%d\r", desc->name, ii, params->c_iters);
         GetTime(start_ticks);
-        complen = lzbench_compress(params, desc->compress, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
+        complen = lzbench_compress(params, blosclz?64*1024:params->chunk_size, desc->compress, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
         
         uint64_t nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
@@ -250,7 +251,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     {
         printf("%s decompr iter %d/%d\r", desc->name, ii, params->d_iters);
         GetTime(start_ticks);
-        decomplen = lzbench_decompress(params, desc->decompress, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
+        decomplen = lzbench_decompress(params, blosclz?64*1024:params->chunk_size, desc->decompress, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
         GetTime(end_ticks);
 
         dtime.push_back(GetDiffTime(ticksPerSecond, start_ticks, end_ticks));

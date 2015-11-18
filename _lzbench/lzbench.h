@@ -99,11 +99,12 @@ typedef struct
 
 
 
-#define LZBENCH_COMPRESSOR_COUNT 46
+#define LZBENCH_COMPRESSOR_COUNT 47
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
     { "memcpy",   "",            0,   0, lzbench_return_0,          lzbench_memcpy,              NULL,                 NULL },
+    { "blosclz",  "2015-11-10",  1,   9, lzbench_blosclz_compress,  lzbench_blosclz_decompress,  NULL,                 NULL },
     { "brieflz",  "1.1.0",       0,   0, lzbench_brieflz_compress,  lzbench_brieflz_decompress,  lzbench_brieflz_init, lzbench_brieflz_deinit },
     { "brotli",   "2015-10-29",  0,  11, lzbench_brotli_compress,   lzbench_brotli_decompress,   NULL,                 NULL },
     { "crush",    "1.0",         0,   2, lzbench_crush_compress,    lzbench_crush_decompress,    NULL,                 NULL },

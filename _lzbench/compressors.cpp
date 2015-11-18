@@ -15,6 +15,23 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
     return 0;
 }
 
+
+#ifndef BENCH_REMOVE_BLOSCLZ
+#include "blosclz/blosclz.h"
+
+int64_t lzbench_blosclz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    return blosclz_compress(level, inbuf, insize, outbuf, outsize, 1);
+}
+
+int64_t lzbench_blosclz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char*)
+{
+    return blosclz_decompress(inbuf, insize, outbuf, outsize);
+}
+
+#endif
+
+
 #ifndef BENCH_REMOVE_BRIEFLZ
 #include "brieflz/brieflz.h"
 
@@ -38,7 +55,7 @@ int64_t lzbench_brieflz_compress(char *inbuf, size_t insize, char *outbuf, size_
     return res;
 }
 
-int64_t lzbench_brieflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_brieflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
     return blz_depack_safe(inbuf, insize, outbuf, outsize);
 }
