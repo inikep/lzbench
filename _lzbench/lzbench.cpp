@@ -49,7 +49,7 @@
 	#include <windows.h>
 	#define InitTimer(x) if (!QueryPerformanceFrequency(&x)) { printf("QueryPerformance not present"); };
 	#define GetTime(x) QueryPerformanceCounter(&x); 
-	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000000*(end_ticks.QuadPart - start_ticks.QuadPart)/ticksPerSecond.QuadPart)
+	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/ticksPerSecond.QuadPart)
 	void uni_sleep(UINT usec) { Sleep(usec); };
 	#ifndef __GNUC__
 		#define fseeko64 _fseeki64 
@@ -63,8 +63,8 @@
 	#include <sys/resource.h>
 	typedef struct timespec LARGE_INTEGER;
 	#define InitTimer(x) 
-	#define GetTime(x) if(clock_gettime( CLOCK_REALTIME, &x) == -1 ){ printf("clock_gettime error"); };
-	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000000*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec )/1000)
+	#define GetTime(x) if(clock_gettime( CLOCK_MONOTONIC , &x) == -1 ){ printf("clock_gettime error"); };
+	#define GetDiffTime(ticksPerSecond, start_ticks, end_ticks) (1000000ULL*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec )/1000)
 	void uni_sleep(uint32_t usec) { usleep(usec * 1000); };
 	#define PROGOS "Linux"
 #endif
@@ -77,7 +77,7 @@ typedef struct string_table
     std::string column1;
     float column2, column3, column5;
     uint64_t column4;
-    string_table(std::string c1, float c2, float c3, size_t c4, float c5) : column1(c1), column2(c2), column3(c3), column4(c4), column5(c5) {}
+    string_table(std::string c1, float c2, float c3, uint64_t c4, float c5) : column1(c1), column2(c2), column3(c3), column4(c4), column5(c5) {}
 } string_table_t;
 
 struct less_using_1st_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column1 < struct2.column1); } };
@@ -127,18 +127,18 @@ void print_row(string_table_t& row)
 }
 
 
-void print_stats(const compressor_desc_t* desc, int level, std::vector<uint32_t> &ctime, std::vector<uint32_t> &dtime, uint32_t insize, uint32_t outsize, bool decomp_error, int cspeed)
+void print_stats(const compressor_desc_t* desc, int level, std::vector<uint64_t> &ctime, std::vector<uint64_t> &dtime, uint32_t insize, uint32_t outsize, bool decomp_error, int cspeed)
 {
     std::string column1;
     std::sort(ctime.begin(), ctime.end());
     std::sort(dtime.begin(), dtime.end());
 
-    uint32_t cmili_fastest = ctime[0] + (ctime[0] == 0);
-    uint32_t dmili_fastest = dtime[0] + (dtime[0] == 0);
-    uint32_t cmili_med = ctime[ctime.size()/2] + (ctime[ctime.size()/2] == 0);
-    uint32_t dmili_med = dtime[dtime.size()/2] + (dtime[dtime.size()/2] == 0);
-    uint32_t cmili_avg = std::accumulate(ctime.begin(),ctime.end(),0) / ctime.size();
-    uint32_t dmili_avg = std::accumulate(dtime.begin(),dtime.end(),0) / dtime.size();
+    uint64_t cmili_fastest = ctime[0] + (ctime[0] == 0);
+    uint64_t dmili_fastest = dtime[0] + (dtime[0] == 0);
+    uint64_t cmili_med = ctime[ctime.size()/2] + (ctime[ctime.size()/2] == 0);
+    uint64_t dmili_med = dtime[dtime.size()/2] + (dtime[dtime.size()/2] == 0);
+    uint64_t cmili_avg = std::accumulate(ctime.begin(),ctime.end(),0) / ctime.size();
+    uint64_t dmili_avg = std::accumulate(dtime.begin(),dtime.end(),0) / dtime.size();
     if (cmili_avg == 0) cmili_avg = 1;
     if (dmili_avg == 0) dmili_avg = 1;
 
@@ -168,7 +168,7 @@ size_t common(uint8_t *p1, uint8_t *p2)
 }
 
 
-void add_time(std::vector<uint32_t> &ctime, std::vector<uint32_t> &dtime, uint32_t comp_time, uint32_t decomp_time)
+void add_time(std::vector<uint64_t> &ctime, std::vector<uint64_t> &dtime, uint64_t comp_time, uint64_t decomp_time)
 {
 	ctime.push_back(comp_time);
 	dtime.push_back(decomp_time);
@@ -243,7 +243,7 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
 {
     LARGE_INTEGER start_ticks, end_ticks;
     int64_t complen=0, decomplen;
-    std::vector<uint32_t> ctime, dtime;
+    std::vector<uint64_t> ctime, dtime;
     std::vector<size_t> compr_lens;
     bool decomp_error = false;
     char* workmem = NULL;
@@ -255,17 +255,17 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
 
     if (cspeed > 0)
     {
-        uint32_t part = MIN(100*1024,chunk_size);
+        uint64_t part = MIN(100*1024,chunk_size);
         GetTime(start_ticks);
         int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
-        uint32_t nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+        uint64_t nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
   //      printf("\nclen=%d milisec=%d %s\n", clen, milisec, desc->name);
         if (clen>0 && nanosec>=3000) // longer than 3 milisec = slower than 33 MB/s
         {
             part = (part / nanosec); // speed in MB/s
     //        printf("%s = %d MB/s, %d\n", desc->name, part, clen);
-            if (part < cspeed) { LZBENCH_DEBUG(9, "%s (100K) slower than %d MB/s\n", desc->name, part); goto done; }
+            if (part < cspeed) { LZBENCH_DEBUG(9, "%s (100K) slower than %d MB/s\n", desc->name, (uint32_t)part); goto done; }
         }
     }
     
@@ -275,7 +275,7 @@ void lzbench_test(const compressor_desc_t* desc, int level, int cspeed, size_t c
         complen = lzbench_compress(desc->compress, chunk_size, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
         
-        uint32_t nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+        uint64_t nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
         if (complen>0 && nanosec>=3000) // longer than 3 milisec
         {
             if ((insize/nanosec) < cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, (uint32_t)((insize/nanosec))); goto done; }
@@ -389,7 +389,7 @@ next_token:
 
 void lzbenchmark(FILE* in, char* encoder_list, int iters, uint32_t chunk_size, int cspeed)
 {
-	std::vector<uint32_t> ctime, dtime;
+	std::vector<uint64_t> ctime, dtime;
 	LARGE_INTEGER ticksPerSecond, start_ticks, mid_ticks, end_ticks;
 	uint32_t comprsize, insize;
 	uint8_t *inbuf, *compbuf, *decomp;
