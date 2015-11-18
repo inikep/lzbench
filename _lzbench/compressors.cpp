@@ -1,6 +1,14 @@
 #include "compressors.h"
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h> // memcpy
+
+
+int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* )
+{
+    memcpy(outbuf, inbuf, insize);
+    return insize;
+}
 
 
 #ifndef BENCH_REMOVE_BRIEFLZ

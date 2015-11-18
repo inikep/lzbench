@@ -1,10 +1,11 @@
 v0.8.1
 - added: lzo1 and lzo1a
+- added the "-jX" option: number of compression iterations
+- added the "-l" option: list of available compressors and aliases
 - fixed: memory allocation cost for brieflz, lzo, lzrw, wflz is now not included in timings
 - fixed: UCL available again as ucl_nrv2b/ucl_nrv2d/ucl_nrv2e or alias "ucl"
 - fixed: LZO available again as lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a or alias "lzo"
 - fixed: wfLZ, lzmat compiled with -O2 because they crash with gcc 4.9+ and -O3 
-
 v0.8
 - the "-cX" option: sort results by column number X
 - the "-eX" option where X = compressors separated by '/' with parameters specified after ','
