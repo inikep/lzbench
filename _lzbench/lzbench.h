@@ -12,6 +12,7 @@
 #define PROGVERSION "0.9"
 #define _FILE_OFFSET_BITS 64  // turn off_t into a 64-bit type for ftello() and fseeko()
 #define PAD_SIZE (16*1024)
+#define DEFAULT_LOOP_TIME (500*1000) // half a second
 #define LZBENCH_DEBUG(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
@@ -63,7 +64,7 @@ typedef struct
 {
     timetype_e timetype;
     textformat_e textformat;
-    uint32_t c_iters, d_iters, chunk_size, cspeed, verbose, cmintime, dmintime;
+    uint32_t c_iters, d_iters, chunk_size, cspeed, verbose, cmintime, dmintime, cloop_time, dloop_time;
     std::vector<string_table_t> results;
 } lzbench_params_t;
 

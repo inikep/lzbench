@@ -1,4 +1,5 @@
 v0.9
+- improved: more accurate timings for small files
 - added: blosclz 2015-11-10
 - added: gipfeli 2015-11-01 with bugfixes from https://github.com/jibsen/gipfeli
 - added: lzo1 and lzo1a

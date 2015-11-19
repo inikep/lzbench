@@ -88,43 +88,39 @@ void print_row(lzbench_params_t *params, string_table_t& row)
 }
 
 
-void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int level, std::vector<uint64_t> &ctime, std::vector<uint64_t> &dtime, uint32_t insize, uint32_t outsize, bool decomp_error)
+void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int level, std::vector<float> &cspd, std::vector<float> &dspd, uint32_t insize, uint32_t outsize, bool decomp_error)
 {
     std::string column1;
-    std::sort(ctime.begin(), ctime.end());
-    std::sort(dtime.begin(), dtime.end());
-    uint64_t cnano, dnano;
+    std::sort(cspd.begin(), cspd.end());
+    std::sort(dspd.begin(), dspd.end());
+    float cspeed, dspeed;
     
     switch (params->timetype)
     {
         case FASTEST: 
-            cnano = ctime[0] + (ctime[0] == 0);
-            dnano = dtime[0] + (dtime[0] == 0);
+            cspeed = cspd[cspd.size()-1];
+            dspeed = dspd[dspd.size()-1];
             break;
         case AVERAGE: 
-            cnano = std::accumulate(ctime.begin(),ctime.end(),0) / ctime.size();
-            dnano = std::accumulate(dtime.begin(),dtime.end(),0) / dtime.size();
-            if (cnano == 0) cnano = 1;
-            if (dnano == 0) dnano = 1;
+            cspeed = std::accumulate(cspd.begin(),cspd.end(),0) / cspd.size();
+            dspeed = std::accumulate(dspd.begin(),dspd.end(),0) / dspd.size();
             break;
         case MEDIAN: 
-            cnano = ctime[ctime.size()/2] + (ctime[ctime.size()/2] == 0);
-            dnano = dtime[dtime.size()/2] + (dtime[dtime.size()/2] == 0);
+            cspeed = cspd[cspd.size()/2];
+            dspeed = dspd[dspd.size()/2];
             break;
     }
-    
-    if (params->cspeed > insize/cnano) { LZBENCH_DEBUG(9, "%s FULL slower than %d MB/s\n", desc->name, (uint32_t)(insize/cnano)); return; } 
 
     if (desc->first_level == 0 && desc->last_level==0)
         format(column1, "%s %s", desc->name, desc->version);
     else
         format(column1, "%s %s level %d", desc->name, desc->version, level);
 
-    params->results.push_back(string_table_t(column1, (float)insize/cnano, (decomp_error)?0:((float)insize/dnano), outsize, outsize * 100.0 / insize));
+    params->results.push_back(string_table_t(column1, cspeed, (decomp_error)?0:dspeed, outsize, outsize * 100.0 / insize));
     print_row(params, params->results[params->results.size()-1]);
 
-    ctime.clear();
-    dtime.clear();
+    cspd.clear();
+    dspd.clear();
 };
 
 
@@ -150,7 +146,7 @@ inline int64_t lzbench_compress(lzbench_params_t *params, uint32_t chunk_size, c
     {
         part = MIN(insize, chunk_size);
         clen = compress((char*)inbuf, part, (char*)outbuf, outsize, param1, param2, workmem);
-        LZBENCH_DEBUG(5,"ENC part=%d clen=%d in=%d\n", (int)part, (int)clen, (int)(inbuf-start));
+        LZBENCH_DEBUG(9,"ENC part=%d clen=%d in=%d\n", (int)part, (int)clen, (int)(inbuf-start));
 
         if (clen <= 0 || clen == part)
         {
@@ -189,7 +185,7 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, uint32_t chunk_size,
         {
             dlen = decompress((char*)inbuf, part, (char*)outbuf, MIN(chunk_size, outsize), param1, param2, workmem);
         }
-        LZBENCH_DEBUG(5, "DEC part=%d dlen=%d out=%d\n", (int)part, (int)dlen, (int)(outbuf - outstart));
+        LZBENCH_DEBUG(9, "DEC part=%d dlen=%d out=%d\n", (int)part, (int)dlen, (int)(outbuf - outstart));
         if (dlen <= 0) return dlen;
 
         inbuf += part;
@@ -205,10 +201,12 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, uint32_t chunk_size,
 
 void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond, size_t param1, size_t param2)
 {
-    LARGE_INTEGER start_ticks, end_ticks;
+    float speed;
+    int i, total_c_iters, total_d_iters;
+    LARGE_INTEGER start_ticks, end_ticks, timer_ticks;
     int64_t complen=0, decomplen;
-    uint64_t nanosec, total;
-    std::vector<uint64_t> ctime, dtime;
+    uint64_t nanosec, total_nanosec;
+    std::vector<float> cspeed, dspeed;
     std::vector<size_t> compr_lens;
     bool decomp_error = false;
     char* workmem = NULL;
@@ -226,62 +224,62 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
         int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
         nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
-        if (clen>0 && nanosec>=3000) // longer than 3 milisec = slower than 33 MB/s
+        if (clen>0 && nanosec>=1000)
         {
             part = (part / nanosec); // speed in MB/s
-            if (part < params->cspeed) { LZBENCH_DEBUG(9, "%s (100K) slower than %d MB/s\n", desc->name, (uint32_t)part); goto done; }
+            if (part < params->cspeed) { LZBENCH_DEBUG(5, "%s (100K) slower than %d MB/s nanosec=%d\n", desc->name, (uint32_t)part, (uint32_t)nanosec); goto done; }
         }
     }
 
-    for (int ii=1, total=0; ; ii++)
+    total_c_iters = 0;
+    GetTime(timer_ticks);
+    do
     {
-        if (params->cmintime)
-        {
-            if (ii > params->c_iters && (total/1000) >= (params->cmintime)) break;
-            printf("%s compr time=%d/%d iter=%d     \r", desc->name, (uint32_t)(total/1000), params->cmintime, ii);
-        }
-        else
-        {
-            if (ii > params->c_iters) break;
-            printf("%s compr iter=%d/%d       \r", desc->name, ii, params->c_iters);
-        }
+        i = 0;
         uni_sleep(1); // give processor to other processes
         GetTime(start_ticks);
-        complen = lzbench_compress(params, blosclz?64*1024:params->chunk_size, desc->compress, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
-        GetTime(end_ticks);
+        do
+        {
+            complen = lzbench_compress(params, blosclz?64*1024:params->chunk_size, desc->compress, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
+            GetTime(end_ticks);
+            i++;
+        }
+        while (GetDiffTime(ticksPerSecond, start_ticks, end_ticks) < params->cloop_time);
+
+        nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+        speed = (float)insize*i/nanosec;
+        cspeed.push_back(speed);
+        LZBENCH_DEBUG(8, "%s nanosec=%d\n", desc->name, (int)nanosec);
+
+        if ((uint32_t)speed < params->cspeed) { LZBENCH_DEBUG(5, "%s slower than %d MB/s\n", desc->name, (uint32_t)speed); return; } 
         
-        nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
-        total += nanosec;
-        LZBENCH_DEBUG(9, "%s nanosec=%d\n", desc->name, (int)nanosec);
-        if (complen>0 && nanosec>=3000) // longer than 3 milisec
-        {
-            if ((insize/nanosec) < params->cspeed) { LZBENCH_DEBUG(9, "%s 1ITER slower than %d MB/s\n", desc->name, (uint32_t)(insize/nanosec)); goto done; }
-        }
-        ctime.push_back(nanosec);
+        total_nanosec = GetDiffTime(ticksPerSecond, timer_ticks, end_ticks);
+        total_c_iters += i;
+        if (total_c_iters >= params->c_iters &&  total_nanosec > (params->cmintime*1000)) break;
+        printf("%s compr iter=%d time=%.2fs speed=%.2f MB/s     \r", desc->name, total_c_iters, total_nanosec/1000000.0, speed);
     }
+    while (true);
 
-    for (int ii=1, total=0; ; ii++)
+
+    total_d_iters = 0;
+    GetTime(timer_ticks);
+    do
     {
-        if (params->dmintime)
-        {
-            if (ii > params->d_iters && (total/1000) >= (params->dmintime)) break;
-            printf("%s decompr time=%d/%d iter=%d     \r", desc->name, (uint32_t)(total/1000), (params->dmintime), ii);
-        }
-        else
-        {
-            if (ii > params->d_iters) break;
-            printf("%s decompr iter=%d/%d     \r", desc->name, ii, params->d_iters);
-        }
+        i = 0;
         uni_sleep(1); // give processor to other processes
         GetTime(start_ticks);
-        decomplen = lzbench_decompress(params, blosclz?64*1024:params->chunk_size, desc->decompress, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
-        GetTime(end_ticks);
+        do
+        {
+            decomplen = lzbench_decompress(params, blosclz?64*1024:params->chunk_size, desc->decompress, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
+            GetTime(end_ticks);
+            i++;
+        }
+        while (GetDiffTime(ticksPerSecond, start_ticks, end_ticks) < params->dloop_time);
 
         nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
-        dtime.push_back(nanosec);
-        total += nanosec;
+        dspeed.push_back((float)insize*i/nanosec);
         LZBENCH_DEBUG(9, "%s dnanosec=%d\n", desc->name, (int)nanosec);
-        
+
         if (insize != decomplen)
         {   
             decomp_error = true; 
@@ -310,11 +308,18 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
         }
 
         memset(decomp, 0, insize); // clear output buffer
-        uni_sleep(1); // give processor to other processes
-        
+
         if (decomp_error) break;
+        
+        total_nanosec = GetDiffTime(ticksPerSecond, timer_ticks, end_ticks);
+        total_d_iters += i;
+        if (total_d_iters >= params->d_iters && total_nanosec > (params->dmintime*1000)) break;
+        printf("%s decompr iter=%d time=%.2fs speed=%.2f MB/s     \r", desc->name, total_d_iters, total_nanosec/1000000.0, (float)insize*i/nanosec);
     }
-    print_stats(params, desc, level, ctime, dtime, insize, complen, decomp_error);
+    while (true);
+
+    print_stats(params, desc, level, cspeed, dspeed, insize, complen, decomp_error);
+
 done:
     if (desc->deinit) desc->deinit(workmem);
 };
@@ -413,8 +418,9 @@ void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list)
 
     lzbench_params_t params_memcpy;
     memcpy(&params_memcpy, params, sizeof(lzbench_params_t));
-    params_memcpy.cmintime = params_memcpy.dmintime = 500;
+    params_memcpy.cmintime = params_memcpy.dmintime = 0;
     params_memcpy.c_iters = params_memcpy.d_iters = 0;
+    params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
     lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, 0, 0);
 
     lzbench_test_with_params(params, encoder_list?encoder_list:(char*)alias_desc[1].params, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
@@ -440,11 +446,11 @@ int main( int argc, char** argv)
     params.timetype = FASTEST;
     params.textformat = TEXT;
     params.verbose = 0;
-    params.c_iters = params.d_iters = 0;
 	params.chunk_size = 1 << 31;
 	params.cspeed = 0;
-    params.cmintime = 1000;
-    params.dmintime = 1000;
+    params.c_iters = params.d_iters = 1;
+    params.cmintime = params.dmintime = DEFAULT_LOOP_TIME/1000;
+    params.cloop_time = params.dloop_time = DEFAULT_LOOP_TIME;
 
 #ifdef WINDOWS
 //	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
@@ -483,9 +489,11 @@ int main( int argc, char** argv)
 		break;
 	case 't':
 		params.cmintime = 1000*atoi(argv[1] + 2);
+        params.cloop_time = (params.cmintime)?DEFAULT_LOOP_TIME:0;
 		break;
 	case 'u':
 		params.dmintime = 1000*atoi(argv[1] + 2);
+        params.dloop_time = (params.dmintime)?DEFAULT_LOOP_TIME:0;
 		break;
 	case 'v':
 		params.verbose = atoi(argv[1] + 2);
@@ -523,8 +531,8 @@ int main( int argc, char** argv)
         fprintf(stderr, " -oX  output text format 1=Markdown, 2=text, 3=CSV (default = %d)\n", params.textformat);
 		fprintf(stderr, " -pX  print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params.timetype);
 		fprintf(stderr, " -sX  use only compressors with compression speed over X MB (default = %d MB)\n", params.cspeed);
-		fprintf(stderr, " -tX  set min. time in seconds for compression (default = %d)\n", params.cmintime/1000);
- 		fprintf(stderr, " -uX  set min. time in seconds for decompression (default = %d)\n", params.dmintime/1000);
+		fprintf(stderr, " -tX  set min. time in seconds for compression (default = %.1f)\n", params.cmintime/1000.0);
+ 		fprintf(stderr, " -uX  set min. time in seconds for decompression (default = %.1f)\n", params.dmintime/1000.0);
         fprintf(stderr,"\nExample usage:\n");
         fprintf(stderr,"  " PROGNAME " -ebrotli filename - selects all levels of brotli\n");
         fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd\n");                    
