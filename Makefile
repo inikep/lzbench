@@ -120,6 +120,9 @@ all: lzbench
 wflz/wfLZ.o: wflz/wfLZ.c wflz/wfLZ.h 
 	$(GCC) $(CFLAGS_O2) $< -c -o $@
 
+shrinker/shrinker.o: shrinker/shrinker.c
+	$(GCC) $(CFLAGS_O2) $< -c -o $@
+
 lzmat/lzmat_dec.o: lzmat/lzmat_dec.c
 	$(GCC) $(CFLAGS_O2) $< -c -o $@
 

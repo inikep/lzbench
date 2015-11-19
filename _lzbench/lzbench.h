@@ -1,12 +1,17 @@
 #ifndef LZBENCH_H
 #define LZBENCH_H
 
+#define _CRT_SECURE_NO_WARNINGS
+#define __STDC_FORMAT_MACROS // now PRIu64 will work
+#include <inttypes.h> // now PRIu64 will work
+
 #include "compressors.h"
 #include <vector>
 
-#define _CRT_SECURE_NO_WARNINGS
 #define PROGNAME "lzbench"
 #define PROGVERSION "0.9"
+#define _FILE_OFFSET_BITS 64  // turn off_t into a 64-bit type for ftello() and fseeko()
+#define PAD_SIZE (16*1024)
 #define LZBENCH_DEBUG(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
@@ -17,12 +22,6 @@
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(WIN64) || defined(_WIN64)
 	#define WINDOWS
 #endif
-
-#define __STDC_FORMAT_MACROS // now PRIu64 will work
-#include <inttypes.h> // now PRIu64 will work
-#define _FILE_OFFSET_BITS 64  // turn off_t into a 64-bit type for ftello() and fseeko()
-#define PAD_SIZE (16*1024)
-
 
 #ifdef WINDOWS
 	#include <windows.h>
@@ -64,7 +63,7 @@ typedef struct
 {
     timetype_e timetype;
     textformat_e textformat;
-    uint32_t c_iters, d_iters, chunk_size, cspeed, verbose;
+    uint32_t c_iters, d_iters, chunk_size, cspeed, verbose, cmintime, dmintime;
     std::vector<string_table_t> results;
 } lzbench_params_t;
 

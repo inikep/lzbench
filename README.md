@@ -18,12 +18,14 @@ where [options] are:
  -bX  set block/chunk size to X KB (default = 2097152 KB)
  -cX  sort results by column number X
  -eX  X = compressors separated by '/' with parameters specified after ','
- -iX  number of decompression iterations (default = 3)
- -jX  number of compression iterations (default = 1)
+ -iX  set min. number of compression iterations (default = 0)
+ -jX  set min. number of decompression iterations (default = 0)
  -l   list of available compressors and aliases
- -tX  output text format 1=markdown, 2=text, 3=CSV (default = 2)
+ -oX  output text format 1=Markdown, 2=text, 3=CSV (default = 2)
  -pX  print time for all iterations: 1=fastest 2=average 3=median (default = 1)
  -sX  use only compressors with compression speed over X MB (default = 0 MB)
+ -tX  set min. time in seconds for compression (default = 2)
+ -uX  set min. time in seconds for decompression (default = 2)
 
 Example usage:
   lzbench -ebrotli filename - selects all levels of brotli
