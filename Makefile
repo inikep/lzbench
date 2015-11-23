@@ -129,6 +129,9 @@ lzmat/lzmat_dec.o: lzmat/lzmat_dec.c
 lzmat/lzmat_enc.o: lzmat/lzmat_enc.c
 	$(GCC) $(CFLAGS_O2) $< -c -o $@
 
+pithy/pithy.o: pithy/pithy.cpp
+	$(GCC) $(CFLAGS_O2) $< -c -o $@
+
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
 lzbench: $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(ZSTD_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o

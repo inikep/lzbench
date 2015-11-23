@@ -313,7 +313,7 @@ int64_t lzbench_lz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 
-#ifndef BENCH_REMOVE_LZ4
+#ifndef BENCH_REMOVE_LZ5
 #include "lz5/lz5.h"
 #include "lz5/lz5hc.h"
 

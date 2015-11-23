@@ -61,7 +61,7 @@ brieflz 1.1.0
 brotli 2015-10-29
 crush 1.0
 csc 3.3
-density 0.12.5 beta
+density 0.12.5 beta (Throws errors in decompression on some files)
 fastlz 0.1
 gipfeli 2015-11-01 with bugfixes from https://github.com/jibsen/gipfeli
 lz4/lz4hc r131
@@ -72,10 +72,10 @@ lzham 1.0
 lzjb 2010
 lzlib 1.7
 lzma 9.38
-lzmat 1.01
+lzmat 1.01 (Throws errors in decompression on some files)
 lzo 2.09
 lzrw 15-Jul-1991
-pithy 2011-12-24
+pithy 2011-12-24 (Throws errors in decompression on some files)
 quicklz 1.5.0
 shrinker 0.1
 snappy 1.1.3

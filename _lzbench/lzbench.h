@@ -113,7 +113,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "csc",      "3.3",         1,   5, lzbench_csc_compress,      lzbench_csc_decompress,      NULL,                 NULL },
     { "density",  "0.12.5 beta", 1,   3, lzbench_density_compress,  lzbench_density_decompress,  NULL,                 NULL }, // decompression error (shortened output)
     { "fastlz",   "0.1",         1,   2, lzbench_fastlz_compress,   lzbench_fastlz_decompress,   NULL,                 NULL },
-    { "gipfeli",  "2015-11-01 jibsen",  0,   0, lzbench_gipfeli_compress,  lzbench_gipfeli_decompress,  NULL,                 NULL }, // decompression error
+    { "gipfeli",  "2015-11-01 jibsen",  0,   0, lzbench_gipfeli_compress,  lzbench_gipfeli_decompress,  NULL,                 NULL },
     { "lz4",      "r131",        0,   0, lzbench_lz4_compress,      lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4fast",  "r131",        1,  99, lzbench_lz4fast_compress,  lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4hc",    "r131",        1,   9, lzbench_lz4hc_compress,    lzbench_lz4_decompress,      NULL,                 NULL },
@@ -144,7 +144,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "ucl_nrv2b","1.03",        1,   9, lzbench_ucl_nrv2b_compress,lzbench_ucl_nrv2b_decompress,NULL,                 NULL },
     { "ucl_nrv2d","1.03",        1,   9, lzbench_ucl_nrv2d_compress,lzbench_ucl_nrv2d_decompress,NULL,                 NULL },
     { "ucl_nrv2e","1.03",        1,   9, lzbench_ucl_nrv2e_compress,lzbench_ucl_nrv2e_decompress,NULL,                 NULL },
-    { "wflz",     "2015-09-16",  0,   0, lzbench_wflz_compress,     lzbench_wflz_decompress,     lzbench_wflz_init,    lzbench_wflz_deinit }, // SEGFAULT on decompressiom with gcc 5+ -O3 on Ubuntu
+    { "wflz",     "2015-09-16",  0,   0, lzbench_wflz_compress,     lzbench_wflz_decompress,     lzbench_wflz_init,    lzbench_wflz_deinit }, // SEGFAULT on decompressiom with gcc 4.9+ -O3 on Ubuntu
     { "xz",       "5.2.2",       0,   9, lzbench_xz_compress,       lzbench_xz_decompress,       NULL,                 NULL },
     { "yalz77",   "2015-09-19",  1,  12, lzbench_yalz77_compress,   lzbench_yalz77_decompress,   NULL,                 NULL },
     { "yappy",    "2014-03-22",  0,  99, lzbench_yappy_compress,    lzbench_yappy_decompress,    lzbench_yappy_init,   NULL },
@@ -159,10 +159,10 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 
 static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
-    { "all",  "blosclz/brieflz/brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9/lz5/lz5hc,1,4,9/" \
+    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9/lz5/lz5hc,1,4,9/" \
               "lzf,0,1/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo/" \
               "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2,3/shrinker/snappy/tornado,1,2,3,4,5,6,7,10,13,16/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
-              "xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd/zstd_HC,1,5,9,13,17,20/" \
+              "xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd/zstd_HC,2,5,9,13,17,20/" \
               "wflz/lzmat" // these can SEGFAULT 
     },
     { "fast", "density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz5/" \
