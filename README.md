@@ -14,12 +14,18 @@ Usage
 ```
 usage: lzbench [options] input_file
 
-where options are:
- -bX: divides input data in blocks/chunks of size X KB (default = 2097152 KB)
- -cX: sort results by column number X
- -eX: X = compressors separated by '/' with parameters specified after ','
- -iX: selects number of iterations (default 1) and displays best time of X iterations.
- -sX: use only compressors with compression speed over X MB (default = 0 MB)
+where [options] are:
+ -bX  set block/chunk size to X KB (default = 2097152 KB)
+ -cX  sort results by column number X
+ -eX  X = compressors separated by '/' with parameters specified after ','
+ -iX  set min. number of compression iterations (default = 0)
+ -jX  set min. number of decompression iterations (default = 0)
+ -l   list of available compressors and aliases
+ -oX  output text format 1=Markdown, 2=text, 3=CSV (default = 2)
+ -pX  print time for all iterations: 1=fastest 2=average 3=median (default = 1)
+ -sX  use only compressors with compression speed over X MB (default = 0 MB)
+ -tX  set min. time in seconds for compression (default = 2)
+ -uX  set min. time in seconds for decompression (default = 2)
 
 Example usage:
   lzbench -ebrotli filename - selects all levels of brotli
@@ -34,9 +40,15 @@ For Linux/Unix:
 make BUILD_SYSTEM=linux
 ```
 
-For Windows (MinGW)
+For Windows (MinGW):
 ```
 make
+```
+
+For 32-bit compilation:
+```
+make BUILD_ARCH=32-bit
+
 ```
 
 To remove one of compressors you can add -DBENCH_REMOVE_XXX to $DEFINES in Makefile (e.g. DEFINES += -DBENCH_REMOVE_LZ5 to remove LZ5).
@@ -44,12 +56,14 @@ To remove one of compressors you can add -DBENCH_REMOVE_XXX to $DEFINES in Makef
 Supported compressors
 -------------------------
 ```
+blosclz 2015-11-10
 brieflz 1.1.0
 brotli 2015-10-29
 crush 1.0
 csc 3.3
-density 0.12.5 beta
+density 0.12.5 beta (Throws errors in decompression on some files)
 fastlz 0.1
+gipfeli 2015-11-01 with bugfixes from https://github.com/jibsen/gipfeli
 lz4/lz4hc r131
 lz5/lz5hc r131b
 lzf 3.6
@@ -58,10 +72,10 @@ lzham 1.0
 lzjb 2010
 lzlib 1.7
 lzma 9.38
-lzmat 1.01
+lzmat 1.01 (Throws errors in decompression on some files)
 lzo 2.09
 lzrw 15-Jul-1991
-pithy 2011-12-24
+pithy 2011-12-24 (Throws errors in decompression on some files)
 quicklz 1.5.0
 shrinker 0.1
 snappy 1.1.3

@@ -1,5 +1,6 @@
 #BUILD_SYSTEM = linux
-BUILD_ARCH = 64-bit
+#BUILD_ARCH = 32-bit
+#BUILD_TYPE = debug
 
 ifeq ($(BUILD_SYSTEM),linux)
 	DEFINES += -DFREEARC_UNIX
@@ -15,7 +16,7 @@ else
 endif
 
 
-ifeq ($(BUILD_ARCH),64-bit)
+ifneq ($(BUILD_ARCH),32-bit)
 	DEFINES	+= -D__x86_64__ -D__SSE2__
 	LDFLAGS	+= -static  -L C:\Aplikacje\win-builds64\lib
 else
@@ -28,18 +29,19 @@ DEFINES		+= -I. -DFREEARC_INTEL_BYTE_ORDER -D_UNICODE -DUNICODE -DHAVE_CONFIG_H
 CODE_FLAGS  = -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   = -fomit-frame-pointer -fstrict-aliasing -fforce-addr -ffast-math
 
-#BUILD_TYPE = debug
 
 ifeq ($(BUILD_TYPE),debug)
-	OPT_FLAGS += -g
+	OPT_FLAGS_O2 = $(OPT_FLAGS) -g
+	OPT_FLAGS_O3 = $(OPT_FLAGS) -g
 else
-	OPT_FLAGS += -O3 -DNDEBUG
+	OPT_FLAGS_O2 = $(OPT_FLAGS) -O2 -DNDEBUG
+	OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
 endif
 
-CFLAGS = $(CODE_FLAGS) $(OPT_FLAGS) $(DEFINES)
+CFLAGS = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES)
+CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
 
 
-all: lzbench
 
 
 ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
@@ -100,20 +102,39 @@ BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/strea
 
 ZSTD_FILES = zstd/fse.o zstd/huff0.o zstd/zstd.o zstd/zstdhc.o 
 
-LZLIB_FILES = lzlib/lzlib.o
-
 BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depacks.o 
 
 LIBLZG_FILES = liblzg/decode.o liblzg/encode.o liblzg/checksum.o 
 
-MISC_FILES = crush/crush.o shrinker/shrinker.o yappy/yappy.o fastlz/fastlz.o tornado/tor_test.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
-
 XZ_FILES = xz/lzma_decoder.o xz/lzma_encoder.o xz/common.o xz/price_table.o xz/fastpos_table.o xz/lzma_encoder_optimum_fast.o xz/lzma_encoder_optimum_normal.o
 XZ_FILES += xz/lz_decoder.o xz/lz_encoder.o xz/lz_encoder_mf.o xz/alone_encoder.o xz/alone_decoder.o xz/lzma_encoder_presets.o xz/crc32_table.o
 
-_lzbench/lzbench.o: _lzbench/lzbench.h
+GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o 
 
-lzbench: $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZLIB_FILES) $(LZF_FILES) $(LZRW_FILES) $(ZSTD_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
+MISC_FILES = crush/crush.o shrinker/shrinker.o yappy/yappy.o fastlz/fastlz.o tornado/tor_test.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
+MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o
+
+all: lzbench
+
+# FIX for SEGFAULT on GCC 5+
+wflz/wfLZ.o: wflz/wfLZ.c wflz/wfLZ.h 
+	$(GCC) $(CFLAGS_O2) $< -c -o $@
+
+shrinker/shrinker.o: shrinker/shrinker.c
+	$(GCC) $(CFLAGS_O2) $< -c -o $@
+
+lzmat/lzmat_dec.o: lzmat/lzmat_dec.c
+	$(GCC) $(CFLAGS_O2) $< -c -o $@
+
+lzmat/lzmat_enc.o: lzmat/lzmat_enc.c
+	$(GCC) $(CFLAGS_O2) $< -c -o $@
+
+pithy/pithy.o: pithy/pithy.cpp
+	$(GCC) $(CFLAGS_O2) $< -c -o $@
+
+_lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
+
+lzbench: $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(ZSTD_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
 	$(GPP) $^ -o $@ $(LDFLAGS)
 
 .c.o:
@@ -126,4 +147,4 @@ lzbench: $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZLIB_FILES) $(LZF_FILES
 	$(GPP) $(CFLAGS) $< -c -o $@
 
 clean:
-	rm -f _lzbench/*.o xz/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/enc/*.o brotli/dec/*.o  libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/spookyhash/*.o density/*.o pithy/*.o zstd/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz5/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o *.o *.exe
+	rm -f lzbench lzbench.exe _lzbench/*.o blosclz/*.o gipfeli/*.o xz/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/spookyhash/*.o density/*.o pithy/*.o zstd/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz5/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o *.o
