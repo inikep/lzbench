@@ -100,7 +100,7 @@ BROTLI_FILES += brotli/enc/backward_references.o brotli/enc/block_splitter.o bro
 BROTLI_FILES += brotli/enc/encode_parallel.o brotli/enc/entropy_encode.o brotli/enc/histogram.o brotli/enc/literal_cost.o
 BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/streams.o brotli/enc/utf8_util.o
 
-ZSTD_FILES = zstd/fse.o zstd/huff0.o zstd/zstd.o zstd/zstdhc.o 
+ZSTD_FILES = zstd/fse.o zstd/huff0.o zstd/zstd_compress.o zstd/zstd_decompress.o 
 
 BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depacks.o 
 
