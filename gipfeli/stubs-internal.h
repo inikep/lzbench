@@ -8,8 +8,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
-//#include <sys/uio.h>
-//#include <sys/mman.h>
 #include <string>
 
 #include "config.h"

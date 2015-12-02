@@ -269,7 +269,13 @@ size_t Gipfeli::CompressStream(
     }
 
     if (scratch_output == dest) {
-      writer->AppendMemBlock(new NewedMemBlock(scratch_output, output_size));
+      NewedMemBlock* new_block = new NewedMemBlock(scratch_output, output_size);
+      try {
+        writer->AppendMemBlock(new_block);
+      } catch (...) {
+        delete new_block;
+        throw;
+      }
       scratch_output = NULL;
       scratch_output_size = 0;
     } else {
@@ -277,7 +283,7 @@ size_t Gipfeli::CompressStream(
     }
 
     bytes_written += output_size;
-    prev_block = input_block;
+    std::swap(prev_block, input_block);
     input_block = block_reader.GetNextBlock();
   }
 

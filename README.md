@@ -63,7 +63,7 @@ crush 1.0
 csc 3.3
 density 0.12.5 beta (Throws errors in decompression on some files)
 fastlz 0.1
-gipfeli 2015-11-01 with bugfixes from https://github.com/jibsen/gipfeli
+gipfeli 2015-11-30
 lz4/lz4hc r131
 lz5/lz5hc r132
 lzf 3.6

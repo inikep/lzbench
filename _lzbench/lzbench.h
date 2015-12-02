@@ -113,7 +113,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "csc",      "3.3",         1,   5, lzbench_csc_compress,      lzbench_csc_decompress,      NULL,                 NULL },
     { "density",  "0.12.5 beta", 1,   3, lzbench_density_compress,  lzbench_density_decompress,  NULL,                 NULL }, // decompression error (shortened output)
     { "fastlz",   "0.1",         1,   2, lzbench_fastlz_compress,   lzbench_fastlz_decompress,   NULL,                 NULL },
-    { "gipfeli",  "2015-11-01 jibsen",  0,   0, lzbench_gipfeli_compress,  lzbench_gipfeli_decompress,  NULL,                 NULL },
+    { "gipfeli",  "2015-11-30",  0,   0, lzbench_gipfeli_compress,  lzbench_gipfeli_decompress,  NULL,                 NULL },
     { "lz4",      "r131",        0,   0, lzbench_lz4_compress,      lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4fast",  "r131",        1,  99, lzbench_lz4fast_compress,  lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4hc",    "r131",        1,   9, lzbench_lz4hc_compress,    lzbench_lz4_decompress,      NULL,                 NULL },
