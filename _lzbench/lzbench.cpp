@@ -53,7 +53,9 @@ void print_header(lzbench_params_t *params)
         case TEXT:
             printf("Compressor name              Compression Decompress. Compr. size  Ratio \n"); break;
         case MARKDOWN:
-            printf("| Compressor name             | Compression| Decompress.| Compr. size | Ratio |\n"); break;
+            printf("| Compressor name             | Compression| Decompress.| Compr. size | Ratio |\n"); 
+            printf("| ---------------             | -----------| -----------| ----------- | ----- |\n"); 
+            break;
     }
 }
 
