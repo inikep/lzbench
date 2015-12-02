@@ -117,8 +117,8 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lz4",      "r131",        0,   0, lzbench_lz4_compress,      lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4fast",  "r131",        1,  99, lzbench_lz4fast_compress,  lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4hc",    "r131",        1,   9, lzbench_lz4hc_compress,    lzbench_lz4_decompress,      NULL,                 NULL },
-    { "lz5",      "r131b",       0,   0, lzbench_lz5_compress,      lzbench_lz5_decompress,      NULL,                 NULL },
-    { "lz5hc",    "r131b",       1,   9, lzbench_lz5hc_compress,    lzbench_lz5_decompress,      NULL,                 NULL },
+    { "lz5",      "r132",        0,   0, lzbench_lz5_compress,      lzbench_lz5_decompress,      NULL,                 NULL },
+    { "lz5hc",    "r132",        1,   9, lzbench_lz5hc_compress,    lzbench_lz5_decompress,      NULL,                 NULL },
     { "lzf",      "3.6",         0,   1, lzbench_lzf_compress,      lzbench_lzf_decompress,      NULL,                 NULL },
     { "lzg",      "1.0.8",       1,   9, lzbench_lzg_compress,      lzbench_lzg_decompress,      NULL,                 NULL },
     { "lzham",    "1.0 -d26",    0,   4, lzbench_lzham_compress,    lzbench_lzham_decompress,    NULL,                 NULL },
@@ -150,7 +150,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "yappy",    "2014-03-22",  0,  99, lzbench_yappy_compress,    lzbench_yappy_decompress,    lzbench_yappy_init,   NULL },
     { "zlib",     "1.2.8",       1,   9, lzbench_zlib_compress,     lzbench_zlib_decompress,     NULL,                 NULL },
     { "zling",    "2015-09-16",  0,   4, lzbench_zling_compress,    lzbench_zling_decompress,    NULL,                 NULL },
-    { "zstd",     "v0.4",        1,  20, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zstd",     "v0.4.1",      1,  20, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
 };
 
 
@@ -158,11 +158,11 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 
 static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
-    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9/lz5/lz5hc,1,4,9/" \
+    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9,12/lz5/lz5hc,1,4,9,12/" \
               "lzf,0,1/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo/" \
-              "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2,3/shrinker/snappy/tornado,1,2,3,4,5,6,7,10,13,16/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
+              "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2,3/snappy/tornado,1,2,3,4,5,6,7,10,13,16/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
               "xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,9,13,17,20/" \
-              "wflz/lzmat" // these can SEGFAULT 
+              "shrinker/wflz/lzmat" // these can SEGFAULT 
     },
     { "fast", "density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz5/" \
               "lzf,0,1/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \

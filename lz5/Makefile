@@ -1,10 +1,9 @@
 # ################################################################
-# ZSTD library - Makefile
-# Copyright (C) Yann Collet 2015
+# LZ5 library - Makefile
+# Copyright (C) Yann Collet 2011-2015
 # All rights reserved.
 # 
 # BSD license
-
 # Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
 # 
@@ -27,36 +26,26 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # 
 # You can contact the author at :
-#  - ZSTD homepage : http://www.zstd.net
-#  - ZSTD source repository : https://github.com/Cyan4973/zstd
+#  - LZ5 source repository : https://github.com/inikep/lz5
+#  - LZ5 forum froup : https://groups.google.com/forum/#!forum/lz5c
 # ################################################################
 
 # Version numbers
-LIBVER_MAJOR=`sed -n '/define ZSTD_VERSION_MAJOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < zstd.h`
-LIBVER_MINOR=`sed -n '/define ZSTD_VERSION_MINOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < zstd.h`
-LIBVER_PATCH=`sed -n '/define ZSTD_VERSION_RELEASE/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < zstd.h`
-LIBVER  = $(LIBVER_MAJOR).$(LIBVER_MINOR).$(LIBVER_PATCH)
-VERSION?= $(LIBVER)
+VERSION?= 132
+LIBVER_MAJOR:=`sed -n '/define LZ5_VERSION_MAJOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < lz5.h`
+LIBVER_MINOR:=`sed -n '/define LZ5_VERSION_MINOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < lz5.h`
+LIBVER_PATCH:=`sed -n '/define LZ5_VERSION_RELEASE/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < lz5.h`
+LIBVER := $(LIBVER_MAJOR).$(LIBVER_MINOR).$(LIBVER_PATCH)
 
 DESTDIR?=
 PREFIX ?= /usr/local
-CPPFLAGS= -I.
+CPPFLAGS= -DXXH_NAMESPACE=LZ5_
 CFLAGS ?= -O3
-CFLAGS += -std=c99 -Wall -Wextra -Wundef -Wshadow -Wcast-qual -Wcast-align -Wstrict-prototypes
-FLAGS   = $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(MOREFLAGS)
+CFLAGS += -std=c99 -Wall -Wextra -Wundef -Wshadow -Wcast-align -Wcast-qual -Wstrict-prototypes -pedantic
+FLAGS   = $(CPPFLAGS) $(CFLAGS) $(LDFLAGS)
 
-LIBDIR ?= $(PREFIX)/lib
+LIBDIR?= $(PREFIX)/lib
 INCLUDEDIR=$(PREFIX)/include
-
-ZSTD_FILES := zstd_compress.c zstd_decompress.c fse.c huff0.c
-ZSTD_LEGACY:= legacy/zstd_v01.c legacy/zstd_v02.c legacy/zstd_v03.c
-
-ifeq ($(ZSTD_LEGACY_SUPPORT), 0)
-CPPFLAGS  += -DZSTD_LEGACY_SUPPORT=0
-else
-ZSTD_FILES+= $(ZSTD_LEGACY)
-CPPFLAGS  += -I./legacy -DZSTD_LEGACY_SUPPORT=1
-endif
 
 
 # OS X linker doesn't support -soname, and use different extension
@@ -65,25 +54,21 @@ ifeq ($(shell uname), Darwin)
 	SHARED_EXT = dylib
 	SHARED_EXT_MAJOR = $(LIBVER_MAJOR).$(SHARED_EXT)
 	SHARED_EXT_VER = $(LIBVER).$(SHARED_EXT)
-	SONAME_FLAGS = -install_name $(PREFIX)/lib/$@.$(SHARED_EXT_MAJOR) -compatibility_version $(LIBVER_MAJOR) -current_version $(LIBVER)
+	SONAME_FLAGS = -install_name $(PREFIX)/lib/liblz5.$(SHARED_EXT_MAJOR) -compatibility_version $(LIBVER_MAJOR) -current_version $(LIBVER)
 else
-	SONAME_FLAGS = -Wl,-soname=$@.$(SHARED_EXT).$(LIBVER_MAJOR)
+	SONAME_FLAGS = -Wl,-soname=liblz5.$(SHARED_EXT).$(LIBVER_MAJOR)
 	SHARED_EXT = so
 	SHARED_EXT_MAJOR = $(SHARED_EXT).$(LIBVER_MAJOR)
 	SHARED_EXT_VER = $(SHARED_EXT).$(LIBVER)
 endif
 
+default: liblz5
 
-.PHONY: default all clean install uninstall
+all: liblz5
 
-default: clean libzstd
-
-all: clean libzstd
-
-libzstd: $(ZSTD_FILES)
+liblz5: lz5.c lz5hc.c lz5frame.c xxhash.c   # need to compile once with -fPIC, and once without -fPIC
 	@echo compiling static library
-	@$(CC) $(FLAGS) -c $^
-	@$(AR) rcs $@.a *.o
+	@$(AR) rcs $@.a $^
 	@echo compiling dynamic library $(LIBVER)
 	@$(CC) $(FLAGS) -shared $^ -fPIC $(SONAME_FLAGS) -o $@.$(SHARED_EXT_VER)
 	@echo creating versioned links
@@ -91,14 +76,15 @@ libzstd: $(ZSTD_FILES)
 	@ln -sf $@.$(SHARED_EXT_VER) $@.$(SHARED_EXT)
 
 clean:
-	@rm -f core *.o *.a *.gcda *.$(SHARED_EXT) *.$(SHARED_EXT).* libzstd.pc
+	@rm -f core *.o *.a *.$(SHARED_EXT) *.$(SHARED_EXT).* liblz5.pc
 	@echo Cleaning library completed
+
 
 #------------------------------------------------------------------------
 #make install is validated only for Linux, OSX, kFreeBSD and Hurd targets
 ifneq (,$(filter $(shell uname),Linux Darwin GNU/kFreeBSD GNU))
 
-libzstd.pc: libzstd.pc.in Makefile
+liblz5.pc: liblz5.pc.in Makefile
 	@echo creating pkgconfig
 	@sed -e 's|@PREFIX@|$(PREFIX)|' \
             -e 's|@LIBDIR@|$(LIBDIR)|' \
@@ -106,23 +92,27 @@ libzstd.pc: libzstd.pc.in Makefile
             -e 's|@VERSION@|$(VERSION)|' \
              $< >$@
 
-install: libzstd libzstd.pc
+install: liblz5 liblz5.pc
 	@install -d -m 755 $(DESTDIR)$(LIBDIR)/pkgconfig/ $(DESTDIR)$(INCLUDEDIR)/
-	@install -m 755 libzstd.$(SHARED_EXT_VER) $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_VER)
-	@cp -a libzstd.$(SHARED_EXT_MAJOR) $(DESTDIR)$(LIBDIR)
-	@cp -a libzstd.$(SHARED_EXT) $(DESTDIR)$(LIBDIR)
-	@cp -a libzstd.pc $(DESTDIR)$(LIBDIR)/pkgconfig/
-	@install -m 644 libzstd.a $(DESTDIR)$(LIBDIR)/libzstd.a
-	@install -m 644 zstd.h $(DESTDIR)$(INCLUDEDIR)/zstd.h
-	@echo zstd static and shared library installed
+	@install -m 755 liblz5.$(SHARED_EXT_VER) $(DESTDIR)$(LIBDIR)
+	@ln -sf liblz5.$(SHARED_EXT_VER) $(DESTDIR)$(LIBDIR)/liblz5.$(SHARED_EXT_MAJOR)
+	@ln -sf liblz5.$(SHARED_EXT_VER) $(DESTDIR)$(LIBDIR)/liblz5.$(SHARED_EXT)
+	@install -m 644 liblz5.pc $(DESTDIR)$(LIBDIR)/pkgconfig/
+	@install -m 644 liblz5.a $(DESTDIR)$(LIBDIR)/liblz5.a
+	@install -m 644 lz5.h $(DESTDIR)$(INCLUDEDIR)/lz5.h
+	@install -m 644 lz5hc.h $(DESTDIR)$(INCLUDEDIR)/lz5hc.h
+	@install -m 644 lz5frame.h $(DESTDIR)$(INCLUDEDIR)/lz5frame.h
+	@echo lz5 static and shared libraries installed
 
 uninstall:
-	@rm -f $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT)
-	@rm -f $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_MAJOR)
-	@rm -f $(DESTDIR)$(LIBDIR)/pkgconfig/libzstd.pc
-	@[ -x $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_VER) ] && rm -f $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_VER)
-	@[ -f $(DESTDIR)$(LIBDIR)/libzstd.a ] && rm -f $(DESTDIR)$(LIBDIR)/libzstd.a
-	@[ -f $(DESTDIR)$(INCLUDEDIR)/zstd.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/zstd.h
-	@echo zstd libraries successfully uninstalled
+	@rm -f $(DESTDIR)$(LIBDIR)/liblz5.$(SHARED_EXT)
+	@rm -f $(DESTDIR)$(LIBDIR)/liblz5.$(SHARED_EXT_MAJOR)
+	@rm -f $(DESTDIR)$(LIBDIR)/pkgconfig/liblz5.pc
+	@[ -x $(DESTDIR)$(LIBDIR)/liblz5.$(SHARED_EXT_VER) ] && rm -f $(DESTDIR)$(LIBDIR)/liblz5.$(SHARED_EXT_VER)
+	@[ -f $(DESTDIR)$(LIBDIR)/liblz5.a ] && rm -f $(DESTDIR)$(LIBDIR)/liblz5.a
+	@[ -f $(DESTDIR)$(INCLUDEDIR)/lz5.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/lz5.h
+	@[ -f $(DESTDIR)$(INCLUDEDIR)/lz5hc.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/lz5hc.h
+	@[ -f $(DESTDIR)$(INCLUDEDIR)/lz5frame.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/lz5frame.h
+	@echo lz5 libraries successfully uninstalled
 
 endif

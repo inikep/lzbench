@@ -1,6 +1,7 @@
 /*
    LZ5 - Fast LZ compression algorithm
    Copyright (C) 2011-2015, Yann Collet.
+   Copyright (C) 2015, Przemyslaw Skibinski <inikep@gmail.com>
 
    BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
 
@@ -33,392 +34,19 @@
 */
 
 
-/**************************************
-*  Tuning parameters
-**************************************/
-/*
- * HEAPMODE :
- * Select how default compression functions will allocate memory for their hash table,
- * in memory stack (0:default, fastest), or in memory heap (1:requires malloc()).
- */
-#define HEAPMODE 0
-
-/*
- * ACCELERATION_DEFAULT :
- * Select "acceleration" for LZ5_compress_fast() when parameter value <= 0
- */
-#define ACCELERATION_DEFAULT 1
-
-
-/**************************************
-*  CPU Feature Detection
-**************************************/
-/* LZ5_FORCE_MEMORY_ACCESS
- * By default, access to unaligned memory is controlled by `memcpy()`, which is safe and portable.
- * Unfortunately, on some target/compiler combinations, the generated assembly is sub-optimal.
- * The below switch allow to select different access method for improved performance.
- * Method 0 (default) : use `memcpy()`. Safe and portable.
- * Method 1 : `__packed` statement. It depends on compiler extension (ie, not portable).
- *            This method is safe if your compiler supports it, and *generally* as fast or faster than `memcpy`.
- * Method 2 : direct access. This method is portable but violate C standard.
- *            It can generate buggy code on targets which generate assembly depending on alignment.
- *            But in some circumstances, it's the only known way to get the most performance (ie GCC + ARMv6)
- * See http://fastcompression.blogspot.fr/2015/08/accessing-unaligned-memory.html for details.
- * Prefer these methods in priority order (0 > 1 > 2)
- */
-#ifndef LZ5_FORCE_MEMORY_ACCESS   /* can be defined externally, on command line for example */
-#  if defined(__GNUC__) && ( defined(__ARM_ARCH_6__) || defined(__ARM_ARCH_6J__) || defined(__ARM_ARCH_6K__) || defined(__ARM_ARCH_6Z__) || defined(__ARM_ARCH_6ZK__) || defined(__ARM_ARCH_6T2__) )
-#    define LZ5_FORCE_MEMORY_ACCESS 2
-#  elif defined(__INTEL_COMPILER) || \
-  (defined(__GNUC__) && ( defined(__ARM_ARCH_7__) || defined(__ARM_ARCH_7A__) || defined(__ARM_ARCH_7R__) || defined(__ARM_ARCH_7M__) || defined(__ARM_ARCH_7S__) ))
-#    define LZ5_FORCE_MEMORY_ACCESS 1
-#  endif
-#endif
-
-/*
- * LZ5_FORCE_SW_BITCOUNT
- * Define this parameter if your target system or compiler does not support hardware bit count
- */
-#if defined(_MSC_VER) && defined(_WIN32_WCE)   /* Visual Studio for Windows CE does not support Hardware bit count */
-#  define LZ5_FORCE_SW_BITCOUNT
-#endif
-
 
 /**************************************
 *  Includes
 **************************************/
+#include "lz5common.h"
 #include "lz5.h"
+#include <stdio.h>
 
 
-/**************************************
-*  Compiler Options
-**************************************/
-#ifdef _MSC_VER    /* Visual Studio */
-#  define FORCE_INLINE static __forceinline
-#  include <intrin.h>
-#  pragma warning(disable : 4127)        /* disable: C4127: conditional expression is constant */
-#  pragma warning(disable : 4293)        /* disable: C4293: too large shift (32-bits) */
-#else
-#  if defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)   /* C99 */
-#    if defined(__GNUC__) || defined(__clang__)
-#      define FORCE_INLINE static inline __attribute__((always_inline))
-#    else
-#      define FORCE_INLINE static inline
-#    endif
-#  else
-#    define FORCE_INLINE static
-#  endif   /* __STDC_VERSION__ */
-#endif  /* _MSC_VER */
-
-/* LZ5_GCC_VERSION is defined into lz5.h */
-#if (LZ5_GCC_VERSION >= 302) || (__INTEL_COMPILER >= 800) || defined(__clang__)
-#  define expect(expr,value)    (__builtin_expect ((expr),(value)) )
-#else
-#  define expect(expr,value)    (expr)
-#endif
-
-#define likely(expr)     expect((expr) != 0, 1)
-#define unlikely(expr)   expect((expr) != 0, 0)
-
-
-/**************************************
-*  Memory routines
-**************************************/
-#include <stdlib.h>   /* malloc, calloc, free */
-#define ALLOCATOR(n,s) calloc(n,s)
-#define FREEMEM        free
-#include <string.h>   /* memset, memcpy */
-#define MEM_INIT       memset
-
-
-/**************************************
-*  Basic Types
-**************************************/
-#if defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L)   /* C99 */
-# include <stdint.h>
-  typedef  uint8_t BYTE;
-  typedef uint16_t U16;
-  typedef uint32_t U32;
-  typedef  int32_t S32;
-  typedef uint64_t U64;
-#else
-  typedef unsigned char       BYTE;
-  typedef unsigned short      U16;
-  typedef unsigned int        U32;
-  typedef   signed int        S32;
-  typedef unsigned long long  U64;
-#endif
-
-
-/**************************************
-*  Reading and writing into memory
-**************************************/
-#define STEPSIZE sizeof(size_t)
-
-static unsigned LZ5_64bits(void) { return sizeof(void*)==8; }
-
-static unsigned LZ5_isLittleEndian(void)
-{
-    const union { U32 i; BYTE c[4]; } one = { 1 };   // don't use static : performance detrimental
-    return one.c[0];
-}
-
-
-#if defined(LZ5_FORCE_MEMORY_ACCESS) && (LZ5_FORCE_MEMORY_ACCESS==2)
-
-static U16 LZ5_read16(const void* memPtr) { return *(const U16*) memPtr; }
-static U32 LZ5_read32(const void* memPtr) { return *(const U32*) memPtr; }
-static size_t LZ5_read_ARCH(const void* memPtr) { return *(const size_t*) memPtr; }
-
-static void LZ5_write16(void* memPtr, U16 value) { *(U16*)memPtr = value; }
-
-#elif defined(LZ5_FORCE_MEMORY_ACCESS) && (LZ5_FORCE_MEMORY_ACCESS==1)
-
-/* __pack instructions are safer, but compiler specific, hence potentially problematic for some compilers */
-/* currently only defined for gcc and icc */
-typedef union { U16 u16; U32 u32; size_t uArch; } __attribute__((packed)) unalign;
-
-static U16 LZ5_read16(const void* ptr) { return ((const unalign*)ptr)->u16; }
-static U32 LZ5_read32(const void* ptr) { return ((const unalign*)ptr)->u32; }
-static size_t LZ5_read_ARCH(const void* ptr) { return ((const unalign*)ptr)->uArch; }
-
-static void LZ5_write16(void* memPtr, U16 value) { ((unalign*)memPtr)->u16 = value; }
-
-#else
-
-static U16 LZ5_read16(const void* memPtr)
-{
-    U16 val; memcpy(&val, memPtr, sizeof(val)); return val;
-}
-
-static U32 LZ5_read32(const void* memPtr)
-{
-    U32 val; memcpy(&val, memPtr, sizeof(val)); return val;
-}
-
-static size_t LZ5_read_ARCH(const void* memPtr)
-{
-    size_t val; memcpy(&val, memPtr, sizeof(val)); return val;
-}
-
-static void LZ5_write16(void* memPtr, U16 value)
-{
-    memcpy(memPtr, &value, sizeof(value));
-}
-
-#endif // LZ5_FORCE_MEMORY_ACCESS
-
-
-static U16 LZ5_readLE16(const void* memPtr)
-{
-    if (LZ5_isLittleEndian())
-    {
-        return LZ5_read16(memPtr);
-    }
-    else
-    {
-        const BYTE* p = (const BYTE*)memPtr;
-        return (U16)((U16)p[0] + (p[1]<<8));
-    }
-}
-
-static U32 LZ5_readLE24(const void* memPtr)
-{
-    if (LZ5_isLittleEndian())
-    {
-        U32 val32 = 0;
-        memcpy(&val32, memPtr, 3);
-        return val32;
-    }
-    else
-    {
-        const BYTE* p = (const BYTE*)memPtr;
-        return (U32)(p[0] + (p[1]<<8) + (p[2]<<16));
-    }
-}
-
-static void LZ5_writeLE16(void* memPtr, U16 value)
-{
-    if (LZ5_isLittleEndian())
-    {
-        LZ5_write16(memPtr, value);
-    }
-    else
-    {
-        BYTE* p = (BYTE*)memPtr;
-        p[0] = (BYTE) value;
-        p[1] = (BYTE)(value>>8);
-    }
-}
-
-static void LZ5_writeLE24(void* memPtr, U32 value)
-{
-    if (LZ5_isLittleEndian())
-    {
-        memcpy(memPtr, &value, 3);
-    }
-    else
-    {
-        BYTE* p = (BYTE*)memPtr;
-        p[0] = (BYTE) value;
-        p[1] = (BYTE)(value>>8);
-        p[2] = (BYTE)(value>>16);
-    }
-}
-
-
-static void LZ5_copy8(void* dst, const void* src)
-{
-    memcpy(dst,src,8);
-}
-
-/* customized variant of memcpy, which can overwrite up to 7 bytes beyond dstEnd */
-static void LZ5_wildCopy(void* dstPtr, const void* srcPtr, void* dstEnd)
-{
-    BYTE* d = (BYTE*)dstPtr;
-    const BYTE* s = (const BYTE*)srcPtr;
-    BYTE* const e = (BYTE*)dstEnd;
-
-#if 0
-    const size_t l2 = 8 - (((size_t)d) & (sizeof(void*)-1));
-    LZ5_copy8(d,s); if (d>e-9) return;
-    d+=l2; s+=l2;
-#endif /* join to align */
-
-    do { LZ5_copy8(d,s); d+=8; s+=8; } while (d<e);
-}
-
-
-/**************************************
-*  Common Constants
-**************************************/
-#define MINMATCH 4
-
-#define WILDCOPYLENGTH 8
-#define LASTLITERALS 5
-#define MFLIMIT (WILDCOPYLENGTH+MINMATCH)
-static const int LZ5_minLength = (MFLIMIT+1);
-
-#define KB *(1 <<10)
-#define MB *(1 <<20)
-#define GB *(1U<<30)
-
-#define MAXD_LOG 22
-#define MAX_DISTANCE ((1 << MAXD_LOG) - 1)
-#define LZ5_DICT_SIZE (1 << MAXD_LOG)
-
-#define ML_BITS  3
-#define ML_MASK  ((1U<<ML_BITS)-1)
-#define RUN_BITS 3
-#define RUN_MASK ((1U<<RUN_BITS)-1)
-#define RUN_BITS2 2
-#define RUN_MASK2 ((1U<<RUN_BITS2)-1)
-#define ML_RUN_BITS (ML_BITS + RUN_BITS)
-#define ML_RUN_BITS2 (ML_BITS + RUN_BITS2)
-
-
-
-/**************************************
-*  Common Utils
-**************************************/
-#define LZ5_STATIC_ASSERT(c)    { enum { LZ5_static_assert = 1/(int)(!!(c)) }; }   /* use only *after* variable declarations */
-
-
-/**************************************
-*  Common functions
-**************************************/
-static unsigned LZ5_NbCommonBytes (register size_t val)
-{
-    if (LZ5_isLittleEndian())
-    {
-        if (LZ5_64bits())
-        {
-#       if defined(_MSC_VER) && defined(_WIN64) && !defined(LZ5_FORCE_SW_BITCOUNT)
-            unsigned long r = 0;
-            _BitScanForward64( &r, (U64)val );
-            return (int)(r>>3);
-#       elif (defined(__clang__) || (LZ5_GCC_VERSION >= 304)) && !defined(LZ5_FORCE_SW_BITCOUNT)
-            return (__builtin_ctzll((U64)val) >> 3);
-#       else
-            static const int DeBruijnBytePos[64] = { 0, 0, 0, 0, 0, 1, 1, 2, 0, 3, 1, 3, 1, 4, 2, 7, 0, 2, 3, 6, 1, 5, 3, 5, 1, 3, 4, 4, 2, 5, 6, 7, 7, 0, 1, 2, 3, 3, 4, 6, 2, 6, 5, 5, 3, 4, 5, 6, 7, 1, 2, 4, 6, 4, 4, 5, 7, 2, 6, 5, 7, 6, 7, 7 };
-            return DeBruijnBytePos[((U64)((val & -(long long)val) * 0x0218A392CDABBD3FULL)) >> 58];
-#       endif
-        }
-        else /* 32 bits */
-        {
-#       if defined(_MSC_VER) && !defined(LZ5_FORCE_SW_BITCOUNT)
-            unsigned long r;
-            _BitScanForward( &r, (U32)val );
-            return (int)(r>>3);
-#       elif (defined(__clang__) || (LZ5_GCC_VERSION >= 304)) && !defined(LZ5_FORCE_SW_BITCOUNT)
-            return (__builtin_ctz((U32)val) >> 3);
-#       else
-            static const int DeBruijnBytePos[32] = { 0, 0, 3, 0, 3, 1, 3, 0, 3, 2, 2, 1, 3, 2, 0, 1, 3, 3, 1, 2, 2, 2, 2, 0, 3, 1, 2, 0, 1, 0, 1, 1 };
-            return DeBruijnBytePos[((U32)((val & -(S32)val) * 0x077CB531U)) >> 27];
-#       endif
-        }
-    }
-    else   /* Big Endian CPU */
-    {
-        if (LZ5_64bits())
-        {
-#       if defined(_MSC_VER) && defined(_WIN64) && !defined(LZ5_FORCE_SW_BITCOUNT)
-            unsigned long r = 0;
-            _BitScanReverse64( &r, val );
-            return (unsigned)(r>>3);
-#       elif (defined(__clang__) || (LZ5_GCC_VERSION >= 304)) && !defined(LZ5_FORCE_SW_BITCOUNT)
-            return (__builtin_clzll((U64)val) >> 3);
-#       else
-            unsigned r;
-            if (!(val>>32)) { r=4; } else { r=0; val>>=32; }
-            if (!(val>>16)) { r+=2; val>>=8; } else { val>>=24; }
-            r += (!val);
-            return r;
-#       endif
-        }
-        else /* 32 bits */
-        {
-#       if defined(_MSC_VER) && !defined(LZ5_FORCE_SW_BITCOUNT)
-            unsigned long r = 0;
-            _BitScanReverse( &r, (unsigned long)val );
-            return (unsigned)(r>>3);
-#       elif (defined(__clang__) || (LZ5_GCC_VERSION >= 304)) && !defined(LZ5_FORCE_SW_BITCOUNT)
-            return (__builtin_clz((U32)val) >> 3);
-#       else
-            unsigned r;
-            if (!(val>>16)) { r=2; val>>=8; } else { r=0; val>>=24; }
-            r += (!val);
-            return r;
-#       endif
-        }
-    }
-}
-
-static unsigned LZ5_count(const BYTE* pIn, const BYTE* pMatch, const BYTE* pInLimit)
-{
-    const BYTE* const pStart = pIn;
-
-    while (likely(pIn<pInLimit-(STEPSIZE-1)))
-    {
-        size_t diff = LZ5_read_ARCH(pMatch) ^ LZ5_read_ARCH(pIn);
-        if (!diff) { pIn+=STEPSIZE; pMatch+=STEPSIZE; continue; }
-        pIn += LZ5_NbCommonBytes(diff);
-        return (unsigned)(pIn - pStart);
-    }
-
-    if (LZ5_64bits()) if ((pIn<(pInLimit-3)) && (LZ5_read32(pMatch) == LZ5_read32(pIn))) { pIn+=4; pMatch+=4; }
-    if ((pIn<(pInLimit-1)) && (LZ5_read16(pMatch) == LZ5_read16(pIn))) { pIn+=2; pMatch+=2; }
-    if ((pIn<pInLimit) && (*pMatch == *pIn)) pIn++;
-    return (unsigned)(pIn - pStart);
-}
-
-
-#ifndef LZ5_COMMONDEFS_ONLY
 /**************************************
 *  Local Constants
 **************************************/
 #define LZ5_HASHLOG   (LZ5_MEMORY_USAGE-2)
-#define HASHTABLESIZE (1 << LZ5_MEMORY_USAGE)
 #define HASH_SIZE_U32 (1 << LZ5_HASHLOG)       /* required as macro for static allocation */
 
 static const int LZ5_64Klimit = ((64 KB) + (MFLIMIT-1));
@@ -463,12 +91,11 @@ int LZ5_sizeofState() { return LZ5_STREAMSIZE; }
 static U32 LZ5_hashSequence(U32 sequence, tableType_t const tableType)
 {
     if (tableType == byU16)
-        return (((sequence) * 2654435761U) >> ((MINMATCH*8)-(LZ5_HASHLOG+1)));
+        return (((sequence) * prime4bytes) >> ((32)-(LZ5_HASHLOG+1)));
     else
-        return (((sequence) * 2654435761U) >> ((MINMATCH*8)-LZ5_HASHLOG));
+        return (((sequence) * prime4bytes) >> ((32)-LZ5_HASHLOG));
 }
 
-static const U64 prime5bytes = 889523592379ULL;
 static U32 LZ5_hashSequence64(size_t sequence, tableType_t const tableType)
 {
     const U32 hashLog = (tableType == byU16) ? LZ5_HASHLOG+1 : LZ5_HASHLOG;
@@ -478,12 +105,12 @@ static U32 LZ5_hashSequence64(size_t sequence, tableType_t const tableType)
 
 static U32 LZ5_hashSequenceT(size_t sequence, tableType_t const tableType)
 {
-    if (LZ5_64bits())
+    if (MEM_64bits())
         return LZ5_hashSequence64(sequence, tableType);
     return LZ5_hashSequence((U32)sequence, tableType);
 }
 
-static U32 LZ5_hashPosition(const void* p, tableType_t tableType) { return LZ5_hashSequenceT(LZ5_read_ARCH(p), tableType); }
+static U32 LZ5_hashPosition(const void* p, tableType_t tableType) { return LZ5_hashSequenceT(MEM_read_ARCH(p), tableType); }
 
 static void LZ5_putPositionOnHash(const BYTE* p, U32 h, void* tableBase, tableType_t const tableType, const BYTE* srcBase)
 {
@@ -543,7 +170,7 @@ FORCE_INLINE int LZ5_compress_generic(
     BYTE* op = (BYTE*) dest;
     BYTE* const olimit = op + maxOutputSize;
 
-    U32 forwardH;
+    U32 forwardH, last_off=1;
     size_t refDelta=0;
 
     /* Init conditions */
@@ -609,7 +236,7 @@ FORCE_INLINE int LZ5_compress_generic(
 
             } while ( ((dictIssue==dictSmall) ? (match < lowRefLimit) : 0)
                 || ((tableType==byU16) ? 0 : (match + MAX_DISTANCE < ip))
-                || (LZ5_read32(match+refDelta) != LZ5_read32(ip)) );
+                || (MEM_read32(match+refDelta) != MEM_read32(ip)) );
         }
 
         /* Catch up */
@@ -622,18 +249,7 @@ FORCE_INLINE int LZ5_compress_generic(
             if ((outputLimited) && (unlikely(op + litLength + (2 + 1 + LASTLITERALS) + (litLength/255) > olimit)))
                 return 0;   /* Check output limit */
 
-            if (ip-match < (1<<10))
-            {
-                if (litLength>=RUN_MASK2)
-                {
-                    int len = (int)litLength-RUN_MASK2;
-                    *token=(RUN_MASK2<<ML_BITS);
-                    for(; len >= 255 ; len-=255) *op++ = 255;
-                    *op++ = (BYTE)len;
-                }
-                else *token = (BYTE)(litLength<<ML_BITS);
-            }
-            else
+            if (ip-match >= LZ5_SHORT_OFFSET_DISTANCE && ip-match < LZ5_MID_OFFSET_DISTANCE && (U32)(ip-match) != last_off)
             {
                 if (litLength>=RUN_MASK)
                 {
@@ -644,29 +260,48 @@ FORCE_INLINE int LZ5_compress_generic(
                 }
                 else *token = (BYTE)(litLength<<ML_BITS);
             }
+            else
+            {
+                if (litLength>=RUN_MASK2)
+                {
+                    int len = (int)litLength-RUN_MASK2;
+                    *token=(RUN_MASK2<<ML_BITS);
+                    for(; len >= 255 ; len-=255) *op++ = 255;
+                    *op++ = (BYTE)len;
+                }
+                else *token = (BYTE)(litLength<<ML_BITS);
+            }
 
             /* Copy Literals */
-            LZ5_wildCopy(op, anchor, op+litLength);
+            MEM_wildCopy(op, anchor, op+litLength);
             op+=litLength;
         }
 
 _next_match:
         /* Encode Offset */
-        if (ip-match < (1<<10))
+        if ((U32)(ip-match) == last_off)
+        {
+            *token+=(3<<ML_RUN_BITS2);
+//            printf("2last_off=%d *token=%d\n", last_off, *token);
+        }
+        else
+        if (ip-match < LZ5_SHORT_OFFSET_DISTANCE)
         {
             *token+=((4+((ip-match)>>8))<<ML_RUN_BITS2);
             *op++=(ip-match);
         }
         else
-        if (ip-match < (1<<16))
+        if (ip-match < LZ5_MID_OFFSET_DISTANCE)
         {
-            LZ5_writeLE16(op, (U16)(ip-match)); op+=2;
+            MEM_writeLE16(op, (U16)(ip-match)); op+=2;
         }
         else
         {
-            *token+=(1<<ML_RUN_BITS);
-            LZ5_writeLE24(op, (U32)(ip-match)); op+=3;
+            *token+=(2<<ML_RUN_BITS2);
+            MEM_writeLE24(op, (U32)(ip-match)); op+=3;
         }
+        last_off = ip-match;
+  //      printf("1last_off=%d\n", last_off);
 
         /* Encode MatchLength */
         {
@@ -678,18 +313,18 @@ _next_match:
                 match += refDelta;
                 limit = ip + (dictEnd-match);
                 if (limit > matchlimit) limit = matchlimit;
-                matchLength = LZ5_count(ip+MINMATCH, match+MINMATCH, limit);
+                matchLength = MEM_count(ip+MINMATCH, match+MINMATCH, limit);
                 ip += MINMATCH + matchLength;
                 if (ip==limit)
                 {
-                    unsigned more = LZ5_count(ip, (const BYTE*)source, matchlimit);
+                    unsigned more = MEM_count(ip, (const BYTE*)source, matchlimit);
                     matchLength += more;
                     ip += more;
                 }
             }
             else
             {
-                matchLength = LZ5_count(ip+MINMATCH, match+MINMATCH, matchlimit);
+                matchLength = MEM_count(ip+MINMATCH, match+MINMATCH, matchlimit);
                 ip += MINMATCH + matchLength;
             }
 
@@ -732,7 +367,7 @@ _next_match:
         LZ5_putPosition(ip, ctx, tableType, base);
         if ( ((dictIssue==dictSmall) ? (match>=lowRefLimit) : 1)
             && (match+MAX_DISTANCE>=ip)
-            && (LZ5_read32(match+refDelta)==LZ5_read32(ip)) )
+            && (MEM_read32(match+refDelta)==MEM_read32(ip)) )
         { token=op++; *token=0; goto _next_match; }
 
         /* Prepare next loop */
@@ -775,14 +410,14 @@ int LZ5_compress_fast_extState(void* state, const char* source, char* dest, int 
         if (inputSize < LZ5_64Klimit)
             return LZ5_compress_generic(state, source, dest, inputSize, 0, notLimited, byU16,                        noDict, noDictIssue, acceleration);
         else
-            return LZ5_compress_generic(state, source, dest, inputSize, 0, notLimited, LZ5_64bits() ? byU32 : byPtr, noDict, noDictIssue, acceleration);
+            return LZ5_compress_generic(state, source, dest, inputSize, 0, notLimited, MEM_64bits() ? byU32 : byPtr, noDict, noDictIssue, acceleration);
     }
     else
     {
         if (inputSize < LZ5_64Klimit)
             return LZ5_compress_generic(state, source, dest, inputSize, maxOutputSize, limitedOutput, byU16,                        noDict, noDictIssue, acceleration);
         else
-            return LZ5_compress_generic(state, source, dest, inputSize, maxOutputSize, limitedOutput, LZ5_64bits() ? byU32 : byPtr, noDict, noDictIssue, acceleration);
+            return LZ5_compress_generic(state, source, dest, inputSize, maxOutputSize, limitedOutput, MEM_64bits() ? byU32 : byPtr, noDict, noDictIssue, acceleration);
     }
 }
 
@@ -822,7 +457,7 @@ int LZ5_compress_fast_force(const char* source, char* dest, int inputSize, int m
     if (inputSize < LZ5_64Klimit)
         return LZ5_compress_generic(&ctx, source, dest, inputSize, maxOutputSize, limitedOutput, byU16,                        noDict, noDictIssue, acceleration);
     else
-        return LZ5_compress_generic(&ctx, source, dest, inputSize, maxOutputSize, limitedOutput, LZ5_64bits() ? byU32 : byPtr, noDict, noDictIssue, acceleration);
+        return LZ5_compress_generic(&ctx, source, dest, inputSize, maxOutputSize, limitedOutput, MEM_64bits() ? byU32 : byPtr, noDict, noDictIssue, acceleration);
 }
 
 
@@ -852,7 +487,7 @@ static int LZ5_compress_destSize_generic(
     BYTE* const oMaxMatch = op + targetDstSize - (LASTLITERALS + 1 /* token */);
     BYTE* const oMaxSeq = oMaxLit - 1 /* token */;
 
-    U32 forwardH;
+    U32 forwardH, last_off=1;
 
 
     /* Init conditions */
@@ -891,7 +526,7 @@ static int LZ5_compress_destSize_generic(
                 LZ5_putPositionOnHash(ip, h, ctx, tableType, base);
 
             } while ( ((tableType==byU16) ? 0 : (match + MAX_DISTANCE < ip))
-                || (LZ5_read32(match) != LZ5_read32(ip)) );
+                || (MEM_read32(match) != MEM_read32(ip)) );
         }
 
         /* Catch up */
@@ -907,19 +542,8 @@ static int LZ5_compress_destSize_generic(
                 op--;
                 goto _last_literals;
             }
-            
-            if (ip-match < (1<<10))
-            {
-                if (litLength>=RUN_MASK2)
-                {
-                    int len = (int)litLength-RUN_MASK2;
-                    *token=(RUN_MASK2<<ML_BITS);
-                    for(; len >= 255 ; len-=255) *op++ = 255;
-                    *op++ = (BYTE)len;
-                }
-                else *token = (BYTE)(litLength<<ML_BITS);
-            }
-            else
+
+            if ((U32)(ip-match) >= LZ5_SHORT_OFFSET_DISTANCE && (U32)(ip-match) < LZ5_MID_OFFSET_DISTANCE && (U32)(ip-match) != last_off)
             {
                 if (litLength>=RUN_MASK)
                 {
@@ -930,35 +554,52 @@ static int LZ5_compress_destSize_generic(
                 }
                 else *token = (BYTE)(litLength<<ML_BITS);
             }
+            else
+            {
+                if (litLength>=RUN_MASK2)
+                {
+                    int len = (int)litLength-RUN_MASK2;
+                    *token=(RUN_MASK2<<ML_BITS);
+                    for(; len >= 255 ; len-=255) *op++ = 255;
+                    *op++ = (BYTE)len;
+                }
+                else *token = (BYTE)(litLength<<ML_BITS);
+            }
 
             /* Copy Literals */
-            LZ5_wildCopy(op, anchor, op+litLength);
+            MEM_wildCopy(op, anchor, op+litLength);
             op += litLength;
         }
 
 _next_match:
         /* Encode Offset */
-        if (ip-match < (1<<10))
+        if ((U32)(ip-match) == last_off)
+        {
+            *token+=(3<<ML_RUN_BITS2);          
+        }
+        else
+        if (ip-match < LZ5_SHORT_OFFSET_DISTANCE)
         {
             *token+=((4+((ip-match)>>8))<<ML_RUN_BITS2);
             *op++=(ip-match);
         }
         else
-        if (ip-match < (1<<16))
+        if (ip-match < LZ5_MID_OFFSET_DISTANCE)
         {
-            LZ5_writeLE16(op, (U16)(ip-match)); op+=2;
+            MEM_writeLE16(op, (U16)(ip-match)); op+=2;
         }
         else
         {
-            *token+=(1<<ML_RUN_BITS);
-            LZ5_writeLE24(op, (U32)(ip-match)); op+=3;
+            *token+=(2<<ML_RUN_BITS2);
+            MEM_writeLE24(op, (U32)(ip-match)); op+=3;
         }
+        last_off = ip-match;
 
         /* Encode MatchLength */
         {
             size_t matchLength;
 
-            matchLength = LZ5_count(ip+MINMATCH, match+MINMATCH, matchlimit);
+            matchLength = MEM_count(ip+MINMATCH, match+MINMATCH, matchlimit);
 
             if (op + ((matchLength+240)/255) > oMaxMatch)
             {
@@ -990,7 +631,7 @@ _next_match:
         match = LZ5_getPosition(ip, ctx, tableType, base);
         LZ5_putPosition(ip, ctx, tableType, base);
         if ( (match+MAX_DISTANCE>=ip)
-            && (LZ5_read32(match)==LZ5_read32(ip)) )
+            && (MEM_read32(match)==MEM_read32(ip)) )
         { token=op++; *token=0; goto _next_match; }
 
         /* Prepare next loop */
@@ -1043,7 +684,7 @@ static int LZ5_compress_destSize_extState (void* state, const char* src, char* d
         if (*srcSizePtr < LZ5_64Klimit)
             return LZ5_compress_destSize_generic(state, src, dst, srcSizePtr, targetDstSize, byU16);
         else
-            return LZ5_compress_destSize_generic(state, src, dst, srcSizePtr, targetDstSize, LZ5_64bits() ? byU32 : byPtr);
+            return LZ5_compress_destSize_generic(state, src, dst, srcSizePtr, targetDstSize, MEM_64bits() ? byU32 : byPtr);
     }
 }
 
@@ -1278,6 +919,7 @@ FORCE_INLINE int LZ5_decompress_generic(
     const int safeDecode = (endOnInput==endOnInputSize);
     const int checkOffset = ((safeDecode) && (dictSize < (int)(LZ5_DICT_SIZE)));
 
+    U32 last_off = 1;
 
     /* Special cases */
     if ((partialDecoding) && (oexit> oend-MFLIMIT)) oexit = oend-MFLIMIT;                         /* targetOutputSize too high => decode everything */
@@ -1295,7 +937,7 @@ FORCE_INLINE int LZ5_decompress_generic(
 
         /* get literal length */
         token = *ip++;
-        if (token>>7)
+        if (token>>6)
         {
             if ((length=(token>>ML_BITS)&RUN_MASK2) == RUN_MASK2)
             {
@@ -1328,7 +970,7 @@ FORCE_INLINE int LZ5_decompress_generic(
 
         /* copy literals */
         cpy = op+length;
-        if (((endOnInput) && ((cpy>(partialDecoding?oexit:oend-MFLIMIT)) || (ip+length>iend-(1+1+LASTLITERALS))) )
+        if (((endOnInput) && ((cpy>(partialDecoding?oexit:oend-MFLIMIT)) || (ip+length>iend-(0+1+LASTLITERALS))) )
             || ((!endOnInput) && (cpy>oend-WILDCOPYLENGTH)))
         {
             if (partialDecoding)
@@ -1346,10 +988,23 @@ FORCE_INLINE int LZ5_decompress_generic(
             op += length;
             break;     /* Necessarily EOF, due to parsing restrictions */
         }
-        LZ5_wildCopy(op, ip, cpy);
+        MEM_wildCopy(op, ip, cpy);
         ip += length; op = cpy;
 
         /* get offset */
+#if 0
+        switch (token>>6)
+        {
+            default: offset = *ip + (((token>>ML_RUN_BITS2)&3)<<8); ip++; break;
+            case 0: offset = MEM_readLE16(ip); ip+=2; break;
+            case 1:
+                if ((token>>5) == 3)
+                    offset = last_off;
+                else // (token>>ML_RUN_BITS2) == 2
+                {    offset = MEM_readLE24(ip); ip+=3; }
+                break;
+        }
+#else 
         if (token>>7)
         {
             offset = *ip + (((token>>ML_RUN_BITS2)&3)<<8); ip++;
@@ -1357,12 +1012,20 @@ FORCE_INLINE int LZ5_decompress_generic(
         else 
         if ((token>>ML_RUN_BITS) == 0)
         {
-            offset = LZ5_readLE16(ip); ip+=2;
+            offset = MEM_readLE16(ip); ip+=2;
         }
-        else // length == 1
+        else
+        if ((token>>ML_RUN_BITS2) == 2)
         {
-            offset = LZ5_readLE24(ip); ip+=3;
+            offset = MEM_readLE24(ip); ip+=3;
         }
+        else // (token>>ML_RUN_BITS2) == 3
+        {
+            offset = last_off;
+        }
+#endif
+
+        last_off = offset;
         match = op - offset;
         if ((checkOffset) && (unlikely(match < lowLimit))) goto _output_error;   /* Error : offset outside buffers */
 
@@ -1426,7 +1089,7 @@ FORCE_INLINE int LZ5_decompress_generic(
             match += dec32table[offset];
             memcpy(op+4, match, 4);
             match -= dec64;
-        } else { LZ5_copy8(op, match); match+=8; }
+        } else { MEM_copy8(op, match); match+=8; }
         op += 8;
 
         if (unlikely(cpy>oend-12))
@@ -1435,14 +1098,14 @@ FORCE_INLINE int LZ5_decompress_generic(
             if (cpy > oend-LASTLITERALS) goto _output_error;    /* Error : last LASTLITERALS bytes must be literals (uncompressed) */
             if (op < oCopyLimit)
             {
-                LZ5_wildCopy(op, match, oCopyLimit);
+                MEM_wildCopy(op, match, oCopyLimit);
                 match += oCopyLimit - op;
                 op = oCopyLimit;
             }
             while (op<cpy) *op++ = *match++;
         }
         else
-            LZ5_wildCopy(op, match, cpy);
+            MEM_wildCopy(op, match, cpy);
         op=cpy;   /* correction */
     }
 
@@ -1684,6 +1347,3 @@ int LZ5_decompress_fast_withPrefix64k(const char* source, char* dest, int origin
 {
     return LZ5_decompress_generic(source, dest, 0, originalSize, endOnOutputSize, full, 0, withPrefix64k, (BYTE*)dest - LZ5_DICT_SIZE, NULL, LZ5_DICT_SIZE);
 }
-
-#endif   /* LZ5_COMMONDEFS_ONLY */
-

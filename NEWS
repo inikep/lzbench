@@ -1,5 +1,6 @@
 v0.9.1
-- zstd updated to v0.4
+- lz5 updated to r132
+- zstd updated to v0.4.1
 
 v0.9
 - improved: more accurate timings for small files
