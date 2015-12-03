@@ -204,7 +204,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
 {
     float speed;
     int i, total_c_iters, total_d_iters;
-    LARGE_INTEGER start_ticks, end_ticks, timer_ticks;
+    LARGE_INTEGER loop_ticks, start_ticks, end_ticks, timer_ticks;
     int64_t complen=0, decomplen;
     uint64_t nanosec, total_nanosec;
     std::vector<float> cspeed, dspeed;
@@ -238,22 +238,25 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     {
         i = 0;
         uni_sleep(1); // give processor to other processes
-        GetTime(start_ticks);
+        GetTime(loop_ticks);
         do
         {
+            GetTime(start_ticks);
             complen = lzbench_compress(params, blosclz?64*1024:params->chunk_size, desc->compress, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
             GetTime(end_ticks);
+            nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+            if (nanosec >= 10) cspeed.push_back((float)insize/nanosec);
             i++;
         }
-        while (GetDiffTime(ticksPerSecond, start_ticks, end_ticks) < params->cloop_time);
+        while (GetDiffTime(ticksPerSecond, loop_ticks, end_ticks) < params->cloop_time);
 
-        nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+        nanosec = GetDiffTime(ticksPerSecond, loop_ticks, end_ticks);
         speed = (float)insize*i/nanosec;
         cspeed.push_back(speed);
         LZBENCH_DEBUG(8, "%s nanosec=%d\n", desc->name, (int)nanosec);
 
         if ((uint32_t)speed < params->cspeed) { LZBENCH_DEBUG(5, "%s slower than %d MB/s\n", desc->name, (uint32_t)speed); return; } 
-        
+
         total_nanosec = GetDiffTime(ticksPerSecond, timer_ticks, end_ticks);
         total_c_iters += i;
         if (total_c_iters >= params->c_iters && total_nanosec > (params->cmintime*1000)) break;
@@ -268,16 +271,19 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     {
         i = 0;
         uni_sleep(1); // give processor to other processes
-        GetTime(start_ticks);
+        GetTime(loop_ticks);
         do
         {
+            GetTime(start_ticks);
             decomplen = lzbench_decompress(params, blosclz?64*1024:params->chunk_size, desc->decompress, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
             GetTime(end_ticks);
+            nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+            if (nanosec >= 10) dspeed.push_back((float)insize/nanosec);
             i++;
         }
-        while (GetDiffTime(ticksPerSecond, start_ticks, end_ticks) < params->dloop_time);
+        while (GetDiffTime(ticksPerSecond, loop_ticks, end_ticks) < params->dloop_time);
 
-        nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+        nanosec = GetDiffTime(ticksPerSecond, loop_ticks, end_ticks);
         dspeed.push_back((float)insize*i/nanosec);
         LZBENCH_DEBUG(9, "%s dnanosec=%d\n", desc->name, (int)nanosec);
 
@@ -319,6 +325,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     }
     while (true);
 
+ //   printf("total_c_iters=%d total_d_iters=%d            \n", total_c_iters, total_d_iters);
     print_stats(params, desc, level, cspeed, dspeed, insize, complen, decomp_error);
 
 done:
@@ -423,7 +430,7 @@ void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list)
     memcpy(&params_memcpy, params, sizeof(lzbench_params_t));
     params_memcpy.cmintime = params_memcpy.dmintime = 0;
     params_memcpy.c_iters = params_memcpy.d_iters = 0;
-    params_memcpy.cloop_time = params_memcpy.dloop_time = 2*DEFAULT_LOOP_TIME;
+    params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
     lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, ticksPerSecond, 0, 0);
 
     lzbench_test_with_params(params, encoder_list?encoder_list:(char*)alias_desc[1].params, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
@@ -452,8 +459,8 @@ int main( int argc, char** argv)
 	params.chunk_size = 1ULL << 31;
 	params.cspeed = 0;
     params.c_iters = params.d_iters = 1;
-    params.cmintime = 4*DEFAULT_LOOP_TIME/1000; // 1 sec
-    params.dmintime = 2*DEFAULT_LOOP_TIME/1000; // 0.5 sec
+    params.cmintime = 10*DEFAULT_LOOP_TIME/1000; // 1 sec
+    params.dmintime = 5*DEFAULT_LOOP_TIME/1000; // 0.5 sec
     params.cloop_time = params.dloop_time = DEFAULT_LOOP_TIME;
 
 #ifdef WINDOWS
