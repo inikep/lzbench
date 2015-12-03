@@ -1,3 +1,9 @@
+v0.9.1
+- improved: more accurate timings at default min. time for compression (1.0s) and decompression (0.5s)
+- lz5 updated to r132
+- zstd updated to v0.4.1
+- gipfeli updated to 2015-11-30
+
 v0.9
 - improved: more accurate timings for small files
 - added: blosclz 2015-11-10

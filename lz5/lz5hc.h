@@ -68,11 +68,11 @@ LZ5_compress_HC :
 
 typedef struct LZ5HC_Data_s LZ5HC_Data_Structure;
 
-int LZ5_alloc_mem_HC(LZ5HC_Data_Structure* statePtr);
+int LZ5_alloc_mem_HC(LZ5HC_Data_Structure* statePtr, int compressionLevel);
 void LZ5_free_mem_HC(LZ5HC_Data_Structure* statePtr);
 
 int LZ5_sizeofStateHC(void);
-int LZ5_compress_HC_extStateHC(void* state, const char* src, char* dst, int srcSize, int maxDstSize, int compressionLevel);
+int LZ5_compress_HC_extStateHC(void* state, const char* src, char* dst, int srcSize, int maxDstSize);
 /*
 LZ5_compress_HC_extStateHC() :
    Use this function if you prefer to manually allocate memory for compression tables.
@@ -103,7 +103,7 @@ typedef struct { size_t table[LZ5_STREAMHCSIZE_SIZET]; } LZ5_streamHC_t;
 */
 
 
-LZ5_streamHC_t* LZ5_createStreamHC(void);
+LZ5_streamHC_t* LZ5_createStreamHC(int compressionLevel);
 int             LZ5_freeStreamHC (LZ5_streamHC_t* streamHCPtr);
 /*
   These functions create and release memory for LZ5 HC streaming state.
@@ -113,7 +113,7 @@ int             LZ5_freeStreamHC (LZ5_streamHC_t* streamHCPtr);
   to avoid size mismatch between different versions.
 */
 
-void LZ5_resetStreamHC (LZ5_streamHC_t* streamHCPtr, int compressionLevel);
+void LZ5_resetStreamHC (LZ5_streamHC_t* streamHCPtr);
 int  LZ5_loadDictHC (LZ5_streamHC_t* streamHCPtr, const char* dictionary, int dictSize);
 
 int LZ5_compress_HC_continue (LZ5_streamHC_t* streamHCPtr, const char* src, char* dst, int srcSize, int maxDstSize);
@@ -152,7 +152,6 @@ int LZ5_saveDictHC (LZ5_streamHC_t* streamHCPtr, char* safeBuffer, int maxDictSi
    You can also define LZ5_DEPRECATE_WARNING_DEFBLOCK. */
 #ifndef LZ5_DEPRECATE_WARNING_DEFBLOCK
 #  define LZ5_DEPRECATE_WARNING_DEFBLOCK
-#  define LZ5_GCC_VERSION (__GNUC__ * 100 + __GNUC_MINOR__)
 #  if (LZ5_GCC_VERSION >= 405) || defined(__clang__)
 #    define LZ5_DEPRECATED(message) __attribute__((deprecated(message)))
 #  elif (LZ5_GCC_VERSION >= 301)
@@ -166,7 +165,7 @@ int LZ5_saveDictHC (LZ5_streamHC_t* streamHCPtr, char* safeBuffer, int maxDictSi
 #endif // LZ5_DEPRECATE_WARNING_DEFBLOCK
 
 /* compression functions */
-/* these functions are planned to trigger warning messages by r131 approximately */
+/* these functions are planned to trigger warning messages by r132 approximately */
 int LZ5_compressHC                (const char* source, char* dest, int inputSize);
 int LZ5_compressHC_limitedOutput  (const char* source, char* dest, int inputSize, int maxOutputSize);
 int LZ5_compressHC_continue               (LZ5_streamHC_t* LZ5_streamHCPtr, const char* source, char* dest, int inputSize);

@@ -1383,7 +1383,7 @@ int64_t lzbench_zling_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
-	return ZSTD_compress(outbuf, outsize, inbuf, insize);
+	return ZSTD_compress(outbuf, outsize, inbuf, insize, level);
 }
 
 int64_t lzbench_zstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
@@ -1392,24 +1392,3 @@ int64_t lzbench_zstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 }
 
 #endif
-
-
-
-
-#ifndef BENCH_REMOVE_ZSTDHC
-#include "zstd/zstdhc.h"
-
-int64_t lzbench_zstdhc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-	return ZSTD_HC_compress(outbuf, outsize, inbuf, insize, level);
-}
-
-int64_t lzbench_zstdhc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	return ZSTD_decompress(outbuf, outsize, inbuf, insize);
-}
-
-#endif
-
-
-

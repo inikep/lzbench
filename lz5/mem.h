@@ -46,41 +46,20 @@ extern "C" {
 #include <string.h>    /* memcpy */
 
 
+
 /******************************************
 *  Compiler-specific
 ******************************************/
-#if defined(__GNUC__)
-#  define MEM_STATIC static __attribute__((unused))
-#elif defined (__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */)
+#if defined (__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */)
 #  define MEM_STATIC static inline
 #elif defined(_MSC_VER)
 #  define MEM_STATIC static __inline
+#elif defined(__GNUC__)
+#  define MEM_STATIC static __attribute__((unused))
 #else
 #  define MEM_STATIC static  /* this version may generate warnings for unused static functions; disable the relevant warning */
 #endif
 
-
-/****************************************************************
-*  Basic Types
-*****************************************************************/
-#if defined (__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */)
-# include <stdint.h>
-  typedef  uint8_t BYTE;
-  typedef uint16_t U16;
-  typedef  int16_t S16;
-  typedef uint32_t U32;
-  typedef  int32_t S32;
-  typedef uint64_t U64;
-  typedef  int64_t S64;
-#else
-  typedef unsigned char       BYTE;
-  typedef unsigned short      U16;
-  typedef   signed short      S16;
-  typedef unsigned int        U32;
-  typedef   signed int        S32;
-  typedef unsigned long long  U64;
-  typedef   signed long long  S64;
-#endif
 
 
 /****************************************************************
@@ -206,6 +185,37 @@ MEM_STATIC void MEM_writeLE16(void* memPtr, U16 val)
     }
 }
 
+MEM_STATIC U32 MEM_readLE24(const void* memPtr)
+{
+    if (MEM_isLittleEndian())
+    {
+        U32 val32 = 0;
+        memcpy(&val32, memPtr, 3);
+        return val32;
+    }
+    else
+    {
+        const BYTE* p = (const BYTE*)memPtr;
+        return (U32)(p[0] + (p[1]<<8) + (p[2]<<16));
+    }
+} 
+
+MEM_STATIC void MEM_writeLE24(void* memPtr, U32 value)
+{
+    if (MEM_isLittleEndian())
+    {
+        memcpy(memPtr, &value, 3);
+    }
+    else
+    {
+        BYTE* p = (BYTE*)memPtr;
+        p[0] = (BYTE) value;
+        p[1] = (BYTE)(value>>8);
+        p[2] = (BYTE)(value>>16);
+    }
+}
+
+ 
 MEM_STATIC U32 MEM_readLE32(const void* memPtr)
 {
     if (MEM_isLittleEndian())
@@ -280,6 +290,152 @@ MEM_STATIC void MEM_writeLEST(void* memPtr, size_t val)
     else
         MEM_writeLE64(memPtr, (U64)val);
 }
+
+
+
+#define MEM_read24(ptr) (uint32_t)(MEM_read32(ptr)<<8)
+
+/* **************************************
+*  Function body to include for inlining
+****************************************/
+static size_t MEM_read_ARCH(const void* p) { size_t r; memcpy(&r, p, sizeof(r)); return r; }
+
+#define MIN(a,b) ((a)<(b) ? (a) : (b))
+
+static unsigned MEM_highbit(U32 val)
+{
+#   if defined(_MSC_VER)   /* Visual */
+    unsigned long r=0;
+    _BitScanReverse(&r, val);
+    return (unsigned)r;
+#   elif defined(__GNUC__) && (__GNUC__ >= 3)   /* GCC Intrinsic */
+    return 31 - __builtin_clz(val);
+#   else   /* Software version */
+    static const int DeBruijnClz[32] = { 0, 9, 1, 10, 13, 21, 2, 29, 11, 14, 16, 18, 22, 25, 3, 30, 8, 12, 20, 28, 15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31 };
+    U32 v = val;
+    int r;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    r = DeBruijnClz[(U32)(v * 0x07C4ACDDU) >> 27];
+    return r;
+#   endif
+}
+
+MEM_STATIC unsigned MEM_NbCommonBytes (register size_t val)
+{
+    if (MEM_isLittleEndian())
+    {
+        if (MEM_64bits())
+        {
+#       if defined(_MSC_VER) && defined(_WIN64)
+            unsigned long r = 0;
+            _BitScanForward64( &r, (U64)val );
+            return (int)(r>>3);
+#       elif defined(__GNUC__) && (__GNUC__ >= 3)
+            return (__builtin_ctzll((U64)val) >> 3);
+#       else
+            static const int DeBruijnBytePos[64] = { 0, 0, 0, 0, 0, 1, 1, 2, 0, 3, 1, 3, 1, 4, 2, 7, 0, 2, 3, 6, 1, 5, 3, 5, 1, 3, 4, 4, 2, 5, 6, 7, 7, 0, 1, 2, 3, 3, 4, 6, 2, 6, 5, 5, 3, 4, 5, 6, 7, 1, 2, 4, 6, 4, 4, 5, 7, 2, 6, 5, 7, 6, 7, 7 };
+            return DeBruijnBytePos[((U64)((val & -(long long)val) * 0x0218A392CDABBD3FULL)) >> 58];
+#       endif
+        }
+        else /* 32 bits */
+        {
+#       if defined(_MSC_VER)
+            unsigned long r=0;
+            _BitScanForward( &r, (U32)val );
+            return (int)(r>>3);
+#       elif defined(__GNUC__) && (__GNUC__ >= 3)
+            return (__builtin_ctz((U32)val) >> 3);
+#       else
+            static const int DeBruijnBytePos[32] = { 0, 0, 3, 0, 3, 1, 3, 0, 3, 2, 2, 1, 3, 2, 0, 1, 3, 3, 1, 2, 2, 2, 2, 0, 3, 1, 2, 0, 1, 0, 1, 1 };
+            return DeBruijnBytePos[((U32)((val & -(S32)val) * 0x077CB531U)) >> 27];
+#       endif
+        }
+    }
+    else   /* Big Endian CPU */
+    {
+        if (MEM_32bits())
+        {
+#       if defined(_MSC_VER) && defined(_WIN64)
+            unsigned long r = 0;
+            _BitScanReverse64( &r, val );
+            return (unsigned)(r>>3);
+#       elif defined(__GNUC__) && (__GNUC__ >= 3)
+            return (__builtin_clzll(val) >> 3);
+#       else
+            unsigned r;
+            const unsigned n32 = sizeof(size_t)*4;   /* calculate this way due to compiler complaining in 32-bits mode */
+            if (!(val>>n32)) { r=4; } else { r=0; val>>=n32; }
+            if (!(val>>16)) { r+=2; val>>=8; } else { val>>=24; }
+            r += (!val);
+            return r;
+#       endif
+        }
+        else /* 32 bits */
+        {
+#       if defined(_MSC_VER)
+            unsigned long r = 0;
+            _BitScanReverse( &r, (unsigned long)val );
+            return (unsigned)(r>>3);
+#       elif defined(__GNUC__) && (__GNUC__ >= 3)
+            return (__builtin_clz((U32)val) >> 3);
+#       else
+            unsigned r;
+            if (!(val>>16)) { r=2; val>>=8; } else { r=0; val>>=24; }
+            r += (!val);
+            return r;
+#       endif
+        }
+    }
+}
+
+
+MEM_STATIC size_t MEM_count(const BYTE* pIn, const BYTE* pMatch, const BYTE* pInLimit)
+{
+    const BYTE* const pStart = pIn;
+
+    while ((pIn<pInLimit-(sizeof(size_t)-1)))
+    {
+        size_t diff = MEM_read_ARCH(pMatch) ^ MEM_read_ARCH(pIn);
+        if (!diff) { pIn+=sizeof(size_t); pMatch+=sizeof(size_t); continue; }
+        pIn += MEM_NbCommonBytes(diff);
+        return (size_t)(pIn - pStart);
+    }
+
+    if (MEM_64bits()) if ((pIn<(pInLimit-3)) && (MEM_read32(pMatch) == MEM_read32(pIn))) { pIn+=4; pMatch+=4; }
+    if ((pIn<(pInLimit-1)) && (MEM_read16(pMatch) == MEM_read16(pIn))) { pIn+=2; pMatch+=2; }
+    if ((pIn<pInLimit) && (*pMatch == *pIn)) pIn++;
+    return (size_t)(pIn - pStart);
+}
+
+
+static void MEM_copy8(void* dst, const void* src) { memcpy(dst, src, 8); }
+
+#define COPY8(d,s) { MEM_copy8(d,s); d+=8; s+=8; }
+
+/*! MEM_wildcopy : custom version of memcpy(), can copy up to 7-8 bytes too many */
+static void MEM_wildcopy(void* dst, const void* src, size_t length)
+{
+    const BYTE* ip = (const BYTE*)src;
+    BYTE* op = (BYTE*)dst;
+    BYTE* const oend = op + length;
+    do
+        COPY8(op, ip)
+    while (op < oend);
+}  
+
+/* customized variant of memcpy, which can overwrite up to 7 bytes beyond dstEnd */
+static void MEM_wildCopy(void* dstPtr, const void* srcPtr, void* dstEnd)
+{
+    BYTE* d = (BYTE*)dstPtr;
+    const BYTE* s = (const BYTE*)srcPtr;
+    BYTE* const e = (BYTE*)dstEnd;
+
+    do { MEM_copy8(d,s); d+=8; s+=8; } while (d<e);
+}  
 
 #if defined (__cplusplus)
 }
