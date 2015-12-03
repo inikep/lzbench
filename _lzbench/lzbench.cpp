@@ -256,7 +256,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
         
         total_nanosec = GetDiffTime(ticksPerSecond, timer_ticks, end_ticks);
         total_c_iters += i;
-        if (total_c_iters >= params->c_iters &&  total_nanosec > (params->cmintime*1000)) break;
+        if (total_c_iters >= params->c_iters && total_nanosec > (params->cmintime*1000)) break;
         printf("%s compr iter=%d time=%.2fs speed=%.2f MB/s     \r", desc->name, total_c_iters, total_nanosec/1000000.0, speed);
     }
     while (true);
@@ -423,7 +423,7 @@ void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list)
     memcpy(&params_memcpy, params, sizeof(lzbench_params_t));
     params_memcpy.cmintime = params_memcpy.dmintime = 0;
     params_memcpy.c_iters = params_memcpy.d_iters = 0;
-    params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
+    params_memcpy.cloop_time = params_memcpy.dloop_time = 2*DEFAULT_LOOP_TIME;
     lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, ticksPerSecond, 0, 0);
 
     lzbench_test_with_params(params, encoder_list?encoder_list:(char*)alias_desc[1].params, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
@@ -452,7 +452,8 @@ int main( int argc, char** argv)
 	params.chunk_size = 1ULL << 31;
 	params.cspeed = 0;
     params.c_iters = params.d_iters = 1;
-    params.cmintime = params.dmintime = DEFAULT_LOOP_TIME/1000;
+    params.cmintime = 4*DEFAULT_LOOP_TIME/1000; // 1 sec
+    params.dmintime = 2*DEFAULT_LOOP_TIME/1000; // 0.5 sec
     params.cloop_time = params.dloop_time = DEFAULT_LOOP_TIME;
 
 #ifdef WINDOWS

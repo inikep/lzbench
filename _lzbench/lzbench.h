@@ -13,7 +13,7 @@
 #define PROGNAME "lzbench"
 #define PROGVERSION "0.9.1"
 #define PAD_SIZE (16*1024)
-#define DEFAULT_LOOP_TIME (500*1000) // half a second
+#define DEFAULT_LOOP_TIME (250*1000) // quarter a second
 #define LZBENCH_DEBUG(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
