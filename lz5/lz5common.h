@@ -182,7 +182,12 @@ static size_t LZ5HC_hashPtr(const void* p, U32 hBits, U32 mls)
 *  HC Local Macros
 **************************************/
 #define LZ5HC_DEBUG(fmt, args...) ; //printf(fmt, ##args)
+#define LZ5_LOG_PARSER(fmt, args...) ;//printf(fmt, ##args)
+#define LZ5_LOG_PRICE(fmt, args...) ;//printf(fmt, ##args)
+#define LZ5_LOG_ENCODE(fmt, args...) ;//printf(fmt, ##args)
+
 #define MAX(a,b) ((a)>(b))?(a):(b)
+#define LZ5_OPT_NUM   (1<<12)
 
 #define LZ5_SHORT_LITERALS          ((1<<RUN_BITS2)-1)
 #define LZ5_LITERALS                ((1<<RUN_BITS)-1)
@@ -191,15 +196,20 @@ static size_t LZ5HC_hashPtr(const void* p, U32 hBits, U32 mls)
 #define LZ5_LEN_COST(len)           (len<LZ5_LITERALS ? 0 : (len-LZ5_LITERALS < 255 ? 1 : (len-LZ5_LITERALS-255 < (1<<7) ? 2 : 3)))
 
 static size_t LZ5_LIT_COST(size_t len, size_t offset){ return (len)+(((offset > LZ5_MID_OFFSET_DISTANCE) || (offset<LZ5_SHORT_OFFSET_DISTANCE)) ? LZ5_SHORT_LITLEN_COST(len) : LZ5_LEN_COST(len)); }
-static size_t LZ5_MATCH_COST(size_t mlen, size_t offset) { return LZ5_LEN_COST(mlen) + ((offset == 0) ? 1 : (offset<LZ5_SHORT_OFFSET_DISTANCE ? 2 : (offset<(1 << 16) ? 3 : 4))); }
+static size_t LZ5_MATCH_COST(size_t mlen, size_t offset) { return LZ5_LEN_COST(mlen) + ((offset == 0) ? 1 : (offset<LZ5_SHORT_OFFSET_DISTANCE ? 2 : (offset<LZ5_MID_OFFSET_DISTANCE ? 3 : 4))); }
 
 #define LZ5_CODEWORD_COST(litlen,offset,mlen)   (LZ5_MATCH_COST(mlen,offset) + LZ5_LIT_COST(litlen,offset))
-#define LZ5_LIT_ONLY_COST(len)                  ((len)+(LZ5_LEN_COST(len)))
+#define LZ5_LIT_ONLY_COST(len)                  ((len)+(LZ5_LEN_COST(len))+1)
 
 #define LZ5_NORMAL_MATCH_COST(mlen,offset)  (LZ5_MATCH_COST(mlen,offset))
 #define LZ5_NORMAL_LIT_COST(len)            (len)
 
 
+
+FORCE_INLINE uint32_t LZ5HC_get_price(uint32_t litlen, uint32_t offset, uint32_t mlen)
+{
+	return LZ5_CODEWORD_COST(litlen, offset, mlen);
+}
 
 FORCE_INLINE int LZ5HC_better_price(uint32_t best_off, uint32_t best_common, uint32_t off, uint32_t common, uint32_t last_off)
 {
@@ -226,7 +236,7 @@ FORCE_INLINE int LZ5HC_more_profitable(uint32_t best_off, uint32_t best_common, 
 *  HC Types
 ***************************************/
 /** from faster to stronger */
-typedef enum { LZ5HC_fast, LZ5HC_price_fast, LZ5HC_lowest_price } LZ5HC_strategy;
+typedef enum { LZ5HC_fast, LZ5HC_price_fast, LZ5HC_lowest_price, LZ5HC_optimal_price } LZ5HC_strategy;
 
 typedef struct
 {
@@ -236,6 +246,7 @@ typedef struct
     U32 hashLog3;      /* dispatch table : larger == more memory, faster*/
     U32 searchNum;     /* nb of searches : larger == more compression, slower*/
     U32 searchLength;  /* size of matches : larger == faster decompression */
+    U32 sufficientLength;  /* used only by optimal parser: size of matches which is acceptable: larger == more compression, slower */
     LZ5HC_strategy strategy;
 } LZ5HC_parameters;
 
@@ -258,41 +269,50 @@ struct LZ5HC_Data_s
     LZ5HC_parameters params;
 };
 
+typedef struct
+{
+	int off;
+	int len;
+	int back;
+} LZ5HC_match_t;
+
+typedef struct
+{
+	int price;
+	int off;
+	int mlen;
+	int litlen;
+   	int rep;
+} LZ5HC_optimal_t;
 
 /* *************************************
 *  HC Pre-defined compression levels
 ***************************************/
-#define LZ5HC_MAX_CLEVEL 13
+#define LZ5HC_MAX_CLEVEL 16
 
 static const int g_maxCompressionLevel = LZ5HC_MAX_CLEVEL;
 static const int LZ5HC_compressionLevel_default = 6;
 
 static const LZ5HC_parameters LZ5HC_defaultParameters[LZ5HC_MAX_CLEVEL+1] =
 {
-    /* W,  C,  H, H3,  S,  L, strat */
-    {  0,  0,  0,  0,  0,  0, LZ5HC_fast         },  // level 0 - never used
-    { 22, 22, 13,  0,  4,  6, LZ5HC_fast         },  // level 1
- //   { 22, 22, 14,  0,  4,  6, LZ5HC_fast         },  // level 2
-    { 22, 22, 13,  0,  2,  6, LZ5HC_fast         },  // level 3
- //   { 22, 22, 14,  0,  2,  6, LZ5HC_fast         },  // level 4
- //   { 22, 22, 13,  0,  2,  5, LZ5HC_fast         },  // level 5
- //   { 22, 22, 14,  0,  2,  5, LZ5HC_fast         },  // level 6
-    { 22, 22, 13,  0,  1,  5, LZ5HC_fast         },  // level 7
- //   { 22, 22, 14,  0,  1,  5, LZ5HC_fast         },  // level 8
- //   { 22, 22, 15,  0,  1,  5, LZ5HC_fast         },  // level 9
- //   { 22, 22, 17,  0,  1,  5, LZ5HC_fast         },  // level 10
- //   { 22, 22, 14, 13,  4,  6, LZ5HC_price_fast   },  // level 12
- //   { 22, 22, 14, 13,  2,  5, LZ5HC_price_fast   },  // level 13
-    { 22, 22, 14, 13,  1,  4, LZ5HC_price_fast   },  // level 14
-    { 22, 22, 17, 13,  1,  4, LZ5HC_price_fast   },  // level 15
-    { 22, 22, 15, 13,  1,  4, LZ5HC_lowest_price },  // level 16
-    { 22, 22, 17, 13,  1,  4, LZ5HC_lowest_price },  // level 17
-    { 22, 22, 19, 16,  1,  4, LZ5HC_lowest_price },  // level 18
-    { 22, 22, 23, 16,  3,  4, LZ5HC_lowest_price },  // level 19
-    { 22, 22, 23, 16,  8,  4, LZ5HC_lowest_price },  // level 20
-    { 22, 22, 23, 16, 32,  4, LZ5HC_lowest_price },  // level 21
-    { 22, 22, 23, 16, 128, 4, LZ5HC_lowest_price },  // level 22
-    { 22, 22, 23, 16, 1024, 4, LZ5HC_lowest_price },  // level 23
+    /* W,  C,  H, H3, Snum, Se, Su, strat */
+    {  0,  0,  0,  0,    0,  0,  0, LZ5HC_fast         },  // level 0 - never used
+    { 22, 22, 13,  0,    4,  6,  0, LZ5HC_fast         },  // level 1
+    { 22, 22, 13,  0,    2,  6,  0, LZ5HC_fast         },  // level 2
+    { 22, 22, 13,  0,    1,  5,  0, LZ5HC_fast         },  // level 3
+    { 22, 22, 14, 13,    1,  4,  0, LZ5HC_price_fast   },  // level 4
+    { 22, 22, 17, 13,    1,  4,  0, LZ5HC_price_fast   },  // level 5
+    { 22, 22, 15, 13,    1,  4,  0, LZ5HC_lowest_price },  // level 6
+    { 22, 22, 17, 13,    1,  4,  0, LZ5HC_lowest_price },  // level 7
+    { 22, 22, 19, 16,    1,  4,  0, LZ5HC_lowest_price },  // level 8
+    { 22, 22, 23, 16,    3,  4,  0, LZ5HC_lowest_price },  // level 9
+    { 22, 22, 23, 16,    8,  4,  0, LZ5HC_lowest_price },  // level 10
+    { 22, 22, 23, 16,    8,  4, 12, LZ5HC_optimal_price }, // level 11
+    { 22, 22, 23, 16,    8,  4, 64, LZ5HC_optimal_price }, // level 12
+    { 22, 22, 23, 16,    8,  4, 65, LZ5HC_optimal_price }, // level 13
+    { 22, 22, 23, 16,   32,  4, 64, LZ5HC_optimal_price }, // level 14
+    { 22, 22, 23, 16,  128,  4, 64, LZ5HC_optimal_price }, // level 15
+    { 22, 22, 23, 16,  512,  4, 64, LZ5HC_optimal_price }, // level 16
 };
 
 
