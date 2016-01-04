@@ -9,9 +9,10 @@
 #include <vector>
 #include <string>
 #include "compressors.h"
+#include "lz5/lz5common.h" // LZ5HC_MAX_CLEVEL
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "0.9.1"
+#define PROGVERSION "0.9.2"
 #define PAD_SIZE (16*1024)
 #define DEFAULT_LOOP_TIME (100*1000) // 1/10 of a second
 #define LZBENCH_DEBUG(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
@@ -116,9 +117,9 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "gipfeli",  "2015-11-30",  0,   0, lzbench_gipfeli_compress,  lzbench_gipfeli_decompress,  NULL,                 NULL },
     { "lz4",      "r131",        0,   0, lzbench_lz4_compress,      lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4fast",  "r131",        1,  99, lzbench_lz4fast_compress,  lzbench_lz4_decompress,      NULL,                 NULL },
-    { "lz4hc",    "r131",        1,   9, lzbench_lz4hc_compress,    lzbench_lz4_decompress,      NULL,                 NULL },
-    { "lz5",      "r132",        0,   0, lzbench_lz5_compress,      lzbench_lz5_decompress,      NULL,                 NULL },
-    { "lz5hc",    "r132",        1,   9, lzbench_lz5hc_compress,    lzbench_lz5_decompress,      NULL,                 NULL },
+    { "lz4hc",    "r131",        1,  16, lzbench_lz4hc_compress,    lzbench_lz4_decompress,      NULL,                 NULL },
+    { "lz5",      "v1.3.3",      0,   0, lzbench_lz5_compress,      lzbench_lz5_decompress,      NULL,                 NULL },
+    { "lz5hc",    "v1.3.3",      1,   LZ5HC_MAX_CLEVEL, lzbench_lz5hc_compress,    lzbench_lz5_decompress,      NULL,                 NULL },
     { "lzf",      "3.6",         0,   1, lzbench_lzf_compress,      lzbench_lzf_decompress,      NULL,                 NULL },
     { "lzg",      "1.0.8",       1,   9, lzbench_lzg_compress,      lzbench_lzg_decompress,      NULL,                 NULL },
     { "lzham",    "1.0 -d26",    0,   4, lzbench_lzham_compress,    lzbench_lzham_decompress,    NULL,                 NULL },
@@ -158,7 +159,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 
 static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
-    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9,12/lz5/lz5hc,1,4,9,12/" \
+    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9,12,16/lz5/lz5hc,1,4,9,12,16/" \
               "lzf,0,1/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo/" \
               "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2,3/snappy/tornado,1,2,3,4,5,6,7,10,13,16/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
               "xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,9,13,17,20/" \

@@ -65,7 +65,7 @@ density 0.12.5 beta (Throws errors in decompression on some files)
 fastlz 0.1
 gipfeli 2015-11-30
 lz4/lz4hc r131
-lz5/lz5hc r132
+lz5/lz5hc v1.3.3
 lzf 3.6
 lzg 1.0.8
 lzham 1.0
@@ -133,11 +133,12 @@ The ["win81"] input file (100 MB) is a concatanation of carefully selected files
 | lz4hc r131 level 4          |    47 MB/s |  2029 MB/s |    55670801 | 53.09 |
 | lz4hc r131 level 9          |    24 MB/s |  2042 MB/s |    54773517 | 52.24 |
 | lz4hc r131 level 12         |    18 MB/s |  2051 MB/s |    54747494 | 52.21 |
-| lz5 r132                    |   188 MB/s |   893 MB/s |    56183327 | 53.58 |
-| lz5hc r132 level 1          |   459 MB/s |  1697 MB/s |    68770655 | 65.58 |
-| lz5hc r132 level 4          |   125 MB/s |   900 MB/s |    55011906 | 52.46 |
-| lz5hc r132 level 9          |    17 MB/s |   707 MB/s |    48718531 | 46.46 |
-| lz5hc r132 level 12         |  3.53 MB/s |   645 MB/s |    47461368 | 45.26 |
+| lz5 v1.3.3                  |   188 MB/s |   893 MB/s |    56183327 | 53.58 |
+| lz5hc v1.3.3 level 1        |   483 MB/s |  1736 MB/s |    68770655 | 65.58 |
+| lz5hc v1.3.3 level 4        |   128 MB/s |   939 MB/s |    55011906 | 52.46 |
+| lz5hc v1.3.3 level 9        |    17 MB/s |   707 MB/s |    48718531 | 46.46 |
+| lz5hc v1.3.3 level 12       |  7.64 MB/s |   748 MB/s |    47063261 | 44.88 |
+| lz5hc v1.3.3 level 16       |  0.79 MB/s |   720 MB/s |    46125742 | 43.99 |
 | lzf 3.6 level 0             |   214 MB/s |   527 MB/s |    66219900 | 63.15 |
 | lzf 3.6 level 1             |   216 MB/s |   543 MB/s |    63913133 | 60.95 |
 | lzg 1.0.8 level 1           |    44 MB/s |   411 MB/s |    65173949 | 62.15 |
