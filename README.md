@@ -61,7 +61,7 @@ brieflz 1.1.0
 brotli 2015-10-29
 crush 1.0
 csc 3.3
-density 0.12.5 beta (Throws errors in decompression on some files)
+density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
 fastlz 0.1
 gipfeli 2015-11-30
 lz4/lz4hc r131
@@ -72,16 +72,16 @@ lzham 1.0
 lzjb 2010
 lzlib 1.7
 lzma 9.38
-lzmat 1.01 (Throws errors in decompression on some files)
+lzmat 1.01 (WARNING: it contains bugs (decompression error; returns 0); it can throw SEGFAULT compiled with gcc 4.9+ -O3)
 lzo 2.09
 lzrw 15-Jul-1991
-pithy 2011-12-24 (Throws errors in decompression on some files)
+pithy 2011-12-24 (WARNING: it contains bugs (decompression error; returns 0))
 quicklz 1.5.0
-shrinker 0.1
+shrinker 0.1 (WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3)
 snappy 1.1.3
 tornado 0.6a
 ucl 1.03
-wflz 2015-09-16
+wflz 2015-09-16 (WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3)
 xz 5.2.2
 yalz77 2015-09-19
 yappy 2014-03-22
@@ -89,6 +89,7 @@ zlib 1.2.8
 zling 2015-09-15
 zstd v0.4.1
 ```
+
 
 Benchmarks
 -------------------------
