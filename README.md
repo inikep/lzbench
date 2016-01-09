@@ -55,6 +55,11 @@ To remove one of compressors you can add -DBENCH_REMOVE_XXX to $DEFINES in Makef
 
 Supported compressors
 -------------------------
+**Warning**: some of the compressors listed here have security issues
+and/or are no longer maintained.  For information about the security
+of the various compressors, see the
+[CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results)
+page.
 ```
 blosclz 2015-11-10
 brieflz 1.1.0
