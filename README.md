@@ -89,7 +89,7 @@ ucl 1.03
 wflz 2015-09-16 (WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3)
 xz 5.2.2
 yalz77 2015-09-19
-yappy 2014-03-22
+yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.8
 zling 2015-09-15
 zstd v0.4.1
