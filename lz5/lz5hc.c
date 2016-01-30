@@ -39,6 +39,7 @@
 /* *************************************
 *  Includes
 ***************************************/
+#define LZ5HC_INCLUDES
 #include "lz5common.h"
 #include "lz5.h"
 #include "lz5hc.h"
@@ -59,13 +60,13 @@ int LZ5_alloc_mem_HC(LZ5HC_Data_Structure* ctx, int compressionLevel)
 
     ctx->params = LZ5HC_defaultParameters[ctx->compressionLevel];
 
-    ctx->hashTable = (U32*) ALLOCATOR(1, sizeof(U32)*((1 << ctx->params.hashLog3)+(1 << ctx->params.hashLog)));
+    ctx->hashTable = (U32*) malloc(sizeof(U32)*((1 << ctx->params.hashLog3)+(1 << ctx->params.hashLog)));
     if (!ctx->hashTable)
         return 0;
 
     ctx->hashTable3 = ctx->hashTable + (1 << ctx->params.hashLog);
 
-    ctx->chainTable = (U32*) ALLOCATOR(1, sizeof(U32)*(1 << ctx->params.contentLog));
+    ctx->chainTable = (U32*) malloc(sizeof(U32)*(1 << ctx->params.contentLog));
     if (!ctx->chainTable)
     {
         FREEMEM(ctx->hashTable);
@@ -85,8 +86,11 @@ void LZ5_free_mem_HC(LZ5HC_Data_Structure* ctx)
 
 static void LZ5HC_init (LZ5HC_Data_Structure* ctx, const BYTE* start)
 {
+#if 0
     MEM_INIT((void*)ctx->hashTable, 0, sizeof(U32)*((1 << ctx->params.hashLog) + (1 << ctx->params.hashLog3)));
-    MEM_INIT(ctx->chainTable, 0xFF, sizeof(U32)*(1 << ctx->params.contentLog));
+    if (ctx->params.strategy >= LZ5HC_lowest_price)
+        MEM_INIT(ctx->chainTable, 0x01, sizeof(U32)*(1 << ctx->params.contentLog));
+#endif
 
     ctx->nextToUpdate = (1 << ctx->params.windowLog);
     ctx->base = start - (1 << ctx->params.windowLog);
@@ -95,6 +99,130 @@ static void LZ5HC_init (LZ5HC_Data_Structure* ctx, const BYTE* start)
     ctx->dictLimit = (1 << ctx->params.windowLog);
     ctx->lowLimit = (1 << ctx->params.windowLog);
     ctx->last_off = 1;
+}
+
+
+/* Update chains up to ip (excluded) */
+FORCE_INLINE void LZ5HC_BinTree_Insert(LZ5HC_Data_Structure* ctx, const BYTE* ip)
+{
+#if MINMATCH == 3
+    U32* HashTable3  = ctx->hashTable3;
+    const BYTE* const base = ctx->base;
+    const U32 target = (U32)(ip - base);
+    U32 idx = ctx->nextToUpdate;
+    
+    while(idx < target)
+    {
+        HashTable3[LZ5HC_hash3Ptr(base+idx, ctx->params.hashLog3)] = idx;
+        idx++;
+    }
+
+    ctx->nextToUpdate = target;
+#endif 
+}
+
+
+/* Update chains up to "end" (excluded) */
+FORCE_INLINE void LZ5HC_BinTree_InsertFull(LZ5HC_Data_Structure* ctx, const BYTE* end, const BYTE* iHighLimit)
+{
+    U32* chainTable = ctx->chainTable;
+    U32* HashTable  = ctx->hashTable;
+#if MINMATCH == 3
+    U32* HashTable3  = ctx->hashTable3;
+#endif 
+
+    U32 idx = ctx->nextToUpdate;
+    const BYTE* const base = ctx->base;
+    const U32 dictLimit = ctx->dictLimit;
+    const U32 maxDistance = (1 << ctx->params.windowLog);
+    const U32 lowLimit = (ctx->lowLimit + maxDistance > idx) ? ctx->lowLimit : idx - (maxDistance - 1);
+    const U32 target = (U32)(end - base);
+    const U32 contentMask = (1 << ctx->params.contentLog) - 1;
+    const BYTE* const dictBase = ctx->dictBase;
+    const BYTE* match, *ip;
+    int nbAttempts;
+    U32 *ptr0, *ptr1, *HashPos;
+    U32 mlt, matchIndex, delta0, delta1;
+
+    
+    while(idx < target)
+    {
+        ip = base + idx;
+        if (ip + MINMATCH > iHighLimit) return;
+
+        HashPos = &HashTable[LZ5HC_hashPtr(ip, ctx->params.hashLog, ctx->params.searchLength)];
+        matchIndex = *HashPos;
+#if MINMATCH == 3
+        HashTable3[LZ5HC_hash3Ptr(ip, ctx->params.hashLog3)] = idx;
+#endif 
+
+        // check rest of matches
+        ptr0 = &chainTable[(idx*2+1) & contentMask];
+        ptr1 = &chainTable[(idx*2) & contentMask];
+        delta0 = delta1 = idx - matchIndex;
+        nbAttempts = ctx->params.searchNum;
+        *HashPos = idx;
+
+  //      while ((matchIndex >= dictLimit) && (matchIndex < idx) && (idx - matchIndex) < MAX_DISTANCE && nbAttempts)
+        while (matchIndex < idx && (matchIndex>=lowLimit) && (nbAttempts))
+        {
+            nbAttempts--;
+            mlt = 0;
+            if (matchIndex >= dictLimit)
+            {
+                match = base + matchIndex;
+
+                if (match < ip && (MEM_read24(match) == MEM_read24(ip)))
+                {
+                    mlt = MINMATCH + MEM_count(ip+MINMATCH, match+MINMATCH, iHighLimit);
+
+                    if (mlt > LZ5_OPT_NUM) break;
+                }
+            }
+            else
+            {
+                match = dictBase + matchIndex;
+                if (MEM_read32(match) == MEM_read32(ip))
+                {
+                    const BYTE* vLimit = ip + (dictLimit - matchIndex);
+                    if (vLimit > iHighLimit) vLimit = iHighLimit;
+                    mlt = MEM_count(ip+MINMATCH, match+MINMATCH, vLimit) + MINMATCH;
+                    if ((ip+mlt == vLimit) && (vLimit < iHighLimit))
+                        mlt += MEM_count(ip+mlt, base+dictLimit, iHighLimit);
+
+                    if (mlt > LZ5_OPT_NUM) break;
+                }
+            }
+            
+            if (*(ip+mlt) < *(match+mlt))
+            {
+                *ptr0 = delta0;
+                ptr0 = &chainTable[(matchIndex*2) & contentMask];
+                if (*ptr0 == (U32)-1) break;
+                delta0 = *ptr0;
+                delta1 += delta0;
+                matchIndex -= delta0;
+            }
+            else
+            {
+                *ptr1 = delta1;
+                ptr1 = &chainTable[(matchIndex*2+1) & contentMask];
+                if (*ptr1 == (U32)-1) break;
+                delta1 = *ptr1;
+                delta0 += delta1;
+                matchIndex -= delta1;
+            }
+        }
+
+        *ptr0 = (U32)-1;
+        *ptr1 = (U32)-1;
+
+    //    LZ5_LOG_MATCH("%d: LZMAX_UPDATE_HASH_BINTREE hash=%d inp=%d,%d,%d,%d (%c%c%c%c)\n", (int)(inp-base), hash, inp[0], inp[1], inp[2], inp[3], inp[0], inp[1], inp[2], inp[3]);
+
+        idx++;
+    }
+
+    ctx->nextToUpdate = target;
 }
 
 
@@ -115,6 +243,7 @@ FORCE_INLINE void LZ5HC_Insert (LZ5HC_Data_Structure* ctx, const BYTE* ip)
     {
         U32 h = LZ5HC_hashPtr(base+idx, ctx->params.hashLog, ctx->params.searchLength);
         chainTable[idx & contentMask] = (U32)(idx - HashTable[h]);
+//        if (chainTable[idx & contentMask] == 1) chainTable[idx & contentMask] = (U32)0x01010101;
         HashTable[h] = idx;
 #if MINMATCH == 3
         HashTable3[LZ5HC_hash3Ptr(base+idx, ctx->params.hashLog3)] = idx;
@@ -124,7 +253,6 @@ FORCE_INLINE void LZ5HC_Insert (LZ5HC_Data_Structure* ctx, const BYTE* ip)
 
     ctx->nextToUpdate = target;
 }
-
 
     
 FORCE_INLINE int LZ5HC_FindBestMatch (LZ5HC_Data_Structure* ctx,   /* Index table will be updated */
@@ -437,7 +565,6 @@ FORCE_INLINE int LZ5HC_GetWiderMatch (
         {
             match = base + matchIndex;
 
-       //   if (*(ip + longest) == *(matchPtr + longest))
             if (match < ip && MEM_read32(match) == MEM_read32(ip))
             {
                 int mlt = MINMATCH + MEM_count(ip+MINMATCH, match+MINMATCH, iHighLimit);
@@ -493,25 +620,32 @@ FORCE_INLINE int LZ5HC_GetAllMatches (
 {
     U32* const chainTable = ctx->chainTable;
     U32* const HashTable = ctx->hashTable;
+    U32* const HashTable3 = ctx->hashTable3;
     const BYTE* const base = ctx->base;
     const U32 dictLimit = ctx->dictLimit;
     const BYTE* const lowPrefixPtr = base + dictLimit;
     const U32 maxDistance = (1 << ctx->params.windowLog);
     const U32 lowLimit = (ctx->lowLimit + maxDistance > (U32)(ip-base)) ? ctx->lowLimit : (U32)(ip - base) - (maxDistance - 1);
     const U32 contentMask = (1 << ctx->params.contentLog) - 1;
+    const U32 idx = (U32)(ip - base);
     const BYTE* const dictBase = ctx->dictBase;
     const BYTE* match;
     U32   matchIndex;
     int nbAttempts = ctx->params.searchNum;
+ //   bool fullSearch = (ctx->params.fullSearch >= 2);
     int mnum = 0;
-
+    U32* HashPos, *HashPos3;
+        
     if (ip + MINMATCH > iHighLimit) return 0;
 
     /* First Match */
-    matchIndex = HashTable[LZ5HC_hashPtr(ip, ctx->params.hashLog, ctx->params.searchLength)];
-
+    HashPos = &HashTable[LZ5HC_hashPtr(ip, ctx->params.hashLog, ctx->params.searchLength)];
+    matchIndex = *HashPos;
 #if MINMATCH == 3
-    size_t offset = ip - base - ctx->hashTable3[LZ5HC_hash3Ptr(ip, ctx->params.hashLog3)];
+    HashPos3 = &HashTable3[LZ5HC_hash3Ptr(ip, ctx->params.hashLog3)];
+
+
+    size_t offset = idx - *HashPos3;
     if (offset > 0 && offset < LZ5_SHORT_OFFSET_DISTANCE)
     {
         match = ip - offset;
@@ -529,7 +663,15 @@ FORCE_INLINE int LZ5HC_GetAllMatches (
             mnum++;
         }
     }
+
+    *HashPos3 = idx;
 #endif
+
+
+    chainTable[idx & contentMask] = (U32)(idx - matchIndex);
+    *HashPos =  idx;
+    ctx->nextToUpdate++;
+
 
     while ((matchIndex>=lowLimit) && (nbAttempts))
     {
@@ -538,8 +680,7 @@ FORCE_INLINE int LZ5HC_GetAllMatches (
         {
             match = base + matchIndex;
 
-            if (*(ip + best_mlen) == *(match + best_mlen))
-            if (match < ip && MEM_read32(match) == MEM_read32(ip))
+            if (match < ip && (/*fullSearch ||*/ *(ip + best_mlen) == *(match + best_mlen)) && (MEM_read32(match) == MEM_read32(ip)))
             {
                 int mlt = MINMATCH + MEM_count(ip+MINMATCH, match+MINMATCH, iHighLimit);
                 int back = 0;
@@ -596,6 +737,146 @@ FORCE_INLINE int LZ5HC_GetAllMatches (
 
     return mnum;
 }
+
+
+
+FORCE_INLINE int LZ5HC_BinTree_GetAllMatches (
+    LZ5HC_Data_Structure* ctx,
+    const BYTE* const ip,
+    const BYTE* const iHighLimit,
+    int best_mlen,
+    LZ5HC_match_t* matches)
+{
+    U32* const chainTable = ctx->chainTable;
+    U32* const HashTable = ctx->hashTable;
+    const BYTE* const base = ctx->base;
+    const U32 dictLimit = ctx->dictLimit;
+    const U32 maxDistance = (1 << ctx->params.windowLog);
+    const U32 lowLimit = (ctx->lowLimit + maxDistance > (U32)(ip-base)) ? ctx->lowLimit : (U32)(ip - base) - (maxDistance - 1);
+    const U32 contentMask = (1 << ctx->params.contentLog) - 1;
+    const BYTE* const dictBase = ctx->dictBase;
+    const BYTE* match;
+    int nbAttempts = ctx->params.searchNum;
+    int mnum = 0;
+    U32 *ptr0, *ptr1;
+    U32 idx, matchIndex, delta0, delta1;
+    int mlt = 0;
+    U32* HashPos, *HashPos3;
+    
+    if (ip + MINMATCH > iHighLimit) return 0;
+
+    /* First Match */
+    idx = ip - base;
+    HashPos = &HashTable[LZ5HC_hashPtr(ip, ctx->params.hashLog, ctx->params.searchLength)];
+    matchIndex = *HashPos;
+
+    
+#if MINMATCH == 3
+    HashPos3 = &ctx->hashTable3[LZ5HC_hash3Ptr(ip, ctx->params.hashLog3)];
+    size_t offset = idx - *HashPos3;
+
+    if (offset > 0 && offset < LZ5_SHORT_OFFSET_DISTANCE)
+    {
+        match = ip - offset;
+        if (match > base && MEM_read24(ip) == MEM_read24(match))
+        {
+            mlt = MEM_count(ip+MINMATCH, match+MINMATCH, iHighLimit) + MINMATCH;
+
+            matches[mnum].off = offset;
+            matches[mnum].len = mlt;
+            matches[mnum].back = 0;
+            mnum++;
+        }
+    }
+
+    *HashPos3 = idx;
+#endif
+    
+
+    *HashPos = idx;
+    ctx->nextToUpdate++;
+
+    // check rest of matches
+    ptr0 = &chainTable[(idx*2+1) & contentMask];
+    ptr1 = &chainTable[(idx*2) & contentMask];
+    delta0 = delta1 = idx - matchIndex;
+
+    while (matchIndex < idx && (matchIndex>=lowLimit) && (nbAttempts))
+    {
+        nbAttempts--;
+        mlt = 0;
+        if (matchIndex >= dictLimit)
+        {
+            match = base + matchIndex;
+
+            if (match < ip && (MEM_read24(match) == MEM_read24(ip)))
+            {
+                mlt = MINMATCH + MEM_count(ip+MINMATCH, match+MINMATCH, iHighLimit);
+
+                if (mlt > best_mlen)
+                {
+                    best_mlen = mlt;
+                    matches[mnum].off = ip - match;
+                    matches[mnum].len = mlt;
+                    matches[mnum].back = 0;
+                    mnum++;
+                }
+
+                if (best_mlen > LZ5_OPT_NUM) break;
+            }
+        }
+        else
+        {
+            match = dictBase + matchIndex;
+            if (MEM_read32(match) == MEM_read32(ip))
+            {
+                const BYTE* vLimit = ip + (dictLimit - matchIndex);
+                if (vLimit > iHighLimit) vLimit = iHighLimit;
+                mlt = MEM_count(ip+MINMATCH, match+MINMATCH, vLimit) + MINMATCH;
+                if ((ip+mlt == vLimit) && (vLimit < iHighLimit))
+                    mlt += MEM_count(ip+mlt, base+dictLimit, iHighLimit);
+                
+                if (mlt > best_mlen)
+                {
+                    best_mlen = mlt;
+                    matches[mnum].off = ip - match;
+                    matches[mnum].len = mlt;
+                    matches[mnum].back = 0;
+                    mnum++;
+                }
+
+                if (best_mlen > LZ5_OPT_NUM) break;
+            }
+        }
+        
+        if (*(ip+mlt) < *(match+mlt))
+        {
+            *ptr0 = delta0;
+            ptr0 = &chainTable[(matchIndex*2) & contentMask];
+    //		printf("delta0=%d\n", delta0);
+            if (*ptr0 == (U32)-1) break;
+            delta0 = *ptr0;
+            delta1 += delta0;
+            matchIndex -= delta0;
+        }
+        else
+        {
+            *ptr1 = delta1;
+            ptr1 = &chainTable[(matchIndex*2+1) & contentMask];
+    //		printf("delta1=%d\n", delta1);
+            if (*ptr1 == (U32)-1) break;
+            delta1 = *ptr1;
+            delta0 += delta1;
+            matchIndex -= delta1;
+        }
+    }
+
+    *ptr0 = (U32)-1;
+    *ptr1 = (U32)-1;
+
+    return mnum;
+}
+
 
 
 
@@ -703,8 +984,8 @@ static int LZ5HC_compress_optimal_price (
     limitedOutput_directive limit
     )
 {
-    ctx->inputBuffer = (BYTE*) source;
-    ctx->outputBuffer = (BYTE*) dest;
+    ctx->inputBuffer = (const BYTE*) source;
+    ctx->outputBuffer = (const BYTE*) dest;
     const BYTE* ip = (const BYTE*) source;
     const BYTE* anchor = ip;
     const BYTE* const iend = ip + inputSize;
@@ -713,7 +994,7 @@ static int LZ5HC_compress_optimal_price (
     BYTE* op = (BYTE*) dest;
     BYTE* const oend = op + maxOutputSize;
     const int sufficient_len = ctx->params.sufficientLength;
-    const bool faster_get_matches = (ctx->params.sufficientLength % 2) == 0; 
+    const bool faster_get_matches = (ctx->params.fullSearch == 0); 
     
     LZ5HC_optimal_t opt[LZ5_OPT_NUM+4];
     LZ5HC_match_t matches[LZ5_OPT_NUM+1];
@@ -742,7 +1023,7 @@ static int LZ5HC_compress_optimal_price (
         if (mlen >= MINMATCH)
         {
             LZ5_LOG_PARSER("%d: start try REP rep=%d mlen=%d\n", (int)((char*)ip-source), rep, mlen);
-            if (mlen > sufficient_len)
+            if (mlen > sufficient_len || mlen >= LZ5_OPT_NUM)
             {
                 best_mlen = mlen; best_off = 0; cur = 0; last_pos = 1;
                 goto encode;
@@ -766,8 +1047,19 @@ static int LZ5HC_compress_optimal_price (
            match_num = 0;
        else
        {
-            LZ5HC_Insert(ctx, ip);
-            match_num = LZ5HC_GetAllMatches(ctx, ip, ip, matchlimit, best_mlen, matches);
+            if (ctx->params.strategy == LZ5HC_optimal_price)
+            {
+                LZ5HC_Insert(ctx, ip);
+                match_num = LZ5HC_GetAllMatches(ctx, ip, ip, matchlimit, best_mlen, matches);
+            }
+            else
+            {
+                if (ctx->params.fullSearch < 2)
+                    LZ5HC_BinTree_Insert(ctx, ip);
+                else
+                    LZ5HC_BinTree_InsertFull(ctx, ip, matchlimit);
+                match_num = LZ5HC_BinTree_GetAllMatches(ctx, ip, matchlimit, best_mlen, matches);
+            }
        }
 
        LZ5_LOG_PARSER("%d: match_num=%d last_pos=%d\n", (int)((char*)ip-source), match_num, last_pos);
@@ -925,8 +1217,22 @@ static int LZ5HC_compress_optimal_price (
 
             best_mlen = (best_mlen > MINMATCH) ? best_mlen : MINMATCH;      
 
-            LZ5HC_Insert(ctx, inr);
-            match_num = LZ5HC_GetAllMatches(ctx, inr, ip, matchlimit, best_mlen, matches);
+            if (ctx->params.strategy == LZ5HC_optimal_price)
+            {
+                LZ5HC_Insert(ctx, inr);
+                match_num = LZ5HC_GetAllMatches(ctx, inr, ip, matchlimit, best_mlen, matches);
+                LZ5_LOG_PARSER("%d: LZ5HC_GetAllMatches match_num=%d\n", (int)((char*)inr-source), match_num);
+            }
+            else
+            {
+                if (ctx->params.fullSearch < 2)
+                    LZ5HC_BinTree_Insert(ctx, inr);
+                else
+                    LZ5HC_BinTree_InsertFull(ctx, inr, matchlimit);
+                match_num = LZ5HC_BinTree_GetAllMatches(ctx, inr, matchlimit, best_mlen, matches);
+                LZ5_LOG_PARSER("%d: LZ5HC_BinTree_GetAllMatches match_num=%d\n", (int)((char*)inr-source), match_num);
+            }
+
 
             if (match_num > 0 && matches[match_num-1].len > sufficient_len)
             {
@@ -1113,8 +1419,8 @@ static int LZ5HC_compress_lowest_price (
     limitedOutput_directive limit
     )
 {
-    ctx->inputBuffer = (BYTE*) source;
-    ctx->outputBuffer = (BYTE*) dest;
+    ctx->inputBuffer = (const BYTE*) source;
+    ctx->outputBuffer = (const BYTE*) dest;
     const BYTE* ip = (const BYTE*) source;
     const BYTE* anchor = ip;
     const BYTE* const iend = ip + inputSize;
@@ -1165,15 +1471,15 @@ _Search:
         {
         int price, best_price;
         U32 off0=0, off1=0;
-        uint8_t *pos, *best_pos;
+        const uint8_t *pos, *best_pos;
 
     //	find the lowest price for encoding ml bytes
-        best_pos = (uint8_t*)ip;
+        best_pos = ip;
         best_price = 1<<30;
-        off0 = (uint8_t*)ip - ref;
+        off0 = ip - ref;
         off1 = start2 - ref2;
 
-        for (pos = (uint8_t*)ip + ml; pos >= start2; pos--)
+        for (pos = ip + ml; pos >= start2; pos--)
         {
             int common0 = pos - ip;
             if (common0 >= MINMATCH)
@@ -1258,8 +1564,8 @@ static int LZ5HC_compress_price_fast (
     limitedOutput_directive limit
     )
 {
-    ctx->inputBuffer = (BYTE*) source;
-    ctx->outputBuffer = (BYTE*) dest;
+    ctx->inputBuffer = (const BYTE*) source;
+    ctx->outputBuffer = (const BYTE*) dest;
     const BYTE* ip = (const BYTE*) source;
     const BYTE* anchor = ip;
     const BYTE* const iend = ip + inputSize;
@@ -1290,12 +1596,15 @@ static int LZ5HC_compress_price_fast (
     while (ip < mflimit)
     {
         HashPos = &HashTable[LZ5HC_hashPtr(ip, ctx->params.hashLog, ctx->params.searchLength)];
+#if MINMATCH == 3
         HashPos3 = &HashTable3[LZ5HC_hash3Ptr(ip, ctx->params.hashLog3)];
         ml = LZ5HC_FindMatchFast (ctx, *HashPos, *HashPos3, ip, matchlimit, (&ref));
-        *HashPos =  (U32)(ip - base);
-#if MINMATCH == 3
         *HashPos3 = (U32)(ip - base);
+#else
+        ml = LZ5HC_FindMatchFast (ctx, *HashPos, 0, ip, matchlimit, (&ref));
 #endif 
+        *HashPos =  (U32)(ip - base);
+
         if (!ml) { ip++; continue; }
 
         if ((U32)(ip - ref) == ctx->last_off) { ml2=0; goto _Encode; }
@@ -1389,8 +1698,8 @@ static int LZ5HC_compress_fast (
     limitedOutput_directive limit
     )
 {
-    ctx->inputBuffer = (BYTE*) source;
-    ctx->outputBuffer = (BYTE*) dest;
+    ctx->inputBuffer = (const BYTE*) source;
+    ctx->outputBuffer = (const BYTE*) dest;
     const BYTE* ip = (const BYTE*) source;
     const BYTE* anchor = ip;
     const BYTE* const iend = ip + inputSize;
@@ -1461,6 +1770,7 @@ static int LZ5HC_compress_generic (void* ctxvoid, const char* source, char* dest
     case LZ5HC_lowest_price:
         return LZ5HC_compress_lowest_price(ctx, source, dest, inputSize, maxOutputSize, limit);
     case LZ5HC_optimal_price:
+    case LZ5HC_optimal_price_bt:
         return LZ5HC_compress_optimal_price(ctx, source, dest, inputSize, maxOutputSize, limit);
     }
 

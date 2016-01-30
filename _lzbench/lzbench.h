@@ -118,8 +118,8 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lz4",      "r131",        0,   0, lzbench_lz4_compress,      lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4fast",  "r131",        1,  99, lzbench_lz4fast_compress,  lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4hc",    "r131",        1,  16, lzbench_lz4hc_compress,    lzbench_lz4_decompress,      NULL,                 NULL },
-    { "lz5",      "v1.3.3",      0,   0, lzbench_lz5_compress,      lzbench_lz5_decompress,      NULL,                 NULL },
-    { "lz5hc",    "v1.3.3",      1,   LZ5HC_MAX_CLEVEL, lzbench_lz5hc_compress,    lzbench_lz5_decompress,      NULL,                 NULL },
+    { "lz5",      "v1.4 beta",      0,   0, lzbench_lz5_compress,      lzbench_lz5_decompress,      NULL,                 NULL },
+    { "lz5hc",    "v1.4 beta",      1,   LZ5HC_MAX_CLEVEL, lzbench_lz5hc_compress,    lzbench_lz5_decompress,      NULL,                 NULL },
     { "lzf",      "3.6",         0,   1, lzbench_lzf_compress,      lzbench_lzf_decompress,      NULL,                 NULL },
     { "lzg",      "1.0.8",       1,   9, lzbench_lzg_compress,      lzbench_lzg_decompress,      NULL,                 NULL },
     { "lzham",    "1.0 -d26",    0,   4, lzbench_lzham_compress,    lzbench_lzham_decompress,    NULL,                 NULL },
@@ -151,7 +151,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "yappy",    "2014-03-22",  0,  99, lzbench_yappy_compress,    lzbench_yappy_decompress,    lzbench_yappy_init,   NULL },
     { "zlib",     "1.2.8",       1,   9, lzbench_zlib_compress,     lzbench_zlib_decompress,     NULL,                 NULL },
     { "zling",    "2015-09-16",  0,   4, lzbench_zling_compress,    lzbench_zling_decompress,    NULL,                 NULL },
-    { "zstd",     "v0.4.1",      1,  20, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zstd",     "v0.4.7",      1,  20, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
 };
 
 
