@@ -35,17 +35,16 @@
 *****************************************************************/
 /*!
  * HEAPMODE :
- * Select how default compression functions will allocate memory for their hash table,
- * in memory stack (0, fastest), or in memory heap (1, requires malloc())
- * Note that compression context is fairly large, as a consequence heap memory is recommended.
+ * Select how default decompression function ZSTD_decompress() will allocate memory,
+ * in memory stack (0), or in memory heap (1, requires malloc())
  */
 #ifndef ZSTD_HEAPMODE
 #  define ZSTD_HEAPMODE 1
-#endif /* ZSTD_HEAPMODE */
+#endif
 
 /*!
 *  LEGACY_SUPPORT :
-*  ZSTD_decompress() can decode older formats (starting from zstd 0.1+)
+*  ZSTD_decompress() can decode older formats (v0.1+) if set to 1
 */
 #ifndef ZSTD_LEGACY_SUPPORT
 #  define ZSTD_LEGACY_SUPPORT 0
@@ -127,10 +126,10 @@ struct ZSTD_DCtx_s
     U32 LLTable[FSE_DTABLE_SIZE_U32(LLFSELog)];
     U32 OffTable[FSE_DTABLE_SIZE_U32(OffFSELog)];
     U32 MLTable[FSE_DTABLE_SIZE_U32(MLFSELog)];
-    void* previousDstEnd;
-    void* base;
-    void* vBase;
-    void* dictEnd;
+    const void* previousDstEnd;
+    const void* base;
+    const void* vBase;
+    const void* dictEnd;
     size_t expected;
     size_t headerSize;
     ZSTD_parameters params;
@@ -141,7 +140,7 @@ struct ZSTD_DCtx_s
     size_t litSize;
     BYTE litBuffer[BLOCKSIZE + 8 /* margin for wildcopy */];
     BYTE headerBuffer[ZSTD_frameHeaderSize_max];
-};   /* typedef'd to ZSTD_Dctx within "zstd_static.h" */
+};  /* typedef'd to ZSTD_DCtx within "zstd_static.h" */
 
 size_t ZSTD_resetDCtx(ZSTD_DCtx* dctx)
 {
@@ -505,7 +504,7 @@ static void ZSTD_decodeSequence(seq_t* seq, seqState_t* seqState)
 FORCE_INLINE size_t ZSTD_execSequence(BYTE* op,
                                 BYTE* const oend, seq_t sequence,
                                 const BYTE** litPtr, const BYTE* const litLimit_8,
-                                BYTE* const base, BYTE* const vBase, BYTE* const dictEnd)
+                                const BYTE* const base, const BYTE* const vBase, const BYTE* const dictEnd)
 {
     static const int dec32table[] = { 0, 1, 2, 1, 4, 4, 4, 4 };   /* added */
     static const int dec64table[] = { 8, 8, 8, 7, 8, 9,10,11 };   /* substracted */
@@ -527,24 +526,21 @@ FORCE_INLINE size_t ZSTD_execSequence(BYTE* op,
     *litPtr = litEnd;   /* update for next sequence */
 
     /* copy Match */
-    /* check */
-    //if (match > oLitEnd) return ERROR(corruption_detected);   /* address space overflow test (is clang optimizer wrongly removing this test ?) */
-    if (sequence.offset > (size_t)oLitEnd) return ERROR(corruption_detected);   /* address space overflow test (this test seems preserved by clang optimizer) */
-
-    if (match < base)
+    if (sequence.offset > (size_t)(oLitEnd - base))
     {
         /* offset beyond prefix */
-        if (match < vBase) return ERROR(corruption_detected);
+        if (sequence.offset > (size_t)(oLitEnd - vBase))
+            return ERROR(corruption_detected);
         match = dictEnd - (base-match);
         if (match + sequence.matchLength <= dictEnd)
         {
-            memcpy(oLitEnd, match, sequence.matchLength);
+            memmove(oLitEnd, match, sequence.matchLength);
             return sequenceLength;
         }
         /* span extDict & currentPrefixSegment */
         {
             size_t length1 = dictEnd - match;
-            memcpy(oLitEnd, match, length1);
+            memmove(oLitEnd, match, length1);
             op = oLitEnd + length1;
             sequence.matchLength -= length1;
             match = base;
@@ -607,9 +603,9 @@ static size_t ZSTD_decompressSequences(
     U32* DTableLL = dctx->LLTable;
     U32* DTableML = dctx->MLTable;
     U32* DTableOffb = dctx->OffTable;
-    BYTE* const base = (BYTE*) (dctx->base);
-    BYTE* const vBase = (BYTE*) (dctx->vBase);
-    BYTE* const dictEnd = (BYTE*) (dctx->dictEnd);
+    const BYTE* const base = (const BYTE*) (dctx->base);
+    const BYTE* const vBase = (const BYTE*) (dctx->vBase);
+    const BYTE* const dictEnd = (const BYTE*) (dctx->dictEnd);
 
     /* Build Decoding Tables */
     errorCode = ZSTD_decodeSeqHeaders(&nbSeq, &dumps, &dumpsLength,
@@ -661,8 +657,19 @@ static size_t ZSTD_decompressSequences(
 }
 
 
-static size_t ZSTD_decompressBlock(
-                            ZSTD_DCtx* dctx,
+static void ZSTD_checkContinuity(ZSTD_DCtx* dctx, const void* dst)
+{
+    if (dst != dctx->previousDstEnd)   /* not contiguous */
+    {
+        dctx->dictEnd = dctx->previousDstEnd;
+        dctx->vBase = (const char*)dst - ((const char*)(dctx->previousDstEnd) - (const char*)(dctx->base));
+        dctx->base = dst;
+        dctx->previousDstEnd = dst;
+    }
+}
+
+
+static size_t ZSTD_decompressBlock_internal(ZSTD_DCtx* dctx,
                             void* dst, size_t maxDstSize,
                       const void* src, size_t srcSize)
 {
@@ -679,7 +686,19 @@ static size_t ZSTD_decompressBlock(
 }
 
 
-size_t ZSTD_decompressDCtx(ZSTD_DCtx* ctx, void* dst, size_t maxDstSize, const void* src, size_t srcSize)
+size_t ZSTD_decompressBlock(ZSTD_DCtx* dctx,
+                            void* dst, size_t maxDstSize,
+                      const void* src, size_t srcSize)
+{
+    ZSTD_checkContinuity(dctx, dst);
+    return ZSTD_decompressBlock_internal(dctx, dst, maxDstSize, src, srcSize);
+}
+
+
+size_t ZSTD_decompress_usingDict(ZSTD_DCtx* ctx,
+                                 void* dst, size_t maxDstSize,
+                                 const void* src, size_t srcSize,
+                                 const void* dict, size_t dictSize)
 {
     const BYTE* ip = (const BYTE*)src;
     const BYTE* iend = ip + srcSize;
@@ -689,9 +708,19 @@ size_t ZSTD_decompressDCtx(ZSTD_DCtx* ctx, void* dst, size_t maxDstSize, const v
     size_t remainingSize = srcSize;
     blockProperties_t blockProperties;
 
-
     /* init */
-    ctx->base = ctx->vBase = ctx->dictEnd = dst;
+    ZSTD_resetDCtx(ctx);
+    if (dict)
+    {
+        ZSTD_decompress_insertDictionary(ctx, dict, dictSize);
+        ctx->dictEnd = ctx->previousDstEnd;
+        ctx->vBase = (const char*)dst - ((const char*)(ctx->previousDstEnd) - (const char*)(ctx->base));
+        ctx->base = dst;
+    }
+    else
+    {
+        ctx->vBase = ctx->base = ctx->dictEnd = dst;
+    }
 
     /* Frame Header */
     {
@@ -726,7 +755,7 @@ size_t ZSTD_decompressDCtx(ZSTD_DCtx* ctx, void* dst, size_t maxDstSize, const v
         switch(blockProperties.blockType)
         {
         case bt_compressed:
-            decodedSize = ZSTD_decompressBlock(ctx, op, oend-op, ip, cBlockSize);
+            decodedSize = ZSTD_decompressBlock_internal(ctx, op, oend-op, ip, cBlockSize);
             break;
         case bt_raw :
             decodedSize = ZSTD_copyRawBlock(op, oend-op, ip, cBlockSize);
@@ -752,10 +781,25 @@ size_t ZSTD_decompressDCtx(ZSTD_DCtx* ctx, void* dst, size_t maxDstSize, const v
     return op-ostart;
 }
 
+
+size_t ZSTD_decompressDCtx(ZSTD_DCtx* dctx, void* dst, size_t maxDstSize, const void* src, size_t srcSize)
+{
+    return ZSTD_decompress_usingDict(dctx, dst, maxDstSize, src, srcSize, NULL, 0);
+}
+
 size_t ZSTD_decompress(void* dst, size_t maxDstSize, const void* src, size_t srcSize)
 {
-    ZSTD_DCtx ctx;
-    return ZSTD_decompressDCtx(&ctx, dst, maxDstSize, src, srcSize);
+#if defined(ZSTD_HEAPMODE) && (ZSTD_HEAPMODE==1)
+    size_t regenSize;
+    ZSTD_DCtx* dctx = ZSTD_createDCtx();
+    if (dctx==NULL) return ERROR(memory_allocation);
+    regenSize = ZSTD_decompressDCtx(dctx, dst, maxDstSize, src, srcSize);
+    ZSTD_freeDCtx(dctx);
+    return regenSize;
+#else
+    ZSTD_DCtx dctx;
+    return ZSTD_decompressDCtx(&dctx, dst, maxDstSize, src, srcSize);
+#endif
 }
 
 
@@ -771,15 +815,7 @@ size_t ZSTD_decompressContinue(ZSTD_DCtx* ctx, void* dst, size_t maxDstSize, con
 {
     /* Sanity check */
     if (srcSize != ctx->expected) return ERROR(srcSize_wrong);
-    if (dst != ctx->previousDstEnd)   /* not contiguous */
-    {
-        if ((dst > ctx->base) && (dst < ctx->previousDstEnd))   /* rolling buffer : new segment into dictionary */
-            ctx->base = (char*)dst;   /* temporary affectation, for vBase calculation */
-        ctx->dictEnd = ctx->previousDstEnd;
-        ctx->vBase = (char*)dst - ((char*)(ctx->previousDstEnd) - (char*)(ctx->base));
-        ctx->base = dst;
-        ctx->previousDstEnd = dst;
-    }
+    ZSTD_checkContinuity(ctx, dst);
 
     /* Decompress : frame header; part 1 */
     switch (ctx->stage)
@@ -827,17 +863,16 @@ size_t ZSTD_decompressContinue(ZSTD_DCtx* ctx, void* dst, size_t maxDstSize, con
                 ctx->bType = bp.blockType;
                 ctx->stage = ZSTDds_decompressBlock;
             }
-
             return 0;
         }
-    case 3:
+    case ZSTDds_decompressBlock:
         {
             /* Decompress : block content */
             size_t rSize;
             switch(ctx->bType)
             {
             case bt_compressed:
-                rSize = ZSTD_decompressBlock(ctx, dst, maxDstSize, src, srcSize);
+                rSize = ZSTD_decompressBlock_internal(ctx, dst, maxDstSize, src, srcSize);
                 break;
             case bt_raw :
                 rSize = ZSTD_copyRawBlock(dst, maxDstSize, src, srcSize);
@@ -862,3 +897,10 @@ size_t ZSTD_decompressContinue(ZSTD_DCtx* ctx, void* dst, size_t maxDstSize, con
 }
 
 
+void ZSTD_decompress_insertDictionary(ZSTD_DCtx* ctx, const void* dict, size_t dictSize)
+{
+    ctx->dictEnd = ctx->previousDstEnd;
+    ctx->vBase = (const char*)dict - ((const char*)(ctx->previousDstEnd) - (const char*)(ctx->base));
+    ctx->base = dict;
+    ctx->previousDstEnd = (const char*)dict + dictSize;
+}

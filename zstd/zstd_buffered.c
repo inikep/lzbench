@@ -39,7 +39,7 @@
 *  Includes
 ***************************************/
 #include <stdlib.h>
-#include "error.h"
+#include "error_private.h"
 #include "zstd_static.h"
 #include "zstd_buffered_static.h"
 
@@ -143,7 +143,7 @@ size_t ZBUFF_compressInit_advanced(ZBUFF_CCtx* zbc, ZSTD_parameters params)
         if (zbc->outBuff == NULL) return ERROR(memory_allocation);
     }
 
-    zbc->outBuffContentSize = ZSTD_compressBegin_advanced(zbc->zc, zbc->outBuff, zbc->outBuffSize, params);
+    zbc->outBuffContentSize = ZSTD_compressBegin_advanced(zbc->zc, params);
     if (ZSTD_isError(zbc->outBuffContentSize)) return zbc->outBuffContentSize;
 
     zbc->inToCompress = 0;
@@ -159,6 +159,12 @@ size_t ZBUFF_compressInit(ZBUFF_CCtx* zbc, int compressionLevel)
     return ZBUFF_compressInit_advanced(zbc, ZSTD_getParams(compressionLevel, 0));
 }
 
+
+ZSTDLIB_API size_t ZBUFF_compressWithDictionary(ZBUFF_CCtx* zbc, const void* src, size_t srcSize)
+{
+    ZSTD_compress_insertDictionary(zbc->zc, src, srcSize);
+    return 0;
+}
 
 
 /* *** Compression *** */
@@ -237,6 +243,8 @@ static size_t ZBUFF_compressContinue_generic(ZBUFF_CCtx* zbc,
                 zbc->stage = ZBUFFcs_load;
                 break;
             }
+        default:
+            return ERROR(GENERIC);   /* impossible */
         }
     }
 
@@ -327,6 +335,8 @@ struct ZBUFF_DCtx_s {
     size_t outStart;
     size_t outEnd;
     size_t hPos;
+    const char* dict;
+    size_t dictSize;
     ZBUFF_dStage stage;
     unsigned char headerBuffer[ZSTD_frameHeaderSize_max];
 };   /* typedef'd to ZBUFF_DCtx within "zstd_buffered.h" */
@@ -353,16 +363,22 @@ size_t ZBUFF_freeDCtx(ZBUFF_DCtx* zbc)
 }
 
 
-
 /* *** Initialization *** */
 
 size_t ZBUFF_decompressInit(ZBUFF_DCtx* zbc)
 {
     zbc->stage = ZBUFFds_readHeader;
-    zbc->hPos = zbc->inPos = zbc->outStart = zbc->outEnd = 0;
+    zbc->hPos = zbc->inPos = zbc->outStart = zbc->outEnd = zbc->dictSize = 0;
     return ZSTD_resetDCtx(zbc->zc);
 }
 
+
+size_t ZBUFF_decompressWithDictionary(ZBUFF_DCtx* zbc, const void* src, size_t srcSize)
+{
+    zbc->dict = (const char*)src;
+    zbc->dictSize = srcSize;
+    return 0;
+}
 
 
 /* *** Decompression *** */
@@ -442,6 +458,8 @@ size_t ZBUFF_decompressContinue(ZBUFF_DCtx* zbc, void* dst, size_t* maxDstSizePt
                         if (zbc->outBuff == NULL) return ERROR(memory_allocation);
                     }
                 }
+                if (zbc->dictSize)
+                    ZSTD_decompress_insertDictionary(zbc->zc, zbc->dict, zbc->dictSize);
                 if (zbc->hPos)
                 {
                     /* some data already loaded into headerBuffer : transfer into inBuff */
@@ -518,6 +536,7 @@ size_t ZBUFF_decompressContinue(ZBUFF_DCtx* zbc, void* dst, size_t* maxDstSizePt
                 notDone = 0;
                 break;
             }
+        default: return ERROR(GENERIC);   /* impossible */
         }
     }
 
