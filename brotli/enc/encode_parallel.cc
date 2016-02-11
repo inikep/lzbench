@@ -1,17 +1,9 @@
-// Copyright 2013 Google Inc. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
+/* Copyright 2013 Google Inc. All Rights Reserved.
+
+   Distributed under MIT license.
+   See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
+*/
+
 // Implementation of parallel Brotli compressor.
 
 #include "./encode_parallel.h"
@@ -40,8 +32,8 @@ namespace brotli {
 namespace {
 
 void RecomputeDistancePrefixes(Command* cmds, size_t num_commands,
-                               int num_direct_distance_codes,
-                               int distance_postfix_bits) {
+                               uint32_t num_direct_distance_codes,
+                               uint32_t distance_postfix_bits) {
   if (num_direct_distance_codes == 0 &&
       distance_postfix_bits == 0) {
     return;
@@ -59,21 +51,20 @@ void RecomputeDistancePrefixes(Command* cmds, size_t num_commands,
 }
 
 bool WriteMetaBlockParallel(const BrotliParams& params,
-                            const size_t block_size,
+                            const uint32_t input_size,
                             const uint8_t* input_buffer,
-                            const size_t prefix_size,
+                            const uint32_t prefix_size,
                             const uint8_t* prefix_buffer,
                             const bool is_first,
                             const bool is_last,
                             size_t* encoded_size,
                             uint8_t* encoded_buffer) {
-  if (block_size == 0) {
+  if (input_size == 0) {
     return false;
   }
-  const size_t input_size = block_size;
 
   // Copy prefix + next input block into a continuous area.
-  size_t input_pos = prefix_size;
+  uint32_t input_pos = prefix_size;
   // CreateBackwardReferences reads up to 3 bytes past the end of input if the
   // mask points past the end of input.
   // FindMatchLengthWithLimit could do another 8 bytes look-forward.
@@ -83,7 +74,7 @@ bool WriteMetaBlockParallel(const BrotliParams& params,
   // Since we don't have a ringbuffer, masking is a no-op.
   // We use one less bit than the full range because some of the code uses
   // mask + 1 as the size of the ringbuffer.
-  const size_t mask = std::numeric_limits<size_t>::max() >> 1;
+  const uint32_t mask = std::numeric_limits<uint32_t>::max() >> 1;
 
   uint8_t prev_byte = input_pos > 0 ? input[(input_pos - 1) & mask] : 0;
   uint8_t prev_byte2 = input_pos > 1 ? input[(input_pos - 2) & mask] : 0;
@@ -94,15 +85,14 @@ bool WriteMetaBlockParallel(const BrotliParams& params,
                                 kMinUTF8Ratio);
 
   // Initialize hashers.
-  int hash_type = std::min(9, params.quality);
+  int hash_type = std::min(10, params.quality);
   Hashers* hashers = new Hashers();
   hashers->Init(hash_type);
 
   // Compute backward references.
-  int last_insert_len = 0;
+  size_t last_insert_len = 0;
   size_t num_commands = 0;
-  int num_literals = 0;
-  int max_backward_distance = (1 << params.lgwin) - 16;
+  size_t num_literals = 0;
   int dist_cache[4] = { -4, -4, -4, -4 };
   Command* commands = static_cast<Command*>(
       malloc(sizeof(Command) * ((input_size + 1) >> 1)));
@@ -111,10 +101,10 @@ bool WriteMetaBlockParallel(const BrotliParams& params,
     return false;
   }
   CreateBackwardReferences(
-      input_size, input_pos,
+      input_size, input_pos, is_last,
       &input[0], mask,
-      max_backward_distance,
       params.quality,
+      params.lgwin,
       hashers,
       hash_type,
       dist_cache,
@@ -131,10 +121,11 @@ bool WriteMetaBlockParallel(const BrotliParams& params,
 
   // Build the meta-block.
   MetaBlockSplit mb;
-  int num_direct_distance_codes =
+  uint32_t num_direct_distance_codes =
       params.mode == BrotliParams::MODE_FONT ? 12 : 0;
-  int distance_postfix_bits = params.mode == BrotliParams::MODE_FONT ? 1 : 0;
-  int literal_context_mode = utf8_mode ? CONTEXT_UTF8 : CONTEXT_SIGNED;
+  uint32_t distance_postfix_bits =
+      params.mode == BrotliParams::MODE_FONT ? 1 : 0;
+  ContextType literal_context_mode = utf8_mode ? CONTEXT_UTF8 : CONTEXT_SIGNED;
   RecomputeDistancePrefixes(commands, num_commands,
                             num_direct_distance_codes,
                             distance_postfix_bits);
@@ -153,8 +144,8 @@ bool WriteMetaBlockParallel(const BrotliParams& params,
   // Set up the temporary output storage.
   const size_t max_out_size = 2 * input_size + 500;
   std::vector<uint8_t> storage(max_out_size);
-  int first_byte = 0;
-  int first_byte_bits = 0;
+  uint8_t first_byte = 0;
+  size_t first_byte_bits = 0;
   if (is_first) {
     if (params.lgwin == 16) {
       first_byte = 0;
@@ -163,26 +154,23 @@ bool WriteMetaBlockParallel(const BrotliParams& params,
       first_byte = 1;
       first_byte_bits = 7;
     } else {
-      first_byte = ((params.lgwin - 17) << 1) | 1;
+      first_byte = static_cast<uint8_t>(((params.lgwin - 17) << 1) | 1);
       first_byte_bits = 4;
     }
   }
   storage[0] = static_cast<uint8_t>(first_byte);
-  int storage_ix = first_byte_bits;
+  size_t storage_ix = first_byte_bits;
 
   // Store the meta-block to the temporary output.
-  if (!StoreMetaBlock(&input[0], input_pos, input_size, mask,
-                      prev_byte, prev_byte2,
-                      is_last,
-                      num_direct_distance_codes,
-                      distance_postfix_bits,
-                      literal_context_mode,
-                      commands, num_commands,
-                      mb,
-                      &storage_ix, &storage[0])) {
-    free(commands);
-    return false;
-  }
+  StoreMetaBlock(&input[0], input_pos, input_size, mask,
+                 prev_byte, prev_byte2,
+                 is_last,
+                 num_direct_distance_codes,
+                 distance_postfix_bits,
+                 literal_context_mode,
+                 commands, num_commands,
+                 mb,
+                 &storage_ix, &storage[0]);
   free(commands);
 
   // If this is not the last meta-block, store an empty metadata
@@ -197,11 +185,9 @@ bool WriteMetaBlockParallel(const BrotliParams& params,
   if (input_size + 4 < output_size) {
     storage[0] = static_cast<uint8_t>(first_byte);
     storage_ix = first_byte_bits;
-    if (!StoreUncompressedMetaBlock(is_last, &input[0], input_pos, mask,
-                                    input_size,
-                                    &storage_ix, &storage[0])) {
-      return false;
-    }
+    StoreUncompressedMetaBlock(is_last, &input[0], input_pos, mask,
+                               input_size,
+                               &storage_ix, &storage[0]);
     output_size = storage_ix >> 3;
   }
 
@@ -247,19 +233,23 @@ int BrotliCompressBufferParallel(BrotliParams params,
     params.lgblock = kMaxInputBlockBits;
   }
   size_t max_input_block_size = 1 << params.lgblock;
+  size_t max_prefix_size = 1u << params.lgwin;
 
   std::vector<std::vector<uint8_t> > compressed_pieces;
 
   // Compress block-by-block independently.
   for (size_t pos = 0; pos < input_size; ) {
-    size_t input_block_size = std::min(max_input_block_size, input_size - pos);
+    uint32_t input_block_size =
+        static_cast<uint32_t>(std::min(max_input_block_size, input_size - pos));
+    uint32_t prefix_size =
+        static_cast<uint32_t>(std::min(max_prefix_size, pos));
     size_t out_size = input_block_size + (input_block_size >> 3) + 1024;
     std::vector<uint8_t> out(out_size);
     if (!WriteMetaBlockParallel(params,
                                 input_block_size,
                                 &input_buffer[pos],
-                                pos,
-                                input_buffer,
+                                prefix_size,
+                                &input_buffer[pos - prefix_size],
                                 pos == 0,
                                 pos + input_block_size == input_size,
                                 &out_size,

@@ -1,25 +1,17 @@
 /* Copyright 2013 Google Inc. All Rights Reserved.
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
-
-   http://www.apache.org/licenses/LICENSE-2.0
-
-   Unless required by applicable law or agreed to in writing, software
-   distributed under the License is distributed on an "AS IS" BASIS,
-   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-   See the License for the specific language governing permissions and
-   limitations under the License.
+   Distributed under MIT license.
+   See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
 */
 
 /* Utilities for building Huffman decoding tables. */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 #include "./huffman.h"
+
+#include <string.h>  /* memcpy, memset */
+
 #include "./port.h"
+#include "./types.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
@@ -246,7 +238,7 @@ uint32_t BrotliBuildHuffmanTable(HuffmanCode* root_table,
   for (len = root_bits + 1, step = 2; len <= max_length; ++len) {
     symbol = len - (BROTLI_HUFFMAN_MAX_CODE_LENGTH + 1);
     for (; count[len] != 0; --count[len]) {
-      if (sub_key == (uint32_t)(BROTLI_REVERSE_BITS_LOWEST << 1)) {
+      if (sub_key == (BROTLI_REVERSE_BITS_LOWEST << 1U)) {
         table += table_size;
         table_bits = NextTableBitSize(count, len, root_bits);
         table_size = 1 << table_bits;
@@ -360,23 +352,6 @@ uint32_t BrotliBuildSimpleHuffmanTable(HuffmanCode* table,
     table_size <<= 1;
   }
   return goal_size;
-}
-
-void BrotliHuffmanTreeGroupInit(HuffmanTreeGroup* group, uint32_t alphabet_size,
-                                uint32_t ntrees) {
-  /* Pack two mallocs into one */
-  const size_t code_size =
-      sizeof(HuffmanCode) * (size_t)(ntrees * BROTLI_HUFFMAN_MAX_TABLE_SIZE);
-  const size_t htree_size = sizeof(HuffmanCode*) * (size_t)ntrees;
-  char *p = (char*)malloc(code_size + htree_size);
-  group->alphabet_size = (uint16_t)alphabet_size;
-  group->num_htrees = (uint16_t)ntrees;
-  group->codes = (HuffmanCode*)p;
-  group->htrees = (HuffmanCode**)(p + code_size);
-}
-
-void BrotliHuffmanTreeGroupRelease(HuffmanTreeGroup* group) {
-  BROTLI_FREE(group->codes);
 }
 
 #if defined(__cplusplus) || defined(c_plusplus)

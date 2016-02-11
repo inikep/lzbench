@@ -1,17 +1,9 @@
-// Copyright 2013 Google Inc. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
+/* Copyright 2013 Google Inc. All Rights Reserved.
+
+   Distributed under MIT license.
+   See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
+*/
+
 // Sliding window over the input data.
 
 #ifndef BROTLI_ENC_RINGBUFFER_H_
@@ -24,26 +16,34 @@
 namespace brotli {
 
 // A RingBuffer(window_bits, tail_bits) contains `1 << window_bits' bytes of
-// data in a circular manner: writing a byte writes it to
-// `position() % (1 << window_bits)'. For convenience, the RingBuffer array
-// contains another copy of the first `1 << tail_bits' bytes:
-// buffer_[i] == buffer_[i + (1 << window_bits)] if i < (1 << tail_bits).
+// data in a circular manner: writing a byte writes it to:
+//   `position() % (1 << window_bits)'.
+// For convenience, the RingBuffer array contains another copy of the
+// first `1 << tail_bits' bytes:
+//   buffer_[i] == buffer_[i + (1 << window_bits)], if i < (1 << tail_bits),
+// and another copy of the last two bytes:
+//   buffer_[-1] == buffer_[(1 << window_bits) - 1] and
+//   buffer_[-2] == buffer_[(1 << window_bits) - 2].
 class RingBuffer {
  public:
   RingBuffer(int window_bits, int tail_bits)
-      : window_bits_(window_bits),
-        mask_((1 << window_bits) - 1),
-        tail_size_(1 << tail_bits),
+      : size_(1u << window_bits),
+        mask_((1u << window_bits) - 1),
+        tail_size_(1u << tail_bits),
         pos_(0) {
-    static const int kSlackForEightByteHashingEverywhere = 7;
-    const size_t buflen = (1 << window_bits_) + tail_size_;
-    buffer_ = new uint8_t[buflen + kSlackForEightByteHashingEverywhere];
-    for (int i = 0; i < kSlackForEightByteHashingEverywhere; ++i) {
+    static const size_t kSlackForEightByteHashingEverywhere = 7;
+    const size_t buflen = size_ + tail_size_;
+    data_ = new uint8_t[2 + buflen + kSlackForEightByteHashingEverywhere];
+    buffer_ = data_ + 2;
+    for (size_t i = 0; i < kSlackForEightByteHashingEverywhere; ++i) {
       buffer_[buflen + i] = 0;
     }
+    // Initialize the last two bytes and their copy to zero.
+    buffer_[-2] = buffer_[size_ - 2] = 0;
+    buffer_[-1] = buffer_[size_ - 1] = 0;
   }
   ~RingBuffer() {
-    delete [] buffer_;
+    delete [] data_;
   }
 
   // Push bytes into the ring buffer.
@@ -52,19 +52,24 @@ class RingBuffer {
     // The length of the writes is limited so that we do not need to worry
     // about a write
     WriteTail(bytes, n);
-    if (PREDICT_TRUE(masked_pos + n <= (1U << window_bits_))) {
+    if (PREDICT_TRUE(masked_pos + n <= size_)) {
       // A single write fits.
       memcpy(&buffer_[masked_pos], bytes, n);
     } else {
       // Split into two writes.
       // Copy into the end of the buffer, including the tail buffer.
       memcpy(&buffer_[masked_pos], bytes,
-             std::min(n, ((1 << window_bits_) + tail_size_) - masked_pos));
+             std::min(n, (size_ + tail_size_) - masked_pos));
       // Copy into the beginning of the buffer
-      memcpy(&buffer_[0], bytes + ((1 << window_bits_) - masked_pos),
-             n - ((1 << window_bits_) - masked_pos));
+      memcpy(&buffer_[0], bytes + (size_ - masked_pos),
+             n - (size_ - masked_pos));
     }
-    pos_ += n;
+    buffer_[-2] = buffer_[size_ - 2];
+    buffer_[-1] = buffer_[size_ - 1];
+    pos_ += static_cast<uint32_t>(n);
+    if (pos_ > (1u << 30)) {  /* Wrap, but preserve not-a-first-lap feature. */
+      pos_ = (pos_ & ((1u << 30) - 1)) | (1u << 30);
+    }
   }
 
   void Reset() {
@@ -72,10 +77,10 @@ class RingBuffer {
   }
 
   // Logical cursor position in the ring buffer.
-  size_t position() const { return pos_; }
+  uint32_t position() const { return pos_; }
 
   // Bit mask for getting the physical position for a logical position.
-  size_t mask() const { return mask_; }
+  uint32_t mask() const { return mask_; }
 
   uint8_t *start() { return &buffer_[0]; }
   const uint8_t *start() const { return &buffer_[0]; }
@@ -85,20 +90,22 @@ class RingBuffer {
     const size_t masked_pos = pos_ & mask_;
     if (PREDICT_FALSE(masked_pos < tail_size_)) {
       // Just fill the tail buffer with the beginning data.
-      const size_t p = (1 << window_bits_) + masked_pos;
+      const size_t p = size_ + masked_pos;
       memcpy(&buffer_[p], bytes, std::min(n, tail_size_ - masked_pos));
     }
   }
 
   // Size of the ringbuffer is (1 << window_bits) + tail_size_.
-  const int window_bits_;
-  const size_t mask_;
-  const size_t tail_size_;
+  const uint32_t size_;
+  const uint32_t mask_;
+  const uint32_t tail_size_;
 
   // Position to write in the ring buffer.
-  size_t pos_;
-  // The actual ring buffer containing the data and the copy of the beginning
-  // as a tail.
+  uint32_t pos_;
+  // The actual ring buffer containing the copy of the last two bytes, the data,
+  // and the copy of the beginning as a tail.
+  uint8_t *data_;
+  // The start of the ringbuffer.
   uint8_t *buffer_;
 };
 

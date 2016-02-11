@@ -1,17 +1,9 @@
-// Copyright 2015 Google Inc. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
+/* Copyright 2015 Google Inc. All Rights Reserved.
+
+   Distributed under MIT license.
+   See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
+*/
+
 // Algorithms for distributing the literals and commands of a metablock between
 // block types and contexts.
 
@@ -28,17 +20,17 @@ namespace brotli {
 struct BlockSplit {
   BlockSplit() : num_types(0) {}
 
-  int num_types;
-  std::vector<int> types;
-  std::vector<int> lengths;
+  size_t num_types;
+  std::vector<uint8_t> types;
+  std::vector<uint32_t> lengths;
 };
 
 struct MetaBlockSplit {
   BlockSplit literal_split;
   BlockSplit command_split;
   BlockSplit distance_split;
-  std::vector<int> literal_context_map;
-  std::vector<int> distance_context_map;
+  std::vector<uint32_t> literal_context_map;
+  std::vector<uint32_t> distance_context_map;
   std::vector<HistogramLiteral> literal_histograms;
   std::vector<HistogramCommand> command_histograms;
   std::vector<HistogramDistance> distance_histograms;
@@ -52,7 +44,7 @@ void BuildMetaBlock(const uint8_t* ringbuffer,
                     uint8_t prev_byte2,
                     const Command* cmds,
                     size_t num_commands,
-                    int literal_context_mode,
+                    ContextType literal_context_mode,
                     MetaBlockSplit* mb);
 
 // Uses a fast greedy block splitter that tries to merge current block with the
@@ -72,15 +64,15 @@ void BuildMetaBlockGreedyWithContexts(const uint8_t* ringbuffer,
                                       size_t mask,
                                       uint8_t prev_byte,
                                       uint8_t prev_byte2,
-                                      int literal_context_mode,
-                                      int num_contexts,
-                                      const int* static_context_map,
+                                      ContextType literal_context_mode,
+                                      size_t num_contexts,
+                                      const uint32_t* static_context_map,
                                       const Command *commands,
                                       size_t n_commands,
                                       MetaBlockSplit* mb);
 
-void OptimizeHistograms(int num_direct_distance_codes,
-                        int distance_postfix_bits,
+void OptimizeHistograms(size_t num_direct_distance_codes,
+                        size_t distance_postfix_bits,
                         MetaBlockSplit* mb);
 
 }  // namespace brotli

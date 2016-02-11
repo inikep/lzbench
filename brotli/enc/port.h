@@ -1,22 +1,15 @@
-// Copyright 2013 Google Inc. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
+/* Copyright 2013 Google Inc. All Rights Reserved.
+
+   Distributed under MIT license.
+   See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
+*/
+
 // Macros for endianness, branch prediction and unaligned loads and stores.
 
 #ifndef BROTLI_ENC_PORT_H_
 #define BROTLI_ENC_PORT_H_
 
+#include <assert.h>
 #include <string.h>
 #include "./types.h"
 
@@ -29,10 +22,9 @@
 /* Let's try and follow the Linux convention */
 #define __BYTE_ORDER  BYTE_ORDER
 #define __LITTLE_ENDIAN LITTLE_ENDIAN
-#define __BIG_ENDIAN BIG_ENDIAN
 #endif
 
-// define the macros IS_LITTLE_ENDIAN or IS_BIG_ENDIAN
+// define the macro IS_LITTLE_ENDIAN
 // using the above endian definitions from endian.h if
 // endian.h was included
 #ifdef __BYTE_ORDER
@@ -40,18 +32,16 @@
 #define IS_LITTLE_ENDIAN
 #endif
 
-#if __BYTE_ORDER == __BIG_ENDIAN
-#define IS_BIG_ENDIAN
-#endif
-
 #else
 
 #if defined(__LITTLE_ENDIAN__)
 #define IS_LITTLE_ENDIAN
-#elif defined(__BIG_ENDIAN__)
-#define IS_BIG_ENDIAN
 #endif
 #endif  // __BYTE_ORDER
+
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#define IS_LITTLE_ENDIAN
+#endif
 
 // Enable little-endian optimization for x64 architecture on Windows.
 #if (defined(_WIN32) || defined(_WIN64)) && defined(_M_X64)
@@ -76,8 +66,8 @@
 // On some platforms, like ARM, the copy functions can be more efficient
 // then a load and a store.
 
-#if defined(ARCH_PIII) || defined(ARCH_ATHLON) || \
-  defined(ARCH_K8) || defined(_ARCH_PPC)
+#if defined(ARCH_PIII) || \
+  defined(ARCH_ATHLON) || defined(ARCH_K8) || defined(_ARCH_PPC)
 
 // x86 and x86-64 can perform unaligned loads/stores directly;
 // modern PowerPC hardware can also do unaligned integer loads and stores;
