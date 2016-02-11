@@ -1,6 +1,6 @@
 v0.9.2
 - lz5 updated to v1.4 beta
-- zstd updated to v0.4.7
+- zstd updated to v0.5.0
 
 v0.9.1
 - improved: more accurate timings at default min. time for compression (1.0s) and decompression (0.5s)
