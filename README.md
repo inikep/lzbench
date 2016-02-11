@@ -91,7 +91,7 @@ xz 5.2.2
 yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.8
-zling 2016-01-08
+zling 2016-01-05
 zstd v0.5.0
 ```
 

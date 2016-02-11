@@ -79,10 +79,8 @@ private:
 
 class ZlingRolzEncoder {
 public:
-    ZlingRolzEncoder(int compression_level) {
-        m_match_depth = kPredefinedConfigs[compression_level].m_match_depth;
-        m_lazymatch1_depth = kPredefinedConfigs[compression_level].m_lazymatch1_depth;
-        m_lazymatch2_depth = kPredefinedConfigs[compression_level].m_lazymatch2_depth;
+    ZlingRolzEncoder(int compression_level = 0) {
+        SetLevel(compression_level);
         Reset();
     }
 
@@ -95,6 +93,7 @@ public:
      *  ret: out length.
      */
     int  Encode(unsigned char* ibuf, uint16_t* obuf, int ilen, int olen, int* encpos);
+    void SetLevel(int compression_level);
     void Reset();
 
 private:

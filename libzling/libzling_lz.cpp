@@ -33,6 +33,7 @@
  * @brief  manipulate ROLZ (reduced offset Lempel-Ziv) compression.
  */
 #include "libzling_lz.h"
+#include "libzling_debug.h"
 #include <iostream>
 
 namespace baidu {
@@ -178,6 +179,13 @@ int ZlingRolzEncoder::Encode(unsigned char* ibuf, uint16_t* obuf, int ilen, int 
     return opos;
 }
 
+void ZlingRolzEncoder::SetLevel(int compression_level) {
+    m_match_depth = kPredefinedConfigs[compression_level].m_match_depth;
+    m_lazymatch1_depth = kPredefinedConfigs[compression_level].m_lazymatch1_depth;
+    m_lazymatch2_depth = kPredefinedConfigs[compression_level].m_lazymatch2_depth;
+    return;
+}
+
 void ZlingRolzEncoder::Reset() {
     for (int context = 0; context < 256; context++) {
         for (int i = 0; i < kBucketItemSize; i++) {
@@ -203,6 +211,7 @@ int inline ZlingRolzEncoder::MatchAndUpdate(unsigned char* buf, int pos, int* ma
     int node = bucket->hash[hash_context];
 
     // update befault matching (to make it faster)
+    LIBZLING_DEBUG_COUNT("lz:update_bucket_node", 1);
     bucket->head = RollingAdd(bucket->head, 1);
     bucket->suffix[bucket->head] = bucket->hash[hash_context];
     bucket->offset[bucket->head] = pos | hash_check << 24;
@@ -211,22 +220,29 @@ int inline ZlingRolzEncoder::MatchAndUpdate(unsigned char* buf, int pos, int* ma
     // no match for first position
     // no match for currently updating entry
     if (node == 65535 || node == bucket->head) {
+        LIBZLING_DEBUG_COUNT("lz:match_fail", 1);
         return 0;
     }
 
     // start matching
     for (int i = 0; i < match_depth; i++) {
+        LIBZLING_DEBUG_COUNT("lz:access_bucket_node", 1);
+
         uint32_t offset = bucket->offset[node] & 0xffffff;
         uint8_t  check = bucket->offset[node] >> 24;
+        if (check == hash_check) {
+            LIBZLING_DEBUG_COUNT("lz:access_original_memory", 1);
 
-        if (check == hash_check && buf[pos + maxlen] == buf[offset + maxlen]) {
-            int len = GetCommonLength(buf + pos, buf + offset, kMatchMaxLen);
+            if (buf[pos + maxlen] == buf[offset + maxlen]) {
+                LIBZLING_DEBUG_COUNT("lz:find_common_length", 1);
+                int len = GetCommonLength(buf + pos, buf + offset, kMatchMaxLen);
 
-            if (len > maxlen) {
-                maxnode = node;
-                maxlen = len;
-                if (maxlen == kMatchMaxLen) {
-                    break;
+                if (len > maxlen) {
+                    maxnode = node;
+                    maxlen = len;
+                    if (maxlen == kMatchMaxLen) {
+                        break;
+                    }
                 }
             }
         }
@@ -241,16 +257,22 @@ int inline ZlingRolzEncoder::MatchAndUpdate(unsigned char* buf, int pos, int* ma
     if (maxlen >= kMatchMinLen) {
         if (maxlen < kMatchMinLenEnableLazy) {  // fast and stupid lazy parsing
             if (m_lazymatch1_depth > 0 && MatchLazy(buf, pos + 1, maxlen, m_lazymatch1_depth)) {
+                LIBZLING_DEBUG_COUNT("lz:lazy_skip_1", 1);
+                LIBZLING_DEBUG_COUNT("lz:match_fail", 1);
                 return 0;
             }
             if (m_lazymatch2_depth > 0 && MatchLazy(buf, pos + 2, maxlen, m_lazymatch2_depth)) {
+                LIBZLING_DEBUG_COUNT("lz:lazy_skip_2", 1);
+                LIBZLING_DEBUG_COUNT("lz:match_fail", 1);
                 return 0;
             }
         }
         match_len[0] = maxlen;
         match_idx[0] = RollingSub(bucket->head, maxnode);
+        LIBZLING_DEBUG_COUNT("lz:match_succ", 1);
         return 1;
     }
+    LIBZLING_DEBUG_COUNT("lz:match_fail", 1);
     return 0;
 }
 

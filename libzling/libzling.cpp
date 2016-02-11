@@ -33,6 +33,7 @@
  * @brief  libzling.
  */
 #include "libzling.h"
+#include "libzling_debug.h"
 #include "libzling_huffman.h"
 #include "libzling_lz.h"
 
@@ -109,8 +110,9 @@ struct EncodeResource {
     unsigned char* ibuf;
     unsigned char* obuf;
     uint16_t* tbuf;
+    int level;
 
-    EncodeResource(int level): lzencoder(NULL), ibuf(NULL), obuf(NULL), tbuf(NULL) {
+    EncodeResource(int level): lzencoder(NULL), ibuf(NULL), obuf(NULL), tbuf(NULL), level(level) {
         try {
             ibuf = new unsigned char[kBlockSizeIn + kSentinelLen];
             obuf = new unsigned char[kBlockSizeHuffman + kSentinelLen];
@@ -195,11 +197,12 @@ int Encode(Inputter* inputter, Outputter* outputter, ActionHandler* action_handl
         res.lzencoder->Reset();
 
         while (encpos < ilen) {
-             outputter->PutChar(kFlagRolzContinue);
-             CHECK_IO_ERROR(outputter);
+            outputter->PutChar(kFlagRolzContinue);
+            CHECK_IO_ERROR(outputter);
 
             // ROLZ encode
             // ============================================================
+            int encpos_old = encpos;
             rlen = res.lzencoder->Encode(res.ibuf, res.tbuf, ilen, kBlockSizeRolz, &encpos);
 
             // HUFFMAN encode
@@ -262,6 +265,14 @@ int Encode(Inputter* inputter, Outputter* outputter, ActionHandler* action_handl
                 res.obuf[opos++] = codebuf.Output(8);
             }
             olen = opos;
+
+            // lower level for uncompressible data
+            if (1.0 * olen / (encpos - encpos_old + 1) > 0.95) {
+                LIBZLING_DEBUG_COUNT("lz:uncompressible", 1);
+                res.lzencoder->SetLevel(0);
+            } else {
+                res.lzencoder->SetLevel(res.level);
+            }
 
             // outputter
             outputter->PutUInt32(encpos); CHECK_IO_ERROR(outputter);
