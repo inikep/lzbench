@@ -50,13 +50,13 @@ using lz::kMatchMinLen;
 using lz::kBucketItemSize;
 
 static const uint32_t matchidx_bitlen[] = {
-#   include "ztable_matchidx_blen.inc"  /* include auto-generated constant tables */
+#   include "tables/table_matchidx_blen.inc"  /* include auto-generated constant tables */
 };
 static const uint32_t matchidx_code[] = {
-#   include "ztable_matchidx_code.inc"  /* include auto-generated constant tables */
+#   include "tables/table_matchidx_code.inc"  /* include auto-generated constant tables */
 };
 static const uint32_t matchidx_base[] = {
-#   include "ztable_matchidx_base.inc"  /* include auto-generated constant tables */
+#   include "tables/table_matchidx_base.inc"  /* include auto-generated constant tables */
 };
 
 static const int kHuffmanCodes1      = 258 + (kMatchMaxLen - kMatchMinLen + 1);
@@ -192,8 +192,6 @@ int Encode(Inputter* inputter, Outputter* outputter, ActionHandler* action_handl
             ilen += inputter->GetData(res.ibuf + ilen, kBlockSizeIn - ilen);
             CHECK_IO_ERROR(inputter);
         }
-        memset(res.ibuf + ilen, 0, kSentinelLen);
-
         res.lzencoder->Reset();
 
         while (encpos < ilen) {
@@ -323,11 +321,13 @@ int Decode(Inputter* inputter, Outputter* outputter, ActionHandler* action_handl
             rlen   = inputter->GetUInt32(); CHECK_IO_ERROR(inputter);
             olen   = inputter->GetUInt32(); CHECK_IO_ERROR(inputter);
 
+            if (rlen > kBlockSizeRolz || olen > kBlockSizeHuffman) {
+                throw std::runtime_error("baidu::zling::Decode(): invalid block size.");
+            }
             for (int ooff = 0; !inputter->IsEnd() && ooff < olen; ) {
                 ooff += inputter->GetData(res.obuf + ooff, olen - ooff);
                 CHECK_IO_ERROR(inputter);
             }
-            memset(res.obuf + olen, 0, kSentinelLen);
 
             // HUFFMAN DECODE
             // ============================================================
@@ -400,7 +400,6 @@ int Decode(Inputter* inputter, Outputter* outputter, ActionHandler* action_handl
 
                 if (res.tbuf[i] >= 258) {
                     uint32_t code;
-                    uint32_t bitlen;
                     uint32_t bits;
 
                     /* error: matchidx.code >= kHuffmanCodes2 */

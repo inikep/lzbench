@@ -39,8 +39,17 @@ namespace baidu {
 namespace zling {
 namespace lz {
 
+static const unsigned char mtfinit[] = {
+#   include "tables/table_mtfinit.inc"  /* include auto-generated constant tables */
+};
+static const unsigned char mtfnext[] = {
+#   include "tables/table_mtfnext.inc"  /* include auto-generated constant tables */
+};
+
+#ifdef __GNUC__
 static inline uint32_t RollingAdd(uint32_t x, uint32_t y) __attribute__((pure));
 static inline uint32_t RollingSub(uint32_t x, uint32_t y) __attribute__((pure));
+#endif
 
 static inline uint32_t HashContext(unsigned char* ptr) {
     return (*reinterpret_cast<uint32_t*>(ptr) + ptr[2] * 137 + ptr[3] * 13337);
@@ -93,19 +102,37 @@ static inline void IncrementalCopyFastPath(unsigned char* src, unsigned char* ds
     return;
 }
 
+ZlingMTFEncoder::ZlingMTFEncoder() {
+    memcpy(m_table, mtfinit, sizeof(m_table));
+    for (int i = 0; i < 256; i++) {
+        m_index[m_table[i]] = i;
+    }
+}
+unsigned char ZlingMTFEncoder::Encode(unsigned char c) {
+    unsigned char i = m_index[c];
+    std::swap(m_index[c], m_index[m_table[mtfnext[i]]]);
+    std::swap(m_table[i], m_table[mtfnext[i]]);
+    return i;
+}
+
+ZlingMTFDecoder::ZlingMTFDecoder() {
+    memcpy(m_table, mtfinit, sizeof(m_table));
+}
+unsigned char ZlingMTFDecoder::Decode(unsigned char i) {
+    unsigned char c = m_table[i];
+    std::swap(m_table[i], m_table[mtfnext[i]]);
+    return c;
+}
+
+
 int ZlingRolzEncoder::Encode(unsigned char* ibuf, uint16_t* obuf, int ilen, int olen, int* encpos) {
     int ipos = encpos[0];
     int opos = 0;
-
-    uint32_t lzptable[256] = {0};
+    uint16_t word_mru[256][2] = {};
 
     // first byte
-    if (ipos == 0 && opos < olen && ipos < ilen) {
-        obuf[opos++] = ibuf[ipos++];
-    }
-    if (ipos == 1 && opos < olen && ipos < ilen) {
-        obuf[opos++] = ibuf[ipos++];
-    }
+    if (ipos == 0 && opos < olen && ipos < ilen) obuf[opos++] = ibuf[ipos++];
+    if (ipos == 1 && opos < olen && ipos < ilen) obuf[opos++] = ibuf[ipos++];
 
     while (opos + 1 < olen && ipos < ilen) {
         int match_idx;
@@ -117,44 +144,57 @@ int ZlingRolzEncoder::Encode(unsigned char* ibuf, uint16_t* obuf, int ilen, int 
                 obuf[opos++] = 258 + match_len - kMatchMinLen;
                 obuf[opos++] = match_idx;
                 ipos += match_len;
-                lzptable[ibuf[ipos - 3]] = lzptable[ibuf[ipos - 3]] << 16 | ibuf[ipos - 2] << 8 | ibuf[ipos - 1];
+                if (word_mru[ibuf[ipos - 3]][0] != (ibuf[ipos - 2] << 8 | ibuf[ipos - 1])) {
+                    word_mru[ibuf[ipos - 3]][1] = word_mru[ibuf[ipos - 3]][0];
+                    word_mru[ibuf[ipos - 3]][0] = ibuf[ipos - 2] << 8 | ibuf[ipos - 1];
+                }
                 continue;
             }
         }
 
         // encode as word
-        uint32_t mask_check = lzptable[ibuf[ipos - 1]] ^ (
-            ibuf[ipos] << 8  | ibuf[ipos + 1] << 0 |
-            ibuf[ipos] << 24 | ibuf[ipos + 1] << 16);
-
-        if (ipos + 1 < ilen && (mask_check & 0x0000ffff) == 0) {
-            obuf[opos++] = 256;
-            ipos += 2;
-            continue;
-        }
-        if (ipos + 1 < ilen && (mask_check & 0xffff0000) == 0) {
-            obuf[opos++] = 257;
-            ipos += 2;
-            lzptable[ibuf[ipos - 3]] = lzptable[ibuf[ipos - 3]] << 16 | lzptable[ibuf[ipos - 3]] >> 16;
-            continue;
+        if (ipos + 1 < ilen) {
+            if (word_mru[ibuf[ipos - 1]][0] == (ibuf[ipos] << 8 | ibuf[ipos + 1])) {
+                obuf[opos++] = 256;
+                ipos += 2;
+                continue;
+            }
+            if (word_mru[ibuf[ipos - 1]][1] == (ibuf[ipos] << 8 | ibuf[ipos + 1])) {
+                obuf[opos++] = 257;
+                ipos += 2;
+                word_mru[ibuf[ipos - 3]][1] = word_mru[ibuf[ipos - 3]][0];
+                word_mru[ibuf[ipos - 3]][0] = ibuf[ipos - 2] << 8 | ibuf[ipos - 1];
+                continue;
+            }
         }
 
         // encode as literal
-        obuf[opos++] = ibuf[ipos++];
-        lzptable[ibuf[ipos - 3]] = lzptable[ibuf[ipos - 3]] << 16 | ibuf[ipos - 2] << 8 | ibuf[ipos - 1];
+        obuf[opos++] = m_mtf[ibuf[ipos - 1]].Encode(ibuf[ipos]);
+        ipos++;
+        word_mru[ibuf[ipos - 3]][1] = word_mru[ibuf[ipos - 3]][0];
+        word_mru[ibuf[ipos - 3]][0] = ibuf[ipos - 2] << 8 | ibuf[ipos - 1];
     }
     encpos[0] = ipos;
     return opos;
 }
 
 void ZlingRolzEncoder::Reset() {
-    memset(m_buckets, 0, sizeof(m_buckets));
+    for (int context = 0; context < 256; context++) {
+        for (int i = 0; i < kBucketItemSize; i++) {
+            m_buckets[context].offset[i] = 0;
+            m_buckets[context].suffix[i] = 65535;
+        }
+        for (int i = 0; i < kBucketItemHash; i++) {
+            m_buckets[context].hash[i] = 65535;
+        }
+        m_buckets[context].head = 0;
+    }
     return;
 }
 
 int inline ZlingRolzEncoder::MatchAndUpdate(unsigned char* buf, int pos, int* match_idx, int* match_len, int match_depth) {
     int maxlen = kMatchMinLen - 1;
-    int maxidx = 0;
+    int maxnode = 0;
     uint32_t hash = HashContext(buf + pos);
     uint8_t  hash_check   = hash / kBucketItemHash % 256;
     uint32_t hash_context = hash % kBucketItemHash;
@@ -168,13 +208,9 @@ int inline ZlingRolzEncoder::MatchAndUpdate(unsigned char* buf, int pos, int* ma
     bucket->offset[bucket->head] = pos | hash_check << 24;
     bucket->hash[hash_context] = bucket->head;
 
-    // no match for first position (faster)
-    if (node == 0) {
-        return 0;
-    }
-
-    // entry already updated, cannot match
-    if (node == bucket->head) {
+    // no match for first position
+    // no match for currently updating entry
+    if (node == 65535 || node == bucket->head) {
         return 0;
     }
 
@@ -187,7 +223,7 @@ int inline ZlingRolzEncoder::MatchAndUpdate(unsigned char* buf, int pos, int* ma
             int len = GetCommonLength(buf + pos, buf + offset, kMatchMaxLen);
 
             if (len > maxlen) {
-                maxidx = RollingSub(bucket->head, node);
+                maxnode = node;
                 maxlen = len;
                 if (maxlen == kMatchMaxLen) {
                     break;
@@ -197,7 +233,7 @@ int inline ZlingRolzEncoder::MatchAndUpdate(unsigned char* buf, int pos, int* ma
         node = bucket->suffix[node];
 
         // end chaining?
-        if (!node || offset <= (bucket->offset[node] & 0xffffff)) {
+        if (node == 65535 || offset <= (bucket->offset[node] & 0xffffff)) {
             break;
         }
     }
@@ -212,7 +248,7 @@ int inline ZlingRolzEncoder::MatchAndUpdate(unsigned char* buf, int pos, int* ma
             }
         }
         match_len[0] = maxlen;
-        match_idx[0] = maxidx;
+        match_idx[0] = RollingSub(bucket->head, maxnode);
         return 1;
     }
     return 0;
@@ -224,6 +260,9 @@ int inline ZlingRolzEncoder::MatchLazy(unsigned char* buf, int pos, int maxlen, 
     uint32_t hash_context = hash % kBucketItemHash;
 
     int node = bucket->hash[hash_context];
+    if (node == 65535) {
+        return 0;
+    }
     maxlen -= 3;
 
     for (int i = 0; i < depth; i++) {
@@ -243,36 +282,34 @@ int ZlingRolzDecoder::Decode(uint16_t* ibuf, unsigned char* obuf, int ilen, int 
     int match_idx;
     int match_len;
     int match_offset;
-
-    uint32_t lzptable[256] = {0};
+    uint16_t word_mru[256][2] = {};
 
     // first byte
-    if (opos == 0 && ipos < ilen) {
-        obuf[opos++] = ibuf[ipos++];
-    }
-    if (opos == 1 && ipos < ilen) {
-        obuf[opos++] = ibuf[ipos++];
-    }
+    if (opos == 0 && ipos < ilen) obuf[opos++] = ibuf[ipos++];
+    if (opos == 1 && ipos < ilen) obuf[opos++] = ibuf[ipos++];
 
     // rest byte
     while (ipos < ilen) {
         if (ibuf[ipos] < 256) {  // process a literal byte
-            obuf[opos] = ibuf[ipos++];
+            obuf[opos] = m_mtf[obuf[opos - 1]].Decode(ibuf[ipos]);
+            ipos++;
             GetMatchAndUpdate(obuf, opos++, 0);
-            lzptable[obuf[opos - 3]] = lzptable[obuf[opos - 3]] << 16 | obuf[opos - 2] << 8 | obuf[opos - 1];
+            word_mru[obuf[opos - 3]][1] = word_mru[obuf[opos - 3]][0];
+            word_mru[obuf[opos - 3]][0] = obuf[opos - 2] << 8 | obuf[opos - 1];
 
         } else if (ibuf[ipos] == 256) {
-            uint16_t lzpword = (lzptable[obuf[opos - 1]] & 0xffff);
+            uint16_t word = word_mru[obuf[opos - 1]][0];
             ipos++;
-            obuf[opos] = (lzpword >> 8) & 0xff; GetMatchAndUpdate(obuf, opos++, 0);
-            obuf[opos] = (lzpword >> 0) & 0xff; opos++;
+            obuf[opos] = (word >> 8) & 0xff; GetMatchAndUpdate(obuf, opos++, 0);
+            obuf[opos] = (word >> 0) & 0xff; opos++;
 
         } else if (ibuf[ipos] == 257) {
-            uint16_t lzpword = (lzptable[obuf[opos - 1]] >> 16);
+            uint16_t word = word_mru[obuf[opos - 1]][1];
             ipos++;
-            obuf[opos] = (lzpword >> 8) & 0xff; GetMatchAndUpdate(obuf, opos++, 0);
-            obuf[opos] = (lzpword >> 0) & 0xff; opos++;
-            lzptable[obuf[opos - 3]] = lzptable[obuf[opos - 3]] << 16 | lzptable[obuf[opos - 3]] >> 16;
+            obuf[opos] = (word >> 8) & 0xff; GetMatchAndUpdate(obuf, opos++, 0);
+            obuf[opos] = (word >> 0) & 0xff; opos++;
+            word_mru[obuf[opos - 3]][1] = word_mru[obuf[opos - 3]][0];
+            word_mru[obuf[opos - 3]][0] = obuf[opos - 2] << 8 | obuf[opos - 1];
 
         } else {  // process a match
             match_len = ibuf[ipos++] - 258 + kMatchMinLen;
@@ -281,7 +318,10 @@ int ZlingRolzDecoder::Decode(uint16_t* ibuf, unsigned char* obuf, int ilen, int 
 
             IncrementalCopyFastPath(&obuf[match_offset], &obuf[opos], match_len);
             opos += match_len;
-            lzptable[obuf[opos - 3]] = lzptable[obuf[opos - 3]] << 16 | obuf[opos - 2] << 8 | obuf[opos - 1];
+            if (word_mru[obuf[opos - 3]][0] != (obuf[opos - 2] << 8 | obuf[opos - 1])) {
+                word_mru[obuf[opos - 3]][1] = word_mru[obuf[opos - 3]][0];
+                word_mru[obuf[opos - 3]][0] = obuf[opos - 2] << 8 | obuf[opos - 1];
+            }
         }
 
         if (opos > encpos) {
@@ -297,7 +337,12 @@ int ZlingRolzDecoder::Decode(uint16_t* ibuf, unsigned char* obuf, int ilen, int 
 }
 
 void ZlingRolzDecoder::Reset() {
-    memset(m_buckets, 0, sizeof(m_buckets));
+    for (int context = 0; context < 256; context++) {
+        for (int i = 0; i < kBucketItemSize; i++) {
+            m_buckets[context].offset[i] = 0;
+        }
+        m_buckets[context].head = 0;
+    }
     return;
 }
 
