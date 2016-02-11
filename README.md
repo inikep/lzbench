@@ -63,14 +63,14 @@ page.
 ```
 blosclz 2015-11-10
 brieflz 1.1.0
-brotli 2015-10-29
+brotli 2016-02-04
 crush 1.0
 csc 3.3
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
 fastlz 0.1
 gipfeli 2015-11-30
 lz4/lz4hc r131
-lz5/lz5hc v1.3.3
+lz5/lz5hc v1.4
 lzf 3.6
 lzg 1.0.8
 lzham 1.0
@@ -92,7 +92,7 @@ yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.8
 zling 2015-09-15
-zstd v0.4.1
+zstd v0.5.0
 ```
 
 
