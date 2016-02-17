@@ -294,6 +294,9 @@ int inline ZlingRolzEncoder::MatchLazy(unsigned char* buf, int pos, int maxlen, 
             return 1;
         }
         node = bucket->suffix[node];
+        if (node == 65535) {
+            return 0;
+        }
     }
     return 0;
 }

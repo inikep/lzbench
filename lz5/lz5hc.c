@@ -1251,8 +1251,8 @@ static int LZ5HC_compress_optimal_price (
                 best_mlen = (cur2 + matches[i].len < LZ5_OPT_NUM) ? matches[i].len : LZ5_OPT_NUM - cur2;
                 LZ5_LOG_PARSER("%d: Found1 cur=%d cur2=%d mlen=%d off=%d best_mlen=%d last_pos=%d\n", (int)(inr-source), cur, cur2, matches[i].len, matches[i].off, best_mlen, last_pos);
 
-           /*   if (mlen < matches[i].back + 1)
-                    mlen = matches[i].back + 1; */
+                if (mlen < matches[i].back + 1)
+                    mlen = matches[i].back + 1; 
 
                 while (mlen <= best_mlen)
                 {

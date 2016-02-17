@@ -1,8 +1,8 @@
 v1.0
-- lz5 updated to v1.4
+- lz5 updated to v1.4.1
 - zstd updated to v0.5.0
 - brotli updated to 2016-02-04
-- libzling updated to 2016-01-05
+- libzling updated to 2016-01-05+bugfix
 
 v0.9.1
 - improved: more accurate timings at default min. time for compression (1.0s) and decompression (0.5s)
