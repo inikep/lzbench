@@ -151,7 +151,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "yappy",    "2014-03-22",  0,  99, lzbench_yappy_compress,    lzbench_yappy_decompress,    lzbench_yappy_init,   NULL },
     { "zlib",     "1.2.8",       1,   9, lzbench_zlib_compress,     lzbench_zlib_decompress,     NULL,                 NULL },
     { "zling",    "2016-01-08",  0,   4, lzbench_zling_compress,    lzbench_zling_decompress,    NULL,                 NULL },
-    { "zstd",     "v0.5.0",      1,  20, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zstd",     "v0.5.1",      1,  21, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
 };
 
 
@@ -162,17 +162,16 @@ static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
     { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9,12,16/lz5/lz5hc,1,4,9,12,15/" \
               "lzf,0,1/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo/" \
               "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2,3/snappy/tornado,1,2,3,4,5,6,7,10,13,16/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
-              "xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,9,13,17,20/" \
+              "xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,21/" \
               "shrinker/wflz/lzmat" // these can SEGFAULT 
     },
     { "fast", "density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz5/" \
               "lzf,0,1/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
-              "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/" \
-              "zstd" },
+              "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/zstd" },
     { "opt",  "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/" \
               "lzham,0,1,2,3,4/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7/" \
               "tornado,5,6,7,8,9,10,11,12,13,14,15,16/" \
-              "xz,1,2,3,4,5,6,7,8,9/zstd,10,12,14,16,17,18,19,20" },
+              "xz,1,2,3,4,5,6,7,8,9/zstd,10,12,14,16,17,18,19,20/zstd,18,19,20,21" },
     { "lzo1",  "lzo1,1,99" },
     { "lzo1a", "lzo1a,1,99" },
     { "lzo1b", "lzo1b,1,2,3,4,5,6,7,8,9,99,999" },

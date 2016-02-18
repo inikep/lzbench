@@ -1,6 +1,6 @@
 v1.0
+- zstd updated to v0.5.1
 - lz5 updated to v1.4.1
-- zstd updated to v0.5.0
 - brotli updated to 2016-02-04
 - libzling updated to 2016-01-05+bugfix
 

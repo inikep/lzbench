@@ -533,7 +533,7 @@ int main( int argc, char** argv)
 
 	if (argc<2) {
 		fprintf(stderr, "usage: " PROGNAME " [options] input_file\n\nwhere [options] are:\n");
-		fprintf(stderr, " -bX  set block/chunk size to X KB (default = %d KB)\n", (int)(params.chunk_size>>10));
+		fprintf(stderr, " -bX  set block/chunk size to X KB (default = filesize or %d KB)\n", (int)(params.chunk_size>>10));
 		fprintf(stderr, " -cX  sort results by column number X\n");
 		fprintf(stderr, " -eX  X = compressors separated by '/' with parameters specified after ','\n");
 		fprintf(stderr, " -iX  set min. number of compression iterations (default = %d)\n", params.c_iters);

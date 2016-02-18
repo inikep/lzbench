@@ -15,17 +15,17 @@ Usage
 usage: lzbench [options] input_file
 
 where [options] are:
- -bX  set block/chunk size to X KB (default = 2097152 KB)
+ -bX  set block/chunk size to X KB (default = filesize or 2097152 KB)
  -cX  sort results by column number X
  -eX  X = compressors separated by '/' with parameters specified after ','
- -iX  set min. number of compression iterations (default = 0)
- -jX  set min. number of decompression iterations (default = 0)
+ -iX  set min. number of compression iterations (default = 1)
+ -jX  set min. number of decompression iterations (default = 1)
  -l   list of available compressors and aliases
  -oX  output text format 1=Markdown, 2=text, 3=CSV (default = 2)
  -pX  print time for all iterations: 1=fastest 2=average 3=median (default = 1)
  -sX  use only compressors with compression speed over X MB (default = 0 MB)
- -tX  set min. time in seconds for compression (default = 2)
- -uX  set min. time in seconds for decompression (default = 2)
+ -tX  set min. time in seconds for compression (default = 1.0)
+ -uX  set min. time in seconds for decompression (default = 0.5)
 
 Example usage:
   lzbench -ebrotli filename - selects all levels of brotli
@@ -92,7 +92,7 @@ yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.8
 zling 2016-01-05+bugfix (according to the author using libzling in a production environment is not a good idea)
-zstd v0.5.0
+zstd v0.5.1
 ```
 
 
