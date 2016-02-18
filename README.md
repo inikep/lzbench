@@ -101,7 +101,7 @@ Benchmarks
 
 The following results are obtained with lzbench using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 4.8.3). 
 The ["win81"] input file (100 MB) is a concatanation of carefully selected files from installed version of Windows 8.1 64-bit. 
-The sorted by ratio resuls are available [here](lzbench10_win81sorted.md).
+The results sorted by ratio are available [here](lzbench10_win81sorted.md).
 
 ["win81"]: https://docs.google.com/uc?id=0BwX7dtyRLxThRzBwT0xkUy1TMFE&export=download 
 
