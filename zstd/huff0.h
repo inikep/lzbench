@@ -1,7 +1,7 @@
 /* ******************************************************************
    Huff0 : Huffman coder, part of New Generation Entropy library
    header file
-   Copyright (C) 2013-2015, Yann Collet.
+   Copyright (C) 2013-2016, Yann Collet.
 
    BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
 
@@ -30,7 +30,6 @@
 
    You can contact the author at :
    - Source repository : https://github.com/Cyan4973/FiniteStateEntropy
-   - Public forum : https://groups.google.com/forum/#!forum/lz4c
 ****************************************************************** */
 #ifndef HUFF0_H
 #define HUFF0_H
@@ -40,25 +39,25 @@ extern "C" {
 #endif
 
 
-/******************************************
+/* ****************************************
 *  Dependency
 ******************************************/
 #include <stddef.h>    /* size_t */
 
 
-/******************************************
+/* ****************************************
 *  Huff0 simple functions
 ******************************************/
 size_t HUF_compress(void* dst, size_t maxDstSize,
               const void* src, size_t srcSize);
 size_t HUF_decompress(void* dst,  size_t dstSize,
                 const void* cSrc, size_t cSrcSize);
-/*
+/*!
 HUF_compress():
     Compress content of buffer 'src', of size 'srcSize', into destination buffer 'dst'.
     'dst' buffer must be already allocated. Compression runs faster if maxDstSize >= HUF_compressBound(srcSize).
     Note : srcSize must be <= 128 KB
-    return : size of compressed data (<= maxDstSize)
+    @return : size of compressed data (<= maxDstSize)
     Special values : if return == 0, srcData is not compressible => Nothing is stored within dst !!!
                      if return == 1, srcData is a single repeated byte symbol (RLE compression)
                      if HUF_isError(return), compression failed (more details using HUF_getErrorName())
@@ -66,14 +65,16 @@ HUF_compress():
 HUF_decompress():
     Decompress Huff0 data from buffer 'cSrc', of size 'cSrcSize',
     into already allocated destination buffer 'dst', of size 'dstSize'.
-    'dstSize' must be the exact size of original (uncompressed) data.
-    Note : in contrast with FSE, HUF_decompress can regenerate RLE (cSrcSize==1) and uncompressed (cSrcSize==dstSize) data, because it knows size to regenerate.
-    return : size of regenerated data (== dstSize)
-             or an error code, which can be tested using HUF_isError()
+    @dstSize : must be the **exact** size of original (uncompressed) data.
+    Note : in contrast with FSE, HUF_decompress can regenerate
+           RLE (cSrcSize==1) and uncompressed (cSrcSize==dstSize) data,
+           because it knows size to regenerate.
+    @return : size of regenerated data (== dstSize)
+              or an error code, which can be tested using HUF_isError()
 */
 
 
-/******************************************
+/* ****************************************
 *  Tool functions
 ******************************************/
 size_t HUF_compressBound(size_t size);       /* maximum compressed size */
@@ -83,7 +84,7 @@ unsigned    HUF_isError(size_t code);        /* tells if a return value is an er
 const char* HUF_getErrorName(size_t code);   /* provides error code string (useful for debugging) */
 
 
-/******************************************
+/* ****************************************
 *  Advanced functions
 ******************************************/
 size_t HUF_compress2 (void* dst, size_t dstSize, const void* src, size_t srcSize, unsigned maxSymbolValue, unsigned tableLog);

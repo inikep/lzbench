@@ -1,17 +1,9 @@
-// Copyright 2013 Google Inc. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
+/* Copyright 2013 Google Inc. All Rights Reserved.
+
+   Distributed under MIT license.
+   See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
+*/
+
 // Build per-context histograms of literals, commands and distance codes.
 
 #include "./histogram.h"
@@ -36,7 +28,7 @@ void BuildHistograms(
     size_t mask,
     uint8_t prev_byte,
     uint8_t prev_byte2,
-    const std::vector<int>& context_modes,
+    const std::vector<ContextType>& context_modes,
     std::vector<HistogramLiteral>* literal_histograms,
     std::vector<HistogramCommand>* insert_and_copy_histograms,
     std::vector<HistogramDistance>* copy_dist_histograms) {
@@ -49,9 +41,9 @@ void BuildHistograms(
     insert_and_copy_it.Next();
     (*insert_and_copy_histograms)[insert_and_copy_it.type_].Add(
         cmd.cmd_prefix_);
-    for (int j = 0; j < cmd.insert_len_; ++j) {
+    for (size_t j = cmd.insert_len_; j != 0; --j) {
       literal_it.Next();
-      int context = (literal_it.type_ << kLiteralContextBits) +
+      size_t context = (literal_it.type_ << kLiteralContextBits) +
           Context(prev_byte, prev_byte2, context_modes[literal_it.type_]);
       (*literal_histograms)[context].Add(ringbuffer[pos & mask]);
       prev_byte2 = prev_byte;
@@ -64,7 +56,7 @@ void BuildHistograms(
       prev_byte = ringbuffer[(pos - 1) & mask];
       if (cmd.cmd_prefix_ >= 128) {
         dist_it.Next();
-        int context = (dist_it.type_ << kDistanceContextBits) +
+        size_t context = (dist_it.type_ << kDistanceContextBits) +
             cmd.DistanceContext();
         (*copy_dist_histograms)[context].Add(cmd.dist_prefix_);
       }

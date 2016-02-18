@@ -1,6 +1,6 @@
 # ################################################################
 # ZSTD library - Makefile
-# Copyright (C) Yann Collet 2015
+# Copyright (C) Yann Collet 2015-2016
 # All rights reserved.
 # 
 # BSD license
@@ -28,28 +28,31 @@
 # 
 # You can contact the author at :
 #  - ZSTD homepage : http://www.zstd.net
-#  - ZSTD source repository : https://github.com/Cyan4973/zstd
 # ################################################################
 
 # Version numbers
-LIBVER_MAJOR=`sed -n '/define ZSTD_VERSION_MAJOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < zstd.h`
-LIBVER_MINOR=`sed -n '/define ZSTD_VERSION_MINOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < zstd.h`
-LIBVER_PATCH=`sed -n '/define ZSTD_VERSION_RELEASE/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < zstd.h`
-LIBVER  = $(LIBVER_MAJOR).$(LIBVER_MINOR).$(LIBVER_PATCH)
+LIBVER_MAJOR_SCRIPT:=`sed -n '/define ZSTD_VERSION_MAJOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < zstd.h`
+LIBVER_MINOR_SCRIPT:=`sed -n '/define ZSTD_VERSION_MINOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < zstd.h`
+LIBVER_PATCH_SCRIPT:=`sed -n '/define ZSTD_VERSION_RELEASE/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < zstd.h`
+LIBVER_SCRIPT:= $(LIBVER_MAJOR_SCRIPT).$(LIBVER_MINOR_SCRIPT).$(LIBVER_PATCH_SCRIPT)
+LIBVER_MAJOR := $(shell echo $(LIBVER_MAJOR_SCRIPT))
+LIBVER_MINOR := $(shell echo $(LIBVER_MINOR_SCRIPT))
+LIBVER_PATCH := $(shell echo $(LIBVER_PATCH_SCRIPT))
+LIBVER := $(shell echo $(LIBVER_SCRIPT))
 VERSION?= $(LIBVER)
 
 DESTDIR?=
 PREFIX ?= /usr/local
 CPPFLAGS= -I.
 CFLAGS ?= -O3
-CFLAGS += -std=c99 -Wall -Wextra -Wundef -Wshadow -Wcast-qual -Wcast-align -Wstrict-prototypes
+CFLAGS += -std=c99 -Wall -Wextra -Wundef -Wshadow -Wcast-qual -Wcast-align -Wstrict-prototypes -Wstrict-aliasing=1
 FLAGS   = $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(MOREFLAGS)
 
 LIBDIR ?= $(PREFIX)/lib
 INCLUDEDIR=$(PREFIX)/include
 
-ZSTD_FILES := zstd_compress.c zstd_decompress.c fse.c huff0.c
-ZSTD_LEGACY:= legacy/zstd_v01.c legacy/zstd_v02.c legacy/zstd_v03.c
+ZSTD_FILES := zstd_compress.c zstd_decompress.c fse.c huff0.c zdict.c divsufsort.c
+ZSTD_LEGACY:= legacy/zstd_v01.c legacy/zstd_v02.c legacy/zstd_v03.c legacy/zstd_v04.c
 
 ifeq ($(ZSTD_LEGACY_SUPPORT), 0)
 CPPFLAGS  += -DZSTD_LEGACY_SUPPORT=0
@@ -98,12 +101,13 @@ clean:
 #make install is validated only for Linux, OSX, kFreeBSD and Hurd targets
 ifneq (,$(filter $(shell uname),Linux Darwin GNU/kFreeBSD GNU))
 
-libzstd.pc: libzstd.pc.in Makefile
+libzstd.pc:
+libzstd.pc: libzstd.pc.in
 	@echo creating pkgconfig
 	@sed -e 's|@PREFIX@|$(PREFIX)|' \
-            -e 's|@LIBDIR@|$(LIBDIR)|' \
-            -e 's|@INCLUDEDIR@|$(INCLUDEDIR)|' \
-            -e 's|@VERSION@|$(VERSION)|' \
+             -e 's|@LIBDIR@|$(LIBDIR)|' \
+             -e 's|@INCLUDEDIR@|$(INCLUDEDIR)|' \
+             -e 's|@VERSION@|$(VERSION)|' \
              $< >$@
 
 install: libzstd libzstd.pc
@@ -114,6 +118,8 @@ install: libzstd libzstd.pc
 	@cp -a libzstd.pc $(DESTDIR)$(LIBDIR)/pkgconfig/
 	@install -m 644 libzstd.a $(DESTDIR)$(LIBDIR)/libzstd.a
 	@install -m 644 zstd.h $(DESTDIR)$(INCLUDEDIR)/zstd.h
+	@install -m 644 zstd.h $(DESTDIR)$(INCLUDEDIR)/zbuff.h
+	@install -m 644 zstd.h $(DESTDIR)$(INCLUDEDIR)/zdict.h
 	@echo zstd static and shared library installed
 
 uninstall:
@@ -123,6 +129,8 @@ uninstall:
 	@[ -x $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_VER) ] && rm -f $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_VER)
 	@[ -f $(DESTDIR)$(LIBDIR)/libzstd.a ] && rm -f $(DESTDIR)$(LIBDIR)/libzstd.a
 	@[ -f $(DESTDIR)$(INCLUDEDIR)/zstd.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/zstd.h
+	@[ -f $(DESTDIR)$(INCLUDEDIR)/zstd.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/zbuff.h
+	@[ -f $(DESTDIR)$(INCLUDEDIR)/zstd.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/zdict.h
 	@echo zstd libraries successfully uninstalled
 
 endif

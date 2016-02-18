@@ -9,9 +9,10 @@
 #include <vector>
 #include <string>
 #include "compressors.h"
+#include "lz5/lz5common.h" // LZ5HC_MAX_CLEVEL
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "0.9.1"
+#define PROGVERSION "1.0"
 #define PAD_SIZE (16*1024)
 #define DEFAULT_LOOP_TIME (100*1000) // 1/10 of a second
 #define LZBENCH_DEBUG(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
@@ -108,7 +109,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "memcpy",   "",            0,   0, lzbench_return_0,          lzbench_memcpy,              NULL,                 NULL },
     { "blosclz",  "2015-11-10",  1,   9, lzbench_blosclz_compress,  lzbench_blosclz_decompress,  NULL,                 NULL },
     { "brieflz",  "1.1.0",       0,   0, lzbench_brieflz_compress,  lzbench_brieflz_decompress,  lzbench_brieflz_init, lzbench_brieflz_deinit },
-    { "brotli",   "2015-10-29",  0,  11, lzbench_brotli_compress,   lzbench_brotli_decompress,   NULL,                 NULL },
+    { "brotli",   "2016-02-04",  0,  11, lzbench_brotli_compress,   lzbench_brotli_decompress,   NULL,                 NULL },
     { "crush",    "1.0",         0,   2, lzbench_crush_compress,    lzbench_crush_decompress,    NULL,                 NULL },
     { "csc",      "3.3",         1,   5, lzbench_csc_compress,      lzbench_csc_decompress,      NULL,                 NULL },
     { "density",  "0.12.5 beta", 1,   3, lzbench_density_compress,  lzbench_density_decompress,  NULL,                 NULL }, // decompression error (shortened output)
@@ -116,9 +117,9 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "gipfeli",  "2015-11-30",  0,   0, lzbench_gipfeli_compress,  lzbench_gipfeli_decompress,  NULL,                 NULL },
     { "lz4",      "r131",        0,   0, lzbench_lz4_compress,      lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4fast",  "r131",        1,  99, lzbench_lz4fast_compress,  lzbench_lz4_decompress,      NULL,                 NULL },
-    { "lz4hc",    "r131",        1,   9, lzbench_lz4hc_compress,    lzbench_lz4_decompress,      NULL,                 NULL },
-    { "lz5",      "r132",        0,   0, lzbench_lz5_compress,      lzbench_lz5_decompress,      NULL,                 NULL },
-    { "lz5hc",    "r132",        1,   9, lzbench_lz5hc_compress,    lzbench_lz5_decompress,      NULL,                 NULL },
+    { "lz4hc",    "r131",        1,  16, lzbench_lz4hc_compress,    lzbench_lz4_decompress,      NULL,                 NULL },
+    { "lz5",      "v1.4.1",      0,   0, lzbench_lz5_compress,      lzbench_lz5_decompress,      NULL,                 NULL },
+    { "lz5hc",    "v1.4.1",      1,   LZ5HC_MAX_CLEVEL, lzbench_lz5hc_compress,    lzbench_lz5_decompress,      NULL,                 NULL },
     { "lzf",      "3.6",         0,   1, lzbench_lzf_compress,      lzbench_lzf_decompress,      NULL,                 NULL },
     { "lzg",      "1.0.8",       1,   9, lzbench_lzg_compress,      lzbench_lzg_decompress,      NULL,                 NULL },
     { "lzham",    "1.0 -d26",    0,   4, lzbench_lzham_compress,    lzbench_lzham_decompress,    NULL,                 NULL },
@@ -149,8 +150,8 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "yalz77",   "2015-09-19",  1,  12, lzbench_yalz77_compress,   lzbench_yalz77_decompress,   NULL,                 NULL },
     { "yappy",    "2014-03-22",  0,  99, lzbench_yappy_compress,    lzbench_yappy_decompress,    lzbench_yappy_init,   NULL },
     { "zlib",     "1.2.8",       1,   9, lzbench_zlib_compress,     lzbench_zlib_decompress,     NULL,                 NULL },
-    { "zling",    "2015-09-16",  0,   4, lzbench_zling_compress,    lzbench_zling_decompress,    NULL,                 NULL },
-    { "zstd",     "v0.4.1",      1,  20, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zling",    "2016-01-05fix",  0,   4, lzbench_zling_compress,    lzbench_zling_decompress,    NULL,                 NULL },
+    { "zstd",     "v0.5.1",      1,  21, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
 };
 
 
@@ -158,20 +159,19 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 
 static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
-    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,2,3,4,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9,12/lz5/lz5hc,1,4,9,12/" \
+    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9,12,16/lz5/lz5hc,1,4,9,12,15/" \
               "lzf,0,1/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo/" \
               "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2,3/snappy/tornado,1,2,3,4,5,6,7,10,13,16/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
-              "xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,9,13,17,20/" \
+              "xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,21/" \
               "shrinker/wflz/lzmat" // these can SEGFAULT 
     },
     { "fast", "density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz5/" \
               "lzf,0,1/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
-              "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/" \
-              "zstd" },
+              "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/zstd,1,2,3,4,5" },
     { "opt",  "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/" \
               "lzham,0,1,2,3,4/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7/" \
               "tornado,5,6,7,8,9,10,11,12,13,14,15,16/" \
-              "xz,1,2,3,4,5,6,7,8,9/zstd,10,12,14,16,17,18,19,20" },
+              "xz,1,2,3,4,5,6,7,8,9/zstd,10,12,14,16,17,18,19,20/zstd,18,19,20,21" },
     { "lzo1",  "lzo1,1,99" },
     { "lzo1a", "lzo1a,1,99" },
     { "lzo1b", "lzo1b,1,2,3,4,5,6,7,8,9,99,999" },

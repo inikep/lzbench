@@ -60,12 +60,27 @@ static const struct {
     {16, 4, 2},
 };
 
+class ZlingMTFEncoder {
+public:
+    ZlingMTFEncoder();
+    unsigned char Encode(unsigned char c);
+private:
+    unsigned char m_table[256];
+    unsigned char m_index[256];
+};
+
+class ZlingMTFDecoder {
+public:
+    ZlingMTFDecoder();
+    unsigned char Decode(unsigned char i);
+private:
+    unsigned char m_table[256];
+};
+
 class ZlingRolzEncoder {
 public:
-    ZlingRolzEncoder(int compression_level) {
-        m_match_depth = kPredefinedConfigs[compression_level].m_match_depth;
-        m_lazymatch1_depth = kPredefinedConfigs[compression_level].m_lazymatch1_depth;
-        m_lazymatch2_depth = kPredefinedConfigs[compression_level].m_lazymatch2_depth;
+    ZlingRolzEncoder(int compression_level = 0) {
+        SetLevel(compression_level);
         Reset();
     }
 
@@ -78,6 +93,7 @@ public:
      *  ret: out length.
      */
     int  Encode(unsigned char* ibuf, uint16_t* obuf, int ilen, int olen, int* encpos);
+    void SetLevel(int compression_level);
     void Reset();
 
 private:
@@ -91,6 +107,7 @@ private:
         uint16_t hash[kBucketItemHash];
     };
     ZlingEncodeBucket m_buckets[256];
+    ZlingMTFEncoder m_mtf[256];
     int m_match_depth;
     int m_lazymatch1_depth;
     int m_lazymatch2_depth;
@@ -125,7 +142,7 @@ private:
         uint16_t head;
     };
     ZlingDecodeBucket m_buckets[256];
-
+    ZlingMTFDecoder m_mtf[256];
     ZlingRolzDecoder(const ZlingRolzDecoder&);
     ZlingRolzDecoder& operator = (const ZlingRolzDecoder&);
 };

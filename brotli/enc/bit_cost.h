@@ -1,17 +1,9 @@
-// Copyright 2013 Google Inc. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
+/* Copyright 2013 Google Inc. All Rights Reserved.
+
+   Distributed under MIT license.
+   See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
+*/
+
 // Functions to estimate the bit cost of Huffman trees.
 
 #ifndef BROTLI_ENC_BIT_COST_H_
@@ -25,35 +17,35 @@
 
 namespace brotli {
 
-static inline double ShannonEntropy(const int *population, int size,
-                                    int *total) {
-  int sum = 0;
+static inline double ShannonEntropy(const uint32_t *population, size_t size,
+                                    size_t *total) {
+  size_t sum = 0;
   double retval = 0;
-  const int *population_end = population + size;
-  int p;
+  const uint32_t *population_end = population + size;
+  size_t p;
   if (size & 1) {
     goto odd_number_of_elements_left;
   }
   while (population < population_end) {
     p = *population++;
     sum += p;
-    retval -= p * FastLog2(p);
+    retval -= static_cast<double>(p) * FastLog2(p);
  odd_number_of_elements_left:
     p = *population++;
     sum += p;
-    retval -= p * FastLog2(p);
+    retval -= static_cast<double>(p) * FastLog2(p);
   }
-  if (sum) retval += sum * FastLog2(sum);
+  if (sum) retval += static_cast<double>(sum) * FastLog2(sum);
   *total = sum;
   return retval;
 }
 
-static inline double BitsEntropy(const int *population, int size) {
-  int sum;
+static inline double BitsEntropy(const uint32_t *population, size_t size) {
+  size_t sum;
   double retval = ShannonEntropy(population, size, &sum);
   if (retval < sum) {
     // At least one bit per literal is needed.
-    retval = sum;
+    retval = static_cast<double>(sum);
   }
   return retval;
 }
@@ -74,7 +66,7 @@ double PopulationCost(const Histogram<kSize>& histogram) {
     return 12;
   }
   if (count == 2) {
-    return 20 + histogram.total_count_;
+    return static_cast<double>(20 + histogram.total_count_);
   }
   double bits = 0;
   uint8_t depth_array[kSize] = { 0 };
@@ -90,16 +82,16 @@ double PopulationCost(const Histogram<kSize>& histogram) {
   // In this loop we compute the entropy of the histogram and simultaneously
   // build a simplified histogram of the code length codes where we use the
   // zero repeat code 17, but we don't use the non-zero repeat code 16.
-  int max_depth = 1;
-  int depth_histo[kCodeLengthCodes] = { 0 };
+  size_t max_depth = 1;
+  uint32_t depth_histo[kCodeLengthCodes] = { 0 };
   const double log2total = FastLog2(histogram.total_count_);
-  for (int i = 0; i < kSize;) {
+  for (size_t i = 0; i < kSize;) {
     if (histogram.data_[i] > 0) {
       // Compute -log2(P(symbol)) = -log2(count(symbol)/total_count) =
       //                          =  log2(total_count) - log2(count(symbol))
       double log2p = log2total - FastLog2(histogram.data_[i]);
       // Approximate the bit depth by round(-log2(P(symbol)))
-      int depth = static_cast<int>(log2p + 0.5);
+      size_t depth = static_cast<size_t>(log2p + 0.5);
       bits += histogram.data_[i] * log2p;
       if (depth > 15) {
         depth = 15;
@@ -112,8 +104,8 @@ double PopulationCost(const Histogram<kSize>& histogram) {
     } else {
       // Compute the run length of zeros and add the appropriate number of 0 and
       // 17 code length codes to the code length code histogram.
-      int reps = 1;
-      for (int k = i + 1; k < kSize && histogram.data_[k] == 0; ++k) {
+      uint32_t reps = 1;
+      for (size_t k = i + 1; k < kSize && histogram.data_[k] == 0; ++k) {
         ++reps;
       }
       i += reps;
@@ -136,7 +128,7 @@ double PopulationCost(const Histogram<kSize>& histogram) {
     }
   }
   // Add the estimated encoding cost of the code length code histogram.
-  bits += 18 + 2 * max_depth;
+  bits += static_cast<double>(18 + 2 * max_depth);
   // Add the entropy of the code length code histogram.
   bits += BitsEntropy(depth_histo, kCodeLengthCodes);
   return bits;

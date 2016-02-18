@@ -33,6 +33,7 @@
  * @brief  libzling.
  */
 #include "libzling.h"
+#include "libzling_debug.h"
 #include "libzling_huffman.h"
 #include "libzling_lz.h"
 
@@ -50,13 +51,13 @@ using lz::kMatchMinLen;
 using lz::kBucketItemSize;
 
 static const uint32_t matchidx_bitlen[] = {
-#   include "ztable_matchidx_blen.inc"  /* include auto-generated constant tables */
+#   include "tables/table_matchidx_blen.inc"  /* include auto-generated constant tables */
 };
 static const uint32_t matchidx_code[] = {
-#   include "ztable_matchidx_code.inc"  /* include auto-generated constant tables */
+#   include "tables/table_matchidx_code.inc"  /* include auto-generated constant tables */
 };
 static const uint32_t matchidx_base[] = {
-#   include "ztable_matchidx_base.inc"  /* include auto-generated constant tables */
+#   include "tables/table_matchidx_base.inc"  /* include auto-generated constant tables */
 };
 
 static const int kHuffmanCodes1      = 258 + (kMatchMaxLen - kMatchMinLen + 1);
@@ -109,8 +110,9 @@ struct EncodeResource {
     unsigned char* ibuf;
     unsigned char* obuf;
     uint16_t* tbuf;
+    int level;
 
-    EncodeResource(int level): lzencoder(NULL), ibuf(NULL), obuf(NULL), tbuf(NULL) {
+    EncodeResource(int level): lzencoder(NULL), ibuf(NULL), obuf(NULL), tbuf(NULL), level(level) {
         try {
             ibuf = new unsigned char[kBlockSizeIn + kSentinelLen];
             obuf = new unsigned char[kBlockSizeHuffman + kSentinelLen];
@@ -192,16 +194,15 @@ int Encode(Inputter* inputter, Outputter* outputter, ActionHandler* action_handl
             ilen += inputter->GetData(res.ibuf + ilen, kBlockSizeIn - ilen);
             CHECK_IO_ERROR(inputter);
         }
-        memset(res.ibuf + ilen, 0, kSentinelLen);
-
         res.lzencoder->Reset();
 
         while (encpos < ilen) {
-             outputter->PutChar(kFlagRolzContinue);
-             CHECK_IO_ERROR(outputter);
+            outputter->PutChar(kFlagRolzContinue);
+            CHECK_IO_ERROR(outputter);
 
             // ROLZ encode
             // ============================================================
+            int encpos_old = encpos;
             rlen = res.lzencoder->Encode(res.ibuf, res.tbuf, ilen, kBlockSizeRolz, &encpos);
 
             // HUFFMAN encode
@@ -265,6 +266,14 @@ int Encode(Inputter* inputter, Outputter* outputter, ActionHandler* action_handl
             }
             olen = opos;
 
+            // lower level for uncompressible data
+            if (1.0 * olen / (encpos - encpos_old + 1) > 0.95) {
+                LIBZLING_DEBUG_COUNT("lz:uncompressible", 1);
+                res.lzencoder->SetLevel(0);
+            } else {
+                res.lzencoder->SetLevel(res.level);
+            }
+
             // outputter
             outputter->PutUInt32(encpos); CHECK_IO_ERROR(outputter);
             outputter->PutUInt32(rlen);   CHECK_IO_ERROR(outputter);
@@ -323,11 +332,13 @@ int Decode(Inputter* inputter, Outputter* outputter, ActionHandler* action_handl
             rlen   = inputter->GetUInt32(); CHECK_IO_ERROR(inputter);
             olen   = inputter->GetUInt32(); CHECK_IO_ERROR(inputter);
 
+            if (rlen > kBlockSizeRolz || olen > kBlockSizeHuffman) {
+                throw std::runtime_error("baidu::zling::Decode(): invalid block size.");
+            }
             for (int ooff = 0; !inputter->IsEnd() && ooff < olen; ) {
                 ooff += inputter->GetData(res.obuf + ooff, olen - ooff);
                 CHECK_IO_ERROR(inputter);
             }
-            memset(res.obuf + olen, 0, kSentinelLen);
 
             // HUFFMAN DECODE
             // ============================================================
@@ -400,7 +411,6 @@ int Decode(Inputter* inputter, Outputter* outputter, ActionHandler* action_handl
 
                 if (res.tbuf[i] >= 258) {
                     uint32_t code;
-                    uint32_t bitlen;
                     uint32_t bits;
 
                     /* error: matchidx.code >= kHuffmanCodes2 */

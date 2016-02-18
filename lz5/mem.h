@@ -292,8 +292,12 @@ MEM_STATIC void MEM_writeLEST(void* memPtr, size_t val)
 }
 
 
+#if MINMATCH == 3
+    #define MEM_read24(ptr) (U32)(MEM_read32(ptr)<<8) 
+#else
+    #define MEM_read24(ptr) (U32)(MEM_read32(ptr)) 
+#endif
 
-#define MEM_read24(ptr) (uint32_t)(MEM_read32(ptr)<<8)
 
 /* **************************************
 *  Function body to include for inlining
@@ -302,15 +306,16 @@ static size_t MEM_read_ARCH(const void* p) { size_t r; memcpy(&r, p, sizeof(r));
 
 #define MIN(a,b) ((a)<(b) ? (a) : (b))
 
-static unsigned MEM_highbit(U32 val)
+
+/*static unsigned MEM_highbit(U32 val)
 {
-#   if defined(_MSC_VER)   /* Visual */
+#   if defined(_MSC_VER)   // Visual 
     unsigned long r=0;
     _BitScanReverse(&r, val);
     return (unsigned)r;
-#   elif defined(__GNUC__) && (__GNUC__ >= 3)   /* GCC Intrinsic */
+#   elif defined(__GNUC__) && (__GNUC__ >= 3)   // GCC Intrinsic
     return 31 - __builtin_clz(val);
-#   else   /* Software version */
+#   else   // Software version 
     static const int DeBruijnClz[32] = { 0, 9, 1, 10, 13, 21, 2, 29, 11, 14, 16, 18, 22, 25, 3, 30, 8, 12, 20, 28, 15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31 };
     U32 v = val;
     int r;
@@ -322,7 +327,8 @@ static unsigned MEM_highbit(U32 val)
     r = DeBruijnClz[(U32)(v * 0x07C4ACDDU) >> 27];
     return r;
 #   endif
-}
+}*/
+
 
 MEM_STATIC unsigned MEM_NbCommonBytes (register size_t val)
 {
@@ -416,8 +422,9 @@ static void MEM_copy8(void* dst, const void* src) { memcpy(dst, src, 8); }
 
 #define COPY8(d,s) { MEM_copy8(d,s); d+=8; s+=8; }
 
+
 /*! MEM_wildcopy : custom version of memcpy(), can copy up to 7-8 bytes too many */
-static void MEM_wildcopy(void* dst, const void* src, size_t length)
+/*static void MEM_wildcopy(void* dst, const void* src, size_t length)
 {
     const BYTE* ip = (const BYTE*)src;
     BYTE* op = (BYTE*)dst;
@@ -425,7 +432,7 @@ static void MEM_wildcopy(void* dst, const void* src, size_t length)
     do
         COPY8(op, ip)
     while (op < oend);
-}  
+} */ 
 
 /* customized variant of memcpy, which can overwrite up to 7 bytes beyond dstEnd */
 static void MEM_wildCopy(void* dstPtr, const void* srcPtr, void* dstEnd)

@@ -1,25 +1,15 @@
-// Copyright 2013 Google Inc. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
+/* Copyright 2013 Google Inc. All Rights Reserved.
+
+   Distributed under MIT license.
+   See file LICENSE for detail or copy at https://opensource.org/licenses/MIT
+*/
+
 // Block split point selection utilities.
 
 #ifndef BROTLI_ENC_BLOCK_SPLITTER_H_
 #define BROTLI_ENC_BLOCK_SPLITTER_H_
 
-#include <string.h>
 #include <vector>
-#include <utility>
 
 #include "./command.h"
 #include "./metablock.h"
@@ -45,9 +35,9 @@ struct BlockSplitIterator {
   }
 
   const BlockSplit& split_;
-  int idx_;
-  int type_;
-  int length_;
+  size_t idx_;
+  size_t type_;
+  size_t length_;
 };
 
 void CopyLiteralsToByteArray(const Command* cmds,
@@ -65,12 +55,6 @@ void SplitBlock(const Command* cmds,
                 BlockSplit* literal_split,
                 BlockSplit* insert_and_copy_split,
                 BlockSplit* dist_split);
-
-void SplitBlockByTotalLength(const Command* all_commands,
-                             const size_t num_commands,
-                             int input_size,
-                             int target_length,
-                             std::vector<std::vector<Command> >* blocks);
 
 }  // namespace brotli
 
