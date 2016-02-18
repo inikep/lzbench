@@ -167,7 +167,7 @@ static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
     },
     { "fast", "density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz5/" \
               "lzf,0,1/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
-              "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/zstd" },
+              "lzrw,1,2,3,4,5/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/zstd,1,2,3,4,5" },
     { "opt",  "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/" \
               "lzham,0,1,2,3,4/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7/" \
               "tornado,5,6,7,8,9,10,11,12,13,14,15,16/" \

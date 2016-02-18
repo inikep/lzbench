@@ -115,10 +115,10 @@ The sorted by ratio resuls are available [here](lzbench10_win81sorted.md).
 | blosclz 2015-11-10 level 9  |   201 MB/s |   696 MB/s |    64269967 | 61.29 |
 | brieflz 1.1.0               |    76 MB/s |   156 MB/s |    55001889 | 52.45 |
 | brotli 2016-02-04 level 0   |   200 MB/s |   202 MB/s |    52629581 | 50.19 |
-| brotli 2016-02-04 level 11  |  0.30 MB/s |   169 MB/s |    37137068 | 35.42 |
 | brotli 2016-02-04 level 2   |    94 MB/s |   214 MB/s |    48030385 | 45.81 |
 | brotli 2016-02-04 level 5   |    18 MB/s |   221 MB/s |    43363858 | 41.35 |
 | brotli 2016-02-04 level 8   |  3.20 MB/s |   234 MB/s |    41031263 | 39.13 |
+| brotli 2016-02-04 level 11  |  0.30 MB/s |   169 MB/s |    37137068 | 35.42 |
 | crush 1.0 level 0           |    21 MB/s |   203 MB/s |    50419812 | 48.08 |
 | crush 1.0 level 1           |  4.32 MB/s |   213 MB/s |    48195021 | 45.96 |
 | crush 1.0 level 2           |  0.59 MB/s |   221 MB/s |    47105187 | 44.92 |
