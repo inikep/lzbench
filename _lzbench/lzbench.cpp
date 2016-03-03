@@ -200,7 +200,7 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, size_t chunk_size, c
 }
 
 
-void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond, size_t param1, size_t param2)
+void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond, size_t param1)
 {
     float speed;
     int i, total_c_iters, total_d_iters;
@@ -212,6 +212,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     bool decomp_error = false;
     char* workmem = NULL;
     bool blosclz = strcmp(desc->name,"blosclz")==0;
+    size_t param2 = desc->additional_param;
 
     if (!desc->compress || !desc->decompress) goto done;
     if (desc->init) workmem = desc->init(params->chunk_size);
@@ -372,10 +373,10 @@ void lzbench_test_with_params(lzbench_params_t *params, char *namesWithParams, u
                         if (!token3)
                         {                          
                             for (int level=comp_desc[i].first_level; level<=comp_desc[i].last_level; level++)
-                                lzbench_test(params, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level, 0);
+                                lzbench_test(params, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level);
                         }
                         else
-                            lzbench_test(params, &comp_desc[i], atoi(token3), inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, atoi(token3), 0);
+                            lzbench_test(params, &comp_desc[i], atoi(token3), inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, atoi(token3));
                         break;
                     }
                 }
@@ -431,7 +432,7 @@ void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list)
     params_memcpy.cmintime = params_memcpy.dmintime = 0;
     params_memcpy.c_iters = params_memcpy.d_iters = 0;
     params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
-    lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, ticksPerSecond, 0, 0);
+    lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, ticksPerSecond, 0);
 
     lzbench_test_with_params(params, encoder_list?encoder_list:(char*)alias_desc[1].params, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
 
