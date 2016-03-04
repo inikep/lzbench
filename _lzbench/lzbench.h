@@ -12,7 +12,7 @@
 #include "lz5/lz5common.h" // LZ5HC_MAX_CLEVEL
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "1.0"
+#define PROGVERSION "1.1"
 #define PAD_SIZE (16*1024)
 #define DEFAULT_LOOP_TIME (100*1000) // 1/10 of a second
 #define LZBENCH_DEBUG(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
@@ -56,7 +56,8 @@ typedef struct string_table
     std::string column1;
     float column2, column3, column5;
     uint64_t column4;
-    string_table(std::string c1, float c2, float c3, uint64_t c4, float c5) : column1(c1), column2(c2), column3(c3), column4(c4), column5(c5) {}
+    std::string filename;
+    string_table(std::string c1, float c2, float c3, uint64_t c4, float c5, std::string in_filename) : column1(c1), column2(c2), column3(c3), column5(c5), column4(c4), filename(in_filename) {}
 } string_table_t;
 
 enum textformat_e { MARKDOWN=1, TEXT, CSV, TURBOBENCH };
@@ -69,6 +70,7 @@ typedef struct
     size_t chunk_size;
     uint32_t c_iters, d_iters, cspeed, verbose, cmintime, dmintime, cloop_time, dloop_time;
     std::vector<string_table_t> results;
+    char* in_filename;
 } lzbench_params_t;
 
 struct less_using_1st_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column1 < struct2.column1); } };
