@@ -139,14 +139,17 @@ size_t common(uint8_t *p1, uint8_t *p2)
 inline int64_t lzbench_compress(lzbench_params_t *params, size_t chunk_size, compress_func compress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
 {
     int64_t clen;
-    size_t part, sum = 0;
+    size_t outpart, part, sum = 0;
     uint8_t *start = inbuf;
     compr_lens.clear();
-    
+    outpart = GET_COMPRESS_BOUND(chunk_size);
+
     while (insize > 0)
     {
         part = MIN(insize, chunk_size);
-        clen = compress((char*)inbuf, part, (char*)outbuf, outsize, param1, param2, workmem);
+        if (outpart > outsize) outpart = outsize;
+
+        clen = compress((char*)inbuf, part, (char*)outbuf, outpart, param1, param2, workmem);
         LZBENCH_DEBUG(9,"ENC part=%d clen=%d in=%d\n", (int)part, (int)clen, (int)(inbuf-start));
 
         if (clen <= 0 || clen == part)
@@ -211,9 +214,13 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     std::vector<size_t> compr_lens;
     bool decomp_error = false;
     char* workmem = NULL;
-    bool blosclz = strcmp(desc->name,"blosclz")==0;
     size_t param2 = desc->additional_param;
     size_t chunk_size = (params->chunk_size > insize) ? insize : params->chunk_size;
+
+    if (strcmp(desc->name,"blosclz")==0)
+        chunk_size = (chunk_size > 64*1024) ? 64*1024 : chunk_size;
+    if (strcmp(desc->name,"shrinker")==0)
+        chunk_size = (chunk_size > 128<<20) ? 128<<20 : chunk_size;
 
     if (!desc->compress || !desc->decompress) goto done;
     if (desc->init) workmem = desc->init(chunk_size);
@@ -244,7 +251,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
         do
         {
             GetTime(start_ticks);
-            complen = lzbench_compress(params, blosclz?64*1024:chunk_size, desc->compress, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
+            complen = lzbench_compress(params, chunk_size, desc->compress, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
             GetTime(end_ticks);
             nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
             if (nanosec >= 10) cspeed.push_back((float)insize/nanosec);
@@ -277,7 +284,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
         do
         {
             GetTime(start_ticks);
-            decomplen = lzbench_decompress(params, blosclz?64*1024:chunk_size, desc->decompress, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
+            decomplen = lzbench_decompress(params, chunk_size, desc->decompress, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
             GetTime(end_ticks);
             nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
             if (nanosec >= 10) dspeed.push_back((float)insize/nanosec);
@@ -408,7 +415,7 @@ void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list, bool fi
 	insize = ftello(in);
 	rewind(in);
 
-	comprsize = insize + insize/6 + PAD_SIZE; // for pithy
+	comprsize = GET_COMPRESS_BOUND(insize);
 
 //	printf("insize=%llu comprsize=%llu %llu\n", insize, comprsize, MAX(MEMCPY_BUFFER_SIZE, insize));
 	inbuf = (uint8_t*)malloc(insize + PAD_SIZE);
@@ -455,7 +462,7 @@ int main( int argc, char** argv)
     params.timetype = FASTEST;
     params.textformat = TEXT;
     params.verbose = 0;
-	params.chunk_size = 1ULL << 31;
+	params.chunk_size = (1ULL << 31) - (1ULL << 31)/6;
 	params.cspeed = 0;
     params.c_iters = params.d_iters = 1;
     params.cmintime = 10*DEFAULT_LOOP_TIME/1000; // 1 sec
@@ -532,7 +539,7 @@ int main( int argc, char** argv)
 
 	if (argc<2) {
 		fprintf(stderr, "usage: " PROGNAME " [options] input_file [input_file2] [input_file3]\n\nwhere [options] are:\n");
-		fprintf(stderr, " -bX  set block/chunk size to X KB (default = filesize or %d KB)\n", (int)(params.chunk_size>>10));
+		fprintf(stderr, " -bX  set block/chunk size to X KB (default = MIN(filesize,%d KB))\n", (int)(params.chunk_size>>10));
 		fprintf(stderr, " -cX  sort results by column number X\n");
 		fprintf(stderr, " -eX  X = compressors separated by '/' with parameters specified after ','\n");
 		fprintf(stderr, " -iX  set min. number of compression iterations (default = %d)\n", params.c_iters);
