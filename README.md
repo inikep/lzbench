@@ -63,7 +63,7 @@ page.
 ```
 blosclz 2015-11-10
 brieflz 1.1.0
-brotli 2016-02-04
+brotli 2016-03-22
 crush 1.0
 csc 3.3
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))

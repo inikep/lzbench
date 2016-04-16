@@ -1,5 +1,6 @@
 v1.1
 - zstd updated to v0.6.0
+- brotli updated to 2016-03-22
 - new modes with 22 and 24-bit window: brotli22, brotli24, lzham22, lzham24, zstd22, zstd24
 - added support for multiple files
 - fixed issue with files bigger than 1706MB and compressors supporting only up to 2GB blocks (int32_t)
