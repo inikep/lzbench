@@ -12,7 +12,7 @@ Usage
 -------------------------
 
 ```
-usage: lzbench [options] input_file
+usage: lzbench [options] input_file [input_file2] [input_file3]
 
 where [options] are:
  -bX  set block/chunk size to X KB (default = filesize or 2097152 KB)
@@ -91,7 +91,7 @@ xz 5.2.2
 yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.8
-zling 2016-01-05+bugfix (according to the author using libzling in a production environment is not a good idea)
+zling 2016-04-10 (according to the author using libzling in a production environment is not a good idea)
 zstd 0.6.0
 ```
 
@@ -114,11 +114,11 @@ The results sorted by ratio are available [here](lzbench10_win81sorted.md).
 | blosclz 2015-11-10 level 6  |   240 MB/s |  1226 MB/s |    71944073 | 68.61 |
 | blosclz 2015-11-10 level 9  |   201 MB/s |   696 MB/s |    64269967 | 61.29 |
 | brieflz 1.1.0               |    76 MB/s |   156 MB/s |    55001889 | 52.45 |
-| brotli 2016-02-04 level 0   |   200 MB/s |   202 MB/s |    52629581 | 50.19 |
-| brotli 2016-02-04 level 2   |    94 MB/s |   214 MB/s |    48030385 | 45.81 |
-| brotli 2016-02-04 level 5   |    18 MB/s |   221 MB/s |    43363858 | 41.35 |
-| brotli 2016-02-04 level 8   |  3.20 MB/s |   234 MB/s |    41031263 | 39.13 |
-| brotli 2016-02-04 level 11  |  0.30 MB/s |   169 MB/s |    37137068 | 35.42 |
+| brotli 2016-03-22 -0        |   210 MB/s |   195 MB/s |    52629581 | 50.19 |
+| brotli 2016-03-22 -2        |    88 MB/s |   187 MB/s |    48030385 | 45.81 |
+| brotli 2016-03-22 -5        |    19 MB/s |   220 MB/s |    43208885 | 41.21 |
+| brotli 2016-03-22 -8        |  3.37 MB/s |   224 MB/s |    41009167 | 39.11 |
+| brotli 2016-03-22 -11       |  0.25 MB/s |   170 MB/s |    37358056 | 35.63 |
 | crush 1.0 level 0           |    21 MB/s |   203 MB/s |    50419812 | 48.08 |
 | crush 1.0 level 1           |  4.32 MB/s |   213 MB/s |    48195021 | 45.96 |
 | crush 1.0 level 2           |  0.59 MB/s |   221 MB/s |    47105187 | 44.92 |
@@ -235,15 +235,14 @@ The results sorted by ratio are available [here](lzbench10_win81sorted.md).
 | zlib 1.2.8 level 1          |    45 MB/s |   197 MB/s |    51131815 | 48.76 |
 | zlib 1.2.8 level 6          |    18 MB/s |   214 MB/s |    47681614 | 45.47 |
 | zlib 1.2.8 level 9          |  7.50 MB/s |   216 MB/s |    47516720 | 45.32 |
-| zling 2016-01-05fix level 0 |    23 MB/s |   100 MB/s |    44381730 | 42.33 |
-| zling 2016-01-05fix level 2 |    20 MB/s |   105 MB/s |    43836149 | 41.81 |
-| zling 2016-01-05fix level 4 |    17 MB/s |    98 MB/s |    43491149 | 41.48 |
-| zstd v0.5.1 level 1         |   241 MB/s |   583 MB/s |    51121791 | 48.75 |
-| zstd v0.5.1 level 2         |   175 MB/s |   543 MB/s |    49692088 | 47.39 |
-| zstd v0.5.1 level 5         |    74 MB/s |   498 MB/s |    46373509 | 44.23 |
-| zstd v0.5.1 level 8         |    23 MB/s |   515 MB/s |    44494128 | 42.43 |
-| zstd v0.5.1 level 11        |    15 MB/s |   519 MB/s |    42483093 | 40.52 |
-| zstd v0.5.1 level 15        |  8.47 MB/s |   523 MB/s |    42242565 | 40.29 |
-| zstd v0.5.1 level 18        |  3.68 MB/s |   455 MB/s |    40126667 | 38.27 |
-| zstd v0.5.1 level 21        |  2.65 MB/s |   433 MB/s |    39768086 | 37.93 |
-
+| zling 2016-04-10 level 0    |    23 MB/s |   100 MB/s |    44381730 | 42.33 |
+| zling 2016-04-10 level 2    |    20 MB/s |   105 MB/s |    43836149 | 41.81 |
+| zling 2016-04-10 level 4    |    17 MB/s |    98 MB/s |    43491149 | 41.48 |
+| zstd v0.6.0 -1              |   231 MB/s |   595 MB/s |    51081337 | 48.71 |
+| zstd v0.6.0 -2              |   170 MB/s |   556 MB/s |    49649612 | 47.35 |
+| zstd v0.6.0 -5              |    66 MB/s |   508 MB/s |    46175896 | 44.04 |
+| zstd v0.6.0 -8              |    25 MB/s |   521 MB/s |    44051111 | 42.01 |
+| zstd v0.6.0 -11             |    16 MB/s |   559 MB/s |    42444816 | 40.48 |
+| zstd v0.6.0 -15             |  5.92 MB/s |   545 MB/s |    42090097 | 40.14 |
+| zstd v0.6.0 -18             |  3.85 MB/s |   513 MB/s |    40724929 | 38.84 |
+| zstd v0.6.0 -22             |  2.25 MB/s |   446 MB/s |    38805650 | 37.01 |
