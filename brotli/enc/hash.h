@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
-#include <vector>
 
 #include "./dictionary_hash.h"
 #include "./fast_log.h"
@@ -92,7 +91,7 @@ inline double BackwardReferenceScoreUsingLastDistance(size_t copy_length,
 }
 
 struct BackwardMatch {
-  BackwardMatch() : distance(0), length_and_code(0) {}
+  BackwardMatch(void) : distance(0), length_and_code(0) {}
 
   BackwardMatch(size_t dist, size_t len)
       : distance(static_cast<uint32_t>(dist))
@@ -103,10 +102,10 @@ struct BackwardMatch {
       , length_and_code(static_cast<uint32_t>(
             (len << 5) | (len == len_code ? 0 : len_code))) {}
 
-  size_t length() const {
+  size_t length(void) const {
     return length_and_code >> 5;
   }
-  size_t length_code() const {
+  size_t length_code(void) const {
     size_t code = length_and_code & 31;
     return code ? code : length();
   }
@@ -123,15 +122,15 @@ struct BackwardMatch {
 template <int kBucketBits, int kBucketSweep, bool kUseDictionary>
 class HashLongestMatchQuickly {
  public:
-  HashLongestMatchQuickly() {
+  HashLongestMatchQuickly(void) {
     Reset();
   }
-  void Reset() {
+  void Reset(void) {
     need_init_ = true;
     num_dict_lookups_ = 0;
     num_dict_matches_ = 0;
   }
-  void Init() {
+  void Init(void) {
     if (need_init_) {
       // It is not strictly necessary to fill this buffer here, but
       // not filling will make the results of the compression stochastic
@@ -278,7 +277,7 @@ class HashLongestMatchQuickly {
           if (matchlen + kCutoffTransformsCount > len && matchlen > 0) {
             const size_t transform_id = kCutoffTransforms[len - matchlen];
             const size_t word_id =
-                transform_id * (1 << kBrotliDictionarySizeBitsByLength[len]) +
+                transform_id * (1u << kBrotliDictionarySizeBitsByLength[len]) +
                 dist;
             const size_t backward = max_backward + word_id + 1;
             const double score = BackwardReferenceScore(matchlen, backward);
@@ -337,17 +336,17 @@ template <int kBucketBits,
           int kNumLastDistancesToCheck>
 class HashLongestMatch {
  public:
-  HashLongestMatch() {
+  HashLongestMatch(void) {
     Reset();
   }
 
-  void Reset() {
+  void Reset(void) {
     need_init_ = true;
     num_dict_lookups_ = 0;
     num_dict_matches_ = 0;
   }
 
-  void Init() {
+  void Init(void) {
     if (need_init_) {
       memset(&num_[0], 0, sizeof(num_));
       need_init_ = false;
@@ -574,8 +573,10 @@ class HashLongestMatch {
     }
     buckets_[key][num_[key] & kBlockMask] = static_cast<uint32_t>(cur_ix);
     ++num_[key];
-    std::vector<uint32_t> dict_matches(kMaxDictionaryMatchLen + 1,
-                                       kInvalidMatch);
+    uint32_t dict_matches[kMaxDictionaryMatchLen + 1];
+    for (size_t i = 0; i <= kMaxDictionaryMatchLen; ++i) {
+      dict_matches[i] = kInvalidMatch;
+    }
     size_t minlen = std::max<size_t>(4, best_len + 1);
     if (FindAllStaticDictionaryMatches(&data[cur_ix_masked], minlen, max_length,
                                        &dict_matches[0])) {
@@ -706,8 +707,10 @@ class HashToBinaryTree {
       matches = StoreAndFindMatches(data, cur_ix, ring_buffer_mask,
                                     max_length, &best_len, matches);
     }
-    std::vector<uint32_t> dict_matches(kMaxDictionaryMatchLen + 1,
-                                       kInvalidMatch);
+    uint32_t dict_matches[kMaxDictionaryMatchLen + 1];
+    for (size_t i = 0; i <= kMaxDictionaryMatchLen; ++i) {
+      dict_matches[i] = kInvalidMatch;
+    }
     size_t minlen = std::max<size_t>(4, best_len + 1);
     if (FindAllStaticDictionaryMatches(&data[cur_ix_masked], minlen, max_length,
                                        &dict_matches[0])) {
@@ -725,13 +728,32 @@ class HashToBinaryTree {
 
   // Stores the hash of the next 4 bytes and re-roots the binary tree at the
   // current sequence, without returning any matches.
+  // REQUIRES: cur_ix + kMaxTreeCompLength <= end-of-current-block
   void Store(const uint8_t* data,
              const size_t ring_buffer_mask,
-             const size_t cur_ix,
-             const size_t max_length) {
+             const size_t cur_ix) {
     size_t best_len = 0;
-    StoreAndFindMatches(data, cur_ix, ring_buffer_mask, max_length,
+    StoreAndFindMatches(data, cur_ix, ring_buffer_mask, kMaxTreeCompLength,
                         &best_len, NULL);
+  }
+
+  void StitchToPreviousBlock(size_t num_bytes,
+                             size_t position,
+                             const uint8_t* ringbuffer,
+                             size_t ringbuffer_mask) {
+    if (num_bytes >= 3 && position >= kMaxTreeCompLength) {
+      // Store the last `kMaxTreeCompLength - 1` positions in the hasher.
+      // These could not be calculated before, since they require knowledge
+      // of both the previous and the current block.
+      const size_t i_start = position - kMaxTreeCompLength + 1;
+      const size_t i_end = std::min(position, i_start + num_bytes);
+      for (size_t i = i_start; i < i_end; ++i) {
+        // We know that i + kMaxTreeCompLength <= position + num_bytes, i.e. the
+        // end of the current block and that we have at least
+        // kMaxTreeCompLength tail in the ringbuffer.
+        Store(ringbuffer, ringbuffer_mask, i);
+      }
+    }
   }
 
   static const size_t kMaxNumMatches = 64 + kMaxTreeSearchDepth;
@@ -875,10 +897,10 @@ struct Hashers {
   typedef HashLongestMatch<15, 8, 16> H9;
   typedef HashToBinaryTree H10;
 
-  Hashers() : hash_h2(0), hash_h3(0), hash_h4(0), hash_h5(0),
-              hash_h6(0), hash_h7(0), hash_h8(0), hash_h9(0), hash_h10(0) {}
+  Hashers(void) : hash_h2(0), hash_h3(0), hash_h4(0), hash_h5(0),
+                  hash_h6(0), hash_h7(0), hash_h8(0), hash_h9(0), hash_h10(0) {}
 
-  ~Hashers() {
+  ~Hashers(void) {
     delete hash_h2;
     delete hash_h3;
     delete hash_h4;
@@ -928,8 +950,7 @@ struct Hashers {
       case 10:
         hash_h10->Init(lgwin, 0, size, false);
         for (size_t i = 0; i + kMaxTreeCompLength - 1 < size; ++i) {
-          hash_h10->Store(dict, std::numeric_limits<size_t>::max(),
-                          i, size - i);
+          hash_h10->Store(dict, std::numeric_limits<size_t>::max(), i);
         }
         break;
       default: break;

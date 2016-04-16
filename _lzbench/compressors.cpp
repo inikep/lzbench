@@ -68,12 +68,13 @@ int64_t lzbench_brieflz_decompress(char *inbuf, size_t insize, char *outbuf, siz
 #include "brotli/enc/encode.h"
 #include "brotli/dec/decode.h"
 
-int64_t lzbench_brotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_brotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
 {
     brotli::BrotliParams p;
 	p.quality = level;
-//	p.lgwin = 24; // sliding window size. Range is 10 to 24.
-//	p.lgblock = 24; // maximum input block size. Range is 16 to 24. 
+    if (windowLog) p.lgwin = windowLog; // sliding window size. Range is 10 to 24.
+//	p.lgblock = 24; // maximum input block size. Range is 16 to 24.
+
     size_t actual_osize = outsize;
     return brotli::BrotliCompressBuffer(p, insize, (const uint8_t*)inbuf, &actual_osize, (uint8_t*)outbuf) == 0 ? 0 : actual_osize;
 }
@@ -410,15 +411,15 @@ int64_t lzbench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t 
 	return outsize;
 }
 
-int64_t lzbench_lzham_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t dict_size, char*)
+int64_t lzbench_lzham_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t dict_size_log, char*)
 {
 	lzham_uint32 comp_adler32 = 0;
 	lzham_decompress_params decomp_params;
 
 	memset(&decomp_params, 0, sizeof(decomp_params));
 	decomp_params.m_struct_size = sizeof(decomp_params);
-	decomp_params.m_dict_size_log2 = 26;
-
+	decomp_params.m_dict_size_log2 = dict_size_log?dict_size_log:26;
+    
 	lzham_decompress_memory(&decomp_params, (uint8_t*)outbuf, &outsize, (const lzham_uint8 *)inbuf, insize, &comp_adler32);
 	return outsize;
 }
@@ -1380,10 +1381,37 @@ int64_t lzbench_zling_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 #ifndef BENCH_REMOVE_ZSTD
 #include "zstd/zstd.h"
+#include "zstd/zstd_static.h"
 
-int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
 {
-	return ZSTD_compress(outbuf, outsize, inbuf, insize, level);
+    size_t res;
+        
+    ZSTD_CCtx* cctx = ZSTD_createCCtx();
+    if (!cctx) return 0;
+  
+    ZSTD_parameters params;
+    params.cParams = ZSTD_getCParams(level, insize, 0);
+    params.fParams.contentSizeFlag = 1;
+    ZSTD_adjustCParams(&params.cParams, insize, 0);
+    if (windowLog)
+    {
+        params.cParams.windowLog = windowLog;
+        params.cParams.chainLog = windowLog + ((params.cParams.strategy == ZSTD_btlazy2) || (params.cParams.strategy == ZSTD_btopt));
+    }
+
+    res = ZSTD_compressBegin_advanced(cctx, NULL, 0, params, insize);
+    if (ZSTD_isError(res)) return res;
+
+    res = ZSTD_compressContinue(cctx, outbuf, outsize, inbuf, insize);
+    if (ZSTD_isError(res)) return res;
+
+    size_t res2 = ZSTD_compressEnd(cctx, outbuf+res, outsize-res);
+    if (ZSTD_isError(res2)) return res2;
+
+    ZSTD_freeCCtx(cctx);
+    return res + res2;
+//	return ZSTD_compress(outbuf, outsize, inbuf, insize, level);
 }
 
 int64_t lzbench_zstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
