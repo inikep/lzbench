@@ -1390,14 +1390,17 @@ int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t o
     ZSTD_CCtx* cctx = ZSTD_createCCtx();
     if (!cctx) return 0;
   
-    ZSTD_parameters params = ZSTD_getParams(level, 0);
+    ZSTD_parameters params;
+    params.cParams = ZSTD_getCParams(level, insize, 0);
+    params.fParams.contentSizeFlag = 1;
+    ZSTD_adjustCParams(&params.cParams, insize, 0);
     if (windowLog)
     {
-        params.windowLog = windowLog;
-        params.contentLog = windowLog + ((params.strategy == ZSTD_btlazy2) || (params.strategy == ZSTD_btopt));
+        params.cParams.windowLog = windowLog;
+        params.cParams.chainLog = windowLog + ((params.cParams.strategy == ZSTD_btlazy2) || (params.cParams.strategy == ZSTD_btopt));
     }
 
-    res = ZSTD_compressBegin_advanced(cctx, NULL, 0, params);
+    res = ZSTD_compressBegin_advanced(cctx, NULL, 0, params, insize);
     if (ZSTD_isError(res)) return res;
 
     res = ZSTD_compressContinue(cctx, outbuf, outsize, inbuf, insize);
