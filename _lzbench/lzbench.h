@@ -113,9 +113,9 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "memcpy",   "",            0,   0,   0, lzbench_return_0,          lzbench_memcpy,              NULL,                 NULL },
     { "blosclz",  "2015-11-10",  1,   9,   0, lzbench_blosclz_compress,  lzbench_blosclz_decompress,  NULL,                 NULL },
     { "brieflz",  "1.1.0",       0,   0,   0, lzbench_brieflz_compress,  lzbench_brieflz_decompress,  lzbench_brieflz_init, lzbench_brieflz_deinit },
-    { "brotli",   "2016-03-22",  0,  11,   0, lzbench_brotli_compress,   lzbench_brotli_decompress,   NULL,                 NULL },
-    { "brotli22", "2016-03-22",  0,  11,  22, lzbench_brotli_compress,   lzbench_brotli_decompress,   NULL,                 NULL },
-    { "brotli24", "2016-03-22",  0,  11,  24, lzbench_brotli_compress,   lzbench_brotli_decompress,   NULL,                 NULL },
+    { "brotli",   "0.4.0",       0,  11,   0, lzbench_brotli_compress,   lzbench_brotli_decompress,   NULL,                 NULL },
+    { "brotli22", "0.4.0",       0,  11,  22, lzbench_brotli_compress,   lzbench_brotli_decompress,   NULL,                 NULL },
+    { "brotli24", "0.4.0",       0,  11,  24, lzbench_brotli_compress,   lzbench_brotli_decompress,   NULL,                 NULL },
     { "crush",    "1.0",         0,   2,   0, lzbench_crush_compress,    lzbench_crush_decompress,    NULL,                 NULL },
     { "csc",      "3.3",         1,   5,   0, lzbench_csc_compress,      lzbench_csc_decompress,      NULL,                 NULL },
     { "density",  "0.12.5 beta", 1,   3,   0, lzbench_density_compress,  lzbench_density_decompress,  NULL,                 NULL }, // decompression error (shortened output)

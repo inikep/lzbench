@@ -63,7 +63,7 @@ page.
 ```
 blosclz 2015-11-10
 brieflz 1.1.0
-brotli 2016-03-22
+brotli 0.4.0
 crush 1.0
 csc 3.3
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
@@ -92,7 +92,7 @@ yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.8
 zling 2016-04-10 (according to the author using libzling in a production environment is not a good idea)
-zstd 0.6.0
+zstd 0.7.0
 ```
 
 
