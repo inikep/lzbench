@@ -35,12 +35,7 @@ Example usage:
 
 Compilation
 -------------------------
-For Linux/Unix:
-```
-make BUILD_SYSTEM=linux
-```
-
-For Windows (MinGW):
+For Linux/Unix/MinGW (Windows):
 ```
 make
 ```
