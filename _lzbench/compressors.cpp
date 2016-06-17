@@ -1208,6 +1208,32 @@ int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 
+#ifndef BENCH_REMOVE_XZ
+#include "xpack/lib/libxpack.h" 
+
+int64_t lzbench_xpack_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    struct xpack_compressor *xpack = xpack_alloc_compressor(insize, level); 
+    if (!xpack) return 0;
+
+    int64_t res = xpack_compress(xpack, inbuf, insize, outbuf, outsize);
+    xpack_free_compressor(xpack);
+    return res;
+}
+
+int64_t lzbench_xpack_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+    struct xpack_decompressor *xpack = xpack_alloc_decompressor(); 
+    if (!xpack) return 0;
+
+    size_t res = xpack_decompress(xpack, inbuf, insize, outbuf, outsize, NULL);
+    if (res != 0) return 0;
+    xpack_free_decompressor(xpack);
+    return outsize;
+}
+
+#endif
+
 
 #ifndef BENCH_REMOVE_XZ
 #include "xz/alone_encoder.h" 
