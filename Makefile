@@ -1,7 +1,7 @@
 #BUILD_ARCH = 32-bit
 #BUILD_TYPE = debug
 
-ifneq (,$(filter Windows%,$(OS)))
+ifeq (,$(filter Windows%,$(OS)))
 	DEFINES += -DFREEARC_UNIX
 	LDFLAGS = -lrt
 	GCC		= gcc
