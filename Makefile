@@ -25,7 +25,7 @@ endif
 
 
 #DEFINES		+= -DBENCH_REMOVE_XXX
-DEFINES		+= -I. -DFREEARC_INTEL_BYTE_ORDER -D_UNICODE -DUNICODE -DHAVE_CONFIG_H
+DEFINES		+= -I. -Izstd\common -DFREEARC_INTEL_BYTE_ORDER -D_UNICODE -DUNICODE -DHAVE_CONFIG_H
 CODE_FLAGS  = -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   = -fomit-frame-pointer -fstrict-aliasing -fforce-addr -ffast-math
 
@@ -100,7 +100,8 @@ BROTLI_FILES += brotli/enc/backward_references.o brotli/enc/block_splitter.o bro
 BROTLI_FILES += brotli/enc/encode_parallel.o brotli/enc/entropy_encode.o brotli/enc/histogram.o brotli/enc/literal_cost.o
 BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/streams.o brotli/enc/utf8_util.o brotli/enc/compress_fragment.o brotli/enc/compress_fragment_two_pass.o
 
-ZSTD_FILES = zstd/fse.o zstd/huff0.o zstd/zstd_compress.o zstd/zstd_decompress.o 
+ZSTD_FILES = zstd/common/entropy_common.o zstd/common/fse_decompress.o zstd/decompress/huf_decompress.o zstd/decompress/zstd_decompress.o
+ZSTD_FILES += zstd/compress/fse_compress.o zstd/compress/huf_compress.o zstd/compress/zstd_compress.o zstd/common/zstd_common.o zstd/common/xxhash.o
 
 BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depacks.o 
 

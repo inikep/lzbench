@@ -78,17 +78,17 @@ typedef ZSTD_ErrorCode ERR_enum;
 
 ERR_STATIC unsigned ERR_isError(size_t code) { return (code > ERROR(maxCode)); }
 
-ERR_STATIC ERR_enum ERR_getError(size_t code) { if (!ERR_isError(code)) return (ERR_enum)0; return (ERR_enum) (0-code); }
+ERR_STATIC ERR_enum ERR_getErrorCode(size_t code) { if (!ERR_isError(code)) return (ERR_enum)0; return (ERR_enum) (0-code); }
 
 
 /*-****************************************
 *  Error Strings
 ******************************************/
 
-ERR_STATIC const char* ERR_getErrorName(size_t code)
+ERR_STATIC const char* ERR_getErrorString(ERR_enum code)
 {
     static const char* notErrorCode = "Unspecified error code";
-    switch( ERR_getError(code) )
+    switch( code )
     {
     case PREFIX(no_error): return "No error detected";
     case PREFIX(GENERIC):  return "Error (generic)";
@@ -102,15 +102,21 @@ ERR_STATIC const char* ERR_getErrorName(size_t code)
     case PREFIX(dstSize_tooSmall): return "Destination buffer is too small";
     case PREFIX(srcSize_wrong): return "Src size incorrect";
     case PREFIX(corruption_detected): return "Corrupted block detected";
+    case PREFIX(checksum_wrong): return "Restored data doesn't match checksum";
     case PREFIX(tableLog_tooLarge): return "tableLog requires too much memory : unsupported";
     case PREFIX(maxSymbolValue_tooLarge): return "Unsupported max Symbol Value : too large";
     case PREFIX(maxSymbolValue_tooSmall): return "Specified maxSymbolValue is too small";
     case PREFIX(dictionary_corrupted): return "Dictionary is corrupted";
+    case PREFIX(dictionary_wrong): return "Dictionary mismatch";
     case PREFIX(maxCode):
-    default: return notErrorCode;   /* impossible, due to ERR_getError() */
+    default: return notErrorCode;
     }
 }
 
+ERR_STATIC const char* ERR_getErrorName(size_t code)
+{
+    return ERR_getErrorString(ERR_getErrorCode(code));
+}
 
 #if defined (__cplusplus)
 }
