@@ -522,7 +522,8 @@ int main( int argc, char** argv)
         printf("lzo / ucl - aliases for all levels of given compressors\n");
         for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
         {
-            printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
+            if (comp_desc[i].compress)
+                printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
         }
         return 0;
     default:

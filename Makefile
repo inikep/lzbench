@@ -1,6 +1,10 @@
 #BUILD_ARCH = 32-bit
 #BUILD_TYPE = debug
 
+# compile with -msse4.1 requied for LZSSE
+BUILD_USE_SSE41 = 1
+
+
 ifeq (,$(filter Windows%,$(OS)))
 	DEFINES += -DFREEARC_UNIX
 	LDFLAGS = -lrt
@@ -16,7 +20,7 @@ endif
 
 
 ifneq ($(BUILD_ARCH),32-bit)
-	DEFINES	+= -D__x86_64__ -D__SSE2__
+	DEFINES	+= -D__x86_64__
 	LDFLAGS	+= -static  -L C:\Aplikacje\win-builds64\lib
 else
 	LDFLAGS	+= -static  -L C:\Aplikacje\win-builds32\lib
@@ -28,6 +32,11 @@ DEFINES		+= -I. -Izstd/common -Ixpack/common -DFREEARC_INTEL_BYTE_ORDER -D_UNICO
 CODE_FLAGS  = -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   = -fomit-frame-pointer -fstrict-aliasing -fforce-addr -ffast-math
 
+ifeq ($(BUILD_USE_SSE41),1)
+    LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
+else
+    DEFINES += -DBENCH_REMOVE_LZSSE
+endif
 
 ifeq ($(BUILD_TYPE),debug)
 	OPT_FLAGS_O2 = $(OPT_FLAGS) -g
@@ -39,7 +48,6 @@ endif
 
 CFLAGS = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES)
 CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
-
 
 
 
@@ -80,8 +88,6 @@ LZ4_FILES = lz5/lz5.o lz5/lz5hc.o lz4/lz4.o lz4/lz4hc.o
 LZF_FILES = lzf/lzf_c_ultra.o lzf/lzf_c_very.o lzf/lzf_d.o
 
 LZFSE_FILES = lzfse/lzfse_decode.o lzfse/lzfse_decode_base.o lzfse/lzfse_encode.o lzfse/lzfse_encode_base.o lzfse/lzfse_fse.o lzfse/lzvn_decode.o lzfse/lzvn_decode_base.o lzfse/lzvn_encode_base.o 
-
-LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
 
 QUICKLZ_FILES = quicklz/quicklz151b7.o quicklz/quicklz1.o quicklz/quicklz2.o quicklz/quicklz3.o
 
