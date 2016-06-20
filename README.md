@@ -67,6 +67,7 @@ gipfeli 2015-11-30
 lz4/lz4hc r131
 lz5/lz5hc v1.4.1
 lzf 3.6
+lzfse 2016-06-19
 lzg 1.0.8
 lzham 1.0
 lzjb 2010

@@ -217,13 +217,9 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     size_t param2 = desc->additional_param;
     size_t chunk_size = (params->chunk_size > insize) ? insize : params->chunk_size;
 
-    if (strcmp(desc->name,"blosclz")==0)
-        chunk_size = (chunk_size > 64*1024) ? 64*1024 : chunk_size;
-    if (strcmp(desc->name,"shrinker")==0)
-        chunk_size = (chunk_size > 128<<20) ? 128<<20 : chunk_size;
-
+    if (desc->max_block_size != 0 && chunk_size > desc->max_block_size) chunk_size = desc->max_block_size;
     if (!desc->compress || !desc->decompress) goto done;
-    if (desc->init) workmem = desc->init(chunk_size);
+    if (desc->init) workmem = desc->init(chunk_size, param1);
 
     LZBENCH_DEBUG(1, "*** trying %s insize=%d comprsize=%d chunk_size=%d\n", desc->name, (int)insize, (int)comprsize, (int)chunk_size);
 

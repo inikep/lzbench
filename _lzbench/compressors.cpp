@@ -3,6 +3,13 @@
 #include <stdint.h>
 #include <string.h> // memcpy
 
+#ifndef MAX
+    #define MAX(a,b) ((a)>(b))?(a):(b)
+#endif
+#ifndef MIN
+	#define MIN(a,b) ((a)<(b)?(a):(b))
+#endif
+
 
 int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* )
 {
@@ -35,7 +42,7 @@ int64_t lzbench_blosclz_decompress(char *inbuf, size_t insize, char *outbuf, siz
 #ifndef BENCH_REMOVE_BRIEFLZ
 #include "brieflz/brieflz.h"
 
-char* lzbench_brieflz_init(size_t insize)
+char* lzbench_brieflz_init(size_t insize, size_t level)
 {
     return (char*) malloc(blz_workmem_size(insize));
 }
@@ -351,13 +358,43 @@ extern "C"
 int64_t lzbench_lzf_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
 	if (level == 0)
-		return lzf_compress(inbuf, insize, outbuf, outsize); 
-	return lzf_compress_very(inbuf, insize, outbuf, outsize); 
+		return lzf_compress(inbuf, insize, outbuf, outsize);
+	return lzf_compress_very(inbuf, insize, outbuf, outsize);
 }
 
 int64_t lzbench_lzf_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
 	return lzf_decompress(inbuf, insize, outbuf, outsize);
+}
+
+#endif
+
+
+
+#ifndef BENCH_REMOVE_LZFSE
+extern "C"
+{
+	#include "lzfse/lzfse.h"
+}
+
+char* lzbench_lzfse_init(size_t insize, size_t level)
+{
+    return (char*) malloc(MAX(lzfse_encode_scratch_size(), lzfse_decode_scratch_size()));
+}
+
+void lzbench_lzfse_deinit(char* workmem)
+{
+    free(workmem);
+}
+
+int64_t lzbench_lzfse_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+{
+	return lzfse_encode_buffer((uint8_t*)outbuf, outsize, (uint8_t*)inbuf, insize, workmem);
+}
+
+int64_t lzbench_lzfse_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
+{
+	return lzfse_decode_buffer((uint8_t*)outbuf, outsize, (uint8_t*)inbuf, insize, workmem);
 }
 
 #endif
@@ -646,7 +683,7 @@ int64_t lzbench_lzmat_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #include "lzo/lzo1z.h"
 #include "lzo/lzo2a.h"
 
-char* lzbench_lzo_init(size_t )
+char* lzbench_lzo_init(size_t, size_t)
 {
 	lzo_init();
 
@@ -935,7 +972,7 @@ extern "C"
 	#include "lzrw/lzrw.h"
 }
 
-char* lzbench_lzrw_init(size_t )
+char* lzbench_lzrw_init(size_t, size_t)
 {
     return (char*) malloc(lzrw2_req_mem());
 }
@@ -1174,7 +1211,7 @@ int64_t lzbench_ucl_nrv2e_decompress(char *inbuf, size_t insize, char *outbuf, s
 #ifndef BENCH_REMOVE_WFLZ
 #include "wflz/wfLZ.h"
 
-char* lzbench_wflz_init(size_t )
+char* lzbench_wflz_init(size_t, size_t)
 {
     return (char*) malloc(wfLZ_GetWorkMemSize());
 }
@@ -1211,28 +1248,51 @@ int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 #ifndef BENCH_REMOVE_XZ
 #include "xpack/lib/libxpack.h" 
 
-int64_t lzbench_xpack_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-    struct xpack_compressor *xpack = xpack_alloc_compressor(insize, level); 
-    if (!xpack) return 0;
+typedef struct {
+    struct xpack_compressor *xpackc;
+    struct xpack_decompressor *xpackd;
+} xpack_params_s;
 
-    int64_t res = xpack_compress(xpack, inbuf, insize, outbuf, outsize);
-    xpack_free_compressor(xpack);
-    return res;
+char* lzbench_xpack_init(size_t insize, size_t level)
+{
+    xpack_params_s* xpack_params = (xpack_params_s*) malloc(sizeof(xpack_params_s));
+    if (!xpack_params) return NULL;
+    xpack_params->xpackc = xpack_alloc_compressor(insize, level);
+    xpack_params->xpackd = xpack_alloc_decompressor(); 
+
+    return (char*) xpack_params;
 }
 
-int64_t lzbench_xpack_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+void lzbench_xpack_deinit(char* workmem)
 {
-    struct xpack_decompressor *xpack = xpack_alloc_decompressor(); 
-    if (!xpack) return 0;
+    xpack_params_s* xpack_params = (xpack_params_s*) workmem;
+    if (!xpack_params) return;
+    if (xpack_params->xpackc) xpack_free_compressor(xpack_params->xpackc);
+    if (xpack_params->xpackd) xpack_free_decompressor(xpack_params->xpackd);
+    free(workmem);
+}
 
-    size_t res = xpack_decompress(xpack, inbuf, insize, outbuf, outsize, NULL);
+int64_t lzbench_xpack_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+{
+    xpack_params_s* xpack_params = (xpack_params_s*) workmem;
+    if (!xpack_params || !xpack_params->xpackc) return 0;
+
+    return xpack_compress(xpack_params->xpackc, inbuf, insize, outbuf, outsize);
+}
+
+int64_t lzbench_xpack_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
+{
+    xpack_params_s* xpack_params = (xpack_params_s*) workmem;
+    if (!xpack_params || !xpack_params->xpackd) return 0;
+
+    size_t res = xpack_decompress(xpack_params->xpackd, inbuf, insize, outbuf, outsize, NULL);
     if (res != 0) return 0;
-    xpack_free_decompressor(xpack);
+
     return outsize;
 }
 
 #endif
+
 
 
 #ifndef BENCH_REMOVE_XZ
@@ -1249,7 +1309,6 @@ int64_t lzbench_xz_decompress(char *inbuf, size_t insize, char *outbuf, size_t o
 }
 
 #endif
-
 
 
 
@@ -1283,7 +1342,7 @@ int64_t lzbench_yalz77_decompress(char *inbuf, size_t insize, char *outbuf, size
 #ifndef BENCH_REMOVE_YAPPY
 #include "yappy/yappy.hpp"
 
-char* lzbench_yappy_init(size_t insize)
+char* lzbench_yappy_init(size_t insize, size_t level)
 {
 	YappyFillTables();
     return NULL;

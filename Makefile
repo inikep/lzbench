@@ -24,7 +24,7 @@ endif
 
 
 #DEFINES		+= -DBENCH_REMOVE_XXX
-DEFINES		+= -I. -Izstd\common -Ixpack\common -DFREEARC_INTEL_BYTE_ORDER -D_UNICODE -DUNICODE -DHAVE_CONFIG_H
+DEFINES		+= -I. -Izstd/common -Ixpack/common -DFREEARC_INTEL_BYTE_ORDER -D_UNICODE -DUNICODE -DHAVE_CONFIG_H
 CODE_FLAGS  = -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   = -fomit-frame-pointer -fstrict-aliasing -fforce-addr -ffast-math
 
@@ -79,6 +79,8 @@ LZ4_FILES = lz5/lz5.o lz5/lz5hc.o lz4/lz4.o lz4/lz4hc.o
 
 LZF_FILES = lzf/lzf_c_ultra.o lzf/lzf_c_very.o lzf/lzf_d.o
 
+LZFSE_FILES = lzfse/lzfse_decode.o lzfse/lzfse_decode_base.o lzfse/lzfse_encode.o lzfse/lzfse_encode_base.o lzfse/lzfse_fse.o lzfse/lzvn_decode_base.o lzfse/lzvn_encode_base.o 
+
 QUICKLZ_FILES = quicklz/quicklz151b7.o quicklz/quicklz1.o quicklz/quicklz2.o quicklz/quicklz3.o
 
 DENSITY_FILES = density/block_decode.o density/block_encode.o density/block_footer.o density/block_header.o density/block_mode_marker.o
@@ -118,7 +120,7 @@ MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o
 
 all: lzbench
 
-# FIX for SEGFAULT on GCC 5+
+# FIX for SEGFAULT on GCC 4.9+
 wflz/wfLZ.o: wflz/wfLZ.c wflz/wfLZ.h 
 	$(GCC) $(CFLAGS_O2) $< -c -o $@
 
@@ -134,9 +136,11 @@ lzmat/lzmat_enc.o: lzmat/lzmat_enc.c
 pithy/pithy.o: pithy/pithy.cpp
 	$(GCC) $(CFLAGS_O2) $< -c -o $@
 
+
+
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
-lzbench: $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(ZSTD_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
+lzbench: $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(ZSTD_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
 	$(GPP) $^ -o $@ $(LDFLAGS)
 
 .c.o:
