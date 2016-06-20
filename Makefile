@@ -30,7 +30,7 @@ endif
 #DEFINES		+= -DBENCH_REMOVE_XXX
 DEFINES		+= -I. -Izstd/common -Ixpack/common -DFREEARC_INTEL_BYTE_ORDER -D_UNICODE -DUNICODE -DHAVE_CONFIG_H
 CODE_FLAGS  = -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
-OPT_FLAGS   = -fomit-frame-pointer -fstrict-aliasing -fforce-addr -ffast-math
+OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -fforce-addr -ffast-math
 
 ifeq ($(BUILD_USE_SSE41),1)
     LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
@@ -109,8 +109,8 @@ BROTLI_FILES += brotli/enc/backward_references.o brotli/enc/block_splitter.o bro
 BROTLI_FILES += brotli/enc/encode_parallel.o brotli/enc/entropy_encode.o brotli/enc/histogram.o brotli/enc/literal_cost.o
 BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/streams.o brotli/enc/utf8_util.o brotli/enc/compress_fragment.o brotli/enc/compress_fragment_two_pass.o
 
-ZSTD_FILES = zstd/common/entropy_common.o zstd/common/fse_decompress.o zstd/decompress/huf_decompress.o zstd/decompress/zstd_decompress.o
-ZSTD_FILES += zstd/compress/fse_compress.o zstd/compress/huf_compress.o zstd/compress/zstd_compress.o zstd/common/zstd_common.o zstd/common/xxhash.o
+ZSTD_FILES = zstd/decompress/huf_decompress.o zstd/decompress/zstd_decompress.o zstd/common/fse_decompress.o zstd/common/entropy_common.o zstd/common/zstd_common.o zstd/common/xxhash.o
+ZSTD_FILES += zstd/compress/fse_compress.o zstd/compress/huf_compress.o zstd/compress/zstd_compress.o 
 
 BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depacks.o 
 
@@ -156,7 +156,7 @@ lzsse/lzsse8/lzsse8.o: lzsse/lzsse8/lzsse8.cpp
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
-lzbench: $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(ZSTD_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
+lzbench: $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
 	$(GPP) $^ -o $@ $(LDFLAGS)
 
 .c.o:
