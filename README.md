@@ -35,12 +35,7 @@ Example usage:
 
 Compilation
 -------------------------
-For Linux/Unix:
-```
-make BUILD_SYSTEM=linux
-```
-
-For Windows (MinGW):
+For Linux/Unix/MinGW (Windows):
 ```
 make
 ```
@@ -63,7 +58,7 @@ page.
 ```
 blosclz 2015-11-10
 brieflz 1.1.0
-brotli 2016-03-22
+brotli 0.4.0
 crush 1.0
 csc 3.3
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
@@ -72,6 +67,7 @@ gipfeli 2015-11-30
 lz4/lz4hc r131
 lz5/lz5hc v1.4.1
 lzf 3.6
+lzfse/lzvn 2016-06-19
 lzg 1.0.8
 lzham 1.0
 lzjb 2010
@@ -80,6 +76,7 @@ lzma 9.38
 lzmat 1.01 (WARNING: it contains bugs (decompression error; returns 0); it can throw SEGFAULT compiled with gcc 4.9+ -O3)
 lzo 2.09
 lzrw 15-Jul-1991
+lzsse 2016-05-14
 pithy 2011-12-24 (WARNING: it contains bugs (decompression error; returns 0))
 quicklz 1.5.0
 shrinker 0.1 (WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3)
@@ -87,12 +84,13 @@ snappy 1.1.3
 tornado 0.6a
 ucl 1.03
 wflz 2015-09-16 (WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3)
+xpack 2016-06-02
 xz 5.2.2
 yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.8
 zling 2016-04-10 (according to the author using libzling in a production environment is not a good idea)
-zstd 0.6.0
+zstd 0.7.0
 ```
 
 
