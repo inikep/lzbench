@@ -258,6 +258,46 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 #endif
 
 
+#ifndef BENCH_REMOVE_LZSSE
+    char* lzbench_lzsse2_init(size_t insize, size_t level);
+    void lzbench_lzsse2_deinit(char* workmem);
+    int64_t lzbench_lzsse2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+    int64_t lzbench_lzsse2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+    char* lzbench_lzsse4_init(size_t insize, size_t level);
+    void lzbench_lzsse4_deinit(char* workmem);
+    int64_t lzbench_lzsse4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+    int64_t lzbench_lzsse4_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+    char* lzbench_lzsse4fast_init(size_t insize, size_t level);
+    void lzbench_lzsse4fast_deinit(char* workmem);
+    int64_t lzbench_lzsse4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+    char* lzbench_lzsse8_init(size_t insize, size_t level);
+    void lzbench_lzsse8_deinit(char* workmem);
+    int64_t lzbench_lzsse8_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+    int64_t lzbench_lzsse8_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+    char* lzbench_lzsse8fast_init(size_t insize, size_t level);
+    void lzbench_lzsse8fast_deinit(char* workmem);
+    int64_t lzbench_lzsse8fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+#else
+    #define lzbench_lzsse2_init NULL
+    #define lzbench_lzsse2_deinit NULL
+    #define lzbench_lzsse2_compress NULL
+    #define lzbench_lzsse2_decompress NULL
+    #define lzbench_lzsse4_init NULL
+    #define lzbench_lzsse4_deinit NULL
+    #define lzbench_lzsse4_compress NULL
+    #define lzbench_lzsse4_decompress NULL
+    #define lzbench_lzsse4fast_init NULL
+    #define lzbench_lzsse4fast_deinit NULL
+    #define lzbench_lzsse4fast_compress NULL
+    #define lzbench_lzsse8_init NULL
+    #define lzbench_lzsse8_deinit NULL
+    #define lzbench_lzsse8_compress NULL
+    #define lzbench_lzsse8_decompress NULL
+    #define lzbench_lzsse8fast_init NULL
+    #define lzbench_lzsse8fast_deinit NULL
+    #define lzbench_lzsse8fast_compress NULL
+#endif
+
 
 #ifndef BENCH_REMOVE_PITHY
 	int64_t lzbench_pithy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);

@@ -1054,6 +1054,124 @@ int64_t lzbench_lzrw_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 
+#ifndef BENCH_REMOVE_LZSSE
+#include "lzsse/lzsse2/lzsse2.h"
+
+char* lzbench_lzsse2_init(size_t insize, size_t)
+{
+    return (char*) LZSSE2_MakeOptimalParseState(insize);
+}
+
+void lzbench_lzsse2_deinit(char* workmem)
+{
+    if (!workmem) return;
+    LZSSE2_FreeOptimalParseState((LZSSE2_OptimalParseState*) workmem);
+}
+
+int64_t lzbench_lzsse2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+{
+    if (!workmem) return 0;
+
+    return LZSSE2_CompressOptimalParse((LZSSE2_OptimalParseState*) workmem, inbuf, insize, outbuf, outsize, level);
+}
+
+int64_t lzbench_lzsse2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+	return LZSSE2_Decompress(inbuf, insize, outbuf, outsize);
+}
+
+
+#include "lzsse/lzsse4/lzsse4.h"
+
+char* lzbench_lzsse4_init(size_t insize, size_t)
+{
+    return (char*) LZSSE4_MakeOptimalParseState(insize);
+}
+
+void lzbench_lzsse4_deinit(char* workmem)
+{
+    if (!workmem) return;
+    LZSSE4_FreeOptimalParseState((LZSSE4_OptimalParseState*) workmem);
+}
+
+int64_t lzbench_lzsse4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+{
+    if (!workmem) return 0;
+
+    return LZSSE4_CompressOptimalParse((LZSSE4_OptimalParseState*) workmem, inbuf, insize, outbuf, outsize, level);
+}
+
+int64_t lzbench_lzsse4_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+    return LZSSE4_Decompress(inbuf, insize, outbuf, outsize);
+}
+
+char* lzbench_lzsse4fast_init(size_t, size_t)
+{
+    return (char*) LZSSE4_MakeFastParseState();
+}
+
+void lzbench_lzsse4fast_deinit(char* workmem)
+{
+    if (!workmem) return;
+    LZSSE4_FreeFastParseState((LZSSE4_FastParseState*) workmem);
+}
+
+int64_t lzbench_lzsse4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* workmem)
+{
+    if (!workmem) return 0;
+
+    return LZSSE4_CompressFast((LZSSE4_FastParseState*) workmem, inbuf, insize, outbuf, outsize);
+}
+
+
+#include "lzsse/lzsse8/lzsse8.h"
+
+char* lzbench_lzsse8_init(size_t insize, size_t)
+{
+    return (char*) LZSSE8_MakeOptimalParseState(insize);
+}
+
+void lzbench_lzsse8_deinit(char* workmem)
+{
+    if (!workmem) return;
+    LZSSE8_FreeOptimalParseState((LZSSE8_OptimalParseState*) workmem);
+}
+
+int64_t lzbench_lzsse8_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+{
+    if (!workmem) return 0;
+
+    return LZSSE8_CompressOptimalParse((LZSSE8_OptimalParseState*) workmem, inbuf, insize, outbuf, outsize, level);
+}
+
+int64_t lzbench_lzsse8_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+    return LZSSE8_Decompress(inbuf, insize, outbuf, outsize);
+}
+
+char* lzbench_lzsse8fast_init(size_t, size_t)
+{
+    return (char*) LZSSE8_MakeFastParseState();
+}
+
+void lzbench_lzsse8fast_deinit(char* workmem)
+{
+    if (!workmem) return;
+    LZSSE8_FreeFastParseState((LZSSE8_FastParseState*) workmem);
+}
+
+int64_t lzbench_lzsse8fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* workmem)
+{
+    if (!workmem) return 0;
+
+    return LZSSE8_CompressFast((LZSSE8_FastParseState*) workmem, inbuf, insize, outbuf, outsize);
+}
+
+#endif
+
+
+
 #ifndef BENCH_REMOVE_PITHY
 #include "pithy/pithy.h"
 
