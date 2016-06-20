@@ -133,6 +133,19 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 #endif
 
 
+#ifndef BENCH_REMOVE_LZVN
+    char* lzbench_lzvn_init(size_t insize, size_t level);
+    void lzbench_lzvn_deinit(char* workmem);
+	int64_t lzbench_lzvn_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+	int64_t lzbench_lzvn_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+#else
+	#define lzbench_lzvn_init NULL
+	#define lzbench_lzvn_deinit NULL
+	#define lzbench_lzvn_compress NULL
+	#define lzbench_lzvn_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_LZG
 	int64_t lzbench_lzg_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
 	int64_t lzbench_lzg_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);

@@ -107,7 +107,7 @@ typedef struct
 
 
 
-#define LZBENCH_COMPRESSOR_COUNT 54
+#define LZBENCH_COMPRESSOR_COUNT 55
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
@@ -125,8 +125,8 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lz4",      "r131",        0,   0,   0,       0, lzbench_lz4_compress,      lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4fast",  "r131",        1,  99,   0,       0, lzbench_lz4fast_compress,  lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4hc",    "r131",        1,  16,   0,       0, lzbench_lz4hc_compress,    lzbench_lz4_decompress,      NULL,                 NULL },
-    { "lz5",      "v1.4.1",      0,   0,   0,       0, lzbench_lz5_compress,      lzbench_lz5_decompress,      NULL,                 NULL },
-    { "lz5hc",    "v1.4.1",      1, LZ5HC_MAX_CLEVEL, 0, 0, lzbench_lz5hc_compress,    lzbench_lz5_decompress,      NULL,                 NULL },
+    { "lz5",      "1.4.1",       0,   0,   0,       0, lzbench_lz5_compress,      lzbench_lz5_decompress,      NULL,                 NULL },
+    { "lz5hc",    "1.4.1",       1, LZ5HC_MAX_CLEVEL, 0, 0, lzbench_lz5hc_compress,    lzbench_lz5_decompress,      NULL,                 NULL },
     { "lzf",      "3.6",         0,   1,   0,       0, lzbench_lzf_compress,      lzbench_lzf_decompress,      NULL,                 NULL },
     { "lzfse",    "2016-06-19",  0,   0,   0,       0, lzbench_lzfse_compress,    lzbench_lzfse_decompress,    lzbench_lzfse_init,   lzbench_lzfse_deinit },
     { "lzg",      "1.0.8",       1,   9,   0,       0, lzbench_lzg_compress,      lzbench_lzg_decompress,      NULL,                 NULL },
@@ -147,6 +147,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lzo1z",    "2.09",      999, 999,   0,       0, lzbench_lzo1z_compress,    lzbench_lzo1z_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
     { "lzo2a",    "2.09",      999, 999,   0,       0, lzbench_lzo2a_compress,    lzbench_lzo2a_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
     { "lzrw",     "15-Jul-1991", 1,   4,   0,       0, lzbench_lzrw_compress,     lzbench_lzrw_decompress,     lzbench_lzrw_init,    lzbench_lzrw_deinit },
+    { "lzvn",     "2016-06-19",  0,   0,   0,       0, lzbench_lzvn_compress,     lzbench_lzvn_decompress,     lzbench_lzvn_init,    lzbench_lzvn_deinit },
     { "pithy",    "2011-12-24",  0,   9,   0,       0, lzbench_pithy_compress,    lzbench_pithy_decompress,    NULL,                 NULL }, // decompression error (returns 0)
     { "quicklz",  "1.5.0",       1,   3,   0,       0, lzbench_quicklz_compress,  lzbench_quicklz_decompress,  NULL,                 NULL },
     { "shrinker", "0.1",         0,   0,   0, 128<<20, lzbench_shrinker_compress, lzbench_shrinker_decompress, NULL,                 NULL },
@@ -161,10 +162,10 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "yalz77",   "2015-09-19",  1,  12,   0,       0, lzbench_yalz77_compress,   lzbench_yalz77_decompress,   NULL,                 NULL },
     { "yappy",    "2014-03-22",  0,  99,   0,       0, lzbench_yappy_compress,    lzbench_yappy_decompress,    lzbench_yappy_init,   NULL },
     { "zlib",     "1.2.8",       1,   9,   0,       0, lzbench_zlib_compress,     lzbench_zlib_decompress,     NULL,                 NULL },
-    { "zling",    "2016-01-05fix",0,  4,   0,       0, lzbench_zling_compress,    lzbench_zling_decompress,    NULL,                 NULL },
-    { "zstd",     "v0.7.0",      1,  22,   0,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
-    { "zstd22",   "v0.7.0",      1,  22,  22,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
-    { "zstd24",   "v0.7.0",      1,  22,  24,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zling",    "2016-01-10",  0,   4,   0,       0, lzbench_zling_compress,    lzbench_zling_decompress,    NULL,                 NULL },
+    { "zstd",     "0.7.0",       1,  22,   0,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zstd22",   "0.7.0",       1,  22,  22,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zstd24",   "0.7.0",       1,  22,  24,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
 };
 
 

@@ -401,6 +401,36 @@ int64_t lzbench_lzfse_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 
+#ifndef BENCH_REMOVE_LZVN
+extern "C"
+{
+	#include "lzfse/lzvn.h"
+}
+
+char* lzbench_lzvn_init(size_t insize, size_t level)
+{
+    return (char*) malloc(MAX(lzvn_encode_scratch_size(), lzvn_decode_scratch_size()));
+}
+
+void lzbench_lzvn_deinit(char* workmem)
+{
+    free(workmem);
+}
+
+int64_t lzbench_lzvn_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+{
+	return lzvn_encode_buffer((uint8_t*)outbuf, outsize, (uint8_t*)inbuf, insize, workmem);
+}
+
+int64_t lzbench_lzvn_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
+{
+	return lzvn_decode_buffer((uint8_t*)outbuf, outsize, (uint8_t*)inbuf, insize, workmem);
+}
+
+#endif
+
+
+
 #ifndef BENCH_REMOVE_LZG
 #include "liblzg/lzg.h"
 
