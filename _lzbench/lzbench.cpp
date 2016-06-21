@@ -1,5 +1,5 @@
 /*
-(C) 2011-2015 by Przemyslaw Skibinski (inikep@gmail.com)
+(C) 2011-2016 by Przemyslaw Skibinski (inikep@gmail.com)
 
     LICENSE
 
@@ -451,10 +451,11 @@ void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list, bool fi
 int main( int argc, char** argv) 
 {
 	FILE *in;
-    lzbench_params_t params;
     char* encoder_list = NULL;
     int sort_col = 0;
-    
+    lzbench_params_t params;
+
+    memset(&params, 0, sizeof(lzbench_params_t));
     params.timetype = FASTEST;
     params.textformat = TEXT;
     params.verbose = 0;
@@ -466,7 +467,6 @@ int main( int argc, char** argv)
     params.cloop_time = params.dloop_time = DEFAULT_LOOP_TIME;
 
 #ifdef WINDOWS
-//	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
 	SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
 #else
 	setpriority(PRIO_PROCESS, 0, -20);

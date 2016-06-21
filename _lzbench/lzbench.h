@@ -3,19 +3,19 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 #define _FILE_OFFSET_BITS 64  // turn off_t into a 64-bit type for ftello() and fseeko()
-#define __STDC_FORMAT_MACROS // now PRIu64 will work
-#include <inttypes.h> // now PRIu64 will work
+#define __STDC_FORMAT_MACROS  // now PRIu64 will work
+#include <inttypes.h>         // PRIu64
 
 #include <vector>
 #include <string>
 #include "compressors.h"
-#include "lz5/lz5common.h" // LZ5HC_MAX_CLEVEL
+#include "lz5/lz5common.h"    // LZ5HC_MAX_CLEVEL
 
 #define PROGNAME "lzbench"
 #define PROGVERSION "1.2"
 #define PAD_SIZE (16*1024)
-#define DEFAULT_LOOP_TIME (100*1000) // 1/10 of a second
-#define GET_COMPRESS_BOUND(insize) (insize + insize/6 + PAD_SIZE) // for pithy
+#define DEFAULT_LOOP_TIME (100*1000)  // 1/10 of a second
+#define GET_COMPRESS_BOUND(insize) (insize + insize/6 + PAD_SIZE)  // for pithy
 #define LZBENCH_DEBUG(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
@@ -146,7 +146,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lzo1y",    "2.09",        1,   1,   0,       0, lzbench_lzo1y_compress,    lzbench_lzo1y_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
     { "lzo1z",    "2.09",      999, 999,   0,       0, lzbench_lzo1z_compress,    lzbench_lzo1z_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
     { "lzo2a",    "2.09",      999, 999,   0,       0, lzbench_lzo2a_compress,    lzbench_lzo2a_decompress,    lzbench_lzo_init,     lzbench_lzo_deinit },
-    { "lzrw",     "15-Jul-1991", 1,   4,   0,       0, lzbench_lzrw_compress,     lzbench_lzrw_decompress,     lzbench_lzrw_init,    lzbench_lzrw_deinit },
+    { "lzrw",     "15-Jul-1991", 1,   5,   0,       0, lzbench_lzrw_compress,     lzbench_lzrw_decompress,     lzbench_lzrw_init,    lzbench_lzrw_deinit },
     { "lzsse2",   "2016-05-14",  0,  17,   0,       0, lzbench_lzsse2_compress,   lzbench_lzsse2_decompress,   lzbench_lzsse2_init,  lzbench_lzsse2_deinit },
     { "lzsse4",   "2016-05-14",  0,  17,   0,       0, lzbench_lzsse4_compress,   lzbench_lzsse4_decompress,   lzbench_lzsse4_init,  lzbench_lzsse4_deinit },
     { "lzsse4fast","2016-05-14", 0,   0,   0,       0, lzbench_lzsse4fast_compress, lzbench_lzsse4_decompress, lzbench_lzsse4fast_init, lzbench_lzsse4fast_deinit },
@@ -179,18 +179,14 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
     { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9,12,16/lz5/lz5hc,1,4,9,12,15/" \
-              "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo/" \
-              "lzrw,1,2,3,4,5/lzsse2,1,6,12,17/lzsse4,1,6,12,17/lzsse8,1,6,12,17/lzvn/pithy,0,3,6,9/quicklz,1,2,3/snappy/tornado,1,2,3,4,5,6,7,10,13,16/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
-              "xpack,1,6,9/xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,22/" \
-              "shrinker/wflz/lzmat" // these can SEGFAULT 
-    },
-    { "fast", "density,1,2,3/fastlz,1,2/lz4/lz4fast,3,17/lz5/" \
-              "lzf,0,1/lzfse/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
+              "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
+              "lzrw,1,2,3,4,5/lzsse2,1,6,12,17/lzsse4,1,6,12,17/lzsse8,1,6,12,17/lzvn/pithy,0,3,6,9/quicklz,1,2,3/snappy/tornado,1,2,3,4,5,6,7,10,13,16/" \
+              "ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/xpack,1,6,9/xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,22/" \
+              "shrinker/wflz/lzmat" }, // these can SEGFAULT
+    { "fast", "density/fastlz/lz4/lz4fast,3,17/lz5/lzf/lzfse/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
               "lzrw,1,2,3,4,5/lzsse4fast/lzsse8fast/lzvn/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/zstd,1,2,3,4,5" },
-    { "opt",  "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/" \
-              "lzham,0,1,2,3,4/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7/" \
-              "tornado,5,6,7,8,9,10,11,12,13,14,15,16/" \
-              "xz,1,2,3,4,5,6,7,8,9/zstd,10,12,14,16,17,18,19,20/zstd,18,19,20,21,22" },
+    { "opt",  "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/lzham,0,1,2,3,4/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/" \
+              "tornado,5,6,7,8,9,10,11,12,13,14,15,16/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
     { "lzo1",  "lzo1,1,99" },
     { "lzo1a", "lzo1a,1,99" },
     { "lzo1b", "lzo1b,1,2,3,4,5,6,7,8,9,99,999" },
