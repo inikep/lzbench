@@ -1,5 +1,5 @@
 /*
-(C) 2011-2015 by Przemyslaw Skibinski (inikep@gmail.com)
+(C) 2011-2016 by Przemyslaw Skibinski (inikep@gmail.com)
 
     LICENSE
 
@@ -217,13 +217,9 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     size_t param2 = desc->additional_param;
     size_t chunk_size = (params->chunk_size > insize) ? insize : params->chunk_size;
 
-    if (strcmp(desc->name,"blosclz")==0)
-        chunk_size = (chunk_size > 64*1024) ? 64*1024 : chunk_size;
-    if (strcmp(desc->name,"shrinker")==0)
-        chunk_size = (chunk_size > 128<<20) ? 128<<20 : chunk_size;
-
+    if (desc->max_block_size != 0 && chunk_size > desc->max_block_size) chunk_size = desc->max_block_size;
     if (!desc->compress || !desc->decompress) goto done;
-    if (desc->init) workmem = desc->init(chunk_size);
+    if (desc->init) workmem = desc->init(chunk_size, param1);
 
     LZBENCH_DEBUG(1, "*** trying %s insize=%d comprsize=%d chunk_size=%d\n", desc->name, (int)insize, (int)comprsize, (int)chunk_size);
 
@@ -455,10 +451,11 @@ void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list, bool fi
 int main( int argc, char** argv) 
 {
 	FILE *in;
-    lzbench_params_t params;
     char* encoder_list = NULL;
     int sort_col = 0;
-    
+    lzbench_params_t params;
+
+    memset(&params, 0, sizeof(lzbench_params_t));
     params.timetype = FASTEST;
     params.textformat = TEXT;
     params.verbose = 0;
@@ -470,7 +467,6 @@ int main( int argc, char** argv)
     params.cloop_time = params.dloop_time = DEFAULT_LOOP_TIME;
 
 #ifdef WINDOWS
-//	SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
 	SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
 #else
 	setpriority(PRIO_PROCESS, 0, -20);
@@ -526,7 +522,8 @@ int main( int argc, char** argv)
         printf("lzo / ucl - aliases for all levels of given compressors\n");
         for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
         {
-            printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
+            if (comp_desc[i].compress)
+                printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
         }
         return 0;
     default:
