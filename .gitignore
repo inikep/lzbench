@@ -27,3 +27,6 @@ _visual/
 # Visual solution files
 *.suo
 *.user
+
+# Linux
+lzbench

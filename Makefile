@@ -21,9 +21,9 @@ endif
 
 ifneq ($(BUILD_ARCH),32-bit)
 	DEFINES	+= -D__x86_64__
-	LDFLAGS	+= -static  -L C:\Aplikacje\win-builds64\lib
+	LDFLAGS	+= -static -L C:\Aplikacje\win-builds64\lib
 else
-	LDFLAGS	+= -static  -L C:\Aplikacje\win-builds32\lib
+	LDFLAGS	+= -static -L C:\Aplikacje\win-builds32\lib
 endif
 
 
@@ -169,4 +169,4 @@ lzbench: $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FI
 	$(GPP) $(CFLAGS) $< -c -o $@
 
 clean:
-	rm -f lzbench lzbench.exe _lzbench/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/spookyhash/*.o density/*.o pithy/*.o zstd/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz5/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o *.o
+	rm -rf lzbench lzbench.exe *.o _lzbench/*.o zstd/common/*.o  zstd/compress/*.o zstd/decompress/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/spookyhash/*.o density/*.o pithy/*.o zstd/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz5/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o *.o
