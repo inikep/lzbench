@@ -1614,7 +1614,7 @@ int64_t lzbench_zling_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 #ifndef BENCH_REMOVE_ZSTD
 #define ZSTD_STATIC_LINKING_ONLY
-#include "zstd/common/zstd.h"
+#include "zstd/lib/zstd.h"
 
 int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
 {
@@ -1639,7 +1639,7 @@ int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t o
     res = ZSTD_compressContinue(cctx, outbuf, outsize, inbuf, insize);
     if (ZSTD_isError(res)) return res;
 
-    size_t res2 = ZSTD_compressEnd(cctx, outbuf+res, outsize-res);
+    size_t res2 = ZSTD_compressEnd(cctx, outbuf+res, outsize-res, NULL, 0);
     if (ZSTD_isError(res2)) return res2;
 
     ZSTD_freeCCtx(cctx);
