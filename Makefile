@@ -8,14 +8,10 @@ BUILD_USE_SSE41 = 1
 ifeq (,$(filter Windows%,$(OS)))
 	DEFINES += -DFREEARC_UNIX
 	LDFLAGS = -lrt
-	GCC		= gcc
-	GPP		= g++
 else
 #	DEFINES = -march=core2 -march=nocona -march=k8 -march=native
 	DEFINES += -DFREEARC_WIN
 	LDFLAGS	= -lshell32 -lole32 -loleaut32 
-	GCC		= gcc.exe
-	GPP		= g++.exe
 endif
 
 
@@ -130,43 +126,43 @@ all: lzbench
 
 # FIX for SEGFAULT on GCC 4.9+
 wflz/wfLZ.o: wflz/wfLZ.c wflz/wfLZ.h 
-	$(GCC) $(CFLAGS_O2) $< -c -o $@
+	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 shrinker/shrinker.o: shrinker/shrinker.c
-	$(GCC) $(CFLAGS_O2) $< -c -o $@
+	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 lzmat/lzmat_dec.o: lzmat/lzmat_dec.c
-	$(GCC) $(CFLAGS_O2) $< -c -o $@
+	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 lzmat/lzmat_enc.o: lzmat/lzmat_enc.c
-	$(GCC) $(CFLAGS_O2) $< -c -o $@
+	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 pithy/pithy.o: pithy/pithy.cpp
-	$(GCC) $(CFLAGS_O2) $< -c -o $@
+	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 lzsse/lzsse2/lzsse2.o: lzsse/lzsse2/lzsse2.cpp
-	$(GPP) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
+	$(CXX) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
 
 lzsse/lzsse4/lzsse4.o: lzsse/lzsse4/lzsse4.cpp
-	$(GPP) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
+	$(CXX) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
 
 lzsse/lzsse8/lzsse8.o: lzsse/lzsse8/lzsse8.cpp
-	$(GPP) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
+	$(CXX) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
 
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
 lzbench: $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
-	$(GPP) $^ -o $@ $(LDFLAGS)
+	$(CXX) $^ -o $@ $(LDFLAGS)
 
 .c.o:
-	$(GCC) $(CFLAGS) $< -std=c99 -c -o $@
+	$(CC) $(CFLAGS) $< -std=c99 -c -o $@
 
 .cc.o:
-	$(GPP) $(CFLAGS) $< -c -o $@
+	$(CXX) $(CFLAGS) $< -c -o $@
 
 .cpp.o:
-	$(GPP) $(CFLAGS) $< -c -o $@
+	$(CXX) $(CFLAGS) $< -c -o $@
 
 clean:
 	rm -rf lzbench lzbench.exe *.o _lzbench/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/spookyhash/*.o density/*.o pithy/*.o zstd/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz5/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o

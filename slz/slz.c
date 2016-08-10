@@ -29,8 +29,10 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
-#include <sys/user.h>
+#ifndef _WIN32
+    #include <sys/mman.h>
+    #include <sys/user.h>
+#endif
 #include "slz.h"
 
 /* First, RFC1951-specific declarations and extracts from the RFC.
