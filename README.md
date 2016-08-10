@@ -80,6 +80,7 @@ lzsse 2016-05-14
 pithy 2011-12-24 (WARNING: it contains bugs (decompression error; returns 0))
 quicklz 1.5.0
 shrinker 0.1 (WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3)
+slz 1.0.0 (only a compressor, uses zlib for decompression)
 snappy 1.1.3
 tornado 0.6a
 ucl 1.03

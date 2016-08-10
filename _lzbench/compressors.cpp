@@ -1535,6 +1535,75 @@ int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 
+#if !defined(BENCH_REMOVE_SLZ) && !defined(BENCH_REMOVE_ZLIB)
+extern "C"
+{
+	#include "slz/slz.h"
+}
+
+int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t param2, char*)
+{
+	struct slz_stream strm;
+	size_t outlen = 0;
+	size_t window = 8192 << ((level & 3) * 2);
+	size_t len;
+	size_t blk;
+
+	if (param2 == 0)
+		slz_init(&strm, !!level, SLZ_FMT_GZIP);
+	else if (param2 == 1)
+		slz_init(&strm, !!level, SLZ_FMT_ZLIB);
+	else
+		slz_init(&strm, !!level, SLZ_FMT_DEFLATE);
+
+	do {
+		blk = MIN(insize, window);
+
+		len = slz_encode(&strm, outbuf, inbuf, blk, insize > blk);
+		outlen += len;
+		outbuf += len;
+		inbuf += blk;
+		insize -= blk;
+	} while (insize > 0);
+
+	outlen += slz_finish(&strm, outbuf);
+	return outlen;
+}
+
+/* uses zlib to perform the decompression */
+int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t param2, char*)
+{
+	z_stream stream;
+	int err;
+
+	stream.zalloc    = NULL;
+	stream.zfree     = NULL;
+
+	stream.next_in   = (unsigned char *)inbuf;
+	stream.avail_in  = insize;
+	stream.next_out  = (unsigned char *)outbuf;
+	stream.avail_out = outsize;
+
+	outsize = 0;
+
+	if (param2 == 0)      // gzip
+		err = inflateInit2(&stream, 15 + 16);
+	else if (param2 == 1) // zlip
+		err = inflateInit2(&stream, 15);
+	else                  // deflate
+		err = inflateInit2(&stream, -15);
+
+	if (err == Z_OK) {
+		if (inflate(&stream, Z_FINISH) == Z_STREAM_END)
+			outsize = stream.total_out;
+		inflateEnd(&stream);
+	}
+	return outsize;
+}
+#endif
+
+
+
 #ifndef BENCH_REMOVE_ZLING
 #include "libzling/libzling.h"
 
