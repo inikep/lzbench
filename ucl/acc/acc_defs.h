@@ -87,6 +87,9 @@
 
 /* This can be put into a header file but may get ignored by some compilers. */
 #if !defined(ACC_COMPILE_TIME_ASSERT_HEADER)
+# define ACC_COMPILE_TIME_ASSERT_HEADER(e) _Static_assert(e, #e);
+#endif
+#if !defined(ACC_COMPILE_TIME_ASSERT_HEADER)
 #  if (ACC_CC_AZTECC || ACC_CC_ZORTECHC)
 #    define ACC_COMPILE_TIME_ASSERT_HEADER(e)  extern int __acc_cta[1-!(e)];
 #  elif (ACC_CC_DMC || ACC_CC_SYMANTECC)
@@ -99,6 +102,9 @@
 #endif
 
 /* This must appear within a function body. */
+#if !defined(ACC_COMPILE_TIME_ASSERT)
+# define ACC_COMPILE_TIME_ASSERT(e) _Static_assert(e, #e);
+#endif
 #if !defined(ACC_COMPILE_TIME_ASSERT)
 #  if (ACC_CC_AZTECC)
 #    define ACC_COMPILE_TIME_ASSERT(e)  {typedef int __acc_cta_t[1-!(e)];}
