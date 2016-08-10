@@ -1,8 +1,8 @@
 #BUILD_ARCH = 32-bit
 #BUILD_TYPE = debug
 
-# compile with -msse4.1 requied for LZSSE
-BUILD_USE_SSE41 = 1
+BUILD_USE_SSE41 ?= 1   # compile with -msse4.1 requied for LZSSE
+BUILD_LZHAM ?= 1       # compile lzham (but doesn't work on MacOS)
 
 
 ifeq (,$(filter Windows%,$(OS)))
@@ -17,22 +17,17 @@ endif
 
 ifneq ($(BUILD_ARCH),32-bit)
 	DEFINES	+= -D__x86_64__
-	LDFLAGS	+= -static -L C:\Aplikacje\win-builds64\lib
+	LDFLAGS	+= -static
 else
-	LDFLAGS	+= -static -L C:\Aplikacje\win-builds32\lib
+	LDFLAGS	+= -static
 endif
 
 
-#DEFINES		+= -DBENCH_REMOVE_XXX
-DEFINES		+= -I. -Izstd/lib -Izstd/lib/common -Ixpack/common -DFREEARC_INTEL_BYTE_ORDER -D_UNICODE -DUNICODE -DHAVE_CONFIG_H -DXXH_NAMESPACE=ZSTD_
+DEFINES		+= -I. -Izstd/lib -Izstd/lib/common -Ixpack/common
+DEFINES		+= -DFREEARC_NO_TIMING -DFREEARC_INTEL_BYTE_ORDER -D_UNICODE -DUNICODE -DHAVE_CONFIG_H -DXXH_NAMESPACE=ZSTD_
 CODE_FLAGS  = -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
-OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -fforce-addr -ffast-math
+OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
 
-ifeq ($(BUILD_USE_SSE41),1)
-    LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
-else
-    DEFINES += -DBENCH_REMOVE_LZSSE
-endif
 
 ifeq ($(BUILD_TYPE),debug)
 	OPT_FLAGS_O2 = $(OPT_FLAGS) -g
@@ -45,6 +40,22 @@ endif
 CFLAGS = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES)
 CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
 
+
+
+ifeq ($(BUILD_USE_SSE41),1)
+    LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
+else
+    DEFINES += -DBENCH_REMOVE_LZSSE
+endif
+
+ifeq ($(BUILD_LZHAM),1)
+    LZHAM_FILES = lzham/lzham_assert.o lzham/lzham_checksum.o lzham/lzham_huffman_codes.o lzham/lzham_lzbase.cpp
+    LZHAM_FILES += lzham/lzham_lzcomp.o lzham/lzham_lzcomp_internal.o lzham/lzham_lzdecomp.o lzham/lzham_lzdecompbase.o
+    LZHAM_FILES += lzham/lzham_match_accel.o lzham/lzham_mem.o lzham/lzham_platform.o lzham/lzham_lzcomp_state.o
+    LZHAM_FILES += lzham/lzham_prefix_coding.o lzham/lzham_symbol_codec.o lzham/lzham_timer.o lzham/lzham_vector.o lzham/lzham_lib.o
+else
+    DEFINES += -DBENCH_REMOVE_LZHAM
+endif
 
 
 ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
@@ -63,11 +74,6 @@ LZO_FILES += lzo/lzo_ptr.o lzo/lzo_str.o lzo/lzo_util.o
 UCL_FILES = ucl/alloc.o ucl/n2b_99.o ucl/n2b_d.o ucl/n2b_ds.o ucl/n2b_to.o ucl/n2d_99.o ucl/n2d_d.o ucl/n2d_ds.o
 UCL_FILES += ucl/n2d_to.o ucl/n2e_99.o ucl/n2e_d.o ucl/n2e_ds.o ucl/n2e_to.o ucl/ucl_crc.o ucl/ucl_init.o
 UCL_FILES += ucl/ucl_ptr.o ucl/ucl_str.o ucl/ucl_util.o
-
-LZHAM_FILES = lzham/lzham_assert.o lzham/lzham_checksum.o lzham/lzham_huffman_codes.o lzham/lzham_lzbase.cpp
-LZHAM_FILES += lzham/lzham_lzcomp.o lzham/lzham_lzcomp_internal.o lzham/lzham_lzdecomp.o lzham/lzham_lzdecompbase.o
-LZHAM_FILES += lzham/lzham_match_accel.o lzham/lzham_mem.o lzham/lzham_platform.o lzham/lzham_lzcomp_state.o
-LZHAM_FILES += lzham/lzham_prefix_coding.o lzham/lzham_symbol_codec.o lzham/lzham_timer.o lzham/lzham_vector.o lzham/lzham_lib.o
 
 ZLIB_FILES = zlib/adler32.o zlib/compress.o zlib/crc32.o zlib/deflate.o zlib/gzclose.o zlib/gzlib.o zlib/gzread.o
 ZLIB_FILES += zlib/gzwrite.o zlib/infback.o zlib/inffast.o zlib/inflate.o zlib/inftrees.o zlib/trees.o
@@ -121,6 +127,7 @@ GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_buil
 
 MISC_FILES = crush/crush.o shrinker/shrinker.o yappy/yappy.o fastlz/fastlz.o tornado/tor_test.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
 MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o slz/slz.o
+
 
 all: lzbench
 
