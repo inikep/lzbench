@@ -173,9 +173,9 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "yappy",    "2014-03-22",  0,  99,   0,       0, lzbench_yappy_compress,    lzbench_yappy_decompress,    lzbench_yappy_init,   NULL },
     { "zlib",     "1.2.8",       1,   9,   0,       0, lzbench_zlib_compress,     lzbench_zlib_decompress,     NULL,                 NULL },
     { "zling",    "2016-01-10",  0,   4,   0,       0, lzbench_zling_compress,    lzbench_zling_decompress,    NULL,                 NULL },
-    { "zstd",     "0.7.1",       1,  22,   0,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
-    { "zstd22",   "0.7.1",       1,  22,  22,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
-    { "zstd24",   "0.7.1",       1,  22,  24,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zstd",     "0.8.0",       1,  22,   0,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zstd22",   "0.8.0",       1,  22,  22,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zstd24",   "0.8.0",       1,  22,  24,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
 };
 
 

@@ -1,10 +1,10 @@
 # ################################################################
-# ZSTD library - Makefile
-# Copyright (C) Yann Collet 2015-2016
+# zstd - Makefile
+# Copyright (C) Yann Collet 2014-2016
 # All rights reserved.
 #
 # BSD license
-
+#
 # Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
 #
@@ -27,110 +27,184 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
 # You can contact the author at :
-#  - ZSTD homepage : http://www.zstd.net
+#  - zstd homepage : http://www.zstd.net/
 # ################################################################
 
-# Version numbers
-LIBVER_MAJOR_SCRIPT:=`sed -n '/define ZSTD_VERSION_MAJOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < ./common/zstd.h`
-LIBVER_MINOR_SCRIPT:=`sed -n '/define ZSTD_VERSION_MINOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < ./common/zstd.h`
-LIBVER_PATCH_SCRIPT:=`sed -n '/define ZSTD_VERSION_RELEASE/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < ./common/zstd.h`
-LIBVER_SCRIPT:= $(LIBVER_MAJOR_SCRIPT).$(LIBVER_MINOR_SCRIPT).$(LIBVER_PATCH_SCRIPT)
-LIBVER_MAJOR := $(shell echo $(LIBVER_MAJOR_SCRIPT))
-LIBVER_MINOR := $(shell echo $(LIBVER_MINOR_SCRIPT))
-LIBVER_PATCH := $(shell echo $(LIBVER_PATCH_SCRIPT))
-LIBVER := $(shell echo $(LIBVER_SCRIPT))
-VERSION?= $(LIBVER)
+PRGDIR  = programs
+ZSTDDIR = lib
+ZWRAPDIR = zlibWrapper
 
-DESTDIR?=
-PREFIX ?= /usr/local
-LIBDIR ?= $(PREFIX)/lib
-INCLUDEDIR=$(PREFIX)/include
-
-CPPFLAGS= -I./common -DXXH_NAMESPACE=ZSTD_
-CFLAGS ?= -O3
-CFLAGS += -Wall -Wextra -Wcast-qual -Wcast-align -Wshadow -Wstrict-aliasing=1 -Wswitch-enum -Wdeclaration-after-statement -Wstrict-prototypes -Wundef
-FLAGS   = $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(MOREFLAGS)
-
-
-ZSTD_FILES := common/*.c compress/*.c decompress/*.c dictBuilder/*.c
-
-ifeq ($(ZSTD_LEGACY_SUPPORT), 0)
-CPPFLAGS  += -DZSTD_LEGACY_SUPPORT=0
+# Define nul output
+ifneq (,$(filter Windows%,$(OS)))
+VOID = nul
 else
-ZSTD_FILES+= legacy/*.c
-CPPFLAGS  += -I./legacy -DZSTD_LEGACY_SUPPORT=1
+VOID = /dev/null
 endif
 
+.PHONY: default all zlibwrapper zstd clean install uninstall travis-install test clangtest gpptest armtest usan asan uasan
 
-# OS X linker doesn't support -soname, and use different extension
-# see : https://developer.apple.com/library/mac/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/DynamicLibraryDesignGuidelines.html
-ifeq ($(shell uname), Darwin)
-	SHARED_EXT = dylib
-	SHARED_EXT_MAJOR = $(LIBVER_MAJOR).$(SHARED_EXT)
-	SHARED_EXT_VER = $(LIBVER).$(SHARED_EXT)
-	SONAME_FLAGS = -install_name $(PREFIX)/lib/$@.$(SHARED_EXT_MAJOR) -compatibility_version $(LIBVER_MAJOR) -current_version $(LIBVER)
-else
-	SONAME_FLAGS = -Wl,-soname=$@.$(SHARED_EXT).$(LIBVER_MAJOR)
-	SHARED_EXT = so
-	SHARED_EXT_MAJOR = $(SHARED_EXT).$(LIBVER_MAJOR)
-	SHARED_EXT_VER = $(SHARED_EXT).$(LIBVER)
-endif
+default: zstd
 
+all:
+	$(MAKE) -C $(ZSTDDIR) $@
+	$(MAKE) -C $(PRGDIR) $@
+	@rm -f lib/decompress/*.o
+	$(MAKE) -C $(PRGDIR) all32
 
-.PHONY: default all clean install uninstall
+zstd:
+	$(MAKE) -C $(PRGDIR)
+	cp $(PRGDIR)/zstd .
 
-default: clean libzstd
+zlibwrapper:
+	$(MAKE) -C $(ZSTDDIR) all
+	$(MAKE) -C $(ZWRAPDIR) all
 
-all: clean libzstd
-
-libzstd: $(ZSTD_FILES)
-	@echo compiling static library
-	@$(CC) $(FLAGS) -c $^
-	@$(AR) rcs $@.a *.o
-	@echo compiling dynamic library $(LIBVER)
-	@$(CC) $(FLAGS) -shared $^ -fPIC $(SONAME_FLAGS) -o $@.$(SHARED_EXT_VER)
-	@echo creating versioned links
-	@ln -sf $@.$(SHARED_EXT_VER) $@.$(SHARED_EXT_MAJOR)
-	@ln -sf $@.$(SHARED_EXT_VER) $@.$(SHARED_EXT)
+test:
+	$(MAKE) -C $(PRGDIR) $@
 
 clean:
-	@rm -f core *.o *.a *.gcda *.$(SHARED_EXT) *.$(SHARED_EXT).* libzstd.pc
-	@echo Cleaning library completed
+	@$(MAKE) -C $(ZSTDDIR) $@ > $(VOID)
+	@$(MAKE) -C $(PRGDIR) $@ > $(VOID)
+	@$(MAKE) -C $(ZWRAPDIR) $@ > $(VOID)
+	@rm -f zstd
+	@echo Cleaning completed
 
-#------------------------------------------------------------------------
-#make install is validated only for Linux, OSX, kFreeBSD and Hurd targets
-ifneq (,$(filter $(shell uname),Linux Darwin GNU/kFreeBSD GNU))
 
-libzstd.pc:
-libzstd.pc: libzstd.pc.in
-	@echo creating pkgconfig
-	@sed -e 's|@PREFIX@|$(PREFIX)|' \
-             -e 's|@LIBDIR@|$(LIBDIR)|' \
-             -e 's|@INCLUDEDIR@|$(INCLUDEDIR)|' \
-             -e 's|@VERSION@|$(VERSION)|' \
-             $< >$@
-
-install: libzstd libzstd.pc
-	@install -d -m 755 $(DESTDIR)$(LIBDIR)/pkgconfig/ $(DESTDIR)$(INCLUDEDIR)/
-	@install -m 755 libzstd.$(SHARED_EXT_VER) $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_VER)
-	@cp -a libzstd.$(SHARED_EXT_MAJOR) $(DESTDIR)$(LIBDIR)
-	@cp -a libzstd.$(SHARED_EXT) $(DESTDIR)$(LIBDIR)
-	@cp -a libzstd.pc $(DESTDIR)$(LIBDIR)/pkgconfig/
-	@install -m 644 libzstd.a $(DESTDIR)$(LIBDIR)/libzstd.a
-	@install -m 644 common/zstd.h $(DESTDIR)$(INCLUDEDIR)/zstd.h
-	@install -m 644 common/zbuff.h $(DESTDIR)$(INCLUDEDIR)/zbuff.h
-	@install -m 644 dictBuilder/zdict.h $(DESTDIR)$(INCLUDEDIR)/zdict.h
-	@echo zstd static and shared library installed
+#----------------------------------------------------------------------------------
+#make install is validated only for Linux, OSX, kFreeBSD, Hurd and some BSD targets
+#----------------------------------------------------------------------------------
+ifneq (,$(filter $(shell uname),Linux Darwin GNU/kFreeBSD GNU FreeBSD DragonFly))
+HOST_OS = POSIX
+install:
+	$(MAKE) -C $(ZSTDDIR) $@
+	$(MAKE) -C $(PRGDIR) $@
 
 uninstall:
-	@rm -f $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT)
-	@rm -f $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_MAJOR)
-	@rm -f $(DESTDIR)$(LIBDIR)/pkgconfig/libzstd.pc
-	@[ -x $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_VER) ] && rm -f $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_VER)
-	@[ -f $(DESTDIR)$(LIBDIR)/libzstd.a ] && rm -f $(DESTDIR)$(LIBDIR)/libzstd.a
-	@[ -f $(DESTDIR)$(INCLUDEDIR)/zstd.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/zstd.h
-	@[ -f $(DESTDIR)$(INCLUDEDIR)/zbuff.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/zbuff.h
-	@[ -f $(DESTDIR)$(INCLUDEDIR)/zdict.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/zdict.h
-	@echo zstd libraries successfully uninstalled
+	$(MAKE) -C $(ZSTDDIR) $@
+	$(MAKE) -C $(PRGDIR) $@
+
+travis-install:
+	$(MAKE) install PREFIX=~/install_test_dir
+
+gpptest: clean
+	$(MAKE) -C programs all CC=g++ CFLAGS="-O3 -Wall -Wextra -Wundef -Wshadow -Wcast-align -Werror"
+
+gcc5test: clean
+	gcc-5 -v
+	$(MAKE) all CC=gcc-5 MOREFLAGS="-Werror"
+
+gcc6test: clean
+	gcc-6 -v
+	$(MAKE) all CC=gcc-6 MOREFLAGS="-Werror"
+
+clangtest: clean
+	clang -v
+	$(MAKE) all CC=clang MOREFLAGS="-Werror -Wconversion -Wno-sign-conversion"
+
+armtest: clean
+	$(MAKE) -C $(PRGDIR) datagen   # use native, faster
+	$(MAKE) -C $(PRGDIR) test CC=arm-linux-gnueabi-gcc ZSTDRTTEST= MOREFLAGS="-Werror -static"
+
+ppctest: clean
+	$(MAKE) -C $(PRGDIR) datagen   # use native, faster
+	$(MAKE) -C $(PRGDIR) test CC=powerpc-linux-gnu-gcc ZSTDRTTEST= MOREFLAGS="-Werror -Wno-attributes -static"
+
+ppc64test: clean
+	$(MAKE) -C $(PRGDIR) datagen   # use native, faster
+	$(MAKE) -C $(PRGDIR) test CC=powerpc-linux-gnu-gcc ZSTDRTTEST= MOREFLAGS="-m64 -static"
+
+usan: clean
+	$(MAKE) test CC=clang MOREFLAGS="-g -fsanitize=undefined"
+
+asan: clean
+	$(MAKE) test CC=clang MOREFLAGS="-g -fsanitize=address"
+
+msan: clean
+	$(MAKE) test CC=clang MOREFLAGS="-g -fsanitize=memory"   # datagen.c used to fail this test for no obvious reason
+
+asan32: clean
+	$(MAKE) -C $(PRGDIR) test32 CC=clang MOREFLAGS="-g -fsanitize=address"
+
+uasan: clean
+	$(MAKE) test CC=clang MOREFLAGS="-g -fsanitize=address -fsanitize=undefined"
 
 endif
+
+
+ifneq (,$(filter MSYS%,$(shell uname)))
+HOST_OS = MSYS
+CMAKE_PARAMS = -G"MSYS Makefiles"
+endif
+
+
+#------------------------------------------------------------------------
+#make tests validated only for MSYS, Linux, OSX, kFreeBSD and Hurd targets
+#------------------------------------------------------------------------
+ifneq (,$(filter $(HOST_OS),MSYS POSIX))
+cmaketest:
+	cmake --version
+	rm -rf projects/cmake/build
+	mkdir projects/cmake/build
+	cd projects/cmake/build ; cmake -DPREFIX:STRING=~/install_test_dir $(CMAKE_PARAMS) .. ; $(MAKE) install ; $(MAKE) uninstall
+
+c90test: clean
+	CFLAGS="-std=c90" $(MAKE) all  # will fail, due to // and long long
+
+gnu90test: clean
+	CFLAGS="-std=gnu90" $(MAKE) all
+
+c99test: clean
+	CFLAGS="-std=c99" $(MAKE) all
+
+gnu99test: clean
+	CFLAGS="-std=gnu99" $(MAKE) all
+
+c11test: clean
+	CFLAGS="-std=c11" $(MAKE) all
+
+bmix64test: clean
+	CFLAGS="-O3 -mbmi -Werror" $(MAKE) -C $(PRGDIR) test
+
+bmix32test: clean
+	CFLAGS="-O3 -mbmi -mx32 -Werror" $(MAKE) -C $(PRGDIR) test
+
+bmi32test: clean
+	CFLAGS="-O3 -mbmi -m32 -Werror" $(MAKE) -C $(PRGDIR) test
+
+staticAnalyze: clean
+	CPPFLAGS=-g scan-build --status-bugs -v $(MAKE) all
+endif
+
+
+#------------------------------------------------------------------------
+# for Travis CI
+#------------------------------------------------------------------------
+libc6install:
+	sudo apt-get install -y -qq libc6-dev-i386
+
+gppinstall:
+	sudo apt-get install -y -qq g++-multilib
+
+gcc5install:
+	sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+	sudo apt-get update -y -qq
+	sudo apt-get install -y -qq gcc-5-multilib
+
+gcc6install:
+	sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+	sudo apt-get update -y -qq
+	sudo apt-get install -y -qq gcc-6-multilib
+
+arminstall: clean
+	sudo apt-get install -y -q qemu binfmt-support qemu-user-static gcc-arm-linux-gnueabi
+
+ppcinstall: clean
+	sudo apt-get install -y -q qemu-system-ppc binfmt-support qemu-user-static gcc-powerpc-linux-gnu  # doesn't work with Ubuntu 12.04
+
+ppc64install: clean   # compilation works but cannot be executed
+	sudo apt-get install -y -q qemu-system-ppc binfmt-support qemu-user-static gcc-powerpc-linux-gnu
+	update-binfmts --displ
+
+valgrindinstall:
+	echo sudo apt-get install -y -qq valgrind
+	sudo apt-get install -y -qq valgrind
