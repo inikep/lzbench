@@ -66,9 +66,9 @@ int ReadWriteCallback (const char *what, void *buf, int size, void *r_)
     // Print final compression statistics
     return FREEARC_OK;
 
-  } else {
-    return FREEARC_ERRCODE_NOT_IMPLEMENTED;
   }
+
+  return FREEARC_ERRCODE_NOT_IMPLEMENTED;
 }
 
 
@@ -101,8 +101,7 @@ uint32_t tor_compress(uint8_t method, uint8_t* inbuf, uint32_t inlen, uint8_t* o
 	else
 		m = std_Tornado_method[method];
 			
-	if (r.inlen >= 0)
-		m.buffer = mymin (m.buffer, r.inlen+LOOKAHEAD*2);
+	m.buffer = mymin (m.buffer, r.inlen+LOOKAHEAD*2);
 	int result = tor_compress (m, ReadWriteCallback, &r, NULL, -1); 
 	return r.outpos;
 }
