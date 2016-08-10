@@ -12,7 +12,7 @@
 #include "lz5/lz5common.h"    // LZ5HC_MAX_CLEVEL
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "1.2"
+#define PROGVERSION "1.3"
 #define PAD_SIZE (16*1024)
 #define DEFAULT_LOOP_TIME (100*1000)  // 1/10 of a second
 #define GET_COMPRESS_BOUND(insize) (insize + insize/6 + PAD_SIZE)  // for pithy

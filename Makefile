@@ -1,8 +1,8 @@
 #BUILD_ARCH = 32-bit
 #BUILD_TYPE = debug
 
-BUILD_USE_SSE41 ?= 1   # compile with -msse4.1 requied for LZSSE
-BUILD_LZHAM ?= 1       # compile lzham (but doesn't work on MacOS)
+BUILD_LZSSE ?= 1   # compile LZSSE; it requires -msse4.1
+BUILD_LZHAM ?= 1   # compile lzham; it doesn't work on MacOS
 
 
 ifeq (,$(filter Windows%,$(OS)))
@@ -42,7 +42,7 @@ CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
 
 
 
-ifeq ($(BUILD_USE_SSE41),1)
+ifeq ($(BUILD_LZSSE),1)
     LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
 else
     DEFINES += -DBENCH_REMOVE_LZSSE
