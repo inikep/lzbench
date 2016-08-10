@@ -550,7 +550,7 @@ int main( int argc, char** argv)
         fprintf(stderr,"\nExample usage:\n");
         fprintf(stderr,"  " PROGNAME " -ebrotli filename - selects all levels of brotli\n");
         fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd\n");                    
-		exit(1);
+		exit(0);
 	}
     
     bool first_time = true;
