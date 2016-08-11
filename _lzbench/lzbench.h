@@ -196,7 +196,7 @@ static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
     { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9,12,16/lz5/lz5hc,1,4,9,12,15/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
-              "lzrw,1,2,3,4,5/lzsse2,1,6,12,17/lzsse4,1,6,12,17/lzsse8,1,6,12,17/lzvn/pithy,0,3,6,9/quicklz,1,2,3/snappy/slz_zlib/tornado,1,2,3,4,5,6,7,10,13,16/" \
+              "lzrw,1,2,3,4,5/lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/pithy,0,3,6,9/quicklz,1,2,3/snappy/slz_zlib/tornado,1,2,3,4,5,6,7,10,13,16/" \
               "ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/xpack,1,6,9/xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,22/" \
               "shrinker/wflz/lzmat" }, // these can SEGFAULT
     { "fast", "density/fastlz/lz4/lz4fast,3,17/lz5/lzf/lzfse/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \

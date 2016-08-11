@@ -17,12 +17,14 @@ else
 	LDFLAGS = -lrt
 endif
 
+# MacOS doesn't support -static
+ifneq ($(shell uname -s),Darwin)
+	LDFLAGS	+= -static
+endif
 
+# if BUILD_ARCH is not 32-bit
 ifneq ($(BUILD_ARCH),32-bit)
 	DEFINES	+= -D__x86_64__
-	LDFLAGS	+= -static
-else
-	LDFLAGS	+= -static
 endif
 
 
