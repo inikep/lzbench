@@ -9,18 +9,16 @@ BUILD_LZHAM ?= 1
 
 # detect Windows
 ifneq (,$(filter Windows%,$(OS)))
-#	DEFINES = -march=core2 -march=nocona -march=k8 -march=native
 	DEFINES += -DFREEARC_WIN
-	LDFLAGS	= -lshell32 -lole32 -loleaut32 
+	LDFLAGS	= -lshell32 -lole32 -loleaut32 -static
 else
 	DEFINES += -DFREEARC_UNIX
-	LDFLAGS = -lrt
+    # MacOS doesn't support -lrt -static
+    ifneq ($(shell uname -s),Darwin)
+        LDFLAGS	= -lrt -static
+    endif
 endif
 
-# MacOS doesn't support -static
-ifneq ($(shell uname -s),Darwin)
-	LDFLAGS	+= -static
-endif
 
 # if BUILD_ARCH is not 32-bit
 ifneq ($(BUILD_ARCH),32-bit)

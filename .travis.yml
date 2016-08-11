@@ -6,6 +6,9 @@ matrix:
     - os: linux
       sudo: false
       env: CC_COMPILER=gcc CXX_COMPILER=g++ MORE_OPTIONS="BUILD_LZSSE=0"
+    - os: linux
+      sudo: false
+      env: CC_COMPILER=clang CXX_COMPILER=clang++
     # Ubuntu 14.04 LTS Server Edition 64 bit
     - dist: trusty
       sudo: required
