@@ -52,7 +52,7 @@
     typedef uint64_t bench_timer_t;
 	#define InitTimer(rate) mach_timebase_info(&rate);
 	#define GetTime(now) now = mach_absolute_time();
-	#define GetDiffTime(rate, start_ticks, end_ticks) (1000*((end_ticks - start_ticks) * (uint64_t)rate.numer / (uint64_t)rate.denom)) 
+	#define GetDiffTime(rate, start_ticks, end_ticks) ((1000*(end_ticks - start_ticks) * (uint64_t)rate.numer) / (uint64_t)rate.denom)
 	#define PROGOS "MacOS"
 #else
 	typedef struct timespec bench_rate_t;
@@ -164,7 +164,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lzsse4",     "2016-05-14",  0,  17,   0,       0, lzbench_lzsse4_compress,   lzbench_lzsse4_decompress,   lzbench_lzsse4_init,  lzbench_lzsse4_deinit },
     { "lzsse4fast", "2016-05-14",  0,   0,   0,       0, lzbench_lzsse4fast_compress, lzbench_lzsse4_decompress, lzbench_lzsse4fast_init, lzbench_lzsse4fast_deinit },
     { "lzsse8",     "2016-05-14",  0,  17,   0,       0, lzbench_lzsse8_compress,   lzbench_lzsse8_decompress,   lzbench_lzsse8_init,  lzbench_lzsse8_deinit },
-    { "lzsse8fast",  "2016-05-14", 0,   0,   0,       0, lzbench_lzsse8fast_compress, lzbench_lzsse8_decompress, lzbench_lzsse8fast_init, lzbench_lzsse8fast_deinit },
+    { "lzsse8fast", "2016-05-14",  0,   0,   0,       0, lzbench_lzsse8fast_compress, lzbench_lzsse8_decompress, lzbench_lzsse8fast_init, lzbench_lzsse8fast_deinit },
     { "lzvn",       "2016-06-19",  0,   0,   0,       0, lzbench_lzvn_compress,     lzbench_lzvn_decompress,     lzbench_lzvn_init,    lzbench_lzvn_deinit },
     { "pithy",      "2011-12-24",  0,   9,   0,       0, lzbench_pithy_compress,    lzbench_pithy_decompress,    NULL,                 NULL }, // decompression error (returns 0)
     { "quicklz",    "1.5.0",       1,   3,   0,       0, lzbench_quicklz_compress,  lzbench_quicklz_decompress,  NULL,                 NULL },
