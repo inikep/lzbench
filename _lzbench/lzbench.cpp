@@ -203,11 +203,11 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, size_t chunk_size, c
 }
 
 
-void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond, size_t param1)
+void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate, size_t param1)
 {
     float speed;
     int i, total_c_iters, total_d_iters;
-    LARGE_INTEGER loop_ticks, start_ticks, end_ticks, timer_ticks;
+    bench_timer_t loop_ticks, start_ticks, end_ticks, timer_ticks;
     int64_t complen=0, decomplen;
     uint64_t nanosec, total_nanosec;
     std::vector<float> cspeed, dspeed;
@@ -229,7 +229,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
         GetTime(start_ticks);
         int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, comprsize, param1, param2, workmem);
         GetTime(end_ticks);
-        nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+        nanosec = GetDiffTime(rate, start_ticks, end_ticks);
         if (clen>0 && nanosec>=1000)
         {
             part = (part / nanosec); // speed in MB/s
@@ -249,20 +249,20 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
             GetTime(start_ticks);
             complen = lzbench_compress(params, chunk_size, desc->compress, compr_lens, inbuf, insize, compbuf, comprsize, param1, param2, workmem);
             GetTime(end_ticks);
-            nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+            nanosec = GetDiffTime(rate, start_ticks, end_ticks);
             if (nanosec >= 10) cspeed.push_back((float)insize/nanosec);
             i++;
         }
-        while (GetDiffTime(ticksPerSecond, loop_ticks, end_ticks) < params->cloop_time);
+        while (GetDiffTime(rate, loop_ticks, end_ticks) < params->cloop_time);
 
-        nanosec = GetDiffTime(ticksPerSecond, loop_ticks, end_ticks);
+        nanosec = GetDiffTime(rate, loop_ticks, end_ticks);
         speed = (float)insize*i/nanosec;
         cspeed.push_back(speed);
         LZBENCH_DEBUG(8, "%s nanosec=%d\n", desc->name, (int)nanosec);
 
         if ((uint32_t)speed < params->cspeed) { LZBENCH_DEBUG(5, "%s slower than %d MB/s\n", desc->name, (uint32_t)speed); return; } 
 
-        total_nanosec = GetDiffTime(ticksPerSecond, timer_ticks, end_ticks);
+        total_nanosec = GetDiffTime(rate, timer_ticks, end_ticks);
         total_c_iters += i;
         if (total_c_iters >= params->c_iters && total_nanosec > (params->cmintime*1000)) break;
         printf("%s compr iter=%d time=%.2fs speed=%.2f MB/s     \r", desc->name, total_c_iters, total_nanosec/1000000.0, speed);
@@ -282,13 +282,13 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
             GetTime(start_ticks);
             decomplen = lzbench_decompress(params, chunk_size, desc->decompress, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
             GetTime(end_ticks);
-            nanosec = GetDiffTime(ticksPerSecond, start_ticks, end_ticks);
+            nanosec = GetDiffTime(rate, start_ticks, end_ticks);
             if (nanosec >= 10) dspeed.push_back((float)insize/nanosec);
             i++;
         }
-        while (GetDiffTime(ticksPerSecond, loop_ticks, end_ticks) < params->dloop_time);
+        while (GetDiffTime(rate, loop_ticks, end_ticks) < params->dloop_time);
 
-        nanosec = GetDiffTime(ticksPerSecond, loop_ticks, end_ticks);
+        nanosec = GetDiffTime(rate, loop_ticks, end_ticks);
         dspeed.push_back((float)insize*i/nanosec);
         LZBENCH_DEBUG(9, "%s dnanosec=%d\n", desc->name, (int)nanosec);
 
@@ -323,7 +323,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
 
         if (decomp_error) break;
         
-        total_nanosec = GetDiffTime(ticksPerSecond, timer_ticks, end_ticks);
+        total_nanosec = GetDiffTime(rate, timer_ticks, end_ticks);
         total_d_iters += i;
         if (total_d_iters >= params->d_iters && total_nanosec > (params->dmintime*1000)) break;
         printf("%s decompr iter=%d time=%.2fs speed=%.2f MB/s     \r", desc->name, total_d_iters, total_nanosec/1000000.0, (float)insize*i/nanosec);
@@ -338,7 +338,7 @@ done:
 };
 
 
-void lzbench_test_with_params(lzbench_params_t *params, char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, LARGE_INTEGER ticksPerSecond)
+void lzbench_test_with_params(lzbench_params_t *params, char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
 {
     const char delimiters[] = "/";
     const char delimiters2[] = ",";
@@ -353,7 +353,7 @@ void lzbench_test_with_params(lzbench_params_t *params, char *namesWithParams, u
         {
             if (strcmp(token, alias_desc[i].name)==0)
             {
-                lzbench_test_with_params(params, (char*)alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+                lzbench_test_with_params(params, (char*)alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, rate);
                 goto next_token; 
            }
         }
@@ -377,10 +377,10 @@ void lzbench_test_with_params(lzbench_params_t *params, char *namesWithParams, u
                         if (!token3)
                         {                          
                             for (int level=comp_desc[i].first_level; level<=comp_desc[i].last_level; level++)
-                                lzbench_test(params, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, level);
+                                lzbench_test(params, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, rate, level);
                         }
                         else
-                            lzbench_test(params, &comp_desc[i], atoi(token3), inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond, atoi(token3));
+                            lzbench_test(params, &comp_desc[i], atoi(token3), inbuf, insize, compbuf, comprsize, decomp, rate, atoi(token3));
                         break;
                     }
                 }
@@ -401,11 +401,11 @@ next_token:
 
 void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list, bool first_time)
 {
-	LARGE_INTEGER ticksPerSecond;
+	bench_rate_t rate;
 	size_t comprsize, insize;
 	uint8_t *inbuf, *compbuf, *decomp;
 
-	InitTimer(ticksPerSecond);
+	InitTimer(rate);
 
 	fseeko(in, 0L, SEEK_END);
 	insize = ftello(in);
@@ -437,10 +437,10 @@ void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list, bool fi
         params_memcpy.cmintime = params_memcpy.dmintime = 0;
         params_memcpy.c_iters = params_memcpy.d_iters = 0;
         params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
-        lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, ticksPerSecond, 0);
+        lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
     }
     
-    lzbench_test_with_params(params, encoder_list?encoder_list:(char*)alias_desc[1].params, inbuf, insize, compbuf, comprsize, decomp, ticksPerSecond);
+    lzbench_test_with_params(params, encoder_list?encoder_list:(char*)alias_desc[1].params, inbuf, insize, compbuf, comprsize, decomp, rate);
 
 	free(inbuf);
 	free(compbuf);

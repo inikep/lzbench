@@ -5,7 +5,7 @@ matrix:
     # Container-based Ubuntu 12.04 LTS Server Edition 64 bit (doesn't support 32-bit includes)
     - os: linux
       sudo: false
-      env: CC_COMPILER=gcc CXX_COMPILER=g++ MORE_OPTIONS="BUILD_USE_SSE41=0"
+      env: CC_COMPILER=gcc CXX_COMPILER=g++ MORE_OPTIONS="BUILD_LZSSE=0"
     # Ubuntu 14.04 LTS Server Edition 64 bit
     - dist: trusty
       sudo: required
@@ -67,4 +67,4 @@ script:
   - $CXX_COMPILER -v
   - make CC=$CC_COMPILER CXX=$CXX_COMPILER $MORE_OPTIONS
   - ./lzbench
-  - ./lzbench ./lzbench
+  - ./lzbench -eall ./lzbench

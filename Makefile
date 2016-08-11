@@ -1,17 +1,20 @@
 #BUILD_ARCH = 32-bit
 #BUILD_TYPE = debug
 
-BUILD_LZSSE ?= 1   # compile LZSSE; it requires -msse4.1
-BUILD_LZHAM ?= 1   # compile lzham; it doesn't work on MacOS
+# compile LZSSE; it requires -msse4.1
+BUILD_LZSSE ?= 1
+# compile lzham; it doesn't work on MacOS
+BUILD_LZHAM ?= 1
 
 
-ifeq (,$(filter Windows%,$(OS)))
-	DEFINES += -DFREEARC_UNIX
-	LDFLAGS = -lrt
-else
+# detect Windows
+ifneq (,$(filter Windows%,$(OS)))
 #	DEFINES = -march=core2 -march=nocona -march=k8 -march=native
 	DEFINES += -DFREEARC_WIN
 	LDFLAGS	= -lshell32 -lole32 -loleaut32 
+else
+	DEFINES += -DFREEARC_UNIX
+	LDFLAGS = -lrt
 endif
 
 
@@ -37,8 +40,8 @@ else
 	OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
 endif
 
-CFLAGS = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES)
-CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
+CFLAGS = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES)
+CFLAGS_O2 = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
 
 
 
