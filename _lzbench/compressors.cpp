@@ -1624,14 +1624,18 @@ int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t o
     if (!cctx) return 0;
 
     ZSTD_parameters params;
-    memset(&params, 0, sizeof(params));
-    params.cParams = ZSTD_getCParams(level, insize, 0);
+    params = ZSTD_getParams(level, insize, 0);
     params.fParams.contentSizeFlag = 1;
     if (windowLog)
     {
         params.cParams.windowLog = windowLog;
-        params.cParams.chainLog = windowLog + ((params.cParams.strategy == ZSTD_btlazy2) || (params.cParams.strategy == ZSTD_btopt));
     }
+    else
+    {
+        params.cParams.windowLog = MIN(23, params.cParams.windowLog);
+    }
+    params.cParams.chainLog = params.cParams.windowLog + ((params.cParams.strategy == ZSTD_btlazy2) || (params.cParams.strategy == ZSTD_btopt));
+    params.cParams = ZSTD_adjustCParams(params.cParams, insize, 0);
 
     res = ZSTD_compressBegin_advanced(cctx, NULL, 0, params, insize);
     if (ZSTD_isError(res)) return res;
