@@ -1,4 +1,6 @@
 v1.3
+- lzbench compiles on MacOS (with exception of lzham; use "make BUILD_LZHAM=0")
+- lzbench compiles with clang (tested with 3.6 and 3.8)
 - added slz 1.0.0 (slz_zlib, slz_gzip, slz_deflate)
 - zstd updated to v0.8.0
 

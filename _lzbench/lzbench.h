@@ -46,13 +46,13 @@
 	#include <unistd.h>
 	#include <sys/resource.h>
 	void uni_sleep(uint32_t usec) { usleep(usec * 1000); };
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__MACH__)
     #include <mach/mach_time.h>
 	typedef mach_timebase_info_data_t bench_rate_t;
     typedef uint64_t bench_timer_t;
 	#define InitTimer(rate) mach_timebase_info(&rate);
 	#define GetTime(now) now = mach_absolute_time();
-	#define GetDiffTime(rate, start_ticks, end_ticks) ((1000*(end_ticks - start_ticks) * (uint64_t)rate.numer) / (uint64_t)rate.denom)
+	#define GetDiffTime(rate, start_ticks, end_ticks) ((end_ticks - start_ticks) * (uint64_t)rate.numer) / ((uint64_t)rate.denom * 1000)
 	#define PROGOS "MacOS"
 #else
 	typedef struct timespec bench_rate_t;
