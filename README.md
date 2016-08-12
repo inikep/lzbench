@@ -64,6 +64,7 @@ csc 3.3
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
 fastlz 0.1
 gipfeli 2015-11-30
+glza 0.7.1
 lz4/lz4hc r131
 lz5/lz5hc v1.4.1
 lzf 3.6
