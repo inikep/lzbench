@@ -14,7 +14,7 @@
 #define PROGNAME "lzbench"
 #define PROGVERSION "1.3"
 #define PAD_SIZE (16*1024)
-#define DEFAULT_LOOP_TIME (100*1000)  // 1/10 of a second
+#define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second
 #define GET_COMPRESS_BOUND(insize) (insize + insize/6 + PAD_SIZE)  // for pithy
 #define LZBENCH_PRINT(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
 
@@ -33,8 +33,8 @@
 	typedef LARGE_INTEGER bench_timer_t;
 	#define InitTimer(rate) if (!QueryPerformanceFrequency(&rate)) { printf("QueryPerformance not present"); };
 	#define GetTime(now) QueryPerformanceCounter(&now); 
-	#define GetDiffTime(rate, start_ticks, end_ticks) (1000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/rate.QuadPart)
-	void uni_sleep(UINT usec) { Sleep(usec); };
+	#define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/rate.QuadPart)
+	void uni_sleep(UINT milisec) { Sleep(milisec); };
 	#ifndef __GNUC__
 		#define fseeko64 _fseeki64 
 		#define ftello64 _ftelli64
@@ -45,21 +45,21 @@
 	#include <time.h>   
 	#include <unistd.h>
 	#include <sys/resource.h>
-	void uni_sleep(uint32_t usec) { usleep(usec * 1000); };
+	void uni_sleep(uint32_t milisec) { usleep(milisec * 1000); };
 #if defined(__APPLE__) || defined(__MACH__)
     #include <mach/mach_time.h>
 	typedef mach_timebase_info_data_t bench_rate_t;
     typedef uint64_t bench_timer_t;
 	#define InitTimer(rate) mach_timebase_info(&rate);
 	#define GetTime(now) now = mach_absolute_time();
-	#define GetDiffTime(rate, start_ticks, end_ticks) ((end_ticks - start_ticks) * (uint64_t)rate.numer) / ((uint64_t)rate.denom * 1000)
+	#define GetDiffTime(rate, start_ticks, end_ticks) ((end_ticks - start_ticks) * (uint64_t)rate.numer) / ((uint64_t)rate.denom)
 	#define PROGOS "MacOS"
 #else
 	typedef struct timespec bench_rate_t;
     typedef struct timespec bench_timer_t;
 	#define InitTimer(rate)
 	#define GetTime(now) if (clock_gettime(CLOCK_MONOTONIC, &now) == -1 ){ printf("clock_gettime error"); };
-	#define GetDiffTime(rate, start_ticks, end_ticks) (1000000ULL*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec )/1000)
+	#define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec ))
 	#define PROGOS "Linux"
 #endif
 #endif
@@ -79,6 +79,7 @@ enum timetype_e { FASTEST=1, AVERAGE, MEDIAN };
 
 typedef struct
 {
+    int show_speed;
     timetype_e timetype;
     textformat_e textformat;
     size_t chunk_size;
