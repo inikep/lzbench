@@ -16,7 +16,7 @@
 #define PAD_SIZE (16*1024)
 #define DEFAULT_LOOP_TIME (100*1000)  // 1/10 of a second
 #define GET_COMPRESS_BOUND(insize) (insize + insize/6 + PAD_SIZE)  // for pithy
-#define LZBENCH_DEBUG(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
+#define LZBENCH_PRINT(level, fmt, args...) if (params->verbose >= level) printf(fmt, ##args)
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
 #ifndef MIN
