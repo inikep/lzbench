@@ -6,6 +6,13 @@ BUILD_LZSSE ?= 1
 # compile lzham; it doesn't work on MacOS
 BUILD_LZHAM ?= 1
 
+# glza doesn't work with gcc < 4.9
+GCC_GTEQ_490 := $(shell expr `gcc -dumpversion | sed -e 's/\.\([0-9][0-9]\)/\1/g' -e 's/\.\([0-9]\)/0\1/g' -e 's/^[0-9]\{3,4\}$$/&00/'` \>= 40900)
+ifeq "$(GCC_GTEQ_490)" "1"
+	GLZA_FILES = glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
+else
+	DEFINES += -DBENCH_REMOVE_GLZA
+endif
 
 # detect Windows
 ifneq (,$(filter Windows%,$(OS)))
@@ -128,8 +135,6 @@ XZ_FILES += xz/lz_decoder.o xz/lz_encoder.o xz/lz_encoder_mf.o xz/alone_encoder.
 XPACK_FILES = xpack/lib/x86_cpu_features.o xpack/lib/xpack_common.o xpack/lib/xpack_compress.o xpack/lib/xpack_decompress.o 
 
 GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o 
-
-GLZA_FILES = glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
 
 MISC_FILES = crush/crush.o shrinker/shrinker.o yappy/yappy.o fastlz/fastlz.o tornado/tor_test.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
 MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o slz/slz.o

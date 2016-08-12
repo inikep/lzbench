@@ -523,7 +523,12 @@ int main( int argc, char** argv)
         for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
         {
             if (comp_desc[i].compress)
-                printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
+            {
+                if (comp_desc[i].first_level < comp_desc[i].last_level)
+                    printf("%s %s [%d-%d]\n", comp_desc[i].name, comp_desc[i].version, comp_desc[i].first_level, comp_desc[i].last_level);
+                else
+                    printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
+            }
         }
         return 0;
     default:
