@@ -10,7 +10,9 @@
 #include <stddef.h>
 #include <string>
 
-#include "config.h"
+#ifndef _MSC_VER
+	#include "config.h"
+#endif
 
 #if defined(__x86_64__)
 // Enable 64-bit optimized versions of some routines.
