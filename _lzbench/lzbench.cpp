@@ -42,6 +42,7 @@ void format(std::string& s,const char* formatstring, ...)
    s=buff;
 } 
 
+
 void print_header(lzbench_params_t *params)
 {
     switch (params->textformat)
@@ -59,31 +60,71 @@ void print_header(lzbench_params_t *params)
     }
 }
 
-void print_row(lzbench_params_t *params, string_table_t& row)
+
+void print_speed(lzbench_params_t *params, string_table_t& row)
 {
+    float cspeed, dspeed, ratio;
+    cspeed = row.column5 * 1000.0 / row.column2;
+    dspeed = row.column5 * 1000.0 / row.column3;
+    ratio = row.column4 * 100.0 / row.column5;
+    
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%.2f,%.2f,%" PRId64 ",%.2f,%s\n", row.column1.c_str(), row.column2, row.column3, row.column4, row.column5, row.filename.c_str()); break;
+            printf("%s,%.2f,%.2f,%" PRId64 ",%.2f,%s\n", row.column1.c_str(), cspeed, dspeed, row.column4, ratio, row.filename.c_str()); break;
         case TURBOBENCH:
-            printf("%12" PRId64 " %6.1f%9.2f%9.2f  %22s %s\n", row.column4, row.column5, row.column2, row.column3, row.column1.c_str(), row.filename.c_str()); break;
+            printf("%12" PRId64 " %6.1f%9.2f%9.2f  %22s %s\n", row.column4, ratio, cspeed, dspeed, row.column1.c_str(), row.filename.c_str()); break;
         case TEXT:
             printf("%-23s", row.column1.c_str());
-            if (row.column2 < 10) printf("%6.2f MB/s", row.column2); else printf("%6d MB/s", (int)row.column2);
-            if (!row.column3)
+            if (cspeed < 10) printf("%6.2f MB/s", cspeed); else printf("%6d MB/s", (int)cspeed);
+            if (!dspeed)
                 printf("      ERROR");
             else
-                if (row.column3 < 10) printf("%6.2f MB/s", row.column3); else printf("%6d MB/s", (int)row.column3); 
-            printf("%12" PRId64 " %6.2f %s\n", row.column4, row.column5, row.filename.c_str());
+                if (dspeed < 10) printf("%6.2f MB/s", dspeed); else printf("%6d MB/s", (int)dspeed); 
+            printf("%12" PRId64 " %6.2f %s\n", row.column4, ratio, row.filename.c_str());
             break;
         case MARKDOWN:
             printf("| %-23s ", row.column1.c_str());
-            if (row.column2 < 10) printf("|%6.2f MB/s ", row.column2); else printf("|%6d MB/s ", (int)row.column2);
-            if (!row.column3)
+            if (cspeed < 10) printf("|%6.2f MB/s ", cspeed); else printf("|%6d MB/s ", (int)cspeed);
+            if (!dspeed)
                 printf("|      ERROR ");
             else
-                if (row.column3 < 10) printf("|%6.2f MB/s ", row.column3); else printf("|%6d MB/s ", (int)row.column3); 
-            printf("|%12" PRId64 " |%6.2f | %-s|\n", row.column4, row.column5, row.filename.c_str());
+                if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed); 
+            printf("|%12" PRId64 " |%6.2f | %-s|\n", row.column4, ratio, row.filename.c_str());
+            break;
+    }
+}
+
+
+void print_time(lzbench_params_t *params, string_table_t& row)
+{
+    float ratio = row.column4 * 100.0 / row.column5;
+    uint64_t ctime = row.column2 / 1000;
+    uint64_t dtime = row.column3 / 1000;
+
+    switch (params->textformat)
+    {
+        case CSV:
+            printf("%s,%lld,%lld,%" PRId64 ",%.2f,%s\n", row.column1.c_str(), ctime, dtime, row.column4, ratio, row.filename.c_str()); break;
+        case TURBOBENCH:
+            printf("%12" PRId64 " %6.1f%9lld%9lld  %22s %s\n", row.column4, ratio, ctime, dtime, row.column1.c_str(), row.filename.c_str()); break;
+        case TEXT:
+            printf("%-23s", row.column1.c_str());
+            printf("%8lld us", ctime);
+            if (!dtime)
+                printf("      ERROR");
+            else
+                printf("%8lld us", dtime); 
+            printf("%12" PRId64 " %6.2f %s\n", row.column4, ratio, row.filename.c_str());
+            break;
+        case MARKDOWN:
+            printf("| %-23s ", row.column1.c_str());
+            printf("|%8lld us ", ctime);
+            if (!dtime)
+                printf("|      ERROR ");
+            else
+                printf("|%8lld us ", dtime); 
+            printf("|%12" PRId64 " |%6.2f | %-s|\n", row.column4, ratio, row.filename.c_str());
             break;
     }
 }
@@ -94,7 +135,7 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
     std::string column1;
     std::sort(ctime.begin(), ctime.end());
     std::sort(dtime.begin(), dtime.end());
-    float best_ctime, best_dtime;
+    uint64_t best_ctime, best_dtime;
     
     switch (params->timetype)
     {
@@ -117,8 +158,11 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
     else
         format(column1, "%s %s -%d", desc->name, desc->version, level);
 
-    params->results.push_back(string_table_t(column1, (float)insize*1000.0/best_ctime, (decomp_error)?0:(float)insize*1000.0/best_dtime, outsize, outsize * 100.0 / insize, params->in_filename));
-    print_row(params, params->results[params->results.size()-1]);
+    params->results.push_back(string_table_t(column1, best_ctime, (decomp_error)?0:best_dtime, outsize, insize, params->in_filename));
+    if (params->show_speed)
+        print_speed(params, params->results[params->results.size()-1]);
+    else
+        print_time(params, params->results[params->results.size()-1]);
 
     ctime.clear();
     dtime.clear();
@@ -127,12 +171,12 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
 
 size_t common(uint8_t *p1, uint8_t *p2)
 {
-	size_t size = 0;
+    size_t size = 0;
 
-	while (*(p1++) == *(p2++))
+    while (*(p1++) == *(p2++))
         size++;
 
-	return size;
+    return size;
 }
 
 
@@ -401,30 +445,30 @@ next_token:
 
 void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list, bool first_time)
 {
-	bench_rate_t rate;
-	size_t comprsize, insize;
-	uint8_t *inbuf, *compbuf, *decomp;
+    bench_rate_t rate;
+    size_t comprsize, insize;
+    uint8_t *inbuf, *compbuf, *decomp;
 
-	InitTimer(rate);
+    InitTimer(rate);
 
-	fseeko(in, 0L, SEEK_END);
-	insize = ftello(in);
-	rewind(in);
+    fseeko(in, 0L, SEEK_END);
+    insize = ftello(in);
+    rewind(in);
 
-	comprsize = GET_COMPRESS_BOUND(insize);
+    comprsize = GET_COMPRESS_BOUND(insize);
 
 //	printf("insize=%llu comprsize=%llu %llu\n", insize, comprsize, MAX(MEMCPY_BUFFER_SIZE, insize));
-	inbuf = (uint8_t*)malloc(insize + PAD_SIZE);
-	compbuf = (uint8_t*)malloc(comprsize);
-	decomp = (uint8_t*)calloc(1, insize + PAD_SIZE);
+    inbuf = (uint8_t*)malloc(insize + PAD_SIZE);
+    compbuf = (uint8_t*)malloc(comprsize);
+    decomp = (uint8_t*)calloc(1, insize + PAD_SIZE);
 
-	if (!inbuf || !compbuf || !decomp)
-	{
-		printf("Not enough memory!");
-		exit(1);
-	}
+    if (!inbuf || !compbuf || !decomp)
+    {
+        printf("Not enough memory!");
+        exit(1);
+    }
 
-	insize = fread(inbuf, 1, insize, in);
+    insize = fread(inbuf, 1, insize, in);
 
     if (first_time)
     {
@@ -442,15 +486,15 @@ void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list, bool fi
     
     lzbench_test_with_params(params, encoder_list?encoder_list:(char*)alias_desc[1].params, inbuf, insize, compbuf, comprsize, decomp, rate);
 
-	free(inbuf);
-	free(compbuf);
-	free(decomp);
+    free(inbuf);
+    free(compbuf);
+    free(decomp);
 }
 
 
 int main( int argc, char** argv) 
 {
-	FILE *in;
+    FILE *in;
     char* encoder_list = NULL;
     int sort_col = 0, real_time = 1;
     lzbench_params_t params;
@@ -460,60 +504,60 @@ int main( int argc, char** argv)
     params.textformat = TEXT;
     params.show_speed = 1;
     params.verbose = 2;
-	params.chunk_size = (1ULL << 31) - (1ULL << 31)/6;
-	params.cspeed = 0;
+    params.chunk_size = (1ULL << 31) - (1ULL << 31)/6;
+    params.cspeed = 0;
     params.c_iters = params.d_iters = 1;
     params.cmintime = 10*DEFAULT_LOOP_TIME/1000000; // 1 sec
     params.dmintime = 5*DEFAULT_LOOP_TIME/1000000; // 0.5 sec
     params.cloop_time = params.dloop_time = DEFAULT_LOOP_TIME;
 
-	printf(PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")   Assembled by P.Skibinski\n", (uint32_t)(8 * sizeof(uint8_t*)));
+    printf(PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")   Assembled by P.Skibinski\n", (uint32_t)(8 * sizeof(uint8_t*)));
 
-	while ((argc>1)&&(argv[1][0]=='-')) {
-		switch (argv[1][1]) {
-	case 'b':
-		params.chunk_size = atoi(argv[1] + 2) << 10;
-		break;
-	case 'c':
-		sort_col = atoi(argv[1] + 2);
-		break;
-	case 'e':
-		encoder_list = strdup(argv[1] + 2);
-		break;
-	case 'i':
-		params.c_iters=atoi(argv[1]+2);
-		break;
-	case 'j':
-		params.d_iters=atoi(argv[1]+2);
-		break;
-	case 'o':
+    while ((argc>1)&&(argv[1][0]=='-')) {
+        switch (argv[1][1]) {
+    case 'b':
+        params.chunk_size = atoi(argv[1] + 2) << 10;
+        break;
+    case 'c':
+        sort_col = atoi(argv[1] + 2);
+        break;
+    case 'e':
+        encoder_list = strdup(argv[1] + 2);
+        break;
+    case 'i':
+        params.c_iters=atoi(argv[1]+2);
+        break;
+    case 'j':
+        params.d_iters=atoi(argv[1]+2);
+        break;
+    case 'o':
         params.textformat = (textformat_e)atoi(argv[1] + 2);
-		break;
-	case 'p':
+        break;
+    case 'p':
         params.timetype = (timetype_e)atoi(argv[1] + 2);
-		break;
-	case 'r':
-		real_time = 0;
-		break;
-	case 's':
-		params.cspeed = atoi(argv[1] + 2);
-		break;
-	case 't':
-		params.cmintime = 1000*atoi(argv[1] + 2);
+        break;
+    case 'r':
+        real_time = 0;
+        break;
+    case 's':
+        params.cspeed = atoi(argv[1] + 2);
+        break;
+    case 't':
+        params.cmintime = 1000*atoi(argv[1] + 2);
         params.cloop_time = (params.cmintime)?DEFAULT_LOOP_TIME:0;
-		break;
-	case 'u':
-		params.dmintime = 1000*atoi(argv[1] + 2);
+        break;
+    case 'u':
+        params.dmintime = 1000*atoi(argv[1] + 2);
         params.dloop_time = (params.dmintime)?DEFAULT_LOOP_TIME:0;
-		break;
-	case 'v':
-		params.verbose = atoi(argv[1] + 2);
-		break;
-	case 'z':
-		params.show_speed = 0;
-		break;
-	case '-': // --help
-	case 'h':
+        break;
+    case 'v':
+        params.verbose = atoi(argv[1] + 2);
+        break;
+    case 'z':
+        params.show_speed = 0;
+        break;
+    case '-': // --help
+    case 'h':
         break;
     case 'l':
         printf("\nAvailable compressors for -e option:\n");
@@ -533,34 +577,34 @@ int main( int argc, char** argv)
         }
         return 0;
     default:
-		fprintf(stderr, "unknown option: %s\n", argv[1]);
-		exit(1);
-		}
-		argv++;
-		argc--;
-	}
+        fprintf(stderr, "unknown option: %s\n", argv[1]);
+        exit(1);
+        }
+        argv++;
+        argc--;
+    }
 
-	if (argc<2) {
-		fprintf(stderr, "usage: " PROGNAME " [options] input_file [input_file2] [input_file3]\n\nwhere [options] are:\n");
-		fprintf(stderr, " -bX  set block/chunk size to X KB (default = MIN(filesize,%d KB))\n", (int)(params.chunk_size>>10));
-		fprintf(stderr, " -cX  sort results by column number X\n");
-		fprintf(stderr, " -eX  X = compressors separated by '/' with parameters specified after ','\n");
-		fprintf(stderr, " -iX  set min. number of compression iterations (default = %d)\n", params.c_iters);
-		fprintf(stderr, " -jX  set min. number of decompression iterations (default = %d)\n", params.d_iters);
-		fprintf(stderr, " -l   list of available compressors and aliases\n");
+    if (argc<2) {
+        fprintf(stderr, "usage: " PROGNAME " [options] input_file [input_file2] [input_file3]\n\nwhere [options] are:\n");
+        fprintf(stderr, " -bX  set block/chunk size to X KB (default = MIN(filesize,%d KB))\n", (int)(params.chunk_size>>10));
+        fprintf(stderr, " -cX  sort results by column number X\n");
+        fprintf(stderr, " -eX  X = compressors separated by '/' with parameters specified after ','\n");
+        fprintf(stderr, " -iX  set min. number of compression iterations (default = %d)\n", params.c_iters);
+        fprintf(stderr, " -jX  set min. number of decompression iterations (default = %d)\n", params.d_iters);
+        fprintf(stderr, " -l   list of available compressors and aliases\n");
         fprintf(stderr, " -oX  output text format 1=Markdown, 2=text, 3=CSV (default = %d)\n", params.textformat);
-		fprintf(stderr, " -pX  print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params.timetype);
- 		fprintf(stderr, " -r   disable real-time process priority\n");
-		fprintf(stderr, " -sX  use only compressors with compression speed over X MB (default = %d MB)\n", params.cspeed);
-		fprintf(stderr, " -tX  set min. time in seconds for compression (default = %.1f)\n", params.cmintime/1000.0);
- 		fprintf(stderr, " -uX  set min. time in seconds for decompression (default = %.1f)\n", params.dmintime/1000.0);
- 		fprintf(stderr, " -v   disable progress information\n");
- 		fprintf(stderr, " -z   show (de)compression times instead of speed\n");
+        fprintf(stderr, " -pX  print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params.timetype);
+        fprintf(stderr, " -r   disable real-time process priority\n");
+        fprintf(stderr, " -sX  use only compressors with compression speed over X MB (default = %d MB)\n", params.cspeed);
+        fprintf(stderr, " -tX  set min. time in seconds for compression (default = %.1f)\n", params.cmintime/1000.0);
+        fprintf(stderr, " -uX  set min. time in seconds for decompression (default = %.1f)\n", params.dmintime/1000.0);
+        fprintf(stderr, " -v   disable progress information\n");
+        fprintf(stderr, " -z   show (de)compression times instead of speed\n");
         fprintf(stderr,"\nExample usage:\n");
         fprintf(stderr,"  " PROGNAME " -ebrotli filename - selects all levels of brotli\n");
         fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd\n");                    
-		exit(0);
-	}
+        exit(0);
+    }
 
     if (real_time)
     {
@@ -589,10 +633,10 @@ int main( int argc, char** argv)
         argc--;
     }
 
-	if (params.chunk_size > 10 * (1<<20))
-		printf("done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dMB cSpeed=%dMB)\n", params.c_iters, params.d_iters, params.cmintime/1000.0, params.dmintime/1000.0, (int)(params.chunk_size >> 20), params.cspeed);
-	else
-		printf("done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dKB cSpeed=%dMB)\n", params.c_iters, params.d_iters, params.cmintime/1000.0, params.dmintime/1000.0, (int)(params.chunk_size >> 10), params.cspeed);
+    if (params.chunk_size > 10 * (1<<20))
+        printf("done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dMB cSpeed=%dMB)\n", params.c_iters, params.d_iters, params.cmintime/1000.0, params.dmintime/1000.0, (int)(params.chunk_size >> 20), params.cspeed);
+    else
+        printf("done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dKB cSpeed=%dMB)\n", params.c_iters, params.d_iters, params.cmintime/1000.0, params.dmintime/1000.0, (int)(params.chunk_size >> 10), params.cspeed);
 
 
     if (encoder_list) free(encoder_list);
@@ -614,7 +658,10 @@ int main( int argc, char** argv)
 
     for (std::vector<string_table_t>::iterator it = params.results.begin(); it!=params.results.end(); it++)
     {
-        print_row(&params, *it);
+        if (params.show_speed)
+            print_speed(&params, *it);
+        else
+            print_time(&params, *it);
     }
 }
 

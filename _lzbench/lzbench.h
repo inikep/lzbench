@@ -68,10 +68,9 @@
 typedef struct string_table
 {
     std::string column1;
-    float column2, column3, column5;
-    uint64_t column4;
+    uint64_t column2, column3, column4, column5;
     std::string filename;
-    string_table(std::string c1, float c2, float c3, uint64_t c4, float c5, std::string in_filename) : column1(c1), column2(c2), column3(c3), column5(c5), column4(c4), filename(in_filename) {}
+    string_table(std::string c1, uint64_t c2, uint64_t c3, uint64_t c4, uint64_t c5, std::string in_filename) : column1(c1), column2(c2), column3(c3), column4(c4), column5(c5), filename(in_filename) {}
 } string_table_t;
 
 enum textformat_e { MARKDOWN=1, TEXT, CSV, TURBOBENCH };
