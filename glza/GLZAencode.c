@@ -3237,6 +3237,9 @@ uint8_t * GLZAencode(size_t in_size, uint8_t * in_data, size_t * outsize_ptr, ui
     for (i2 = 2 ; i2 <= max_code_length ; i2++)
       free(sym_list_ptrs[i1][i2]);
   } while (i1--);
+  free(symbol);
+  free(sd);
+  free(ranked_symbols);
   *outsize_ptr = ReadOutCharNum();
   if (fd_out != 0) {
     if ((outbuf = (uint8_t *)realloc(outbuf, *outsize_ptr)) == 0) {

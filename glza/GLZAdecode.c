@@ -2711,9 +2711,8 @@ finish_decode:
     for (i2 = max_code_length ; i2 >= 2 ; i2--)
       free(sym_list_ptrs[i1][i2]);
   } while (i1--);
-  if (two_threads) {
+  if (two_threads)
     pthread_join(output_thread,NULL);
-  }
   else {
     write_single_threaded_output();
     chars_to_write = out_char_ptr - start_char_ptr;
@@ -2733,6 +2732,7 @@ finish_decode:
       fwrite(&outbuf[outbuf_index], 1, chars_to_write, fd);
     outbuf_index += chars_to_write;
   }
+  free(symbol_strings);
   *outsize_ptr = outbuf_index;
   if ((outbuf = (uint8_t *)realloc(outbuf, *outsize_ptr)) == 0) {
     fprintf(stderr,"ERROR - Compressed output buffer memory reallocation failed\n");
