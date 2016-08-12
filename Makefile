@@ -17,6 +17,7 @@ else
     ifneq ($(shell uname -s),Darwin)
         LDFLAGS	= -lrt -static
     endif
+    LDFLAGS	+= -lpthread
 endif
 
 
