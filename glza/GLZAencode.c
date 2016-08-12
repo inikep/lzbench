@@ -3238,9 +3238,11 @@ uint8_t * GLZAencode(size_t in_size, uint8_t * in_data, size_t * outsize_ptr, ui
       free(sym_list_ptrs[i1][i2]);
   } while (i1--);
   *outsize_ptr = ReadOutCharNum();
-  if ((outbuf = (uint8_t *)realloc(outbuf, *outsize_ptr)) == 0) {
-    fprintf(stderr,"ERROR - Compressed output buffer memory reallocation failed\n");
-    exit(EXIT_FAILURE);
+  if (fd_out != 0) {
+    if ((outbuf = (uint8_t *)realloc(outbuf, *outsize_ptr)) == 0) {
+      fprintf(stderr,"ERROR - Compressed output buffer memory reallocation failed\n");
+      exit(EXIT_FAILURE);
+    }
   }
   return(outbuf);
 }
