@@ -452,7 +452,7 @@ int main( int argc, char** argv)
 {
 	FILE *in;
     char* encoder_list = NULL;
-    int sort_col = 0;
+    int sort_col = 0, real_time = 1;
     lzbench_params_t params;
 
     memset(&params, 0, sizeof(lzbench_params_t));
@@ -465,12 +465,6 @@ int main( int argc, char** argv)
     params.cmintime = 10*DEFAULT_LOOP_TIME/1000; // 1 sec
     params.dmintime = 5*DEFAULT_LOOP_TIME/1000; // 0.5 sec
     params.cloop_time = params.dloop_time = DEFAULT_LOOP_TIME;
-
-#ifdef WINDOWS
-	SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
-#else
-	setpriority(PRIO_PROCESS, 0, -20);
-#endif
 
 	printf(PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")   Assembled by P.Skibinski\n", (uint32_t)(8 * sizeof(uint8_t*)));
 
@@ -496,6 +490,9 @@ int main( int argc, char** argv)
 		break;
 	case 'p':
         params.timetype = (timetype_e)atoi(argv[1] + 2);
+		break;
+	case 'r':
+		real_time = 0;
 		break;
 	case 's':
 		params.cspeed = atoi(argv[1] + 2);
@@ -549,6 +546,7 @@ int main( int argc, char** argv)
 		fprintf(stderr, " -l   list of available compressors and aliases\n");
         fprintf(stderr, " -oX  output text format 1=Markdown, 2=text, 3=CSV (default = %d)\n", params.textformat);
 		fprintf(stderr, " -pX  print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params.timetype);
+ 		fprintf(stderr, " -r   disable real-time process priority\n");
 		fprintf(stderr, " -sX  use only compressors with compression speed over X MB (default = %d MB)\n", params.cspeed);
 		fprintf(stderr, " -tX  set min. time in seconds for compression (default = %.1f)\n", params.cmintime/1000.0);
  		fprintf(stderr, " -uX  set min. time in seconds for decompression (default = %.1f)\n", params.dmintime/1000.0);
@@ -558,7 +556,18 @@ int main( int argc, char** argv)
         fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd\n");                    
 		exit(0);
 	}
-    
+
+    if (real_time)
+    {
+    #ifdef WINDOWS
+        SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
+    #else
+        setpriority(PRIO_PROCESS, 0, -20);
+    #endif
+    } else {
+        printf("The real-time process priority disabled\n");
+    }
+
     bool first_time = true;
     while (argc > 1)
     {
