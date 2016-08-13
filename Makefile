@@ -1,14 +1,14 @@
 #BUILD_ARCH = 32-bit
 
 # LZSSE requires gcc with support of __SSE4_1__
-GCC_WITH_SSE41 := $(shell if [ -n "`echo|gcc -dM -E - -march=native|grep SSE4_1`" ]; then echo 1; else echo 0; fi)
-ifeq "$(GCC_WITH_SSE41)" "0"
+CC_WITH_SSE41 := $(shell if [ -n "`echo|$(CC) -dM -E - -march=native|grep SSE4_1`" ]; then echo 1; else echo 0; fi)
+ifeq "$(CC_WITH_SSE41)" "0"
 	DONT_BUILD_LZSSE ?= 1
 endif
 
 # glza doesn't work with gcc < 4.9 (missing stdatomic.h)
-GCC_LT_490 := $(shell expr `$(CC) -dumpversion | sed -e 's/\.\([0-9][0-9]\)/\1/g' -e 's/\.\([0-9]\)/0\1/g' -e 's/^[0-9]\{3,4\}$$/&00/'` \< 40900)
-ifeq "$(GCC_LT_490)" "1"
+CC_LT_490 := $(shell expr `$(CC) -dumpversion | sed -e 's/\.\([0-9][0-9]\)/\1/g' -e 's/\.\([0-9]\)/0\1/g' -e 's/^[0-9]\{3,4\}$$/&00/'` \< 40900)
+ifeq "$(CC_LT_490)" "1"
     DONT_BUILD_GLZA ?= 1
 endif
 
@@ -162,13 +162,13 @@ pithy/pithy.o: pithy/pithy.cpp
 	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 lzsse/lzsse2/lzsse2.o: lzsse/lzsse2/lzsse2.cpp
-	$(CXX) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
+	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
 
 lzsse/lzsse4/lzsse4.o: lzsse/lzsse4/lzsse4.cpp
-	$(CXX) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
+	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
 
 lzsse/lzsse8/lzsse8.o: lzsse/lzsse8/lzsse8.cpp
-	$(CXX) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
+	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
 
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
