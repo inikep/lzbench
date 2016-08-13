@@ -7,6 +7,11 @@ Then all compressors are used to compress and decompress the file and decompress
 This approach has a big advantage of using the same compiler with the same optimizations for all compressors. 
 The disadvantage is that it requires source code of each compressor (therefore Slug or lzturbo are not included).
 
+|Branch      |Status   |
+|------------|---------|
+|master      | [![Build Status](https://travis-ci.org/inikep/lzbench.svg?branch=master)](https://travis-ci.org/inikep/lzbench) |
+|dev         | [![Build Status](https://travis-ci.org/inikep/lzbench.svg?branch=dev)](https://travis-ci.org/inikep/lzbench) | 
+
 
 Usage
 -------------------------
@@ -43,6 +48,11 @@ Compilation
 For Linux/Unix/MinGW (Windows):
 ```
 make
+```
+
+For MacOS:
+```
+make BUILD_LZHAM=0
 ```
 
 For 32-bit compilation:
@@ -105,7 +115,7 @@ Benchmarks
 -------------------------
 
 The following results are obtained with lzbench ("-t16 -u16 -eall") using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 5.3.0)
-using the tarred files from ["Silesia compression corpus"](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
+with ["silesia.tar"](https://drive.google.com/file/d/0BwX7dtyRLxThenZpYU9zLTZhR1k/view?usp=sharing) which contains tarred files from ["Silesia compression corpus"](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
 The results sorted by ratio are available [here](lzbench13_sorted.md).
 
 | Compressor name         | Compression| Decompress.| Compr. size | Ratio |

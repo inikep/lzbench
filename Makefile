@@ -1,11 +1,11 @@
 #BUILD_ARCH = 32-bit
 
-# compile LZSSE; it requires -msse4.1
+# compile LZSSE; it requires gcc >= 4.8 with -msse4.1
 BUILD_LZSSE ?= 1
 # compile lzham; it doesn't work on MacOS
 BUILD_LZHAM ?= 1
 
-# glza doesn't work with gcc < 4.9
+# glza doesn't work with gcc < 4.9 (missing stdatomic.h)
 GCC_GTEQ_490 := $(shell expr `$(CC) -dumpversion | sed -e 's/\.\([0-9][0-9]\)/\1/g' -e 's/\.\([0-9]\)/0\1/g' -e 's/^[0-9]\{3,4\}$$/&00/'` \>= 40900)
 ifeq "$(GCC_GTEQ_490)" "1"
     BUILD_GLZA ?= 1
