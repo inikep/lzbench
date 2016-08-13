@@ -17,6 +17,23 @@
 */
 
 #define FREEARC_STANDALONE_TORNADO
+#define FREEARC_NO_TIMING
+#define _UNICODE
+#define UNICODE
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(WIN64) || defined(_WIN64)
+	#define FREEARC_WIN
+#else
+	#define FREEARC_UNIX
+#endif
+
+/* Test for a little-endian machine */
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    #define FREEARC_INTEL_BYTE_ORDER
+#endif
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #define FREEARC_MOTOROLA_BYTE_ORDER
+#endif
 
 #include <stdint.h>
 #include "tor_test.h" 

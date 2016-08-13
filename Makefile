@@ -16,10 +16,8 @@ endif
 
 # detect Windows
 ifneq (,$(filter Windows%,$(OS)))
-	DEFINES += -DFREEARC_WIN
 	LDFLAGS	= -lshell32 -lole32 -loleaut32 -static
 else
-	DEFINES += -DFREEARC_UNIX
     # MacOS doesn't support -lrt -static
     ifneq ($(shell uname -s),Darwin)
         LDFLAGS	= -lrt -static
@@ -35,7 +33,7 @@ endif
 
 
 DEFINES		+= -I. -Izstd/lib -Izstd/lib/common -Ixpack/common
-DEFINES		+= -DFREEARC_NO_TIMING -DFREEARC_INTEL_BYTE_ORDER -D_UNICODE -DUNICODE -DHAVE_CONFIG_H -DXXH_NAMESPACE=ZSTD_
+DEFINES		+= -DHAVE_CONFIG_H -DXXH_NAMESPACE=ZSTD_
 CODE_FLAGS  = -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
 
