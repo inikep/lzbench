@@ -15,7 +15,7 @@ Usage
 usage: lzbench [options] input_file [input_file2] [input_file3]
 
 where [options] are:
- -bX  set block/chunk size to X KB (default = filesize or 2097152 KB)
+ -bX  set block/chunk size to X KB (default = MIN(filesize,1747626 KB))
  -cX  sort results by column number X
  -eX  X = compressors separated by '/' with parameters specified after ','
  -iX  set min. number of compression iterations (default = 1)
@@ -23,13 +23,18 @@ where [options] are:
  -l   list of available compressors and aliases
  -oX  output text format 1=Markdown, 2=text, 3=CSV (default = 2)
  -pX  print time for all iterations: 1=fastest 2=average 3=median (default = 1)
+ -r   disable real-time process priority
  -sX  use only compressors with compression speed over X MB (default = 0 MB)
  -tX  set min. time in seconds for compression (default = 1.0)
  -uX  set min. time in seconds for decompression (default = 0.5)
+ -v   disable progress information
+ -z   show (de)compression times instead of speed
 
 Example usage:
   lzbench -ebrotli filename - selects all levels of brotli
   lzbench -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd
+  lzbench -t0 -u0 -i3 -j5 fname - selects 3 compression and 5 decompression iter.
+  lzbench -t3 -u5 fname - selects 3 sec compression and 5 sec decompression loops
 ```
 
 
