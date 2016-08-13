@@ -3,7 +3,7 @@
 # LZSSE requires gcc with support of __SSE4_1__
 GCC_WITH_SSE41 := $(shell if [ -n "`echo|gcc -dM -E - -march=native|grep SSE4_1`" ]; then echo 1; else echo 0; fi)
 ifeq "$(GCC_WITH_SSE41)" "0"
-	DONT_BUILD_LZSSE ?= 0
+	DONT_BUILD_LZSSE ?= 1
 endif
 
 # glza doesn't work with gcc < 4.9 (missing stdatomic.h)
@@ -175,7 +175,6 @@ _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
 lzbench: $(GLZA_FILES) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
-	echo $$(GCC_WITH_SSE41)=$(GCC_WITH_SSE41) $$(GCC_WITH_SSE51)=$(GCC_WITH_SSE51)
 
 .c.o:
 	$(CC) $(CFLAGS) $< -std=c99 -c -o $@
