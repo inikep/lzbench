@@ -1,14 +1,16 @@
 #BUILD_ARCH = 32-bit
 
-# compile LZSSE; it requires gcc >= 4.8 with -msse4.1
-DONT_BUILD_LZSSE ?= 0
+# LZSSE requires gcc with support of __SSE4_1__
+GCC_WITH_SSE41 := $(shell if [ -n "`echo|gcc -dM -E - -march=native|grep SSE4_1`" ]; then echo 1; else echo 0; fi)
+ifeq "$(GCC_WITH_SSE41)" "0"
+	DONT_BUILD_LZSSE ?= 0
+endif
 
 # glza doesn't work with gcc < 4.9 (missing stdatomic.h)
 GCC_LT_490 := $(shell expr `$(CC) -dumpversion | sed -e 's/\.\([0-9][0-9]\)/\1/g' -e 's/\.\([0-9]\)/0\1/g' -e 's/^[0-9]\{3,4\}$$/&00/'` \< 40900)
 ifeq "$(GCC_LT_490)" "1"
     DONT_BUILD_GLZA ?= 1
 endif
-
 
 # if BUILD_ARCH is not 32-bit
 ifneq ($(BUILD_ARCH),32-bit)
@@ -21,8 +23,9 @@ ifneq (,$(filter Windows%,$(OS)))
     LDFLAGS = -lshell32 -lole32 -loleaut32 -static
 else
     # MacOS doesn't support -lrt -static
-    ifneq ($(shell uname -s),Darwin)
+    ifeq ($(shell uname -s),Darwin)
         DONT_BUILD_LZHAM ?= 1
+    else
         LDFLAGS	= -lrt -static
     endif
     LDFLAGS	+= -lpthread
@@ -172,6 +175,7 @@ _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
 lzbench: $(GLZA_FILES) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
+	echo $$(GCC_WITH_SSE41)=$(GCC_WITH_SSE41) $$(GCC_WITH_SSE51)=$(GCC_WITH_SSE51)
 
 .c.o:
 	$(CC) $(CFLAGS) $< -std=c99 -c -o $@

@@ -5,7 +5,7 @@ matrix:
     # Container-based Ubuntu 12.04 LTS Server Edition 64 bit (doesn't support 32-bit includes)
     - os: linux
       sudo: false
-      env: CC_COMPILER=gcc CXX_COMPILER=g++ MORE_OPTIONS="DONT_BUILD_LZSSE=1"
+      env: CC_COMPILER=gcc CXX_COMPILER=g++
     #- os: linux
     #  sudo: false
     #  env: CC_COMPILER=clang CXX_COMPILER=clang++
