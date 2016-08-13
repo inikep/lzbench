@@ -1,5 +1,4 @@
 #BUILD_ARCH = 32-bit
-#BUILD_TYPE = debug
 
 # compile LZSSE; it requires -msse4.1
 BUILD_LZSSE ?= 1
@@ -9,20 +8,9 @@ BUILD_LZHAM ?= 1
 # glza doesn't work with gcc < 4.9
 GCC_GTEQ_490 := $(shell expr `$(CC) -dumpversion | sed -e 's/\.\([0-9][0-9]\)/\1/g' -e 's/\.\([0-9]\)/0\1/g' -e 's/^[0-9]\{3,4\}$$/&00/'` \>= 40900)
 ifeq "$(GCC_GTEQ_490)" "1"
-	GLZA_FILES = glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
+    BUILD_GLZA ?= 1
 else
-	DEFINES += -DBENCH_REMOVE_GLZA
-endif
-
-# detect Windows
-ifneq (,$(filter Windows%,$(OS)))
-	LDFLAGS	= -lshell32 -lole32 -loleaut32 -static
-else
-    # MacOS doesn't support -lrt -static
-    ifneq ($(shell uname -s),Darwin)
-        LDFLAGS	= -lrt -static
-    endif
-    LDFLAGS	+= -lpthread
+    BUILD_GLZA ?= 0
 endif
 
 
@@ -32,9 +20,21 @@ ifneq ($(BUILD_ARCH),32-bit)
 endif
 
 
-DEFINES		+= -I. -Izstd/lib -Izstd/lib/common -Ixpack/common
-DEFINES		+= -DHAVE_CONFIG_H -DXXH_NAMESPACE=ZSTD_
-CODE_FLAGS  = -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
+# detect Windows
+ifneq (,$(filter Windows%,$(OS)))
+    LDFLAGS = -lshell32 -lole32 -loleaut32 -static
+else
+    # MacOS doesn't support -lrt -static
+    ifneq ($(shell uname -s),Darwin)
+        LDFLAGS	= -lrt -static
+    endif
+    LDFLAGS	+= -lpthread
+endif
+
+
+DEFINES     += -I. -Izstd/lib -Izstd/lib/common -Ixpack/common
+DEFINES     += -DHAVE_CONFIG_H -DXXH_NAMESPACE=ZSTD_
+CODE_FLAGS  ?= -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
 
 
@@ -51,13 +51,13 @@ CFLAGS_O2 = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
 
 
 
-ifeq ($(BUILD_LZSSE),1)
+ifeq "$(BUILD_LZSSE)" "1"
     LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
 else
     DEFINES += -DBENCH_REMOVE_LZSSE
 endif
 
-ifeq ($(BUILD_LZHAM),1)
+ifeq "$(BUILD_LZHAM)" "1"
     LZHAM_FILES = lzham/lzham_assert.o lzham/lzham_checksum.o lzham/lzham_huffman_codes.o lzham/lzham_lzbase.cpp
     LZHAM_FILES += lzham/lzham_lzcomp.o lzham/lzham_lzcomp_internal.o lzham/lzham_lzdecomp.o lzham/lzham_lzdecompbase.o
     LZHAM_FILES += lzham/lzham_match_accel.o lzham/lzham_mem.o lzham/lzham_platform.o lzham/lzham_lzcomp_state.o
@@ -66,6 +66,11 @@ else
     DEFINES += -DBENCH_REMOVE_LZHAM
 endif
 
+ifeq "$(BUILD_GLZA)" "1"
+    GLZA_FILES = glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
+else
+    DEFINES += -DBENCH_REMOVE_GLZA
+endif
 
 ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
 
