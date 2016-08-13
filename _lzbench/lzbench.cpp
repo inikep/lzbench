@@ -602,7 +602,9 @@ int main( int argc, char** argv)
         fprintf(stderr, " -z   show (de)compression times instead of speed\n");
         fprintf(stderr,"\nExample usage:\n");
         fprintf(stderr,"  " PROGNAME " -ebrotli filename - selects all levels of brotli\n");
-        fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd\n");                    
+        fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd\n");
+        fprintf(stderr,"  " PROGNAME " -t0 -u0 -i3 -j5 fname - selects 3 compression and 5 decompression iter.\n");
+        fprintf(stderr,"  " PROGNAME " -t3 -u5 fname - selects 3 sec compression and 5 sec decompression loops\n");
         exit(0);
     }
 

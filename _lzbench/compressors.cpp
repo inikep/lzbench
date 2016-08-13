@@ -291,6 +291,7 @@ int64_t lzbench_gipfeli_decompress(char *inbuf, size_t insize, char *outbuf, siz
 #endif
 
 
+
 #ifndef BENCH_REMOVE_GLZA
 #include "glza/GLZAformat.h"
 #include "glza/GLZAcompress.h"
@@ -299,16 +300,19 @@ int64_t lzbench_gipfeli_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 int64_t lzbench_glza_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
-	char * tempbuf;
-	tempbuf = (char *)GLZAformat(insize, (uint8_t *)inbuf, &outsize);
-	inbuf = tempbuf;
+	char * tempbuf = (char *)malloc(insize);
+    if (!tempbuf) return 0;
+	memcpy(tempbuf, inbuf, insize);
+	inbuf = (char *)GLZAformat(insize, (uint8_t *)tempbuf, &outsize);
+	free(tempbuf);
+    if (!inbuf) return 0;
 	insize = outsize;
 	tempbuf = (char *)GLZAcompress(insize, (uint8_t *)inbuf, &outsize);
 	free(inbuf);
-	inbuf = tempbuf;
+    if (!tempbuf) return 0;
 	insize = outsize;
-	outbuf = (char *)GLZAencode(insize, (uint8_t *)inbuf, &outsize, (uint8_t *)outbuf, (FILE *)0);
-	free(inbuf);
+	outbuf = (char *)GLZAencode(insize, (uint8_t *)tempbuf, &outsize, (uint8_t *)outbuf, (FILE *)0);
+	free(tempbuf);
 	return outsize;
 }
 
@@ -319,6 +323,7 @@ int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 }
 
 #endif
+
 
 
 #ifndef BENCH_REMOVE_LZ4

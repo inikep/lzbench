@@ -2734,9 +2734,11 @@ finish_decode:
   }
   free(symbol_strings);
   *outsize_ptr = outbuf_index;
-  if ((outbuf = (uint8_t *)realloc(outbuf, *outsize_ptr)) == 0) {
-    fprintf(stderr,"ERROR - Compressed output buffer memory reallocation failed\n");
-    exit(EXIT_FAILURE);
+  if (fd != 0) {
+    if ((outbuf = (uint8_t *)realloc(outbuf, *outsize_ptr)) == 0) {
+      fprintf(stderr,"ERROR - Compressed output buffer memory reallocation failed\n");
+      exit(EXIT_FAILURE);
+    }
   }
   return(outbuf);
 }
