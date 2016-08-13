@@ -46,14 +46,9 @@ Example usage:
 
 Compilation
 -------------------------
-For Linux/Unix/MinGW (Windows):
+For Linux/Unix/MacOS/MinGW (Windows):
 ```
 make
-```
-
-For MacOS:
-```
-make BUILD_LZHAM=0
 ```
 
 For 32-bit compilation:
@@ -117,7 +112,7 @@ Benchmarks
 -------------------------
 
 The following results are obtained with lzbench ("-t16 -u16 -eall") using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 5.3.0)
-with ["silesia.tar"](https://drive.google.com/file/d/0BwX7dtyRLxThenZpYU9zLTZhR1k/view?usp=sharing) which contains tarred files from ["Silesia compression corpus"](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
+with ["silesia.tar"](https://drive.google.com/file/d/0BwX7dtyRLxThenZpYU9zLTZhR1k/view?usp=sharing) which contains tarred files from [Silesia compression corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
 The results sorted by ratio are available [here](lzbench13_sorted.md).
 
 | Compressor name         | Compression| Decompress.| Compr. size | Ratio |

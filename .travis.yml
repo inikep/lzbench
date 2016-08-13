@@ -5,7 +5,7 @@ matrix:
     # Container-based Ubuntu 12.04 LTS Server Edition 64 bit (doesn't support 32-bit includes)
     - os: linux
       sudo: false
-      env: CC_COMPILER=gcc CXX_COMPILER=g++ MORE_OPTIONS="BUILD_LZSSE=0"
+      env: CC_COMPILER=gcc CXX_COMPILER=g++ MORE_OPTIONS="DONT_BUILD_LZSSE=1"
     #- os: linux
     #  sudo: false
     #  env: CC_COMPILER=clang CXX_COMPILER=clang++
@@ -63,7 +63,7 @@ matrix:
     # OS X Mavericks
     - os: osx
       compiler: gcc
-      env: CC_COMPILER=clang CXX_COMPILER=clang++ MORE_OPTIONS="BUILD_LZHAM=0"
+      env: CC_COMPILER=clang CXX_COMPILER=clang++
 
 script:
   - $CC_COMPILER -v

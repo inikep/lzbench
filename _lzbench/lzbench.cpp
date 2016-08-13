@@ -547,7 +547,6 @@ int main( int argc, char** argv)
         char* numPtr = argument + 1;
         unsigned number = 0;
         while ((*numPtr >='0') && (*numPtr <='9')) { number *= 10;  number += *numPtr - '0'; numPtr++; }
-        printf("option=%c num=%d pos=%d\n", argument[0], number, numPtr-argument);
         switch (argument[0])
         {
         case 'b':
@@ -558,7 +557,6 @@ int main( int argc, char** argv)
             break;
         case 'e':
             encoder_list = strdup(argument + 1);
-            printf("argument=%s %d\n", argument + 1, strlen(argument + 1));
             numPtr += strlen(numPtr);
             break;
         case 'i':

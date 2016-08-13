@@ -1,16 +1,12 @@
 #BUILD_ARCH = 32-bit
 
 # compile LZSSE; it requires gcc >= 4.8 with -msse4.1
-BUILD_LZSSE ?= 1
-# compile lzham; it doesn't work on MacOS
-BUILD_LZHAM ?= 1
+DONT_BUILD_LZSSE ?= 0
 
 # glza doesn't work with gcc < 4.9 (missing stdatomic.h)
-GCC_GTEQ_490 := $(shell expr `$(CC) -dumpversion | sed -e 's/\.\([0-9][0-9]\)/\1/g' -e 's/\.\([0-9]\)/0\1/g' -e 's/^[0-9]\{3,4\}$$/&00/'` \>= 40900)
-ifeq "$(GCC_GTEQ_490)" "1"
-    BUILD_GLZA ?= 1
-else
-    BUILD_GLZA ?= 0
+GCC_LT_490 := $(shell expr `$(CC) -dumpversion | sed -e 's/\.\([0-9][0-9]\)/\1/g' -e 's/\.\([0-9]\)/0\1/g' -e 's/^[0-9]\{3,4\}$$/&00/'` \< 40900)
+ifeq "$(GCC_LT_490)" "1"
+    DONT_BUILD_GLZA ?= 1
 endif
 
 
@@ -26,6 +22,7 @@ ifneq (,$(filter Windows%,$(OS)))
 else
     # MacOS doesn't support -lrt -static
     ifneq ($(shell uname -s),Darwin)
+        DONT_BUILD_LZHAM ?= 1
         LDFLAGS	= -lrt -static
     endif
     LDFLAGS	+= -lpthread
@@ -51,25 +48,25 @@ CFLAGS_O2 = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
 
 
 
-ifeq "$(BUILD_LZSSE)" "1"
-    LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
-else
+ifeq "$(DONT_BUILD_LZSSE)" "1"
     DEFINES += -DBENCH_REMOVE_LZSSE
+else
+    LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
 endif
 
-ifeq "$(BUILD_LZHAM)" "1"
+ifeq "$(DONT_BUILD_LZHAM)" "1"
+    DEFINES += -DBENCH_REMOVE_LZHAM
+else
     LZHAM_FILES = lzham/lzham_assert.o lzham/lzham_checksum.o lzham/lzham_huffman_codes.o lzham/lzham_lzbase.cpp
     LZHAM_FILES += lzham/lzham_lzcomp.o lzham/lzham_lzcomp_internal.o lzham/lzham_lzdecomp.o lzham/lzham_lzdecompbase.o
     LZHAM_FILES += lzham/lzham_match_accel.o lzham/lzham_mem.o lzham/lzham_platform.o lzham/lzham_lzcomp_state.o
     LZHAM_FILES += lzham/lzham_prefix_coding.o lzham/lzham_symbol_codec.o lzham/lzham_timer.o lzham/lzham_vector.o lzham/lzham_lib.o
-else
-    DEFINES += -DBENCH_REMOVE_LZHAM
 endif
 
-ifeq "$(BUILD_GLZA)" "1"
-    GLZA_FILES = glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
-else
+ifeq "$(DONT_BUILD_GLZA)" "1"
     DEFINES += -DBENCH_REMOVE_GLZA
+else
+    GLZA_FILES = glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
 endif
 
 ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
