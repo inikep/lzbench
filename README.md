@@ -36,10 +36,11 @@ where [options] are:
  -z   show (de)compression times instead of speed
 
 Example usage:
-  lzbench -ebrotli filename - selects all levels of brotli
-  lzbench -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd
-  lzbench -t0 -u0 -i3 -j5 fname - selects 3 compression and 5 decompression iter.
-  lzbench -t3 -u5 fname - selects 3 sec compression and 5 sec decompression loops
+  lzbench -ezstd filename = selects all levels of zstd
+  lzbench -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd
+  lzbench -t3 -u5 fname = 3 sec compression and 5 sec decompression loops
+  lzbench -t0 -u0 -i3 -j5 -elz5 fname = 3 compression and 5 decompression iter.
+  lzbench -t0u0i3j5 -elz5 fname = the same as above with aggregated parameters
 ```
 
 
@@ -61,7 +62,8 @@ make BUILD_ARCH=32-bit
 
 ```
 
-To remove one of compressors you can add -DBENCH_REMOVE_XXX to $DEFINES in Makefile (e.g. DEFINES += -DBENCH_REMOVE_LZ5 to remove LZ5).
+To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ5` to remove LZ5). 
+You also have to remove corresponding `*.o` files (e.g. `lz5/lz5.o` and `lz5/lz5hc.o`).
 
 Supported compressors
 -------------------------

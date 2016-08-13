@@ -492,121 +492,141 @@ void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list, bool fi
 }
 
 
-int main( int argc, char** argv) 
+void usage(lzbench_params_t* params)
+{
+    fprintf(stderr, "usage: " PROGNAME " [options] input_file [input_file2] [input_file3]\n\nwhere [options] are:\n");
+    fprintf(stderr, " -bX  set block/chunk size to X KB (default = MIN(filesize,%d KB))\n", (int)(params->chunk_size>>10));
+    fprintf(stderr, " -cX  sort results by column number X\n");
+    fprintf(stderr, " -eX  X = compressors separated by '/' with parameters specified after ',' (deflt=fast)\n");
+    fprintf(stderr, " -iX  set min. number of compression iterations (default = %d)\n", params->c_iters);
+    fprintf(stderr, " -jX  set min. number of decompression iterations (default = %d)\n", params->d_iters);
+    fprintf(stderr, " -l   list of available compressors and aliases\n");
+    fprintf(stderr, " -oX  output text format 1=Markdown, 2=text, 3=CSV (default = %d)\n", params->textformat);
+    fprintf(stderr, " -pX  print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
+    fprintf(stderr, " -r   disable real-time process priority\n");
+    fprintf(stderr, " -sX  use only compressors with compression speed over X MB (default = %d MB)\n", params->cspeed);
+    fprintf(stderr, " -tX  set min. time in seconds for compression (default = %.1f)\n", params->cmintime/1000.0);
+    fprintf(stderr, " -uX  set min. time in seconds for decompression (default = %.1f)\n", params->dmintime/1000.0);
+    fprintf(stderr, " -v   disable progress information\n");
+    fprintf(stderr, " -z   show (de)compression times instead of speed\n");
+    fprintf(stderr,"\nExample usage:\n");
+    fprintf(stderr,"  " PROGNAME " -ezstd filename = selects all levels of zstd\n");
+    fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd\n");
+    fprintf(stderr,"  " PROGNAME " -t3 -u5 fname = 3 sec compression and 5 sec decompression loops\n");
+    fprintf(stderr,"  " PROGNAME " -t0 -u0 -i3 -j5 -elz5 fname = 3 compression and 5 decompression iter.\n");
+    fprintf(stderr,"  " PROGNAME " -t0u0i3j5 -elz5 fname = the same as above with aggregated parameters\n");
+    exit(0);
+}
+
+
+int main( int argc, char** argv)
 {
     FILE *in;
     char* encoder_list = NULL;
     int sort_col = 0, real_time = 1;
-    lzbench_params_t params;
+    lzbench_params_t lzparams;
+    lzbench_params_t* params = &lzparams;
 
-    memset(&params, 0, sizeof(lzbench_params_t));
-    params.timetype = FASTEST;
-    params.textformat = TEXT;
-    params.show_speed = 1;
-    params.verbose = 2;
-    params.chunk_size = (1ULL << 31) - (1ULL << 31)/6;
-    params.cspeed = 0;
-    params.c_iters = params.d_iters = 1;
-    params.cmintime = 10*DEFAULT_LOOP_TIME/1000000; // 1 sec
-    params.dmintime = 5*DEFAULT_LOOP_TIME/1000000; // 0.5 sec
-    params.cloop_time = params.dloop_time = DEFAULT_LOOP_TIME;
+    memset(params, 0, sizeof(lzbench_params_t));
+    params->timetype = FASTEST;
+    params->textformat = TEXT;
+    params->show_speed = 1;
+    params->verbose = 2;
+    params->chunk_size = (1ULL << 31) - (1ULL << 31)/6;
+    params->cspeed = 0;
+    params->c_iters = params->d_iters = 1;
+    params->cmintime = 10*DEFAULT_LOOP_TIME/1000000; // 1 sec
+    params->dmintime = 5*DEFAULT_LOOP_TIME/1000000; // 0.5 sec
+    params->cloop_time = params->dloop_time = DEFAULT_LOOP_TIME;
 
     printf(PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")   Assembled by P.Skibinski\n", (uint32_t)(8 * sizeof(uint8_t*)));
 
-    while ((argc>1)&&(argv[1][0]=='-')) {
-        switch (argv[1][1]) {
-    case 'b':
-        params.chunk_size = atoi(argv[1] + 2) << 10;
-        break;
-    case 'c':
-        sort_col = atoi(argv[1] + 2);
-        break;
-    case 'e':
-        encoder_list = strdup(argv[1] + 2);
-        break;
-    case 'i':
-        params.c_iters=atoi(argv[1]+2);
-        break;
-    case 'j':
-        params.d_iters=atoi(argv[1]+2);
-        break;
-    case 'o':
-        params.textformat = (textformat_e)atoi(argv[1] + 2);
-        break;
-    case 'p':
-        params.timetype = (timetype_e)atoi(argv[1] + 2);
-        break;
-    case 'r':
-        real_time = 0;
-        break;
-    case 's':
-        params.cspeed = atoi(argv[1] + 2);
-        break;
-    case 't':
-        params.cmintime = 1000*atoi(argv[1] + 2);
-        params.cloop_time = (params.cmintime)?DEFAULT_LOOP_TIME:0;
-        break;
-    case 'u':
-        params.dmintime = 1000*atoi(argv[1] + 2);
-        params.dloop_time = (params.dmintime)?DEFAULT_LOOP_TIME:0;
-        break;
-    case 'v':
-        params.verbose = atoi(argv[1] + 2);
-        break;
-    case 'z':
-        params.show_speed = 0;
-        break;
-    case '-': // --help
-    case 'h':
-        break;
-    case 'l':
-        printf("\nAvailable compressors for -e option:\n");
-        printf("all - alias for all available compressors\n");
-        printf("fast - alias for compressors with compression speed over 100 MB/s\n");
-        printf("opt - compressors with optimal parsing (slow compression, fast decompression)\n");
-        printf("lzo / ucl - aliases for all levels of given compressors\n");
-        for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
+    while ((argc>1) && (argv[1][0]=='-')) {
+    char* argument = argv[1]+1; 
+    while (argument[0] != 0) {
+        char* numPtr = argument + 1;
+        unsigned number = 0;
+        while ((*numPtr >='0') && (*numPtr <='9')) { number *= 10;  number += *numPtr - '0'; numPtr++; }
+        printf("option=%c num=%d pos=%d\n", argument[0], number, numPtr-argument);
+        switch (argument[0])
         {
-            if (comp_desc[i].compress)
+        case 'b':
+            params->chunk_size = number << 10;
+            break;
+        case 'c':
+            sort_col = number;
+            break;
+        case 'e':
+            encoder_list = strdup(argument + 1);
+            printf("argument=%s %d\n", argument + 1, strlen(argument + 1));
+            numPtr += strlen(numPtr);
+            break;
+        case 'i':
+            params->c_iters = number;
+            break;
+        case 'j':
+            params->d_iters = number;
+            break;
+        case 'o':
+            params->textformat = (textformat_e)number;
+            break;
+        case 'p':
+            params->timetype = (timetype_e)number;
+            break;
+        case 'r':
+            real_time = 0;
+            break;
+        case 's':
+            params->cspeed = number;
+            break;
+        case 't':
+            params->cmintime = 1000*number;
+            params->cloop_time = (params->cmintime)?DEFAULT_LOOP_TIME:0;
+            break;
+        case 'u':
+            params->dmintime = 1000*number;
+            params->dloop_time = (params->dmintime)?DEFAULT_LOOP_TIME:0;
+            break;
+        case 'v':
+            params->verbose = number;
+            break;
+        case 'z':
+            params->show_speed = 0;
+            break;
+        case '-': // --help
+        case 'h':
+            usage(params);
+            break;
+        case 'l':
+            printf("\nAvailable compressors for -e option:\n");
+            printf("all - alias for all available compressors\n");
+            printf("fast - alias for compressors with compression speed over 100 MB/s (default)\n");
+            printf("opt - compressors with optimal parsing (slow compression, fast decompression)\n");
+            printf("lzo / ucl - aliases for all levels of given compressors\n");
+            for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
             {
-                if (comp_desc[i].first_level < comp_desc[i].last_level)
-                    printf("%s %s [%d-%d]\n", comp_desc[i].name, comp_desc[i].version, comp_desc[i].first_level, comp_desc[i].last_level);
-                else
-                    printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
+                if (comp_desc[i].compress)
+                {
+                    if (comp_desc[i].first_level < comp_desc[i].last_level)
+                        printf("%s %s [%d-%d]\n", comp_desc[i].name, comp_desc[i].version, comp_desc[i].first_level, comp_desc[i].last_level);
+                    else
+                        printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
+                }
             }
+            return 0;
+        default:
+            fprintf(stderr, "unknown option: %s\n", argv[1]);
+            exit(1);
         }
-        return 0;
-    default:
-        fprintf(stderr, "unknown option: %s\n", argv[1]);
-        exit(1);
-        }
-        argv++;
-        argc--;
+        argument = numPtr;
+    }
+    argv++;
+    argc--;
     }
 
-    if (argc<2) {
-        fprintf(stderr, "usage: " PROGNAME " [options] input_file [input_file2] [input_file3]\n\nwhere [options] are:\n");
-        fprintf(stderr, " -bX  set block/chunk size to X KB (default = MIN(filesize,%d KB))\n", (int)(params.chunk_size>>10));
-        fprintf(stderr, " -cX  sort results by column number X\n");
-        fprintf(stderr, " -eX  X = compressors separated by '/' with parameters specified after ','\n");
-        fprintf(stderr, " -iX  set min. number of compression iterations (default = %d)\n", params.c_iters);
-        fprintf(stderr, " -jX  set min. number of decompression iterations (default = %d)\n", params.d_iters);
-        fprintf(stderr, " -l   list of available compressors and aliases\n");
-        fprintf(stderr, " -oX  output text format 1=Markdown, 2=text, 3=CSV (default = %d)\n", params.textformat);
-        fprintf(stderr, " -pX  print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params.timetype);
-        fprintf(stderr, " -r   disable real-time process priority\n");
-        fprintf(stderr, " -sX  use only compressors with compression speed over X MB (default = %d MB)\n", params.cspeed);
-        fprintf(stderr, " -tX  set min. time in seconds for compression (default = %.1f)\n", params.cmintime/1000.0);
-        fprintf(stderr, " -uX  set min. time in seconds for decompression (default = %.1f)\n", params.dmintime/1000.0);
-        fprintf(stderr, " -v   disable progress information\n");
-        fprintf(stderr, " -z   show (de)compression times instead of speed\n");
-        fprintf(stderr,"\nExample usage:\n");
-        fprintf(stderr,"  " PROGNAME " -ebrotli filename - selects all levels of brotli\n");
-        fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd\n");
-        fprintf(stderr,"  " PROGNAME " -t0 -u0 -i3 -j5 fname - selects 3 compression and 5 decompression iter.\n");
-        fprintf(stderr,"  " PROGNAME " -t3 -u5 fname - selects 3 sec compression and 5 sec decompression loops\n");
-        exit(0);
-    }
+    LZBENCH_PRINT(5, "params: chunk_size=%d c_iters=%d d_iters=%d cspeed=%d cmintime=%d dmintime=%d encoder_list=%s\n", (int)params->chunk_size, params->c_iters, params->d_iters, params->cspeed, params->cmintime, params->dmintime, encoder_list);
+
+    if (argc<2) usage(params);
 
     if (real_time)
     {
@@ -626,8 +646,8 @@ int main( int argc, char** argv)
             perror(argv[1]);
         } else {
             char* pch = strrchr(argv[1], '\\');
-            params.in_filename = pch ? pch+1 : argv[1];
-            lzbenchmark(&params, in, encoder_list, first_time);
+            params->in_filename = pch ? pch+1 : argv[1];
+            lzbenchmark(params, in, encoder_list, first_time);
             first_time = false;
             fclose(in);
         }
@@ -635,10 +655,10 @@ int main( int argc, char** argv)
         argc--;
     }
 
-    if (params.chunk_size > 10 * (1<<20))
-        printf("done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dMB cSpeed=%dMB)\n", params.c_iters, params.d_iters, params.cmintime/1000.0, params.dmintime/1000.0, (int)(params.chunk_size >> 20), params.cspeed);
+    if (params->chunk_size > 10 * (1<<20))
+        printf("done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dMB cSpeed=%dMB)\n", params->c_iters, params->d_iters, params->cmintime/1000.0, params->dmintime/1000.0, (int)(params->chunk_size >> 20), params->cspeed);
     else
-        printf("done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dKB cSpeed=%dMB)\n", params.c_iters, params.d_iters, params.cmintime/1000.0, params.dmintime/1000.0, (int)(params.chunk_size >> 10), params.cspeed);
+        printf("done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dKB cSpeed=%dMB)\n", params->c_iters, params->d_iters, params->cmintime/1000.0, params->dmintime/1000.0, (int)(params->chunk_size >> 10), params->cspeed);
 
 
     if (encoder_list) free(encoder_list);
@@ -646,24 +666,24 @@ int main( int argc, char** argv)
     if (sort_col <= 0) return 0;
 
     printf("\nThe results sorted by column number %d:\n", sort_col);
-    print_header(&params);
+    print_header(params);
 
     switch (sort_col)
     {
         default:
-        case 1: std::sort(params.results.begin(), params.results.end(), less_using_1st_column()); break;
-        case 2: std::sort(params.results.begin(), params.results.end(), less_using_2nd_column()); break;
-        case 3: std::sort(params.results.begin(), params.results.end(), less_using_3rd_column()); break;
-        case 4: std::sort(params.results.begin(), params.results.end(), less_using_4th_column()); break;
-        case 5: std::sort(params.results.begin(), params.results.end(), less_using_5th_column()); break;
+        case 1: std::sort(params->results.begin(), params->results.end(), less_using_1st_column()); break;
+        case 2: std::sort(params->results.begin(), params->results.end(), less_using_2nd_column()); break;
+        case 3: std::sort(params->results.begin(), params->results.end(), less_using_3rd_column()); break;
+        case 4: std::sort(params->results.begin(), params->results.end(), less_using_4th_column()); break;
+        case 5: std::sort(params->results.begin(), params->results.end(), less_using_5th_column()); break;
     }
 
-    for (std::vector<string_table_t>::iterator it = params.results.begin(); it!=params.results.end(); it++)
+    for (std::vector<string_table_t>::iterator it = params->results.begin(); it!=params->results.end(); it++)
     {
-        if (params.show_speed)
-            print_speed(&params, *it);
+        if (params->show_speed)
+            print_speed(params, *it);
         else
-            print_time(&params, *it);
+            print_time(params, *it);
     }
 }
 
