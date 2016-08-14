@@ -8,6 +8,7 @@
 
 #include "./literal_cost.h"
 
+#include "_lzbench/clang34_fix.h"  /* before <math.h> */
 #include <math.h>
 #include <algorithm>
 

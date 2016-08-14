@@ -9,6 +9,8 @@
 #include "./block_splitter.h"
 
 #include <assert.h>
+
+#include "_lzbench/clang34_fix.h"  /* before <math.h> */
 #include <math.h>
 
 #include <algorithm>

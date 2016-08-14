@@ -6,9 +6,9 @@ matrix:
     - os: linux
       sudo: false
       env: CC_COMPILER=gcc CXX_COMPILER=g++
-    #- os: linux
-    #  sudo: false
-    #  env: CC_COMPILER=clang CXX_COMPILER=clang++
+    - os: linux
+      sudo: false
+      env: CC_COMPILER=clang CXX_COMPILER=clang++
     # Ubuntu 14.04 LTS Server Edition 64 bit
     - dist: trusty
       sudo: required
@@ -40,6 +40,16 @@ matrix:
           packages:
             - g++-6
       env: CC_COMPILER=gcc-6 CXX_COMPILER=g++-6
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-precise-3.5
+          packages:
+            - clang-3.5
+      env: CC_COMPILER=clang-3.5 CXX_COMPILER=clang++-3.5
     - dist: trusty
       sudo: required
       addons:

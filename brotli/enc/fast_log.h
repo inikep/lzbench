@@ -10,6 +10,8 @@
 #define BROTLI_ENC_FAST_LOG_H_
 
 #include <assert.h>
+
+#include "_lzbench/clang34_fix.h"  /* before <math.h> */
 #include <math.h>
 
 #include "./types.h"

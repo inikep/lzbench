@@ -9,6 +9,7 @@
 #ifndef BROTLI_ENC_CLUSTER_H_
 #define BROTLI_ENC_CLUSTER_H_
 
+#include "_lzbench/clang34_fix.h"  /* before <math.h> */
 #include <math.h>
 #include <algorithm>
 #include <utility>

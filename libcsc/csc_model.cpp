@@ -1,4 +1,5 @@
 #include "csc_model.h"
+#include "_lzbench/clang34_fix.h"  /* before <math.h> */
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
