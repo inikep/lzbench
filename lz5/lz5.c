@@ -278,34 +278,35 @@ FORCE_INLINE int LZ5_compress_generic(
         }
 
 _next_match:
-        /* Encode Offset */
-        if ((U32)(ip-match) == last_off)
-        {
-            *token+=(3<<ML_RUN_BITS2);
-//            printf("2last_off=%d *token=%d\n", last_off, *token);
-        }
-        else
-        if (ip-match < LZ5_SHORT_OFFSET_DISTANCE)
-        {
-            *token+=((4+((ip-match)>>8))<<ML_RUN_BITS2);
-            *op++=(ip-match);
-        }
-        else
-        if (ip-match < LZ5_MID_OFFSET_DISTANCE)
-        {
-            MEM_writeLE16(op, (U16)(ip-match)); op+=2;
-        }
-        else
-        {
-            *token+=(2<<ML_RUN_BITS2);
-            MEM_writeLE24(op, (U32)(ip-match)); op+=3;
-        }
-        last_off = ip-match;
-  //      printf("1last_off=%d\n", last_off);
+		{
+			/* Encode Offset */
+			U32 offset = (U32)(ip-match);
+			if (offset == last_off)
+			{
+				*token+=(3<<ML_RUN_BITS2);
+			}
+			else
+			if (ip-match < LZ5_SHORT_OFFSET_DISTANCE)
+			{
+				*token+=(BYTE)((4+(offset>>8))<<ML_RUN_BITS2);
+				*op++=(BYTE)offset;
+			}
+			else
+			if (ip-match < LZ5_MID_OFFSET_DISTANCE)
+			{
+				MEM_writeLE16(op, (U16)offset); op+=2;
+			}
+			else
+			{
+				*token+=(2<<ML_RUN_BITS2);
+				MEM_writeLE24(op, (U32)offset); op+=3;
+			}
+			last_off = offset;
+		}
 
         /* Encode MatchLength */
         {
-            unsigned matchLength;
+            size_t matchLength;
 
             if ((dict==usingExtDict) && (lowLimit==dictionary))
             {
@@ -317,7 +318,7 @@ _next_match:
                 ip += MINMATCH + matchLength;
                 if (ip==limit)
                 {
-                    unsigned more = MEM_count(ip, (const BYTE*)source, matchlimit);
+                    size_t more = MEM_count(ip, (const BYTE*)source, matchlimit);
                     matchLength += more;
                     ip += more;
                 }
@@ -572,28 +573,31 @@ static int LZ5_compress_destSize_generic(
         }
 
 _next_match:
-        /* Encode Offset */
-        if ((U32)(ip-match) == last_off)
-        {
-            *token+=(3<<ML_RUN_BITS2);          
-        }
-        else
-        if (ip-match < LZ5_SHORT_OFFSET_DISTANCE)
-        {
-            *token+=((4+((ip-match)>>8))<<ML_RUN_BITS2);
-            *op++=(ip-match);
-        }
-        else
-        if (ip-match < LZ5_MID_OFFSET_DISTANCE)
-        {
-            MEM_writeLE16(op, (U16)(ip-match)); op+=2;
-        }
-        else
-        {
-            *token+=(2<<ML_RUN_BITS2);
-            MEM_writeLE24(op, (U32)(ip-match)); op+=3;
-        }
-        last_off = ip-match;
+		{
+			U32 offset = (U32)(ip-match);
+			/* Encode Offset */
+			if (offset == last_off)
+			{
+				*token+=(3<<ML_RUN_BITS2);          
+			}
+			else
+			if (ip-match < LZ5_SHORT_OFFSET_DISTANCE)
+			{
+				*token+=(BYTE)((4+(offset>>8))<<ML_RUN_BITS2);
+				*op++=(BYTE)offset;
+			}
+			else
+			if (ip-match < LZ5_MID_OFFSET_DISTANCE)
+			{
+				MEM_writeLE16(op, (U16)offset); op+=2;
+			}
+			else
+			{
+				*token+=(2<<ML_RUN_BITS2);
+				MEM_writeLE24(op, (U32)offset); op+=3;
+			}
+			last_off = offset;
+		}
 
         /* Encode MatchLength */
         {
@@ -863,9 +867,9 @@ int LZ5_compress_forceExtDict (LZ5_stream_t* LZ5_dict, const char* source, char*
 int LZ5_saveDict (LZ5_stream_t* LZ5_dict, char* safeBuffer, int dictSize)
 {
     LZ5_stream_t_internal* dict = (LZ5_stream_t_internal*) LZ5_dict;
-    if (!dict->dictionary)
+	const BYTE* previousDictEnd = dict->dictionary + dict->dictSize;
+	if (!dict->dictionary)
         return 0;
-    const BYTE* previousDictEnd = dict->dictionary + dict->dictSize;
 
     if ((U32)dictSize > LZ5_DICT_SIZE) dictSize = LZ5_DICT_SIZE;   /* useless to define a dictionary > LZ5_DICT_SIZE */
     if ((U32)dictSize > dict->dictSize) dictSize = dict->dictSize;
@@ -921,7 +925,7 @@ FORCE_INLINE int LZ5_decompress_generic(
     const int safeDecode = (endOnInput==endOnInputSize);
     const int checkOffset = ((safeDecode) && (dictSize < (int)(LZ5_DICT_SIZE)));
 
-    U32 last_off = 1;
+    size_t last_off = 1;
 
     /* Special cases */
     if ((partialDecoding) && (oexit> oend-MFLIMIT)) oexit = oend-MFLIMIT;                         /* targetOutputSize too high => decode everything */

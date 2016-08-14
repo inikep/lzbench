@@ -53,7 +53,7 @@ Example usage:
 
 Compilation
 -------------------------
-For Linux/Unix/MacOS/MinGW (Windows):
+For Linux/MacOS/MinGW (Windows):
 ```
 make
 ```
@@ -70,15 +70,15 @@ You also have to remove corresponding `*.o` files (e.g. `lz5/lz5.o` and `lz5/lz5
 lzbench was tested with:
 - Ubuntu: gcc 4.6.3, 4.8.4, 4.9.3, 5.3.0, 6.1.1 and clang 3.4, 3.5, 3.6, 3.8
 - MacOS: Apple LLVM version 6.0
-- MinGW (Windows): gcc 5.3.0, 4.9.3 32-bit, 4.8.3 32-bit
+- MinGW (Windows): gcc 5.3.0, 4.9.3 (32-bit), 4.8.3 (32-bit)
+
+
 
 Supported compressors
 -------------------------
-**Warning**: some of the compressors listed here have security issues
-and/or are no longer maintained.  For information about the security
-of the various compressors, see the
-[CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results)
-page.
+**Warning**: some of the compressors listed here have security issues and/or are 
+no longer maintained.  For information about the security of the various compressors, 
+see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page.
 ```
 blosclz 2015-11-10
 brieflz 1.1.0
