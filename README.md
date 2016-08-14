@@ -9,11 +9,6 @@ The disadvantage is that it requires source code of each compressor (therefore S
 
 |Branch      |Status   |
 |------------|---------|
-|master      | [![Build Status](https://travis-ci.org/inikep/lzbench.svg?branch=master)](https://travis-ci.org/inikep/lzbench) |
-|dev         | [![Build Status](https://travis-ci.org/inikep/lzbench.svg?branch=dev)](https://travis-ci.org/inikep/lzbench) | 
-
-|Branch      |Status   |
-|------------|---------|
 |master      | [![Build Status][travisMasterBadge]][travisLink] [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
 |dev         | [![Build Status][travisDevBadge]][travisLink]    [![Build status][AppveyorDevBadge]][AppveyorLink]     | 
 

@@ -35,10 +35,18 @@
 	#define GetTime(now) QueryPerformanceCounter(&now); 
 	#define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/rate.QuadPart)
 	void uni_sleep(UINT milisec) { Sleep(milisec); };
-	#ifndef __GNUC__
-		#define fseeko64 _fseeki64 
-		#define ftello64 _ftelli64
+    #ifndef fseeko
+		#ifdef _fseeki64
+            #define fseeko _fseeki64 
+            #define ftello _ftelli64
+		#else
+            #define fseeko fseek 
+            #define ftello ftell
+        #endif
 	#endif
+    #ifndef strtok_r
+        #define strtok_r strtok_s
+    #endif
 	#define PROGOS "Windows"
 #else
     #include <stdarg.h> // va_args

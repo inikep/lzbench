@@ -17,6 +17,7 @@ endif
 # if BUILD_ARCH is 32-bit
 ifeq ($(BUILD_ARCH),32-bit)
 	CODE_FLAGS += -m32
+	LDFLAGS += -m32
 	DONT_BUILD_LZSSE ?= 1
 else
 	DEFINES	+= -D__x86_64__
@@ -28,13 +29,13 @@ ifneq (,$(filter Windows%,$(OS)))
 	ifeq ($(COMPILER),clang)
 		DONT_BUILD_GLZA ?= 1
 	endif
-	LDFLAGS = -lshell32 -lole32 -loleaut32 -static
+	LDFLAGS += -lshell32 -lole32 -loleaut32 -static
 else
     # MacOS doesn't support -lrt -static
     ifeq ($(shell uname -s),Darwin)
         DONT_BUILD_LZHAM ?= 1
     else
-        LDFLAGS	= -lrt -static
+        LDFLAGS	+= -lrt -static
     endif
     LDFLAGS	+= -lpthread
 endif
@@ -42,7 +43,7 @@ endif
 
 DEFINES     += -I. -Izstd/lib -Izstd/lib/common -Ixpack/common
 DEFINES     += -DHAVE_CONFIG_H -DXXH_NAMESPACE=ZSTD_
-CODE_FLAGS  ?= -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
+CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
 
 
