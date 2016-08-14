@@ -30,9 +30,7 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "GLZAformat.h"
-#include "GLZAcompress.h"
-#include "GLZAencode.h"
+#include "GLZAcomp.h"
 #include "GLZAdecode.h"
 
 
@@ -48,12 +46,11 @@ void print_usage() {
 
 int main(int argc, char* argv[])
 {
-  const size_t WRITE_SIZE = 0x40000;
   uint8_t mode;
   uint8_t *inbuf, *outbuf;
   int32_t arg_num;
   clock_t start_time;
-  size_t insize, outsize, writesize, startsize;
+  size_t insize, outsize, startsize;
   FILE *fd_in, *fd_out;
 
 
@@ -96,25 +93,8 @@ int main(int argc, char* argv[])
   if (mode == 0) {
     if (insize == 0)
       outsize = 0;
-    else {
-      outbuf = GLZAformat(insize, inbuf, &outsize);
-      free(inbuf);
-      inbuf = outbuf;
-      insize = outsize;
-      outbuf = GLZAcompress(insize, inbuf, &outsize);
-      free(inbuf);
-      inbuf = outbuf;
-      insize = outsize;
-      outbuf = GLZAencode(insize, inbuf, &outsize, outbuf, fd_out);
-      writesize = 0;
-      while (outsize - writesize > WRITE_SIZE) {
-        fwrite(outbuf + writesize, 1, WRITE_SIZE, fd_out);
-        writesize += WRITE_SIZE;
-        fflush(fd_out);
-      }
-      fwrite(outbuf + writesize, 1, outsize - writesize, fd_out);
-      free(outbuf);
-    }
+    else if (GLZAcomp(insize, inbuf, &outsize, 0, fd_out) == 0)
+      exit(EXIT_FAILURE);
     fprintf(stderr,"Compressed %lu bytes -> %lu bytes (%.4f bpB)",
         (long unsigned int)startsize,(long unsigned int)outsize,8.0*(float)outsize/(float)startsize);
   }
@@ -123,6 +103,8 @@ int main(int argc, char* argv[])
       outsize = 0;
     else {
       outbuf = GLZAdecode(insize, inbuf, &outsize, outbuf, fd_out);
+      free(inbuf);
+      if (outbuf == 0) exit(EXIT_FAILURE);
       free(outbuf);
     }
     fprintf(stderr,"Decompressed %lu bytes -> %lu bytes (%.4f bpB)",

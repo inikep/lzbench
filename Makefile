@@ -5,17 +5,13 @@ ifeq ($(shell echo|$(CC) -dM -E - -march=native|grep -c SSE4_1), 0)
 	DONT_BUILD_LZSSE ?= 1
 endif
 
-ifeq ($(shell $(CC) -v 2>&1 | grep -c "clang version"), 1)
-	COMPILER := clang
-else
-	COMPILER := gcc
-endif
+COMPILER = $(shell $(CC) -v 2>&1 | grep -q "clang version" && echo clang || echo gcc)
+GCC_VERSION = $(shell $(CC) -dumpversion | sed -e 's:\([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
+CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*version \([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 
-# glza doesn't work with gcc < 4.9 (missing stdatomic.h)
-ifeq ($(COMPILER),gcc)
-ifeq ($(shell expr `$(CC) -dumpversion | sed -e 's/\.\([0-9][0-9]\)/\1/g' -e 's/\.\([0-9]\)/0\1/g' -e 's/^[0-9]\{3,4\}$$/&00/'` \< 40900), 1)
+# glza doesn't work with gcc < 4.9 and clang < 3.6 (missing stdatomic.h)
+ifeq (1,$(filter 1,$(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \< 40900) $(shell [ "$(COMPILER)" = "clang" ] && expr $(CLANG_VERSION) \< 30600)))
     DONT_BUILD_GLZA ?= 1
-endif
 endif
 
 # if BUILD_ARCH is not 32-bit
@@ -75,7 +71,7 @@ endif
 ifeq "$(DONT_BUILD_GLZA)" "1"
     DEFINES += -DBENCH_REMOVE_GLZA
 else
-    GLZA_FILES = glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
+    GLZA_FILES = glza/GLZAcomp.o glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
 endif
 
 ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
@@ -181,6 +177,7 @@ _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
 lzbench: $(GLZA_FILES) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
+	echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
 .c.o:
 	$(CC) $(CFLAGS) $< -std=c99 -c -o $@

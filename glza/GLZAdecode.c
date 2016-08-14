@@ -566,7 +566,7 @@ void get_mtfg_symbol_cap() {
 }
 
 
-void dadd_dictionary_symbol(uint32_t symbol, uint8_t bits) {
+uint8_t dadd_dictionary_symbol(uint32_t symbol, uint8_t bits) {
   uint8_t first_char = symbol_strings[symbol_data[symbol].string_index];
   if (UTF8_compliant && (first_char > 0x80))
     first_char = 0x80;
@@ -575,7 +575,7 @@ void dadd_dictionary_symbol(uint32_t symbol, uint8_t bits) {
     if (0 == (sym_list_ptrs[first_char][bits]
         = (uint32_t *)realloc(sym_list_ptrs[first_char][bits], sizeof(uint32_t) * (1 << sym_list_bits[first_char][bits])))) {
       fprintf(stderr,"FATAL ERROR - symbol list realloc failure\n");
-      exit(EXIT_FAILURE);
+      return(0);
     }
   }
   symbol_data[symbol].dictionary_index = nsob[first_char][bits];
@@ -684,7 +684,7 @@ void dadd_dictionary_symbol(uint32_t symbol, uint8_t bits) {
       }
     }
   }
-  return;
+  return(1);
 }
 
 
@@ -700,7 +700,7 @@ void dremove_dictionary_symbol(uint32_t symbol, uint8_t bits) {
 }
 
 
-void insert_mtf_queue(uint8_t cap_type) {
+uint8_t insert_mtf_queue(uint8_t cap_type) {
   dremove_dictionary_symbol(symbol_number,CodeLength);
   if (--symbol_data[symbol_number].remaining) {
     symbol_count = symbol_data[symbol_number].instances;
@@ -710,14 +710,15 @@ void insert_mtf_queue(uint8_t cap_type) {
       mtf_queue[symbol_count][((mtf_queue_offset[symbol_count] + mtf_queue_size[symbol_count]++) & 0x3F)] = symbol_number;
     else {
       mtf_queue_ptr = &mtf_queue[symbol_count][mtf_queue_offset[symbol_count]++ & 0x3F];
-      dadd_dictionary_symbol(*mtf_queue_ptr,CodeLength);
+      if (dadd_dictionary_symbol(*mtf_queue_ptr,CodeLength) == 0)
+        return(0);
       *mtf_queue_ptr = symbol_number;
     }
   }
   else {
     check_free_symbol();
   }
-  return;
+  return(1);
 }
 
 
@@ -1271,7 +1272,7 @@ void delta_transform(uint8_t * buffer, uint32_t len) {
 }
 
 
-void increase_dictionary_size() {
+uint8_t increase_dictionary_size() {
   dictionary_size <<= 1;
   if (two_threads != 0) {
     if (symbol_buffer_write_index < 0x100)
@@ -1281,8 +1282,9 @@ void increase_dictionary_size() {
   }
   if ((symbol_strings = (uint8_t *)realloc(symbol_strings, dictionary_size)) == 0) {
     fprintf(stderr,"FATAL ERROR - dictionary realloc failure\n");
-    exit(EXIT_FAILURE);
+    return(0);
   }
+  return(1);
 }
 
 
@@ -1317,8 +1319,10 @@ uint32_t decode_define(uint32_t define_string_index) {
     }
 
     base_symbol = DecodeBaseSymbol(base_bits, num_base_symbols);
-    if (end_define_string_index + 4 >= dictionary_size)
-      increase_dictionary_size();
+    if (end_define_string_index + 4 >= dictionary_size) {
+      if (increase_dictionary_size() == 0)
+        return(0);
+    }
     if ((UTF8_compliant == 0) || (base_symbol < 0x80)) {
       if (symbol_lengths[base_symbol]) {
         if (base_symbol & 1) {
@@ -1440,7 +1444,8 @@ uint32_t decode_define(uint32_t define_string_index) {
         }
         if (symbol_data[symbol_number].instances <= DMAX_INSTANCES_FOR_MTF_QUEUE) {
           if (use_mtf) {
-            insert_mtf_queue(NOT_CAP);
+            if (insert_mtf_queue(NOT_CAP) == 0)
+              return(0);
           }
           else if (--symbol_data[symbol_number].remaining == 0) {
             dremove_dictionary_symbol(symbol_number,CodeLength);
@@ -1452,8 +1457,10 @@ uint32_t decode_define(uint32_t define_string_index) {
         }
         prior_end = symbol_data[symbol_number].ends;
         uint32_t string_length = symbol_data[symbol_number].string_length;
-        if (end_define_string_index + string_length >= dictionary_size)
-          increase_dictionary_size();
+        if (end_define_string_index + string_length >= dictionary_size) {
+          if (increase_dictionary_size() == 0)
+            return(0);
+        }
         uint8_t * symbol_string_ptr = &symbol_strings[symbol_data[symbol_number].string_index];
         while (string_length--)
           symbol_strings[end_define_string_index++] = *symbol_string_ptr++;
@@ -1461,7 +1468,8 @@ uint32_t decode_define(uint32_t define_string_index) {
       else if (DecodeSymTypeCheckNew(LEVEL1) != 0) {
         DecodeSymTypeFinishNew(LEVEL1);
         no_embed = 0;
-        end_define_string_index = decode_define(end_define_string_index);
+        if ((end_define_string_index = decode_define(end_define_string_index)) == 0)
+          return(0);
       }
       else {
         if (DecodeSymTypeCheckMtfg(LEVEL1) != 0) {
@@ -1474,8 +1482,10 @@ uint32_t decode_define(uint32_t define_string_index) {
         }
         prior_end = symbol_data[symbol_number].ends;
         uint32_t string_length = symbol_data[symbol_number].string_length;
-        if (end_define_string_index + string_length >= dictionary_size)
-          increase_dictionary_size();
+        if (end_define_string_index + string_length >= dictionary_size) {
+          if (increase_dictionary_size() == 0)
+            return(0);
+        }
         uint8_t * symbol_string_ptr = &symbol_strings[symbol_data[symbol_number].string_index];
         while (string_length--)
           symbol_strings[end_define_string_index++] = *symbol_string_ptr++;
@@ -1502,13 +1512,14 @@ uint32_t decode_define(uint32_t define_string_index) {
       else { // put last mtf queue symbol in symbol list
         uint32_t temp_symbol_number
             = *(mtf_queue_ptr = &mtf_queue[define_symbol_instances][mtf_queue_offset[define_symbol_instances]++ & 0x3F]);
-        dadd_dictionary_symbol(temp_symbol_number,new_symbol_code_length);
+        if (dadd_dictionary_symbol(temp_symbol_number,new_symbol_code_length) == 0)
+          return(0);
         // put symbol in queue and rotate cyclical buffer
         *mtf_queue_ptr = symbol_number;
       }
     }
-    else
-      dadd_dictionary_symbol(symbol_number,new_symbol_code_length);
+    else if (dadd_dictionary_symbol(symbol_number,new_symbol_code_length) == 0)
+      return(0);
   }
   else { // put symbol in table
     if ((new_symbol_code_length > 10) && use_mtfg) {
@@ -1519,7 +1530,8 @@ uint32_t decode_define(uint32_t define_string_index) {
       }
     }
     symbol_data[symbol_number].instances = DMAX_INSTANCES_FOR_MTF_QUEUE + new_symbol_code_length;
-    dadd_dictionary_symbol(symbol_number,new_symbol_code_length);
+    if (dadd_dictionary_symbol(symbol_number,new_symbol_code_length) == 0)
+      return(0);
   }
   if (symbol_number == num_symbols_defined)
     num_symbols_defined++;
@@ -1567,8 +1579,10 @@ uint32_t decode_define_cap_encoded(uint32_t define_string_index) {
       base_symbol += 24;
     else if (base_symbol > 0x40)
       base_symbol += 1;
-    if (end_define_string_index + 4 >= dictionary_size)
-      increase_dictionary_size();
+    if (end_define_string_index + 4 >= dictionary_size) {
+      if (increase_dictionary_size() == 0)
+        return(0);
+    }
     if ((UTF8_compliant == 0) || (base_symbol < 0x80)) {
       if (symbol_lengths[base_symbol]) {
         if (base_symbol & 1) {
@@ -1719,7 +1733,8 @@ uint32_t decode_define_cap_encoded(uint32_t define_string_index) {
           }
           if (symbol_data[symbol_number].instances <= DMAX_INSTANCES_FOR_MTF_QUEUE) {
             if (use_mtf) {
-              insert_mtf_queue(NOT_CAP);
+              if (insert_mtf_queue(NOT_CAP) == 0)
+                return(0);
             }
             else if (--symbol_data[symbol_number].remaining == 0) {
               dremove_dictionary_symbol(symbol_number,CodeLength);
@@ -1732,8 +1747,10 @@ uint32_t decode_define_cap_encoded(uint32_t define_string_index) {
           prior_end = symbol_data[symbol_number].ends;
           prior_is_cap = (prior_end == 'C');
           uint32_t string_length = symbol_data[symbol_number].string_length;
-          if (end_define_string_index + string_length >= dictionary_size)
-            increase_dictionary_size();
+          if (end_define_string_index + string_length >= dictionary_size) {
+            if (increase_dictionary_size() == 0)
+              return(0);
+          }
           symbol_string_ptr = &symbol_strings[symbol_data[symbol_number].string_index];
           uint8_t * string_ptr = &symbol_strings[end_define_string_index];
           end_define_string_index += string_length;
@@ -1744,7 +1761,8 @@ uint32_t decode_define_cap_encoded(uint32_t define_string_index) {
         else if (DecodeSymTypeCheckNew(LEVEL1) != 0) {
           DecodeSymTypeFinishNew(LEVEL1);
           no_embed = 0;
-          end_define_string_index = decode_define_cap_encoded(end_define_string_index);
+          if ((end_define_string_index = decode_define_cap_encoded(end_define_string_index)) == 0)
+            return(0);
         }
         else {
           if (DecodeSymTypeCheckMtfg(LEVEL1) != 0) {
@@ -1758,8 +1776,10 @@ uint32_t decode_define_cap_encoded(uint32_t define_string_index) {
           prior_end = symbol_data[symbol_number].ends;
           prior_is_cap = (prior_end == 'C');
           uint32_t string_length = symbol_data[symbol_number].string_length;
-          if (end_define_string_index + string_length >= dictionary_size)
-            increase_dictionary_size();
+          if (end_define_string_index + string_length >= dictionary_size) {
+            if (increase_dictionary_size() == 0)
+              return(0);
+          }
           symbol_string_ptr = &symbol_strings[symbol_data[symbol_number].string_index];
           uint8_t * string_ptr = &symbol_strings[end_define_string_index];
           end_define_string_index += string_length;
@@ -1783,7 +1803,8 @@ uint32_t decode_define_cap_encoded(uint32_t define_string_index) {
           }
           if (symbol_data[symbol_number].instances <= DMAX_INSTANCES_FOR_MTF_QUEUE) {
             if (use_mtf) {
-              insert_mtf_queue(CAP);
+              if (insert_mtf_queue(CAP) == 0)
+                return(0);
             }
             else if (--symbol_data[symbol_number].remaining == 0) {
               dremove_dictionary_symbol(symbol_number,CodeLength);
@@ -1796,8 +1817,10 @@ uint32_t decode_define_cap_encoded(uint32_t define_string_index) {
           prior_end = symbol_data[symbol_number].ends;
           prior_is_cap = (prior_end == 'C');
           uint32_t string_length = symbol_data[symbol_number].string_length;
-          if (end_define_string_index + string_length >= dictionary_size)
-            increase_dictionary_size();
+          if (end_define_string_index + string_length >= dictionary_size) {
+            if (increase_dictionary_size() == 0)
+              return(0);
+          }
           symbol_string_ptr = &symbol_strings[symbol_data[symbol_number].string_index];
           uint8_t * string_ptr = &symbol_strings[end_define_string_index];
           end_define_string_index += string_length;
@@ -1808,7 +1831,8 @@ uint32_t decode_define_cap_encoded(uint32_t define_string_index) {
         else if (DecodeSymTypeCheckNew(LEVEL1_CAP) != 0) {
           DecodeSymTypeFinishNew(LEVEL1_CAP);
           no_embed = 0;
-          end_define_string_index = decode_define_cap_encoded(end_define_string_index);
+          if ((end_define_string_index = decode_define_cap_encoded(end_define_string_index)) == 0)
+            return(0);
         }
         else {
           if (DecodeSymTypeCheckMtfg(LEVEL1_CAP) != 0) {
@@ -1822,8 +1846,10 @@ uint32_t decode_define_cap_encoded(uint32_t define_string_index) {
           prior_end = symbol_data[symbol_number].ends;
           prior_is_cap = (prior_end == 'C');
           uint32_t string_length = symbol_data[symbol_number].string_length;
-          if (end_define_string_index + string_length >= dictionary_size)
-            increase_dictionary_size();
+          if (end_define_string_index + string_length >= dictionary_size) {
+            if (increase_dictionary_size() == 0)
+              return(0);
+          }
           symbol_string_ptr = &symbol_strings[symbol_data[symbol_number].string_index];
           uint8_t * string_ptr = &symbol_strings[end_define_string_index];
           end_define_string_index += string_length;
@@ -1902,13 +1928,14 @@ uint32_t decode_define_cap_encoded(uint32_t define_string_index) {
       else { // put last mtf queue symbol in symbol list
         uint32_t temp_symbol_number
             = *(mtf_queue_ptr = &mtf_queue[define_symbol_instances][mtf_queue_offset[define_symbol_instances]++ & 0x3F]);
-        dadd_dictionary_symbol(temp_symbol_number,new_symbol_code_length);
+        if (dadd_dictionary_symbol(temp_symbol_number,new_symbol_code_length) == 0)
+          return(0);
         // put symbol in queue and rotate cyclical buffer
         *mtf_queue_ptr = symbol_number;
       }
     }
-    else
-      dadd_dictionary_symbol(symbol_number,new_symbol_code_length);
+    else if (dadd_dictionary_symbol(symbol_number,new_symbol_code_length) == 0)
+      return(0);
   }
   else { // put symbol in table
     if ((new_symbol_code_length > 10) && use_mtfg) {
@@ -1919,7 +1946,8 @@ uint32_t decode_define_cap_encoded(uint32_t define_string_index) {
       }
     }
     symbol_data[symbol_number].instances = DMAX_INSTANCES_FOR_MTF_QUEUE + new_symbol_code_length;
-    dadd_dictionary_symbol(symbol_number,new_symbol_code_length);
+    if (dadd_dictionary_symbol(symbol_number,new_symbol_code_length) == 0)
+      return(0);
   }
 
   if (symbol_number == num_symbols_defined)
@@ -2381,6 +2409,7 @@ uint8_t * GLZAdecode(size_t in_size, uint8_t * InBuffer, size_t * outsize_ptr, u
   two_threads = 1;
   out_buffers_sent = 0;
   symbol_buffer_write_index = 0;
+  delta_on = 0;
 
   if (fd != 0) {
     if (sizeof(uint8_t *) < 8)
@@ -2389,7 +2418,7 @@ uint8_t * GLZAdecode(size_t in_size, uint8_t * InBuffer, size_t * outsize_ptr, u
       outbuf = (uint8_t *)malloc(2000000000);
     if (outbuf == 0) {
       fprintf(stderr,"ERROR - output memory allocation failed\n");
-      exit(EXIT_FAILURE);
+      return(0);
     }
   }
   else
@@ -2507,7 +2536,7 @@ uint8_t * GLZAdecode(size_t in_size, uint8_t * InBuffer, size_t * outsize_ptr, u
       sym_list_bits[i1][i2] = 2;
       if (0 == (sym_list_ptrs[i1][i2] = (uint32_t *)malloc(sizeof(uint32_t) * 4))) {
         fprintf(stderr,"FATAL ERROR - symbol list malloc failure\n");
-        exit(EXIT_FAILURE);
+        return(0);
       }
       nsob[i1][i2] = 0;
       nbob[i1][i2] = 0;
@@ -2532,7 +2561,7 @@ uint8_t * GLZAdecode(size_t in_size, uint8_t * InBuffer, size_t * outsize_ptr, u
   dictionary_size = 0x1000000;
   if (0 == (symbol_strings = (uint8_t *)malloc(dictionary_size))) {
     fprintf(stderr,"FATAL ERROR - dictionary malloc failure\n");
-    exit(EXIT_FAILURE);
+    return(0);
   }
 
   // main decoding loop
@@ -2571,7 +2600,8 @@ uint8_t * GLZAdecode(size_t in_size, uint8_t * InBuffer, size_t * outsize_ptr, u
           send_symbol_cap();
           if (symbol_data[symbol_number].instances <= DMAX_INSTANCES_FOR_MTF_QUEUE) {
             if (use_mtf) {
-              insert_mtf_queue(NOT_CAP);
+              if (insert_mtf_queue(NOT_CAP) == 0)
+                return(0);
             }
             else if (--symbol_data[symbol_number].remaining == 0) {
               dremove_dictionary_symbol(symbol_number,CodeLength);
@@ -2584,7 +2614,8 @@ uint8_t * GLZAdecode(size_t in_size, uint8_t * InBuffer, size_t * outsize_ptr, u
         else if (DecodeSymTypeCheckNew(LEVEL0) != 0) {
           DecodeSymTypeFinishNew(LEVEL0);
           no_embed = 1;
-          decode_define_cap_encoded(symbol_data[num_symbols_defined].string_index);
+          if (decode_define_cap_encoded(symbol_data[num_symbols_defined].string_index) == 0)
+            return(0);
           write_symbol();
         }
         else {
@@ -2617,7 +2648,8 @@ uint8_t * GLZAdecode(size_t in_size, uint8_t * InBuffer, size_t * outsize_ptr, u
           send_symbol_cap();
           if (symbol_data[symbol_number].instances <= DMAX_INSTANCES_FOR_MTF_QUEUE) {
             if (use_mtf) {
-              insert_mtf_queue(CAP);
+              if (insert_mtf_queue(CAP) == 0)
+                return(0);
             }
             else if (--symbol_data[symbol_number].remaining == 0) {
               dremove_dictionary_symbol(symbol_number,CodeLength);
@@ -2630,7 +2662,8 @@ uint8_t * GLZAdecode(size_t in_size, uint8_t * InBuffer, size_t * outsize_ptr, u
         else if (DecodeSymTypeCheckNew(LEVEL0_CAP) != 0) {
           DecodeSymTypeFinishNew(LEVEL0_CAP);
           no_embed = 1;
-          decode_define_cap_encoded(symbol_data[num_symbols_defined].string_index);
+          if (decode_define_cap_encoded(symbol_data[num_symbols_defined].string_index) == 0)
+            return(0);
           write_symbol();
         }
         else {
@@ -2669,7 +2702,8 @@ uint8_t * GLZAdecode(size_t in_size, uint8_t * InBuffer, size_t * outsize_ptr, u
         send_symbol();
         if (symbol_data[symbol_number].instances <= DMAX_INSTANCES_FOR_MTF_QUEUE) {
           if (use_mtf) {
-            insert_mtf_queue(NOT_CAP);
+            if (insert_mtf_queue(NOT_CAP) == 0)
+              return(0);
           }
           else if (--symbol_data[symbol_number].remaining == 0) {
             dremove_dictionary_symbol(symbol_number,CodeLength);
@@ -2683,7 +2717,8 @@ uint8_t * GLZAdecode(size_t in_size, uint8_t * InBuffer, size_t * outsize_ptr, u
       else if (DecodeSymTypeCheckNew(LEVEL0) != 0) {
         DecodeSymTypeFinishNew(LEVEL0);
         no_embed = 1;
-        decode_define(symbol_data[num_symbols_defined].string_index);
+        if (decode_define(symbol_data[num_symbols_defined].string_index) == 0)
+          return(0);
         write_symbol();
       }
       else {
@@ -2737,7 +2772,7 @@ finish_decode:
   if (fd != 0) {
     if ((outbuf = (uint8_t *)realloc(outbuf, *outsize_ptr)) == 0) {
       fprintf(stderr,"ERROR - Compressed output buffer memory reallocation failed\n");
-      exit(EXIT_FAILURE);
+      return(0);
     }
   }
   return(outbuf);

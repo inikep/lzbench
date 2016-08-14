@@ -70,10 +70,10 @@ double calculate_order_1_entropy(uint32_t symbol_counts[0x100], uint32_t order_1
 }
 
 
-uint8_t * GLZAformat(size_t insize, uint8_t * inbuf, size_t * outsize_ptr) {
+uint8_t GLZAformat(size_t insize, uint8_t * inbuf, size_t * outsize_ptr, uint8_t ** outbuf) {
   const uint32_t CHARS_TO_WRITE = 0x40000;
   uint8_t this_char, prev_char, next_char, user_cap_encoded, user_cap_lock_encoded, user_delta_encoded, stride;
-  uint8_t *in_char_ptr, *end_char_ptr, *out_char_ptr, *outbuf;
+  uint8_t *in_char_ptr, *end_char_ptr, *out_char_ptr;
   uint32_t i, j, k;
   uint32_t num_AZ, num_az_pre_AZ, num_az_post_AZ, num_spaces;
   uint32_t order_1_counts[0x100][0x100];
@@ -87,7 +87,9 @@ uint8_t * GLZAformat(size_t insize, uint8_t * inbuf, size_t * outsize_ptr) {
   user_cap_lock_encoded = 0;
   user_delta_encoded = 0;
 
-  outbuf = (uint8_t *)malloc(2 * insize);
+  *outbuf = (uint8_t *)malloc(2 * insize + 1);
+  if (*outbuf == 0)
+    return(0);
 
   end_char_ptr = inbuf + insize;
   num_AZ = 0;
@@ -123,7 +125,7 @@ uint8_t * GLZAformat(size_t insize, uint8_t * inbuf, size_t * outsize_ptr) {
     }
   }
 
-  out_char_ptr = outbuf;
+  out_char_ptr = *outbuf;
 
   if (((num_AZ && (4 * num_az_post_AZ > num_AZ) && (num_az_post_AZ > num_az_pre_AZ)
       && (num_spaces > insize / 50)) && (user_cap_encoded != 1)) || (user_cap_encoded == 2)) {
@@ -1110,10 +1112,10 @@ uint8_t * GLZAformat(size_t insize, uint8_t * inbuf, size_t * outsize_ptr) {
     }
   }
 
-  *outsize_ptr = out_char_ptr - outbuf;
-  if ((outbuf = (uint8_t *)realloc(outbuf, *outsize_ptr)) == 0) {
+  *outsize_ptr = out_char_ptr - *outbuf;
+  if ((*outbuf = (uint8_t *)realloc(*outbuf, *outsize_ptr)) == 0) {
     fprintf(stderr,"ERROR - Compressed output buffer memory reallocation failed\n");
-    exit(EXIT_FAILURE);
+    return(0);
   }
-  return(outbuf);
+  return(1);
 }
