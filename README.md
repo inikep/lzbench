@@ -12,6 +12,18 @@ The disadvantage is that it requires source code of each compressor (therefore S
 |master      | [![Build Status](https://travis-ci.org/inikep/lzbench.svg?branch=master)](https://travis-ci.org/inikep/lzbench) |
 |dev         | [![Build Status](https://travis-ci.org/inikep/lzbench.svg?branch=dev)](https://travis-ci.org/inikep/lzbench) | 
 
+|Branch      |Status   |
+|------------|---------|
+|master      | [![Build Status][travisMasterBadge]][travisLink] [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
+|dev         | [![Build Status][travisDevBadge]][travisLink]    [![Build status][AppveyorDevBadge]][AppveyorLink]     | 
+
+[travisMasterBadge]: https://travis-ci.org/inikep/lzbench.svg?branch=master "Continuous Integration test suite"
+[travisDevBadge]: https://travis-ci.org/inikep/lzbench.svg?branch=dev "Continuous Integration test suite"
+[travisLink]: https://travis-ci.org/inikep/lzbench
+[AppveyorMasterBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/master?svg=true "Visual test suite"
+[AppveyorDevBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/dev?svg=true "Visual test suite"
+[AppveyorLink]: https://ci.appveyor.com/project/inikep/lzbench
+
 
 Usage
 -------------------------
@@ -59,6 +71,11 @@ make BUILD_ARCH=32-bit
 
 To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ5` to remove LZ5). 
 You also have to remove corresponding `*.o` files (e.g. `lz5/lz5.o` and `lz5/lz5hc.o`).
+
+lzbench was tested with:
+- Ubuntu: gcc 4.6.3, 4.8.4, 4.9.3, 5.3.0, 6.1.1 and clang 3.4, 3.5, 3.6, 3.8
+- MacOS: Apple LLVM version 6.0
+- MinGW (Windows): gcc 5.3.0, 4.9.3 32-bit, 4.8.3 32-bit
 
 Supported compressors
 -------------------------

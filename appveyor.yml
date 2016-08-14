@@ -1,13 +1,13 @@
 version: 1.0.{build}
 environment:
   matrix:
-  - PLATFORM: "mingw64"
-    CC_COMPILER: "gcc"
-    CXX_COMPILER: "g++"
   - PLATFORM: "mingw32"
     CC_COMPILER: "gcc"
     CXX_COMPILER: "g++"
-    MORE_OPTIONS: "BUILD_ARCH=32-bit DONT_BUILD_GLZA=1"
+    MORE_OPTIONS: "BUILD_ARCH=32-bit DONT_BUILD_GLZA=1 DONT_BUILD_LZHAM=1"
+  - PLATFORM: "mingw64"
+    CC_COMPILER: "gcc"
+    CXX_COMPILER: "g++"
   #- CC_COMPILER: "clang"
   #  CXX_COMPILER: "clang++"
   #  MORE_OPTIONS: "MOREFLAGS=--target=x86_64-w64-mingw32 DONT_BUILD_LZHAM=1"
@@ -32,7 +32,7 @@ build_script:
 
 test_script:
   - ECHO *** &&
-      ECHO Testing %CC_COMPILER% %PLATFORM%
+      ECHO Testing %CC_COMPILER% %PLATFORM% &&
       ECHO ***
   - lzbench
   - lzbench -eall lzbench.exe
