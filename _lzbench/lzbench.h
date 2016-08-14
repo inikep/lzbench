@@ -44,9 +44,6 @@
             #define ftello ftell
         #endif
 	#endif
-    #ifndef strtok_r
-        #define strtok_r strtok_s
-    #endif
 	#define PROGOS "Windows"
 #else
     #include <stdarg.h> // va_args

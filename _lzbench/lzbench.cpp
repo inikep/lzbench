@@ -43,6 +43,19 @@ void format(std::string& s,const char* formatstring, ...)
 } 
 
 
+std::vector<std::string> split(const std::string &text, char sep) {
+  std::vector<std::string> tokens;
+  std::size_t start = 0, end = 0;
+  while (text[start] == sep) start++;
+  while ((end = text.find(sep, start)) != std::string::npos) {
+    tokens.push_back(text.substr(start, end - start));
+    start = end + 1;
+  }
+  tokens.push_back(text.substr(start));
+  return tokens;
+} 
+
+
 void print_header(lzbench_params_t *params)
 {
     switch (params->textformat)
@@ -384,62 +397,55 @@ done:
 
 void lzbench_test_with_params(lzbench_params_t *params, char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
 {
-    const char delimiters[] = "/";
-    const char delimiters2[] = ",";
-    char *copy, *copy2, *token, *token2, *token3, *save_ptr, *save_ptr2;
+    std::vector<std::string> cnames, cparams;
 
-    copy = (char*)strdup(namesWithParams);
-    token = strtok_r(copy, delimiters, &save_ptr);
+    cnames = split(namesWithParams, '/');
 
-    while (token != NULL) 
+    for (int k=0; k<cnames.size(); k++)
+        LZBENCH_PRINT(5, "cnames[%d] = %s\n", k, cnames[k].c_str());
+
+    for (int k=0; k<cnames.size(); k++)
     {
         for (int i=0; i<LZBENCH_ALIASES_COUNT; i++)
         {
-            if (strcmp(token, alias_desc[i].name)==0)
+            if (strcmp(cnames[k].c_str(), alias_desc[i].name)==0)
             {
                 lzbench_test_with_params(params, (char*)alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, rate);
-                goto next_token; 
-           }
+                goto next_k;
+            }
         }
 
-        copy2 = (char*)strdup(token);
-        LZBENCH_PRINT(5, "params = %s\n", token);
-        token2 = strtok_r(copy2, delimiters2, &save_ptr2);
-
-        if (token2)
+        LZBENCH_PRINT(5, "params = %s\n", cnames[k].c_str());
+        cparams = split(cnames[k].c_str(), ',');
+        if (cparams.size() >= 1)
         {
-            token3 = strtok_r(NULL, delimiters2, &save_ptr2);
-            do
-            {
+            int j=1;
+            do {
                 bool found = false;
                 for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
                 {
-                    if (strcmp(comp_desc[i].name, token2) == 0)
+                    if (strcmp(comp_desc[i].name, cparams[0].c_str()) == 0)
                     {
                         found = true;
-    //                        printf("%s %s %s\n", token2, comp_desc[i].version, token3);
-                        if (!token3)
+                       // printf("%s %s %s\n", cparams[0].c_str(), comp_desc[i].version, cparams[j].c_str());
+                        if (j >= cparams.size())
                         {                          
                             for (int level=comp_desc[i].first_level; level<=comp_desc[i].last_level; level++)
                                 lzbench_test(params, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, rate, level);
                         }
                         else
-                            lzbench_test(params, &comp_desc[i], atoi(token3), inbuf, insize, compbuf, comprsize, decomp, rate, atoi(token3));
+                            lzbench_test(params, &comp_desc[i], atoi(cparams[j].c_str()), inbuf, insize, compbuf, comprsize, decomp, rate, atoi(cparams[j].c_str()));
                         break;
                     }
                 }
-                if (!found) printf("NOT FOUND: %s %s\n", token2, token3);
-                token3 = strtok_r(NULL, delimiters2, &save_ptr2);
+                if (!found) printf("NOT FOUND: %s %s\n", cparams[0].c_str(), (j<cparams.size()) ? cparams[j].c_str() : NULL);
+                j++;
             }
-            while (token3 != NULL);
+            while (j < cparams.size());
         }
-
-        free(copy2);
-next_token:
-        token = strtok_r(NULL, delimiters, &save_ptr);
+next_k:
+        continue;
     }
-
-    free(copy);
 }
 
 
