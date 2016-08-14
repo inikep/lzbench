@@ -1,15 +1,21 @@
 #BUILD_ARCH = 32-bit
 
 # LZSSE requires gcc with support of __SSE4_1__
-CC_WITH_SSE41 := $(shell if [ -n "`echo|$(CC) -dM -E - -march=native|grep SSE4_1`" ]; then echo 1; else echo 0; fi)
-ifeq "$(CC_WITH_SSE41)" "0"
+ifeq ($(shell echo|$(CC) -dM -E - -march=native|grep -c SSE4_1), 0)
 	DONT_BUILD_LZSSE ?= 1
 endif
 
+ifeq ($(shell $(CC) -v 2>&1 | grep -c "clang version"), 1)
+	COMPILER := clang
+else
+	COMPILER := gcc
+endif
+
 # glza doesn't work with gcc < 4.9 (missing stdatomic.h)
-CC_LT_490 := $(shell expr `$(CC) -dumpversion | sed -e 's/\.\([0-9][0-9]\)/\1/g' -e 's/\.\([0-9]\)/0\1/g' -e 's/^[0-9]\{3,4\}$$/&00/'` \< 40900)
-ifeq "$(CC_LT_490)" "1"
+ifeq ($(COMPILER),gcc)
+ifeq ($(shell expr `$(CC) -dumpversion | sed -e 's/\.\([0-9][0-9]\)/\1/g' -e 's/\.\([0-9]\)/0\1/g' -e 's/^[0-9]\{3,4\}$$/&00/'` \< 40900), 1)
     DONT_BUILD_GLZA ?= 1
+endif
 endif
 
 # if BUILD_ARCH is not 32-bit
