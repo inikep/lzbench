@@ -1859,7 +1859,7 @@ uint8_t embed_define_binary(uint32_t define_symbol, uint8_t in_definition) {
           mtf_queue[define_symbol_instances][63] = define_symbol;
         }
       }
-      else if (add_dictionary_symbol(symbol_to_move, new_symbol_code_length) == 0)
+      else if (add_dictionary_symbol(define_symbol, new_symbol_code_length) == 0)
         return(0);
     }
     else {
@@ -1871,7 +1871,7 @@ uint8_t embed_define_binary(uint32_t define_symbol, uint8_t in_definition) {
         else
           EncodeERG(0, 0);
       }
-      if (add_dictionary_symbol(symbol_to_move, new_symbol_code_length) == 0)
+      if (add_dictionary_symbol(define_symbol, new_symbol_code_length) == 0)
         return(0);
     }
   }
