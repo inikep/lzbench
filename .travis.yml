@@ -17,6 +17,13 @@ matrix:
       sudo: required
       addons:
         apt:
+          packages:
+            - libc6-dev-i386
+      env: CC_COMPILER=gcc CXX_COMPILER=g++ MORE_OPTIONS="BUILD_ARCH=32-bit"
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
           sources:
             - ubuntu-toolchain-r-test
           packages:

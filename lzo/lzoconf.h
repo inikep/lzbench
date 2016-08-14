@@ -91,7 +91,7 @@ extern "C" {
 /* lzo_uint must match size_t */
 #if !defined(LZO_UINT_MAX)
 #  if (LZO_ABI_LLP64)
-#    if (LZO_OS_WIN64)
+#    if !defined(__clang__) && defined(LZO_OS_WIN64)
      typedef unsigned __int64   lzo_uint;
      typedef __int64            lzo_int;
 #    define LZO_TYPEOF_LZO_INT  LZO_TYPEOF___INT64

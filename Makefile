@@ -14,15 +14,21 @@ ifeq (1,$(filter 1,$(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \< 4
     DONT_BUILD_GLZA ?= 1
 endif
 
-# if BUILD_ARCH is not 32-bit
-ifneq ($(BUILD_ARCH),32-bit)
+# if BUILD_ARCH is 32-bit
+ifeq ($(BUILD_ARCH),32-bit)
+	CODE_FLAGS += -m32
+	DONT_BUILD_LZSSE ?= 1
+else
 	DEFINES	+= -D__x86_64__
 endif
 
 
 # detect Windows
 ifneq (,$(filter Windows%,$(OS)))
-    LDFLAGS = -lshell32 -lole32 -loleaut32 -static
+	ifeq ($(COMPILER),clang)
+		DONT_BUILD_GLZA ?= 1
+	endif
+	LDFLAGS = -lshell32 -lole32 -loleaut32 -static
 else
     # MacOS doesn't support -lrt -static
     ifeq ($(shell uname -s),Darwin)
