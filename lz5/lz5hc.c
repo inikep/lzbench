@@ -79,10 +79,11 @@ int LZ5_alloc_mem_HC(LZ5HC_Data_Structure* ctx, int compressionLevel)
 
 void LZ5_free_mem_HC(LZ5HC_Data_Structure* ctx)
 {
+    if (!ctx) return;
     if (ctx->chainTable) FREEMEM(ctx->chainTable);
     if (ctx->hashTable) FREEMEM(ctx->hashTable);    
+    ctx->base = NULL;
 }
-
 
 static void LZ5HC_init (LZ5HC_Data_Structure* ctx, const BYTE* start)
 {
@@ -285,8 +286,10 @@ FORCE_INLINE int LZ5HC_FindBestMatch (LZ5HC_Data_Structure* ctx,   /* Index tabl
 
 #if MINMATCH == 3
 	{
-		size_t offset = ip - base - ctx->hashTable3[LZ5HC_hash3Ptr(ip, ctx->params.hashLog3)];
-		if (offset > 0 && offset < LZ5_SHORT_OFFSET_DISTANCE)
+		size_t offset;
+        U32 matchIndex3 = ctx->hashTable3[LZ5HC_hash3Ptr(ip, ctx->params.hashLog3)];
+        offset = (size_t)(ip - base) - matchIndex3;
+		if (matchIndex3>=lowLimit && offset > 0 && offset < LZ5_SHORT_OFFSET_DISTANCE)
 		{
 			match = ip - offset;
 			if (match > base && MEM_read24(ip) == MEM_read24(match))
@@ -355,8 +358,9 @@ FORCE_INLINE int LZ5HC_FindMatchFast (LZ5HC_Data_Structure* ctx, U32 matchIndex,
     }
 
 #if MINMATCH == 3
+    if (matchIndex3>=lowLimit)
 	{
-		size_t offset = ip - base - matchIndex3;
+		size_t offset = (size_t)(ip - base) - matchIndex3;
 		if (offset > 0 && offset < LZ5_SHORT_OFFSET_DISTANCE)
 		{
 			match = ip - offset;
@@ -541,8 +545,10 @@ FORCE_INLINE size_t LZ5HC_GetWiderMatch (
 
 #if MINMATCH == 3
 	{
-		size_t offset = ip - base - ctx->hashTable3[LZ5HC_hash3Ptr(ip, ctx->params.hashLog3)];
-		if (offset > 0 && offset < LZ5_SHORT_OFFSET_DISTANCE)
+		size_t offset;
+        U32 matchIndex3 = ctx->hashTable3[LZ5HC_hash3Ptr(ip, ctx->params.hashLog3)];
+        offset = (size_t)(ip - base) - matchIndex3;
+		if (matchIndex3>=lowLimit && offset > 0 && offset < LZ5_SHORT_OFFSET_DISTANCE)
 		{
 			match = ip - offset;
 			if (match > base && MEM_read24(ip) == MEM_read24(match))
@@ -651,6 +657,7 @@ FORCE_INLINE int LZ5HC_GetAllMatches (
 #if MINMATCH == 3
     HashPos3 = &HashTable3[LZ5HC_hash3Ptr(ip, ctx->params.hashLog3)];
 
+    if (*HashPos3>=lowLimit) 
 	{
 		size_t offset = idx - *HashPos3;
 		if (offset > 0 && offset < LZ5_SHORT_OFFSET_DISTANCE)
@@ -781,6 +788,8 @@ FORCE_INLINE int LZ5HC_BinTree_GetAllMatches (
     
 #if MINMATCH == 3
     HashPos3 = &ctx->hashTable3[LZ5HC_hash3Ptr(ip, ctx->params.hashLog3)];
+
+    if (*HashPos3>=lowLimit) 
 	{
 		size_t offset = idx - *HashPos3;
 
@@ -1754,7 +1763,7 @@ int LZ5_compress_HC(const char* src, char* dst, int srcSize, int maxDstSize, int
 
     int cSize = 0;
     
-    if (!LZ5_alloc_mem_HC(statePtr, compressionLevel))
+    if (!statePtr || !LZ5_alloc_mem_HC(statePtr, compressionLevel))
         return 0;
         
     cSize = LZ5_compress_HC_extStateHC(statePtr, src, dst, srcSize, maxDstSize);
