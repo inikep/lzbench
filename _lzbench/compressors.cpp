@@ -440,7 +440,7 @@ int64_t lzbench_lzvn_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 
 int64_t lzbench_lzvn_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
 {
-	return lzvn_decode_buffer((uint8_t*)outbuf, outsize, (uint8_t*)inbuf, insize, workmem);
+	return lzvn_decode_buffer_scratch((uint8_t*)outbuf, outsize, (uint8_t*)inbuf, insize, workmem);
 }
 
 #endif
