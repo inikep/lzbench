@@ -46,9 +46,9 @@ matrix:
           sources:
             - ubuntu-toolchain-r-test
           packages:
-            - libc6-dev-i386
             - g++-5
             - g++-5-multilib
+            - gcc-multilib
       env: CC_COMPILER=gcc-5 CXX_COMPILER=g++-5 MORE_OPTIONS="BUILD_ARCH=32-bit"
     - dist: trusty
       sudo: required
@@ -68,6 +68,7 @@ matrix:
           packages:
             - g++-6
             - g++-6-multilib
+            - gcc-multilib
       env: CC_COMPILER=gcc-6 CXX_COMPILER=g++-6 MORE_OPTIONS="BUILD_ARCH=32-bit"
     - dist: trusty
       sudo: required

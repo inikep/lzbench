@@ -94,7 +94,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
                 printf("      ERROR");
             else
                 if (dspeed < 10) printf("%6.2f MB/s", dspeed); else printf("%6d MB/s", (int)dspeed); 
-            printf("%12llu %6.2f %s\n", row.column4, (unsigned long long)ratio, row.filename.c_str());
+            printf("%12llu %6.2f %s\n", (unsigned long long)row.column4, ratio, row.filename.c_str());
             break;
         case MARKDOWN:
             printf("| %-23s ", row.column1.c_str());
