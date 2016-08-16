@@ -7,6 +7,18 @@ Then all compressors are used to compress and decompress the file and decompress
 This approach has a big advantage of using the same compiler with the same optimizations for all compressors. 
 The disadvantage is that it requires source code of each compressor (therefore Slug or lzturbo are not included).
 
+|Branch      |Status   |
+|------------|---------|
+|master      | [![Build Status][travisMasterBadge]][travisLink] [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
+|dev         | [![Build Status][travisDevBadge]][travisLink]    [![Build status][AppveyorDevBadge]][AppveyorLink]     | 
+
+[travisMasterBadge]: https://travis-ci.org/inikep/lzbench.svg?branch=master "Continuous Integration test suite"
+[travisDevBadge]: https://travis-ci.org/inikep/lzbench.svg?branch=dev "Continuous Integration test suite"
+[travisLink]: https://travis-ci.org/inikep/lzbench
+[AppveyorMasterBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/master?svg=true "Visual test suite"
+[AppveyorDevBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/dev?svg=true "Visual test suite"
+[AppveyorLink]: https://ci.appveyor.com/project/inikep/lzbench
+
 
 Usage
 -------------------------
@@ -15,7 +27,7 @@ Usage
 usage: lzbench [options] input_file [input_file2] [input_file3]
 
 where [options] are:
- -bX  set block/chunk size to X KB (default = filesize or 2097152 KB)
+ -bX  set block/chunk size to X KB (default = MIN(filesize,1747626 KB))
  -cX  sort results by column number X
  -eX  X = compressors separated by '/' with parameters specified after ','
  -iX  set min. number of compression iterations (default = 1)
@@ -23,19 +35,25 @@ where [options] are:
  -l   list of available compressors and aliases
  -oX  output text format 1=Markdown, 2=text, 3=CSV (default = 2)
  -pX  print time for all iterations: 1=fastest 2=average 3=median (default = 1)
+ -r   disable real-time process priority
  -sX  use only compressors with compression speed over X MB (default = 0 MB)
  -tX  set min. time in seconds for compression (default = 1.0)
  -uX  set min. time in seconds for decompression (default = 0.5)
+ -v   disable progress information
+ -z   show (de)compression times instead of speed
 
 Example usage:
-  lzbench -ebrotli filename - selects all levels of brotli
-  lzbench -ebrotli,2,5/zstd filename - selects levels 2 & 5 of brotli and zstd
+  lzbench -ezstd filename = selects all levels of zstd
+  lzbench -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd
+  lzbench -t3 -u5 fname = 3 sec compression and 5 sec decompression loops
+  lzbench -t0 -u0 -i3 -j5 -elz5 fname = 3 compression and 5 decompression iter.
+  lzbench -t0u0i3j5 -elz5 fname = the same as above with aggregated parameters
 ```
 
 
 Compilation
 -------------------------
-For Linux/Unix/MinGW (Windows):
+For Linux/MacOS/MinGW (Windows):
 ```
 make
 ```
@@ -46,28 +64,35 @@ make BUILD_ARCH=32-bit
 
 ```
 
-To remove one of compressors you can add -DBENCH_REMOVE_XXX to $DEFINES in Makefile (e.g. DEFINES += -DBENCH_REMOVE_LZ5 to remove LZ5).
+To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ5` to remove LZ5). 
+You also have to remove corresponding `*.o` files (e.g. `lz5/lz5.o` and `lz5/lz5hc.o`).
+
+lzbench was tested with:
+- Ubuntu: gcc 4.6.3, 4.8.4 (both 32-bit and 64-bit), 4.9.3, 5.3.0, 6.1.1 and clang 3.4, 3.5, 3.6, 3.8
+- MacOS: Apple LLVM version 6.0
+- MinGW (Windows): gcc 5.3.0, 4.9.3 (32-bit), 4.8.3 (32-bit)
+
+
 
 Supported compressors
 -------------------------
-**Warning**: some of the compressors listed here have security issues
-and/or are no longer maintained.  For information about the security
-of the various compressors, see the
-[CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results)
-page.
+**Warning**: some of the compressors listed here have security issues and/or are 
+no longer maintained.  For information about the security of the various compressors, 
+see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page.
 ```
 blosclz 2015-11-10
 brieflz 1.1.0
-brotli 0.4.0
+brotli 0.5.2
 crush 1.0
 csc 3.3
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
 fastlz 0.1
-gipfeli 2015-11-30
+gipfeli 2016-07-13
+glza 0.7.1
 lz4/lz4hc r131
-lz5/lz5hc v1.4.1
+lz5/lz5hc v1.5
 lzf 3.6
-lzfse/lzvn 2016-06-19
+lzfse/lzvn 2016-08-16
 lzg 1.0.8
 lzham 1.0
 lzjb 2010
@@ -80,6 +105,7 @@ lzsse 2016-05-14
 pithy 2011-12-24 (WARNING: it contains bugs (decompression error; returns 0))
 quicklz 1.5.0
 shrinker 0.1 (WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3)
+slz 1.0.0 (only a compressor, uses zlib for decompression)
 snappy 1.1.3
 tornado 0.6a
 ucl 1.03
@@ -90,157 +116,179 @@ yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.8
 zling 2016-04-10 (according to the author using libzling in a production environment is not a good idea)
-zstd 0.7.1
+zstd 0.8.0
 ```
 
 
 Benchmarks
 -------------------------
 
-The following results are obtained with lzbench using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 4.8.3). 
-The ["win81"] input file (100 MB) is a concatanation of carefully selected files from installed version of Windows 8.1 64-bit. 
-The results sorted by ratio are available [here](lzbench10_win81sorted.md).
+The following results are obtained with lzbench ("-t16 -u16 -eall") using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 5.3.0)
+with ["silesia.tar"](https://drive.google.com/file/d/0BwX7dtyRLxThenZpYU9zLTZhR1k/view?usp=sharing) which contains tarred files from [Silesia compression corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
+The results sorted by ratio are available [here](lzbench13_sorted.md).
 
-["win81"]: https://docs.google.com/uc?id=0BwX7dtyRLxThRzBwT0xkUy1TMFE&export=download 
-
-
-| Compressor name             | Compression| Decompress.| Compr. size | Ratio |
-| ---------------             | -----------| -----------| ----------- | ----- |
-| memcpy                      |  8368 MB/s |  8406 MB/s |   104857600 |100.00 |
-| blosclz 2015-11-10 level 1  |  1041 MB/s |  5621 MB/s |   101118592 | 96.43 |
-| blosclz 2015-11-10 level 3  |   565 MB/s |  5247 MB/s |    98716389 | 94.14 |
-| blosclz 2015-11-10 level 6  |   240 MB/s |  1226 MB/s |    71944073 | 68.61 |
-| blosclz 2015-11-10 level 9  |   201 MB/s |   696 MB/s |    64269967 | 61.29 |
-| brieflz 1.1.0               |    76 MB/s |   156 MB/s |    55001889 | 52.45 |
-| brotli 2016-03-22 -0        |   210 MB/s |   195 MB/s |    52629581 | 50.19 |
-| brotli 2016-03-22 -2        |    88 MB/s |   187 MB/s |    48030385 | 45.81 |
-| brotli 2016-03-22 -5        |    19 MB/s |   220 MB/s |    43208885 | 41.21 |
-| brotli 2016-03-22 -8        |  3.37 MB/s |   224 MB/s |    41009167 | 39.11 |
-| brotli 2016-03-22 -11       |  0.25 MB/s |   170 MB/s |    37358056 | 35.63 |
-| crush 1.0 level 0           |    21 MB/s |   203 MB/s |    50419812 | 48.08 |
-| crush 1.0 level 1           |  4.32 MB/s |   213 MB/s |    48195021 | 45.96 |
-| crush 1.0 level 2           |  0.59 MB/s |   221 MB/s |    47105187 | 44.92 |
-| csc 3.3 level 1             |    10 MB/s |    33 MB/s |    39201748 | 37.39 |
-| csc 3.3 level 3             |  5.41 MB/s |    31 MB/s |    37947503 | 36.19 |
-| csc 3.3 level 5             |  3.06 MB/s |    32 MB/s |    37016660 | 35.30 |
-| density 0.12.5 beta level 1 |   720 MB/s |   854 MB/s |    77139532 | 73.57 |
-| density 0.12.5 beta level 2 |   448 MB/s |   598 MB/s |    65904712 | 62.85 |
-| density 0.12.5 beta level 3 |   207 MB/s |   178 MB/s |    60230248 | 57.44 |
-| fastlz 0.1 level 1          |   181 MB/s |   510 MB/s |    65163214 | 62.14 |
-| fastlz 0.1 level 2          |   208 MB/s |   508 MB/s |    63462293 | 60.52 |
-| gipfeli 2015-11-30          |   214 MB/s |   439 MB/s |    59292275 | 56.55 |
-| lz4fast r131 level 17       |   994 MB/s |  3172 MB/s |    77577906 | 73.98 |
-| lz4fast r131 level 3        |   623 MB/s |  2598 MB/s |    67753409 | 64.61 |
-| lz4 r131                    |   497 MB/s |  2492 MB/s |    64872315 | 61.87 |
-| lz4hc r131 level 1          |    83 MB/s |  2041 MB/s |    59448496 | 56.69 |
-| lz4hc r131 level 4          |    49 MB/s |  2067 MB/s |    55670801 | 53.09 |
-| lz4hc r131 level 9          |    25 MB/s |  2147 MB/s |    54773517 | 52.24 |
-| lz4hc r131 level 12         |    19 MB/s |  2155 MB/s |    54747494 | 52.21 |
-| lz4hc r131 level 16         |    13 MB/s |  2157 MB/s |    54741717 | 52.21 |
-| lz5 v1.4.1                  |   198 MB/s |   893 MB/s |    56183327 | 53.58 |
-| lz5hc v1.4.1 level 1        |   494 MB/s |  1758 MB/s |    68860852 | 65.67 |
-| lz5hc v1.4.1 level 4        |   128 MB/s |   982 MB/s |    56306606 | 53.70 |
-| lz5hc v1.4.1 level 9        |    17 MB/s |   744 MB/s |    49862164 | 47.55 |
-| lz5hc v1.4.1 level 12       |  8.06 MB/s |   757 MB/s |    47057399 | 44.88 |
-| lz5hc v1.4.1 level 15       |  2.29 MB/s |   724 MB/s |    45767126 | 43.65 |
-| lzf 3.6 level 0             |   218 MB/s |   533 MB/s |    66219900 | 63.15 |
-| lzf 3.6 level 1             |   220 MB/s |   541 MB/s |    63913133 | 60.95 |
-| lzg 1.0.8 level 1           |    44 MB/s |   412 MB/s |    65173949 | 62.15 |
-| lzg 1.0.8 level 4           |    31 MB/s |   415 MB/s |    61218435 | 58.38 |
-| lzg 1.0.8 level 6           |    18 MB/s |   430 MB/s |    58591217 | 55.88 |
-| lzg 1.0.8 level 8           |  6.51 MB/s |   456 MB/s |    55268743 | 52.71 |
-| lzham 1.0 -d26 level 0      |  6.31 MB/s |   106 MB/s |    42178467 | 40.22 |
-| lzham 1.0 -d26 level 1      |  1.77 MB/s |   132 MB/s |    38407249 | 36.63 |
-| lzjb 2010                   |   208 MB/s |   394 MB/s |    73436239 | 70.03 |
-| lzlib 1.7 level 0           |    16 MB/s |    26 MB/s |    43911286 | 41.88 |
-| lzlib 1.7 level 3           |  3.52 MB/s |    30 MB/s |    38565696 | 36.78 |
-| lzlib 1.7 level 6           |  2.18 MB/s |    31 MB/s |    35911569 | 34.25 |
-| lzlib 1.7 level 9           |  1.64 MB/s |    31 MB/s |    35718249 | 34.06 |
-| lzma 9.38 level 0           |    14 MB/s |    34 MB/s |    43768712 | 41.74 |
-| lzma 9.38 level 2           |    11 MB/s |    37 MB/s |    40675661 | 38.79 |
-| lzma 9.38 level 4           |  6.54 MB/s |    40 MB/s |    39191481 | 37.38 |
-| lzma 9.38 level 5           |  2.48 MB/s |    42 MB/s |    36052585 | 34.38 |
-| lzmat 1.01                  |    22 MB/s |      ERROR |    52691815 | 50.25 |
-| lzo1 2.09 level 1           |   152 MB/s |   462 MB/s |    66048927 | 62.99 |
-| lzo1 2.09 level 99          |    66 MB/s |   472 MB/s |    61246849 | 58.41 |
-| lzo1a 2.09 level 1          |   153 MB/s |   526 MB/s |    64369332 | 61.39 |
-| lzo1a 2.09 level 99         |    62 MB/s |   534 MB/s |    59522850 | 56.77 |
-| lzo1b 2.09 level 1          |   129 MB/s |   559 MB/s |    62277761 | 59.39 |
-| lzo1b 2.09 level 5          |   144 MB/s |   539 MB/s |    59539396 | 56.78 |
-| lzo1b 2.09 level 9          |   106 MB/s |   480 MB/s |    58343947 | 55.64 |
-| lzo1b 2.09 level 99         |    57 MB/s |   534 MB/s |    57075974 | 54.43 |
-| lzo1b 2.09 level 999        |  9.06 MB/s |   572 MB/s |    53498464 | 51.02 |
-| lzo1c 2.09 level 1          |   128 MB/s |   578 MB/s |    63395252 | 60.46 |
-| lzo1c 2.09 level 5          |   112 MB/s |   553 MB/s |    60379996 | 57.58 |
-| lzo1c 2.09 level 9          |    87 MB/s |   539 MB/s |    59173072 | 56.43 |
-| lzo1c 2.09 level 99         |    57 MB/s |   544 MB/s |    58250149 | 55.55 |
-| lzo1c 2.09 level 999        |    14 MB/s |   553 MB/s |    55182562 | 52.63 |
-| lzo1f 2.09 level 1          |   119 MB/s |   535 MB/s |    63167952 | 60.24 |
-| lzo1f 2.09 level 999        |    12 MB/s |   487 MB/s |    54841880 | 52.30 |
-| lzo1x 2.09 level 1          |   410 MB/s |   647 MB/s |    64904436 | 61.90 |
-| lzo1x 2.09 level 11         |   469 MB/s |   676 MB/s |    67004005 | 63.90 |
-| lzo1x 2.09 level 15         |   436 MB/s |   666 MB/s |    65236411 | 62.21 |
-| lzo1x 2.09 level 999        |  4.87 MB/s |   485 MB/s |    52280907 | 49.86 |
-| lzo1y 2.09 level 1          |   411 MB/s |   645 MB/s |    65233337 | 62.21 |
-| lzo1y 2.09 level 999        |  4.88 MB/s |   478 MB/s |    52581195 | 50.15 |
-| lzo1z 2.09 level 999        |  5.08 MB/s |   483 MB/s |    51729363 | 49.33 |
-| lzo2a 2.09 level 999        |    15 MB/s |   386 MB/s |    55743639 | 53.16 |
-| lzrw 15-Jul-1991 level 1    |   153 MB/s |   382 MB/s |    69138188 | 65.94 |
-| lzrw 15-Jul-1991 level 2    |   158 MB/s |   413 MB/s |    68803677 | 65.62 |
-| lzrw 15-Jul-1991 level 3    |   203 MB/s |   428 MB/s |    66253542 | 63.18 |
-| lzrw 15-Jul-1991 level 4    |   221 MB/s |   338 MB/s |    64382024 | 61.40 |
-| lzrw 15-Jul-1991 level 5    |    94 MB/s |   323 MB/s |    61293136 | 58.45 |
-| pithy 2011-12-24 level 0    |   458 MB/s |  1587 MB/s |    65569609 | 62.53 |
-| pithy 2011-12-24 level 3    |   406 MB/s |      ERROR |    63403946 | 60.47 |
-| pithy 2011-12-24 level 6    |   321 MB/s |  1512 MB/s |    61219685 | 58.38 |
-| pithy 2011-12-24 level 9    |   253 MB/s |  1401 MB/s |    59407478 | 56.66 |
-| quicklz 1.5.0 level 1       |   319 MB/s |   337 MB/s |    62896807 | 59.98 |
-| quicklz 1.5.0 level 2       |   145 MB/s |   292 MB/s |    57784302 | 55.11 |
-| quicklz 1.5.0 level 3       |    39 MB/s |   583 MB/s |    55938979 | 53.35 |
-| shrinker 0.1                |   289 MB/s |   867 MB/s |    60900075 | 58.08 |
-| snappy 1.1.3                |   328 MB/s |  1177 MB/s |    64864200 | 61.86 |
-| tornado 0.6a level 1        |   233 MB/s |   328 MB/s |    71907303 | 68.58 |
-| tornado 0.6a level 2        |   202 MB/s |   276 MB/s |    60989163 | 58.16 |
-| tornado 0.6a level 3        |   102 MB/s |   138 MB/s |    47942540 | 45.72 |
-| tornado 0.6a level 4        |    71 MB/s |   145 MB/s |    45984872 | 43.85 |
-| tornado 0.6a level 5        |    23 MB/s |    94 MB/s |    42800284 | 40.82 |
-| tornado 0.6a level 6        |    18 MB/s |    92 MB/s |    42135261 | 40.18 |
-| tornado 0.6a level 7        |  8.66 MB/s |    94 MB/s |    40993890 | 39.09 |
-| tornado 0.6a level 10       |  2.46 MB/s |    96 MB/s |    40664357 | 38.78 |
-| tornado 0.6a level 13       |  4.73 MB/s |    91 MB/s |    39439514 | 37.61 |
-| tornado 0.6a level 16       |  2.34 MB/s |    98 MB/s |    38726511 | 36.93 |
-| ucl_nrv2b 1.03 level 1      |    27 MB/s |   203 MB/s |    54524452 | 52.00 |
-| ucl_nrv2b 1.03 level 6      |    11 MB/s |   201 MB/s |    50950304 | 48.59 |
-| ucl_nrv2b 1.03 level 9      |  1.32 MB/s |   221 MB/s |    49001893 | 46.73 |
-| ucl_nrv2d 1.03 level 1      |    27 MB/s |   211 MB/s |    54430708 | 51.91 |
-| ucl_nrv2d 1.03 level 6      |    12 MB/s |   237 MB/s |    50952760 | 48.59 |
-| ucl_nrv2d 1.03 level 9      |  1.33 MB/s |   241 MB/s |    48561867 | 46.31 |
-| ucl_nrv2e 1.03 level 1      |    26 MB/s |   212 MB/s |    54408737 | 51.89 |
-| ucl_nrv2e 1.03 level 6      |    12 MB/s |   231 MB/s |    50832861 | 48.48 |
-| ucl_nrv2e 1.03 level 9      |  1.46 MB/s |   240 MB/s |    48462802 | 46.22 |
-| wflz 2015-09-16             |   133 MB/s |   815 MB/s |    68272262 | 65.11 |
-| xz 5.2.2 level 0            |    11 MB/s |    31 MB/s |    41795581 | 39.86 |
-| xz 5.2.2 level 3            |  4.24 MB/s |    35 MB/s |    38842485 | 37.04 |
-| xz 5.2.2 level 6            |  2.43 MB/s |    37 MB/s |    35963930 | 34.30 |
-| xz 5.2.2 level 9            |  2.19 MB/s |    36 MB/s |    35883407 | 34.22 |
-| yalz77 2015-09-19 level 1   |    49 MB/s |   400 MB/s |    60275588 | 57.48 |
-| yalz77 2015-09-19 level 4   |    23 MB/s |   389 MB/s |    58110443 | 55.42 |
-| yalz77 2015-09-19 level 8   |    13 MB/s |   370 MB/s |    56559159 | 53.94 |
-| yalz77 2015-09-19 level 12  |    10 MB/s |   378 MB/s |    55748814 | 53.17 |
-| yappy 2014-03-22 level 1    |    74 MB/s |  1953 MB/s |    66362536 | 63.29 |
-| yappy 2014-03-22 level 10   |    66 MB/s |  2089 MB/s |    64110300 | 61.14 |
-| yappy 2014-03-22 level 100  |    57 MB/s |  2178 MB/s |    63584665 | 60.64 |
-| zlib 1.2.8 level 1          |    45 MB/s |   197 MB/s |    51131815 | 48.76 |
-| zlib 1.2.8 level 6          |    18 MB/s |   214 MB/s |    47681614 | 45.47 |
-| zlib 1.2.8 level 9          |  7.50 MB/s |   216 MB/s |    47516720 | 45.32 |
-| zling 2016-04-10 level 0    |    23 MB/s |   100 MB/s |    44381730 | 42.33 |
-| zling 2016-04-10 level 2    |    20 MB/s |   105 MB/s |    43836149 | 41.81 |
-| zling 2016-04-10 level 4    |    17 MB/s |    98 MB/s |    43491149 | 41.48 |
-| zstd v0.6.0 -1              |   231 MB/s |   595 MB/s |    51081337 | 48.71 |
-| zstd v0.6.0 -2              |   170 MB/s |   556 MB/s |    49649612 | 47.35 |
-| zstd v0.6.0 -5              |    66 MB/s |   508 MB/s |    46175896 | 44.04 |
-| zstd v0.6.0 -8              |    25 MB/s |   521 MB/s |    44051111 | 42.01 |
-| zstd v0.6.0 -11             |    16 MB/s |   559 MB/s |    42444816 | 40.48 |
-| zstd v0.6.0 -15             |  5.92 MB/s |   545 MB/s |    42090097 | 40.14 |
-| zstd v0.6.0 -18             |  3.85 MB/s |   513 MB/s |    40724929 | 38.84 |
-| zstd v0.6.0 -22             |  2.25 MB/s |   446 MB/s |    38805650 | 37.01 |
+| Compressor name         | Compression| Decompress.| Compr. size | Ratio |
+| ---------------         | -----------| -----------| ----------- | ----- |
+| memcpy                  |  7332 MB/s |  8719 MB/s |   211947520 |100.00 |
+| blosclz 2015-11-10 -1   |   883 MB/s |  5981 MB/s |   211768481 | 99.92 |
+| blosclz 2015-11-10 -3   |   477 MB/s |  5267 MB/s |   204507781 | 96.49 |
+| blosclz 2015-11-10 -6   |   227 MB/s |   873 MB/s |   113322667 | 53.47 |
+| blosclz 2015-11-10 -9   |   214 MB/s |   664 MB/s |   102817442 | 48.51 |
+| brieflz 1.1.0           |   101 MB/s |   158 MB/s |    81990651 | 38.68 |
+| brotli 0.5.2 -0         |   216 MB/s |   256 MB/s |    78226979 | 36.91 |
+| brotli 0.5.2 -2         |    97 MB/s |   296 MB/s |    68066621 | 32.11 |
+| brotli 0.5.2 -5         |    24 MB/s |   328 MB/s |    60801716 | 28.69 |
+| brotli 0.5.2 -8         |  5.70 MB/s |   341 MB/s |    57382470 | 27.07 |
+| brotli 0.5.2 -11        |  0.38 MB/s |   277 MB/s |    51136345 | 24.13 |
+| crush 1.0 -0            |    31 MB/s |   252 MB/s |    73064603 | 34.47 |
+| crush 1.0 -1            |  3.27 MB/s |   288 MB/s |    66494412 | 31.37 |
+| crush 1.0 -2            |  0.38 MB/s |   295 MB/s |    63746223 | 30.08 |
+| csc 3.3 -1              |    15 MB/s |    49 MB/s |    56201092 | 26.52 |
+| csc 3.3 -3              |  6.41 MB/s |    48 MB/s |    53477914 | 25.23 |
+| csc 3.3 -5              |  2.58 MB/s |    52 MB/s |    49801577 | 23.50 |
+| density 0.12.5 beta -1  |   835 MB/s |  1140 MB/s |   133085162 | 62.79 |
+| density 0.12.5 beta -2  |   490 MB/s |   674 MB/s |   101706226 | 47.99 |
+| density 0.12.5 beta -3  |   263 MB/s |   254 MB/s |    87622980 | 41.34 |
+| fastlz 0.1 -1           |   232 MB/s |   475 MB/s |   104628084 | 49.37 |
+| fastlz 0.1 -2           |   245 MB/s |   456 MB/s |   100906072 | 47.61 |
+| gipfeli 2016-07-13      |   230 MB/s |   462 MB/s |    87931759 | 41.49 |
+| lz4 r131                |   442 MB/s |  2242 MB/s |   100880800 | 47.60 |
+| lz4fast r131 -3         |   509 MB/s |  2254 MB/s |   107066190 | 50.52 |
+| lz4fast r131 -17        |   770 MB/s |  2622 MB/s |   131732802 | 62.15 |
+| lz4hc r131 -1           |   101 MB/s |  2040 MB/s |    89227392 | 42.10 |
+| lz4hc r131 -4           |    57 MB/s |  2177 MB/s |    80485954 | 37.97 |
+| lz4hc r131 -9           |    23 MB/s |  2235 MB/s |    77919206 | 36.76 |
+| lz4hc r131 -12          |    18 MB/s |  2244 MB/s |    77852851 | 36.73 |
+| lz4hc r131 -16          |    12 MB/s |  2245 MB/s |    77841796 | 36.73 |
+| lz5 1.5                 |   207 MB/s |   732 MB/s |    88216194 | 41.62 |
+| lz5hc 1.5 -1            |   435 MB/s |  1317 MB/s |   113538427 | 53.57 |
+| lz5hc 1.5 -4            |   149 MB/s |   951 MB/s |    86503541 | 40.81 |
+| lz5hc 1.5 -9            |    20 MB/s |   818 MB/s |    74228639 | 35.02 |
+| lz5hc 1.5 -12           |  7.88 MB/s |   777 MB/s |    69485691 | 32.78 |
+| lz5hc 1.5 -15           |  1.55 MB/s |   669 MB/s |    65555476 | 30.93 |
+| lzf 3.6 -0              |   248 MB/s |   548 MB/s |   105682088 | 49.86 |
+| lzf 3.6 -1              |   254 MB/s |   564 MB/s |   102041092 | 48.14 |
+| lzfse 2016-08-16        |    47 MB/s |   582 MB/s |    67624281 | 31.91 |
+| lzg 1.0.8 -1            |    57 MB/s |   421 MB/s |   108553667 | 51.22 |
+| lzg 1.0.8 -4            |    35 MB/s |   424 MB/s |    95930551 | 45.26 |
+| lzg 1.0.8 -6            |    19 MB/s |   445 MB/s |    89490220 | 42.22 |
+| lzg 1.0.8 -8            |  6.81 MB/s |   485 MB/s |    83606901 | 39.45 |
+| lzham 1.0 -d26 -0       |  6.30 MB/s |   141 MB/s |    64089870 | 30.24 |
+| lzham 1.0 -d26 -1       |  1.94 MB/s |   179 MB/s |    54740589 | 25.83 |
+| lzjb 2010               |   222 MB/s |   408 MB/s |   122671613 | 57.88 |
+| lzlib 1.7 -0            |    23 MB/s |    37 MB/s |    63847386 | 30.12 |
+| lzlib 1.7 -3            |  4.64 MB/s |    43 MB/s |    56320674 | 26.57 |
+| lzlib 1.7 -6            |  1.98 MB/s |    45 MB/s |    49777495 | 23.49 |
+| lzlib 1.7 -9            |  1.23 MB/s |    47 MB/s |    48296889 | 22.79 |
+| lzma 9.38 -0            |    18 MB/s |    47 MB/s |    64013917 | 30.20 |
+| lzma 9.38 -2            |    15 MB/s |    56 MB/s |    58867911 | 27.77 |
+| lzma 9.38 -4            |  9.06 MB/s |    59 MB/s |    57201645 | 26.99 |
+| lzma 9.38 -5            |  2.12 MB/s |    65 MB/s |    49720569 | 23.46 |
+| lzmat 1.01              |    25 MB/s |   290 MB/s |    76485353 | 36.09 |
+| lzo1 2.09 -1            |   197 MB/s |   435 MB/s |   106474519 | 50.24 |
+| lzo1 2.09 -99           |    83 MB/s |   458 MB/s |    94946129 | 44.80 |
+| lzo1a 2.09 -1           |   195 MB/s |   508 MB/s |   104202251 | 49.16 |
+| lzo1a 2.09 -99          |    83 MB/s |   535 MB/s |    92666265 | 43.72 |
+| lzo1b 2.09 -1           |   168 MB/s |   550 MB/s |    97036087 | 45.78 |
+| lzo1b 2.09 -3           |   166 MB/s |   565 MB/s |    94044578 | 44.37 |
+| lzo1b 2.09 -6           |   166 MB/s |   568 MB/s |    91382355 | 43.12 |
+| lzo1b 2.09 -9           |   122 MB/s |   563 MB/s |    89261884 | 42.12 |
+| lzo1b 2.09 -99          |    81 MB/s |   569 MB/s |    85653376 | 40.41 |
+| lzo1b 2.09 -999         |  9.29 MB/s |   631 MB/s |    76594292 | 36.14 |
+| lzo1c 2.09 -1           |   173 MB/s |   571 MB/s |    99550904 | 46.97 |
+| lzo1c 2.09 -3           |   168 MB/s |   583 MB/s |    96716153 | 45.63 |
+| lzo1c 2.09 -6           |   147 MB/s |   583 MB/s |    93303623 | 44.02 |
+| lzo1c 2.09 -9           |   113 MB/s |   579 MB/s |    91040386 | 42.95 |
+| lzo1c 2.09 -99          |    76 MB/s |   582 MB/s |    88112288 | 41.57 |
+| lzo1c 2.09 -999         |    15 MB/s |   614 MB/s |    80396741 | 37.93 |
+| lzo1f 2.09 -1           |   160 MB/s |   495 MB/s |    99743329 | 47.06 |
+| lzo1f 2.09 -999         |    13 MB/s |   505 MB/s |    80890206 | 38.17 |
+| lzo1x 2.09 -1           |   402 MB/s |   553 MB/s |   100572537 | 47.45 |
+| lzo1x 2.09 -11          |   432 MB/s |   563 MB/s |   106604629 | 50.30 |
+| lzo1x 2.09 -12          |   424 MB/s |   554 MB/s |   103238859 | 48.71 |
+| lzo1x 2.09 -15          |   414 MB/s |   552 MB/s |   101462094 | 47.87 |
+| lzo1x 2.09 -999         |  5.68 MB/s |   529 MB/s |    75301903 | 35.53 |
+| lzo1y 2.09 -1           |   403 MB/s |   554 MB/s |   101258318 | 47.78 |
+| lzo1y 2.09 -999         |  5.78 MB/s |   529 MB/s |    75503849 | 35.62 |
+| lzo1z 2.09 -999         |  5.64 MB/s |   513 MB/s |    75061331 | 35.42 |
+| lzo2a 2.09 -999         |    16 MB/s |   401 MB/s |    82809337 | 39.07 |
+| lzrw 15-Jul-1991 -1     |   197 MB/s |   421 MB/s |   113761625 | 53.67 |
+| lzrw 15-Jul-1991 -2     |   202 MB/s |   420 MB/s |   112344608 | 53.01 |
+| lzrw 15-Jul-1991 -3     |   229 MB/s |   442 MB/s |   105424168 | 49.74 |
+| lzrw 15-Jul-1991 -4     |   244 MB/s |   404 MB/s |   100131356 | 47.24 |
+| lzrw 15-Jul-1991 -5     |   109 MB/s |   406 MB/s |    90818810 | 42.85 |
+| lzsse2 2016-05-14 -1    |    12 MB/s |  1961 MB/s |    87976095 | 41.51 |
+| lzsse2 2016-05-14 -6    |  5.87 MB/s |  2240 MB/s |    75837101 | 35.78 |
+| lzsse2 2016-05-14 -12   |  5.69 MB/s |  2238 MB/s |    75829973 | 35.78 |
+| lzsse2 2016-05-14 -16   |  5.69 MB/s |  2244 MB/s |    75829973 | 35.78 |
+| lzsse4 2016-05-14 -1    |    12 MB/s |  2482 MB/s |    82542106 | 38.94 |
+| lzsse4 2016-05-14 -6    |  6.59 MB/s |  2687 MB/s |    76118298 | 35.91 |
+| lzsse4 2016-05-14 -12   |  6.41 MB/s |  2685 MB/s |    76113017 | 35.91 |
+| lzsse4 2016-05-14 -16   |  6.43 MB/s |  2682 MB/s |    76113017 | 35.91 |
+| lzsse8 2016-05-14 -1    |    11 MB/s |  2601 MB/s |    81866245 | 38.63 |
+| lzsse8 2016-05-14 -6    |  6.00 MB/s |  2840 MB/s |    75469717 | 35.61 |
+| lzsse8 2016-05-14 -12   |  6.16 MB/s |  2838 MB/s |    75464339 | 35.61 |
+| lzsse8 2016-05-14 -16   |  6.16 MB/s |  2813 MB/s |    75464339 | 35.61 |
+| lzvn 2016-08-16         |    45 MB/s |   790 MB/s |    80814609 | 38.13 |
+| pithy 2011-12-24 -0     |   378 MB/s |  1227 MB/s |   103072463 | 48.63 |
+| pithy 2011-12-24 -3     |   348 MB/s |  1225 MB/s |    97255186 | 45.89 |
+| pithy 2011-12-24 -6     |   295 MB/s |  1274 MB/s |    92090898 | 43.45 |
+| pithy 2011-12-24 -9     |   254 MB/s |  1273 MB/s |    90360813 | 42.63 |
+| quicklz 1.5.0 -1        |   342 MB/s |   426 MB/s |    94720562 | 44.69 |
+| quicklz 1.5.0 -2        |   178 MB/s |   415 MB/s |    84555627 | 39.89 |
+| quicklz 1.5.0 -3        |    44 MB/s |   721 MB/s |    81822241 | 38.60 |
+| shrinker 0.1            |   703 MB/s |  1853 MB/s |   172535778 | 81.40 |
+| snappy 1.1.3            |   317 MB/s |  1059 MB/s |   101382606 | 47.83 |
+| slz_zlib 1.0.0 -1       |   200 MB/s |   235 MB/s |    99657958 | 47.02 |
+| slz_zlib 1.0.0 -2       |   194 MB/s |   236 MB/s |    96863094 | 45.70 |
+| slz_zlib 1.0.0 -3       |   191 MB/s |   237 MB/s |    96187780 | 45.38 |
+| tornado 0.6a -1         |   233 MB/s |   351 MB/s |   107381846 | 50.66 |
+| tornado 0.6a -2         |   178 MB/s |   312 MB/s |    90076660 | 42.50 |
+| tornado 0.6a -3         |   116 MB/s |   188 MB/s |    72662044 | 34.28 |
+| tornado 0.6a -4         |    91 MB/s |   197 MB/s |    70513617 | 33.27 |
+| tornado 0.6a -5         |    35 MB/s |   130 MB/s |    64129604 | 30.26 |
+| tornado 0.6a -6         |    26 MB/s |   133 MB/s |    62364583 | 29.42 |
+| tornado 0.6a -7         |    12 MB/s |   138 MB/s |    59026325 | 27.85 |
+| tornado 0.6a -10        |  3.75 MB/s |   140 MB/s |    57588241 | 27.17 |
+| tornado 0.6a -13        |  4.66 MB/s |   141 MB/s |    55614072 | 26.24 |
+| tornado 0.6a -16        |  1.51 MB/s |   146 MB/s |    53257046 | 25.13 |
+| ucl_nrv2b 1.03 -1       |    34 MB/s |   228 MB/s |    81703168 | 38.55 |
+| ucl_nrv2b 1.03 -6       |    13 MB/s |   258 MB/s |    73902185 | 34.87 |
+| ucl_nrv2b 1.03 -9       |  1.28 MB/s |   278 MB/s |    71031195 | 33.51 |
+| ucl_nrv2d 1.03 -1       |    35 MB/s |   227 MB/s |    81461976 | 38.43 |
+| ucl_nrv2d 1.03 -6       |    12 MB/s |   257 MB/s |    73757673 | 34.80 |
+| ucl_nrv2d 1.03 -9       |  1.29 MB/s |   278 MB/s |    70053895 | 33.05 |
+| ucl_nrv2e 1.03 -1       |    35 MB/s |   232 MB/s |    81195560 | 38.31 |
+| ucl_nrv2e 1.03 -6       |    13 MB/s |   264 MB/s |    73302012 | 34.58 |
+| ucl_nrv2e 1.03 -9       |  1.29 MB/s |   285 MB/s |    69645134 | 32.86 |
+| wflz 2015-09-16         |   184 MB/s |   776 MB/s |   109605264 | 51.71 |
+| xpack 2016-06-02 -1     |    96 MB/s |   514 MB/s |    71090065 | 33.54 |
+| xpack 2016-06-02 -6     |    30 MB/s |   633 MB/s |    62213845 | 29.35 |
+| xpack 2016-06-02 -9     |    12 MB/s |   651 MB/s |    61240928 | 28.89 |
+| xz 5.2.2 -0             |    16 MB/s |    44 MB/s |    62579435 | 29.53 |
+| xz 5.2.2 -3             |  4.56 MB/s |    55 MB/s |    55745125 | 26.30 |
+| xz 5.2.2 -6             |  1.98 MB/s |    58 MB/s |    49195929 | 23.21 |
+| xz 5.2.2 -9             |  1.80 MB/s |    59 MB/s |    48745306 | 23.00 |
+| yalz77 2015-09-19 -1    |    79 MB/s |   340 MB/s |    93952728 | 44.33 |
+| yalz77 2015-09-19 -4    |    37 MB/s |   340 MB/s |    87392632 | 41.23 |
+| yalz77 2015-09-19 -8    |    22 MB/s |   336 MB/s |    85153287 | 40.18 |
+| yalz77 2015-09-19 -12   |    17 MB/s |   330 MB/s |    84050625 | 39.66 |
+| yappy 2014-03-22 -1     |    97 MB/s |  1807 MB/s |   105750956 | 49.89 |
+| yappy 2014-03-22 -10    |    77 MB/s |  1915 MB/s |   100018673 | 47.19 |
+| yappy 2014-03-22 -100   |    58 MB/s |  1928 MB/s |    98672514 | 46.56 |
+| zlib 1.2.8 -1           |    65 MB/s |   248 MB/s |    77259029 | 36.45 |
+| zlib 1.2.8 -6           |    20 MB/s |   266 MB/s |    68228431 | 32.19 |
+| zlib 1.2.8 -9           |  8.36 MB/s |   268 MB/s |    67644548 | 31.92 |
+| zling 2016-01-10 -0     |    41 MB/s |   136 MB/s |    63407921 | 29.92 |
+| zling 2016-01-10 -1     |    37 MB/s |   136 MB/s |    62438620 | 29.46 |
+| zling 2016-01-10 -2     |    34 MB/s |   137 MB/s |    61917662 | 29.21 |
+| zling 2016-01-10 -3     |    30 MB/s |   138 MB/s |    61384151 | 28.96 |
+| zling 2016-01-10 -4     |    27 MB/s |   137 MB/s |    60997465 | 28.78 |
+| zstd 0.8.0 -1           |   238 MB/s |   629 MB/s |    73659471 | 34.75 |
+| zstd 0.8.0 -2           |   183 MB/s |   560 MB/s |    70168958 | 33.11 |
+| zstd 0.8.0 -5           |    88 MB/s |   511 MB/s |    65002227 | 30.67 |
+| zstd 0.8.0 -8           |    32 MB/s |   554 MB/s |    61026456 | 28.79 |
+| zstd 0.8.0 -11          |    16 MB/s |   547 MB/s |    59523199 | 28.08 |
+| zstd 0.8.0 -15          |  5.22 MB/s |   572 MB/s |    58007769 | 27.37 |
+| zstd 0.8.0 -18          |  3.10 MB/s |   492 MB/s |    55540622 | 26.20 |
+| zstd 0.8.0 -22          |  1.54 MB/s |   464 MB/s |    52787120 | 24.91 |

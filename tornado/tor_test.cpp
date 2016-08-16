@@ -17,9 +17,28 @@
 */
 
 #define FREEARC_STANDALONE_TORNADO
+#define FREEARC_NO_TIMING
+#define _UNICODE
+#define UNICODE
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(WIN64) || defined(_WIN64)
+	#define FREEARC_WIN
+#else
+	#define FREEARC_UNIX
+#endif
+
+/* Test for a little-endian machine */
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+    #define FREEARC_INTEL_BYTE_ORDER
+#endif
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #define FREEARC_MOTOROLA_BYTE_ORDER
+#endif
 
 #include <stdint.h>
 #include "tor_test.h" 
+
+#include "_lzbench/clang34_fix.h"  /* before <math.h> */
 #include "Tornado.cpp"
 #include "Common.cpp"
 
@@ -66,9 +85,9 @@ int ReadWriteCallback (const char *what, void *buf, int size, void *r_)
     // Print final compression statistics
     return FREEARC_OK;
 
-  } else {
-    return FREEARC_ERRCODE_NOT_IMPLEMENTED;
   }
+
+  return FREEARC_ERRCODE_NOT_IMPLEMENTED;
 }
 
 
@@ -101,8 +120,7 @@ uint32_t tor_compress(uint8_t method, uint8_t* inbuf, uint32_t inlen, uint8_t* o
 	else
 		m = std_Tornado_method[method];
 			
-	if (r.inlen >= 0)
-		m.buffer = mymin (m.buffer, r.inlen+LOOKAHEAD*2);
+	m.buffer = mymin (m.buffer, r.inlen+LOOKAHEAD*2);
 	int result = tor_compress (m, ReadWriteCallback, &r, NULL, -1); 
 	return r.outpos;
 }

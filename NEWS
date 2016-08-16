@@ -1,3 +1,19 @@
+v1.3
+- added slz 1.0.0 : slz_zlib, slz_gzip, slz_deflate (thanks to Willy Tarreau)
+- added glza 0.7.1 (thanks to Kennon Conrad)
+- zstd updated to v0.8.0 (thanks to Chip Turner)
+- brotli updated to v0.5.2
+- gipfeli updated to 2016-07-13
+- lzfse and lzvn updated to 2016-08-16
+- lz5 updated to v1.5
+- lzbench compiles on MacOS (with exception of lzham)
+- lzbench compiles with clang (tested with 3.4, 3.5, 3.6 and 3.8)
+- added support for aggregated parameters: "-t0 -u0 -i3 -j5" is equal to "-t0u0i3j5" (only "-e" can not be aggregated)
+- added new options:
+  -r = disable real-time process priority
+  -v = disable progress information
+  -z = show (de)compression times instead of speed
+
 v1.2
 - added lzfse and lzvn 2016-06-19
 - added xpack 2016-06-02

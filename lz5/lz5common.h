@@ -14,8 +14,11 @@ extern "C" {
  * Select how default compression functions will allocate memory for their hash table,
  * in memory stack (0:default, fastest), or in memory heap (1:requires malloc()).
  */
-#define HEAPMODE 0
-#define LZ5HC_HEAPMODE 0
+#ifdef _MSC_VER
+	#define HEAPMODE 1   /* Default stack size for VC++ is 1 MB and size of LZ5_stream_t exceeds that limit */ 
+#else
+	#define HEAPMODE 0
+#endif
 
 
 /*
@@ -179,10 +182,10 @@ static size_t LZ5HC_hashPtr(const void* p, U32 hBits, U32 mls)
 /**************************************
 *  HC Local Macros
 **************************************/
-#define LZ5HC_DEBUG(fmt, args...) ;//printf(fmt, ##args)
-#define LZ5_LOG_PARSER(fmt, args...) ;//printf(fmt, ##args)
-#define LZ5_LOG_PRICE(fmt, args...) ;//printf(fmt, ##args)
-#define LZ5_LOG_ENCODE(fmt, args...) ;//printf(fmt, ##args)
+#define LZ5HC_DEBUG(fmt, ...) //printf(fmt, __VA_ARGS__)
+#define LZ5_LOG_PARSER(fmt, ...) //printf(fmt, __VA_ARGS__)
+#define LZ5_LOG_PRICE(fmt, ...) //printf(fmt, __VA_ARGS__)
+#define LZ5_LOG_ENCODE(fmt, ...) //printf(fmt, __VA_ARGS__)
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
 #define LZ5_OPT_NUM   (1<<12)
@@ -204,20 +207,20 @@ static size_t LZ5_MATCH_COST(size_t mlen, size_t offset) { return LZ5_LEN_COST(m
 
 
 
-FORCE_INLINE U32 LZ5HC_get_price(U32 litlen, U32 offset, U32 mlen)
+FORCE_INLINE size_t LZ5HC_get_price(size_t litlen, size_t offset, size_t mlen)
 {
 	return LZ5_CODEWORD_COST(litlen, offset, mlen);
 }
 
-FORCE_INLINE int LZ5HC_better_price(U32 best_off, U32 best_common, U32 off, U32 common, U32 last_off)
+FORCE_INLINE size_t LZ5HC_better_price(size_t best_off, size_t best_common, size_t off, size_t common, size_t last_off)
 {
   return LZ5_NORMAL_MATCH_COST(common - MINMATCH, (off == last_off) ? 0 : off) < LZ5_NORMAL_MATCH_COST(best_common - MINMATCH, (best_off == last_off) ? 0 : best_off) + (LZ5_NORMAL_LIT_COST(common - best_common) );
 }
 
 
-FORCE_INLINE int LZ5HC_more_profitable(U32 best_off, U32 best_common, U32 off, U32 common, int literals, U32 last_off)
+FORCE_INLINE size_t LZ5HC_more_profitable(size_t best_off, size_t best_common, size_t off, size_t common, size_t literals, size_t last_off)
 {
-	int sum;
+	size_t sum;
 	
 	if (literals > 0)
 		sum = MAX(common + literals, best_common);

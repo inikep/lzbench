@@ -77,13 +77,10 @@ int64_t lzbench_brieflz_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 int64_t lzbench_brotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
 {
-    brotli::BrotliParams p;
-	p.quality = level;
-    if (windowLog) p.lgwin = windowLog; // sliding window size. Range is 10 to 24.
-//	p.lgblock = 24; // maximum input block size. Range is 16 to 24.
+    if (!windowLog) windowLog = BROTLI_DEFAULT_WINDOW; // sliding window size. Range is 10 to 24.
 
     size_t actual_osize = outsize;
-    return brotli::BrotliCompressBuffer(p, insize, (const uint8_t*)inbuf, &actual_osize, (uint8_t*)outbuf) == 0 ? 0 : actual_osize;
+    return BrotliEncoderCompress(level, windowLog, BROTLI_DEFAULT_MODE, insize, (const uint8_t*)inbuf, &actual_osize, (uint8_t*)outbuf) == 0 ? 0 : actual_osize;
 }
 int64_t lzbench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
@@ -292,6 +289,25 @@ int64_t lzbench_gipfeli_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 
 
+#ifndef BENCH_REMOVE_GLZA
+#include "glza/GLZAcomp.h"
+#include "glza/GLZAdecode.h"
+
+int64_t lzbench_glza_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+	if (GLZAcomp(insize, (uint8_t *)inbuf, &outsize, (uint8_t *)outbuf, (FILE *)0) == 0) return(0);
+	return outsize;
+}
+
+int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+	if (GLZAdecode(insize, (uint8_t *)inbuf, &outsize, (uint8_t *)outbuf, (FILE *)0) == 0) return(0);
+	return outsize;
+}
+
+#endif
+
+
 
 #ifndef BENCH_REMOVE_LZ4
 #include "lz4/lz4.h"
@@ -424,7 +440,7 @@ int64_t lzbench_lzvn_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 
 int64_t lzbench_lzvn_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
 {
-	return lzvn_decode_buffer((uint8_t*)outbuf, outsize, (uint8_t*)inbuf, insize, workmem);
+	return lzvn_decode_buffer_scratch((uint8_t*)outbuf, outsize, (uint8_t*)inbuf, insize, workmem);
 }
 
 #endif
@@ -1531,6 +1547,75 @@ int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 	return outsize;
 }
 
+#endif
+
+
+
+#if !defined(BENCH_REMOVE_SLZ) && !defined(BENCH_REMOVE_ZLIB)
+extern "C"
+{
+	#include "slz/slz.h"
+}
+
+int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t param2, char*)
+{
+	struct slz_stream strm;
+	size_t outlen = 0;
+	size_t window = 8192 << ((level & 3) * 2);
+	size_t len;
+	size_t blk;
+
+	if (param2 == 0)
+		slz_init(&strm, !!level, SLZ_FMT_GZIP);
+	else if (param2 == 1)
+		slz_init(&strm, !!level, SLZ_FMT_ZLIB);
+	else
+		slz_init(&strm, !!level, SLZ_FMT_DEFLATE);
+
+	do {
+		blk = MIN(insize, window);
+
+		len = slz_encode(&strm, outbuf, inbuf, blk, insize > blk);
+		outlen += len;
+		outbuf += len;
+		inbuf += blk;
+		insize -= blk;
+	} while (insize > 0);
+
+	outlen += slz_finish(&strm, outbuf);
+	return outlen;
+}
+
+/* uses zlib to perform the decompression */
+int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t param2, char*)
+{
+	z_stream stream;
+	int err;
+
+	stream.zalloc    = NULL;
+	stream.zfree     = NULL;
+
+	stream.next_in   = (unsigned char *)inbuf;
+	stream.avail_in  = insize;
+	stream.next_out  = (unsigned char *)outbuf;
+	stream.avail_out = outsize;
+
+	outsize = 0;
+
+	if (param2 == 0)      // gzip
+		err = inflateInit2(&stream, 15 + 16);
+	else if (param2 == 1) // zlip
+		err = inflateInit2(&stream, 15);
+	else                  // deflate
+		err = inflateInit2(&stream, -15);
+
+	if (err == Z_OK) {
+		if (inflate(&stream, Z_FINISH) == Z_STREAM_END)
+			outsize = stream.total_out;
+		inflateEnd(&stream);
+	}
+	return outsize;
+}
 #endif
 
 

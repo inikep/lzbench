@@ -2,6 +2,7 @@
 
 #include "entropy.h"
 
+#include <algorithm>
 #include <string.h>
 #include <string>
 
@@ -195,7 +196,7 @@ void Entropy::FlushBits(uint32 bits, uint64* bit_buffer_64) {
   // Output the rest of bit_buffer
   if (bits != 0) {
     *bit_buffer_64 <<= 64 - bits;
-    *write_bits_pos_++ = *bit_buffer_64;
+    UNALIGNED_STORE64(write_bits_pos_++, *bit_buffer_64);
   }
 }
 

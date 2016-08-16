@@ -1070,10 +1070,10 @@ struct LazyMatching
 
         // Extend match at p+1 one char backward if it's better than match at p
         if (nextlen>=MINLEN && nextq[-1]==*p &&
-               (nextlen+1 >= prevlen && nextdist < prevdist ||
-                nextlen+1 == prevlen + 1 && !ChangePair(prevdist, nextdist) ||
-                nextlen+1 > prevlen + 1 ||
-                nextlen+1 + 1 >= prevlen && prevlen >= MINLEN && ChangePair(nextdist, prevdist)))
+               ((nextlen+1 >= prevlen && nextdist < prevdist) ||
+                (nextlen+1 == prevlen + 1 && !ChangePair(prevdist, nextdist)) ||
+                (nextlen+1 > prevlen + 1) ||
+                (nextlen+1 + 1 >= prevlen && prevlen >= MINLEN && ChangePair(nextdist, prevdist))))
         {
             debug (printf ("Extending %d:%d -> %d:%d\n",  nextlen, nextq-p, nextlen+1, nextq-1-p));
             prevlen = nextlen+1;
@@ -1082,10 +1082,10 @@ struct LazyMatching
         }
 
         // Truncate current match if match at next position will be better (LZMA's algorithm)
-        if (nextlen >= prevlen && nextdist < prevdist/4 ||
-            nextlen == prevlen + 1 && !ChangePair(prevdist, nextdist) ||
-            nextlen > prevlen + 1 ||
-            nextlen + 1 >= prevlen && prevlen >= MINLEN && ChangePair(nextdist, prevdist))
+        if ((nextlen >= prevlen && nextdist < prevdist/4) ||
+            (nextlen == prevlen + 1 && !ChangePair(prevdist, nextdist)) ||
+            (nextlen > prevlen + 1) ||
+            (nextlen + 1 >= prevlen && prevlen >= MINLEN && ChangePair(nextdist, prevdist)))
         {
              return MINLEN-1;
         } else {

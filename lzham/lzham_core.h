@@ -240,6 +240,7 @@ const bool c_lzham_big_endian_platform = !c_lzham_little_endian_platform;
 
 #include <stdlib.h>
 #include <stdio.h>
+#include "_lzbench/clang34_fix.h"  /* before <math.h> */
 #include <math.h>
 #if !defined(__APPLE__) && !defined(__FreeBSD__)
 #include <malloc.h>

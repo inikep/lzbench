@@ -96,7 +96,7 @@ size_t lzvn_decode_scratch_size() LZFSE_LIB_API;
  *  buffer to hold the entire expanded output, only the first dst_size bytes
  *  will be written to the buffer and dst_size is returned. Note that this
  *  behavior differs from that of lzvn_encode_buffer.                        */
-size_t lzvn_decode_buffer(uint8_t *__restrict dst_buffer,
+size_t lzvn_decode_buffer_scratch(uint8_t *__restrict dst_buffer,
                            size_t dst_size,
                            const uint8_t *__restrict src_buffer,
                            size_t src_size,

@@ -31,7 +31,7 @@
 # ################################################################
 
 # Version numbers
-VERSION?= 1.4
+VERSION?= 1.5.0
 LIBVER_MAJOR:=`sed -n '/define LZ5_VERSION_MAJOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < lz5.h`
 LIBVER_MINOR:=`sed -n '/define LZ5_VERSION_MINOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < lz5.h`
 LIBVER_PATCH:=`sed -n '/define LZ5_VERSION_RELEASE/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < lz5.h`

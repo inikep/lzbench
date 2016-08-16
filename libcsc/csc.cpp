@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <Types.h>
-#include <csc_enc.h>
-#include <csc_dec.h>
+#include "Types.h"
+#include "csc_enc.h"
+#include "csc_dec.h"
 
 
 struct MemSeqStream

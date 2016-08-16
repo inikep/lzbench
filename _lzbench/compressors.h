@@ -85,6 +85,15 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 #endif
 
 
+#ifndef BENCH_REMOVE_GLZA
+	int64_t lzbench_glza_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+	int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+#else
+	#define lzbench_glza_compress NULL
+	#define lzbench_glza_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_LZ4
 	int64_t lzbench_lz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
 	int64_t lzbench_lz4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize,  size_t level, size_t, char*);
@@ -323,6 +332,15 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 #else
 	#define lzbench_shrinker_compress NULL
 	#define lzbench_shrinker_decompress NULL
+#endif
+
+
+#ifndef BENCH_REMOVE_SLZ
+	int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+	int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+#else
+	#define lzbench_slz_compress NULL
+	#define lzbench_slz_decompress NULL
 #endif
 
 

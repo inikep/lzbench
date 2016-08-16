@@ -1,42 +1,51 @@
 #BUILD_ARCH = 32-bit
-#BUILD_TYPE = debug
 
-# compile with -msse4.1 requied for LZSSE
-BUILD_USE_SSE41 = 1
-
-
-ifeq (,$(filter Windows%,$(OS)))
-	DEFINES += -DFREEARC_UNIX
-	LDFLAGS = -lrt
-	GCC		= gcc
-	GPP		= g++
-else
-#	DEFINES = -march=core2 -march=nocona -march=k8 -march=native
-	DEFINES += -DFREEARC_WIN
-	LDFLAGS	= -lshell32 -lole32 -loleaut32 
-	GCC		= gcc.exe
-	GPP		= g++.exe
+# LZSSE requires gcc with support of __SSE4_1__
+ifeq ($(shell echo|$(CC) -dM -E - -march=native|grep -c SSE4_1), 0)
+	DONT_BUILD_LZSSE ?= 1
 endif
 
+COMPILER = $(shell $(CC) -v 2>&1 | grep -q "clang version" && echo clang || echo gcc)
+GCC_VERSION = $(shell $(CC) -dumpversion | sed -e 's:\([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
+CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*version \([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 
-ifneq ($(BUILD_ARCH),32-bit)
+# glza doesn't work with gcc < 4.9 and clang < 3.6 (missing stdatomic.h)
+ifeq (1,$(filter 1,$(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \< 40900) $(shell [ "$(COMPILER)" = "clang" ] && expr $(CLANG_VERSION) \< 30600)))
+    DONT_BUILD_GLZA ?= 1
+endif
+
+# if BUILD_ARCH is 32-bit
+ifeq ($(BUILD_ARCH),32-bit)
+	CODE_FLAGS += -m32
+	LDFLAGS += -m32
+	DONT_BUILD_LZSSE ?= 1
+else
 	DEFINES	+= -D__x86_64__
-	LDFLAGS	+= -static -L C:\Aplikacje\win-builds64\lib
-else
-	LDFLAGS	+= -static -L C:\Aplikacje\win-builds32\lib
 endif
 
 
-#DEFINES		+= -DBENCH_REMOVE_XXX
-DEFINES		+= -I. -Izstd/lib -Izstd/lib/common -Ixpack/common -DFREEARC_INTEL_BYTE_ORDER -D_UNICODE -DUNICODE -DHAVE_CONFIG_H -DXXH_NAMESPACE=ZSTD_
-CODE_FLAGS  = -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
-OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -fforce-addr -ffast-math
-
-ifeq ($(BUILD_USE_SSE41),1)
-    LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
+# detect Windows
+ifneq (,$(filter Windows%,$(OS)))
+	ifeq ($(COMPILER),clang)
+		DONT_BUILD_GLZA ?= 1
+	endif
+	LDFLAGS += -lshell32 -lole32 -loleaut32 -static
 else
-    DEFINES += -DBENCH_REMOVE_LZSSE
+    # MacOS doesn't support -lrt -static
+    ifeq ($(shell uname -s),Darwin)
+        DONT_BUILD_LZHAM ?= 1
+    else
+        LDFLAGS	+= -lrt -static
+    endif
+    LDFLAGS	+= -lpthread
 endif
+
+
+DEFINES     += -I. -Izstd/lib -Izstd/lib/common -Ixpack/common
+DEFINES     += -DHAVE_CONFIG_H -DXXH_NAMESPACE=ZSTD_
+CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
+OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
+
 
 ifeq ($(BUILD_TYPE),debug)
 	OPT_FLAGS_O2 = $(OPT_FLAGS) -g
@@ -46,10 +55,31 @@ else
 	OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
 endif
 
-CFLAGS = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES)
-CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
+CFLAGS = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES)
+CFLAGS_O2 = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
 
 
+
+ifeq "$(DONT_BUILD_LZSSE)" "1"
+    DEFINES += -DBENCH_REMOVE_LZSSE
+else
+    LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
+endif
+
+ifeq "$(DONT_BUILD_LZHAM)" "1"
+    DEFINES += -DBENCH_REMOVE_LZHAM
+else
+    LZHAM_FILES = lzham/lzham_assert.o lzham/lzham_checksum.o lzham/lzham_huffman_codes.o lzham/lzham_lzbase.o
+    LZHAM_FILES += lzham/lzham_lzcomp.o lzham/lzham_lzcomp_internal.o lzham/lzham_lzdecomp.o lzham/lzham_lzdecompbase.o
+    LZHAM_FILES += lzham/lzham_match_accel.o lzham/lzham_mem.o lzham/lzham_platform.o lzham/lzham_lzcomp_state.o
+    LZHAM_FILES += lzham/lzham_prefix_coding.o lzham/lzham_symbol_codec.o lzham/lzham_timer.o lzham/lzham_vector.o lzham/lzham_lib.o
+endif
+
+ifeq "$(DONT_BUILD_GLZA)" "1"
+    DEFINES += -DBENCH_REMOVE_GLZA
+else
+    GLZA_FILES = glza/GLZAcomp.o glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
+endif
 
 ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
 
@@ -67,11 +97,6 @@ LZO_FILES += lzo/lzo_ptr.o lzo/lzo_str.o lzo/lzo_util.o
 UCL_FILES = ucl/alloc.o ucl/n2b_99.o ucl/n2b_d.o ucl/n2b_ds.o ucl/n2b_to.o ucl/n2d_99.o ucl/n2d_d.o ucl/n2d_ds.o
 UCL_FILES += ucl/n2d_to.o ucl/n2e_99.o ucl/n2e_d.o ucl/n2e_ds.o ucl/n2e_to.o ucl/ucl_crc.o ucl/ucl_init.o
 UCL_FILES += ucl/ucl_ptr.o ucl/ucl_str.o ucl/ucl_util.o
-
-LZHAM_FILES = lzham/lzham_assert.o lzham/lzham_checksum.o lzham/lzham_huffman_codes.o lzham/lzham_lzbase.cpp
-LZHAM_FILES += lzham/lzham_lzcomp.o lzham/lzham_lzcomp_internal.o lzham/lzham_lzdecomp.o lzham/lzham_lzdecompbase.o
-LZHAM_FILES += lzham/lzham_match_accel.o lzham/lzham_mem.o lzham/lzham_platform.o lzham/lzham_lzcomp_state.o
-LZHAM_FILES += lzham/lzham_prefix_coding.o lzham/lzham_symbol_codec.o lzham/lzham_timer.o lzham/lzham_vector.o lzham/lzham_lib.o
 
 ZLIB_FILES = zlib/adler32.o zlib/compress.o zlib/crc32.o zlib/deflate.o zlib/gzclose.o zlib/gzlib.o zlib/gzread.o
 ZLIB_FILES += zlib/gzwrite.o zlib/infback.o zlib/inffast.o zlib/inflate.o zlib/inftrees.o zlib/trees.o
@@ -104,10 +129,11 @@ SNAPPY_FILES = snappy/snappy-sinksource.o snappy/snappy-stubs-internal.o snappy/
 CSC_FILES = libcsc/csc_analyzer.o libcsc/csc_coder.o libcsc/csc_dec.o libcsc/csc_enc.o libcsc/csc_encoder_main.o
 CSC_FILES += libcsc/csc_filters.o libcsc/csc_lz.o libcsc/csc_memio.o libcsc/csc_mf.o libcsc/csc_model.o libcsc/csc_profiler.o 
 
-BROTLI_FILES = brotli/dec/bit_reader.o brotli/dec/decode.o brotli/dec/dictionary.o brotli/dec/huffman.o brotli/dec/state.o
+BROTLI_FILES = brotli/common/dictionary.o brotli/dec/bit_reader.o brotli/dec/decode.o brotli/dec/huffman.o brotli/dec/state.o
 BROTLI_FILES += brotli/enc/backward_references.o brotli/enc/block_splitter.o brotli/enc/brotli_bit_stream.o brotli/enc/encode.o
-BROTLI_FILES += brotli/enc/encode_parallel.o brotli/enc/entropy_encode.o brotli/enc/histogram.o brotli/enc/literal_cost.o
+BROTLI_FILES += brotli/enc/encode_parallel.o brotli/enc/entropy_encode.o brotli/enc/histogram.o brotli/enc/literal_cost.o brotli/enc/memory.o
 BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/streams.o brotli/enc/utf8_util.o brotli/enc/compress_fragment.o brotli/enc/compress_fragment_two_pass.o
+BROTLI_FILES += brotli/enc/streams.o brotli/enc/cluster.o brotli/enc/bit_cost.o 
 
 ZSTD_FILES = zstd/lib/decompress/huf_decompress.o zstd/lib/decompress/zstd_decompress.o zstd/lib/common/fse_decompress.o zstd/lib/common/entropy_common.o zstd/lib/common/zstd_common.o zstd/lib/common/xxhash.o
 ZSTD_FILES += zstd/lib/compress/fse_compress.o zstd/lib/compress/huf_compress.o zstd/lib/compress/zstd_compress.o 
@@ -124,49 +150,51 @@ XPACK_FILES = xpack/lib/x86_cpu_features.o xpack/lib/xpack_common.o xpack/lib/xp
 GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o 
 
 MISC_FILES = crush/crush.o shrinker/shrinker.o yappy/yappy.o fastlz/fastlz.o tornado/tor_test.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
-MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o
+MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o slz/slz.o
+
 
 all: lzbench
 
 # FIX for SEGFAULT on GCC 4.9+
 wflz/wfLZ.o: wflz/wfLZ.c wflz/wfLZ.h 
-	$(GCC) $(CFLAGS_O2) $< -c -o $@
+	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 shrinker/shrinker.o: shrinker/shrinker.c
-	$(GCC) $(CFLAGS_O2) $< -c -o $@
+	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 lzmat/lzmat_dec.o: lzmat/lzmat_dec.c
-	$(GCC) $(CFLAGS_O2) $< -c -o $@
+	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 lzmat/lzmat_enc.o: lzmat/lzmat_enc.c
-	$(GCC) $(CFLAGS_O2) $< -c -o $@
+	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 pithy/pithy.o: pithy/pithy.cpp
-	$(GCC) $(CFLAGS_O2) $< -c -o $@
+	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 lzsse/lzsse2/lzsse2.o: lzsse/lzsse2/lzsse2.cpp
-	$(GPP) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
+	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
 
 lzsse/lzsse4/lzsse4.o: lzsse/lzsse4/lzsse4.cpp
-	$(GPP) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
+	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
 
 lzsse/lzsse8/lzsse8.o: lzsse/lzsse8/lzsse8.cpp
-	$(GPP) $(CFLAGS) -std=c++11 -msse4.1 $< -c -o $@
+	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
 
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
-lzbench: $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
-	$(GPP) $^ -o $@ $(LDFLAGS)
+lzbench: $(GLZA_FILES) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
+	$(CXX) $^ -o $@ $(LDFLAGS)
+	echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
 .c.o:
-	$(GCC) $(CFLAGS) $< -std=c99 -c -o $@
+	$(CC) $(CFLAGS) $< -std=c99 -c -o $@
 
 .cc.o:
-	$(GPP) $(CFLAGS) $< -c -o $@
+	$(CXX) $(CFLAGS) $< -c -o $@
 
 .cpp.o:
-	$(GPP) $(CFLAGS) $< -c -o $@
+	$(CXX) $(CFLAGS) $< -c -o $@
 
 clean:
-	rm -rf lzbench lzbench.exe *.o _lzbench/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o  zstd/lib/compress/*.o zstd/lib/decompress/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/spookyhash/*.o density/*.o pithy/*.o zstd/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz5/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o *.o
+	rm -rf lzbench lzbench.exe *.o _lzbench/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/spookyhash/*.o density/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz5/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o

@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <csc_dec.h>
-#include <Types.h>
+#include "csc_dec.h"
+#include "Types.h"
 
 
 struct StdioSeqStream

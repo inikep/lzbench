@@ -54,9 +54,9 @@ LZ5_compress_HC :
     Compression completion is guaranteed if 'dst' buffer is sized to handle worst circumstances (data not compressible)
     Worst size evaluation is provided by function LZ5_compressBound() (see "lz5.h")
       srcSize  : Max supported value is LZ5_MAX_INPUT_SIZE (see "lz5.h")
-      compressionLevel : Recommended values are between 4 and 9, although any value between 0 and 16 will work.
+      compressionLevel : Recommended values are between 4 and 9, although any value between 0 and LZ5HC_MAX_CLEVEL (equal to 15) will work.
                          0 means "use default value" (see lz5hc.c).
-                         Values >16 behave the same as 16.
+                         Values >LZ5HC_MAX_CLEVEL behave the same as LZ5HC_MAX_CLEVEL.
       return : the number of bytes written into buffer 'dst'
             or 0 if compression fails.
 */

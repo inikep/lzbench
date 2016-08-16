@@ -143,7 +143,7 @@ void Entropy::WriteBits(int length,
     *bit_buffer_64 <<= 64 - *bits;
     *bits -= v;
     *bit_buffer_64 |= value >> *bits;
-    *write_bits_pos_++ = *bit_buffer_64;
+    UNALIGNED_STORE64(write_bits_pos_++, *bit_buffer_64);
     // We can write the whole value in the bit_buffer_64.
     // Consequent WriteBits or FlushBits calls will erase
     // the extra high bits.

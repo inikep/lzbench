@@ -94,7 +94,7 @@ const int table_dist=256*1024, table_shift=128;
 #define MAX_HASHED_BYTES 600
 
 
-// Округлим размер хеша с учётом hash_row_width
+// ГЋГЄГ°ГіГЈГ«ГЁГ¬ Г°Г Г§Г¬ГҐГ° ГµГҐГёГ  Г± ГіГ·ВёГІГ®Г¬ hash_row_width
 uint round_to_nearest_hashsize (LongMemSize hashsize, uint hash_row_width)
 {return mymin (round_to_nearest_power_of(mymin(hashsize,2*gb-1) / hash_row_width, 2) * hash_row_width, 2*gb-1);}
 
@@ -444,7 +444,7 @@ int tor_compress (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, void *b
     }
 #else
     // -1..-5(-6)
-    if (m.encoding_method==BYTECODER && m.hash_row_width==1 && m.hash3==0 && m.match_finder==NON_CACHING_MF && m.match_parser==GREEDY ||
+    if ((m.encoding_method==BYTECODER && m.hash_row_width==1 && m.hash3==0 && m.match_finder==NON_CACHING_MF && m.match_parser==GREEDY) ||
         m.encoding_method==STORING ) {
         return tor_compress0 <MatchFinder1, LZ77_ByteCoder> (m, callback, auxdata, buf, bytes_to_compress);
     } else if (m.encoding_method==BITCODER && m.hash_row_width==1 && m.hash3==0 && m.match_finder==NON_CACHING_MF && m.match_parser==GREEDY ) {

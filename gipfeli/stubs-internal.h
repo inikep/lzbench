@@ -70,7 +70,7 @@ static const int64 kint64max = static_cast<int64>(0x7FFFFFFFFFFFFFFFLL);
 
 // x86 and PowerPC can simply do these loads and stores native.
 
-#if defined(__i386__) || defined(__x86_64__) || defined(__powerpc__)
+#if !defined(GIPFELI_NO_UNALIGNED) && (defined(__i386__) || defined(__x86_64__) || defined(__powerpc__))
 
 #define UNALIGNED_LOAD16(_p) (*reinterpret_cast<const uint16 *>(_p))
 #define UNALIGNED_LOAD32(_p) (*reinterpret_cast<const uint32 *>(_p))
@@ -89,19 +89,20 @@ static const int64 kint64max = static_cast<int64>(0x7FFFFFFFFFFFFFFFLL);
 //
 // This is a mess, but there's not much we can do about it.
 
-#elif defined(__arm__) && \
-      !defined(__ARM_ARCH_4__) && \
-      !defined(__ARM_ARCH_4T__) && \
-      !defined(__ARM_ARCH_5__) && \
-      !defined(__ARM_ARCH_5T__) && \
-      !defined(__ARM_ARCH_5TE__) && \
-      !defined(__ARM_ARCH_5TEJ__) && \
-      !defined(__ARM_ARCH_6__) && \
-      !defined(__ARM_ARCH_6J__) && \
-      !defined(__ARM_ARCH_6K__) && \
-      !defined(__ARM_ARCH_6Z__) && \
-      !defined(__ARM_ARCH_6ZK__) && \
-      !defined(__ARM_ARCH_6T2__)
+#elif !defined(GIPFELI_NO_UNALIGNED) && \
+      (defined(__arm__) && \
+       !defined(__ARM_ARCH_4__) && \
+       !defined(__ARM_ARCH_4T__) && \
+       !defined(__ARM_ARCH_5__) && \
+       !defined(__ARM_ARCH_5T__) && \
+       !defined(__ARM_ARCH_5TE__) && \
+       !defined(__ARM_ARCH_5TEJ__) && \
+       !defined(__ARM_ARCH_6__) && \
+       !defined(__ARM_ARCH_6J__) && \
+       !defined(__ARM_ARCH_6K__) && \
+       !defined(__ARM_ARCH_6Z__) && \
+       !defined(__ARM_ARCH_6ZK__) && \
+       !defined(__ARM_ARCH_6T2__))
 
 #define UNALIGNED_LOAD16(_p) (*reinterpret_cast<const uint16 *>(_p))
 #define UNALIGNED_LOAD32(_p) (*reinterpret_cast<const uint32 *>(_p))
@@ -288,8 +289,9 @@ inline char* string_as_array(std::string* str) {
 //   s1[0,n-1] == s2[0,n-1]
 //   and n <= (s2_limit - s2).
 //
-// Separate implementation for x86_64, for speed.
-#if defined(__GNUC__) && defined(ARCH_K8)
+// Separate implementation for x86_64 and little endian PPC, for speed.
+#if (defined(__GNUC__) && (defined(ARCH_K8) \
+                           || (defined(__ppc64__) && defined(_LITTLE_ENDIAN))))
 static inline int FindMatchLength(const uint8* s1,
                                   const uint8* s2,
                                   const uint8* s2_limit) {

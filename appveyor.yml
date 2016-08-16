@@ -1,0 +1,38 @@
+version: 1.0.{build}
+environment:
+  matrix:
+  - PLATFORM: "mingw32"
+    CC_COMPILER: "gcc"
+    CXX_COMPILER: "g++"
+    MORE_OPTIONS: "BUILD_ARCH=32-bit DONT_BUILD_GLZA=1 DONT_BUILD_LZHAM=1"
+  - PLATFORM: "mingw64"
+    CC_COMPILER: "gcc"
+    CXX_COMPILER: "g++"
+  #- CC_COMPILER: "clang"
+  #  CXX_COMPILER: "clang++"
+  #  MORE_OPTIONS: "MOREFLAGS=--target=x86_64-w64-mingw32 DONT_BUILD_LZHAM=1"
+
+install:
+  - ECHO Installing %CC_COMPILER% %PLATFORM%
+  - SET PATH_ORIGINAL=%PATH%
+  - SET "PATH_MINGW32=c:\MinGW\bin;c:\MinGW\usr\bin"
+  - SET "PATH_MINGW64=c:\msys64\mingw64\bin;c:\msys64\usr\bin"
+  - if [%PLATFORM%]==[mingw32] SET PATH=%PATH_MINGW32%;%PATH_ORIGINAL%
+  - if [%PLATFORM%]==[mingw64] SET PATH=%PATH_MINGW64%;%PATH_ORIGINAL%
+  - if [%CC_COMPILER%]==[clang] SET PATH=%PATH_MINGW64%;%PATH_ORIGINAL%
+  - COPY C:\MinGW\bin\mingw32-make.exe C:\MinGW\bin\make.exe
+
+build_script:
+  - ECHO *** &&
+      ECHO Building %CC_COMPILER% %PLATFORM% &&
+      ECHO ***
+  - CALL %CC_COMPILER% -v
+  - CALL %CXX_COMPILER% -v
+  - make CC=%CC_COMPILER% CXX=%CXX_COMPILER% %MORE_OPTIONS%
+
+test_script:
+  - ECHO *** &&
+      ECHO Testing %CC_COMPILER% %PLATFORM% &&
+      ECHO ***
+  - lzbench
+  - lzbench -eall lzbench.exe

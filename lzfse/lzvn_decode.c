@@ -26,7 +26,7 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
 
 size_t lzvn_decode_scratch_size() { return sizeof(lzvn_decoder_state); }
 
-size_t lzvn_decode_buffer(uint8_t *__restrict dst_buffer, size_t dst_size,
+size_t lzvn_decode_buffer_scratch(uint8_t *__restrict dst_buffer, size_t dst_size,
                            const uint8_t *__restrict src_buffer,
                            size_t src_size, void *__restrict scratch_buffer) {
   lzvn_decoder_state *s = (lzvn_decoder_state *)scratch_buffer;

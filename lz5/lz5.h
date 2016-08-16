@@ -47,9 +47,9 @@ extern "C" {
 /**************************************
 *  Version
 **************************************/
-#define LZ5_VERSION          "v1.4"
+#define LZ5_VERSION          "v1.5.0"
 #define LZ5_VERSION_MAJOR    1    /* for breaking interface changes  */
-#define LZ5_VERSION_MINOR    4    /* for new (non-breaking) interface capabilities */
+#define LZ5_VERSION_MINOR    5    /* for new (non-breaking) interface capabilities */
 #define LZ5_VERSION_RELEASE  0    /* for tweaks, bug-fixes, or development */
 #define LZ5_VERSION_NUMBER (LZ5_VERSION_MAJOR *100*100 + LZ5_VERSION_MINOR *100 + LZ5_VERSION_RELEASE)
 int LZ5_versionNumber (void);
@@ -65,7 +65,6 @@ int LZ5_versionNumber (void);
  * Memory usage formula : N->2^N Bytes (examples : 10 -> 1KB; 12 -> 4KB ; 16 -> 64KB; 20 -> 1MB; etc.)
  * Increasing memory usage improves compression ratio
  * Reduced memory usage can improve speed, due to cache effect
- * Default value is 14, for 16KB, which nicely fits into Intel x86 L1 cache
  */
 #define LZ5_MEMORY_USAGE 20
 
@@ -107,7 +106,7 @@ LZ5_decompress_safe() :
 *  Advanced Functions
 **************************************/
 #define LZ5_MAX_INPUT_SIZE        0x7E000000   /* 2 113 929 216 bytes */
-#define LZ5_COMPRESSBOUND(isize)  ((unsigned)(isize) > (unsigned)LZ5_MAX_INPUT_SIZE ? 0 : (isize) + ((isize)/255) + 16)
+#define LZ5_COMPRESSBOUND(isize)  ((unsigned)(isize) > (unsigned)LZ5_MAX_INPUT_SIZE ? 0 : (isize) + ((isize)/128) + 16)
 
 /*
 LZ5_compressBound() :

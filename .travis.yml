@@ -1,0 +1,113 @@
+language: c
+matrix:
+  fast_finish: true
+  include:
+    # Container-based Ubuntu 12.04 LTS Server Edition 64 bit (doesn't support 32-bit includes)
+    - os: linux
+      sudo: false
+      env: CC_COMPILER=gcc CXX_COMPILER=g++
+    - os: linux
+      sudo: false
+      env: CC_COMPILER=clang CXX_COMPILER=clang++
+    # Ubuntu 14.04 LTS Server Edition 64 bit
+    - dist: trusty
+      sudo: required
+      env: CC_COMPILER=gcc CXX_COMPILER=g++
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
+          packages:
+            - libc6-dev-i386
+            - g++-multilib
+      env: CC_COMPILER=gcc CXX_COMPILER=g++ MORE_OPTIONS="BUILD_ARCH=32-bit"
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-4.9
+      env: CC_COMPILER=gcc-4.9 CXX_COMPILER=g++-4.9
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-5
+      env: CC_COMPILER=gcc-5 CXX_COMPILER=g++-5
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-5
+            - g++-5-multilib
+            - gcc-multilib
+      env: CC_COMPILER=gcc-5 CXX_COMPILER=g++-5 MORE_OPTIONS="BUILD_ARCH=32-bit"
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-6
+      env: CC_COMPILER=gcc-6 CXX_COMPILER=g++-6
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-6
+            - g++-6-multilib
+            - gcc-multilib
+      env: CC_COMPILER=gcc-6 CXX_COMPILER=g++-6 MORE_OPTIONS="BUILD_ARCH=32-bit"
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-precise-3.5
+          packages:
+            - clang-3.5
+      env: CC_COMPILER=clang-3.5 CXX_COMPILER=clang++-3.5
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-precise-3.6
+          packages:
+            - clang-3.6
+      env: CC_COMPILER=clang-3.6 CXX_COMPILER=clang++-3.6
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-precise-3.8
+          packages:
+            - clang-3.8
+      env: CC_COMPILER=clang-3.8 CXX_COMPILER=clang++-3.8
+    # OS X Mavericks
+    - os: osx
+      compiler: gcc
+      env: CC_COMPILER=clang CXX_COMPILER=clang++
+
+script:
+  - $CC_COMPILER -v
+  - $CXX_COMPILER -v
+  - make CC=$CC_COMPILER CXX=$CXX_COMPILER $MORE_OPTIONS
+  - ./lzbench
+  - ./lzbench -eall ./lzbench
