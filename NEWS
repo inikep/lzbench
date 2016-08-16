@@ -2,6 +2,7 @@ v1.3
 - added slz 1.0.0 : slz_zlib, slz_gzip, slz_deflate (thanks to Willy Tarreau)
 - added glza 0.7.1 (thanks to Kennon Conrad)
 - zstd updated to v0.8.0 (thanks to Chip Turner)
+- brotli updated to v0.5.2
 - lz5 updated to v1.5
 - lzbench compiles on MacOS (with exception of lzham)
 - lzbench compiles with clang (tested with 3.4, 3.5, 3.6 and 3.8)

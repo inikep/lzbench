@@ -129,10 +129,11 @@ SNAPPY_FILES = snappy/snappy-sinksource.o snappy/snappy-stubs-internal.o snappy/
 CSC_FILES = libcsc/csc_analyzer.o libcsc/csc_coder.o libcsc/csc_dec.o libcsc/csc_enc.o libcsc/csc_encoder_main.o
 CSC_FILES += libcsc/csc_filters.o libcsc/csc_lz.o libcsc/csc_memio.o libcsc/csc_mf.o libcsc/csc_model.o libcsc/csc_profiler.o 
 
-BROTLI_FILES = brotli/dec/bit_reader.o brotli/dec/decode.o brotli/dec/dictionary.o brotli/dec/huffman.o brotli/dec/state.o
+BROTLI_FILES = brotli/common/dictionary.o brotli/dec/bit_reader.o brotli/dec/decode.o brotli/dec/huffman.o brotli/dec/state.o
 BROTLI_FILES += brotli/enc/backward_references.o brotli/enc/block_splitter.o brotli/enc/brotli_bit_stream.o brotli/enc/encode.o
-BROTLI_FILES += brotli/enc/encode_parallel.o brotli/enc/entropy_encode.o brotli/enc/histogram.o brotli/enc/literal_cost.o
+BROTLI_FILES += brotli/enc/encode_parallel.o brotli/enc/entropy_encode.o brotli/enc/histogram.o brotli/enc/literal_cost.o brotli/enc/memory.o
 BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/streams.o brotli/enc/utf8_util.o brotli/enc/compress_fragment.o brotli/enc/compress_fragment_two_pass.o
+BROTLI_FILES += brotli/enc/streams.o brotli/enc/cluster.o brotli/enc/bit_cost.o 
 
 ZSTD_FILES = zstd/lib/decompress/huf_decompress.o zstd/lib/decompress/zstd_decompress.o zstd/lib/common/fse_decompress.o zstd/lib/common/entropy_common.o zstd/lib/common/zstd_common.o zstd/lib/common/xxhash.o
 ZSTD_FILES += zstd/lib/compress/fse_compress.o zstd/lib/compress/huf_compress.o zstd/lib/compress/zstd_compress.o 
@@ -196,4 +197,4 @@ lzbench: $(GLZA_FILES) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES
 	$(CXX) $(CFLAGS) $< -c -o $@
 
 clean:
-	rm -rf lzbench lzbench.exe *.o _lzbench/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/spookyhash/*.o density/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz5/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o
+	rm -rf lzbench lzbench.exe *.o _lzbench/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/spookyhash/*.o density/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz5/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o

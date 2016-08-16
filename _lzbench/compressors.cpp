@@ -77,13 +77,10 @@ int64_t lzbench_brieflz_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 int64_t lzbench_brotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
 {
-    brotli::BrotliParams p;
-	p.quality = level;
-    if (windowLog) p.lgwin = windowLog; // sliding window size. Range is 10 to 24.
-//	p.lgblock = 24; // maximum input block size. Range is 16 to 24.
+    if (!windowLog) windowLog = BROTLI_DEFAULT_WINDOW; // sliding window size. Range is 10 to 24.
 
     size_t actual_osize = outsize;
-    return brotli::BrotliCompressBuffer(p, insize, (const uint8_t*)inbuf, &actual_osize, (uint8_t*)outbuf) == 0 ? 0 : actual_osize;
+    return BrotliEncoderCompress(level, windowLog, BROTLI_DEFAULT_MODE, insize, (const uint8_t*)inbuf, &actual_osize, (uint8_t*)outbuf) == 0 ? 0 : actual_osize;
 }
 int64_t lzbench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {

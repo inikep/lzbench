@@ -82,7 +82,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
 ```
 blosclz 2015-11-10
 brieflz 1.1.0
-brotli 0.4.0
+brotli 0.5.2
 crush 1.0
 csc 3.3
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
