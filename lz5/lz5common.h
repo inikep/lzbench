@@ -20,8 +20,6 @@ extern "C" {
 	#define HEAPMODE 0
 #endif
 
-#define LZ5HC_HEAPMODE 0
-
 
 /*
  * ACCELERATION_DEFAULT :
