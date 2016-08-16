@@ -372,7 +372,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
                 printf("ERROR: fwrite %d-%d to %s\n", (int32_t)(cmn*chunk_size), (int32_t)(cmn*chunk_size+err_size), text);
                 FILE *f = fopen(text, "wb");
                 if (f) fwrite(inbuf+cmn*chunk_size, 1, err_size, f), fclose(f);
-                exit(0);
+                exit(1);
             }
         }
 
@@ -492,7 +492,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
         lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
     }
     
-    lzbench_test_with_params(params, encoder_list?encoder_list:(char*)alias_desc[1].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+    lzbench_test_with_params(params, encoder_list?encoder_list:(char*)alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
 
     free(inbuf);
     free(compbuf);
