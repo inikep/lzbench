@@ -68,7 +68,7 @@ To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Ma
 You also have to remove corresponding `*.o` files (e.g. `lz5/lz5.o` and `lz5/lz5hc.o`).
 
 lzbench was tested with:
-- Ubuntu: gcc 4.6.3, 4.8.4, 4.9.3, 5.3.0, 6.1.1 and clang 3.4, 3.5, 3.6, 3.8
+- Ubuntu: gcc 4.6.3, 4.8.4 (both 32-bit and 64-bit), 4.9.3, 5.3.0, 6.1.1 and clang 3.4, 3.5, 3.6, 3.8
 - MacOS: Apple LLVM version 6.0
 - MinGW (Windows): gcc 5.3.0, 4.9.3 (32-bit), 4.8.3 (32-bit)
 

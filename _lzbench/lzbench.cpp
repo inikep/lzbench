@@ -78,15 +78,15 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
 {
     float cspeed, dspeed, ratio;
     cspeed = row.column5 * 1000.0 / row.column2;
-    dspeed = row.column5 * 1000.0 / row.column3;
+    dspeed = (!row.column3) ? 0 : (row.column5 * 1000.0 / row.column3);
     ratio = row.column4 * 100.0 / row.column5;
     
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%.2f,%.2f,%lld,%.2f,%s\n", row.column1.c_str(), cspeed, dspeed, row.column4, ratio, row.filename.c_str()); break;
+            printf("%s,%.2f,%.2f,%llu,%.2f,%s\n", row.column1.c_str(), cspeed, dspeed, (unsigned long long)row.column4, ratio, row.filename.c_str()); break;
         case TURBOBENCH:
-            printf("%12lld %6.1f%9.2f%9.2f  %22s %s\n", row.column4, ratio, cspeed, dspeed, row.column1.c_str(), row.filename.c_str()); break;
+            printf("%12llu %6.1f%9.2f%9.2f  %22s %s\n", (unsigned long long)row.column4, ratio, cspeed, dspeed, row.column1.c_str(), row.filename.c_str()); break;
         case TEXT:
             printf("%-23s", row.column1.c_str());
             if (cspeed < 10) printf("%6.2f MB/s", cspeed); else printf("%6d MB/s", (int)cspeed);
@@ -94,7 +94,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
                 printf("      ERROR");
             else
                 if (dspeed < 10) printf("%6.2f MB/s", dspeed); else printf("%6d MB/s", (int)dspeed); 
-            printf("%12lld %6.2f %s\n", row.column4, ratio, row.filename.c_str());
+            printf("%12llu %6.2f %s\n", row.column4, (unsigned long long)ratio, row.filename.c_str());
             break;
         case MARKDOWN:
             printf("| %-23s ", row.column1.c_str());
@@ -103,7 +103,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
                 printf("|      ERROR ");
             else
                 if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed); 
-            printf("|%12lld |%6.2f | %-s|\n", row.column4, ratio, row.filename.c_str());
+            printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.column4, ratio, row.filename.c_str());
             break;
     }
 }
@@ -118,26 +118,26 @@ void print_time(lzbench_params_t *params, string_table_t& row)
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%lld,%lld,%lld,%.2f,%s\n", row.column1.c_str(), ctime, dtime, row.column4, ratio, row.filename.c_str()); break;
+            printf("%s,%llu,%llu,%llu,%.2f,%s\n", row.column1.c_str(), (unsigned long long)ctime, (unsigned long long)dtime, (unsigned long long)row.column4, ratio, row.filename.c_str()); break;
         case TURBOBENCH:
-            printf("%12lld %6.1f%9lld%9lld  %22s %s\n", row.column4, ratio, ctime, dtime, row.column1.c_str(), row.filename.c_str()); break;
+            printf("%12llu %6.1f%9llu%9llu  %22s %s\n", (unsigned long long)row.column4, ratio, (unsigned long long)ctime, (unsigned long long)dtime, row.column1.c_str(), row.filename.c_str()); break;
         case TEXT:
             printf("%-23s", row.column1.c_str());
-            printf("%8lld us", ctime);
+            printf("%8llu us", (unsigned long long)ctime);
             if (!dtime)
                 printf("      ERROR");
             else
-                printf("%8lld us", dtime); 
-            printf("%12lld %6.2f %s\n", row.column4, ratio, row.filename.c_str());
+                printf("%8llu us", (unsigned long long)dtime); 
+            printf("%12llu %6.2f %s\n", (unsigned long long)row.column4, ratio, row.filename.c_str());
             break;
         case MARKDOWN:
             printf("| %-23s ", row.column1.c_str());
-            printf("|%8lld us ", ctime);
+            printf("|%8llu us ", (unsigned long long)ctime);
             if (!dtime)
                 printf("|      ERROR ");
             else
-                printf("|%8lld us ", dtime); 
-            printf("|%12lld |%6.2f | %-s|\n", row.column4, ratio, row.filename.c_str());
+                printf("|%8llu us ", (unsigned long long)dtime); 
+            printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.column4, ratio, row.filename.c_str());
             break;
     }
 }
@@ -451,7 +451,7 @@ next_k:
 }
 
 
-void lzbenchmark(lzbench_params_t* params, FILE* in, char* encoder_list, bool first_time)
+void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool first_time)
 {
     bench_rate_t rate;
     size_t comprsize, insize;
@@ -653,7 +653,7 @@ int main( int argc, char** argv)
         } else {
             char* pch = strrchr(argv[1], '\\');
             params->in_filename = pch ? pch+1 : argv[1];
-            lzbenchmark(params, in, encoder_list, first_time);
+            lzbench_alloc(params, in, encoder_list, first_time);
             first_time = false;
             fclose(in);
         }
