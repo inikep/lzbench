@@ -92,7 +92,7 @@ glza 0.7.1
 lz4/lz4hc r131
 lz5/lz5hc v1.5
 lzf 3.6
-lzfse/lzvn 2016-06-19
+lzfse/lzvn 2016-08-16
 lzg 1.0.8
 lzham 1.0
 lzjb 2010

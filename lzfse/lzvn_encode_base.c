@@ -1,7 +1,7 @@
 /*
 Copyright (c) 2015-2016, Apple Inc. All rights reserved.
 
-Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:  
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
 
 1.  Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
 
@@ -22,6 +22,10 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
 // LZVN low-level encoder
 
 #include "lzvn_encode_base.h"
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#  define restrict __restrict
+#endif
 
 // ===============================================================
 // Coarse/fine copy, non overlapping buffers
@@ -63,8 +67,8 @@ static inline unsigned char *emit_literal(const unsigned char *p,
     x = L < 271 ? L : 271;
     if (q + x + 10 >= q1)
       goto OUT_FULL;
-    *(uint16_t *)q = 0xE0 + ((x - 16) << 8);
-    q += 2; // non-aligned access OK
+    store2(q, 0xE0 + ((x - 16) << 8));
+    q += 2;
     L -= x;
     q = lzvn_copy8(q, p, x);
     p += x;
@@ -96,8 +100,8 @@ static inline unsigned char *emit(const unsigned char *p, unsigned char *q,
     x = L < 271 ? L : 271;
     if (q + x + 10 >= q1)
       goto OUT_FULL;
-    *(uint16_t *)q = 0xE0 + ((x - 16) << 8);
-    q += 2; // non-aligned access OK
+    store2(q, 0xE0 + ((x - 16) << 8));
+    q += 2;
     L -= x;
     q = lzvn_copy64(q, p, x);
     p += x;
@@ -115,8 +119,7 @@ static inline unsigned char *emit(const unsigned char *p, unsigned char *q,
   x -= 3; // M = (x+3) + M'    max value for x is 7-2*L
 
   // Here L<4 literals remaining, we read them here
-  uint32_t literal =
-      *(uint32_t *)p; // read 4 literal bytes, non-aligned access OK
+  uint32_t literal = load4(p);
   // P is not accessed after this point
 
   // Relaxed capacity test covering all cases
@@ -129,30 +132,30 @@ static inline unsigned char *emit(const unsigned char *p, unsigned char *q,
     } else {
       *q++ = (L << 6) + (x << 3) + 6; //  LLxxx110
     }
-    *(uint32_t *)q = literal;
-    q += L; // non-aligned access OK
+    store4(q, literal);
+    q += L;
   } else if (D < 2048 - 2 * 256) {
     // Short dist    D>>8 in 0..5
     *q++ = (D >> 8) + (L << 6) + (x << 3); // LLxxxDDD
     *q++ = D & 0xFF;
-    *(uint32_t *)q = literal;
-    q += L; // non-aligned access OK
+    store4(q, literal);
+    q += L;
   } else if (D >= (1 << 14) || M == 0 || (x + 3) + M > 34) {
     // Long dist
     *q++ = (L << 6) + (x << 3) + 7;
-    *(uint16_t *)q = D;
-    q += 2; // non-aligned access OK
-    *(uint32_t *)q = literal;
-    q += L; // non-aligned access OK
+    store2(q, D);
+    q += 2;
+    store4(q, literal);
+    q += L;
   } else {
     // Medium distance
     x += M;
     M = 0;
     *q++ = 0xA0 + (x >> 2) + (L << 3);
-    *(uint16_t *)q = D << 2 | (x & 3);
-    q += 2; // non-aligned access OK
-    *(uint32_t *)q = literal;
-    q += L; // non-aligned access OK
+    store2(q, D << 2 | (x & 3));
+    q += 2;
+    store4(q, literal);
+    q += L;
   }
 
   // Issue remaining match
@@ -160,8 +163,8 @@ static inline unsigned char *emit(const unsigned char *p, unsigned char *q,
     if (q + 2 >= q1)
       goto OUT_FULL;
     x = M < 271 ? M : 271;
-    *(uint16_t *)q = 0xf0 + ((x - 16) << 8);
-    q += 2; // non-aligned access OK
+    store2(q, 0xf0 + ((x - 16) << 8));
+    q += 2;
     M -= x;
   }
   if (M > 0) {
@@ -534,8 +537,7 @@ static size_t lzvn_encode_partial(void *__restrict dst, size_t dst_size,
                                   const void *__restrict src, size_t src_size,
                                   size_t *src_used, void *__restrict work) {
   // Min size checks to avoid accessing memory outside buffers.
-  if (dst_size < LZVN_ENCODE_MIN_DST_SIZE ||
-      src_size < LZVN_ENCODE_MIN_SRC_SIZE) {
+  if (dst_size < LZVN_ENCODE_MIN_DST_SIZE) {
     *src_used = 0;
     return 0;
   }
@@ -553,18 +555,26 @@ static size_t lzvn_encode_partial(void *__restrict dst, size_t dst_size,
   state.src_end = (lzvn_offset)src_size;
   state.src_literal = 0;
   state.src_current = 0;
-  state.src_current_end = (lzvn_offset)src_size - LZVN_ENCODE_MIN_MARGIN;
   state.dst = dst;
   state.dst_begin = dst;
-  state.dst_end = dst + dst_size - 1; // allow 1 byte for end-of-stream
+  state.dst_end = (unsigned char *)dst + dst_size - 8; // reserve 8 bytes for end-of-stream
   state.table = work;
 
-  lzvn_init_table(&state);
+  // Do not encode if the input buffer is too small. We'll emit a literal instead.
+  if (src_size >= LZVN_ENCODE_MIN_SRC_SIZE) {
 
-  lzvn_encode(&state);
+    state.src_current_end = (lzvn_offset)src_size - LZVN_ENCODE_MIN_MARGIN;
+    lzvn_init_table(&state);
+    lzvn_encode(&state);
+
+  }
+
+  // No need to test the return value: src_literal will not be updated on failure,
+  // and we will fail later.
   lzvn_emit_literal(&state, state.src_end - state.src_literal);
-  state.dst_end =
-      dst + dst_size; // restore final byte, so end-of-stream always succeeds
+
+  // Restore original size, so end-of-stream always succeeds, and emit it
+  state.dst_end = (unsigned char *)dst + dst_size;
   lzvn_emit_end_of_stream(&state);
 
   *src_used = state.src_literal;

@@ -8,6 +8,7 @@
 
 #include "./backward_references.h"
 
+#include "_lzbench/clang34_fix.h"  /* before <math.h> */
 #include <math.h>  /* INFINITY */
 #include <string.h>  /* memcpy, memset */
 
