@@ -37,7 +37,7 @@ class ReadBits {
       current_ <<= length;
       bits_left_ -= length;
     } else {
-      ret = (current_ >> (64 - bits_left_)) << (length - bits_left_);
+      ret = bits_left_ > 0 ? (current_ >> (64 - bits_left_)) << (length - bits_left_) : 0;
       length -= bits_left_;
       if (PREDICT_FALSE((bits_input_ + sizeof(uint64)) > input_end_)) {
         error_ = true;

@@ -4,6 +4,7 @@ v1.3
 - zstd updated to v0.8.0 (thanks to Chip Turner)
 - brotli updated to v0.5.2
 - lz5 updated to v1.5
+- gipfeli updated to 2016-07-13
 - lzbench compiles on MacOS (with exception of lzham)
 - lzbench compiles with clang (tested with 3.4, 3.5, 3.6 and 3.8)
 - added support for aggregated parameters: "-t0 -u0 -i3 -j5" is equal to "-t0u0i3j5" (only "-e" can not be aggregated)

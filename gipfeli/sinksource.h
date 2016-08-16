@@ -3,6 +3,7 @@
 
 // Based on Snappy sink source implementation.
 
+#include <algorithm>
 #include <stddef.h>
 #include "stubs-internal.h"
 
