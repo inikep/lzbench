@@ -84,9 +84,9 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%.2f,%.2f,%" PRId64 ",%.2f,%s\n", row.column1.c_str(), cspeed, dspeed, row.column4, ratio, row.filename.c_str()); break;
+            printf("%s,%.2f,%.2f,%lld,%.2f,%s\n", row.column1.c_str(), cspeed, dspeed, row.column4, ratio, row.filename.c_str()); break;
         case TURBOBENCH:
-            printf("%12" PRId64 " %6.1f%9.2f%9.2f  %22s %s\n", row.column4, ratio, cspeed, dspeed, row.column1.c_str(), row.filename.c_str()); break;
+            printf("%12lld %6.1f%9.2f%9.2f  %22s %s\n", row.column4, ratio, cspeed, dspeed, row.column1.c_str(), row.filename.c_str()); break;
         case TEXT:
             printf("%-23s", row.column1.c_str());
             if (cspeed < 10) printf("%6.2f MB/s", cspeed); else printf("%6d MB/s", (int)cspeed);
@@ -94,7 +94,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
                 printf("      ERROR");
             else
                 if (dspeed < 10) printf("%6.2f MB/s", dspeed); else printf("%6d MB/s", (int)dspeed); 
-            printf("%12" PRId64 " %6.2f %s\n", row.column4, ratio, row.filename.c_str());
+            printf("%12lld %6.2f %s\n", row.column4, ratio, row.filename.c_str());
             break;
         case MARKDOWN:
             printf("| %-23s ", row.column1.c_str());
@@ -103,7 +103,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
                 printf("|      ERROR ");
             else
                 if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed); 
-            printf("|%12" PRId64 " |%6.2f | %-s|\n", row.column4, ratio, row.filename.c_str());
+            printf("|%12lld |%6.2f | %-s|\n", row.column4, ratio, row.filename.c_str());
             break;
     }
 }
@@ -118,9 +118,9 @@ void print_time(lzbench_params_t *params, string_table_t& row)
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%lld,%lld,%" PRId64 ",%.2f,%s\n", row.column1.c_str(), ctime, dtime, row.column4, ratio, row.filename.c_str()); break;
+            printf("%s,%lld,%lld,%lld,%.2f,%s\n", row.column1.c_str(), ctime, dtime, row.column4, ratio, row.filename.c_str()); break;
         case TURBOBENCH:
-            printf("%12" PRId64 " %6.1f%9lld%9lld  %22s %s\n", row.column4, ratio, ctime, dtime, row.column1.c_str(), row.filename.c_str()); break;
+            printf("%12lld %6.1f%9lld%9lld  %22s %s\n", row.column4, ratio, ctime, dtime, row.column1.c_str(), row.filename.c_str()); break;
         case TEXT:
             printf("%-23s", row.column1.c_str());
             printf("%8lld us", ctime);
@@ -128,7 +128,7 @@ void print_time(lzbench_params_t *params, string_table_t& row)
                 printf("      ERROR");
             else
                 printf("%8lld us", dtime); 
-            printf("%12" PRId64 " %6.2f %s\n", row.column4, ratio, row.filename.c_str());
+            printf("%12lld %6.2f %s\n", row.column4, ratio, row.filename.c_str());
             break;
         case MARKDOWN:
             printf("| %-23s ", row.column1.c_str());
@@ -137,7 +137,7 @@ void print_time(lzbench_params_t *params, string_table_t& row)
                 printf("|      ERROR ");
             else
                 printf("|%8lld us ", dtime); 
-            printf("|%12" PRId64 " |%6.2f | %-s|\n", row.column4, ratio, row.filename.c_str());
+            printf("|%12lld |%6.2f | %-s|\n", row.column4, ratio, row.filename.c_str());
             break;
     }
 }
@@ -274,11 +274,11 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     size_t param2 = desc->additional_param;
     size_t chunk_size = (params->chunk_size > insize) ? insize : params->chunk_size;
 
+    LZBENCH_PRINT(5, "*** trying %s insize=%d comprsize=%d chunk_size=%d\n", desc->name, (int)insize, (int)comprsize, (int)chunk_size);
+
     if (desc->max_block_size != 0 && chunk_size > desc->max_block_size) chunk_size = desc->max_block_size;
     if (!desc->compress || !desc->decompress) goto done;
     if (desc->init) workmem = desc->init(chunk_size, param1);
-
-    LZBENCH_PRINT(5, "*** trying %s insize=%d comprsize=%d chunk_size=%d\n", desc->name, (int)insize, (int)comprsize, (int)chunk_size);
 
     if (params->cspeed > 0)
     {
@@ -398,6 +398,8 @@ done:
 void lzbench_test_with_params(lzbench_params_t *params, char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
 {
     std::vector<std::string> cnames, cparams;
+
+	if (!namesWithParams) return;
 
     cnames = split(namesWithParams, '/');
 

@@ -3,8 +3,6 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 #define _FILE_OFFSET_BITS 64  // turn off_t into a 64-bit type for ftello() and fseeko()
-#define __STDC_FORMAT_MACROS  // now PRIu64 will work
-#include <inttypes.h>         // PRIu64
 
 #include <vector>
 #include <string>
@@ -25,6 +23,17 @@
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(WIN64) || defined(_WIN64)
 	#define WINDOWS
+#endif
+
+/* **************************************
+*  Compiler Options
+****************************************/
+#if defined(_MSC_VER)
+#  define _CRT_SECURE_NO_WARNINGS    /* Disable some Visual warning messages for fopen, strncpy */
+#  define _CRT_SECURE_NO_DEPRECATE   /* VS2005 */
+#if _MSC_VER <= 1800                 /* (1800 = Visual Studio 2013) */
+#define snprintf sprintf_s       /* snprintf unsupported by Visual <= 2013 */
+#endif
 #endif
 
 #ifdef WINDOWS
