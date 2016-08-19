@@ -1,3 +1,6 @@
+v1.4
+- zstd updated to v0.8.1
+
 v1.3
 - added slz 1.0.0 : slz_zlib, slz_gzip, slz_deflate (thanks to Willy Tarreau)
 - added glza 0.7.1 (thanks to Kennon Conrad)
