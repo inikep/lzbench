@@ -152,6 +152,7 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
     
     switch (params->timetype)
     {
+        default:
         case FASTEST: 
             best_ctime = ctime[0];
             best_dtime = dtime[0];
@@ -179,7 +180,7 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
 
     ctime.clear();
     dtime.clear();
-};
+}
 
 
 size_t common(uint8_t *p1, uint8_t *p2)
@@ -226,7 +227,7 @@ inline int64_t lzbench_compress(lzbench_params_t *params, size_t chunk_size, com
 }
 
 
-inline int64_t lzbench_decompress(lzbench_params_t *params, size_t chunk_size, compress_func decompress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, uint8_t *origbuf, size_t param1, size_t param2, char* workmem)
+inline int64_t lzbench_decompress(lzbench_params_t *params, size_t chunk_size, compress_func decompress, std::vector<size_t> &compr_lens, uint8_t *inbuf, size_t insize, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
 {
     int64_t dlen;
     int num=0;
@@ -337,7 +338,7 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
         do
         {
             GetTime(start_ticks);
-            decomplen = lzbench_decompress(params, chunk_size, desc->decompress, compr_lens, compbuf, complen, decomp, insize, inbuf, param1, param2, workmem);
+            decomplen = lzbench_decompress(params, chunk_size, desc->decompress, compr_lens, compbuf, complen, decomp, insize, param1, param2, workmem);
             GetTime(end_ticks);
             nanosec = GetDiffTime(rate, start_ticks, end_ticks);
             if (nanosec >= 10000) dtime.push_back(nanosec);
@@ -392,10 +393,10 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
 
 done:
     if (desc->deinit) desc->deinit(workmem);
-};
+}
 
 
-void lzbench_test_with_params(lzbench_params_t *params, char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
+void lzbench_test_with_params(lzbench_params_t *params, const char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
 {
     std::vector<std::string> cnames, cparams;
 
@@ -412,7 +413,7 @@ void lzbench_test_with_params(lzbench_params_t *params, char *namesWithParams, u
         {
             if (strcmp(cnames[k].c_str(), alias_desc[i].name)==0)
             {
-                lzbench_test_with_params(params, (char*)alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+                lzbench_test_with_params(params, alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, rate);
                 goto next_k;
             }
         }
@@ -492,7 +493,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
         lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
     }
     
-    lzbench_test_with_params(params, encoder_list?encoder_list:(char*)alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+    lzbench_test_with_params(params, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
 
     free(inbuf);
     free(compbuf);
