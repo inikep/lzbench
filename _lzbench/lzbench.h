@@ -134,7 +134,7 @@ typedef struct
 
 
 
-#define LZBENCH_COMPRESSOR_COUNT 64
+#define LZBENCH_COMPRESSOR_COUNT 65
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
@@ -150,6 +150,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "fastlz",     "0.1",         1,   2,   0,       0, lzbench_fastlz_compress,   lzbench_fastlz_decompress,   NULL,                 NULL },
     { "gipfeli",    "2016-07-13",  0,   0,   0,       0, lzbench_gipfeli_compress,  lzbench_gipfeli_decompress,  NULL,                 NULL },
     { "glza",       "0.7.1",       0,   0,   0,       0, lzbench_glza_compress,     lzbench_glza_decompress,     NULL,                 NULL },
+    { "libdeflate", "e603f78",     1,  12,   0,       0, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,             NULL },
     { "lz4",        "r131",        0,   0,   0,       0, lzbench_lz4_compress,      lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4fast",    "r131",        1,  99,   0,       0, lzbench_lz4fast_compress,  lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4hc",      "r131",        1,  16,   0,       0, lzbench_lz4hc_compress,    lzbench_lz4_decompress,      NULL,                 NULL },
@@ -211,7 +212,7 @@ static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
     { "fast", "density/fastlz/lz4/lz4fast,3,17/lz5/lzf/lzfse/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
               "lzrw,1,2,3,4,5/lzsse4fast/lzsse8fast/lzvn/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/zstd,1,2,3,4,5" }, // default alias
-    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9,12,16/lz5/lz5hc,1,4,9,12,15/" \
+    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/gipfeli/libdeflate,1,3,6,9,12/lz4/lz4fast,3,17/lz4hc,1,4,9,12,16/lz5/lz5hc,1,4,9,12,15/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
               "lzrw,1,2,3,4,5/lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/pithy,0,3,6,9/quicklz,1,2,3/snappy/slz_zlib/tornado,1,2,3,4,5,6,7,10,13,16/" \
               "ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/xpack,1,6,9/xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,22/" \
