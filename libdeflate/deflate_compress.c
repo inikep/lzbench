@@ -22,6 +22,8 @@
 
 #include "libdeflate.h"
 
+#define heapsort ldfl_heapsort
+
 /*
  * By default, the near-optimal parsing algorithm is enabled at compression
  * level 8 and above.  The near-optimal parsing algorithm produces a compression

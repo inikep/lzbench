@@ -31,7 +31,6 @@
 #include "snappy-sinksource.h"
 
 #include <stdio.h>
-#include <sys/types.h> // ssize_t
 
 #include <algorithm>
 #include <string>

@@ -34,8 +34,6 @@ else
     # MacOS doesn't support -lrt -static
     ifeq ($(shell uname -s),Darwin)
         DONT_BUILD_LZHAM ?= 1
-        # Avoid MacOS extensions
-        DEFINES += -D_POSIX_C_SOURCE
     else
         LDFLAGS	+= -lrt -static
     endif
