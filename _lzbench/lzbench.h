@@ -97,8 +97,9 @@ typedef struct
     textformat_e textformat;
     size_t chunk_size;
     uint32_t c_iters, d_iters, cspeed, verbose, cmintime, dmintime, cloop_time, dloop_time;
+    size_t mem_limit;
     std::vector<string_table_t> results;
-    char* in_filename;
+    const char* in_filename;
 } lzbench_params_t;
 
 struct less_using_1st_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col1_algname < struct2.col1_algname); } };

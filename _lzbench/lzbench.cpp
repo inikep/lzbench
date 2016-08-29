@@ -459,14 +459,19 @@ next_k:
 void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool first_time)
 {
     bench_rate_t rate;
-    size_t comprsize, insize;
+    size_t comprsize, insize, real_insize;
     uint8_t *inbuf, *compbuf, *decomp;
 
     InitTimer(rate);
 
     fseeko(in, 0L, SEEK_END);
-    insize = ftello(in);
+    real_insize = ftello(in);
     rewind(in);
+
+    if (params->mem_limit && real_insize > params->mem_limit)
+        insize = params->mem_limit / 4;
+    else
+        insize = real_insize;
 
     comprsize = GET_COMPRESS_BOUND(insize);
 
@@ -496,9 +501,23 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
         params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
         lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
     }
-    
-    lzbench_test_with_params(params, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
 
+    if (params->mem_limit && real_insize > params->mem_limit)
+    {
+        int i;
+        std::string partname;
+        const char* filename = params->in_filename;
+        for (i=0; insize > 0; i++)
+        {
+            format(partname, "%s part %d", filename, i);
+            params->in_filename = partname.c_str();
+            lzbench_test_with_params(params, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+            insize = fread(inbuf, 1, insize, in);
+        }
+    }
+    else
+        lzbench_test_with_params(params, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+    
     free(inbuf);
     free(compbuf);
     free(decomp);
@@ -513,6 +532,7 @@ void usage(lzbench_params_t* params)
     fprintf(stderr, " -eX   X=compressors separated by '/' with parameters specified after ',' (deflt=fast)\n");
     fprintf(stderr, " -iX,Y set min. number of compression and decompression iterations (default = %d, %d)\n", params->c_iters, params->d_iters);
     fprintf(stderr, " -l    list of available compressors and aliases\n");
+    fprintf(stderr, " -mX   set memory limit to X MB (default = no limit)\n");
     fprintf(stderr, " -oX   output text format 1=Markdown, 2=text, 3=CSV (default = %d)\n", params->textformat);
     fprintf(stderr, " -pX   print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
     fprintf(stderr, " -r    disable real-time process priority\n");
@@ -582,8 +602,12 @@ int main( int argc, char** argv)
         case 'j':
             params->d_iters = number;
             break;
+        case 'm':
+            params->mem_limit = number << 20;
+            break;
         case 'o':
             params->textformat = (textformat_e)number;
+            if (params->textformat == CSV) params->verbose = 0;
             break;
         case 'p':
             params->timetype = (timetype_e)number;
@@ -669,7 +693,7 @@ int main( int argc, char** argv)
         if (!(in=fopen(argv[1], "rb"))) {
             perror(argv[1]);
         } else {
-            char* pch = strrchr(argv[1], '\\');
+            const char* pch = strrchr(argv[1], '\\');
             params->in_filename = pch ? pch+1 : argv[1];
             lzbench_alloc(params, in, encoder_list, first_time);
             first_time = false;
