@@ -309,6 +309,32 @@ int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 
+#ifndef BENCH_REMOVE_LIBDEFLATE
+#include "libdeflate/libdeflate.h"
+int64_t lzbench_libdeflate_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    struct libdeflate_compressor *compressor = libdeflate_alloc_compressor(level);
+    if (!compressor)
+        return 0;
+    int64_t res = libdeflate_deflate_compress(compressor, inbuf, insize, outbuf, outsize);
+    libdeflate_free_compressor(compressor);
+    return res;
+}
+int64_t lzbench_libdeflate_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+    struct libdeflate_decompressor *decompressor = libdeflate_alloc_decompressor();
+    if (!decompressor)
+        return 0;
+    size_t res = 0;
+    if (libdeflate_deflate_decompress(decompressor, inbuf, insize, outbuf, outsize, &res) != LIBDEFLATE_SUCCESS) {
+        return 0;
+    }
+    return res;
+}
+#endif
+
+
+
 #ifndef BENCH_REMOVE_LZ4
 #include "lz4/lz4.h"
 #include "lz4/lz4hc.h"
