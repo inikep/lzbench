@@ -62,9 +62,9 @@ void print_header(lzbench_params_t *params)
     {
         case CSV:
             if (params->show_speed)
-                printf("Compressor name,Compression speed,Decompression speed,Compressed size,Ratio,Filename\n"); 
+                printf("Compressor name,Compression speed,Decompression speed,Original size,Compressed size,Ratio,Filename\n"); 
             else
-                printf("Compressor name,Compression time in us,Decompression time in us,Compressed size,Ratio,Filename\n"); break;
+                printf("Compressor name,Compression time in us,Decompression time in us,Original size,Compressed size,Ratio,Filename\n"); break;
             break;
         case TURBOBENCH:
             printf("  Compressed  Ratio   Cspeed   Dspeed  Compressor name Filename\n"); break;
@@ -88,7 +88,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%.2f,%.2f,%llu,%.2f,%s\n", row.col1_algname.c_str(), cspeed, dspeed, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); break;
+            printf("%s,%.2f,%.2f,%llu,%llu,%.2f,%s\n", row.col1_algname.c_str(), cspeed, dspeed, (unsigned long long)row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); break;
         case TURBOBENCH:
             printf("%12llu %6.1f%9.2f%9.2f  %22s %s\n", (unsigned long long)row.col4_comprsize, ratio, cspeed, dspeed, row.col1_algname.c_str(), row.col6_filename.c_str()); break;
         case TEXT:
@@ -550,7 +550,6 @@ int main( int argc, char** argv)
     params->dmintime = 5*DEFAULT_LOOP_TIME/1000000; // 0.5 sec
     params->cloop_time = params->dloop_time = DEFAULT_LOOP_TIME;
 
-    printf(PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")   Assembled by P.Skibinski\n", (uint32_t)(8 * sizeof(uint8_t*)));
 
     while ((argc>1) && (argv[1][0]=='-')) {
     char* argument = argv[1]+1; 
@@ -648,6 +647,7 @@ int main( int argc, char** argv)
     argc--;
     }
 
+    LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")   Assembled by P.Skibinski\n", (uint32_t)(8 * sizeof(uint8_t*)));
     LZBENCH_PRINT(5, "params: chunk_size=%d c_iters=%d d_iters=%d cspeed=%d cmintime=%d dmintime=%d encoder_list=%s\n", (int)params->chunk_size, params->c_iters, params->d_iters, params->cspeed, params->cmintime, params->dmintime, encoder_list);
 
     if (argc<2) usage(params);
@@ -660,7 +660,7 @@ int main( int argc, char** argv)
         setpriority(PRIO_PROCESS, 0, -20);
     #endif
     } else {
-        printf("The real-time process priority disabled\n");
+        LZBENCH_PRINT(2, "The real-time process priority disabled\n", 0);
     }
 
     bool first_time = true;
@@ -680,9 +680,9 @@ int main( int argc, char** argv)
     }
 
     if (params->chunk_size > 10 * (1<<20))
-        printf("done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dMB cSpeed=%dMB)\n", params->c_iters, params->d_iters, params->cmintime/1000.0, params->dmintime/1000.0, (int)(params->chunk_size >> 20), params->cspeed);
+        LZBENCH_PRINT(2, "done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dMB cSpeed=%dMB)\n", params->c_iters, params->d_iters, params->cmintime/1000.0, params->dmintime/1000.0, (int)(params->chunk_size >> 20), params->cspeed);
     else
-        printf("done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dKB cSpeed=%dMB)\n", params->c_iters, params->d_iters, params->cmintime/1000.0, params->dmintime/1000.0, (int)(params->chunk_size >> 10), params->cspeed);
+        LZBENCH_PRINT(2, "done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dKB cSpeed=%dMB)\n", params->c_iters, params->d_iters, params->cmintime/1000.0, params->dmintime/1000.0, (int)(params->chunk_size >> 10), params->cspeed);
 
 
     if (encoder_list) free(encoder_list);
