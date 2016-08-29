@@ -61,7 +61,11 @@ void print_header(lzbench_params_t *params)
     switch (params->textformat)
     {
         case CSV:
-            printf("Compressor name,Compression speed,Decompression speed,Compressed size,Ratio,Filename\n"); break;
+            if (params->show_speed)
+                printf("Compressor name,Compression speed,Decompression speed,Compressed size,Ratio,Filename\n"); 
+            else
+                printf("Compressor name,Compression time in us,Decompression time in us,Compressed size,Ratio,Filename\n"); break;
+            break;
         case TURBOBENCH:
             printf("  Compressed  Ratio   Cspeed   Dspeed  Compressor name Filename\n"); break;
         case TEXT:
@@ -77,33 +81,33 @@ void print_header(lzbench_params_t *params)
 void print_speed(lzbench_params_t *params, string_table_t& row)
 {
     float cspeed, dspeed, ratio;
-    cspeed = row.column5 * 1000.0 / row.column2;
-    dspeed = (!row.column3) ? 0 : (row.column5 * 1000.0 / row.column3);
-    ratio = row.column4 * 100.0 / row.column5;
+    cspeed = row.col5_origsize * 1000.0 / row.col2_ctime;
+    dspeed = (!row.col3_dtime) ? 0 : (row.col5_origsize * 1000.0 / row.col3_dtime);
+    ratio = row.col4_comprsize * 100.0 / row.col5_origsize;
     
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%.2f,%.2f,%llu,%.2f,%s\n", row.column1.c_str(), cspeed, dspeed, (unsigned long long)row.column4, ratio, row.filename.c_str()); break;
+            printf("%s,%.2f,%.2f,%llu,%.2f,%s\n", row.col1_algname.c_str(), cspeed, dspeed, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); break;
         case TURBOBENCH:
-            printf("%12llu %6.1f%9.2f%9.2f  %22s %s\n", (unsigned long long)row.column4, ratio, cspeed, dspeed, row.column1.c_str(), row.filename.c_str()); break;
+            printf("%12llu %6.1f%9.2f%9.2f  %22s %s\n", (unsigned long long)row.col4_comprsize, ratio, cspeed, dspeed, row.col1_algname.c_str(), row.col6_filename.c_str()); break;
         case TEXT:
-            printf("%-23s", row.column1.c_str());
+            printf("%-23s", row.col1_algname.c_str());
             if (cspeed < 10) printf("%6.2f MB/s", cspeed); else printf("%6d MB/s", (int)cspeed);
             if (!dspeed)
                 printf("      ERROR");
             else
                 if (dspeed < 10) printf("%6.2f MB/s", dspeed); else printf("%6d MB/s", (int)dspeed); 
-            printf("%12llu %6.2f %s\n", (unsigned long long)row.column4, ratio, row.filename.c_str());
+            printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
         case MARKDOWN:
-            printf("| %-23s ", row.column1.c_str());
+            printf("| %-23s ", row.col1_algname.c_str());
             if (cspeed < 10) printf("|%6.2f MB/s ", cspeed); else printf("|%6d MB/s ", (int)cspeed);
             if (!dspeed)
                 printf("|      ERROR ");
             else
                 if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed); 
-            printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.column4, ratio, row.filename.c_str());
+            printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
     }
 }
@@ -111,33 +115,33 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
 
 void print_time(lzbench_params_t *params, string_table_t& row)
 {
-    float ratio = row.column4 * 100.0 / row.column5;
-    uint64_t ctime = row.column2 / 1000;
-    uint64_t dtime = row.column3 / 1000;
+    float ratio = row.col4_comprsize * 100.0 / row.col5_origsize;
+    uint64_t ctime = row.col2_ctime / 1000;
+    uint64_t dtime = row.col3_dtime / 1000;
 
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%llu,%llu,%llu,%.2f,%s\n", row.column1.c_str(), (unsigned long long)ctime, (unsigned long long)dtime, (unsigned long long)row.column4, ratio, row.filename.c_str()); break;
+            printf("%s,%llu,%llu,%llu,%.2f,%s\n", row.col1_algname.c_str(), (unsigned long long)ctime, (unsigned long long)dtime, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); break;
         case TURBOBENCH:
-            printf("%12llu %6.1f%9llu%9llu  %22s %s\n", (unsigned long long)row.column4, ratio, (unsigned long long)ctime, (unsigned long long)dtime, row.column1.c_str(), row.filename.c_str()); break;
+            printf("%12llu %6.1f%9llu%9llu  %22s %s\n", (unsigned long long)row.col4_comprsize, ratio, (unsigned long long)ctime, (unsigned long long)dtime, row.col1_algname.c_str(), row.col6_filename.c_str()); break;
         case TEXT:
-            printf("%-23s", row.column1.c_str());
+            printf("%-23s", row.col1_algname.c_str());
             printf("%8llu us", (unsigned long long)ctime);
             if (!dtime)
                 printf("      ERROR");
             else
                 printf("%8llu us", (unsigned long long)dtime); 
-            printf("%12llu %6.2f %s\n", (unsigned long long)row.column4, ratio, row.filename.c_str());
+            printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
         case MARKDOWN:
-            printf("| %-23s ", row.column1.c_str());
+            printf("| %-23s ", row.col1_algname.c_str());
             printf("|%8llu us ", (unsigned long long)ctime);
             if (!dtime)
                 printf("|      ERROR ");
             else
                 printf("|%8llu us ", (unsigned long long)dtime); 
-            printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.column4, ratio, row.filename.c_str());
+            printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
     }
 }
@@ -145,7 +149,7 @@ void print_time(lzbench_params_t *params, string_table_t& row)
 
 void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int level, std::vector<uint64_t> &ctime, std::vector<uint64_t> &dtime, size_t insize, size_t outsize, bool decomp_error)
 {
-    std::string column1;
+    std::string col1_algname;
     std::sort(ctime.begin(), ctime.end());
     std::sort(dtime.begin(), dtime.end());
     uint64_t best_ctime, best_dtime;
@@ -168,11 +172,11 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
     }
 
     if (desc->first_level == 0 && desc->last_level==0)
-        format(column1, "%s %s", desc->name, desc->version);
+        format(col1_algname, "%s %s", desc->name, desc->version);
     else
-        format(column1, "%s %s -%d", desc->name, desc->version, level);
+        format(col1_algname, "%s %s -%d", desc->name, desc->version, level);
 
-    params->results.push_back(string_table_t(column1, best_ctime, (decomp_error)?0:best_dtime, outsize, insize, params->in_filename));
+    params->results.push_back(string_table_t(col1_algname, best_ctime, (decomp_error)?0:best_dtime, outsize, insize, params->in_filename));
     if (params->show_speed)
         print_speed(params, params->results[params->results.size()-1]);
     else
@@ -504,20 +508,18 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
 void usage(lzbench_params_t* params)
 {
     fprintf(stderr, "usage: " PROGNAME " [options] input_file [input_file2] [input_file3]\n\nwhere [options] are:\n");
-    fprintf(stderr, " -bX  set block/chunk size to X KB (default = MIN(filesize,%d KB))\n", (int)(params->chunk_size>>10));
-    fprintf(stderr, " -cX  sort results by column number X\n");
-    fprintf(stderr, " -eX  X = compressors separated by '/' with parameters specified after ',' (deflt=fast)\n");
-    fprintf(stderr, " -iX  set min. number of compression iterations (default = %d)\n", params->c_iters);
-    fprintf(stderr, " -jX  set min. number of decompression iterations (default = %d)\n", params->d_iters);
-    fprintf(stderr, " -l   list of available compressors and aliases\n");
-    fprintf(stderr, " -oX  output text format 1=Markdown, 2=text, 3=CSV (default = %d)\n", params->textformat);
-    fprintf(stderr, " -pX  print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
-    fprintf(stderr, " -r   disable real-time process priority\n");
-    fprintf(stderr, " -sX  use only compressors with compression speed over X MB (default = %d MB)\n", params->cspeed);
-    fprintf(stderr, " -tX  set min. time in seconds for compression (default = %.1f)\n", params->cmintime/1000.0);
-    fprintf(stderr, " -uX  set min. time in seconds for decompression (default = %.1f)\n", params->dmintime/1000.0);
-    fprintf(stderr, " -v   disable progress information\n");
-    fprintf(stderr, " -z   show (de)compression times instead of speed\n");
+    fprintf(stderr, " -bX   set block/chunk size to X KB (default = MIN(filesize,%d KB))\n", (int)(params->chunk_size>>10));
+    fprintf(stderr, " -cX   sort results by column number X\n");
+    fprintf(stderr, " -eX   X=compressors separated by '/' with parameters specified after ',' (deflt=fast)\n");
+    fprintf(stderr, " -iX,Y set min. number of compression and decompression iterations (default = %d, %d)\n", params->c_iters, params->d_iters);
+    fprintf(stderr, " -l    list of available compressors and aliases\n");
+    fprintf(stderr, " -oX   output text format 1=Markdown, 2=text, 3=CSV (default = %d)\n", params->textformat);
+    fprintf(stderr, " -pX   print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
+    fprintf(stderr, " -r    disable real-time process priority\n");
+    fprintf(stderr, " -sX   use only compressors with compression speed over X MB (default = %d MB)\n", params->cspeed);
+    fprintf(stderr, " -tX,Y set min. time in seconds for compression and decompression (default = %.0f, %.1f)\n", params->cmintime/1000.0, params->dmintime/1000.0);
+    fprintf(stderr, " -v    disable progress information\n");
+    fprintf(stderr, " -z    show (de)compression times instead of speed\n");
     fprintf(stderr,"\nExample usage:\n");
     fprintf(stderr,"  " PROGNAME " -ezstd filename = selects all levels of zstd\n");
     fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd\n");
@@ -570,6 +572,13 @@ int main( int argc, char** argv)
             break;
         case 'i':
             params->c_iters = number;
+            if (*numPtr == ',')
+            {
+                numPtr++;
+                number = 0;
+                while ((*numPtr >='0') && (*numPtr <='9')) { number *= 10;  number += *numPtr - '0'; numPtr++; }
+                params->d_iters = number;
+            }
             break;
         case 'j':
             params->d_iters = number;
@@ -589,6 +598,14 @@ int main( int argc, char** argv)
         case 't':
             params->cmintime = 1000*number;
             params->cloop_time = (params->cmintime)?DEFAULT_LOOP_TIME:0;
+            if (*numPtr == ',')
+            {
+                numPtr++;
+                number = 0;
+                while ((*numPtr >='0') && (*numPtr <='9')) { number *= 10;  number += *numPtr - '0'; numPtr++; }
+                params->dmintime = 1000*number;
+                params->dloop_time = (params->dmintime)?DEFAULT_LOOP_TIME:0;
+            }
             break;
         case 'u':
             params->dmintime = 1000*number;
