@@ -507,7 +507,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
         int i;
         std::string partname;
         const char* filename = params->in_filename;
-        for (i=0; insize > 0; i++)
+        for (i=1; insize > 0; i++)
         {
             format(partname, "%s part %d", filename, i);
             params->in_filename = partname.c_str();
