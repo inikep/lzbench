@@ -482,7 +482,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
 
     if (!inbuf || !compbuf || !decomp)
     {
-        printf("Not enough memory!");
+        printf("Not enough memory, please use -m option!");
         exit(1);
     }
 
@@ -567,7 +567,7 @@ int main( int argc, char** argv)
     params->cspeed = 0;
     params->c_iters = params->d_iters = 1;
     params->cmintime = 10*DEFAULT_LOOP_TIME/1000000; // 1 sec
-    params->dmintime = 5*DEFAULT_LOOP_TIME/1000000; // 0.5 sec
+    params->dmintime = 10*DEFAULT_LOOP_TIME/1000000; // 1 sec
     params->cloop_time = params->dloop_time = DEFAULT_LOOP_TIME;
 
 
