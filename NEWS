@@ -1,3 +1,9 @@
+v1.4
+- zstd updated to v1.0.0
+- added libdeflate 2016-08-29 (thanks to Jørgen Ibsen)
+- added the "-m" (memory_limit) option; large files are processed in (memory_limit/4) blocks
+- cleaner CSV output and added the "original size" field
+
 v1.3
 - added slz 1.0.0 : slz_zlib, slz_gzip, slz_deflate (thanks to Willy Tarreau)
 - added glza 0.7.1 (thanks to Kennon Conrad)

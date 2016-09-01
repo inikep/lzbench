@@ -10,7 +10,7 @@
 #include "lz5/lz5common.h"    // LZ5HC_MAX_CLEVEL
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "1.3"
+#define PROGVERSION "1.4"
 #define PAD_SIZE (16*1024)
 #define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second
 #define GET_COMPRESS_BOUND(insize) (insize + insize/6 + PAD_SIZE)  // for pithy
@@ -81,10 +81,10 @@
 
 typedef struct string_table
 {
-    std::string column1;
-    uint64_t column2, column3, column4, column5;
-    std::string filename;
-    string_table(std::string c1, uint64_t c2, uint64_t c3, uint64_t c4, uint64_t c5, std::string in_filename) : column1(c1), column2(c2), column3(c3), column4(c4), column5(c5), filename(in_filename) {}
+    std::string col1_algname;
+    uint64_t col2_ctime, col3_dtime, col4_comprsize, col5_origsize;
+    std::string col6_filename;
+    string_table(std::string c1, uint64_t c2, uint64_t c3, uint64_t c4, uint64_t c5, std::string filename) : col1_algname(c1), col2_ctime(c2), col3_dtime(c3), col4_comprsize(c4), col5_origsize(c5), col6_filename(filename) {}
 } string_table_t;
 
 enum textformat_e { MARKDOWN=1, TEXT, CSV, TURBOBENCH };
@@ -97,15 +97,16 @@ typedef struct
     textformat_e textformat;
     size_t chunk_size;
     uint32_t c_iters, d_iters, cspeed, verbose, cmintime, dmintime, cloop_time, dloop_time;
+    size_t mem_limit;
     std::vector<string_table_t> results;
-    char* in_filename;
+    const char* in_filename;
 } lzbench_params_t;
 
-struct less_using_1st_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column1 < struct2.column1); } };
-struct less_using_2nd_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column2 > struct2.column2); } };
-struct less_using_3rd_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column3 > struct2.column3); } };
-struct less_using_4th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column4 < struct2.column4); } };
-struct less_using_5th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.column5 < struct2.column5); } };
+struct less_using_1st_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col1_algname < struct2.col1_algname); } };
+struct less_using_2nd_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col2_ctime > struct2.col2_ctime); } };
+struct less_using_3rd_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col3_dtime > struct2.col3_dtime); } };
+struct less_using_4th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col4_comprsize < struct2.col4_comprsize); } };
+struct less_using_5th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col5_origsize < struct2.col5_origsize); } };
 
 typedef int64_t (*compress_func)(char *in, size_t insize, char *out, size_t outsize, size_t, size_t, char*);
 typedef char* (*init_func)(size_t insize, size_t level);
@@ -134,7 +135,7 @@ typedef struct
 
 
 
-#define LZBENCH_COMPRESSOR_COUNT 64
+#define LZBENCH_COMPRESSOR_COUNT 65
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
@@ -150,6 +151,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "fastlz",     "0.1",         1,   2,   0,       0, lzbench_fastlz_compress,   lzbench_fastlz_decompress,   NULL,                 NULL },
     { "gipfeli",    "2016-07-13",  0,   0,   0,       0, lzbench_gipfeli_compress,  lzbench_gipfeli_decompress,  NULL,                 NULL },
     { "glza",       "0.7.1",       0,   0,   0,       0, lzbench_glza_compress,     lzbench_glza_decompress,     NULL,                 NULL },
+    { "libdeflate", "16-08-29",    1,  12,   0,       0, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,             NULL },
     { "lz4",        "r131",        0,   0,   0,       0, lzbench_lz4_compress,      lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4fast",    "r131",        1,  99,   0,       0, lzbench_lz4fast_compress,  lzbench_lz4_decompress,      NULL,                 NULL },
     { "lz4hc",      "r131",        1,  16,   0,       0, lzbench_lz4hc_compress,    lzbench_lz4_decompress,      NULL,                 NULL },
@@ -199,9 +201,9 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "yappy",      "2014-03-22",  0,  99,   0,       0, lzbench_yappy_compress,    lzbench_yappy_decompress,    lzbench_yappy_init,   NULL },
     { "zlib",       "1.2.8",       1,   9,   0,       0, lzbench_zlib_compress,     lzbench_zlib_decompress,     NULL,                 NULL },
     { "zling",      "2016-01-10",  0,   4,   0,       0, lzbench_zling_compress,    lzbench_zling_decompress,    NULL,                 NULL },
-    { "zstd",       "0.8.0",       1,  22,   0,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
-    { "zstd22",     "0.8.0",       1,  22,  22,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
-    { "zstd24",     "0.8.0",       1,  22,  24,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zstd",       "1.0.0",       1,  22,   0,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zstd22",     "1.0.0",       1,  22,  22,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
+    { "zstd24",     "1.0.0",       1,  22,  24,       0, lzbench_zstd_compress,     lzbench_zstd_decompress,     NULL,                 NULL },
 };
 
 
@@ -211,7 +213,7 @@ static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
     { "fast", "density/fastlz/lz4/lz4fast,3,17/lz5/lzf/lzfse/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
               "lzrw,1,2,3,4,5/lzsse4fast/lzsse8fast/lzvn/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/zstd,1,2,3,4,5" }, // default alias
-    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/gipfeli/lz4/lz4fast,3,17/lz4hc,1,4,9,12,16/lz5/lz5hc,1,4,9,12,15/" \
+    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/gipfeli/libdeflate,1,3,6,9,12/lz4/lz4fast,3,17/lz4hc,1,4,9,12,16/lz5/lz5hc,1,4,9,12,15/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
               "lzrw,1,2,3,4,5/lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/pithy,0,3,6,9/quicklz,1,2,3/snappy/slz_zlib/tornado,1,2,3,4,5,6,7,10,13,16/" \
               "ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/xpack,1,6,9/xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,22/" \

@@ -1,3 +1,21 @@
+v1.0.0
+Change Licensing, all project is now BSD, Copyright Facebook
+Small decompression speed improvement
+API : Streaming API supports legacy format
+API : ZDICT_getDictID(), ZSTD_sizeof_{CCtx, DCtx, CStream, DStream}(), ZSTD_setDStreamParamter()
+CLI supports legacy formats v0.4+
+Fixed : compression fails on certain huge files, reported by Jesse McGrew
+Enhanced documentation, by Przemyslaw Skibinski
+
+v0.8.1
+New streaming API
+Changed : --ultra now enables levels beyond 19
+Changed : -i# now selects benchmark time in second
+Fixed : ZSTD_compress* can now compress > 4 GB in a single pass, reported by Nick Terrell
+Fixed : speed regression on specific patterns (#272)
+Fixed : support for Z_SYNC_FLUSH, by Dmitry Krot (#291)
+Fixed : ICC compilation, by Przemyslaw Skibinski
+
 v0.8.0
 Improved : better speed on clang and gcc -O2, thanks to Eric Biggers
 New : Build on FreeBSD and DragonFly, thanks to JrMarino
