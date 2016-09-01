@@ -89,7 +89,7 @@ density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
 fastlz 0.1
 gipfeli 2016-07-13
 glza 0.7.1
-libdeflate
+libdeflate 81e45b8 (1.09.2016)
 lz4/lz4hc r131
 lz5/lz5hc v1.5
 lzf 3.6
@@ -117,7 +117,7 @@ yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.8
 zling 2016-04-10 (according to the author using libzling in a production environment is not a good idea)
-zstd 0.8.1
+zstd 1.0.0
 ```
 
 
