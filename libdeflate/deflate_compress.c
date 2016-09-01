@@ -22,8 +22,6 @@
 
 #include "libdeflate.h"
 
-#define heapsort ldfl_heapsort
-
 /*
  * By default, the near-optimal parsing algorithm is enabled at compression
  * level 8 and above.  The near-optimal parsing algorithm produces a compression
@@ -588,9 +586,15 @@ heapify_array(u32 A[], unsigned length)
 		heapify_subtree(A, length, subtree_idx);
 }
 
-/* Sort the array 'A', which contains 'length' unsigned 32-bit integers.  */
+/*
+ * Sort the array 'A', which contains 'length' unsigned 32-bit integers.
+ *
+ * Note: name this function heap_sort() instead of heapsort() to avoid colliding
+ * with heapsort() from stdlib.h on BSD-derived systems --- though this isn't
+ * necessary when compiling with -D_ANSI_SOURCE, which is the better solution.
+ */
 static void
-heapsort(u32 A[], unsigned length)
+heap_sort(u32 A[], unsigned length)
 {
 	A--; /* Use 1-based indices  */
 
@@ -698,8 +702,8 @@ sort_symbols(unsigned num_syms, const u32 freqs[restrict],
 	}
 
 	/* Sort the symbols counted in the last counter.  */
-	heapsort(symout + counters[num_counters - 2],
-		 counters[num_counters - 1] - counters[num_counters - 2]);
+	heap_sort(symout + counters[num_counters - 2],
+		  counters[num_counters - 1] - counters[num_counters - 2]);
 
 	return num_used_syms;
 }
