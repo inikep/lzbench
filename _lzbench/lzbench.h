@@ -87,7 +87,7 @@ typedef struct string_table
     string_table(std::string c1, uint64_t c2, uint64_t c3, uint64_t c4, uint64_t c5, std::string filename) : col1_algname(c1), col2_ctime(c2), col3_dtime(c3), col4_comprsize(c4), col5_origsize(c5), col6_filename(filename) {}
 } string_table_t;
 
-enum textformat_e { MARKDOWN=1, TEXT, CSV, TURBOBENCH };
+enum textformat_e { MARKDOWN=1, TEXT, TEXT_FULL, CSV, TURBOBENCH };
 enum timetype_e { FASTEST=1, AVERAGE, MEDIAN };
 
 typedef struct

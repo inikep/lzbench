@@ -67,9 +67,11 @@ void print_header(lzbench_params_t *params)
                 printf("Compressor name,Compression time in us,Decompression time in us,Original size,Compressed size,Ratio,Filename\n"); break;
             break;
         case TURBOBENCH:
-            printf("  Compressed  Ratio   Cspeed   Dspeed  Compressor name Filename\n"); break;
+            printf("  Compressed  Ratio   Cspeed   Dspeed         Compressor name Filename\n"); break;
         case TEXT:
             printf("Compressor name         Compress. Decompress. Compr. size  Ratio Filename\n"); break;
+        case TEXT_FULL:
+            printf("Compressor name         Compress. Decompress.  Orig. size  Compr. size  Ratio Filename\n"); break;
         case MARKDOWN:
             printf("| Compressor name         | Compression| Decompress.| Compr. size | Ratio | Filename |\n"); 
             printf("| ---------------         | -----------| -----------| ----------- | ----- | -------- |\n"); 
@@ -92,13 +94,17 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
         case TURBOBENCH:
             printf("%12llu %6.1f%9.2f%9.2f  %22s %s\n", (unsigned long long)row.col4_comprsize, ratio, cspeed, dspeed, row.col1_algname.c_str(), row.col6_filename.c_str()); break;
         case TEXT:
+        case TEXT_FULL:
             printf("%-23s", row.col1_algname.c_str());
             if (cspeed < 10) printf("%6.2f MB/s", cspeed); else printf("%6d MB/s", (int)cspeed);
             if (!dspeed)
                 printf("      ERROR");
             else
                 if (dspeed < 10) printf("%6.2f MB/s", dspeed); else printf("%6d MB/s", (int)dspeed); 
-            printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
+            if (params->textformat == TEXT_FULL)
+                printf("%12llu %12llu %6.2f %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); 
+            else
+                printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
         case MARKDOWN:
             printf("| %-23s ", row.col1_algname.c_str());
@@ -122,17 +128,21 @@ void print_time(lzbench_params_t *params, string_table_t& row)
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%llu,%llu,%llu,%.2f,%s\n", row.col1_algname.c_str(), (unsigned long long)ctime, (unsigned long long)dtime, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); break;
+            printf("%s,%llu,%llu,%llu,%llu,%.2f,%s\n", row.col1_algname.c_str(), (unsigned long long)ctime, (unsigned long long)dtime,  (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); break; 
         case TURBOBENCH:
             printf("%12llu %6.1f%9llu%9llu  %22s %s\n", (unsigned long long)row.col4_comprsize, ratio, (unsigned long long)ctime, (unsigned long long)dtime, row.col1_algname.c_str(), row.col6_filename.c_str()); break;
         case TEXT:
+        case TEXT_FULL:
             printf("%-23s", row.col1_algname.c_str());
             printf("%8llu us", (unsigned long long)ctime);
             if (!dtime)
                 printf("      ERROR");
             else
                 printf("%8llu us", (unsigned long long)dtime); 
-            printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
+            if (params->textformat == TEXT_FULL)
+                printf("%12llu %12llu %6.2f %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); 
+            else
+                printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
         case MARKDOWN:
             printf("| %-23s ", row.col1_algname.c_str());
@@ -533,7 +543,7 @@ void usage(lzbench_params_t* params)
     fprintf(stderr, " -iX,Y set min. number of compression and decompression iterations (default = %d, %d)\n", params->c_iters, params->d_iters);
     fprintf(stderr, " -l    list of available compressors and aliases\n");
     fprintf(stderr, " -mX   set memory limit to X MB (default = no limit)\n");
-    fprintf(stderr, " -oX   output text format 1=Markdown, 2=text, 3=CSV (default = %d)\n", params->textformat);
+    fprintf(stderr, " -oX   output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV (default = %d)\n", params->textformat);
     fprintf(stderr, " -pX   print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
     fprintf(stderr, " -r    disable real-time process priority\n");
     fprintf(stderr, " -sX   use only compressors with compression speed over X MB (default = %d MB)\n", params->cspeed);
@@ -604,6 +614,7 @@ int main( int argc, char** argv)
             break;
         case 'm':
             params->mem_limit = number << 20;
+            if (params->textformat == TEXT) params->textformat = TEXT_FULL;
             break;
         case 'o':
             params->textformat = (textformat_e)number;
