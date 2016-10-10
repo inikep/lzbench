@@ -468,7 +468,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
     real_insize = ftello(in);
     rewind(in);
 
-    if (params->mem_limit && real_insize > params->mem_limit)
+    if (params->mem_limit && real_insize > params->mem_limit / 4)
         insize = params->mem_limit / 4;
     else
         insize = real_insize;
@@ -502,7 +502,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
         lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
     }
 
-    if (params->mem_limit && real_insize > params->mem_limit)
+    if (params->mem_limit && real_insize > params->mem_limit / 4)
     {
         int i;
         std::string partname;
