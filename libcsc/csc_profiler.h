@@ -1,6 +1,6 @@
 #ifndef _CSC_PROFILE_H_
 #define _CSC_PROFILE_H_
-#include "csc_common.h"
+#include <csc_common.h>
 
 
 #ifdef _HAVE_PROFILER_

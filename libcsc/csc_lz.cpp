@@ -2,39 +2,40 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
-#include "csc_common.h"
-#include "csc_coder.h"
-#include "csc_model.h"
-#include "csc_lz.h"
+#include <csc_common.h>
+#include <csc_coder.h>
+#include <csc_model.h>
+#include <csc_lz.h>
 
-int LZ::Init(const CSCProps *p, Model *model)
+int LZ::Init(const CSCProps *p, Model *model, ISzAlloc *alloc)
 {
     model_ = model;
+    alloc_ = alloc;
 
     wnd_size_ = p->dict_size;
 
     if(wnd_size_ < MinDictSize) wnd_size_ = MinDictSize;
     if(wnd_size_ > MaxDictSize) wnd_size_ = MaxDictSize;
 
-    wnd_ = (uint8_t*)malloc(wnd_size_ + 8);
+    wnd_ = (uint8_t*)alloc_->Alloc(alloc_, wnd_size_ + 8);
     if (!wnd_)
         goto FREE_ON_ERROR;
 
     if (mf_.Init(wnd_, wnd_size_, p->bt_size, p->bt_hash_bits, 
-                p->hash_width, p->hash_bits))
+                p->hash_width, p->hash_bits, alloc_))
         goto FREE_ON_ERROR;
 
     good_len_ = p->good_len;
     bt_cyc_ = p->bt_cyc;
     ht_cyc_ = p->hash_width;
     mf_.SetArg(bt_cyc_, ht_cyc_, 1, good_len_);
-    appt_ = (MFUnit *)malloc(sizeof(MFUnit) * good_len_ + 1);
+    appt_ = (MFUnit *)alloc_->Alloc(alloc_, sizeof(MFUnit) * good_len_ + 1);
 
     Reset();
     return 0;
 
 FREE_ON_ERROR:
-    free(wnd_);
+    alloc_->Free(alloc_, wnd_);
     return -1;
 }
 
@@ -53,8 +54,8 @@ void LZ::Reset(void)
 void LZ::Destroy(void)
 {
     mf_.Destroy();
-    free(wnd_);
-    free(appt_);
+    alloc_->Free(alloc_, wnd_);
+    alloc_->Free(alloc_, appt_);
 }
 
 void LZ::EncodeNormal(uint8_t *src, uint32_t size, uint32_t lz_mode)

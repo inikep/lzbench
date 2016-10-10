@@ -1,4 +1,4 @@
-#include "csc_memio.h"
+#include <csc_memio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -12,7 +12,7 @@ int MemIO::ReadBlock(uint8_t *buffer, uint32_t &size, int rc1bc0)
         size = (*blist)->size;
         memcpy(buffer, (*blist)->buf, size);
         DataBlock *tb = (*blist)->next;
-        free(*blist);
+        alloc_->Free(alloc_, *blist);
         (*blist) = tb;
     } else {
         // read fresh, if meet the other kind of block, keep it in its buffer
@@ -40,6 +40,11 @@ int MemIO::ReadBlock(uint8_t *buffer, uint32_t &size, int rc1bc0)
                     + size_bytes[2];
             }
 
+            if (!cur_bsize || cur_bsize > bsize_) {
+                // must be a abnormal stream
+                return -1;
+            }
+
             iosize = size = (int)cur_bsize;
             if (((fb >> 7) & 0x1) == rc1bc0) {
                 // this is the block to read out
@@ -50,24 +55,21 @@ int MemIO::ReadBlock(uint8_t *buffer, uint32_t &size, int rc1bc0)
             } else {
                 // other kind of block, append it to list
                 // keep looping until meet the block it wants
-                DataBlock *newblock = (DataBlock *)malloc(sizeof(*newblock) + cur_bsize);
+                DataBlock *newblock = (DataBlock *)alloc_->Alloc(alloc_, sizeof(*newblock) + cur_bsize);
                 newblock->size = cur_bsize;
                 newblock->next = NULL;
                 is_->Read(is_, newblock->buf, &iosize);
                 if (iosize != cur_bsize) {
-                    free(newblock);
+                    alloc_->Free(alloc_, newblock);
                     return -1;
                 }
 
                 DataBlock dummy;
-                dummy.next = rc1bc0 ? bc_blocks_ : rc_blocks_;
+                dummy.next = *blist;
                 DataBlock *p = &dummy;
                 while(p->next) p = p->next;
                 p->next = newblock;
-                if (rc1bc0)
-                    bc_blocks_ = dummy.next;
-                else
-                    rc_blocks_ = dummy.next;
+                *blist = dummy.next;
             }
         }
     }
@@ -101,12 +103,26 @@ int MemIO::WriteBlock(uint8_t *buffer, uint32_t size, int rc1bc0)
     return size;
 }
 
-void MemIO::Init(void *iostream, uint32_t bsize)
+void MemIO::Init(void *iostream, uint32_t bsize, ISzAlloc *alloc)
 {
     ios_ = iostream;
     bsize_ = bsize;
     rc_blocks_ = NULL;
     bc_blocks_ = NULL;
+    alloc_ = alloc;
 }
 
 
+void MemIO::Destroy() {
+    while (rc_blocks_) {
+        DataBlock *next = rc_blocks_->next;
+        alloc_->Free(alloc_, rc_blocks_);
+        rc_blocks_ = next;
+    }
+
+    while (bc_blocks_) {
+        DataBlock *next = bc_blocks_->next;
+        alloc_->Free(alloc_, bc_blocks_);
+        bc_blocks_ = next;
+    }
+}

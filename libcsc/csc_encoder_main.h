@@ -1,18 +1,18 @@
 #ifndef _CCSC_H
 #define _CCSC_H
 
-#include "csc_model.h"
-#include "csc_filters.h"
-#include "csc_analyzer.h"
-#include "csc_lz.h"
-#include "csc_coder.h"
+#include <csc_model.h>
+#include <csc_filters.h>
+#include <csc_analyzer.h>
+#include <csc_lz.h>
+#include <csc_coder.h>
 
 class MemIO;
 
 class CSCEncoder
 {
 public:
-    int Init(const CSCProps *p, MemIO *io);
+    int Init(const CSCProps *p, MemIO *io, ISzAlloc *alloc);
     
 
     void WriteEOF();
@@ -37,8 +37,8 @@ public:
     
 
 private:
-    uint32_t fixedDataType; //
-    uint32_t typeArg1,typeArg2,typeArg3;
+    ISzAlloc *alloc_;
+    uint32_t fixed_datatype_;
     CSCProps p_;
 
     Filters filters_;

@@ -2,6 +2,7 @@
 #define _CSC_TYPEDEF_H_
 
 #include <stdint.h>
+#include <csc_common.h>
 
 const uint32_t KB = 1024;
 const uint32_t MB = 1048576;

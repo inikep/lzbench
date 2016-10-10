@@ -1,3 +1,6 @@
+v1.5
+- csc updated to 2016-01-11
+
 v1.4
 - zstd updated to v1.0.0
 - added libdeflate 2016-08-29 (thanks to Jørgen Ibsen)
