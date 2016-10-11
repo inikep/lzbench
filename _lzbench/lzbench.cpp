@@ -479,7 +479,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
     rewind(in);
 
     if (params->mem_limit && real_insize > params->mem_limit)
-        insize = params->mem_limit / 4;
+        insize = params->mem_limit;
     else
         insize = real_insize;
 
@@ -613,7 +613,7 @@ int main( int argc, char** argv)
             params->d_iters = number;
             break;
         case 'm':
-            params->mem_limit = number << 20;
+            params->mem_limit = number << 18; /*  total memory usage = mem_limit * 4  */
             if (params->textformat == TEXT) params->textformat = TEXT_FULL;
             break;
         case 'o':
