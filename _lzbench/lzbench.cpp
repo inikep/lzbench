@@ -122,7 +122,7 @@ void print_time(lzbench_params_t *params, string_table_t& row)
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%llu,%llu,%llu,%.2f,%s\n", row.col1_algname.c_str(), (unsigned long long)ctime, (unsigned long long)dtime, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); break;
+            printf("%s,%llu,%llu,%llu,%llu,%.2f,%s\n", row.col1_algname.c_str(), (unsigned long long)ctime, (unsigned long long)dtime,  (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); break;
         case TURBOBENCH:
             printf("%12llu %6.1f%9llu%9llu  %22s %s\n", (unsigned long long)row.col4_comprsize, ratio, (unsigned long long)ctime, (unsigned long long)dtime, row.col1_algname.c_str(), row.col6_filename.c_str()); break;
         case TEXT:
@@ -132,7 +132,7 @@ void print_time(lzbench_params_t *params, string_table_t& row)
                 printf("      ERROR");
             else
                 printf("%8llu us", (unsigned long long)dtime); 
-            printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
+            printf("%12llu %12llu %6.2f %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
         case MARKDOWN:
             printf("| %-23s ", row.col1_algname.c_str());
@@ -468,7 +468,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
     real_insize = ftello(in);
     rewind(in);
 
-    if (params->mem_limit && real_insize > params->mem_limit)
+    if (params->mem_limit && real_insize > params->mem_limit / 4)
         insize = params->mem_limit / 4;
     else
         insize = real_insize;
@@ -502,7 +502,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
         lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
     }
 
-    if (params->mem_limit && real_insize > params->mem_limit)
+    if (params->mem_limit && real_insize > params->mem_limit / 4)
     {
         int i;
         std::string partname;
