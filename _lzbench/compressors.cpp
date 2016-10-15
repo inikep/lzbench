@@ -168,7 +168,7 @@ int64_t lzbench_csc_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
     osss.buf = outbuf + CSC_PROP_SIZE;
 	osss.len = CSC_PROP_SIZE;
 	
-	CSCEncHandle h = CSCEnc_Create(&p, (ISeqOutStream*)&osss);
+	CSCEncHandle h = CSCEnc_Create(&p, (ISeqOutStream*)&osss, NULL);
 	CSCEnc_Encode(h, (ISeqInStream*)&isss, NULL);
 	CSCEnc_Encode_Flush(h);
 	CSCEnc_Destroy(h);
@@ -194,7 +194,7 @@ int64_t lzbench_csc_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
     osss.buf = outbuf;
 	osss.len = 0;
 
-	CSCDecHandle h = CSCDec_Create(&p, (ISeqInStream*)&isss);
+	CSCDecHandle h = CSCDec_Create(&p, (ISeqInStream*)&isss, NULL);
 	CSCDec_Decode(h, (ISeqOutStream*)&osss, NULL);
 	CSCDec_Destroy(h);
 	

@@ -65,11 +65,15 @@ int MemIO::ReadBlock(uint8_t *buffer, uint32_t &size, int rc1bc0)
                 }
 
                 DataBlock dummy;
-                dummy.next = *blist;
+                dummy.next = rc1bc0 ? bc_blocks_ : rc_blocks_;
                 DataBlock *p = &dummy;
                 while(p->next) p = p->next;
                 p->next = newblock;
-                *blist = dummy.next;
+                if (rc1bc0) {
+                    bc_blocks_ = dummy.next;
+                } else {
+                    rc_blocks_ = dummy.next;
+                }
             }
         }
     }

@@ -89,14 +89,17 @@ int MatchFinder::Init(uint8_t *wnd,
     if (ht_bits_ && ht_width_) {
         ht6_ = mfbuf_ + cpos;
         cpos += ht_width_ * (1 << ht_bits_);
-    } else 
+    } else {
         ht6_ = NULL;
+    }
 
     if (bt_bits_) {
         bt_head_ = mfbuf_ + cpos;
         cpos += (1 << (uint64_t)bt_bits_);
         bt_nodes_ = mfbuf_ + cpos;
         cpos += bt_size_ * 2;
+    } else {
+        bt_head_ = NULL;
     }
 
     return 0;

@@ -84,7 +84,7 @@ blosclz 2015-11-10
 brieflz 1.1.0
 brotli 0.5.2
 crush 1.0
-csc 2016-01-11
+csc 2016-10-13
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
 fastlz 0.1
 gipfeli 2016-07-13
