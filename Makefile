@@ -19,7 +19,7 @@ ifeq ($(BUILD_ARCH),32-bit)
 	CODE_FLAGS += -m32
 	LDFLAGS += -m32
 	DONT_BUILD_LZSSE ?= 1
-else
+else ifeq ($(shell uname -m),x86_64)
 	DEFINES	+= -D__x86_64__
 endif
 
