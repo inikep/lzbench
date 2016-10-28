@@ -34,6 +34,7 @@ else
     # MacOS doesn't support -lrt -static
     ifeq ($(shell uname -s),Darwin)
         DONT_BUILD_LZHAM ?= 1
+        DONT_BUILD_CSC ?= 1
     else
         LDFLAGS	+= -lrt -static
     endif
@@ -59,6 +60,12 @@ CFLAGS = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES)
 CFLAGS_O2 = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
 
 
+ifeq "$(DONT_BUILD_CSC)" "1"
+    DEFINES += -DBENCH_REMOVE_CSC
+else
+	CSC_FILES = libcsc/csc_analyzer.o libcsc/csc_coder.o libcsc/csc_dec.o libcsc/csc_enc.o libcsc/csc_encoder_main.o
+	CSC_FILES += libcsc/csc_filters.o libcsc/csc_lz.o libcsc/csc_memio.o libcsc/csc_mf.o libcsc/csc_model.o libcsc/csc_profiler.o libcsc/csc_default_alloc.o 
+endif
 
 ifeq "$(DONT_BUILD_LZSSE)" "1"
     DEFINES += -DBENCH_REMOVE_LZSSE
@@ -80,6 +87,7 @@ ifeq "$(DONT_BUILD_GLZA)" "1"
 else
     GLZA_FILES = glza/GLZAcomp.o glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
 endif
+
 
 ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
 
@@ -125,9 +133,6 @@ DENSITY_FILES += density/main_footer.o density/main_header.o density/memory_loca
 DENSITY_FILES += density/spookyhash/spookyhash.o density/spookyhash/context.o
 
 SNAPPY_FILES = snappy/snappy-sinksource.o snappy/snappy-stubs-internal.o snappy/snappy.o 
-
-CSC_FILES = libcsc/csc_analyzer.o libcsc/csc_coder.o libcsc/csc_dec.o libcsc/csc_enc.o libcsc/csc_encoder_main.o
-CSC_FILES += libcsc/csc_filters.o libcsc/csc_lz.o libcsc/csc_memio.o libcsc/csc_mf.o libcsc/csc_model.o libcsc/csc_profiler.o libcsc/csc_default_alloc.o 
 
 BROTLI_FILES = brotli/common/dictionary.o brotli/dec/bit_reader.o brotli/dec/decode.o brotli/dec/huffman.o brotli/dec/state.o
 BROTLI_FILES += brotli/enc/backward_references.o brotli/enc/block_splitter.o brotli/enc/brotli_bit_stream.o brotli/enc/encode.o
