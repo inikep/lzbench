@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <csc_model.h>
 
-#if defined(_MSC_VER) || defined(__MMX__)
-#  include <mmintrin.h>
+#if defined(_MSC_VER) || defined(__SSE__)
+#  include <xmmintrin.h>
 #  define PREFETCH_T0(addr) _mm_prefetch(((char *)(addr)),_MM_HINT_T0)
 #elif defined(__GNUC__) && ((__GNUC__ > 3) || ((__GNUC__ == 3) && (__GNUC_MINOR__ >= 2)))
 #  define PREFETCH_T0(addr) __builtin_prefetch(addr)

@@ -25,6 +25,17 @@
 #include <string.h>
 
 
+int istrcmp(const char *str1, const char *str2)
+{
+    int c1, c2;
+    while (1) {
+        c1 = tolower((unsigned char)(*str1++));
+        c2 = tolower((unsigned char)(*str2++));
+        if (c1 == 0 || c1 != c2) return c1 == c2 ? 0 : c1 > c2 ? 1 : -1;
+    }
+}
+
+
 void format(std::string& s,const char* formatstring, ...) 
 {
    char buff[1024];
@@ -425,7 +436,7 @@ void lzbench_test_with_params(lzbench_params_t *params, const char *namesWithPar
     {
         for (int i=0; i<LZBENCH_ALIASES_COUNT; i++)
         {
-            if (strcmp(cnames[k].c_str(), alias_desc[i].name)==0)
+            if (istrcmp(cnames[k].c_str(), alias_desc[i].name)==0)
             {
                 lzbench_test_with_params(params, alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, rate);
                 goto next_k;
@@ -441,7 +452,7 @@ void lzbench_test_with_params(lzbench_params_t *params, const char *namesWithPar
                 bool found = false;
                 for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
                 {
-                    if (strcmp(comp_desc[i].name, cparams[0].c_str()) == 0)
+                    if (istrcmp(comp_desc[i].name, cparams[0].c_str()) == 0)
                     {
                         found = true;
                        // printf("%s %s %s\n", cparams[0].c_str(), comp_desc[i].version, cparams[j].c_str());
@@ -695,7 +706,7 @@ int main( int argc, char** argv)
         setpriority(PRIO_PROCESS, 0, -20);
     #endif
     } else {
-        LZBENCH_PRINT(2, "The real-time process priority disabled\n", 0);
+        LZBENCH_PRINT(2, "The real-time process priority disabled%c\n", ' ');
     }
 
     bool first_time = true;
