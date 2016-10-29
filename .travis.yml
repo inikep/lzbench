@@ -8,11 +8,20 @@ matrix:
         apt:
           packages:
             - qemu-system-ppc
-            - binfmt-support
             - qemu-user-static
             - gcc-powerpc-linux-gnu
             - g++-powerpc-linux-gnu
-      env: CC_COMPILER=powerpc-linux-gnu-gcc CXX_COMPILER=powerpc-linux-gnu-g++ QEMU_INTERPRETER=qemu-ppc-static
+      env: QEMU_INTERPRETER=qemu-ppc64-static CC_COMPILER=powerpc-linux-gnu-gcc CXX_COMPILER=powerpc-linux-gnu-g++ MORE_OPTIONS="MOREFLAGS=-m64 DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1"
+    - dist: trusty
+      sudo: required
+      addons:
+        apt:
+          packages:
+            - qemu-system-ppc
+            - qemu-user-static
+            - gcc-powerpc-linux-gnu
+            - g++-powerpc-linux-gnu
+      env: QEMU_INTERPRETER=qemu-ppc-static CC_COMPILER=powerpc-linux-gnu-gcc CXX_COMPILER=powerpc-linux-gnu-g++ MORE_OPTIONS="DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1"
     # Container-based Ubuntu 12.04 LTS Server Edition 64 bit (doesn't support 32-bit includes)
     - os: linux
       sudo: false

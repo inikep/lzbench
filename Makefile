@@ -29,8 +29,9 @@ ifneq (,$(filter Windows%,$(OS)))
 	LDFLAGS += -lshell32 -lole32 -loleaut32 -static
 else
 	ifeq ($(shell uname -p),powerpc)
-		# density doesn't work with big-endian PowerPC
+		# density and yappy don't work with big-endian PowerPC
 		DONT_BUILD_DENSITY ?= 1
+		DONT_BUILD_YAPPY ?= 1
 	endif
 
 	# MacOS doesn't support -lrt -static
@@ -124,7 +125,7 @@ LIBDEFLATE_FILES = libdeflate/adler32.o libdeflate/aligned_malloc.o libdeflate/c
 LIBDEFLATE_FILES += libdeflate/deflate_decompress.o libdeflate/gzip_compress.o libdeflate/gzip_decompress.o
 LIBDEFLATE_FILES += libdeflate/x86_cpu_features.o libdeflate/zlib_compress.o libdeflate/zlib_decompress.o
 
-MISC_FILES = crush/crush.o shrinker/shrinker.o yappy/yappy.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
+MISC_FILES = crush/crush.o shrinker/shrinker.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
 MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o slz/slz.o
 
 
@@ -173,6 +174,12 @@ ifeq "$(DONT_BUILD_TORNADO)" "1"
     LZMA_FILES += lzma/Alloc.o
 else
     MISC_FILES += tornado/tor_test.o
+endif
+
+ifeq "$(DONT_BUILD_YAPPY)" "1"
+    DEFINES += -DBENCH_REMOVE_YAPPY
+else
+    MISC_FILES += yappy/yappy.o 
 endif
 
 
