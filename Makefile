@@ -1,7 +1,8 @@
 #BUILD_ARCH = 32-bit
 
-# LZSSE requires gcc with support of __SSE4_1__
-ifeq ($(shell echo|$(CC) -dM -E - -march=native|grep -c SSE4_1), 0)
+ifeq ($(BUILD_ARCH),32-bit)
+	CODE_FLAGS += -m32
+	LDFLAGS += -m32
 	DONT_BUILD_LZSSE ?= 1
 endif
 
@@ -14,17 +15,9 @@ ifeq (1,$(filter 1,$(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \< 4
     DONT_BUILD_GLZA ?= 1
 endif
 
-# if BUILD_ARCH is 32-bit
-ifeq ($(BUILD_ARCH),32-bit)
-	CODE_FLAGS += -m32
-	LDFLAGS += -m32
+# LZSSE requires gcc with support of __SSE4_1__
+ifeq ($(shell echo|$(CC) -dM -E - -march=native|grep -c SSE4_1), 0)
 	DONT_BUILD_LZSSE ?= 1
-else ifeq ($(shell uname -m),x86_64)
-	DEFINES	+= -D__x86_64__
-else
-	# this is a 64-bit, non-x86 platform
-	# tornado has issues with casting a 64-bit pointer to a 32-bit int, so drop it
-	DONT_BUILD_TORNADO ?= 1
 endif
 
 
@@ -35,14 +28,19 @@ ifneq (,$(filter Windows%,$(OS)))
 	endif
 	LDFLAGS += -lshell32 -lole32 -loleaut32 -static
 else
-    # MacOS doesn't support -lrt -static
-    ifeq ($(shell uname -s),Darwin)
-        DONT_BUILD_LZHAM ?= 1
-        DONT_BUILD_CSC ?= 1
-    else
-        LDFLAGS	+= -lrt -static
-    endif
-    LDFLAGS	+= -lpthread
+	ifeq ($(shell uname -p),powerpc)
+		# density doesn't work with big-endian PowerPC
+		DONT_BUILD_DENSITY ?= 1
+	endif
+
+	# MacOS doesn't support -lrt -static
+	ifeq ($(shell uname -s),Darwin)
+		DONT_BUILD_LZHAM ?= 1
+		DONT_BUILD_CSC ?= 1
+	else
+		LDFLAGS	+= -lrt -static
+	endif
+	LDFLAGS	+= -lpthread
 endif
 
 
@@ -62,42 +60,7 @@ endif
 
 CFLAGS = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES)
 CFLAGS_O2 = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
-
-
-ifeq "$(DONT_BUILD_CSC)" "1"
-    DEFINES += -DBENCH_REMOVE_CSC
-else
-	CSC_FILES = libcsc/csc_analyzer.o libcsc/csc_coder.o libcsc/csc_dec.o libcsc/csc_enc.o libcsc/csc_encoder_main.o
-	CSC_FILES += libcsc/csc_filters.o libcsc/csc_lz.o libcsc/csc_memio.o libcsc/csc_mf.o libcsc/csc_model.o libcsc/csc_profiler.o libcsc/csc_default_alloc.o 
-endif
-
-ifeq "$(DONT_BUILD_LZSSE)" "1"
-    DEFINES += -DBENCH_REMOVE_LZSSE
-else
-    LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
-endif
-
-ifeq "$(DONT_BUILD_LZHAM)" "1"
-    DEFINES += -DBENCH_REMOVE_LZHAM
-else
-    LZHAM_FILES = lzham/lzham_assert.o lzham/lzham_checksum.o lzham/lzham_huffman_codes.o lzham/lzham_lzbase.o
-    LZHAM_FILES += lzham/lzham_lzcomp.o lzham/lzham_lzcomp_internal.o lzham/lzham_lzdecomp.o lzham/lzham_lzdecompbase.o
-    LZHAM_FILES += lzham/lzham_match_accel.o lzham/lzham_mem.o lzham/lzham_platform.o lzham/lzham_lzcomp_state.o
-    LZHAM_FILES += lzham/lzham_prefix_coding.o lzham/lzham_symbol_codec.o lzham/lzham_timer.o lzham/lzham_vector.o lzham/lzham_lib.o
-endif
-
-ifeq "$(DONT_BUILD_GLZA)" "1"
-    DEFINES += -DBENCH_REMOVE_GLZA
-else
-    GLZA_FILES = glza/GLZAcomp.o glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
-endif
-
-ifeq "$(DONT_BUILD_TORNADO)" "1"
-    DEFINES += "-DBENCH_REMOVE_TORNADO"
-    LZMA_FILES += lzma/Alloc.o
-else
-    MISC_FILES += tornado/tor_test.o
-endif
+LDFLAGS += $(MOREFLAGS)
 
 
 ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
@@ -135,14 +98,6 @@ LZFSE_FILES = lzfse/lzfse_decode.o lzfse/lzfse_decode_base.o lzfse/lzfse_encode.
 
 QUICKLZ_FILES = quicklz/quicklz151b7.o quicklz/quicklz1.o quicklz/quicklz2.o quicklz/quicklz3.o
 
-DENSITY_FILES = density/block_decode.o density/block_encode.o density/block_footer.o density/block_header.o density/block_mode_marker.o
-DENSITY_FILES += density/buffer.o density/globals.o density/kernel_chameleon_decode.o density/kernel_chameleon_dictionary.o
-DENSITY_FILES += density/kernel_chameleon_encode.o density/kernel_cheetah_decode.o density/kernel_cheetah_dictionary.o
-DENSITY_FILES += density/kernel_cheetah_encode.o density/kernel_lion_decode.o density/kernel_lion_dictionary.o
-DENSITY_FILES += density/kernel_lion_encode.o density/kernel_lion_form_model.o density/main_decode.o density/main_encode.o
-DENSITY_FILES += density/main_footer.o density/main_header.o density/memory_location.o density/memory_teleport.o density/stream.o
-DENSITY_FILES += density/spookyhash/spookyhash.o density/spookyhash/context.o
-
 SNAPPY_FILES = snappy/snappy-sinksource.o snappy/snappy-stubs-internal.o snappy/snappy.o 
 
 BROTLI_FILES = brotli/common/dictionary.o brotli/dec/bit_reader.o brotli/dec/decode.o brotli/dec/huffman.o brotli/dec/state.o
@@ -171,6 +126,55 @@ LIBDEFLATE_FILES += libdeflate/x86_cpu_features.o libdeflate/zlib_compress.o lib
 
 MISC_FILES = crush/crush.o shrinker/shrinker.o yappy/yappy.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
 MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o slz/slz.o
+
+
+ifeq "$(DONT_BUILD_CSC)" "1"
+    DEFINES += -DBENCH_REMOVE_CSC
+else
+	CSC_FILES = libcsc/csc_analyzer.o libcsc/csc_coder.o libcsc/csc_dec.o libcsc/csc_enc.o libcsc/csc_encoder_main.o
+	CSC_FILES += libcsc/csc_filters.o libcsc/csc_lz.o libcsc/csc_memio.o libcsc/csc_mf.o libcsc/csc_model.o libcsc/csc_profiler.o libcsc/csc_default_alloc.o 
+endif
+
+ifeq "$(DONT_BUILD_DENSITY)" "1"
+    DEFINES += -DBENCH_REMOVE_DENSITY
+else
+	DENSITY_FILES = density/block_decode.o density/block_encode.o density/block_footer.o density/block_header.o density/block_mode_marker.o
+	DENSITY_FILES += density/buffer.o density/globals.o density/kernel_chameleon_decode.o density/kernel_chameleon_dictionary.o
+	DENSITY_FILES += density/kernel_chameleon_encode.o density/kernel_cheetah_decode.o density/kernel_cheetah_dictionary.o
+	DENSITY_FILES += density/kernel_cheetah_encode.o density/kernel_lion_decode.o density/kernel_lion_dictionary.o
+	DENSITY_FILES += density/kernel_lion_encode.o density/kernel_lion_form_model.o density/main_decode.o density/main_encode.o
+	DENSITY_FILES += density/main_footer.o density/main_header.o density/memory_location.o density/memory_teleport.o density/stream.o
+	DENSITY_FILES += density/spookyhash/spookyhash.o density/spookyhash/context.o
+endif
+
+ifeq "$(DONT_BUILD_GLZA)" "1"
+    DEFINES += -DBENCH_REMOVE_GLZA
+else
+    GLZA_FILES = glza/GLZAcomp.o glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
+endif
+
+ifeq "$(DONT_BUILD_LZHAM)" "1"
+    DEFINES += -DBENCH_REMOVE_LZHAM
+else
+    LZHAM_FILES = lzham/lzham_assert.o lzham/lzham_checksum.o lzham/lzham_huffman_codes.o lzham/lzham_lzbase.o
+    LZHAM_FILES += lzham/lzham_lzcomp.o lzham/lzham_lzcomp_internal.o lzham/lzham_lzdecomp.o lzham/lzham_lzdecompbase.o
+    LZHAM_FILES += lzham/lzham_match_accel.o lzham/lzham_mem.o lzham/lzham_platform.o lzham/lzham_lzcomp_state.o
+    LZHAM_FILES += lzham/lzham_prefix_coding.o lzham/lzham_symbol_codec.o lzham/lzham_timer.o lzham/lzham_vector.o lzham/lzham_lib.o
+endif
+
+ifeq "$(DONT_BUILD_LZSSE)" "1"
+    DEFINES += -DBENCH_REMOVE_LZSSE
+else
+    LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
+endif
+
+ifeq "$(DONT_BUILD_TORNADO)" "1"
+    DEFINES += "-DBENCH_REMOVE_TORNADO"
+    LZMA_FILES += lzma/Alloc.o
+else
+    MISC_FILES += tornado/tor_test.o
+endif
+
 
 
 all: lzbench

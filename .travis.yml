@@ -11,6 +11,7 @@ matrix:
             - binfmt-support
             - qemu-user-static
             - gcc-powerpc-linux-gnu
+            - g++-powerpc-linux-gnu
       env: CC_COMPILER=powerpc-linux-gnu-gcc CXX_COMPILER=powerpc-linux-gnu-g++
     # Container-based Ubuntu 12.04 LTS Server Edition 64 bit (doesn't support 32-bit includes)
     - os: linux
