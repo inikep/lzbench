@@ -19,8 +19,12 @@ ifeq ($(BUILD_ARCH),32-bit)
 	CODE_FLAGS += -m32
 	LDFLAGS += -m32
 	DONT_BUILD_LZSSE ?= 1
-else
+else ifeq ($(shell uname -m),x86_64)
 	DEFINES	+= -D__x86_64__
+else
+	# this is a 64-bit, non-x86 platform
+	# tornado has issues with casting a 64-bit pointer to a 32-bit int, so drop it
+	DONT_BUILD_TORNADO ?= 1
 endif
 
 
@@ -158,9 +162,15 @@ LIBDEFLATE_FILES = libdeflate/adler32.o libdeflate/aligned_malloc.o libdeflate/c
 LIBDEFLATE_FILES += libdeflate/deflate_decompress.o libdeflate/gzip_compress.o libdeflate/gzip_decompress.o
 LIBDEFLATE_FILES += libdeflate/x86_cpu_features.o libdeflate/zlib_compress.o libdeflate/zlib_decompress.o
 
-MISC_FILES = crush/crush.o shrinker/shrinker.o yappy/yappy.o fastlz/fastlz.o tornado/tor_test.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
+MISC_FILES = crush/crush.o shrinker/shrinker.o yappy/yappy.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
 MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o slz/slz.o
 
+ifeq "$(DONT_BUILD_TORNADO)" "1"
+    DEFINES += "-DBENCH_REMOVE_TORNADO"
+    LZMA_FILES += lzma/Alloc.o
+else
+    MISC_FILES += tornado/tor_test.o
+endif
 
 all: lzbench
 
