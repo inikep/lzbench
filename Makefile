@@ -32,6 +32,7 @@ else
 		# density and yappy don't work with big-endian PowerPC
 		DONT_BUILD_DENSITY ?= 1
 		DONT_BUILD_YAPPY ?= 1
+		DONT_BUILD_ZLING ?= 1
 	endif
 
 	# MacOS doesn't support -lrt -static
