@@ -92,6 +92,13 @@ else
     GLZA_FILES = glza/GLZAcomp.o glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
 endif
 
+ifeq "$(DONT_BUILD_TORNADO)" "1"
+    DEFINES += "-DBENCH_REMOVE_TORNADO"
+    LZMA_FILES += lzma/Alloc.o
+else
+    MISC_FILES += tornado/tor_test.o
+endif
+
 
 ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
 
@@ -165,12 +172,6 @@ LIBDEFLATE_FILES += libdeflate/x86_cpu_features.o libdeflate/zlib_compress.o lib
 MISC_FILES = crush/crush.o shrinker/shrinker.o yappy/yappy.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
 MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o slz/slz.o
 
-ifeq "$(DONT_BUILD_TORNADO)" "1"
-    DEFINES += "-DBENCH_REMOVE_TORNADO"
-    LZMA_FILES += lzma/Alloc.o
-else
-    MISC_FILES += tornado/tor_test.o
-endif
 
 all: lzbench
 
