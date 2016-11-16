@@ -88,6 +88,10 @@ void print_header(lzbench_params_t *params)
             printf("| Compressor name         | Compression| Decompress.| Compr. size | Ratio | Filename |\n"); 
             printf("| ---------------         | -----------| -----------| ----------- | ----- | -------- |\n"); 
             break;
+        case MARKDOWN2:
+            printf("| Compressor name         | Ratio | Compression| Decompress.|\n"); 
+            printf("| ---------------         | ------| -----------| ---------- |\n"); 
+            break;
     }
 }
 
@@ -126,6 +130,16 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
             else
                 if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed); 
             printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
+            break;
+        case MARKDOWN2:
+            ratio = 1.0*row.col5_origsize / row.col4_comprsize;
+            printf("| %-23s |%6.3f ", row.col1_algname.c_str(), ratio);
+            if (cspeed < 10) printf("|%6.2f MB/s ", cspeed); else printf("|%6d MB/s ", (int)cspeed);
+            if (!dspeed)
+                printf("|      ERROR ");
+            else
+                if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed); 
+            printf("|\n");
             break;
     }
 }
@@ -660,7 +674,7 @@ void usage(lzbench_params_t* params)
 {
     fprintf(stderr, "usage: " PROGNAME " [options] input [input2] [input3]\n\nwhere [input] is a file or a directory and [options] are:\n");
     fprintf(stderr, " -bX   set block/chunk size to X KB (default = MIN(filesize,%d KB))\n", (int)(params->chunk_size>>10));
-    fprintf(stderr, " -cX   sort results by column number X\n");
+    fprintf(stderr, " -cX   sort results by column (1=algname, 2=ctime, 3=dtime, 4=comprsize)\n");
     fprintf(stderr, " -eX   X=compressors separated by '/' with parameters specified after ',' (deflt=fast)\n");
     fprintf(stderr, " -iX,Y set min. number of compression and decompression iterations (default = %d, %d)\n", params->c_iters, params->d_iters);
     fprintf(stderr, " -j    join files in memory but compress them independently (for many small files)\n");
