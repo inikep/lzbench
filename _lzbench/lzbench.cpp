@@ -239,9 +239,11 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
     int64_t clen;
     size_t outpart, part, sum = 0;
     uint8_t *start = inbuf;
-    compr_sizes.clear();
+    int cscount = chunk_sizes.size();
 
-    for (int i=0; i<chunk_sizes.size(); i++)
+    compr_sizes.resize(cscount);
+
+    for (int i=0; i<cscount; i++)
     {
         part = chunk_sizes[i];
         outpart = GET_COMPRESS_BOUND(part);
@@ -260,7 +262,7 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
         inbuf += part;
         outbuf += clen;
         outsize -= clen;
-        compr_sizes.push_back(clen);
+        compr_sizes[i] = clen;
         sum += clen;
     }
     return sum;
@@ -272,8 +274,9 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>&
     int64_t dlen;
     size_t part, sum = 0;
     uint8_t *outstart = outbuf;
+    int cscount = compr_sizes.size();
 
-    for (int i=0; i<compr_sizes.size(); i++)
+    for (int i=0; i<cscount; i++)
     {
         part = compr_sizes[i];
         if (part == chunk_sizes[i]) // uncompressed
@@ -673,19 +676,19 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
 void usage(lzbench_params_t* params)
 {
     fprintf(stderr, "usage: " PROGNAME " [options] input [input2] [input3]\n\nwhere [input] is a file or a directory and [options] are:\n");
-    fprintf(stderr, " -bX   set block/chunk size to X KB (default = MIN(filesize,%d KB))\n", (int)(params->chunk_size>>10));
-    fprintf(stderr, " -cX   sort results by column (1=algname, 2=ctime, 3=dtime, 4=comprsize)\n");
-    fprintf(stderr, " -eX   X=compressors separated by '/' with parameters specified after ',' (deflt=fast)\n");
+    fprintf(stderr, " -b#   set block/chunk size to # KB (default = MIN(filesize,%d KB))\n", (int)(params->chunk_size>>10));
+    fprintf(stderr, " -c#   sort results by column # (1=algname, 2=ctime, 3=dtime, 4=comprsize)\n");
+    fprintf(stderr, " -e#   #=compressors separated by '/' with parameters specified after ',' (deflt=fast)\n");
     fprintf(stderr, " -iX,Y set min. number of compression and decompression iterations (default = %d, %d)\n", params->c_iters, params->d_iters);
     fprintf(stderr, " -j    join files in memory but compress them independently (for many small files)\n");
     fprintf(stderr, " -l    list of available compressors and aliases\n");
-    fprintf(stderr, " -mX   set memory limit to X MB (default = no limit)\n");
-    fprintf(stderr, " -oX   output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV (default = %d)\n", params->textformat);
-    fprintf(stderr, " -pX   print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
+    fprintf(stderr, " -m#   set memory limit to # MB (default = no limit)\n");
+    fprintf(stderr, " -o#   output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV (default = %d)\n", params->textformat);
+    fprintf(stderr, " -p#   print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
 #ifdef UTIL_HAS_CREATEFILELIST
     fprintf(stderr, " -r    operate recursively on directories\n");
 #endif
-    fprintf(stderr, " -sX   use only compressors with compression speed over X MB (default = %d MB)\n", params->cspeed);
+    fprintf(stderr, " -s#   use only compressors with compression speed over # MB (default = %d MB)\n", params->cspeed);
     fprintf(stderr, " -tX,Y set min. time in seconds for compression and decompression (default = %.0f, %.0f)\n", params->cmintime/1000.0, params->dmintime/1000.0);
     fprintf(stderr, " -v    disable progress information\n");
     fprintf(stderr, " -x    disable real-time process priority\n");
