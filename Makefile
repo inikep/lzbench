@@ -106,8 +106,9 @@ BROTLI_FILES += brotli/enc/encode_parallel.o brotli/enc/entropy_encode.o brotli/
 BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/streams.o brotli/enc/utf8_util.o brotli/enc/compress_fragment.o brotli/enc/compress_fragment_two_pass.o
 BROTLI_FILES += brotli/enc/streams.o brotli/enc/cluster.o brotli/enc/bit_cost.o 
 
-ZSTD_FILES = zstd/lib/decompress/huf_decompress.o zstd/lib/decompress/zstd_decompress.o zstd/lib/common/error_private.o zstd/lib/common/fse_decompress.o zstd/lib/common/entropy_common.o zstd/lib/common/zstd_common.o
-ZSTD_FILES += zstd/lib/common/xxhash.o zstd/lib/compress/fse_compress.o zstd/lib/compress/huf_compress.o zstd/lib/compress/zstd_compress.o 
+ZSTD_FILES = zstd/lib/decompress/zstd_decompress.o zstd/lib/decompress/huf_decompress.o zstd/lib/common/zstd_common.o zstd/lib/common/fse_decompress.o 
+ZSTD_FILES += zstd/lib/common/xxhash.o zstd/lib/common/error_private.o zstd/lib/common/entropy_common.o 
+ZSTD_FILES += zstd/lib/compress/zstd_compress.o zstd/lib/compress/fse_compress.o zstd/lib/compress/huf_compress.o 
 
 BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depacks.o 
 
@@ -220,7 +221,7 @@ lzsse/lzsse8/lzsse8.o: lzsse/lzsse8/lzsse8.cpp
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
-lzbench: $(GLZA_FILES) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
+lzbench: $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
