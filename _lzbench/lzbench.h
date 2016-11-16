@@ -109,7 +109,7 @@ struct less_using_4th_column { inline bool operator() (const string_table_t& str
 struct less_using_5th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col5_origsize < struct2.col5_origsize); } };
 
 typedef int64_t (*compress_func)(char *in, size_t insize, char *out, size_t outsize, size_t, size_t, char*);
-typedef char* (*init_func)(size_t insize, size_t level);
+typedef char* (*init_func)(size_t insize, size_t, size_t);
 typedef void (*deinit_func)(char* workmem);
 
 typedef struct
@@ -201,9 +201,9 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "yappy",      "2014-03-22",  0,  99,    0,       0, lzbench_yappy_compress,      lzbench_yappy_decompress,      lzbench_yappy_init,      NULL },
     { "zlib",       "1.2.8",       1,   9,    0,       0, lzbench_zlib_compress,       lzbench_zlib_decompress,       NULL,                    NULL },
     { "zling",      "2016-01-10",  0,   4,    0,       0, lzbench_zling_compress,      lzbench_zling_decompress,      NULL,                    NULL },
-    { "zstd",       "1.1.1",       1,  22,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       NULL,                    NULL },
-    { "zstd22",     "1.1.1",       1,  22,   22,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       NULL,                    NULL },
-    { "zstd24",     "1.1.1",       1,  22,   24,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       NULL,                    NULL },
+    { "zstd",       "1.1.1",       1,  22,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstd22",     "1.1.1",       1,  22,   22,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstd24",     "1.1.1",       1,  22,   24,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
 };
 
 

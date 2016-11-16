@@ -318,7 +318,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
 
     if (desc->max_block_size != 0 && chunk_size > desc->max_block_size) chunk_size = desc->max_block_size;
     if (!desc->compress || !desc->decompress) goto done;
-    if (desc->init) workmem = desc->init(chunk_size, param1);
+    if (desc->init) workmem = desc->init(chunk_size, param1, param2);
 
     if (params->cspeed > 0)
     {
