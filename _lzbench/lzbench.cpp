@@ -326,7 +326,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
         }
     }
     
-//    printf("%s chunk_sizes=%d\n", desc->name, chunk_sizes.size());
+    LZBENCH_PRINT(5, "%s chunk_sizes=%d\n", desc->name, chunk_sizes.size());
 
     total_c_iters = 0;
     GetTime(timer_ticks);
@@ -485,79 +485,169 @@ next_k:
 }
 
 
-void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool first_time)
+int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned ifnIdx, char* encoder_list)
+{
+    bench_rate_t rate;
+    size_t comprsize, insize, inpos, totalsize;
+    uint8_t *inbuf, *compbuf, *decomp;
+    std::vector<size_t> file_sizes;
+    std::string text;
+    FILE* in;
+    const char* pch;
+
+    totalsize = UTIL_getTotalFileSize(inFileNames, ifnIdx);
+    if (totalsize == 0) return 1;
+
+    comprsize = GET_COMPRESS_BOUND(totalsize);
+    inbuf = (uint8_t*)malloc(totalsize + PAD_SIZE);
+    compbuf = (uint8_t*)malloc(comprsize);
+    decomp = (uint8_t*)calloc(1, totalsize + PAD_SIZE);
+
+    if (!inbuf || !compbuf || !decomp)
+    {
+        printf("Not enough memory, please use -m option!\n");
+        return 1;
+    }
+
+    InitTimer(rate);
+    format(text, "%d files", ifnIdx);
+    params->in_filename = text.c_str();
+    inpos = 0;
+
+    for (int i=0; i<ifnIdx; i++)
+    {
+        if (!(in=fopen(inFileNames[i], "rb"))) {
+            perror(inFileNames[i]);
+            continue;
+        } 
+
+        fseeko(in, 0L, SEEK_END);
+        insize = ftello(in);
+        rewind(in);
+
+        if (inpos + insize > totalsize) { printf("inpos + insize > totalsize\n"); goto _clean; };
+        insize = fread(inbuf+inpos, 1, insize, in);
+        file_sizes.push_back(insize);
+        inpos += insize;
+        fclose(in);
+    }
+
+    if (file_sizes.size() == 0) 
+        goto _clean;
+
+    totalsize = inpos;
+
+    {
+        std::vector<size_t> single_file;
+        lzbench_params_t params_memcpy;
+
+        print_header(params);
+        memcpy(&params_memcpy, params, sizeof(lzbench_params_t));
+        params_memcpy.cmintime = params_memcpy.dmintime = 0;
+        params_memcpy.c_iters = params_memcpy.d_iters = 0;
+        params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
+        single_file.push_back(totalsize);
+        lzbench_test(&params_memcpy, file_sizes, &comp_desc[0], 0, inbuf, totalsize, compbuf, totalsize, decomp, rate, 0);
+    }
+
+    lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, totalsize, compbuf, comprsize, decomp, rate);
+
+_clean:
+    free(inbuf);
+    free(compbuf);
+    free(decomp);
+
+    return 0;
+}
+
+
+int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned ifnIdx, char* encoder_list)
 {
     bench_rate_t rate;
     size_t comprsize, insize, real_insize;
     uint8_t *inbuf, *compbuf, *decomp;
     std::vector<size_t> file_sizes;
+    FILE* in;
+    const char* pch;
 
-    InitTimer(rate);
-
-    fseeko(in, 0L, SEEK_END);
-    real_insize = ftello(in);
-    rewind(in);
-
-    if (params->mem_limit && real_insize > params->mem_limit)
-        insize = params->mem_limit;
-    else
-        insize = real_insize;
-
-    comprsize = GET_COMPRESS_BOUND(insize);
-
-//	printf("insize=%llu comprsize=%llu %llu\n", insize, comprsize, MAX(MEMCPY_BUFFER_SIZE, insize));
-    inbuf = (uint8_t*)malloc(insize + PAD_SIZE);
-    compbuf = (uint8_t*)malloc(comprsize);
-    decomp = (uint8_t*)calloc(1, insize + PAD_SIZE);
-
-    if (!inbuf || !compbuf || !decomp)
+    for (int i=0; i<ifnIdx; i++)
     {
-        printf("Not enough memory, please use -m option!");
-        exit(1);
-    }
+        if (!(in=fopen(inFileNames[i], "rb"))) {
+            perror(inFileNames[i]);
+            continue;
+        } 
+        
+        pch = strrchr(inFileNames[i], '\\');
+        params->in_filename = pch ? pch+1 : inFileNames[i];
 
-    insize = fread(inbuf, 1, insize, in);
+        InitTimer(rate);
 
-    if (first_time)
-    {
-        if (insize < (1<<20)) printf("WARNING: For small files with memcpy and fast compressors you can expect the cache effect causing much higher compression and decompression speed\n");
+        fseeko(in, 0L, SEEK_END);
+        real_insize = ftello(in);
+        rewind(in);
 
-        print_header(params);
+        if (params->mem_limit && real_insize > params->mem_limit)
+            insize = params->mem_limit;
+        else
+            insize = real_insize;
 
-        lzbench_params_t params_memcpy;
-        memcpy(&params_memcpy, params, sizeof(lzbench_params_t));
-        params_memcpy.cmintime = params_memcpy.dmintime = 0;
-        params_memcpy.c_iters = params_memcpy.d_iters = 0;
-        params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
-        file_sizes.push_back(insize);
-        lzbench_test(&params_memcpy, file_sizes, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
-        file_sizes.clear();
-    }
+        comprsize = GET_COMPRESS_BOUND(insize);
+    //	printf("insize=%llu comprsize=%llu %llu\n", insize, comprsize, MAX(MEMCPY_BUFFER_SIZE, insize));
+        inbuf = (uint8_t*)malloc(insize + PAD_SIZE);
+        compbuf = (uint8_t*)malloc(comprsize);
+        decomp = (uint8_t*)calloc(1, insize + PAD_SIZE);
 
-    if (params->mem_limit && real_insize > params->mem_limit)
-    {
-        int i;
-        std::string partname;
-        const char* filename = params->in_filename;
-        for (i=1; insize > 0; i++)
+        if (!inbuf || !compbuf || !decomp)
         {
-            format(partname, "%s part %d", filename, i);
-            params->in_filename = partname.c_str();
+            printf("Not enough memory, please use -m option!");
+            return 1;
+        }
+
+        insize = fread(inbuf, 1, insize, in);
+
+        if (i == 0)
+        {
+            print_header(params);
+
+            lzbench_params_t params_memcpy;
+            memcpy(&params_memcpy, params, sizeof(lzbench_params_t));
+            params_memcpy.cmintime = params_memcpy.dmintime = 0;
+            params_memcpy.c_iters = params_memcpy.d_iters = 0;
+            params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
+            file_sizes.push_back(insize);
+            lzbench_test(&params_memcpy, file_sizes, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
+            file_sizes.clear();
+        }
+
+        if (params->mem_limit && real_insize > params->mem_limit)
+        {
+            int i;
+            std::string partname;
+            const char* filename = params->in_filename;
+            for (i=1; insize > 0; i++)
+            {
+                format(partname, "%s part %d", filename, i);
+                params->in_filename = partname.c_str();
+                file_sizes.push_back(insize);
+                lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+                file_sizes.clear();
+                insize = fread(inbuf, 1, insize, in);
+            }
+        }
+        else
+        {
             file_sizes.push_back(insize);
             lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
             file_sizes.clear();
-            insize = fread(inbuf, 1, insize, in);
         }
-    }
-    else
-    {
-        file_sizes.push_back(insize);
-        lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+
+        fclose(in);
+        free(inbuf);
+        free(compbuf);
+        free(decomp);
     }
     
-    free(inbuf);
-    free(compbuf);
-    free(decomp);
+    return 0;
 }
 
 
@@ -568,13 +658,14 @@ void usage(lzbench_params_t* params)
     fprintf(stderr, " -cX   sort results by column number X\n");
     fprintf(stderr, " -eX   X=compressors separated by '/' with parameters specified after ',' (deflt=fast)\n");
     fprintf(stderr, " -iX,Y set min. number of compression and decompression iterations (default = %d, %d)\n", params->c_iters, params->d_iters);
+    fprintf(stderr, " -j    join files in memory but compress them independently (for many small files)\n");
     fprintf(stderr, " -l    list of available compressors and aliases\n");
     fprintf(stderr, " -mX   set memory limit to X MB (default = no limit)\n");
     fprintf(stderr, " -oX   output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV (default = %d)\n", params->textformat);
     fprintf(stderr, " -pX   print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
     fprintf(stderr, " -r    disable real-time process priority\n");
     fprintf(stderr, " -sX   use only compressors with compression speed over X MB (default = %d MB)\n", params->cspeed);
-    fprintf(stderr, " -tX,Y set min. time in seconds for compression and decompression (default = %.0f, %.1f)\n", params->cmintime/1000.0, params->dmintime/1000.0);
+    fprintf(stderr, " -tX,Y set min. time in seconds for compression and decompression (default = %.0f, %.0f)\n", params->cmintime/1000.0, params->dmintime/1000.0);
     fprintf(stderr, " -v    disable progress information\n");
     fprintf(stderr, " -z    show (de)compression times instead of speed\n");
     fprintf(stderr,"\nExample usage:\n");
@@ -583,7 +674,6 @@ void usage(lzbench_params_t* params)
     fprintf(stderr,"  " PROGNAME " -t3 -u5 fname = 3 sec compression and 5 sec decompression loops\n");
     fprintf(stderr,"  " PROGNAME " -t0 -u0 -i3 -j5 -elz5 fname = 3 compression and 5 decompression iter.\n");
     fprintf(stderr,"  " PROGNAME " -t0u0i3j5 -elz5 fname = the same as above with aggregated parameters\n");
-    exit(0);
 }
 
 
@@ -591,11 +681,12 @@ int main( int argc, char** argv)
 {
     FILE *in;
     char* encoder_list = NULL;
-    int sort_col = 0, real_time = 1;
+    int result = 0, sort_col = 0, real_time = 1;
     lzbench_params_t lzparams;
     lzbench_params_t* params = &lzparams;
     const char** inFileNames = (const char**) calloc(argc, sizeof(char*));
     unsigned ifnIdx=0;
+    bool join = false;
 #ifdef UTIL_HAS_CREATEFILELIST
     const char** extendedFileList = NULL;
     char* fileNamesBuf = NULL;
@@ -649,7 +740,7 @@ int main( int argc, char** argv)
             }
             break;
         case 'j':
-            params->d_iters = number;
+            join = true;
             break;
         case 'm':
             params->mem_limit = number << 18; /*  total memory usage = mem_limit * 4  */
@@ -693,7 +784,7 @@ int main( int argc, char** argv)
         case '-': // --help
         case 'h':
             usage(params);
-            break;
+            goto _clean;
         case 'l':
             printf("\nAvailable compressors for -e option:\n");
             printf("all - alias for all available compressors\n");
@@ -713,7 +804,7 @@ int main( int argc, char** argv)
             return 0;
         default:
             fprintf(stderr, "unknown option: %s\n", argv[1]);
-            exit(1);
+            result = 1; goto _clean;
         }
         argument = numPtr;
     }
@@ -730,7 +821,7 @@ int main( int argc, char** argv)
     LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")   Assembled by P.Skibinski\n", (uint32_t)(8 * sizeof(uint8_t*)));
     LZBENCH_PRINT(5, "params: chunk_size=%d c_iters=%d d_iters=%d cspeed=%d cmintime=%d dmintime=%d encoder_list=%s\n", (int)params->chunk_size, params->c_iters, params->d_iters, params->cspeed, params->cmintime, params->dmintime, encoder_list);
 
-    if (ifnIdx < 1) usage(params);
+    if (ifnIdx < 1)  { usage(params); goto _clean; }
 
     if (real_time)
     {
@@ -751,19 +842,11 @@ int main( int argc, char** argv)
     }
 #endif
 
-    bool first_time = true;
-    for (int i=0; i<ifnIdx; i++)
-    {
-        if (!(in=fopen(inFileNames[i], "rb"))) {
-            perror(inFileNames[i]);
-        } else {
-            const char* pch = strrchr(inFileNames[i], '\\');
-            params->in_filename = pch ? pch+1 : inFileNames[i];
-            lzbench_alloc(params, in, encoder_list, first_time);
-            first_time = false;
-            fclose(in);
-        }
-    }
+    /* Main function */
+    if (join)
+        result = lzbench_join(params, inFileNames, ifnIdx, encoder_list);
+    else
+        result = lzbench_main(params, inFileNames, ifnIdx, encoder_list);
 
     if (params->chunk_size > 10 * (1<<20))
         LZBENCH_PRINT(2, "done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dMB cSpeed=%dMB)\n", params->c_iters, params->d_iters, params->cmintime/1000.0, params->dmintime/1000.0, (int)(params->chunk_size >> 20), params->cspeed);
@@ -801,7 +884,7 @@ _clean:
     else
 #endif
         free((void*)inFileNames);
-    return 0;
+    return result;
 }
 
 
