@@ -17,6 +17,7 @@
 */
 
 #include "lzbench.h"
+#include "util.h"
 #include <numeric>
 #include <algorithm> // sort
 #include <stdlib.h> 
@@ -547,7 +548,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
 
 void usage(lzbench_params_t* params)
 {
-    fprintf(stderr, "usage: " PROGNAME " [options] input_file [input_file2] [input_file3]\n\nwhere [options] are:\n");
+    fprintf(stderr, "usage: " PROGNAME " [options] input [input2] [input3]\n\nwhere [input] is a file or a directory and [options] are:\n");
     fprintf(stderr, " -bX   set block/chunk size to X KB (default = MIN(filesize,%d KB))\n", (int)(params->chunk_size>>10));
     fprintf(stderr, " -cX   sort results by column number X\n");
     fprintf(stderr, " -eX   X=compressors separated by '/' with parameters specified after ',' (deflt=fast)\n");
@@ -578,6 +579,18 @@ int main( int argc, char** argv)
     int sort_col = 0, real_time = 1;
     lzbench_params_t lzparams;
     lzbench_params_t* params = &lzparams;
+    const char** inFileNames = (const char**) calloc(argc, sizeof(char*));
+    unsigned ifnIdx=0;
+#ifdef UTIL_HAS_CREATEFILELIST
+    const char** extendedFileList = NULL;
+    char* fileNamesBuf = NULL;
+    unsigned fileNamesNb, recursive=0;
+#endif
+
+    if (inFileNames==NULL) {
+        LZBENCH_PRINT(2, "Allocation error : not enough memory \n", ' ');
+        return 1;
+    }
 
     memset(params, 0, sizeof(lzbench_params_t));
     params->timetype = FASTEST;
@@ -693,36 +706,48 @@ int main( int argc, char** argv)
     argc--;
     }
 
+    while (argc > 1) {
+        inFileNames[ifnIdx++] = argv[1];
+        argv++;
+        argc--;
+    }
+
     LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")   Assembled by P.Skibinski\n", (uint32_t)(8 * sizeof(uint8_t*)));
     LZBENCH_PRINT(5, "params: chunk_size=%d c_iters=%d d_iters=%d cspeed=%d cmintime=%d dmintime=%d encoder_list=%s\n", (int)params->chunk_size, params->c_iters, params->d_iters, params->cspeed, params->cmintime, params->dmintime, encoder_list);
 
-    if (argc<2) usage(params);
+    if (ifnIdx < 1) usage(params);
 
     if (real_time)
     {
-    #ifdef WINDOWS
-        SetPriorityClass(GetCurrentProcess(), REALTIME_PRIORITY_CLASS);
-    #else
-        setpriority(PRIO_PROCESS, 0, -20);
-    #endif
+        SET_HIGH_PRIORITY;
     } else {
         LZBENCH_PRINT(2, "The real-time process priority disabled%c\n", ' ');
     }
 
+
+#ifdef UTIL_HAS_CREATEFILELIST
+    extendedFileList = UTIL_createFileList(inFileNames, ifnIdx, &fileNamesBuf, &fileNamesNb);
+    if (extendedFileList) {
+        unsigned u;
+        for (u=0; u<fileNamesNb; u++) LZBENCH_PRINT(4, "%u %s\n", u, extendedFileList[u]);
+        free((void*)inFileNames);
+        inFileNames = extendedFileList;
+        ifnIdx = fileNamesNb;
+    }
+#endif
+
     bool first_time = true;
-    while (argc > 1)
+    for (int i=0; i<ifnIdx; i++)
     {
-        if (!(in=fopen(argv[1], "rb"))) {
-            perror(argv[1]);
+        if (!(in=fopen(inFileNames[i], "rb"))) {
+            perror(inFileNames[i]);
         } else {
-            const char* pch = strrchr(argv[1], '\\');
-            params->in_filename = pch ? pch+1 : argv[1];
+            const char* pch = strrchr(inFileNames[i], '\\');
+            params->in_filename = pch ? pch+1 : inFileNames[i];
             lzbench_alloc(params, in, encoder_list, first_time);
             first_time = false;
             fclose(in);
         }
-        argv++;
-        argc--;
     }
 
     if (params->chunk_size > 10 * (1<<20))
@@ -730,10 +755,7 @@ int main( int argc, char** argv)
     else
         LZBENCH_PRINT(2, "done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dKB cSpeed=%dMB)\n", params->c_iters, params->d_iters, params->cmintime/1000.0, params->dmintime/1000.0, (int)(params->chunk_size >> 10), params->cspeed);
 
-
-    if (encoder_list) free(encoder_list);
-
-    if (sort_col <= 0) return 0;
+    if (sort_col <= 0) goto _clean;
 
     printf("\nThe results sorted by column number %d:\n", sort_col);
     print_header(params);
@@ -755,6 +777,16 @@ int main( int argc, char** argv)
         else
             print_time(params, *it);
     }
+
+_clean:
+    if (encoder_list) free(encoder_list);
+#ifdef UTIL_HAS_CREATEFILELIST
+    if (extendedFileList)
+        UTIL_freeFileList(extendedFileList, fileNamesBuf);
+    else
+#endif
+        free((void*)inFileNames);
+    return 0;
 }
 
 

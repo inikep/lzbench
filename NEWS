@@ -1,4 +1,5 @@
 v1.5
+- the input can be now a file name or a directory
 - added lz5huf v2.0 RC
 - lz5 updated to v2.0 RC
 - lz4 updated to v1.7.3
