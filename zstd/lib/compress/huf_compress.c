@@ -35,24 +35,8 @@
 /* **************************************************************
 *  Compiler specifics
 ****************************************************************/
-#if defined (__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */)
-/* inline is defined */
-#elif defined(_MSC_VER)
-#  define inline __inline
-#else
-#  define inline /* disable inline */
-#endif
-
-
 #ifdef _MSC_VER    /* Visual Studio */
-#  define FORCE_INLINE static __forceinline
 #  pragma warning(disable : 4127)        /* disable: C4127: conditional expression is constant */
-#else
-#  ifdef __GNUC__
-#    define FORCE_INLINE static inline __attribute__((always_inline))
-#  else
-#    define FORCE_INLINE static inline
-#  endif
 #endif
 
 
@@ -171,13 +155,14 @@ size_t HUF_readCTable (HUF_CElt* CTable, U32 maxSymbolValue, const void* src, si
     }   }
 
     /* fill val */
-    {   U16 nbPerRank[HUF_TABLELOG_MAX+1] = {0};
-        U16 valPerRank[HUF_TABLELOG_MAX+1] = {0};
+    {   U16 nbPerRank[HUF_TABLELOG_MAX+2]  = {0};  /* support w=0=>n=tableLog+1 */
+        U16 valPerRank[HUF_TABLELOG_MAX+2] = {0};
         { U32 n; for (n=0; n<nbSymbols; n++) nbPerRank[CTable[n].nbBits]++; }
         /* determine stating value per rank */
+        valPerRank[tableLog+1] = 0;   /* for w==0 */
         {   U16 min = 0;
-            U32 n; for (n=HUF_TABLELOG_MAX; n>0; n--) {
-                valPerRank[n] = min;      /* get starting value within each rank */
+            U32 n; for (n=tableLog; n>0; n--) {  /* start at n=tablelog <-> w=1 */
+                valPerRank[n] = min;     /* get starting value within each rank */
                 min += nbPerRank[n];
                 min >>= 1;
         }   }

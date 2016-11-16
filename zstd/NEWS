@@ -1,3 +1,28 @@
+v1.1.1
+New : command -M#, --memory=, --memlimit=, --memlimit-decompress= to limit allowed memory consumption
+New : doc/zstd_manual.html, by Przemyslaw Skibinski
+Improved : slightly better compression ratio at --ultra levels (>= 20)
+Improved : better memory usage when using streaming compression API, thanks to @Rogier-5 report
+Added : API : ZSTD_initCStream_usingCDict(), ZSTD_initDStream_usingDDict() (experimental section)
+Added : example/multiple_streaming_compression.c
+Changed : zstd_errors.h is now installed within /include (and replaces errors_public.h)
+Updated man page
+Fixed : zstd-small, zstd-compress and zstd-decompress compilation targets
+
+v1.1.0
+New : contrib/pzstd, parallel version of zstd, by Nick Terrell
+added : NetBSD install target (#338)
+Improved : speed for batches of small files
+Improved : speed of zlib wrapper, by Przemyslaw Skibinski
+Changed : libzstd on Windows supports legacy formats, by Christophe Chevalier
+Fixed : CLI -d output to stdout by default when input is stdin (#322)
+Fixed : CLI correctly detects console on Mac OS-X
+Fixed : CLI supports recursive mode `-r` on Mac OS-X
+Fixed : Legacy decoders use unified error codes, reported by benrg (#341), fixed by Przemyslaw Skibinski
+Fixed : compatibility with OpenBSD, reported by Juan Francisco Cantero Hurtado (#319)
+Fixed : compatibility with Hurd, by Przemyslaw Skibinski (#365)
+Fixed : zstd-pgo, reported by octoploid (#329)
+
 v1.0.0
 Change Licensing, all project is now BSD, Copyright Facebook
 Small decompression speed improvement
@@ -28,6 +53,9 @@ Fixed : combined --test amd --rm, reported by Andreas M. Nilsson
 Modified : minor compression level adaptations
 Updated : compression format specification to v0.2.0
 changed : zstd.h moved to /lib directory
+
+v0.7.5
+Transition version, supporting decoding of v0.8.x
 
 v0.7.4
 Added : homebrew for Mac, by Daniel Cade
@@ -179,6 +207,6 @@ frame concatenation support
 v0.1.1
 fix compression bug
 detects write-flush errors
-git@github.com:Cyan4973/zstd.git
+
 v0.1.0
 first release
