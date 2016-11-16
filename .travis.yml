@@ -2,6 +2,22 @@ language: c
 matrix:
   fast_finish: true
   include:
+    # OS X Mavericks
+    - os: osx
+      env: CC_COMPILER=clang CXX_COMPILER=clang++
+
+
+    # Container-based Ubuntu 12.04 LTS Server Edition 64 bit (doesn't support 32-bit includes)
+    - os: linux
+      sudo: false
+      env: CC_COMPILER=gcc CXX_COMPILER=g++
+
+    - os: linux
+      sudo: false
+      env: CC_COMPILER=clang CXX_COMPILER=clang++
+
+
+    # Ubuntu 14.04 LTS Server Edition 64 bit
     - dist: trusty
       sudo: required
       addons:
@@ -12,6 +28,7 @@ matrix:
             - gcc-aarch64-linux-gnu
             - g++-aarch64-linux-gnu
       env: QEMU_INTERPRETER=qemu-aarch64-static CC_COMPILER=aarch64-linux-gnu-gcc CXX_COMPILER=aarch64-linux-gnu-g++
+
     - dist: trusty
       sudo: required
       addons:
@@ -22,6 +39,7 @@ matrix:
             - gcc-arm-linux-gnueabi
             - g++-arm-linux-gnueabi
       env: QEMU_INTERPRETER=qemu-arm-static CC_COMPILER=arm-linux-gnueabi-gcc CXX_COMPILER=arm-linux-gnueabi-g++
+
     - dist: trusty
       sudo: required
       addons:
@@ -32,6 +50,7 @@ matrix:
             - gcc-powerpc-linux-gnu
             - g++-powerpc-linux-gnu
       env: QEMU_INTERPRETER=qemu-ppc64-static CC_COMPILER=powerpc-linux-gnu-gcc CXX_COMPILER=powerpc-linux-gnu-g++ MORE_OPTIONS="MOREFLAGS=-m64 DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1 DONT_BUILD_ZLING=1"
+
     - dist: trusty
       sudo: required
       addons:
@@ -42,17 +61,11 @@ matrix:
             - gcc-powerpc-linux-gnu
             - g++-powerpc-linux-gnu
       env: QEMU_INTERPRETER=qemu-ppc-static CC_COMPILER=powerpc-linux-gnu-gcc CXX_COMPILER=powerpc-linux-gnu-g++ MORE_OPTIONS="DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1 DONT_BUILD_ZLING=1"
-    # Container-based Ubuntu 12.04 LTS Server Edition 64 bit (doesn't support 32-bit includes)
-    - os: linux
-      sudo: false
-      env: CC_COMPILER=gcc CXX_COMPILER=g++
-    - os: linux
-      sudo: false
-      env: CC_COMPILER=clang CXX_COMPILER=clang++
-    # Ubuntu 14.04 LTS Server Edition 64 bit
+
     - dist: trusty
       sudo: required
       env: CC_COMPILER=gcc CXX_COMPILER=g++
+
     - dist: trusty
       sudo: required
       addons:
@@ -61,6 +74,7 @@ matrix:
             - libc6-dev-i386
             - g++-multilib
       env: CC_COMPILER=gcc CXX_COMPILER=g++ MORE_OPTIONS="BUILD_ARCH=32-bit"
+
     - dist: trusty
       sudo: required
       addons:
@@ -70,6 +84,7 @@ matrix:
           packages:
             - g++-4.9
       env: CC_COMPILER=gcc-4.9 CXX_COMPILER=g++-4.9
+
     - dist: trusty
       sudo: required
       addons:
@@ -79,6 +94,7 @@ matrix:
           packages:
             - g++-5
       env: CC_COMPILER=gcc-5 CXX_COMPILER=g++-5
+
     - dist: trusty
       sudo: required
       addons:
@@ -90,6 +106,7 @@ matrix:
             - g++-5-multilib
             - gcc-multilib
       env: CC_COMPILER=gcc-5 CXX_COMPILER=g++-5 MORE_OPTIONS="BUILD_ARCH=32-bit"
+
     - dist: trusty
       sudo: required
       addons:
@@ -99,6 +116,7 @@ matrix:
           packages:
             - g++-6
       env: CC_COMPILER=gcc-6 CXX_COMPILER=g++-6
+
     - dist: trusty
       sudo: required
       addons:
@@ -110,6 +128,7 @@ matrix:
             - g++-6-multilib
             - gcc-multilib
       env: CC_COMPILER=gcc-6 CXX_COMPILER=g++-6 MORE_OPTIONS="BUILD_ARCH=32-bit"
+
     - dist: trusty
       sudo: required
       addons:
@@ -120,6 +139,7 @@ matrix:
           packages:
             - clang-3.5
       env: CC_COMPILER=clang-3.5 CXX_COMPILER=clang++-3.5
+
     - dist: trusty
       sudo: required
       addons:
@@ -130,6 +150,7 @@ matrix:
           packages:
             - clang-3.6
       env: CC_COMPILER=clang-3.6 CXX_COMPILER=clang++-3.6
+
     - dist: trusty
       sudo: required
       addons:
@@ -140,10 +161,6 @@ matrix:
           packages:
             - clang-3.8
       env: CC_COMPILER=clang-3.8 CXX_COMPILER=clang++-3.8
-    # OS X Mavericks
-    - os: osx
-      compiler: gcc
-      env: CC_COMPILER=clang CXX_COMPILER=clang++
 
 script:
   - $CC_COMPILER -v
