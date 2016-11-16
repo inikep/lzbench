@@ -47,7 +47,7 @@ endif
 
 
 DEFINES     += -I. -Izstd/lib -Izstd/lib/common -Ixpack/common -Ilibcsc
-DEFINES     += -DHAVE_CONFIG_H -DXXH_NAMESPACE=ZSTD_
+DEFINES     += -DHAVE_CONFIG_H -DXXH_NAMESPACE=LZB_ -DLZ5_USE_HUFFMAN
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
 
@@ -90,7 +90,7 @@ LZRW_FILES = lzrw/lzrw1-a.o lzrw/lzrw1.o lzrw/lzrw2.o lzrw/lzrw3.o lzrw/lzrw3-a.
 
 LZMA_FILES = lzma/LzFind.o lzma/LzmaDec.o lzma/LzmaEnc.o
 
-LZ4_FILES = lz5/lz5.o lz5/lz5hc.o lz4/lz4.o lz4/lz4hc.o 
+LZ4_FILES = lz5/lz5_compress.o lz5/lz5_decompress.o lz4/lz4.o lz4/lz4hc.o 
 
 LZF_FILES = lzf/lzf_c_ultra.o lzf/lzf_c_very.o lzf/lzf_d.o
 
@@ -106,8 +106,8 @@ BROTLI_FILES += brotli/enc/encode_parallel.o brotli/enc/entropy_encode.o brotli/
 BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/streams.o brotli/enc/utf8_util.o brotli/enc/compress_fragment.o brotli/enc/compress_fragment_two_pass.o
 BROTLI_FILES += brotli/enc/streams.o brotli/enc/cluster.o brotli/enc/bit_cost.o 
 
-ZSTD_FILES = zstd/lib/decompress/huf_decompress.o zstd/lib/decompress/zstd_decompress.o zstd/lib/common/fse_decompress.o zstd/lib/common/entropy_common.o zstd/lib/common/zstd_common.o zstd/lib/common/xxhash.o
-ZSTD_FILES += zstd/lib/compress/fse_compress.o zstd/lib/compress/huf_compress.o zstd/lib/compress/zstd_compress.o 
+ZSTD_FILES = zstd/lib/decompress/huf_decompress.o zstd/lib/decompress/zstd_decompress.o zstd/lib/common/error_private.o zstd/lib/common/fse_decompress.o zstd/lib/common/entropy_common.o zstd/lib/common/zstd_common.o
+ZSTD_FILES += zstd/lib/common/xxhash.o zstd/lib/compress/fse_compress.o zstd/lib/compress/huf_compress.o zstd/lib/compress/zstd_compress.o 
 
 BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depacks.o 
 

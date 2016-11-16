@@ -1,5 +1,11 @@
 v1.5
+- added lz5huf v2.0 RC
+- lz5 updated to v2.0 RC
+- lz4 updated to v1.7.3
+- zstd updated to v1.1.1
 - csc updated to 2016-10-13
+- improved PowerPC support
+- fixed -m option (thanks to Julian Kunkel)
 
 v1.4
 - zstd updated to v1.0.0
