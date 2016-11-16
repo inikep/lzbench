@@ -283,7 +283,7 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>&
 }
 
 
-void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate, size_t param1)
+void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate, size_t param1)
 {
     float speed;
     int i, total_c_iters, total_d_iters;
@@ -295,7 +295,6 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
     bool decomp_error = false;
     char* workmem = NULL;
     size_t param2 = desc->additional_param;
-    size_t tmpsize = insize;
     size_t chunk_size = (params->chunk_size > insize) ? insize : params->chunk_size;
 
     LZBENCH_PRINT(5, "*** trying %s insize=%d comprsize=%d chunk_size=%d\n", desc->name, (int)insize, (int)comprsize, (int)chunk_size);
@@ -318,13 +317,16 @@ void lzbench_test(lzbench_params_t *params, const compressor_desc_t* desc, int l
         }
     }
 
-    while (tmpsize > 0)
-    {
-        chunk_sizes.push_back(MIN(tmpsize, chunk_size));
-        tmpsize -= MIN(tmpsize, chunk_size);
+    for (int i=0; i<file_sizes.size(); i++) {
+        size_t tmpsize = file_sizes[i];
+        while (tmpsize > 0)
+        {
+            chunk_sizes.push_back(MIN(tmpsize, chunk_size));
+            tmpsize -= MIN(tmpsize, chunk_size);
+        }
     }
-
-    //printf("%s chunk_sizes=%d\n", desc->name, chunk_sizes.size());
+    
+//    printf("%s chunk_sizes=%d\n", desc->name, chunk_sizes.size());
 
     total_c_iters = 0;
     GetTime(timer_ticks);
@@ -427,7 +429,7 @@ done:
 }
 
 
-void lzbench_test_with_params(lzbench_params_t *params, const char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
+void lzbench_test_with_params(lzbench_params_t *params, std::vector<size_t> &file_sizes, const char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
 {
     std::vector<std::string> cnames, cparams;
 
@@ -444,7 +446,7 @@ void lzbench_test_with_params(lzbench_params_t *params, const char *namesWithPar
         {
             if (istrcmp(cnames[k].c_str(), alias_desc[i].name)==0)
             {
-                lzbench_test_with_params(params, alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+                lzbench_test_with_params(params, file_sizes, alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, rate);
                 goto next_k;
             }
         }
@@ -465,10 +467,10 @@ void lzbench_test_with_params(lzbench_params_t *params, const char *namesWithPar
                         if (j >= cparams.size())
                         {                          
                             for (int level=comp_desc[i].first_level; level<=comp_desc[i].last_level; level++)
-                                lzbench_test(params, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, rate, level);
+                                lzbench_test(params, file_sizes, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, rate, level);
                         }
                         else
-                            lzbench_test(params, &comp_desc[i], atoi(cparams[j].c_str()), inbuf, insize, compbuf, comprsize, decomp, rate, atoi(cparams[j].c_str()));
+                            lzbench_test(params, file_sizes, &comp_desc[i], atoi(cparams[j].c_str()), inbuf, insize, compbuf, comprsize, decomp, rate, atoi(cparams[j].c_str()));
                         break;
                     }
                 }
@@ -488,6 +490,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
     bench_rate_t rate;
     size_t comprsize, insize, real_insize;
     uint8_t *inbuf, *compbuf, *decomp;
+    std::vector<size_t> file_sizes;
 
     InitTimer(rate);
 
@@ -526,7 +529,9 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
         params_memcpy.cmintime = params_memcpy.dmintime = 0;
         params_memcpy.c_iters = params_memcpy.d_iters = 0;
         params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
-        lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
+        file_sizes.push_back(insize);
+        lzbench_test(&params_memcpy, file_sizes, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
+        file_sizes.clear();
     }
 
     if (params->mem_limit && real_insize > params->mem_limit)
@@ -538,12 +543,17 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
         {
             format(partname, "%s part %d", filename, i);
             params->in_filename = partname.c_str();
-            lzbench_test_with_params(params, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+            file_sizes.push_back(insize);
+            lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+            file_sizes.clear();
             insize = fread(inbuf, 1, insize, in);
         }
     }
     else
-        lzbench_test_with_params(params, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+    {
+        file_sizes.push_back(insize);
+        lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+    }
     
     free(inbuf);
     free(compbuf);

@@ -207,7 +207,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 };
 
 
-#if defined(__arm64__) || defined(__aarch64__)
+#if defined(__arm__) || defined(__aarch64__)
     #define BROTLI_LEVELS "brotli,0,2,5,8/"
 #else
     #define BROTLI_LEVELS "brotli,0,2,5,8,11/"
