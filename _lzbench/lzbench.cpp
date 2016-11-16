@@ -496,8 +496,11 @@ int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned if
     const char* pch;
 
     totalsize = UTIL_getTotalFileSize(inFileNames, ifnIdx);
-    if (totalsize == 0) return 1;
-
+    if (totalsize == 0) {
+        printf("Could not find input files\n");
+        return 1;
+    }
+    
     comprsize = GET_COMPRESS_BOUND(totalsize);
     inbuf = (uint8_t*)malloc(totalsize + PAD_SIZE);
     compbuf = (uint8_t*)malloc(comprsize);
@@ -510,8 +513,6 @@ int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned if
     }
 
     InitTimer(rate);
-    format(text, "%d files", ifnIdx);
-    params->in_filename = text.c_str();
     inpos = 0;
 
     for (int i=0; i<ifnIdx; i++)
@@ -535,6 +536,10 @@ int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned if
     if (file_sizes.size() == 0) 
         goto _clean;
 
+    format(text, "%d files", file_sizes.size());
+    params->in_filename = text.c_str();
+
+    LZBENCH_PRINT(5, "totalsize=%d inpos=%d\n", (int)totalsize, (int)inpos);
     totalsize = inpos;
 
     {
@@ -663,10 +668,13 @@ void usage(lzbench_params_t* params)
     fprintf(stderr, " -mX   set memory limit to X MB (default = no limit)\n");
     fprintf(stderr, " -oX   output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV (default = %d)\n", params->textformat);
     fprintf(stderr, " -pX   print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
-    fprintf(stderr, " -r    disable real-time process priority\n");
+#ifdef UTIL_HAS_CREATEFILELIST
+    fprintf(stderr, " -r    operate recursively on directories\n");
+#endif
     fprintf(stderr, " -sX   use only compressors with compression speed over X MB (default = %d MB)\n", params->cspeed);
     fprintf(stderr, " -tX,Y set min. time in seconds for compression and decompression (default = %.0f, %.0f)\n", params->cmintime/1000.0, params->dmintime/1000.0);
     fprintf(stderr, " -v    disable progress information\n");
+    fprintf(stderr, " -x    disable real-time process priority\n");
     fprintf(stderr, " -z    show (de)compression times instead of speed\n");
     fprintf(stderr,"\nExample usage:\n");
     fprintf(stderr,"  " PROGNAME " -ezstd filename = selects all levels of zstd\n");
@@ -754,7 +762,7 @@ int main( int argc, char** argv)
             params->timetype = (timetype_e)number;
             break;
         case 'r':
-            real_time = 0;
+            recursive = 1;
             break;
         case 's':
             params->cspeed = number;
@@ -777,6 +785,9 @@ int main( int argc, char** argv)
             break;
         case 'v':
             params->verbose = number;
+            break;
+        case 'x':
+            real_time = 0;
             break;
         case 'z':
             params->show_speed = 0;
@@ -832,13 +843,15 @@ int main( int argc, char** argv)
 
 
 #ifdef UTIL_HAS_CREATEFILELIST
-    extendedFileList = UTIL_createFileList(inFileNames, ifnIdx, &fileNamesBuf, &fileNamesNb);
-    if (extendedFileList) {
-        unsigned u;
-        for (u=0; u<fileNamesNb; u++) LZBENCH_PRINT(4, "%u %s\n", u, extendedFileList[u]);
-        free((void*)inFileNames);
-        inFileNames = extendedFileList;
-        ifnIdx = fileNamesNb;
+    if (recursive) {  /* at this stage, filenameTable is a list of paths, which can contain both files and directories */ 
+        extendedFileList = UTIL_createFileList(inFileNames, ifnIdx, &fileNamesBuf, &fileNamesNb);
+        if (extendedFileList) {
+            unsigned u;
+            for (u=0; u<fileNamesNb; u++) LZBENCH_PRINT(4, "%u %s\n", u, extendedFileList[u]);
+            free((void*)inFileNames);
+            inFileNames = extendedFileList;
+            ifnIdx = fileNamesNb;
+        }
     }
 #endif
 

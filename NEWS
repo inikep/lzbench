@@ -1,5 +1,5 @@
 v1.5
-- the input can be now a file name or a directory
+- added the "-r" option : operate recursively on directories
 - added the "-j" option : join files in memory but compress them independently (for many small files)
 - added lz5huf v2.0 RC
 - lz5 updated to v2.0 RC
