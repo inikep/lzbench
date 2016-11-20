@@ -1,22 +1,37 @@
 /*
  * crc32.c - CRC-32 checksum algorithm for the gzip format
  *
- * Written in 2014-2015 by Eric Biggers <ebiggers3@gmail.com>
+ * Originally public domain; changes after 2016-09-07 are copyrighted.
  *
- * To the extent possible under law, the author(s) have dedicated all copyright
- * and related and neighboring rights to this software to the public domain
- * worldwide. This software is distributed without any warranty.
+ * Copyright 2016 Eric Biggers
  *
- * You should have received a copy of the CC0 Public Domain Dedication along
- * with this software. If not, see
- * <http://creativecommons.org/publicdomain/zero/1.0/>.
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /*
  * High-level description of CRC
  * =============================
  *
- * Consider a bit sequence 'bits[1...len]'.  Interpet 'bits' as the "message"
+ * Consider a bit sequence 'bits[1...len]'.  Interpret 'bits' as the "message"
  * polynomial M(x) with coefficients in GF(2) (the field of integers modulo 2),
  * where the coefficient of 'x^i' is 'bits[len - i]'.  Then, compute:
  *
@@ -24,7 +39,7 @@
  *
  * where G(x) is a selected "generator" polynomial of degree 'n'.  The remainder
  * R(x) is a polynomial of max degree 'n - 1'.  The CRC of 'bits' is R(x)
- * interpeted as a bitstring of length 'n'.
+ * interpreted as a bitstring of length 'n'.
  *
  * CRC used in gzip
  * ================
@@ -151,11 +166,61 @@
  *
  * In crc32_slice8(), this method is extended to 8 bytes at a time.  The
  * intermediate remainder (which we never actually store explicitly) is 96 bits.
+ *
+ * On CPUs that support fast carryless multiplication, CRCs can be computed even
+ * more quickly via "folding".  See crc32_pclmul() for an example.
  */
 
-#define CRC32_SLICE8
+#include "x86_cpu_features.h"
 
-#include "crc32.h"
+#include "libdeflate.h"
+
+/* Select the implementations to compile in. */
+
+#define NEED_GENERIC_IMPL 1 /* include generic impl unless overridden */
+#define DEFAULT_IMPL crc32_slice8
+
+/* Include the PCLMUL implementation? */
+#define NEED_PCLMUL_IMPL 0
+#if defined(__PCLMUL__) || \
+	(X86_CPU_FEATURES_ENABLED && COMPILER_SUPPORTS_PCLMUL_TARGET)
+#  include <wmmintrin.h>
+#  undef NEED_PCLMUL_IMPL
+#  define NEED_PCLMUL_IMPL 1
+#  ifdef __PCLMUL__ /* compiling for PCLMUL, i.e. can we assume it's there? */
+#    undef NEED_GENERIC_IMPL
+#    define NEED_GENERIC_IMPL 0 /* generic impl not needed */
+#    undef DEFAULT_IMPL
+#    define DEFAULT_IMPL crc32_pclmul
+#  endif /* otherwise, we can build a PCLMUL version, but we won't know whether
+	    we can use it until runtime */
+#endif
+
+/*
+ * Include the PCLMUL/AVX implementation?  Although our PCLMUL-optimized CRC-32
+ * function doesn't use any AVX intrinsics specifically, it can benefit a lot
+ * from being compiled for an AVX target: on Skylake, ~16700 MB/s vs. ~10100
+ * MB/s.  I expect this is related to the PCLMULQDQ instructions being assembled
+ * in the newer three-operand form rather than the older two-operand form.
+ *
+ * Note: this is only needed if __AVX__ is *not* defined, since otherwise the
+ * "regular" PCLMUL implementation would already be AVX enabled.
+ */
+#define NEED_PCLMUL_AVX_IMPL 0
+#if NEED_PCLMUL_IMPL && !defined(__AVX__) && \
+	 X86_CPU_FEATURES_ENABLED && COMPILER_SUPPORTS_AVX_TARGET
+#  undef NEED_PCLMUL_AVX_IMPL
+#  define NEED_PCLMUL_AVX_IMPL 1
+#endif
+
+#define NUM_IMPLS (NEED_GENERIC_IMPL + NEED_PCLMUL_IMPL + NEED_PCLMUL_AVX_IMPL)
+
+/* Define the CRC-32 table */
+#if NEED_GENERIC_IMPL
+#  define CRC32_SLICE8
+#else
+#  define CRC32_SLICE1 /* only need short table for unaligned ends */
+#endif
 #include "crc32_table.h"
 
 static forceinline u32
@@ -164,7 +229,7 @@ crc32_update_byte(u32 remainder, u8 next_byte)
 	return (remainder >> 8) ^ crc32_table[(u8)remainder ^ next_byte];
 }
 
-#ifdef CRC32_SLICE1
+#if defined(CRC32_SLICE1) || (NUM_IMPLS > NEED_GENERIC_IMPL)
 static u32
 crc32_slice1(u32 remainder, const u8 *buffer, size_t nbytes)
 {
@@ -243,18 +308,60 @@ crc32_slice8(u32 remainder, const u8 *buffer, size_t nbytes)
 }
 #endif
 
-u32
-crc32_gzip(const void *buffer, size_t nbytes)
-{
-	u32 remainder = ~0;
-#if defined(CRC32_SLICE1)
-	remainder = crc32_slice1(remainder, buffer, nbytes);
-#elif defined(CRC32_SLICE4)
-	remainder = crc32_slice4(remainder, buffer, nbytes);
-#elif defined(CRC32_SLICE8)
-	remainder = crc32_slice8(remainder, buffer, nbytes);
-#else
-#  error "don't know which CRC-32 implementation to use!"
+/* Define the PCLMUL implementation if needed. */
+#if NEED_PCLMUL_IMPL
+#  define FUNCNAME		crc32_pclmul
+#  define FUNCNAME_ALIGNED	crc32_pclmul_aligned
+#  ifdef __PCLMUL__
+#    define ATTRIBUTES
+#  else
+#    define ATTRIBUTES		__attribute__((target("pclmul")))
+#  endif
+#  include "crc32_impl.h"
 #endif
-	return ~remainder;
+
+/* Define the PCLMUL/AVX implementation if needed. */
+#if NEED_PCLMUL_AVX_IMPL
+#  define FUNCNAME		crc32_pclmul_avx
+#  define FUNCNAME_ALIGNED	crc32_pclmul_avx_aligned
+#  define ATTRIBUTES		__attribute__((target("pclmul,avx")))
+#  include "crc32_impl.h"
+#endif
+
+typedef u32 (*crc32_func_t)(u32, const u8 *, size_t);
+
+/*
+ * If multiple implementations are available, then dispatch among them based on
+ * CPU features at runtime.  Otherwise just call the single one directly.
+ */
+#if NUM_IMPLS == 1
+#  define crc32_impl DEFAULT_IMPL
+#else
+static u32 dispatch(u32, const u8 *, size_t);
+
+static crc32_func_t crc32_impl = dispatch;
+
+static u32 dispatch(u32 remainder, const u8 *buffer, size_t nbytes)
+{
+	crc32_func_t f = DEFAULT_IMPL;
+#if NEED_PCLMUL_IMPL && !defined(__PCLMUL__)
+	if (x86_have_cpu_features(X86_CPU_FEATURE_PCLMULQDQ))
+		f = crc32_pclmul;
+#endif
+#if NEED_PCLMUL_AVX_IMPL
+	if (x86_have_cpu_features(X86_CPU_FEATURE_PCLMULQDQ |
+				  X86_CPU_FEATURE_AVX))
+		f = crc32_pclmul_avx;
+#endif
+	crc32_impl = f;
+	return crc32_impl(remainder, buffer, nbytes);
+}
+#endif /* NUM_IMPLS != 1 */
+
+LIBDEFLATEAPI u32
+libdeflate_crc32(u32 remainder, const void *buffer, size_t nbytes)
+{
+	if (buffer == NULL) /* return initial value */
+		return 0;
+	return ~crc32_impl(~remainder, buffer, nbytes);
 }

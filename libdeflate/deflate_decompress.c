@@ -1,15 +1,30 @@
 /*
  * deflate_decompress.c - a decompressor for DEFLATE
  *
- * Written in 2014-2016 by Eric Biggers <ebiggers3@gmail.com>
+ * Originally public domain; changes after 2016-09-07 are copyrighted.
  *
- * To the extent possible under law, the author(s) have dedicated all copyright
- * and related and neighboring rights to this software to the public domain
- * worldwide. This software is distributed without any warranty.
+ * Copyright 2016 Eric Biggers
  *
- * You should have received a copy of the CC0 Public Domain Dedication along
- * with this software. If not, see
- * <http://creativecommons.org/publicdomain/zero/1.0/>.
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * ---------------------------------------------------------------------------
  *
@@ -827,7 +842,7 @@ dispatch(struct libdeflate_decompressor * restrict d,
 {
 	decompress_func_t f = deflate_decompress_default;
 #if X86_CPU_FEATURES_ENABLED
-	if (x86_have_cpu_feature(X86_CPU_FEATURE_BMI2))
+	if (x86_have_cpu_features(X86_CPU_FEATURE_BMI2))
 		f = deflate_decompress_bmi2;
 #endif
 	decompress_impl = f;
@@ -845,7 +860,7 @@ dispatch(struct libdeflate_decompressor * restrict d,
  * calling the appropriate implementation depending on the CPU features at
  * runtime.
  */
-LIBEXPORT enum libdeflate_result
+LIBDEFLATEAPI enum libdeflate_result
 libdeflate_deflate_decompress(struct libdeflate_decompressor * restrict d,
 			      const void * restrict in, size_t in_nbytes,
 			      void * restrict out, size_t out_nbytes_avail,
@@ -861,13 +876,13 @@ libdeflate_deflate_decompress(struct libdeflate_decompressor * restrict d,
 #endif
 }
 
-LIBEXPORT struct libdeflate_decompressor *
+LIBDEFLATEAPI struct libdeflate_decompressor *
 libdeflate_alloc_decompressor(void)
 {
 	return malloc(sizeof(struct libdeflate_decompressor));
 }
 
-LIBEXPORT void
+LIBDEFLATEAPI void
 libdeflate_free_decompressor(struct libdeflate_decompressor *d)
 {
 	free(d);

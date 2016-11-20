@@ -4,6 +4,7 @@ v1.5
 - lz5 updated to v2.0 RC2
 - lz4 updated to v1.7.3
 - zstd updated to v1.1.1
+- libdeflate updated to v0.6
 - csc updated to 2016-10-13
 - improved PowerPC support
 - fixed -m option (thanks to Julian Kunkel)
