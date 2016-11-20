@@ -343,7 +343,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
         }
     }
     
-    LZBENCH_PRINT(5, "%s chunk_sizes=%d\n", desc->name, chunk_sizes.size());
+    LZBENCH_PRINT(5, "%s chunk_sizes=%d\n", desc->name, (int)chunk_sizes.size());
 
     total_c_iters = 0;
     GetTime(timer_ticks);
@@ -719,7 +719,7 @@ int main( int argc, char** argv)
 #endif
 
     if (inFileNames==NULL) {
-        LZBENCH_PRINT(2, "Allocation error : not enough memory \n", ' ');
+        LZBENCH_PRINT(2, "Allocation error : not enough memory%c\n", ' ');
         return 1;
     }
 
