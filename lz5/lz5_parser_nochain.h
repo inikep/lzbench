@@ -15,7 +15,8 @@ FORCE_INLINE void LZ5_InsertNoChain (LZ5_stream_t* ctx, const BYTE* ip)
 
     while (idx < target) {
         size_t const h = LZ5_NOCHAIN_HASH_FUNCTION(base+idx, hashLog);
-        hashTable[h] = idx;
+        if (idx >= hashTable[h] + LZ5_NOCHAIN_MIN_OFFSET)
+            hashTable[h] = idx;
         idx++;
     }
 

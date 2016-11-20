@@ -1,8 +1,7 @@
 v1.5
 - added the "-r" option : operate recursively on directories
 - added the "-j" option : join files in memory but compress them independently (for many small files)
-- added lz5huf v2.0 RC
-- lz5 updated to v2.0 RC
+- lz5 updated to v2.0 RC2
 - lz4 updated to v1.7.3
 - zstd updated to v1.1.1
 - csc updated to 2016-10-13

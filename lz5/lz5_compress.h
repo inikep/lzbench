@@ -32,8 +32,8 @@
    You can contact the author at :
     - LZ5 source repository : https://github.com/inikep/lz5
 */
-#ifndef LZ5_H_2983827168210
-#define LZ5_H_2983827168210
+#ifndef LZ5_H_2983
+#define LZ5_H_2983
 
 #if defined (__cplusplus)
 extern "C" {
@@ -48,6 +48,23 @@ extern "C" {
  * A library is provided to take care of it, see lz5frame.h.
 */
 
+
+/*^***************************************************************
+*  Export parameters
+*****************************************************************/
+/*
+*  LZ5_DLL_EXPORT :
+*  Enable exporting of functions when building a Windows DLL
+*/
+#if defined(LZ5_DLL_EXPORT) && (LZ5_DLL_EXPORT==1)
+#  define LZ5LIB_API __declspec(dllexport)
+#elif defined(LZ5_DLL_IMPORT) && (LZ5_DLL_IMPORT==1)
+#  define LZ5LIB_API __declspec(dllimport) /* It isn't required but allows to generate better code, saving a function pointer load from the IAT and an indirect jump.*/
+#else
+#  define LZ5LIB_API
+#endif
+
+
 /*-************************************
 *  Version
 **************************************/
@@ -61,19 +78,25 @@ int LZ5_versionNumber (void);
 #define LZ5_LIB_VERSION LZ5_VERSION_MAJOR.LZ5_VERSION_MINOR.LZ5_VERSION_RELEASE
 #define LZ5_QUOTE(str) #str
 #define LZ5_EXPAND_AND_QUOTE(str) LZ5_QUOTE(str)
-#define LZ5_VERSION_STRING LZ5_EXPAND_AND_QUOTE(LZ5_LIB_VERSION)
+#define LZ5_VERSION_STRING LZ5_EXPAND_AND_QUOTE(LZ5_LIB_VERSION) " RC2"
 const char* LZ5_versionString (void);
 
 typedef struct LZ5_stream_s LZ5_stream_t;
 
-#define LZ5_MAX_CLEVEL      18  /* maximum compression level */
+#define LZ5_MIN_CLEVEL      10  /* minimum compression level */
+#ifndef LZ5_NO_HUFFMAN
+    #define LZ5_MAX_CLEVEL      49  /* maximum compression level */
+#else
+    #define LZ5_MAX_CLEVEL      29  /* maximum compression level */
+#endif
+#define LZ5_DEFAULT_CLEVEL  17
 
 
 /*-************************************
 *  Simple Functions
 **************************************/
 
-int LZ5_compress (const char* src, char* dst, int srcSize, int maxDstSize, int compressionLevel); 
+LZ5LIB_API int LZ5_compress (const char* src, char* dst, int srcSize, int maxDstSize, int compressionLevel); 
 
 /*
 LZ5_compress() :
@@ -111,7 +134,7 @@ LZ5_compressBound() :
         return : maximum output size in a "worst case" scenario
               or 0, if input size is too large ( > LZ5_MAX_INPUT_SIZE)
 */
-int LZ5_compressBound(int inputSize);
+LZ5LIB_API int LZ5_compressBound(int inputSize);
 
 
 /*!
@@ -121,9 +144,9 @@ LZ5_compress_extState() :
     and allocate it on 8-bytes boundaries (using malloc() typically).
     Then, provide it as 'void* state' to compression function.
 */
-int LZ5_sizeofState(int compressionLevel); 
+LZ5LIB_API int LZ5_sizeofState(int compressionLevel); 
 
-int LZ5_compress_extState(void* state, const char* src, char* dst, int srcSize, int maxDstSize, int compressionLevel);
+LZ5LIB_API int LZ5_compress_extState(void* state, const char* src, char* dst, int srcSize, int maxDstSize, int compressionLevel);
 
 
 
@@ -136,14 +159,14 @@ int LZ5_compress_extState(void* state, const char* src, char* dst, int srcSize, 
  *  In the context of a DLL (liblz5), please use these methods rather than the static struct.
  *  They are more future proof, in case of a change of `LZ5_stream_t` size.
  */
-LZ5_stream_t* LZ5_createStream(int compressionLevel);
-int           LZ5_freeStream (LZ5_stream_t* streamPtr);
+LZ5LIB_API LZ5_stream_t* LZ5_createStream(int compressionLevel);
+LZ5LIB_API int           LZ5_freeStream (LZ5_stream_t* streamPtr);
 
 
 /*! LZ5_resetStream() :
  *  Use this function to reset/reuse an allocated `LZ5_stream_t` structure
  */
-LZ5_stream_t* LZ5_resetStream (LZ5_stream_t* streamPtr, int compressionLevel); 
+LZ5LIB_API LZ5_stream_t* LZ5_resetStream (LZ5_stream_t* streamPtr, int compressionLevel); 
 
 
 /*! LZ5_loadDict() :
@@ -152,7 +175,7 @@ LZ5_stream_t* LZ5_resetStream (LZ5_stream_t* streamPtr, int compressionLevel);
  *  Loading a size of 0 is allowed.
  *  Return : dictionary size, in bytes (necessarily <= LZ5_DICT_SIZE)
  */
-int LZ5_loadDict (LZ5_stream_t* streamPtr, const char* dictionary, int dictSize);
+LZ5LIB_API int LZ5_loadDict (LZ5_stream_t* streamPtr, const char* dictionary, int dictSize);
 
 
 /*! LZ5_compress_continue() :
@@ -162,7 +185,7 @@ int LZ5_loadDict (LZ5_stream_t* streamPtr, const char* dictionary, int dictSize)
  *  If maxDstSize >= LZ5_compressBound(srcSize), compression is guaranteed to succeed, and runs faster.
  *  If not, and if compressed data cannot fit into 'dst' buffer size, compression stops, and function returns a zero.
  */
-int LZ5_compress_continue (LZ5_stream_t* streamPtr, const char* src, char* dst, int srcSize, int maxDstSize);
+LZ5LIB_API int LZ5_compress_continue (LZ5_stream_t* streamPtr, const char* src, char* dst, int srcSize, int maxDstSize);
 
 
 /*! LZ5_saveDict() :
@@ -172,15 +195,9 @@ int LZ5_compress_continue (LZ5_stream_t* streamPtr, const char* src, char* dst, 
  *         dictionary is immediately usable, you can therefore call LZ5_compress_continue().
  *  Return : saved dictionary size in bytes (necessarily <= dictSize), or 0 if error.
  */
-int LZ5_saveDict (LZ5_stream_t* streamPtr, char* safeBuffer, int dictSize);
+LZ5LIB_API int LZ5_saveDict (LZ5_stream_t* streamPtr, char* safeBuffer, int dictSize);
 
 
-
-/* experimental Huffman compression */
-int LZ5_compress_Huf(const char* src, char* dst, int srcSize, int maxDstSize, int compressionLevel, int huffType);
-int LZ5_compress_extState_Huf(void* state, const char* src, char* dst, int srcSize, int maxDstSize, int compressionLevel, int huffType);
-LZ5_stream_t* LZ5_resetStream_Huf(LZ5_stream_t* streamPtr, int compressionLevel, int huffType);
-LZ5_stream_t* LZ5_createStream_Huf(int compressionLevel, int huffType);
 
 
 

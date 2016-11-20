@@ -372,11 +372,6 @@ int64_t lzbench_lz5_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
 	return LZ5_compress(inbuf, outbuf, insize, outsize, level);
 }
 
-int64_t lzbench_lz5huf_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-	return LZ5_compress_Huf(inbuf, outbuf, insize, outsize, level, 3);
-}
-
 int64_t lzbench_lz5_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
 	return LZ5_decompress_safe(inbuf, outbuf, insize, outsize);

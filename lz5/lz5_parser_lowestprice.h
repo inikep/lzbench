@@ -317,8 +317,7 @@ _Search:
         for (pos = ip + ml; pos >= start2; pos--)
         {
             int common0 = (int)(pos - ip);
-            if (common0 >= MINMATCH)
-            {
+            if (common0 >= MINMATCH) {
                 price = (int)LZ5_get_price_LZ5v2(ctx, ctx->last_off, ip, ctx->off24pos, ip - anchor, (off0 == ctx->last_off) ? 0 : off0, common0);
                 
                 {
@@ -329,14 +328,11 @@ _Search:
                         price += LZ5_get_price_LZ5v2(ctx, ctx->last_off, pos, ctx->off24pos, common1, 0, 0);
                 }
 
-                if (price < best_price)
-                {
+                if (price < best_price) {
                     best_price = price;
                     best_pos = pos;
                 }
-            }
-            else
-            {
+            } else {
                 price = LZ5_get_price_LZ5v2(ctx, ctx->last_off, ip, ctx->off24pos, start2 - anchor, (off1 == ctx->last_off) ? 0 : off1, ml2);
 
                 if (price < best_price)

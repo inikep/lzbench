@@ -36,7 +36,7 @@
 /**************************************
 *  Includes
 **************************************/
-//#define LZ5_STATS
+//#define LZ5_STATS 1 // 0=simple stats, 1=more, 2=full
 #ifdef LZ5_STATS
     #include "test/lz5_stats.h"
 #endif
@@ -69,7 +69,7 @@ typedef enum { full = 0, partial = 1 } earlyEnd_directive;
 *  Decompression functions
 *******************************/
 
-FORCE_INLINE size_t LZ5_readStream(int flag, const BYTE** ip, const BYTE* const iend, BYTE* op, BYTE* const oend, const BYTE** streamPtr, const BYTE** streamEnd)
+FORCE_INLINE size_t LZ5_readStream(int flag, const BYTE** ip, const BYTE* const iend, BYTE* op, BYTE* const oend, const BYTE** streamPtr, const BYTE** streamEnd, int streamFlag)
 {
     if (!flag) {
         if (*ip > iend - 3) return 0;
@@ -77,9 +77,14 @@ FORCE_INLINE size_t LZ5_readStream(int flag, const BYTE** ip, const BYTE* const 
         *streamEnd = *streamPtr + MEM_readLE24(*ip);
         if (*streamEnd < *streamPtr) return 0;
         *ip = *streamEnd;
+#ifdef LZ5_STATS
+        uncompr_stream[streamFlag] += *streamEnd-*streamPtr;
+#else
+        (void)streamFlag;
+#endif
         return 1;
     } else {
-#ifdef LZ5_USE_HUFFMAN
+#ifndef LZ5_NO_HUFFMAN
         size_t res, streamLen, comprStreamLen;
 
         if (*ip > iend - 6) return 0;
@@ -96,12 +101,12 @@ FORCE_INLINE size_t LZ5_readStream(int flag, const BYTE** ip, const BYTE* const 
         *streamPtr = op;
         *streamEnd = *streamPtr + streamLen;
 #ifdef LZ5_STATS
-        if (flag == LZ5_FLAG_LITERALS) compr_lit_count += comprStreamLen + 6;
-        if (flag == LZ5_FLAG_FLAGS) compr_flag_count += comprStreamLen + 6;
+        compr_stream[streamFlag] += comprStreamLen + 6;
+        decompr_stream[streamFlag] += *streamEnd-*streamPtr;
 #endif
         return 1;
 #else
-        fprintf(stderr, "compiled without LZ5_USE_HUFFMAN\n");
+        fprintf(stderr, "compiled with LZ5_NO_HUFFMAN\n");
         (void)op; (void)oend;
         return 0;
 #endif
@@ -137,7 +142,7 @@ FORCE_INLINE int LZ5_decompress_generic(
 
     compressionLevel = *ip++;
 
-    if (compressionLevel == 0 || compressionLevel > LZ5_MAX_CLEVEL) {
+    if (compressionLevel < LZ5_MIN_CLEVEL || compressionLevel > LZ5_MAX_CLEVEL) {
         LZ5_LOG_DECOMPRESS("ERROR LZ5_decompress_generic inputSize=%d compressionLevel=%d\n", inputSize, compressionLevel);
         return -1;
     }
@@ -171,7 +176,7 @@ FORCE_INLINE int LZ5_decompress_generic(
             ip += length;
             if ((partialDecoding) && (op >= oexit)) break;
 #ifdef LZ5_STATS
-            uncompressed_count += length;
+            uncompr_stream[LZ5_STREAM_UNCOMPRESSED] += length;
 #endif
             continue;
         }
@@ -184,7 +189,9 @@ FORCE_INLINE int LZ5_decompress_generic(
         ctx.lenPtr = (const BYTE*)ip + 3;
         ctx.lenEnd = ctx.lenPtr + MEM_readLE24(ip);
         if (ctx.lenEnd < ctx.lenPtr || (ctx.lenEnd > iend - 3)) goto _output_error;
-
+#ifdef LZ5_STATS
+        uncompr_stream[LZ5_STREAM_LEN] += ctx.lenEnd-ctx.lenPtr + 3;
+#endif
         ip = ctx.lenEnd;
 
         {   size_t streamLen;
@@ -192,25 +199,25 @@ FORCE_INLINE int LZ5_decompress_generic(
             const BYTE* ipos;
             size_t comprFlagsLen, comprLiteralsLen, total;
 #endif
-            streamLen = LZ5_readStream(res&LZ5_FLAG_OFFSET16, &ip, iend, decompOff16Base, decompOff16Base + LZ5_HUF_BLOCK_SIZE, &ctx.offset16Ptr, &ctx.offset16End);
+            streamLen = LZ5_readStream(res&LZ5_FLAG_OFFSET16, &ip, iend, decompOff16Base, decompOff16Base + LZ5_HUF_BLOCK_SIZE, &ctx.offset16Ptr, &ctx.offset16End, LZ5_STREAM_OFFSET16);
             if (streamLen == 0) goto _output_error;
 
-            streamLen = LZ5_readStream(res&LZ5_FLAG_OFFSET24, &ip, iend, decompOff24Base, decompOff24Base + LZ5_HUF_BLOCK_SIZE, &ctx.offset24Ptr, &ctx.offset24End);
+            streamLen = LZ5_readStream(res&LZ5_FLAG_OFFSET24, &ip, iend, decompOff24Base, decompOff24Base + LZ5_HUF_BLOCK_SIZE, &ctx.offset24Ptr, &ctx.offset24End, LZ5_STREAM_OFFSET24);
             if (streamLen == 0) goto _output_error;
 
 #ifdef LZ5_USE_LOGS
             ipos = ip;
-            streamLen = LZ5_readStream(res&LZ5_FLAG_FLAGS, &ip, iend, decompFlagsBase, decompFlagsBase + LZ5_HUF_BLOCK_SIZE, &ctx.flagsPtr, &ctx.flagsEnd);
+            streamLen = LZ5_readStream(res&LZ5_FLAG_FLAGS, &ip, iend, decompFlagsBase, decompFlagsBase + LZ5_HUF_BLOCK_SIZE, &ctx.flagsPtr, &ctx.flagsEnd, LZ5_STREAM_FLAGS);
             if (streamLen == 0) goto _output_error;
             streamLen = (size_t)(ctx.flagsEnd-ctx.flagsPtr);
             comprFlagsLen = ((size_t)(ip - ipos) + 3 >= streamLen) ? 0 : (size_t)(ip - ipos);
             ipos = ip;
 #else
-            streamLen = LZ5_readStream(res&LZ5_FLAG_FLAGS, &ip, iend, decompFlagsBase, decompFlagsBase + LZ5_HUF_BLOCK_SIZE, &ctx.flagsPtr, &ctx.flagsEnd);
+            streamLen = LZ5_readStream(res&LZ5_FLAG_FLAGS, &ip, iend, decompFlagsBase, decompFlagsBase + LZ5_HUF_BLOCK_SIZE, &ctx.flagsPtr, &ctx.flagsEnd, LZ5_STREAM_FLAGS);
             if (streamLen == 0) goto _output_error;
 #endif
 
-            streamLen = LZ5_readStream(res&LZ5_FLAG_LITERALS, &ip, iend, decompLiteralsBase, decompLiteralsBase + LZ5_HUF_BLOCK_SIZE, &ctx.literalsPtr, &ctx.literalsEnd);
+            streamLen = LZ5_readStream(res&LZ5_FLAG_LITERALS, &ip, iend, decompLiteralsBase, decompLiteralsBase + LZ5_HUF_BLOCK_SIZE, &ctx.literalsPtr, &ctx.literalsEnd, LZ5_STREAM_LITERALS);
             if (streamLen == 0) goto _output_error;
 #ifdef LZ5_USE_LOGS
             streamLen = (size_t)(ctx.literalsEnd-ctx.literalsPtr);
@@ -225,16 +232,8 @@ FORCE_INLINE int LZ5_decompress_generic(
                         (int)(ctx.offset16End-ctx.offset16Ptr), (int)(ctx.offset24End-ctx.offset24Ptr), (int)(ctx.lenEnd-ctx.lenPtr));
         }
 
-#ifdef LZ5_STATS
-        off22bit_count += (int)(ctx.offset24End-ctx.offset24Ptr);
-        off16_count += (int)(ctx.offset16End-ctx.offset16Ptr);
-        flag_count += (int)(ctx.flagsEnd-ctx.flagsPtr);
-        len_count += (int)(ctx.lenEnd-ctx.lenPtr);
-        lit_count += (int)(ctx.literalsEnd-ctx.literalsPtr);
-#endif
-
         ctx.last_off = -LZ5_INIT_LAST_OFFSET;
-        params = LZ5_defaultParameters[compressionLevel];
+        params = LZ5_defaultParameters[compressionLevel - LZ5_MIN_CLEVEL];
         if (params.decompressType == LZ5_coderwords_LZ4)
             res = LZ5_decompress_LZ4(&ctx, op, outputSize, partialDecoding, targetOutputSize, dict, lowPrefix, dictStart, dictSize, compressionLevel);
         else 

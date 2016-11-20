@@ -91,7 +91,7 @@ gipfeli 2016-07-13
 glza 0.7.1
 libdeflate 2016-08-29
 lz4/lz4hc v1.7.3
-lz5/lz5huf v2.0 RC
+lz5 v2.0 RC2
 lzf 3.6
 lzfse/lzvn 2016-08-16
 lzg 1.0.8

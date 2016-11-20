@@ -66,14 +66,16 @@ FORCE_INLINE int LZ5_encodeSequence_LZ5v2 (
 
         /* Copy Literals */
         LZ5_wildCopy(ctx->literalsPtr, *anchor, (ctx->literalsPtr) + length);
-#ifdef LZ5_USE_HUFFMAN
-        ctx->litSum += (U32)length;
-        ctx->litPriceSum += (U32)(length * ctx->log2LitSum);
-        {   U32 u;
-            for (u=0; u < length; u++) {
-                ctx->litPriceSum -= LZ5_highbit32(ctx->litFreq[ctx->literalsPtr[u]]+1);
-                ctx->litFreq[ctx->literalsPtr[u]]++;
-        }   }
+#ifndef LZ5_NO_HUFFMAN
+        if (ctx->huffType) { 
+            ctx->litSum += (U32)length;
+            ctx->litPriceSum += (U32)(length * ctx->log2LitSum);
+            {   U32 u;
+                for (u=0; u < length; u++) {
+                    ctx->litPriceSum -= LZ5_highbit32(ctx->litFreq[ctx->literalsPtr[u]]+1);
+                    ctx->litFreq[ctx->literalsPtr[u]]++;
+            }   }
+        }
 #endif
         ctx->literalsPtr += length;
 
@@ -81,9 +83,11 @@ FORCE_INLINE int LZ5_encodeSequence_LZ5v2 (
         if (offset >= LZ5_MAX_16BIT_OFFSET) {
             COMPLOG_CODEWORDS_LZ5v2("T32+ literal=%u match=%u offset=%d\n", (U32)length, 0, 0);
             *token+=(1<<ML_RUN_BITS);
-#ifdef LZ5_USE_HUFFMAN
-            ctx->flagFreq[*token]++;
-            ctx->flagSum++;
+#ifndef LZ5_NO_HUFFMAN
+            if (ctx->huffType) { 
+                ctx->flagFreq[*token]++;
+                ctx->flagSum++;
+            }
 #endif
             token = (ctx->flagsPtr)++;
         }
@@ -144,10 +148,12 @@ FORCE_INLINE int LZ5_encodeSequence_LZ5v2 (
         else *token += (BYTE)(length<<RUN_BITS_LZ5v2);
     }
 
-#ifdef LZ5_USE_HUFFMAN
-    ctx->flagFreq[*token]++;
-    ctx->flagSum++;
-    LZ5_setLog2Prices(ctx);
+#ifndef LZ5_NO_HUFFMAN
+    if (ctx->huffType) { 
+        ctx->flagFreq[*token]++;
+        ctx->flagSum++;
+        LZ5_setLog2Prices(ctx);
+    }
 #endif
 
     /* Prepare next loop */
@@ -173,22 +179,17 @@ FORCE_INLINE int LZ5_encodeLastLiterals_LZ5v2 (
 
 
 #define LZ5_PRICE_MULT 1
-#ifdef LZ5_USE_HUFFMAN
-    #define LZ5_GET_TOKEN_PRICE(token)  (LZ5_PRICE_MULT * (ctx->log2FlagSum - LZ5_highbit32(ctx->flagFreq[token]+1)))
-#else
-    #define LZ5_GET_TOKEN_PRICE(token)  8
-#endif
+#define LZ5_GET_TOKEN_PRICE_LZ5v2(token)  (LZ5_PRICE_MULT * (ctx->log2FlagSum - LZ5_highbit32(ctx->flagFreq[token]+1)))
+
 
 FORCE_INLINE size_t LZ5_get_price_LZ5v2(LZ5_stream_t* const ctx, int rep, const BYTE *ip, const BYTE *off24pos, size_t litLength, U32 offset, size_t matchLength) 
 {
     size_t price = 0;
-    size_t length = litLength;
     BYTE token = 0;
-#ifdef LZ5_USE_HUFFMAN
+#ifndef LZ5_NO_HUFFMAN
     const BYTE* literals = ip - litLength;
     U32 u;
-
-    if (ctx->params.parserType != LZ5_parser_lowestPrice) {
+    if ((ctx->huffType) && (ctx->params.parserType != LZ5_parser_lowestPrice)) {
         if (ctx->cachedLiterals == literals && litLength >= ctx->cachedLitLength) {
             size_t const additional = litLength - ctx->cachedLitLength;
         //    printf("%d ", (int)litLength - (int)ctx->cachedLitLength);
@@ -215,63 +216,54 @@ FORCE_INLINE size_t LZ5_get_price_LZ5v2(LZ5_stream_t* const ctx, int rep, const 
 #else
     price += 8*litLength;  /* Copy Literals */
     (void)ip;
+    (void)ctx;
 #endif
 
     (void)off24pos;
     (void)rep;
-    (void)ctx;
 
-    if (length > 0 || offset < LZ5_MAX_16BIT_OFFSET) {
+    if (litLength > 0 || offset < LZ5_MAX_16BIT_OFFSET) {
         /* Encode Literal length */
-        if (length >= MAX_SHORT_LITLEN) 
-        {   size_t len; 
+        if (litLength >= MAX_SHORT_LITLEN) 
+        {   size_t len = litLength - MAX_SHORT_LITLEN;
             token = MAX_SHORT_LITLEN; 
-            len = length - MAX_SHORT_LITLEN;
             if (len >= (1<<16)) price += 32;
             else if (len >= 254) price += 24;
             else price += 8;
         }
-        else token = (BYTE)length;
+        else token = (BYTE)litLength;
 
         if (offset >= LZ5_MAX_16BIT_OFFSET) {
             token+=(1<<ML_RUN_BITS);
-            if (ctx->params.parserType != LZ5_parser_lowestPrice)
-                price += LZ5_GET_TOKEN_PRICE(token);
+            if (ctx->huffType && ctx->params.parserType != LZ5_parser_lowestPrice)
+                price += LZ5_GET_TOKEN_PRICE_LZ5v2(token);
             else
                 price += 8;
        }
     }
 
     /* Encode Offset */
-    if (offset >= LZ5_MAX_16BIT_OFFSET)  // 24-bit offset
-    {
+    if (offset >= LZ5_MAX_16BIT_OFFSET) { // 24-bit offset
         if (matchLength < MM_LONGOFF) return LZ5_MAX_PRICE; // error
 
-        if (matchLength - MM_LONGOFF >= LZ5_LAST_LONG_OFF) 
-        {
+        if (matchLength - MM_LONGOFF >= LZ5_LAST_LONG_OFF) {
             size_t len = matchLength - MM_LONGOFF - LZ5_LAST_LONG_OFF;
             token = LZ5_LAST_LONG_OFF;
             if (len >= (1<<16)) price += 32;
             else if (len >= 254) price += 24;
             else price += 8;
-        }
-        else
-        {
+        } else {
             token = (BYTE)(matchLength - MM_LONGOFF);
         }
 
         price += 24;
-    }
-    else
-    {
-        if (offset == 0)
-        {
+    } else {
+        size_t length;
+        if (offset == 0) {
             token+=(1<<ML_RUN_BITS);
-        }
-        else
-        {
+        } else {
             if (offset < 8) return LZ5_MAX_PRICE; // error
-            if (matchLength < MINMATCH )return LZ5_MAX_PRICE; // error
+            if (matchLength < MINMATCH) return LZ5_MAX_PRICE; // error
             price += 16;
         }
 
@@ -289,24 +281,20 @@ FORCE_INLINE size_t LZ5_get_price_LZ5v2(LZ5_stream_t* const ctx, int rep, const 
 
     if (offset > 0 || matchLength > 0) {
         int offset_load = LZ5_highbit32(offset);
-#ifdef LZ5_USE_HUFFMAN
-        price += ((offset_load>=20) ? ((offset_load-19)*4) : 0);
-        price += 4 + (matchLength==1);
-#else
-        price += ((offset_load>=16) ? ((offset_load-15)*4) : 0);
-        price += 6 + (matchLength==1);
-#endif
-        if (ctx->params.parserType != LZ5_parser_lowestPrice)
-            price += LZ5_GET_TOKEN_PRICE(token);
+        if (ctx->huffType) {
+            price += ((offset_load>=20) ? ((offset_load-19)*4) : 0);
+            price += 4 + (matchLength==1);
+        } else {
+            price += ((offset_load>=16) ? ((offset_load-15)*4) : 0);
+            price += 6 + (matchLength==1);
+        }
+        if (ctx->huffType && ctx->params.parserType != LZ5_parser_lowestPrice)
+            price += LZ5_GET_TOKEN_PRICE_LZ5v2(token);
         else
             price += 8;
     } else {
-#ifdef LZ5_USE_HUFFMAN
-        if (ctx->params.parserType != LZ5_parser_lowestPrice)
-            price += LZ5_GET_TOKEN_PRICE(token);  // 1=better ratio
-#else
-        (void)token; // warning: Value stored to 'token' is never read
-#endif
+        if (ctx->huffType && ctx->params.parserType != LZ5_parser_lowestPrice)
+            price += LZ5_GET_TOKEN_PRICE_LZ5v2(token);  // 1=better ratio
     }
 
     return price;

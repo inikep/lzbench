@@ -32,14 +32,30 @@
    You can contact the author at :
     - LZ5 source repository : https://github.com/inikep/lz5
 */
-#ifndef LZ5_DECOMPRESS_H_2983827168210
-#define LZ5_DECOMPRESS_H_2983827168210
+#ifndef LZ5_DECOMPRESS_H_2983
+#define LZ5_DECOMPRESS_H_2983
 
 #if defined (__cplusplus)
 extern "C" {
 #endif
 
 #include "entropy/mem.h"     /* U32 */
+
+
+/*^***************************************************************
+*  Export parameters
+*****************************************************************/
+/*
+*  LZ5_DLL_EXPORT :
+*  Enable exporting of functions when building a Windows DLL
+*/
+#if defined(LZ5_DLL_EXPORT) && (LZ5_DLL_EXPORT==1)
+#  define LZ5DLIB_API __declspec(dllexport)
+#elif defined(LZ5_DLL_IMPORT) && (LZ5_DLL_IMPORT==1)
+#  define LZ5DLIB_API __declspec(dllimport) /* It isn't required but allows to generate better code, saving a function pointer load from the IAT and an indirect jump.*/
+#else
+#  define LZ5DLIB_API
+#endif
 
 
 /*-************************************
@@ -56,7 +72,7 @@ LZ5_decompress_safe() :
              This function is protected against buffer overflow exploits, including malicious data packets.
              It never writes outside output buffer, nor reads outside input buffer.
 */
-int LZ5_decompress_safe (const char* source, char* dest, int compressedSize, int maxDecompressedSize);
+LZ5DLIB_API int LZ5_decompress_safe (const char* source, char* dest, int compressedSize, int maxDecompressedSize);
 
 
 
@@ -72,7 +88,7 @@ LZ5_decompress_safe_partial() :
              If the source stream is detected malformed, the function will stop decoding and return a negative result.
              This function never writes outside of output buffer, and never reads outside of input buffer. It is therefore protected against malicious data packets
 */
-int LZ5_decompress_safe_partial (const char* source, char* dest, int compressedSize, int targetOutputSize, int maxDecompressedSize);
+LZ5DLIB_API int LZ5_decompress_safe_partial (const char* source, char* dest, int compressedSize, int targetOutputSize, int maxDecompressedSize);
 
 
 
@@ -96,15 +112,15 @@ typedef struct {
  * LZ5_createStreamDecode will allocate and initialize an LZ5_streamDecode_t structure
  * LZ5_freeStreamDecode releases its memory.
  */
-LZ5_streamDecode_t* LZ5_createStreamDecode(void);
-int                 LZ5_freeStreamDecode (LZ5_streamDecode_t* LZ5_stream);
+LZ5DLIB_API LZ5_streamDecode_t* LZ5_createStreamDecode(void);
+LZ5DLIB_API int                 LZ5_freeStreamDecode (LZ5_streamDecode_t* LZ5_stream);
 
 /*! LZ5_setStreamDecode() :
  *  Use this function to instruct where to find the dictionary.
  *  Setting a size of 0 is allowed (same effect as reset).
  *  @return : 1 if OK, 0 if error
  */
-int LZ5_setStreamDecode (LZ5_streamDecode_t* LZ5_streamDecode, const char* dictionary, int dictSize);
+LZ5DLIB_API int LZ5_setStreamDecode (LZ5_streamDecode_t* LZ5_streamDecode, const char* dictionary, int dictSize);
 
 /*
 *_continue() :
@@ -123,7 +139,7 @@ int LZ5_setStreamDecode (LZ5_streamDecode_t* LZ5_streamDecode, const char* dicti
     Whenever these conditions are not possible, save the last LZ5_DICT_SIZE of decoded data into a safe buffer,
     and indicate where it is saved using LZ5_setStreamDecode()
 */
-int LZ5_decompress_safe_continue (LZ5_streamDecode_t* LZ5_streamDecode, const char* source, char* dest, int compressedSize, int maxDecompressedSize);
+LZ5DLIB_API int LZ5_decompress_safe_continue (LZ5_streamDecode_t* LZ5_streamDecode, const char* source, char* dest, int compressedSize, int maxDecompressedSize);
 
 
 /*
@@ -133,7 +149,7 @@ Advanced decoding functions :
     a combination of LZ5_setStreamDecode() followed by LZ5_decompress_x_continue()
     They are stand-alone. They don't need nor update an LZ5_streamDecode_t structure.
 */
-int LZ5_decompress_safe_usingDict (const char* source, char* dest, int compressedSize, int maxDecompressedSize, const char* dictStart, int dictSize);
+LZ5DLIB_API int LZ5_decompress_safe_usingDict (const char* source, char* dest, int compressedSize, int maxDecompressedSize, const char* dictStart, int dictSize);
 
 
 #if defined (__cplusplus)

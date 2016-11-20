@@ -32,8 +32,8 @@
        - LZ5 source repository : https://github.com/inikep/lz5
 */
 
-#ifndef LZ5_COMMON_H_2983827168210
-#define LZ5_COMMON_H_2983827168210
+#ifndef LZ5_COMMON_H_2983
+#define LZ5_COMMON_H_2983
 
 #if defined (__cplusplus)
 extern "C" {
@@ -84,7 +84,7 @@ extern "C" {
 #define MM_LONGOFF              16
 #define LZ5_BLOCK_SIZE_PAD      (LZ5_BLOCK_SIZE+32)
 #define LZ5_COMPRESS_ADD_BUF    (5*LZ5_BLOCK_SIZE_PAD)
-#ifdef LZ5_USE_HUFFMAN
+#ifndef LZ5_NO_HUFFMAN
     #define LZ5_COMPRESS_ADD_HUF    HUF_compressBound(LZ5_BLOCK_SIZE_PAD)
     #define LZ5_HUF_BLOCK_SIZE      LZ5_BLOCK_SIZE
 #else
@@ -113,6 +113,16 @@ extern "C" {
 #define LZ5_FLAG_OFFSET24       8
 #define LZ5_FLAG_LEN            16
 #define LZ5_FLAG_UNCOMPRESSED   128
+
+/* stream numbers */
+#define LZ5_STREAM_LITERALS       0
+#define LZ5_STREAM_FLAGS          1
+#define LZ5_STREAM_OFFSET16       2
+#define LZ5_STREAM_OFFSET24       3
+#define LZ5_STREAM_LEN            4
+#define LZ5_STREAM_UNCOMPRESSED   5
+
+
 
 
 typedef enum { LZ5_parser_fast, LZ5_parser_noChain, LZ5_parser_hashChain, LZ5_parser_priceFast, LZ5_parser_lowestPrice, LZ5_parser_optimalPrice, LZ5_parser_optimalPriceBT } LZ5_parser_type;   /* from faster to stronger */ 
@@ -211,32 +221,56 @@ typedef struct LZ5_dstream_s LZ5_dstream_t;
 #define LZ5_CHAINLOG_LZ5v2  LZ5_WINDOWLOG_LZ5v2
 #define LZ5_HASHLOG_LZ5v2   18
 
-#define LZ5_DEFAULT_CLEVEL  8
 
 
-
-static const LZ5_parameters LZ5_defaultParameters[LZ5_MAX_CLEVEL+1] =
+static const LZ5_parameters LZ5_defaultParameters[LZ5_MAX_CLEVEL+1-LZ5_MIN_CLEVEL] =
 {
     /*            windLog,            contentLog,           HashLog,  H3,  Snum, SL,   MMLongOff, SuffL, FS, Parser function,           Decompressor type  */
-    {                   0,                     0,                 0,   0,     0,  0,           0,     0,  0, LZ5_parser_fast,           LZ5_coderwords_LZ4   }, // level 0 - never used
-    {   LZ5_WINDOWLOG_LZ4,                     0,                12,   0,     0,  0,           0,     0,  0, LZ5_parser_fast,           LZ5_coderwords_LZ4   }, // level 1
-    {   LZ5_WINDOWLOG_LZ4,                     0,   LZ5_HASHLOG_LZ4,   0,     0,  0,           0,     0,  0, LZ5_parser_fast,           LZ5_coderwords_LZ4   }, // level 2
-    {   LZ5_WINDOWLOG_LZ4,                     0,   LZ5_HASHLOG_LZ4,   0,     0,  0,           0,     0,  0, LZ5_parser_noChain,        LZ5_coderwords_LZ4   }, // level 3
-    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,     2,  5,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 4
-    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,     6,  5,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 5
-    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,     8,  5,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 6
-    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,    16,  4,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 7
-    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,   256,  4,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 8
-    {   LZ5_WINDOWLOG_LZ4,   LZ5_WINDOWLOG_LZ4+1,                23,  16,   256,  4,           0, 1<<10,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ4   }, // level 9
-    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                14,  13,     1,  5,  MM_LONGOFF,     0,  0, LZ5_parser_priceFast,      LZ5_coderwords_LZ5v2 }, // level 10
-    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2, LZ5_HASHLOG_LZ5v2,  13,     1,  5,  MM_LONGOFF,     0,  0, LZ5_parser_priceFast,      LZ5_coderwords_LZ5v2 }, // level 11
-    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2, LZ5_HASHLOG_LZ5v2,  13,     1,  5,  MM_LONGOFF,    64,  0, LZ5_parser_lowestPrice,    LZ5_coderwords_LZ5v2 }, // level 12
-    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                23,  16,     2,  5,  MM_LONGOFF,    64,  0, LZ5_parser_lowestPrice,    LZ5_coderwords_LZ5v2 }, // level 13
-    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                23,  16,     8,  4,  MM_LONGOFF,    64,  0, LZ5_parser_lowestPrice,    LZ5_coderwords_LZ5v2 }, // level 14
-    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                23,  16,     8,  4,  MM_LONGOFF,    64,  0, LZ5_parser_optimalPrice,   LZ5_coderwords_LZ5v2 }, // level 15
-    { LZ5_WINDOWLOG_LZ5v2,  LZ5_CHAINLOG_LZ5v2+1,                23,  16,     8,  4,  MM_LONGOFF,    64,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ5v2 }, // level 16
-    { LZ5_WINDOWLOG_LZ5v2,  LZ5_CHAINLOG_LZ5v2+1,                23,  16,   128,  4,  MM_LONGOFF,    64,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ5v2 }, // level 17
-    {                  24,                    25,                28,  24, 1<<10,  4,  MM_LONGOFF, 1<<10,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ5v2 }, // level 18
+    {   LZ5_WINDOWLOG_LZ4,                     0,                12,   0,     0,  0,           0,     0,  0, LZ5_parser_fast,           LZ5_coderwords_LZ4   }, // level 10
+    {   LZ5_WINDOWLOG_LZ4,                     0,   LZ5_HASHLOG_LZ4,   0,     0,  0,           0,     0,  0, LZ5_parser_fast,           LZ5_coderwords_LZ4   }, // level 11
+    {   LZ5_WINDOWLOG_LZ4,                     0,   LZ5_HASHLOG_LZ4,   0,     0,  0,           0,     0,  0, LZ5_parser_noChain,        LZ5_coderwords_LZ4   }, // level 12
+    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,     2,  5,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 13
+    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,     4,  5,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 14
+    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,     8,  5,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 15
+    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,    16,  4,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 16
+    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,   256,  4,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 17
+    {   LZ5_WINDOWLOG_LZ4,   LZ5_WINDOWLOG_LZ4+1,   LZ5_HASHLOG_LZ4,  16,    16,  4,           0, 1<<10,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ4   }, // level 18
+    {   LZ5_WINDOWLOG_LZ4,   LZ5_WINDOWLOG_LZ4+1,                23,  16,   256,  4,           0, 1<<10,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ4   }, // level 19
+    /*            windLog,            contentLog,           HashLog,  H3,  Snum, SL,   MMLongOff, SuffL, FS, Parser function,           Decompressor type  */
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                14,  13,     1,  5,  MM_LONGOFF,     0,  0, LZ5_parser_priceFast,      LZ5_coderwords_LZ5v2 }, // level 20
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2, LZ5_HASHLOG_LZ5v2,  13,     1,  5,  MM_LONGOFF,     0,  0, LZ5_parser_priceFast,      LZ5_coderwords_LZ5v2 }, // level 21
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2, LZ5_HASHLOG_LZ5v2,  13,     1,  5,  MM_LONGOFF,    64,  0, LZ5_parser_lowestPrice,    LZ5_coderwords_LZ5v2 }, // level 22
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                23,  16,     2,  5,  MM_LONGOFF,    64,  0, LZ5_parser_lowestPrice,    LZ5_coderwords_LZ5v2 }, // level 23
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                23,  16,     8,  4,  MM_LONGOFF,    64,  0, LZ5_parser_lowestPrice,    LZ5_coderwords_LZ5v2 }, // level 24
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                23,  16,     8,  4,  MM_LONGOFF,    64,  0, LZ5_parser_optimalPrice,   LZ5_coderwords_LZ5v2 }, // level 25
+    { LZ5_WINDOWLOG_LZ5v2,  LZ5_CHAINLOG_LZ5v2+1,                23,  16,     8,  4,  MM_LONGOFF,    64,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ5v2 }, // level 26
+    { LZ5_WINDOWLOG_LZ5v2,  LZ5_CHAINLOG_LZ5v2+1,                23,  16,   128,  4,  MM_LONGOFF,    64,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ5v2 }, // level 27
+    { LZ5_WINDOWLOG_LZ5v2,  LZ5_CHAINLOG_LZ5v2+1,                23,  24, 1<<10,  4,  MM_LONGOFF, 1<<10,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ5v2 }, // level 28
+    {                  24,                    25,                23,  24, 1<<10,  4,  MM_LONGOFF, 1<<10,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ5v2 }, // level 29
+#ifndef LZ5_NO_HUFFMAN
+    /*            windLog,            contentLog,           HashLog,  H3,  Snum, SL,   MMLongOff, SuffL, FS, Parser function,           Decompressor type  */
+    {   LZ5_WINDOWLOG_LZ4,                     0,                12,   0,     0,  0,           0,     0,  0, LZ5_parser_fast,           LZ5_coderwords_LZ4   }, // level 30
+    {   LZ5_WINDOWLOG_LZ4,                     0,   LZ5_HASHLOG_LZ4,   0,     0,  0,           0,     0,  0, LZ5_parser_fast,           LZ5_coderwords_LZ4   }, // level 31
+    {   LZ5_WINDOWLOG_LZ4,                     0,   LZ5_HASHLOG_LZ4,   0,     0,  0,           0,     0,  0, LZ5_parser_noChain,        LZ5_coderwords_LZ4   }, // level 32
+    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,     2,  5,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 33
+    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,     4,  5,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 34
+    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,     8,  5,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 35
+    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,    16,  4,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 36
+    {   LZ5_WINDOWLOG_LZ4,      LZ5_CHAINLOG_LZ4,   LZ5_HASHLOG_LZ4,   0,   256,  4,           0,     0,  0, LZ5_parser_hashChain,      LZ5_coderwords_LZ4   }, // level 37
+    {   LZ5_WINDOWLOG_LZ4,   LZ5_WINDOWLOG_LZ4+1,   LZ5_HASHLOG_LZ4,  16,    16,  4,           0, 1<<10,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ4   }, // level 38
+    {   LZ5_WINDOWLOG_LZ4,   LZ5_WINDOWLOG_LZ4+1,                23,  16,   256,  4,           0, 1<<10,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ4   }, // level 39
+    /*            windLog,            contentLog,           HashLog,  H3,  Snum, SL,   MMLongOff, SuffL, FS, Parser function,           Decompressor type  */
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                14,  13,     1,  5,  MM_LONGOFF,     0,  0, LZ5_parser_priceFast,      LZ5_coderwords_LZ5v2 }, // level 40
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2, LZ5_HASHLOG_LZ5v2,  13,     1,  5,  MM_LONGOFF,     0,  0, LZ5_parser_priceFast,      LZ5_coderwords_LZ5v2 }, // level 41
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2, LZ5_HASHLOG_LZ5v2,  13,     1,  5,  MM_LONGOFF,    64,  0, LZ5_parser_lowestPrice,    LZ5_coderwords_LZ5v2 }, // level 42
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                23,  16,     2,  5,  MM_LONGOFF,    64,  0, LZ5_parser_lowestPrice,    LZ5_coderwords_LZ5v2 }, // level 43
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                23,  16,     8,  4,  MM_LONGOFF,    64,  0, LZ5_parser_lowestPrice,    LZ5_coderwords_LZ5v2 }, // level 44
+    { LZ5_WINDOWLOG_LZ5v2,    LZ5_CHAINLOG_LZ5v2,                23,  16,     8,  4,  MM_LONGOFF,    64,  0, LZ5_parser_optimalPrice,   LZ5_coderwords_LZ5v2 }, // level 45
+    { LZ5_WINDOWLOG_LZ5v2,  LZ5_CHAINLOG_LZ5v2+1,                23,  16,     8,  4,  MM_LONGOFF,    64,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ5v2 }, // level 46
+    { LZ5_WINDOWLOG_LZ5v2,  LZ5_CHAINLOG_LZ5v2+1,                23,  16,   128,  4,  MM_LONGOFF,    64,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ5v2 }, // level 47
+    { LZ5_WINDOWLOG_LZ5v2,  LZ5_CHAINLOG_LZ5v2+1,                23,  24, 1<<10,  4,  MM_LONGOFF, 1<<10,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ5v2 }, // level 48
+    {                  24,                    25,                23,  24, 1<<10,  4,  MM_LONGOFF, 1<<10,  1, LZ5_parser_optimalPriceBT, LZ5_coderwords_LZ5v2 }, // level 49
+#endif
 //  {                  10,                    10,                10,   0,     0,  4,           0,     0,  0, LZ5_fast          }, // min values
 //  {                  24,                    24,                28,  24, 1<<24,  7,           0, 1<<24,  2, LZ5_optimal_price }, // max values
 };
@@ -448,11 +482,11 @@ MEM_STATIC unsigned LZ5_count(const BYTE* pIn, const BYTE* pMatch, const BYTE* p
 }
 
 /* alias to functions with compressionLevel=1 */
-int LZ5_sizeofState_Level1(void);
-int LZ5_compress_Level1(const char* source, char* dest, int sourceSize, int maxDestSize);
-int LZ5_compress_extState_Level1 (void* state, const char* source, char* dest, int inputSize, int maxDestSize);
-LZ5_stream_t* LZ5_resetStream_Level1 (LZ5_stream_t* streamPtr);
-LZ5_stream_t* LZ5_createStream_Level1(void);
+int LZ5_sizeofState_MinLevel(void);
+int LZ5_compress_MinLevel(const char* source, char* dest, int sourceSize, int maxDestSize);
+int LZ5_compress_extState_MinLevel (void* state, const char* source, char* dest, int inputSize, int maxDestSize);
+LZ5_stream_t* LZ5_resetStream_MinLevel (LZ5_stream_t* streamPtr);
+LZ5_stream_t* LZ5_createStream_MinLevel(void);
 
 
 #if defined (__cplusplus)

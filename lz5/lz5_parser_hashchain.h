@@ -29,7 +29,8 @@ FORCE_INLINE void LZ5_Insert (LZ5_stream_t* ctx, const BYTE* ip)
         size_t delta = idx - hashTable[h];
         if (delta>maxDistance) delta = maxDistance;
         DELTANEXT(idx) = (U32)delta;
-        hashTable[h] = idx;
+        if (idx >= hashTable[h] + LZ5_HC_MIN_OFFSET)
+            hashTable[h] = idx;
 #if MINMATCH == 3
         HashTable3[LZ5_hash3Ptr(base+idx, ctx->params.hashLog3)] = idx;
 #endif 

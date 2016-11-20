@@ -10,7 +10,7 @@
 FORCE_INLINE size_t LZ5_get_price(LZ5_stream_t* const ctx, int rep, const BYTE *ip, const BYTE *off24pos, size_t litLength, U32 offset, size_t matchLength)
 {
     if (ctx->params.decompressType == LZ5_coderwords_LZ4)
-        return LZ5_get_price_LZ4(ctx, litLength, offset, matchLength);
+        return LZ5_get_price_LZ4(ctx, ip, litLength, offset, matchLength);
 
     return LZ5_get_price_LZ5v2(ctx, rep, ip, off24pos, litLength, offset, matchLength);
 }
@@ -234,7 +234,6 @@ FORCE_INLINE int LZ5_BinTree_GetAllMatches (
     }
     }
 #endif
-    
 
     *HashPos = (U32)current;
     ctx->nextToUpdate++;
@@ -247,48 +246,54 @@ FORCE_INLINE int LZ5_BinTree_GetAllMatches (
     if (best_mlen < MINMATCH-1) best_mlen = MINMATCH-1;
 
     while ((matchIndex < current) && (matchIndex >= lowLimit) && (nbAttempts)) {
-        mlt = 0;
         nbAttempts--;
         if (matchIndex >= dictLimit) {
             match = base + matchIndex;
-            if (ip[mlt] == match[mlt]) {
+           // if (ip[mlt] == match[mlt])
                 mlt = LZ5_count(ip, match, iHighLimit);
-                if ((U32)(ip - match) >= LZ5_OPTIMAL_MIN_OFFSET)
-                if ((mlt >= minMatchLongOff) || ((U32)(ip - match) < LZ5_MAX_16BIT_OFFSET))
-                if (mlt > best_mlen) 
-                {
-                    best_mlen = mlt;
-                    matches[mnum].off = (int)(ip - match);
-                    matches[mnum].len = (int)mlt;
-                    matches[mnum].back = 0;
-                    mnum++;
+        } else {
+            match = dictBase + matchIndex;
+            mlt = LZ5_count_2segments(ip, match, iHighLimit, dictEnd, lowPrefixPtr);
+            if (matchIndex + (int)mlt >= dictLimit) 
+                match = base + matchIndex;   /* to prepare for next usage of match[mlt] */ 
+        }
 
-                    if (mlt > LZ5_OPT_NUM) break;
-                    if (ip + mlt >= iHighLimit) break;
-                }
+        if ((U32)(current - matchIndex) >= LZ5_OPTIMAL_MIN_OFFSET) {
+            if ((mlt >= minMatchLongOff) || ((U32)(current - matchIndex) < LZ5_MAX_16BIT_OFFSET))
+            if (mlt > best_mlen) {
+                best_mlen = mlt;
+                matches[mnum].off = (int)(current - matchIndex);
+                matches[mnum].len = (int)mlt;
+                matches[mnum].back = 0;
+                mnum++;
+
+                if (mlt > LZ5_OPT_NUM) break;
+                if (ip + mlt >= iHighLimit) break;
             }
         } else {
-            U32 offset = (U32)(ip - (base + matchIndex));
-            match = dictBase + matchIndex;
-            if ((U32)((dictLimit-1) - matchIndex) >= 3)  /* intentional overflow */
-            if (MEM_readMINMATCH(match) == MEM_readMINMATCH(ip)) {
-                mlt = LZ5_count_2segments(ip+MINMATCH, match+MINMATCH, iHighLimit, dictEnd, lowPrefixPtr) + MINMATCH;
-                if (offset >= LZ5_OPTIMAL_MIN_OFFSET)
-                if ((mlt >= minMatchLongOff) || (offset < LZ5_MAX_16BIT_OFFSET))
-                if (mlt > best_mlen) {
-                    best_mlen = mlt;
-                    matches[mnum].off = (int)offset;
-                    matches[mnum].len = (int)mlt;
-                    matches[mnum].back = 0;
-                    mnum++;
+#if 1
+            intptr_t newMatchIndex;
+            size_t newml = 0, newoff = 0;
+            do {
+                newoff += (int)(current - matchIndex);
+            } while (newoff < LZ5_OPTIMAL_MIN_OFFSET);
+            newMatchIndex = current - newoff;
+            if (newMatchIndex >= dictLimit) newml = LZ5_count(ip, base + newMatchIndex, iHighLimit);
 
-                    if (mlt > LZ5_OPT_NUM) break;
-                    if (ip + mlt >= iHighLimit) break;
-                }
+        //    printf("%d: off=%d mlt=%d\n", (U32)current, (U32)(current - matchIndex), (int)mlt);
+        //    printf("%d: newoff=%d newml=%d\n", (U32)current, (int)newoff, (int)newml);
 
-                if (matchIndex + (int)mlt >= dictLimit) 
-                    match = base + matchIndex;   /* to prepare for next usage of match[mlt] */ 
+            if ((newml >= minMatchLongOff) && (newml > best_mlen)) {
+                best_mlen = newml;
+                matches[mnum].off = (int)newoff;
+                matches[mnum].len = (int)newml;
+                matches[mnum].back = 0;
+                mnum++;
+
+                if (newml > LZ5_OPT_NUM) break;
+                if (ip + newml >= iHighLimit) break;
             }
+#endif
         }
 
         if (ip[mlt] < match[mlt]) {
