@@ -1,9 +1,9 @@
-#include "csc_model.h"
+#include <csc_model.h>
 #include "_lzbench/clang34_fix.h"  /* before <math.h> */
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include "csc_profiler.h"
+#include <csc_profiler.h>
 
 /* 
 
@@ -62,15 +62,16 @@ const uint32_t Model::rev16_table_[16] = {
     3,      11,     7,      15,
 };
 
-int Model::Init(Coder *coder)
+int Model::Init(Coder *coder, ISzAlloc *alloc)
 {
     coder_ = coder;
+    alloc_ = alloc;
     for (int i = 0; i < (4096 >> 3); i++)
         p_2_bits_[i]= (uint32_t)(128 * 
                 log((float)(i * 8 + 4) / 4096) / log(0.5));
 
     p_delta_=NULL;
-    p_lit_ = (uint32_t*)malloc(256 * 256 * sizeof(uint32_t));
+    p_lit_ = (uint32_t*)alloc_->Alloc(alloc_, 256 * 256 * sizeof(uint32_t));
     if (!p_lit_)
         return -1;
 
@@ -79,15 +80,15 @@ int Model::Init(Coder *coder)
 
 void Model::Destroy()
 {
-    free(p_lit_);
-    free(p_delta_);
+    alloc_->Free(alloc_, p_lit_);
+    alloc_->Free(alloc_, p_delta_);
     PWriteLog();
 }
 
 
 void Model::Reset(void)
 {
-    free(p_delta_);
+    alloc_->Free(alloc_, p_delta_);
     p_delta_ = NULL;
 #define INIT_PROB(P, K) do{for(int i = 0; i < K; i++) P[i] = 2048;}while(0)
     INIT_PROB(p_state_, 64 * 3);
@@ -415,17 +416,16 @@ void Model::EncodeInt(uint32_t num)
 
 void Model::CompressDelta(uint8_t *src,uint32_t size)
 {
-
     uint32_t i;
     uint32_t *p;
     uint32_t c;
     uint32_t sCtx=0;
 
-    if (p_delta_==NULL)
-    {
-        p_delta_=(uint32_t*)malloc(256*256*4);
-        for (i=0;i<256*256;i++)
-            p_delta_[i]=2048;
+    if (p_delta_ == NULL) {
+        p_delta_ = (uint32_t*)alloc_->Alloc(alloc_, 256*256*4);
+        for (i = 0; i < 256 * 256; i++) {
+            p_delta_[i] = 2048;
+        }
     }
 
 
@@ -445,85 +445,6 @@ void Model::CompressDelta(uint8_t *src,uint32_t size)
     }
     return;
 }
-
-/*
-void Model::DecompressDelta(uint8_t *dst,uint32_t *size)
-{
-    uint32_t c,i;
-    uint32_t *p;
-    uint32_t sCtx=0;
-
-    if (p_delta_==NULL)
-    {
-        p_delta_=(uint32_t*)malloc(256*256*4);
-        for (i=0;i<256*256;i++)
-            p_delta_[i]=2048;
-    }
-
-    DecodeDirect(coder_,*size,MaxChunkBits);
-    for(i=0;i<*size;i++)
-    {
-        p=&p_delta_[sCtx*256];
-        c=1;
-        do 
-        { 
-            DecodeBit(coder_,c,p[c]);
-        } while (c < 0x100);
-
-        dst[i]=c&0xFF;
-        sCtx=dst[i];
-    }
-    return;
-}
-
-void Model::CompressHard(uint8_t *src,uint32_t size)
-{
-
-    uint32_t i;
-    uint32_t *p;
-    uint32_t c;
-    uint32_t sCtx=16;
-
-
-    EncodeInt(size);
-    for(i=0;i<size;i++)
-    {
-        p=&p_lit_[sCtx*256];
-        c=src[i]|0x100;
-        do
-        {
-            EncodeBit(coder_,(c >> 7) & 1,p[c>>8]);
-            c <<= 1;
-        }
-        while (c < 0x10000);
-
-        sCtx = (src[i] >> 5);
-    }
-    return;
-}
-
-void Model::DecompressHard(uint8_t *dst,uint32_t *size)
-{
-    uint32_t c,i;
-    uint32_t *p;
-    uint32_t sCtx=8;
-
-    DecodeDirect(coder_,*size,MaxChunkBits);
-    for(i=0;i<*size;i++)
-    {
-        p=&p_lit_[sCtx*256];
-        c=1;
-        do 
-        { 
-            DecodeBit(coder_,c,p[c]);
-        } while (c < 0x100);
-
-        dst[i]=c&0xFF;
-        sCtx=dst[i]>>4;
-    }
-    return;
-}
-*/
 
 void Model::CompressLiterals(uint8_t *src,uint32_t size)
 {
@@ -556,7 +477,7 @@ void Model::CompressRLE(uint8_t *src, uint32_t size)
 
     EncodeInt(size);
     if (p_delta_==NULL) {
-        p_delta_=(uint32_t*)malloc(256*256*4);
+        p_delta_=(uint32_t*)alloc_->Alloc(alloc_, 256*256*4);
         for (i=0;i<256*256;i++)
             p_delta_[i]=2048;
     }
@@ -592,41 +513,4 @@ void Model::CompressRLE(uint8_t *src, uint32_t size)
     return;
 }
 
-void Model::CompressValue(uint8_t *src, uint32_t size,uint32_t width,uint32_t channelNum)
-{
-    /*uint32_t probSig=2048;
-    uint32_t *probTmp=(uint32_t*)malloc(512*256*4);
-    for(uint32_t i=0;i<512*256;i++)
-    {
-        probTmp[i]=2048;
-    }
 
-    for(int i=0;i<channelNum;i++)
-    {
-        for(int j=i;j<size;j+=channelNum)
-        {
-            uint32_t *p1,*p2;
-            if (j>channelNum)
-                p1=&probTmp[src[j-channelNum]*256];
-            else
-                p1=&probTmp[0];
-            if (j>channelNum*width)
-                p2=&probTmp[(src[j-channelNum*width]+256)*256];
-            else
-                p2=&probTmp[256*256];
-
-            uint32_t c=src[j]|0x100;
-            do
-            {
-                EncodeBit2(coder_,(c >> 7) & 1,p1[c>>8],p2[c>>8]);
-                c <<= 1;
-            }
-            while (c < 0x10000);
-        }
-    }*/
-
-
-    /*rc1=*(bufx+i-CTX1)<<9;
-    rc3=*(bufx+i-CTX2)<<9|256;if (CTX1==3 && i>Lung*3) rc3=bufx[i-(Lung*3)]<<9|256;
-    *(bufx+i) = nread();i+=CTX1;*/
-}

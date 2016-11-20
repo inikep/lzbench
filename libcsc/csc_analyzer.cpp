@@ -2,30 +2,19 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "csc_analyzer.h"
-//#include ".h"
+#include <csc_analyzer.h>
 
-//FILE *fLog;
 #define AYZDEBUG
 
 
 void Analyzer::Init()
 {
-	for(uint32_t i = 0; i< (MinBlockSize >> 4); i++)
-		logTable[i] = (double)100 * log((double)i * 16 + 8)/ log((double)2);
+    for(uint32_t i = 0; i< (MinBlockSize >> 4); i++)
+        logTable[i] = (double)100 * log((double)i * 16 + 8)/ log((double)2);
 
-	logTable[MinBlockSize >> 4] = (double)100*log((double)(MinBlockSize))/log((double)2);
-	//fLog=fopen("r:\\dataLog.txt","w");
+    logTable[MinBlockSize >> 4] = (double)100*log((double)(MinBlockSize))/log((double)2);
+    //fLog=fopen("r:\\dataLog.txt","w");
 }
-
-
-/*
-Analyzer::~Analyzer()
-{
-	//fclose(fLog);
-}
-*/
-
 
 uint32_t Analyzer::AnalyzeHeader(uint8_t *src, uint32_t size) //,uint32_t *typeArg1,uint32_t *typeArg2,uint32_t *typeArg3)
 {
@@ -133,8 +122,8 @@ uint32_t lastType=0;
 
 int32_t Analyzer::get_channel_idx(uint8_t *src,uint32_t size)
 {
-	uint32_t sameDist[DLT_CHANNEL_MAX]={0},succValue[DLT_CHANNEL_MAX]={0};
-	uint32_t maxSame,maxSucc,minSame,minSucc,bestChnNum;
+    uint32_t sameDist[DLT_CHANNEL_MAX]={0},succValue[DLT_CHANNEL_MAX]={0};
+    uint32_t maxSame,maxSucc,minSame,minSucc,bestChnNum;
 
     for(uint32_t i = 0; i + 16 < size; i++) {
         sameDist[0] += (src[i]==src[i+1]);
@@ -147,32 +136,32 @@ int32_t Analyzer::get_channel_idx(uint8_t *src,uint32_t size)
         succValue[2] += abs((signed)src[i]-(signed)src[i+3]);
         succValue[3] += abs((signed)src[i]-(signed)src[i+4]);
         succValue[4] += abs((signed)src[i]-(signed)src[i+8]);
-	}
+    }
 
-	maxSame=minSame = sameDist[0];
-	maxSucc=minSucc = succValue[0];
-	bestChnNum = 0;
+    maxSame=minSame = sameDist[0];
+    maxSucc=minSucc = succValue[0];
+    bestChnNum = 0;
 
-	for (uint32_t i = 0;i < DLT_CHANNEL_MAX; i++) {
-		if (sameDist[i] < minSame) minSame=sameDist[i];
-		if (sameDist[i] > maxSame) maxSame=sameDist[i];
-		if (succValue[i] > maxSucc) maxSucc=succValue[i];
-		if (succValue[i] < minSucc) {
-			minSucc = succValue[i];
-			bestChnNum = i;
-		}
-	}
+    for (uint32_t i = 0;i < DLT_CHANNEL_MAX; i++) {
+        if (sameDist[i] < minSame) minSame=sameDist[i];
+        if (sameDist[i] > maxSame) maxSame=sameDist[i];
+        if (succValue[i] > maxSucc) maxSucc=succValue[i];
+        if (succValue[i] < minSucc) {
+            minSucc = succValue[i];
+            bestChnNum = i;
+        }
+    }
 
 
-	if ( ((maxSucc > succValue[bestChnNum] * 4) || (maxSucc > succValue[bestChnNum] + 40 * size)) 
-		&& (sameDist[bestChnNum] > minSame * 3)
-		//&& (entropy>700*size || diffNum>245) 
-		&& (sameDist[0] < 0.3 * size))
-	{
-		//printf("delta:%d %d %d %d %d %dr:%d \n",succValue[0],succValue[1],succValue[2],succValue[3],succValue[4],sameDist[5],bestChnNum);
-		return bestChnNum;
-	}
-	return -1;
+    if ( ((maxSucc > succValue[bestChnNum] * 4) || (maxSucc > succValue[bestChnNum] + 40 * size)) 
+        && (sameDist[bestChnNum] > minSame * 3)
+        //&& (entropy>700*size || diffNum>245) 
+        && (sameDist[0] < 0.3 * size))
+    {
+        //printf("delta:%d %d %d %d %d %dr:%d \n",succValue[0],succValue[1],succValue[2],succValue[3],succValue[4],sameDist[5],bestChnNum);
+        return bestChnNum;
+    }
+    return -1;
 }
 
 uint32_t Analyzer::GetDltBpb(uint8_t *src, uint32_t size, uint32_t chn)
@@ -195,59 +184,59 @@ uint32_t Analyzer::GetDltBpb(uint8_t *src, uint32_t size, uint32_t chn)
 
 uint32_t Analyzer::Analyze(uint8_t *src, uint32_t size, uint32_t *bpb)
 {
-	uint32_t avgFreq,freq[256]={0};
-	uint32_t freq0x80[2]={0};
-	uint32_t entropy,alpha_num,diffNum;
+    uint32_t avgFreq,freq[256]={0};
+    uint32_t freq0x80[2]={0};
+    uint32_t entropy,alpha_num,diffNum;
 
-	if (size>MinBlockSize)
-		size=MinBlockSize;
+    if (size>MinBlockSize)
+        size=MinBlockSize;
 
-	if (size<512)
-		return DT_SKIP;
+    if (size<512)
+        return DT_SKIP;
 
-	for(uint32_t i = 0; i < size; i++)
-		freq[src[i]]++;
+    for(uint32_t i = 0; i < size; i++)
+        freq[src[i]]++;
 
-	diffNum = 0;
-	entropy = size * logTable[size>>4];
+    diffNum = 0;
+    entropy = size * logTable[size>>4];
 
-	for(uint32_t i = 0; i < 256; i++) {
-		entropy -= freq[i] * logTable[freq[i] >> 4];
-		diffNum += (freq[i] > 0);
-		freq0x80[i >> 7] += freq[i];
-	}
+    for(uint32_t i = 0; i < 256; i++) {
+        entropy -= freq[i] * logTable[freq[i] >> 4];
+        diffNum += (freq[i] > 0);
+        freq0x80[i >> 7] += freq[i];
+    }
     *bpb = entropy / size;
-	avgFreq = size >> 8;
+    avgFreq = size >> 8;
 
-	alpha_num = 0;
-	for(uint32_t i='a';i<='z';i++)
-		alpha_num += freq[i];
-	
-	if (freq0x80[1] < (size >> 3) && (freq[' '] + freq['\n'] + freq[':'] + freq['.'] + freq['/'] > (size >> 4)) 
-		&& (freq['a'] + freq['e'] + freq['t'] > (size >> 4)) 
-		&& entropy > 300 * size 
-		&& alpha_num > (size / 3))
-		return DT_ENGTXT;
+    alpha_num = 0;
+    for(uint32_t i='a';i<='z';i++)
+        alpha_num += freq[i];
 
-	if (freq[0x8b] > avgFreq && freq[0x00] > avgFreq * 2 && freq[0xE8] > 6)
-		return DT_EXE;
+    if (freq0x80[1] < (size >> 3) && (freq[' '] + freq['\n'] + freq[':'] + freq['.'] + freq['/'] > (size >> 4)) 
+        && (freq['a'] + freq['e'] + freq['t'] > (size >> 4)) 
+        && entropy > 300 * size 
+        && alpha_num > (size / 3))
+        return DT_ENGTXT;
+
+    if (freq[0x8b] > avgFreq && freq[0x00] > avgFreq * 2 && freq[0xE8] > 6)
+        return DT_EXE;
 
     if (entropy > (log((double)diffNum - 2) / log((double)2) - 0.6) * 100.0 * size  && diffNum < 16 && diffNum >= 6)
         return DT_ENTROPY;
 
-	if (entropy < 400 * size && diffNum < 200)
-		return DT_NORMAL;
+    if (entropy < 400 * size && diffNum < 200)
+        return DT_NORMAL;
 
-	int32_t dltIdx = get_channel_idx(src,size);
-	if (dltIdx != -1)
-		return DT_DLT + dltIdx;
+    int32_t dltIdx = get_channel_idx(src,size);
+    if (dltIdx != -1)
+        return DT_DLT + dltIdx;
 
-	if (entropy > 795 * size)
-		return DT_BAD;
-	else if (entropy > 780 * size)
-		return DT_FAST; 
+    if (entropy > 795 * size)
+        return DT_BAD;
+    else if (entropy > 780 * size)
+        return DT_FAST; 
 
-	return DT_NORMAL;//DT_NORMAL;
+    return DT_NORMAL;//DT_NORMAL;
 }
 
 

@@ -1,7 +1,8 @@
-#include "csc_dec.h"
-#include "csc_memio.h"
-#include "csc_filters.h"
-#include "csc_typedef.h"
+#include <csc_dec.h>
+#include <csc_memio.h>
+#include <csc_filters.h>
+#include <csc_typedef.h>
+#include <csc_default_alloc.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -11,7 +12,7 @@
         coder->rc_range_<<=8;\
         coder->rc_code_=(coder->rc_code_<<8)+*coder->prc_++;\
         coder->rc_size_++;\
-        if (coder->rc_size_==coder->rc_bufsize_) {\
+        if (coder->rc_size_>=coder->rc_bufsize_) {\
             coder->outsize_+=coder->rc_size_;\
             if (coder->io_->ReadRCData(coder->rc_buf_,coder->rc_bufsize_) < 0)\
                 throw (int)READ_ERROR;\
@@ -63,7 +64,7 @@ class CSCDecoder
 {
     uint32_t coder_decode_direct(uint32_t len) {
 
-#define BCRCheckBound() do{if (bc_size_ == bc_bufsize_) \
+#define BCRCheckBound() do{if (bc_size_ >= bc_bufsize_) \
         {\
             outsize_ += bc_size_;\
             if (io_->ReadBCData(bc_buf_, bc_bufsize_) < 0)\
@@ -94,24 +95,34 @@ class CSCDecoder
         return num;
     }
 
-    void decode_bad(uint8_t *dst, uint32_t *size) {
+    int decode_bad(uint8_t *dst, uint32_t *size, uint32_t max_bsize) {
         *size = decode_int();
-        for(uint32_t i = 0; i < *size; i++)
+        if (*size > max_bsize) {
+            return -1;
+        }
+
+        for(uint32_t i = 0; i < *size; i++) {
             dst[i] = coder_decode_direct(8);
+        }
+        return 0;
     }
 
-    void decode_rle(uint8_t *dst, uint32_t *size) {
+    int decode_rle(uint8_t *dst, uint32_t *size, uint32_t max_bsize) {
         uint32_t c, flag, len, i;
         uint32_t sCtx = 0;
         uint32_t *p=NULL;
 
         if (p_delta_ == NULL) {
-            p_delta_ = (uint32_t*)malloc(256*256*sizeof(uint32_t));
+            p_delta_ = (uint32_t*)alloc_->Alloc(alloc_, 256*256*sizeof(uint32_t));
             for (i = 0;i< 256 * 256;i++)
                 p_delta_[i]=2048;
         }
 
         *size = decode_int();
+        if (*size > max_bsize) {
+            return -1;
+        }
+
         for (i = 0; i < *size; ) {
             flag=0;
             DecodeBit(this, flag, p_rle_flag_);
@@ -126,13 +137,19 @@ class CSCDecoder
                 i++;
             } else {
                 len = decode_matchlen_2() + 11;
-                while(len-- > 0) {
+                if (i == 0) {
+                    // invalid compression stream
+                    return -1;
+                }
+
+                while(len-- > 0 && i < *size) {
                     dst[i] = dst[i-1];
                     i++;
                 }
                 sCtx = dst[i-1];
             }
         }
+        return 0;
     }
 
     uint32_t decode_literal() {
@@ -149,8 +166,12 @@ class CSCDecoder
         return ctx_;
     }
 
-    void decode_literals(uint8_t *dst, uint32_t *size) {
+    int decode_literals(uint8_t *dst, uint32_t *size, uint32_t max_bsize) {
         *size = decode_int();
+        if (*size > max_bsize) {
+            return -1;
+        }
+
         for(uint32_t i = 0; i < *size; i++) {
             uint32_t c = 1, *p;
             p = &p_lit_[ctx_ * 256];
@@ -160,6 +181,7 @@ class CSCDecoder
             ctx_ = c & 0xFF;
             dst[i] = ctx_;
         }
+        return 0;
     }
 
     uint32_t decode_matchlen_1() {
@@ -284,8 +306,10 @@ class CSCDecoder
 
 
 public:
-    int Init(MemIO *io, uint32_t dict_size, uint32_t csc_blocksize) {
+    int Init(MemIO *io, uint32_t dict_size, uint32_t csc_blocksize, ISzAlloc *alloc) {
         io_ = io;
+        alloc_ = alloc;
+
         // entropy coder init
         rc_low_ = 0;
         rc_range_ = 0xFFFFFFFF;
@@ -304,13 +328,14 @@ public:
         p_lit_ = NULL;
         filters_ = NULL;
 
-        prc_ = rc_buf_ = (uint8_t *)malloc(csc_blocksize);
-        pbc_ = bc_buf_ = (uint8_t *)malloc(csc_blocksize);
+        prc_ = rc_buf_ = (uint8_t *)alloc_->Alloc(alloc_, csc_blocksize);
+        pbc_ = bc_buf_ = (uint8_t *)alloc_->Alloc(alloc_, csc_blocksize);
         if (!prc_ || !pbc_)
             goto FREE_ON_ERROR;
 
-        io_->ReadRCData(rc_buf_, rc_bufsize_);
-        io_->ReadBCData(bc_buf_, bc_bufsize_);
+        if (io_->ReadRCData(rc_buf_, rc_bufsize_) < 0 ||
+            io_->ReadBCData(bc_buf_, bc_bufsize_) < 0)
+            goto FREE_ON_ERROR;
 
         rc_code_ = ((uint32_t)prc_[1] << 24) 
             | ((uint32_t)prc_[2] << 16) 
@@ -320,12 +345,12 @@ public:
         rc_size_ += 5;
 
         // model
-        p_lit_ = (uint32_t*)malloc(256 * 256 * sizeof(uint32_t));
+        p_lit_ = (uint32_t*)alloc_->Alloc(alloc_, 256 * 256 * sizeof(uint32_t));
         if (!p_lit_)
             goto FREE_ON_ERROR;
 
-        filters_ = new Filters();
-        filters_->Init();
+        filters_ = (Filters *)alloc_->Alloc(alloc_, sizeof(Filters));
+        filters_->Init(alloc_);
 
 #define INIT_PROB(P, K) do{for(int i = 0; i < K; i++) P[i] = 2048;}while(0)
         INIT_PROB(p_state_, 64 * 3);
@@ -348,7 +373,7 @@ public:
 
         // LZ engine
         wnd_size_ = dict_size;
-        wnd_ = (uint8_t *)malloc(wnd_size_ + 8);
+        wnd_ = (uint8_t *)alloc_->Alloc(alloc_, wnd_size_ + 8);
         if (!wnd_)
             goto FREE_ON_ERROR;
 
@@ -366,15 +391,19 @@ FREE_ON_ERROR:
 
     void Destroy()
     {
-        free(p_lit_);
-        free(p_delta_);
-        free(wnd_);
-        free(rc_buf_);
-        free(bc_buf_);
+        alloc_->Free(alloc_, p_lit_);
+        alloc_->Free(alloc_, p_delta_);
+        alloc_->Free(alloc_, wnd_);
+        alloc_->Free(alloc_, rc_buf_);
+        alloc_->Free(alloc_, bc_buf_);
         if (filters_) {
             filters_->Destroy();
-            delete filters_;
+            alloc_->Free(alloc_, filters_);
         }
+        p_lit_ = p_delta_ = NULL;
+        wnd_ = NULL;
+        rc_buf_ = bc_buf_ = NULL;
+        filters_ = NULL;
     }
 
     int Decompress(uint8_t *dst, uint32_t *size, uint32_t max_bsize);
@@ -383,6 +412,7 @@ FREE_ON_ERROR:
     }
 
 private:
+    ISzAlloc *alloc_;
     MemIO *io_;
     Filters *filters_;
 
@@ -450,22 +480,23 @@ int CSCDecoder::lz_decode(uint8_t *dst, uint32_t *size, uint32_t limit)
     uint32_t i;
 
     for(i = 0; i <= limit; ) {
-        uint32_t v=0;
+        uint32_t v = 0;
         DecodeBit(this, v, p_state_[state_ *3 + 0]);
-        if (v==0) {
+        if (v == 0) {
             wnd_[wnd_curpos_++] = decode_literal();
             i++;
         } else {
-            v=0;
+            v = 0;
             DecodeBit(this ,v, p_state_[state_ * 3 + 1]);
 
             uint32_t dist, len, cpy_pos;
             uint8_t *cpy_src ,*cpy_dst;
             if (v == 1) {
                 decode_match(dist, len);
-                if (len == 0 && dist == 64) 
+                if (len == 0 && dist == 64) {
                     // End of a block
                     break;
+                }
                 dist++;
                 len += 2;
                 rep_dist_[3] = rep_dist_[2];
@@ -474,20 +505,22 @@ int CSCDecoder::lz_decode(uint8_t *dst, uint32_t *size, uint32_t limit)
                 rep_dist_[0] = dist;
                 cpy_pos = wnd_curpos_ >= dist? 
                     wnd_curpos_ - dist : wnd_curpos_ + wnd_size_ - dist;
-                if (cpy_pos > wnd_size_ || cpy_pos + len >wnd_size_ || len + i > limit)
+                if (cpy_pos >= wnd_size_ || cpy_pos + len > wnd_size_ ||
+                        len + i > limit || wnd_curpos_ + len > wnd_size_)
                     throw (int)DECODE_ERROR;
 
                 cpy_dst = wnd_ + wnd_curpos_;
                 cpy_src = wnd_ + cpy_pos;
                 i += len;
                 wnd_curpos_ += len;
-                while(len--) 
+                while(len--) {
                     *cpy_dst++ = *cpy_src++;
+                }
                 set_lit_ctx(wnd_[wnd_curpos_ - 1]);
             } else {
                 v = 0;
                 DecodeBit(this , v, p_state_[state_ * 3 + 2]);
-                if (v==0) {
+                if (v == 0) {
                     decode_1byte_match();
                     cpy_pos = wnd_curpos_ > rep_dist_[0]?
                         wnd_curpos_ - rep_dist_[0] : wnd_curpos_ + wnd_size_ - rep_dist_[0];
@@ -498,8 +531,9 @@ int CSCDecoder::lz_decode(uint8_t *dst, uint32_t *size, uint32_t limit)
                     uint32_t repdist_idx;
                     decode_repdist_match(repdist_idx, len);
                     len += 2;
-                    if (len + i > limit) 
+                    if (len + i > limit) {
                         throw (int)DECODE_ERROR;
+                    }
 
                     dist = rep_dist_[repdist_idx];
                     for(int j = repdist_idx ; j > 0; j--) 
@@ -508,7 +542,8 @@ int CSCDecoder::lz_decode(uint8_t *dst, uint32_t *size, uint32_t limit)
 
                     cpy_pos = wnd_curpos_ >= dist? 
                         wnd_curpos_ - dist : wnd_curpos_ + wnd_size_ - dist;
-                    if (cpy_pos + len >wnd_size_ || len + i > limit) 
+                    if (cpy_pos >= wnd_size_ || cpy_pos + len > wnd_size_ ||
+                            len + i > limit || wnd_curpos_ + len > wnd_size_) 
                         throw (int)DECODE_ERROR;
                     cpy_dst = wnd_ + wnd_curpos_;
                     cpy_src = wnd_ + cpy_pos;
@@ -521,7 +556,9 @@ int CSCDecoder::lz_decode(uint8_t *dst, uint32_t *size, uint32_t limit)
             }
         }
 
-        if (wnd_curpos_ >= wnd_size_) {
+        if (wnd_curpos_ > wnd_size_) {
+            throw (int)DECODE_ERROR;
+        } else if (wnd_curpos_ == wnd_size_) {
             wnd_curpos_ = 0;
             memcpy(dst + copied_size ,wnd_ + copied_wndpos, i - copied_size);
             copied_wndpos = 0;
@@ -553,28 +590,35 @@ int CSCDecoder::Decompress(uint8_t *dst, uint32_t *size, uint32_t max_bsize)
     switch (type) {
         case DT_NORMAL:
             ret = lz_decode(dst, size, max_bsize);
-            if (ret<0)
+            if (ret < 0)
                 return ret;
             break;
         case DT_EXE:
             ret = lz_decode(dst, size, max_bsize);
-            if (ret<0)
+            if (ret < 0)
                 return ret;
             filters_->Inverse_E89(dst, *size);
             break;
         case DT_ENGTXT:
             *size = decode_int();
             ret = lz_decode(dst, size, max_bsize);
-            if (ret<0)
+            if (ret < 0) {
                 return ret;
+            }
             filters_->Inverse_Dict(dst, *size);
             break;
         case DT_BAD:
-            decode_bad(dst, size);
+            ret = decode_bad(dst, size, max_bsize);
+            if (ret < 0) {
+                return ret;
+            }
             lz_copy2dict(dst, *size);
             break;
         case DT_ENTROPY:
-            decode_literals(dst, size);
+            ret = decode_literals(dst, size, max_bsize);
+            if (ret < 0) {
+                return ret;
+            }
             lz_copy2dict(dst, *size);
             break;
         //case DT_HARD:
@@ -599,9 +643,10 @@ int CSCDecoder::Decompress(uint8_t *dst, uint32_t *size, uint32_t max_bsize)
         default:
             if (type >= DT_DLT && type < DT_DLT + DLT_CHANNEL_MAX) {
                 uint32_t chnNum = DltIndex[type - DT_DLT];
-                decode_rle(dst,size);
-                //decode_bad(dst, size);
-                //ret = lz_decode(dst, size, max_bsize);
+                ret = decode_rle(dst, size, max_bsize);
+                if (ret<0) {
+                    return ret;
+                }
                 filters_->Inverse_Delta(dst, *size, chnNum);
                 lz_copy2dict(dst, *size);
             } else {
@@ -621,8 +666,11 @@ int CSCDecoder::Decompress(uint8_t *dst, uint32_t *size, uint32_t max_bsize)
         bc_curbits_ = bc_curval_ =0;
         prc_ = rc_buf_;
         pbc_ = bc_buf_;
-        io_->ReadRCData(rc_buf_, rc_bufsize_);
-        io_->ReadBCData(bc_buf_, bc_bufsize_);
+
+        if (io_->ReadRCData(rc_buf_, rc_bufsize_) < 0 ||
+            io_->ReadBCData(bc_buf_, bc_bufsize_) < 0)
+            return -1;
+
         rc_code_ = ((uint32_t)prc_[1] << 24) 
             | ((uint32_t)prc_[2] << 16) 
             | ((uint32_t)prc_[3] << 8) 
@@ -633,23 +681,38 @@ int CSCDecoder::Decompress(uint8_t *dst, uint32_t *size, uint32_t max_bsize)
     return ret;
 }
 
-struct CSCInstance
+struct CSCDecInstance
 {
     CSCDecoder *decoder;
     MemIO *io;
+    ISzAlloc *alloc;
     uint32_t raw_blocksize;
 };
 
-CSCDecHandle CSCDec_Create(const CSCProps *props, ISeqInStream *instream)
+CSCDecHandle CSCDec_Create(const CSCProps *props,
+                           ISeqInStream *instream,
+                           ISzAlloc *alloc)
 {
-    CSCInstance *csc = new CSCInstance();
+    if (alloc == NULL) {
+        alloc = default_alloc;
+    }
 
-    csc->io = new MemIO();
-    csc->io->Init(instream, props->csc_blocksize);
+    if (props->dict_size > 1024 * MB) {
+        return NULL;
+    }
+
+    if (props->dict_size < 32 * KB) {
+        return NULL;
+    }
+
+    CSCDecInstance *csc = (CSCDecInstance *)alloc->Alloc(alloc, sizeof(CSCDecInstance));
+    csc->io = (MemIO *)alloc->Alloc(alloc, sizeof(MemIO));
+    csc->io->Init(instream, props->csc_blocksize, alloc);
     csc->raw_blocksize = props->raw_blocksize;
+    csc->decoder = (CSCDecoder *)alloc->Alloc(alloc, sizeof(CSCDecoder));
+    csc->alloc = alloc;
 
-    csc->decoder = new CSCDecoder();
-    if (csc->decoder->Init(csc->io, props->dict_size, props->csc_blocksize) < 0) {
+    if (csc->decoder->Init(csc->io, props->dict_size, props->csc_blocksize, alloc) < 0) {
         CSCDec_Destroy((void *)csc);
         return NULL;
     }
@@ -658,11 +721,13 @@ CSCDecHandle CSCDec_Create(const CSCProps *props, ISeqInStream *instream)
 
 void CSCDec_Destroy(CSCDecHandle p)
 {
-    CSCInstance *csc = (CSCInstance *)p;
+    CSCDecInstance *csc = (CSCDecInstance *)p;
     csc->decoder->Destroy();
-    delete csc->decoder;
-    delete csc->io;
-    delete csc;
+    csc->io->Destroy();
+    ISzAlloc *alloc = csc->alloc;
+    alloc->Free(alloc, csc->decoder);
+    alloc->Free(alloc, csc->io);
+    alloc->Free(alloc, csc);
 }
 
 void CSCDec_ReadProperties(CSCProps *props, uint8_t *s)
@@ -677,8 +742,8 @@ int CSCDec_Decode(CSCDecHandle p,
         ICompressProgress *progress)
 {
     int ret = 0;
-    CSCInstance *csc = (CSCInstance *)p;
-    uint8_t *buf = new uint8_t[csc->raw_blocksize];
+    CSCDecInstance *csc = (CSCDecInstance *)p;
+    uint8_t *buf = (uint8_t *)csc->alloc->Alloc(csc->alloc, csc->raw_blocksize);
     uint64_t outsize = 0;
 
     for(;;) {
@@ -707,7 +772,7 @@ int CSCDec_Decode(CSCDecHandle p,
             break;
         }
     }
-    delete []buf;
+    csc->alloc->Free(csc->alloc, buf);
     return ret;
 }
 

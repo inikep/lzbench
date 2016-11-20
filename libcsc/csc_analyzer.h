@@ -1,7 +1,7 @@
 #ifndef _CSC_ANALYZER_H_
 #define _CSC_ANALYZER_H_
 
-#include "csc_typedef.h"
+#include <csc_typedef.h>
 
 
 class Analyzer

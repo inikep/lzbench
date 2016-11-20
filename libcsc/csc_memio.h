@@ -1,6 +1,6 @@
 #ifndef _CSC_MEMIO_H_
 #define _CSC_MEMIO_H_
-#include "csc_common.h"
+#include <csc_common.h>
 
 // rc/RC means for range coder
 // bc/BC means for bit coder
@@ -8,6 +8,8 @@
 class MemIO 
 {
     uint32_t bsize_;
+    ISzAlloc *alloc_;
+    
 
     struct DataBlock {
         DataBlock *next;
@@ -29,7 +31,8 @@ class MemIO
     int WriteBlock(uint8_t *buffer, uint32_t size, int rc1bc0);
 
 public:
-    void Init(void *iostream, uint32_t bsize);
+    void Init(void *iostream, uint32_t bsize, ISzAlloc *alloc);
+    void Destroy();
 
     uint32_t GetBlockSize() { return bsize_; }
 

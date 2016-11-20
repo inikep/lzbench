@@ -1,33 +1,34 @@
 #include <stdlib.h>
-#include "csc_encoder_main.h"
-#include "csc_common.h"
+#include <csc_encoder_main.h>
+#include <csc_common.h>
 
-int CSCEncoder::Init(const CSCProps *p, MemIO *io)
+int CSCEncoder::Init(const CSCProps *p, MemIO *io, ISzAlloc *alloc)
 {
-    typeArg1=typeArg2=typeArg3=0;
-    fixedDataType=DT_NONE;
+    alloc_ = alloc;
+    fixed_datatype_=DT_NONE;
 
     rawblock_limit_ = p->raw_blocksize;
 
     analyzer_.Init();
-    filters_.Init();
-    coder_.Init(io);
+    filters_.Init(alloc_);
+    coder_.Init(io, alloc_);
 
-    if (model_.Init(&coder_) < 0)
+    if (model_.Init(&coder_, alloc_) < 0)
         return -1;
 
     p_ = *p;
-    if (lz_.Init(p, &model_) < 0) {
+    if (lz_.Init(p, &model_, alloc_) < 0) {
         filters_.Destroy();
         coder_.Destroy();
         model_.Destroy();
         return -1;
     }
 
-    if (p->DLTFilter + p->EXEFilter + p->TXTFilter == 0)
+    if (p->DLTFilter + p->EXEFilter + p->TXTFilter == 0) {
         use_filters_ = false;
-    else
+    } else {
         use_filters_ = true;
+    }
     return 0;
 }
 
@@ -95,10 +96,10 @@ void CSCEncoder::Compress(uint8_t *src,uint32_t size)
         cur_block_size = MIN(MinBlockSize, size - i);
 
         if (use_filters_) {
-            if (fixedDataType == DT_NONE)
+            if (fixed_datatype_ == DT_NONE)
                 this_type = analyzer_.Analyze(src + i, cur_block_size, &bpb);
             else 
-                this_type=fixedDataType;
+                this_type=fixed_datatype_;
         } else
             this_type=DT_NORMAL;
 
@@ -158,8 +159,7 @@ void CSCEncoder::WriteEOF()
 
 void CSCEncoder::CheckFileType(uint8_t *src, uint32_t size)
 {
-    //fixedDataType=analyzer_.analyzeHeader(src,size,&typeArg1,&typeArg2,&typeArg3);
-    fixedDataType=DT_NONE;
+    fixed_datatype_=DT_NONE;
     return;
 }
 

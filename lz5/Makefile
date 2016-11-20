@@ -1,19 +1,20 @@
 # ################################################################
 # LZ5 library - Makefile
 # Copyright (C) Yann Collet 2011-2015
+# Copyright (C) 2016, Przemyslaw Skibinski <inikep@gmail.com>
 # All rights reserved.
-# 
+#
 # BSD license
 # Redistribution and use in source and binary forms, with or without modification,
 # are permitted provided that the following conditions are met:
-# 
+#
 # * Redistributions of source code must retain the above copyright notice, this
 #   list of conditions and the following disclaimer.
-# 
+#
 # * Redistributions in binary form must reproduce the above copyright notice, this
 #   list of conditions and the following disclaimer in the documentation and/or
 #   other materials provided with the distribution.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
 # ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
 # WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
@@ -24,24 +25,31 @@
 # ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-# 
+#
 # You can contact the author at :
 #  - LZ5 source repository : https://github.com/inikep/lz5
-#  - LZ5 forum froup : https://groups.google.com/forum/#!forum/lz5c
 # ################################################################
 
 # Version numbers
-VERSION?= 1.5.0
-LIBVER_MAJOR:=`sed -n '/define LZ5_VERSION_MAJOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < lz5.h`
-LIBVER_MINOR:=`sed -n '/define LZ5_VERSION_MINOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < lz5.h`
-LIBVER_PATCH:=`sed -n '/define LZ5_VERSION_RELEASE/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < lz5.h`
-LIBVER := $(LIBVER_MAJOR).$(LIBVER_MINOR).$(LIBVER_PATCH)
+LIBVER_MAJOR_SCRIPT:=`sed -n '/define LZ5_VERSION_MAJOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < ./lz5_compress.h`
+LIBVER_MINOR_SCRIPT:=`sed -n '/define LZ5_VERSION_MINOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < ./lz5_compress.h`
+LIBVER_PATCH_SCRIPT:=`sed -n '/define LZ5_VERSION_RELEASE/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < ./lz5_compress.h`
+LIBVER_SCRIPT:= $(LIBVER_MAJOR_SCRIPT).$(LIBVER_MINOR_SCRIPT).$(LIBVER_PATCH_SCRIPT)
+LIBVER_MAJOR := $(shell echo $(LIBVER_MAJOR_SCRIPT))
+LIBVER_MINOR := $(shell echo $(LIBVER_MINOR_SCRIPT))
+LIBVER_PATCH := $(shell echo $(LIBVER_PATCH_SCRIPT))
+LIBVER := $(shell echo $(LIBVER_SCRIPT))
+
+BUILD_STATIC:= yes
 
 DESTDIR?=
 PREFIX ?= /usr/local
 CPPFLAGS= -DXXH_NAMESPACE=LZ5_
 CFLAGS ?= -O3
-CFLAGS += -std=c99 -Wall -Wextra -Wundef -Wshadow -Wcast-align -Wcast-qual -Wstrict-prototypes -pedantic
+CFLAGS += -Wall -Wextra -Wcast-qual -Wcast-align -Wshadow \
+          -Wswitch-enum -Wdeclaration-after-statement -Wstrict-prototypes -Wundef \
+          -Wpointer-arith -Wstrict-aliasing=1
+CFLAGS  += $(MOREFLAGS) 
 FLAGS   = $(CPPFLAGS) $(CFLAGS) $(LDFLAGS)
 
 LIBDIR?= $(PREFIX)/lib
@@ -62,45 +70,58 @@ else
 	SHARED_EXT_VER = $(SHARED_EXT).$(LIBVER)
 endif
 
-default: liblz5
+default: lib
 
-all: liblz5
+all: lib
 
-liblz5: lz5.c lz5hc.c lz5frame.c xxhash.c   # need to compile once with -fPIC, and once without -fPIC
+lib: liblz5.a liblz5
+
+liblz5.a: *.c xxhash/*.c entropy/*.c
+ifeq ($(BUILD_STATIC),yes)
 	@echo compiling static library
-	@$(AR) rcs $@.a $^
+	@$(CC) $(FLAGS) -c $^
+	@$(AR) rcs $@ *.o
+endif
+
+liblz5: *.c xxhash/*.c entropy/*.c
 	@echo compiling dynamic library $(LIBVER)
+ifneq (,$(filter Windows%,$(OS)))
+	@$(CC) $(FLAGS) -DLZ5_DLL_EXPORT=1 -shared $^ -o dll\$@.dll
+	dlltool -D dll\liblz5.dll -d dll\liblz5.def -l dll\liblz5.lib
+else
 	@$(CC) $(FLAGS) -shared $^ -fPIC $(SONAME_FLAGS) -o $@.$(SHARED_EXT_VER)
 	@echo creating versioned links
 	@ln -sf $@.$(SHARED_EXT_VER) $@.$(SHARED_EXT_MAJOR)
 	@ln -sf $@.$(SHARED_EXT_VER) $@.$(SHARED_EXT)
+endif
 
 clean:
-	@rm -f core *.o *.a *.$(SHARED_EXT) *.$(SHARED_EXT).* liblz5.pc
+	@rm -f core entropy/*.o xxhash/*.o *.o *.a *.$(SHARED_EXT) *.$(SHARED_EXT).* liblz5.pc dll/liblz5.dll dll/liblz5.lib
 	@echo Cleaning library completed
 
 
 #------------------------------------------------------------------------
-#make install is validated only for Linux, OSX, kFreeBSD and Hurd targets
-ifneq (,$(filter $(shell uname),Linux Darwin GNU/kFreeBSD GNU))
+#make install is validated only for Linux, OSX, kFreeBSD, Hurd and
+#FreeBSD targets
+ifneq (,$(filter $(shell uname),Linux Darwin GNU/kFreeBSD GNU FreeBSD))
 
 liblz5.pc: liblz5.pc.in Makefile
 	@echo creating pkgconfig
 	@sed -e 's|@PREFIX@|$(PREFIX)|' \
             -e 's|@LIBDIR@|$(LIBDIR)|' \
             -e 's|@INCLUDEDIR@|$(INCLUDEDIR)|' \
-            -e 's|@VERSION@|$(VERSION)|' \
+            -e 's|@VERSION@|$(LIBVER)|' \
              $< >$@
 
-install: liblz5 liblz5.pc
+install: lib liblz5.pc
 	@install -d -m 755 $(DESTDIR)$(LIBDIR)/pkgconfig/ $(DESTDIR)$(INCLUDEDIR)/
 	@install -m 755 liblz5.$(SHARED_EXT_VER) $(DESTDIR)$(LIBDIR)
 	@ln -sf liblz5.$(SHARED_EXT_VER) $(DESTDIR)$(LIBDIR)/liblz5.$(SHARED_EXT_MAJOR)
 	@ln -sf liblz5.$(SHARED_EXT_VER) $(DESTDIR)$(LIBDIR)/liblz5.$(SHARED_EXT)
 	@install -m 644 liblz5.pc $(DESTDIR)$(LIBDIR)/pkgconfig/
 	@install -m 644 liblz5.a $(DESTDIR)$(LIBDIR)/liblz5.a
-	@install -m 644 lz5.h $(DESTDIR)$(INCLUDEDIR)/lz5.h
-	@install -m 644 lz5hc.h $(DESTDIR)$(INCLUDEDIR)/lz5hc.h
+	@install -m 644 lz5_compress.h $(DESTDIR)$(INCLUDEDIR)/lz5_compress.h
+	@install -m 644 lz5_common.h $(DESTDIR)$(INCLUDEDIR)/lz5_common.h
 	@install -m 644 lz5frame.h $(DESTDIR)$(INCLUDEDIR)/lz5frame.h
 	@echo lz5 static and shared libraries installed
 
@@ -110,8 +131,8 @@ uninstall:
 	@rm -f $(DESTDIR)$(LIBDIR)/pkgconfig/liblz5.pc
 	@[ -x $(DESTDIR)$(LIBDIR)/liblz5.$(SHARED_EXT_VER) ] && rm -f $(DESTDIR)$(LIBDIR)/liblz5.$(SHARED_EXT_VER)
 	@[ -f $(DESTDIR)$(LIBDIR)/liblz5.a ] && rm -f $(DESTDIR)$(LIBDIR)/liblz5.a
-	@[ -f $(DESTDIR)$(INCLUDEDIR)/lz5.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/lz5.h
-	@[ -f $(DESTDIR)$(INCLUDEDIR)/lz5hc.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/lz5hc.h
+	@[ -f $(DESTDIR)$(INCLUDEDIR)/lz5_compress.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/lz5_compress.h
+	@[ -f $(DESTDIR)$(INCLUDEDIR)/lz5_common.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/lz5_common.h
 	@[ -f $(DESTDIR)$(INCLUDEDIR)/lz5frame.h ] && rm -f $(DESTDIR)$(INCLUDEDIR)/lz5frame.h
 	@echo lz5 libraries successfully uninstalled
 

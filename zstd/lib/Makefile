@@ -78,7 +78,7 @@ clean:
 
 #------------------------------------------------------------------------
 #make install is validated only for Linux, OSX, kFreeBSD, Hurd and some BSD targets
-ifneq (,$(filter $(shell uname),Linux Darwin GNU/kFreeBSD GNU FreeBSD DragonFly))
+ifneq (,$(filter $(shell uname),Linux Darwin GNU/kFreeBSD GNU FreeBSD DragonFly NetBSD))
 
 libzstd.pc:
 libzstd.pc: libzstd.pc.in
@@ -97,19 +97,21 @@ install: libzstd libzstd.pc
 	@cp -a libzstd.pc $(DESTDIR)$(LIBDIR)/pkgconfig/
 	@install -m 644 libzstd.a $(DESTDIR)$(LIBDIR)/libzstd.a
 	@install -m 644 zstd.h $(DESTDIR)$(INCLUDEDIR)/zstd.h
-	@install -m 644 common/zbuff.h $(DESTDIR)$(INCLUDEDIR)/zbuff.h
+	@install -m 644 common/zstd_errors.h $(DESTDIR)$(INCLUDEDIR)/zstd_errors.h
+	@install -m 644 common/zbuff.h $(DESTDIR)$(INCLUDEDIR)/zbuff.h   # Deprecated streaming functions
 	@install -m 644 dictBuilder/zdict.h $(DESTDIR)$(INCLUDEDIR)/zdict.h
 	@echo zstd static and shared library installed
 
 uninstall:
-	$(RM) $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT)
-	$(RM) $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_MAJOR)
-	$(RM) $(DESTDIR)$(LIBDIR)/pkgconfig/libzstd.pc
-	[ -x $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_VER) ] && $(RM) $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_VER)
-	@[ -f $(DESTDIR)$(LIBDIR)/libzstd.a ] && $(RM) $(DESTDIR)$(LIBDIR)/libzstd.a
-	@[ -f $(DESTDIR)$(INCLUDEDIR)/zstd.h ] && $(RM) $(DESTDIR)$(INCLUDEDIR)/zstd.h
-	@[ -f $(DESTDIR)$(INCLUDEDIR)/zbuff.h ] && $(RM) $(DESTDIR)$(INCLUDEDIR)/zbuff.h
-	@[ -f $(DESTDIR)$(INCLUDEDIR)/zdict.h ] && $(RM) $(DESTDIR)$(INCLUDEDIR)/zdict.h
+	@$(RM) $(DESTDIR)$(LIBDIR)/libzstd.a
+	@$(RM) $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT)
+	@$(RM) $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_MAJOR)
+	@$(RM) $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_VER)
+	@$(RM) $(DESTDIR)$(LIBDIR)/pkgconfig/libzstd.pc
+	@$(RM) $(DESTDIR)$(INCLUDEDIR)/zstd.h
+	@$(RM) $(DESTDIR)$(INCLUDEDIR)/zstd_errors.h
+	@$(RM) $(DESTDIR)$(INCLUDEDIR)/zbuff.h   # Deprecated streaming functions
+	@$(RM) $(DESTDIR)$(INCLUDEDIR)/zdict.h
 	@echo zstd libraries successfully uninstalled
 
 endif

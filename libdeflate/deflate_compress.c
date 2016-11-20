@@ -1,15 +1,30 @@
 /*
  * deflate_compress.c - a compressor for DEFLATE
  *
- * Written in 2014-2016 by Eric Biggers <ebiggers3@gmail.com>
+ * Originally public domain; changes after 2016-09-07 are copyrighted.
  *
- * To the extent possible under law, the author(s) have dedicated all copyright
- * and related and neighboring rights to this software to the public domain
- * worldwide. This software is distributed without any warranty.
+ * Copyright 2016 Eric Biggers
  *
- * You should have received a copy of the CC0 Public Domain Dedication along
- * with this software. If not, see
- * <http://creativecommons.org/publicdomain/zero/1.0/>.
+ * Permission is hereby granted, free of charge, to any person
+ * obtaining a copy of this software and associated documentation
+ * files (the "Software"), to deal in the Software without
+ * restriction, including without limitation the rights to use,
+ * copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following
+ * conditions:
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+ * OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+ * HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+ * WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include <stdlib.h>
@@ -2651,7 +2666,7 @@ deflate_init_offset_slot_fast(struct libdeflate_compressor *c)
 	}
 }
 
-LIBEXPORT struct libdeflate_compressor *
+LIBDEFLATEAPI struct libdeflate_compressor *
 libdeflate_alloc_compressor(int compression_level)
 {
 	struct libdeflate_compressor *c;
@@ -2760,7 +2775,7 @@ libdeflate_alloc_compressor(int compression_level)
 	return c;
 }
 
-LIBEXPORT size_t
+LIBDEFLATEAPI size_t
 libdeflate_deflate_compress(struct libdeflate_compressor *c,
 			    const void *in, size_t in_nbytes,
 			    void *out, size_t out_nbytes_avail)
@@ -2772,6 +2787,8 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 	if (unlikely(in_nbytes < 16)) {
 		struct deflate_output_bitstream os;
 		deflate_init_output(&os, out, out_nbytes_avail);
+		if (in_nbytes == 0)
+			in = &os; /* Avoid passing NULL to memcpy() */
 		deflate_write_uncompressed_block(&os, in, in_nbytes, true);
 		return deflate_flush_output(&os);
 	}
@@ -2779,7 +2796,7 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 	return (*c->impl)(c, in, in_nbytes, out, out_nbytes_avail);
 }
 
-LIBEXPORT void
+LIBDEFLATEAPI void
 libdeflate_free_compressor(struct libdeflate_compressor *c)
 {
 	aligned_free(c);
@@ -2791,7 +2808,7 @@ deflate_get_compression_level(struct libdeflate_compressor *c)
 	return c->compression_level;
 }
 
-LIBEXPORT size_t
+LIBDEFLATEAPI size_t
 libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 				  size_t in_nbytes)
 {
