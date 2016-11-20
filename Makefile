@@ -47,7 +47,7 @@ endif
 
 
 DEFINES     += -I. -Izstd/lib -Izstd/lib/common -Ixpack/common -Ilibcsc
-DEFINES     += -DHAVE_CONFIG_H -DLZ5_USE_HUFFMAN
+DEFINES     += -DHAVE_CONFIG_H
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
 
