@@ -127,7 +127,7 @@ Benchmarks
 
 The following results are obtained with lzbench ("-t16,16 -eall") using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 6.2.0)
 with ["silesia.tar"](https://drive.google.com/file/d/0BwX7dtyRLxThenZpYU9zLTZhR1k/view?usp=sharing) which contains tarred files from [Silesia compression corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
-The results sorted by ratio are available [here](lzbench13_sorted.md).
+The results sorted by ratio are available [here](lzbench15_sorted.md).
 
 | Compressor name         | Compression| Decompress.| Compr. size | Ratio |
 | ---------------         | -----------| -----------| ----------- | ----- |
