@@ -233,6 +233,20 @@ size_t common(uint8_t *p1, uint8_t *p2)
     return size;
 }
 
+/*
+ * Allocate a buffer of size bytes using malloc (or equivalent call returning a buffer
+ * that can be passed to free). Touches each page so that the each page is actually
+ * physically allocated and mapped into the process.
+ */
+void *alloc_and_touch(size_t size, bool must_zero) {
+	void *buf = must_zero ? calloc(1, size) : malloc(size);
+	volatile char zero = 0;
+	for (size_t i = 0; i < size; i += MIN_PAGE_SIZE) {
+		static_cast<char * volatile>(buf)[i] = zero;
+	}
+	return buf;
+}
+
 
 inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& chunk_sizes, compress_func compress, std::vector<size_t> &compr_sizes, uint8_t *inbuf, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
 {
@@ -519,9 +533,9 @@ int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned if
     }
     
     comprsize = GET_COMPRESS_BOUND(totalsize);
-    inbuf = (uint8_t*)malloc(totalsize + PAD_SIZE);
-    compbuf = (uint8_t*)malloc(comprsize);
-    decomp = (uint8_t*)calloc(1, totalsize + PAD_SIZE);
+    inbuf = (uint8_t*)alloc_and_touch(totalsize + PAD_SIZE, false);
+    compbuf = (uint8_t*)alloc_and_touch(comprsize, false);
+    decomp = (uint8_t*)alloc_and_touch(totalsize + PAD_SIZE, true);
 
     if (!inbuf || !compbuf || !decomp)
     {
@@ -614,10 +628,10 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
             insize = real_insize;
 
         comprsize = GET_COMPRESS_BOUND(insize);
-    //	printf("insize=%llu comprsize=%llu %llu\n", insize, comprsize, MAX(MEMCPY_BUFFER_SIZE, insize));
-        inbuf = (uint8_t*)malloc(insize + PAD_SIZE);
-        compbuf = (uint8_t*)malloc(comprsize);
-        decomp = (uint8_t*)calloc(1, insize + PAD_SIZE);
+    	// printf("insize=%llu comprsize=%llu %llu\n", insize, comprsize, MAX(MEMCPY_BUFFER_SIZE, insize));
+        inbuf = (uint8_t*)alloc_and_touch(insize + PAD_SIZE, false);
+        compbuf = (uint8_t*)alloc_and_touch(comprsize, false);
+        decomp = (uint8_t*)alloc_and_touch(insize + PAD_SIZE, true);
 
         if (!inbuf || !compbuf || !decomp)
         {
