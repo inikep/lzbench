@@ -548,6 +548,11 @@ int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned if
 
     for (int i=0; i<ifnIdx; i++)
     {
+        if (UTIL_isDirectory(inFileNames[i])) {
+            fprintf(stderr, "warning: use -r to process directories (%s)\n", inFileNames[i]);
+            continue;
+        } 
+
         if (!(in=fopen(inFileNames[i], "rb"))) {
             perror(inFileNames[i]);
             continue;
@@ -608,6 +613,11 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
 
     for (int i=0; i<ifnIdx; i++)
     {
+        if (UTIL_isDirectory(inFileNames[i])) {
+            fprintf(stderr, "warning: use -r to process directories (%s)\n", inFileNames[i]);
+            continue;
+        } 
+        
         if (!(in=fopen(inFileNames[i], "rb"))) {
             perror(inFileNames[i]);
             continue;

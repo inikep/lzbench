@@ -207,7 +207,7 @@ lzmat/lzmat_enc.o: lzmat/lzmat_enc.c
 	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 pithy/pithy.o: pithy/pithy.cpp
-	$(CC) $(CFLAGS_O2) $< -c -o $@
+	$(CXX) $(CFLAGS_O2) $< -c -o $@
 
 lzsse/lzsse2/lzsse2.o: lzsse/lzsse2/lzsse2.cpp
 	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
