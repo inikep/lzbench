@@ -1,3 +1,8 @@
+v1.6
+- lz4 updated to v1.7.5
+- improved: touch pages in buffer allocations prior to running first algorithm (thanks to travisdowns)
+- fixed: check if input name is directory
+
 v1.5
 - added the "-r" option : operate recursively on directories
 - added the "-j" option : join files in memory but compress them independently (for many small files)
