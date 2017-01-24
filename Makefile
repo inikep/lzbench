@@ -206,6 +206,12 @@ lzmat/lzmat_dec.o: lzmat/lzmat_dec.c
 lzmat/lzmat_enc.o: lzmat/lzmat_enc.c
 	$(CC) $(CFLAGS_O2) $< -c -o $@
 
+lzrw/lzrw1-a.o: lzrw/lzrw1-a.c
+	$(CC) $(CFLAGS_O2) $< -c -o $@
+
+lzrw/lzrw1.o: lzrw/lzrw1.c
+	$(CC) $(CFLAGS_O2) $< -c -o $@
+
 pithy/pithy.o: pithy/pithy.cpp
 	$(CXX) $(CFLAGS_O2) $< -c -o $@
 
