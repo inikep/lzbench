@@ -473,6 +473,18 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
     else
         insize = real_insize;
 
+    if(params->random_read){
+      long long unsigned pos = 0;
+      if (params->chunk_size < real_insize){
+        pos = (rand() % (real_insize / params->chunk_size)) * params->chunk_size;
+        insize = params->chunk_size;
+        fseeko(in, pos, SEEK_SET);
+      }else{
+        insize = real_insize;
+      }
+      printf("Seeking to: %llu %llu %llu\n", pos, params->chunk_size, insize);
+    }
+
     comprsize = GET_COMPRESS_BOUND(insize);
 
 //	printf("insize=%llu comprsize=%llu %llu\n", insize, comprsize, MAX(MEMCPY_BUFFER_SIZE, insize));
@@ -502,7 +514,7 @@ void lzbench_alloc(lzbench_params_t* params, FILE* in, char* encoder_list, bool 
         lzbench_test(&params_memcpy, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
     }
 
-    if (params->mem_limit && real_insize > params->mem_limit / 4)
+    if (! params->random_read && params->mem_limit && real_insize > params->mem_limit / 4)
     {
         int i;
         std::string partname;
@@ -533,6 +545,7 @@ void usage(lzbench_params_t* params)
     fprintf(stderr, " -iX,Y set min. number of compression and decompression iterations (default = %d, %d)\n", params->c_iters, params->d_iters);
     fprintf(stderr, " -l    list of available compressors and aliases\n");
     fprintf(stderr, " -mX   set memory limit to X MB (default = no limit)\n");
+    fprintf(stderr, " -R    read block/chunk size from random blocks (to estimate for large files)\n");
     fprintf(stderr, " -oX   output text format 1=Markdown, 2=text, 3=CSV (default = %d)\n", params->textformat);
     fprintf(stderr, " -pX   print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
     fprintf(stderr, " -r    disable real-time process priority\n");
@@ -614,6 +627,10 @@ int main( int argc, char** argv)
             break;
         case 'r':
             real_time = 0;
+            break;
+        case 'R':
+            params->random_read = 1;
+            srand(time(NULL));
             break;
         case 's':
             params->cspeed = number;

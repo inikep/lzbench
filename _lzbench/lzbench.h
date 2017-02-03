@@ -98,6 +98,7 @@ typedef struct
     size_t chunk_size;
     uint32_t c_iters, d_iters, cspeed, verbose, cmintime, dmintime, cloop_time, dloop_time;
     size_t mem_limit;
+		int random_read;
     std::vector<string_table_t> results;
     const char* in_filename;
 } lzbench_params_t;
