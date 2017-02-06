@@ -156,7 +156,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lz4",        "1.7.5",       0,   0,    0,       0, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
     { "lz4fast",    "1.7.5",       1,  99,    0,       0, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
     { "lz4hc",      "1.7.5",       1,  12,    0,       0, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },
-    { "lz5",        "2.0 RC2",     LZ5_MIN_CLEVEL, LZ5_MAX_CLEVEL, 0, 0, lzbench_lz5_compress,      lzbench_lz5_decompress,        NULL,                    NULL },
+    { "lz5",        "2.0",  LZ5_MIN_CLEVEL, LZ5_MAX_CLEVEL, 0, 0, lzbench_lz5_compress,      lzbench_lz5_decompress,        NULL,                    NULL },
     { "lzf",        "3.6",         0,   1,    0,       0, lzbench_lzf_compress,        lzbench_lzf_decompress,        NULL,                    NULL },
     { "lzfse",      "2016-08-16",  0,   0,    0,       0, lzbench_lzfse_compress,      lzbench_lzfse_decompress,      lzbench_lzfse_init,      lzbench_lzfse_deinit },
     { "lzg",        "1.0.8",       1,   9,    0,       0, lzbench_lzg_compress,        lzbench_lzg_decompress,        NULL,                    NULL },

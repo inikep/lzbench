@@ -78,7 +78,7 @@ int LZ5_versionNumber (void);
 #define LZ5_LIB_VERSION LZ5_VERSION_MAJOR.LZ5_VERSION_MINOR.LZ5_VERSION_RELEASE
 #define LZ5_QUOTE(str) #str
 #define LZ5_EXPAND_AND_QUOTE(str) LZ5_QUOTE(str)
-#define LZ5_VERSION_STRING LZ5_EXPAND_AND_QUOTE(LZ5_LIB_VERSION) " RC2"
+#define LZ5_VERSION_STRING LZ5_EXPAND_AND_QUOTE(LZ5_LIB_VERSION)
 const char* LZ5_versionString (void);
 
 typedef struct LZ5_stream_s LZ5_stream_t;
