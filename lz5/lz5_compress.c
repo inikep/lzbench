@@ -291,6 +291,8 @@ FORCE_INLINE int LZ5_encodeLastLiterals (
 #include "lz5_parser_hashchain.h"
 #include "lz5_parser_nochain.h"
 #include "lz5_parser_fast.h"
+#include "lz5_parser_fastsmall.h"
+#include "lz5_parser_fastbig.h"
 #ifndef USE_LZ4_ONLY
     #include "lz5_parser_optimal.h"
     #include "lz5_parser_lowestprice.h"
@@ -507,6 +509,8 @@ FORCE_INLINE int LZ5_compress_generic (
         switch(ctx->params.parserType)
         {
         default:
+        case LZ5_parser_fastSmall:
+            res = LZ5_compress_fastSmall(ctx, ip, ip+inputPart); break;
         case LZ5_parser_fast:
             res = LZ5_compress_fast(ctx, ip, ip+inputPart); break;
         case LZ5_parser_noChain:
@@ -514,6 +518,8 @@ FORCE_INLINE int LZ5_compress_generic (
         case LZ5_parser_hashChain:
             res = LZ5_compress_hashChain(ctx, ip, ip+inputPart); break;
 #ifndef USE_LZ4_ONLY
+        case LZ5_parser_fastBig:
+            res = LZ5_compress_fastBig(ctx, ip, ip+inputPart); break;
         case LZ5_parser_priceFast:
             res = LZ5_compress_priceFast(ctx, ip, ip+inputPart); break;
         case LZ5_parser_lowestPrice:

@@ -7,16 +7,13 @@ Then all compressors are used to compress and decompress the file and decompress
 This approach has a big advantage of using the same compiler with the same optimizations for all compressors. 
 The disadvantage is that it requires source code of each compressor (therefore Slug or lzturbo are not included).
 
-|Branch      |Status   |
-|------------|---------|
-|master      | [![Build Status][travisMasterBadge]][travisLink] [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
-|dev         | [![Build Status][travisDevBadge]][travisLink]    [![Build status][AppveyorDevBadge]][AppveyorLink]     | 
+|Status   |
+|---------|
+| [![Build Status][travisMasterBadge]][travisLink] [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
 
 [travisMasterBadge]: https://travis-ci.org/inikep/lzbench.svg?branch=master "Continuous Integration test suite"
-[travisDevBadge]: https://travis-ci.org/inikep/lzbench.svg?branch=dev "Continuous Integration test suite"
 [travisLink]: https://travis-ci.org/inikep/lzbench
 [AppveyorMasterBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/master?svg=true "Visual test suite"
-[AppveyorDevBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/dev?svg=true "Visual test suite"
 [AppveyorLink]: https://ci.appveyor.com/project/inikep/lzbench
 
 
@@ -91,8 +88,8 @@ fastlz 0.1
 gipfeli 2016-07-13
 glza 0.7.1
 libdeflate v0.6
-lz4/lz4hc v1.7.3
-lz5 v2.0 RC2
+lz4/lz4hc v1.7.5
+lz5 v2.0
 lzf 3.6
 lzfse/lzvn 2016-08-16
 lzg 1.0.8
@@ -118,14 +115,14 @@ yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.8
 zling 2016-04-10 (according to the author using libzling in a production environment is not a good idea)
-zstd 1.1.1
+zstd 1.1.3
 ```
 
 
 Benchmarks
 -------------------------
 
-The following results are obtained with lzbench ("-t16,16 -eall") using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 6.2.0)
+The following results are obtained with `lzbench -t16,16 -eall` using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 6.2.0)
 with ["silesia.tar"](https://drive.google.com/file/d/0BwX7dtyRLxThenZpYU9zLTZhR1k/view?usp=sharing) which contains tarred files from [Silesia compression corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
 The results sorted by ratio are available [here](lzbench15_sorted.md).
 

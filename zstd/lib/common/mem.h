@@ -39,7 +39,7 @@ extern "C" {
 #endif
 
 /* code only tested on 32 and 64 bits systems */
-#define MEM_STATIC_ASSERT(c)   { enum { XXH_static_assert = 1/(int)(!!(c)) }; }
+#define MEM_STATIC_ASSERT(c)   { enum { MEM_static_assert = 1/(int)(!!(c)) }; }
 MEM_STATIC void MEM_check(void) { MEM_STATIC_ASSERT((sizeof(size_t)==4) || (sizeof(size_t)==8)); }
 
 
@@ -55,14 +55,16 @@ MEM_STATIC void MEM_check(void) { MEM_STATIC_ASSERT((sizeof(size_t)==4) || (size
   typedef  int32_t S32;
   typedef uint64_t U64;
   typedef  int64_t S64;
+  typedef intptr_t iPtrDiff;
 #else
-  typedef unsigned char       BYTE;
+  typedef unsigned char      BYTE;
   typedef unsigned short      U16;
   typedef   signed short      S16;
   typedef unsigned int        U32;
   typedef   signed int        S32;
   typedef unsigned long long  U64;
   typedef   signed long long  S64;
+  typedef ptrdiff_t      iPtrDiff;
 #endif
 
 

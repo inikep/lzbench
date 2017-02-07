@@ -4,11 +4,11 @@
 /**************************************
 *  Hash Functions
 **************************************/
-static size_t LZ5_hashPosition(const void* p, int hashLog) 
+static size_t LZ5_hashPosition(const void* p) 
 {
     if (MEM_64bits())
-        return LZ5_hash5Ptr(p, hashLog);
-    return LZ5_hash4Ptr(p, hashLog);
+        return LZ5_hash5Ptr(p, LZ5_HASHLOG_LZ4);
+    return LZ5_hash4Ptr(p, LZ5_HASHLOG_LZ4);
 }
 
 static void LZ5_putPositionOnHash(const BYTE* p, size_t h, U32* hashTable, const BYTE* srcBase)
@@ -16,9 +16,9 @@ static void LZ5_putPositionOnHash(const BYTE* p, size_t h, U32* hashTable, const
     hashTable[h] = (U32)(p-srcBase);
 }
 
-static void LZ5_putPosition(const BYTE* p, U32* hashTable, const BYTE* srcBase, int hashLog)
+static void LZ5_putPosition(const BYTE* p, U32* hashTable, const BYTE* srcBase)
 {
-    size_t const h = LZ5_hashPosition(p, hashLog);
+    size_t const h = LZ5_hashPosition(p);
     LZ5_putPositionOnHash(p, h, hashTable, srcBase);
 }
 
@@ -27,9 +27,9 @@ static U32 LZ5_getPositionOnHash(size_t h, U32* hashTable)
     return hashTable[h];
 }
 
-static U32 LZ5_getPosition(const BYTE* p, U32* hashTable, int hashLog)
+static U32 LZ5_getPosition(const BYTE* p, U32* hashTable)
 {
-    size_t const h = LZ5_hashPosition(p, hashLog);
+    size_t const h = LZ5_hashPosition(p);
     return LZ5_getPositionOnHash(h, hashTable);
 }
 
@@ -55,7 +55,6 @@ FORCE_INLINE int LZ5_compress_fast(
     const BYTE* anchor = ip;
 
     size_t forwardH, matchIndex;
-    const int hashLog = ctx->params.hashLog;
     const U32 maxDistance = (1 << ctx->params.windowLog) - 1;
 
   //  fprintf(stderr, "base=%p LZ5_stream_t=%d inputSize=%d maxOutputSize=%d\n", base, sizeof(LZ5_stream_t), inputSize, maxOutputSize);
@@ -67,8 +66,8 @@ FORCE_INLINE int LZ5_compress_fast(
     if ((U32)(iend-ip) < LZ5_minLength) goto _last_literals;                  /* Input too small, no compression (all literals) */
 
     /* First Byte */
-    LZ5_putPosition(ip, ctx->hashTable, base, hashLog);
-    ip++; forwardH = LZ5_hashPosition(ip, hashLog);
+    LZ5_putPosition(ip, ctx->hashTable, base);
+    ip++; forwardH = LZ5_hashPosition(ip);
 
     /* Main Loop */
     for ( ; ; ) {
@@ -89,7 +88,7 @@ FORCE_INLINE int LZ5_compress_fast(
                 if (unlikely(forwardIp > mflimit)) goto _last_literals;
 
                 matchIndex = LZ5_getPositionOnHash(h, ctx->hashTable);
-                forwardH = LZ5_hashPosition(forwardIp, hashLog);
+                forwardH = LZ5_hashPosition(forwardIp);
                 LZ5_putPositionOnHash(ip, h, ctx->hashTable, base);
 
                 if ((matchIndex < lowLimit) || (base + matchIndex + maxDistance < ip)) continue;
@@ -148,11 +147,11 @@ _next_match:
         if (ip > mflimit) break;
 
         /* Fill table */
-        LZ5_putPosition(ip-2, ctx->hashTable, base, hashLog);
+        LZ5_putPosition(ip-2, ctx->hashTable, base);
 
         /* Test next position */
-        matchIndex = LZ5_getPosition(ip, ctx->hashTable, hashLog);
-        LZ5_putPosition(ip, ctx->hashTable, base, hashLog);
+        matchIndex = LZ5_getPosition(ip, ctx->hashTable);
+        LZ5_putPosition(ip, ctx->hashTable, base);
         if (matchIndex >= lowLimit && (base + matchIndex + maxDistance >= ip))
         {
             if (matchIndex >= dictLimit) {
@@ -186,7 +185,7 @@ _next_match:
         }
 
         /* Prepare next loop */
-        forwardH = LZ5_hashPosition(++ip, hashLog);
+        forwardH = LZ5_hashPosition(++ip);
     }
 
 _last_literals:
