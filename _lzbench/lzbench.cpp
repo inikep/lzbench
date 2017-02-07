@@ -198,12 +198,12 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
             best_dtime = dtime[0];
             break;
         case AVERAGE: 
-            best_ctime = std::accumulate(ctime.begin(),ctime.end(),0) / ctime.size();
-            best_dtime = std::accumulate(dtime.begin(),dtime.end(),0) / dtime.size();
+            best_ctime = std::accumulate(ctime.begin(),ctime.end(),(uint64_t)0) / ctime.size();
+            best_dtime = std::accumulate(dtime.begin(),dtime.end(),(uint64_t)0) / dtime.size();
             break;
         case MEDIAN: 
-            best_ctime = ctime[ctime.size()/2];
-            best_dtime = dtime[dtime.size()/2];
+            best_ctime = (ctime[(ctime.size()-1)/2] + ctime[ctime.size()/2]) / 2;
+            best_dtime = (dtime[(dtime.size()-1)/2] + dtime[dtime.size()/2]) / 2;
             break;
     }
 
