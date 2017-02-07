@@ -4,6 +4,7 @@ v1.6
 - lz5 updated to v2.0
 - improved: touch pages in buffer allocations prior to running first algorithm (thanks to travisdowns)
 - fixed: check if input name is directory
+- fixed: median time (the "-p3" option, thanks to Alexey Tourbin)
 
 v1.5
 - added the "-r" option : operate recursively on directories
