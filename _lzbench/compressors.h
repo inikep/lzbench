@@ -469,4 +469,14 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 	#define lzbench_zstd_decompress NULL
 #endif
 
+
+#ifdef BENCH_HAS_NAKAMICHI
+	int64_t lzbench_nakamichi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+	int64_t lzbench_nakamichi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+#else
+	#define lzbench_nakamichi_compress NULL
+	#define lzbench_nakamichi_decompress NULL
+#endif
+
+
 #endif // LZBENCH_COMPRESSORS_H

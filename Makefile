@@ -188,7 +188,10 @@ else
 	ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
 endif
 
-
+ifeq "$(BENCH_HAS_NAKAMICHI)" "1"
+    DEFINES += -DBENCH_HAS_NAKAMICHI
+	MISC_FILES += 
+endif
 
 
 all: lzbench

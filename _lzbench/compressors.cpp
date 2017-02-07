@@ -1791,3 +1791,19 @@ int64_t lzbench_zstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 #endif
+
+
+
+#ifdef BENCH_HAS_NAKAMICHI
+
+int64_t lzbench_nakamichi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+	return LZ4_compress_default(inbuf, outbuf, insize, outsize);
+}
+
+int64_t lzbench_nakamichi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+	return LZ4_decompress_safe(inbuf, outbuf, insize, outsize);
+}
+
+#endif
