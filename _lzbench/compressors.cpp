@@ -1795,15 +1795,16 @@ int64_t lzbench_zstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 #ifdef BENCH_HAS_NAKAMICHI
+#include "nakamichi/nakamichi.h"
 
 int64_t lzbench_nakamichi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
-	return LZ4_compress_default(inbuf, outbuf, insize, outsize);
+	return NakaCompress(outbuf, inbuf, insize);
 }
 
 int64_t lzbench_nakamichi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
-	return LZ4_decompress_safe(inbuf, outbuf, insize, outsize);
+	return NakaDecompress(outbuf, inbuf, insize);
 }
 
 #endif

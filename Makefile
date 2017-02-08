@@ -190,7 +190,7 @@ endif
 
 ifeq "$(BENCH_HAS_NAKAMICHI)" "1"
     DEFINES += -DBENCH_HAS_NAKAMICHI
-	MISC_FILES += 
+	MISC_FILES += nakamichi/Nakamichi_Okamigan.o
 endif
 
 
@@ -226,6 +226,9 @@ lzsse/lzsse4/lzsse4.o: lzsse/lzsse4/lzsse4.cpp
 
 lzsse/lzsse8/lzsse8.o: lzsse/lzsse8/lzsse8.cpp
 	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
+
+nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c 
+	$(CC) $(CFLAGS) -mavx $< -c -o $@
 
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
