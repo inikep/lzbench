@@ -194,16 +194,16 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
     {
         default:
         case FASTEST: 
-            best_ctime = ctime[0];
-            best_dtime = dtime[0];
+            best_ctime = ctime.empty()?0:ctime[0];
+            best_dtime = dtime.empty()?0:dtime[0];
             break;
         case AVERAGE: 
-            best_ctime = std::accumulate(ctime.begin(),ctime.end(),(uint64_t)0) / ctime.size();
-            best_dtime = std::accumulate(dtime.begin(),dtime.end(),(uint64_t)0) / dtime.size();
+            best_ctime = ctime.empty()?0:std::accumulate(ctime.begin(),ctime.end(),(uint64_t)0) / ctime.size();
+            best_dtime = dtime.empty()?0:std::accumulate(dtime.begin(),dtime.end(),(uint64_t)0) / dtime.size();
             break;
         case MEDIAN: 
-            best_ctime = (ctime[(ctime.size()-1)/2] + ctime[ctime.size()/2]) / 2;
-            best_dtime = (dtime[(dtime.size()-1)/2] + dtime[dtime.size()/2]) / 2;
+            best_ctime = ctime.empty()?0:(ctime[(ctime.size()-1)/2] + ctime[ctime.size()/2]) / 2;
+            best_dtime = dtime.empty()?0:(dtime[(dtime.size()-1)/2] + dtime[dtime.size()/2]) / 2;
             break;
     }
 
@@ -394,6 +394,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
 
     total_d_iters = 0;
     GetTime(timer_ticks);
+    if (!params->compress_only)
     do
     {
         i = 0;
@@ -761,8 +762,9 @@ int main( int argc, char** argv)
 
 
     while ((argc>1) && (argv[1][0]=='-')) {
-    char* argument = argv[1]+1; 
-    while (argument[0] != 0) {
+    char* argument = argv[1]+1;
+    if (!strcmp(argument, "-compress-only")) params->compress_only = 1;
+    else while (argument[0] != 0) {
         char* numPtr = argument + 1;
         unsigned number = 0;
         while ((*numPtr >='0') && (*numPtr <='9')) { number *= 10;  number += *numPtr - '0'; numPtr++; }
