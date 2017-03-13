@@ -110,7 +110,7 @@ tornado 0.6a
 ucl 1.03
 wflz 2015-09-16 (WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3)
 xpack 2016-06-02
-xz 5.2.2
+xz 5.2.3
 yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.11

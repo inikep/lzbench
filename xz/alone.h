@@ -1,6 +1,8 @@
 #ifndef LZMA_ALONE_ENCODER_H
 #define LZMA_ALONE_ENCODER_H
 
+#include "common.h" 
+
 #if defined (__cplusplus)
 extern "C"
 {
