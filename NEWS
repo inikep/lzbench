@@ -1,3 +1,5 @@
+v1.7
+- added lizard v1.0 (formerly lz5)
 - libdeflate updated to v0.7
 - lzfse and lzvn updated to 2017-03-08
 - snappy updated to v1.1.4

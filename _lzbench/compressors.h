@@ -103,6 +103,15 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 #endif
 
 
+#ifndef BENCH_REMOVE_LIZARD
+	int64_t lzbench_lizard_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+	int64_t lzbench_lizard_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+#else
+	#define lzbench_lizard_compress NULL
+	#define lzbench_lizard_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_LZ4
 	int64_t lzbench_lz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
 	int64_t lzbench_lz4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize,  size_t level, size_t, char*);
@@ -113,15 +122,6 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 	#define lzbench_lz4fast_compress NULL
 	#define lzbench_lz4hc_compress NULL
 	#define lzbench_lz4_decompress NULL
-#endif
-
-
-#ifndef BENCH_REMOVE_LZ5
-	int64_t lzbench_lz5_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
-	int64_t lzbench_lz5_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
-#else
-	#define lzbench_lz5_compress NULL
-	#define lzbench_lz5_decompress NULL
 #endif
 
 

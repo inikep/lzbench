@@ -44,8 +44,8 @@ Example usage:
   lzbench -ezstd filename = selects all levels of zstd
   lzbench -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd
   lzbench -t3 -u5 fname = 3 sec compression and 5 sec decompression loops
-  lzbench -t0 -u0 -i3 -j5 -elz5 fname = 3 compression and 5 decompression iter.
-  lzbench -t0u0i3j5 -elz5 fname = the same as above with aggregated parameters
+  lzbench -t0 -u0 -i3 -j5 -ezstd fname = 3 compression and 5 decompression iter.
+  lzbench -t0u0i3j5 -ezstd fname = the same as above with aggregated parameters
 ```
 
 
@@ -62,8 +62,8 @@ make BUILD_ARCH=32-bit
 
 ```
 
-To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ5` to remove LZ5). 
-You also have to remove corresponding `*.o` files (e.g. `lz5/lz5.o` and `lz5/lz5hc.o`).
+To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ4` to remove LZ4). 
+You also have to remove corresponding `*.o` files (e.g. `lz4/lz4.o` and `lz4/lz4hc.o`).
 
 lzbench was tested with:
 - Ubuntu: gcc 4.6.3, 4.8.4 (both 32-bit and 64-bit), 4.9.3, 5.3.0, 6.1.1 and clang 3.4, 3.5, 3.6, 3.8
@@ -88,8 +88,8 @@ fastlz 0.1
 gipfeli 2016-07-13
 glza 0.7.1
 libdeflate v0.7
+lizard v1.0 (formerly lz5)
 lz4/lz4hc v1.7.5
-lz5 v2.0
 lzf 3.6
 lzfse/lzvn 2017-03-08
 lzg 1.0.8

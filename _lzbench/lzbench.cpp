@@ -722,8 +722,8 @@ void usage(lzbench_params_t* params)
     fprintf(stderr,"  " PROGNAME " -ezstd filename = selects all levels of zstd\n");
     fprintf(stderr,"  " PROGNAME " -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd\n");
     fprintf(stderr,"  " PROGNAME " -t3 -u5 fname = 3 sec compression and 5 sec decompression loops\n");
-    fprintf(stderr,"  " PROGNAME " -t0 -u0 -i3 -j5 -elz5 fname = 3 compression and 5 decompression iter.\n");
-    fprintf(stderr,"  " PROGNAME " -t0u0i3j5 -elz5 fname = the same as above with aggregated parameters\n");
+    fprintf(stderr,"  " PROGNAME " -t0 -u0 -i3 -j5 -ezstd fname = 3 compression and 5 decompression iter.\n");
+    fprintf(stderr,"  " PROGNAME " -t0u0i3j5 -ezstd fname = the same as above with aggregated parameters\n");
 }
 
 
