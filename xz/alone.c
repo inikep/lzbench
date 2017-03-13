@@ -1,3 +1,4 @@
+#include "common.h"
 #include "alone.h"
 
 int64_t xz_alone_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t x, size_t y)
