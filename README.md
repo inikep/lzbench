@@ -87,7 +87,7 @@ density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
 fastlz 0.1
 gipfeli 2016-07-13
 glza 0.7.1
-libdeflate v0.6
+libdeflate v0.7
 lz4/lz4hc v1.7.5
 lz5 v2.0
 lzf 3.6
