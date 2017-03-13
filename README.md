@@ -91,7 +91,7 @@ libdeflate v0.7
 lz4/lz4hc v1.7.5
 lz5 v2.0
 lzf 3.6
-lzfse/lzvn 2016-08-16
+lzfse/lzvn 2017-03-08
 lzg 1.0.8
 lzham 1.0
 lzjb 2010
