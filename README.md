@@ -113,7 +113,7 @@ xpack 2016-06-02
 xz 5.2.2
 yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
-zlib 1.2.8
+zlib 1.2.11
 zling 2016-04-10 (according to the author using libzling in a production environment is not a good idea)
 zstd 1.1.3
 ```
