@@ -1,5 +1,5 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2015 Antonio Diaz Diaz.
+    Copyright (C) 2009-2016 Antonio Diaz Diaz.
 
     This library is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -39,7 +39,6 @@ int FLZe_longest_match_len( struct FLZ_encoder * const fe, int * const distance 
   fe->key4 = ( ( fe->key4 << 4 ) ^ data[3] ) & fe->eb.mb.key4_mask;
   newpos = fe->eb.mb.prev_positions[fe->key4];
   fe->eb.mb.prev_positions[fe->key4] = pos1;
-
 
   for( count = 4; ; )
     {
@@ -106,12 +105,11 @@ bool FLZe_encode_member( struct FLZ_encoder * const fe )
          Re_member_position( &fe->eb.renc ) < fe->eb.member_size_limit )
     {
     int match_distance;
-    int main_len, pos_state, len;
+    int main_len, pos_state, len = 0;
     if( !Mb_enough_available_bytes( &fe->eb.mb ) ||
         !Re_enough_free_bytes( &fe->eb.renc ) ) return true;
     main_len = FLZe_longest_match_len( fe, &match_distance );
     pos_state = Mb_data_position( &fe->eb.mb ) & pos_state_mask;
-    len = 0;
 
     for( i = 0; i < num_rep_distances; ++i )
       {

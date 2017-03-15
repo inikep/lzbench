@@ -1,5 +1,5 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2015 Antonio Diaz Diaz.
+    Copyright (C) 2009-2016 Antonio Diaz Diaz.
 
     This library is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -322,6 +322,8 @@ static inline bool LZe_init( struct LZ_encoder * const e,
   Lp_init( &e->rep_len_prices, &e->eb.rep_len_model, e->match_len_limit );
   e->pending_num_pairs = 0;
   e->num_dis_slots = 2 * real_bits( e->eb.mb.dictionary_size - 1 );
+  e->trials[1].prev_index = 0;
+  e->trials[1].prev_index2 = single_step_trial;
   e->price_counter = 0;
   e->dis_price_counter = 0;
   e->align_price_counter = 0;
