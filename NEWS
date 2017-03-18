@@ -6,6 +6,7 @@ v1.7
 - snappy updated to v1.1.4
 - xz updated to v5.2.3
 - zlib updated to v1.2.11
+- zstd updated to v1.1.4
 
 v1.6
 - zstd updated to v1.1.3
