@@ -122,9 +122,9 @@ zstd 1.1.4
 Benchmarks
 -------------------------
 
-The following results are obtained with `lzbench -t16,16 -eall` using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 6.3.0)
+The following results are obtained with `lzbench 1.7.1` with the `-t16,16 -eall` options using 1 core of Intel Core i5-4300U, Windows 10 64-bit (MinGW-w64 compilation under gcc 6.3.0)
 with ["silesia.tar"](https://drive.google.com/file/d/0BwX7dtyRLxThenZpYU9zLTZhR1k/view?usp=sharing) which contains tarred files from [Silesia compression corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
-The results sorted by ratio are available [here](lzbench17_sorted.md).
+The results sorted by ratio are available [here](lzbench171_sorted.md).
 
 | Compressor name         | Compression| Decompress.| Compr. size | Ratio | 
 | ---------------         | -----------| -----------| ----------- | ----- |
@@ -134,11 +134,11 @@ The results sorted by ratio are available [here](lzbench17_sorted.md).
 | blosclz 2015-11-10 -6   |   234 MB/s |   916 MB/s |   113322667 | 53.47 |
 | blosclz 2015-11-10 -9   |   220 MB/s |   696 MB/s |   102817442 | 48.51 |
 | brieflz 1.1.0           |   105 MB/s |   158 MB/s |    81990651 | 38.68 |
-| brotli 0.5.2 -0         |   216 MB/s |   249 MB/s |    78226979 | 36.91 |
-| brotli 0.5.2 -2         |    97 MB/s |   288 MB/s |    68066621 | 32.11 |
-| brotli 0.5.2 -5         |    24 MB/s |   318 MB/s |    60801716 | 28.69 |
-| brotli 0.5.2 -8         |  5.32 MB/s |   330 MB/s |    57382470 | 27.07 |
-| brotli 0.5.2 -11        |  0.38 MB/s |   270 MB/s |    51136801 | 24.13 |
+| brotli 2017-03-10 -0    |   225 MB/s |   246 MB/s |    78432913 | 37.01 |
+| brotli 2017-03-10 -2    |    98 MB/s |   289 MB/s |    68085200 | 32.12 |
+| brotli 2017-03-10 -5    |    19 MB/s |   328 MB/s |    59714719 | 28.17 |
+| brotli 2017-03-10 -8    |  4.90 MB/s |   330 MB/s |    57198711 | 26.99 |
+| brotli 2017-03-10 -11   |  0.37 MB/s |   269 MB/s |    51136654 | 24.13 |
 | crush 1.0 -0            |    28 MB/s |   259 MB/s |    73064603 | 34.47 |
 | crush 1.0 -1            |  3.01 MB/s |   293 MB/s |    66494412 | 31.37 |
 | crush 1.0 -2            |  0.36 MB/s |   299 MB/s |    63746223 | 30.08 |
@@ -156,22 +156,22 @@ The results sorted by ratio are available [here](lzbench17_sorted.md).
 | libdeflate 0.7 -6       |    64 MB/s |   609 MB/s |    67928189 | 32.05 |
 | libdeflate 0.7 -9       |    10 MB/s |   584 MB/s |    65701539 | 31.00 |
 | libdeflate 0.7 -12      |  4.63 MB/s |   583 MB/s |    64801629 | 30.57 |
-| lizard 1.0 -10          |   352 MB/s |  2625 MB/s |   103402971 | 48.79 |
-| lizard 1.0 -12          |   103 MB/s |  2467 MB/s |    86232422 | 40.69 |
-| lizard 1.0 -15          |    49 MB/s |  2568 MB/s |    81187330 | 38.31 |
-| lizard 1.0 -19          |  3.04 MB/s |  2512 MB/s |    77416400 | 36.53 |
-| lizard 1.0 -20          |   278 MB/s |  1712 MB/s |    96924204 | 45.73 |
-| lizard 1.0 -22          |   102 MB/s |  1697 MB/s |    84866725 | 40.04 |
-| lizard 1.0 -25          |    11 MB/s |  1682 MB/s |    75161667 | 35.46 |
-| lizard 1.0 -29          |  1.29 MB/s |  1585 MB/s |    68694227 | 32.41 |
-| lizard 1.0 -30          |   336 MB/s |  2632 MB/s |   103402971 | 48.79 |
-| lizard 1.0 -32          |   117 MB/s |  2524 MB/s |    90593396 | 42.74 |
-| lizard 1.0 -35          |    56 MB/s |  2545 MB/s |    82205976 | 38.79 |
-| lizard 1.0 -39          |  3.05 MB/s |  2391 MB/s |    78257818 | 36.92 |
-| lizard 1.0 -40          |   235 MB/s |  1715 MB/s |    96924204 | 45.73 |
-| lizard 1.0 -42          |    94 MB/s |  1707 MB/s |    84866725 | 40.04 |
-| lizard 1.0 -45          |    11 MB/s |  1666 MB/s |    75142484 | 35.45 |
-| lizard 1.0 -49          |  1.30 MB/s |  1362 MB/s |    68604057 | 32.37 |
+| lizard 1.0 -10          |   360 MB/s |  2625 MB/s |   103402971 | 48.79 |
+| lizard 1.0 -12          |   105 MB/s |  2471 MB/s |    86232422 | 40.69 |
+| lizard 1.0 -15          |    51 MB/s |  2569 MB/s |    81187330 | 38.31 |
+| lizard 1.0 -19          |  3.17 MB/s |  2513 MB/s |    77416400 | 36.53 |
+| lizard 1.0 -20          |   284 MB/s |  1734 MB/s |    96924204 | 45.73 |
+| lizard 1.0 -22          |   105 MB/s |  1719 MB/s |    84866725 | 40.04 |
+| lizard 1.0 -25          |    10 MB/s |  1688 MB/s |    75161667 | 35.46 |
+| lizard 1.0 -29          |  1.32 MB/s |  1596 MB/s |    68694227 | 32.41 |
+| lizard 1.0 -30          |   258 MB/s |   867 MB/s |    85727429 | 40.45 |
+| lizard 1.0 -32          |   107 MB/s |   943 MB/s |    78652654 | 37.11 |
+| lizard 1.0 -35          |    56 MB/s |  1321 MB/s |    74563583 | 35.18 |
+| lizard 1.0 -39          |  3.04 MB/s |  1443 MB/s |    69807522 | 32.94 |
+| lizard 1.0 -40          |   206 MB/s |   880 MB/s |    80843049 | 38.14 |
+| lizard 1.0 -42          |    90 MB/s |   938 MB/s |    73350988 | 34.61 |
+| lizard 1.0 -45          |    11 MB/s |  1061 MB/s |    66692694 | 31.47 |
+| lizard 1.0 -49          |  1.28 MB/s |  1013 MB/s |    60679215 | 28.63 |
 | lz4 1.7.5               |   452 MB/s |  2244 MB/s |   100880800 | 47.60 |
 | lz4fast 1.7.5 -3        |   522 MB/s |  2244 MB/s |   107066190 | 50.52 |
 | lz4fast 1.7.5 -17       |   785 MB/s |  2601 MB/s |   131732802 | 62.15 |
@@ -193,10 +193,10 @@ The results sorted by ratio are available [here](lzbench17_sorted.md).
 | lzlib 1.8 -3            |  4.35 MB/s |    42 MB/s |    56320674 | 26.57 |
 | lzlib 1.8 -6            |  1.88 MB/s |    46 MB/s |    49777495 | 23.49 |
 | lzlib 1.8 -9            |  1.18 MB/s |    45 MB/s |    48296889 | 22.79 |
-| lzma 9.38 -0            |    18 MB/s |    48 MB/s |    64013917 | 30.20 |
-| lzma 9.38 -2            |    15 MB/s |    56 MB/s |    58867911 | 27.77 |
-| lzma 9.38 -4            |  8.12 MB/s |    60 MB/s |    57201645 | 26.99 |
-| lzma 9.38 -5            |  1.95 MB/s |    66 MB/s |    49720569 | 23.46 |
+| lzma 16.04 -0           |    18 MB/s |    47 MB/s |    64013917 | 30.20 |
+| lzma 16.04 -2           |    16 MB/s |    56 MB/s |    58867911 | 27.77 |
+| lzma 16.04 -4           |  8.36 MB/s |    60 MB/s |    57201645 | 26.99 |
+| lzma 16.04 -5           |  2.00 MB/s |    66 MB/s |    49720569 | 23.46 |
 | lzmat 1.01              |    24 MB/s |   288 MB/s |    76485353 | 36.09 |
 | lzo1 2.09 -1            |   195 MB/s |   446 MB/s |   106474519 | 50.24 |
 | lzo1 2.09 -99           |    81 MB/s |   474 MB/s |    94946129 | 44.80 |
@@ -304,3 +304,4 @@ The results sorted by ratio are available [here](lzbench17_sorted.md).
 | zstd 1.1.4 -15          |  4.78 MB/s |   626 MB/s |    58005265 | 27.37 |
 | zstd 1.1.4 -18          |  2.75 MB/s |   573 MB/s |    55288461 | 26.09 |
 | zstd 1.1.4 -22          |  1.39 MB/s |   459 MB/s |    52718819 | 24.87 |
+
