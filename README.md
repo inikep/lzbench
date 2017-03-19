@@ -197,6 +197,7 @@ The results sorted by ratio are available [here](lzbench171_sorted.md).
 | lzma 16.04 -2           |    16 MB/s |    56 MB/s |    58867911 | 27.77 |
 | lzma 16.04 -4           |  8.36 MB/s |    60 MB/s |    57201645 | 26.99 |
 | lzma 16.04 -5           |  2.00 MB/s |    66 MB/s |    49720569 | 23.46 |
+| lzma 16.04 -9           |  1.55 MB/s |    67 MB/s |    48742901 | 23.00 |
 | lzmat 1.01              |    24 MB/s |   288 MB/s |    76485353 | 36.09 |
 | lzo1 2.09 -1            |   195 MB/s |   446 MB/s |   106474519 | 50.24 |
 | lzo1 2.09 -99           |    81 MB/s |   474 MB/s |    94946129 | 44.80 |
