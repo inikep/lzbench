@@ -9,7 +9,7 @@
 #ifndef BROTLI_DEC_TRANSFORM_H_
 #define BROTLI_DEC_TRANSFORM_H_
 
-#include "../common/types.h"
+#include <brotli/types.h>
 #include "./port.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
@@ -247,7 +247,7 @@ static int ToUpperCase(uint8_t* p) {
     }
     return 1;
   }
-  /* An overly simplified uppercasing model for utf-8. */
+  /* An overly simplified uppercasing model for UTF-8. */
   if (p[0] < 0xe0) {
     p[1] ^= 32;
     return 2;

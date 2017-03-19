@@ -11,14 +11,16 @@
 #define BROTLI_ENC_PREFIX_H_
 
 #include "../common/constants.h"
-#include "../common/port.h"
-#include "../common/types.h"
+#include <brotli/port.h>
+#include <brotli/types.h>
 #include "./fast_log.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
 #endif
 
+/* Here distance_code is an intermediate code, i.e. one of the special codes or
+   the actual distance increased by BROTLI_NUM_DISTANCE_SHORT_CODES - 1. */
 static BROTLI_INLINE void PrefixEncodeCopyDistance(size_t distance_code,
                                                    size_t num_direct_codes,
                                                    size_t postfix_bits,

@@ -61,7 +61,7 @@ static void FN(RefineEntropyCodes)(const DataType* data, size_t length,
   }
 }
 
-/* Assigns a block id from the range [0, vec.size()) to each data element
+/* Assigns a block id from the range [0, num_histograms) to each data element
    in data[0..length) and fills in block_id[0..length) with the assigned values.
    Returns the number of blocks, i.e. one plus the number of block switches. */
 static size_t FN(FindBlocks)(const DataType* data, const size_t length,
@@ -214,7 +214,6 @@ static void FN(ClusterBlocks)(MemoryManager* m,
   size_t num_final_clusters;
   static const uint32_t kInvalidIndex = BROTLI_UINT32_MAX;
   uint32_t* new_index;
-  uint8_t max_type = 0;
   size_t i;
   uint32_t sizes[HISTOGRAMS_PER_BATCH] = { 0 };
   uint32_t new_clusters[HISTOGRAMS_PER_BATCH] = { 0 };
@@ -337,6 +336,7 @@ static void FN(ClusterBlocks)(MemoryManager* m,
   {
     uint32_t cur_length = 0;
     size_t block_idx = 0;
+    uint8_t max_type = 0;
     for (i = 0; i < num_blocks; ++i) {
       cur_length += block_lengths[i];
       if (i + 1 == num_blocks ||
@@ -398,7 +398,7 @@ static void FN(SplitByteVector)(MemoryManager* m,
   {
     /* Find a good path through literals with the good entropy codes. */
     uint8_t* block_ids = BROTLI_ALLOC(m, uint8_t, length);
-    size_t num_blocks;
+    size_t num_blocks = 0;
     const size_t bitmaplen = (num_histograms + 7) >> 3;
     double* insert_cost = BROTLI_ALLOC(m, double, data_size * num_histograms);
     double* cost = BROTLI_ALLOC(m, double, num_histograms);

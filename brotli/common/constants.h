@@ -32,10 +32,12 @@
 #define BROTLI_NUM_DISTANCE_SHORT_CODES 16
 #define BROTLI_MAX_NPOSTFIX 3
 #define BROTLI_MAX_NDIRECT 120
+#define BROTLI_MAX_DISTANCE_BITS 24U
 /* BROTLI_NUM_DISTANCE_SYMBOLS == 520 */
 #define BROTLI_NUM_DISTANCE_SYMBOLS (BROTLI_NUM_DISTANCE_SHORT_CODES + \
                                      BROTLI_MAX_NDIRECT +              \
-                                     (24 << (BROTLI_MAX_NPOSTFIX + 1)))
+                                     (BROTLI_MAX_DISTANCE_BITS <<      \
+                                      (BROTLI_MAX_NPOSTFIX + 1)))
 
 /* 7.1. Context modes and context ID lookup for literals */
 /* "context IDs for literals are in the range of 0..63" */
@@ -43,5 +45,11 @@
 
 /* 7.2. Context ID for distances */
 #define BROTLI_DISTANCE_CONTEXT_BITS 2
+
+/* 9.1. Format of the Stream Header */
+/* Number of slack bytes for window size. Don't confuse
+   with BROTLI_NUM_DISTANCE_SHORT_CODES. */
+#define BROTLI_WINDOW_GAP 16
+#define BROTLI_MAX_BACKWARD_LIMIT(W) (((size_t)1 << (W)) - BROTLI_WINDOW_GAP)
 
 #endif  /* BROTLI_COMMON_CONSTANTS_H_ */
