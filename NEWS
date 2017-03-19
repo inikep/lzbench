@@ -1,3 +1,7 @@
+v1.7.1
+- brotli updated to 2017-03-10
+- glza updated to v0.8
+
 v1.7
 - added lizard v1.0 (formerly lz5)
 - libdeflate updated to v0.7

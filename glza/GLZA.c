@@ -17,51 +17,82 @@ limitations under the License.
 ***********************************************************************/
 
 // GLZA.c
-//
-// Usage:
-//   GLZAformat [-c#] [-d#] [-l#] <infilename> <outfilename>, where
-//       -c0 disables capital encoding
-//       -c1 forces text processing and capital encoding
-//       -d0 disables delta encoding
-//       -l0 disables capital lock encoding
 
 
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include "GLZA.h"
 #include "GLZAcomp.h"
 #include "GLZAdecode.h"
 
 
 void print_usage() {
-  fprintf(stderr,"ERROR - Invalid format - Use GLZAformat [-c#] [-d#] [-l#] <infile> <outfile>\n");
-  fprintf(stderr," where -c0 disables capital encoding\n");
-  fprintf(stderr,"       -c1 forces capital encoding\n");
-  fprintf(stderr,"       -d0 disables delta coding\n");
-  fprintf(stderr,"       -l0 disables capital lock encoding\n");
+  fprintf(stderr,"ERROR - Invalid format - Use GLZA c|d [-c#] [-p#] [-r#] <infile> <outfile>\n");
+  fprintf(stderr," where -c# sets the grammar production cost in bits\n");
+  fprintf(stderr,"       -p# sets the profit power ratio.  0.0 is most compressive, larger\n");
+  fprintf(stderr,"           values favor longer strings\n");
+  fprintf(stderr,"       -r# sets memory usage in millions of bytes\n");
   return;
 }
 
 
 int main(int argc, char* argv[])
 {
-  uint8_t mode;
+  uint8_t mode, user_set_profit_ratio_power, user_set_production_cost, user_set_RAM_size;
   uint8_t *inbuf, *outbuf;
   int32_t arg_num;
   clock_t start_time;
   size_t insize, outsize, startsize;
+  double production_cost, profit_ratio_power, RAM_usage;
   FILE *fd_in, *fd_out;
 
 
-  arg_num = 1;
-  if (argc != arg_num + 3) {
-    fprintf(stderr,"ERROR - Command format is \"GLZA c|d <infile> <outfile>\"\n");
+  params.user_set_profit_ratio_power = 0;
+  params.user_set_production_cost = 0;
+  params.user_set_RAM_size = 0;
+  if (argc < 4) {
+    print_usage();
     exit(EXIT_FAILURE);
   }
-  mode = *(argv[arg_num++]) - 'c';
+
+  mode = *(argv[1]) - 'c';
   if (mode > 1) {
     fprintf(stderr,"ERROR - mode must be c or d\n");
+    exit(EXIT_FAILURE);
+  }
+  arg_num = 2;
+
+  while (*argv[arg_num] ==  '-') {
+    if (*(argv[arg_num]+1) == 'c') {
+      params.production_cost = (double)atof(argv[arg_num++]+2);
+      params.user_set_production_cost = 1;
+    }
+    else if (*(argv[arg_num]+1) == 'p') {
+      params.profit_ratio_power = (double)atof(argv[arg_num++]+2);
+      params.user_set_profit_ratio_power = 1;
+    }
+    else if (*(argv[arg_num]+1) == 'r') {
+      params.user_set_RAM_size = 1;
+      params.RAM_usage = (double)atof(argv[arg_num++]+2);
+      if (params.RAM_usage < 60.0) {
+        fprintf(stderr,"ERROR: -r value must be >= 60.0 (MB)\n");
+        exit(EXIT_FAILURE);
+      }
+    }
+    else {
+      fprintf(stderr,"ERROR - Invalid '-' format.  Only -c<value>, -p<value> and -r<value> allowed\n");
+      exit(EXIT_FAILURE);
+    }
+    if (argc < arg_num + 2) {
+      print_usage();
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  if (argc != arg_num + 2) {
+    print_usage();
     exit(EXIT_FAILURE);
   }
   if ((fd_in = fopen(argv[arg_num],"rb"))==NULL) {
@@ -71,7 +102,6 @@ int main(int argc, char* argv[])
   fseek(fd_in, 0, SEEK_END);
   startsize = insize = (size_t)ftell(fd_in);
   rewind(fd_in);
-  fprintf(stderr,"Reading %lu byte file\n",(long unsigned int)insize);
 
   if ((inbuf = (uint8_t *)malloc(insize)) == 0) {
     fprintf(stderr,"ERROR - Input buffer memory allocation failed\n");
@@ -93,7 +123,7 @@ int main(int argc, char* argv[])
   if (mode == 0) {
     if (insize == 0)
       outsize = 0;
-    else if (GLZAcomp(insize, inbuf, &outsize, 0, fd_out) == 0)
+    else if (GLZAcomp(insize, inbuf, &outsize, 0, fd_out, &params) == 0)
       exit(EXIT_FAILURE);
     fprintf(stderr,"Compressed %lu bytes -> %lu bytes (%.4f bpB)",
         (long unsigned int)startsize,(long unsigned int)outsize,8.0*(float)outsize/(float)startsize);
@@ -104,8 +134,6 @@ int main(int argc, char* argv[])
     else {
       outbuf = GLZAdecode(insize, inbuf, &outsize, outbuf, fd_out);
       free(inbuf);
-      if (outbuf == 0) exit(EXIT_FAILURE);
-      free(outbuf);
     }
     fprintf(stderr,"Decompressed %lu bytes -> %lu bytes (%.4f bpB)",
         (long unsigned int)startsize,(long unsigned int)outsize,8.0*(float)startsize/(float)outsize);

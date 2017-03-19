@@ -80,13 +80,13 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
 ```
 blosclz 2015-11-10
 brieflz 1.1.0
-brotli 0.5.2
+brotli 2017-03-10
 crush 1.0
 csc 2016-10-13 (WARNING: it can throw SEGFAULT compiled with Apple LLVM version 7.3.0 (clang-703.0.31))
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
 fastlz 0.1
 gipfeli 2016-07-13
-glza 0.7.1
+glza 0.8
 libdeflate v0.7
 lizard v1.0 (formerly lz5)
 lz4/lz4hc v1.7.5

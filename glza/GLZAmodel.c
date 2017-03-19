@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <inttypes.h>
 #include "GLZAmodel.h"
+#include <stdio.h>
 
 uint32_t InCharNum, OutCharNum;
 uint32_t RangeLow, RangeHigh, count;
@@ -37,7 +38,6 @@ const uint32_t MTF_QUEUE_SIZE = 64;
 
 uint32_t ReadLow() {return(low);}
 uint32_t ReadRange() {return(range);}
-
 
 void StartModelSymType(uint8_t use_mtf, uint8_t use_mtfg) {
   uint8_t i = 3;
@@ -545,18 +545,23 @@ void DoubleRangeDown() {
 void DecreaseLow(uint32_t range_factor) {
   low -= range * range_factor;
 }
+
 void IncreaseLow(uint32_t range_factor) {
   low += range * range_factor;
 }
+
 void MultiplyRange(uint32_t range_factor) {
   range *= range_factor;
 }
+
 void SetOutBuffer(uint8_t * bufptr) {
   OutBuffer = bufptr;
 }
+
 void WriteOutBuffer(uint8_t value) {
   OutBuffer[OutCharNum++] = value;
 }
+
 void NormalizeEncoder(uint32_t bot) {
   while ((low ^ (low + range)) < TOP || (range < (bot) && ((range = -low & ((bot) - 1)), 1))) {
     OutBuffer[OutCharNum++] = (uint8_t)(low >> 24);
@@ -565,6 +570,7 @@ void NormalizeEncoder(uint32_t bot) {
   }
   return;
 }
+
 void EncodeDictType(uint8_t Context) {
   NormalizeEncoder(FREQ_SYM_TYPE_BOT);
   range = FreqSymType[Context][0] * (range >> 14);
@@ -579,6 +585,7 @@ void EncodeDictType(uint8_t Context) {
   FreqSymType[Context][0] += sum;
   return;
 }
+
 void EncodeNewType(uint8_t Context) {
   NormalizeEncoder(FREQ_SYM_TYPE_BOT);
   low += FreqSymType[Context][0] * (range >>= 14);
@@ -594,6 +601,7 @@ void EncodeNewType(uint8_t Context) {
   FreqSymType[Context][1] += sum;
   return;
 }
+
 void EncodeMtfgType(uint8_t Context) {
   NormalizeEncoder(FREQ_SYM_TYPE_BOT);
   low += (FreqSymType[Context][0] + FreqSymType[Context][1]) * (range >>= 14);
@@ -609,6 +617,7 @@ void EncodeMtfgType(uint8_t Context) {
   FreqSymType[Context][2] += sum;
   return;
 }
+
 void EncodeMtfType(uint8_t Context) {
   NormalizeEncoder(FREQ_SYM_TYPE_BOT);
   uint32_t saved_low = low;
@@ -625,6 +634,7 @@ void EncodeMtfType(uint8_t Context) {
   FreqSymType[Context][3] += sum;
   return;
 }
+
 void EncodeMtfQueueNum(uint8_t Context, uint8_t mtf_queue_number) {
   NormalizeEncoder(FREQ_MTF_QUEUE_NUM_BOT);
   if (mtf_queue_number == 0) {
@@ -644,6 +654,7 @@ void EncodeMtfQueueNum(uint8_t Context, uint8_t mtf_queue_number) {
     rescaleMtfQueueNum(Context);
   return;
 }
+
 void EncodeMtfQueueNumLastSymbol(uint8_t Context, uint8_t mtf_queue_number) {
   NormalizeEncoder(FREQ_MTF_QUEUE_NUM_BOT);
   if (mtf_queue_number == 0)
@@ -658,6 +669,7 @@ void EncodeMtfQueueNumLastSymbol(uint8_t Context, uint8_t mtf_queue_number) {
   }
   return;
 }
+
 void EncodeMtfQueuePos(uint8_t Context, uint8_t mtf_queue_number, uint8_t * mtf_queue_size, uint8_t queue_position) {
   NormalizeEncoder(FREQ_MTF_QUEUE_POS_BOT);
   uint16_t RangeScale = RangeScaleMtfQueuePos[Context][mtf_queue_number];
@@ -700,6 +712,7 @@ void EncodeMtfQueuePos(uint8_t Context, uint8_t mtf_queue_number, uint8_t * mtf_
     rescaleMtfQueuePos(Context, mtf_queue_number);
   return;
 }
+
 void EncodeMtfgQueuePos(uint8_t Context, uint8_t queue_position) {
   NormalizeEncoder(FREQ_MTFG_QUEUE_POS_BOT);
   if (queue_position == 0) {
@@ -735,6 +748,7 @@ void EncodeMtfgQueuePos(uint8_t Context, uint8_t queue_position) {
     rescaleMtfgQueuePos(Context);
   return;
 }
+
 void EncodeSID(uint8_t Context, uint8_t SIDSymbol) {
   NormalizeEncoder(FREQ_SID_BOT);
   if (SIDSymbol == 0) {
@@ -754,12 +768,14 @@ void EncodeSID(uint8_t Context, uint8_t SIDSymbol) {
     rescaleSID(Context);
   return;
 }
+
 void EncodeExtraLength(uint8_t Symbol) {
   NormalizeEncoder(1 << 2);
   range >>= 2;
   low += Symbol * range;
   return;
 }
+
 void EncodeINST(uint8_t Context, uint8_t SIDSymbol, uint8_t Symbol) {
   NormalizeEncoder(FREQ_INST_BOT);
   if (Symbol == 0) {
@@ -793,6 +809,7 @@ void EncodeINST(uint8_t Context, uint8_t SIDSymbol, uint8_t Symbol) {
   }
   return;
 }
+
 void EncodeERG(uint8_t Context, uint8_t Symbol) {
   NormalizeEncoder(FREQ_ERG_BOT);
   if ((Symbol) == 0) {
@@ -809,6 +826,7 @@ void EncodeERG(uint8_t Context, uint8_t Symbol) {
   }
   return;
 }
+
 void EncodeWordTag(uint8_t Symbol) {
   NormalizeEncoder(FREQ_WORD_TAG_BOT);
   if (Symbol == 0) {
@@ -825,12 +843,14 @@ void EncodeWordTag(uint8_t Symbol) {
   }
   return;
 }
+
 void EncodeShortDictionarySymbol(uint8_t Length, uint16_t BinNum, uint16_t DictionaryBins, uint16_t CodeBins) {
   NormalizeEncoder((uint32_t)1 << 12);
   low += BinNum * (range /= DictionaryBins);
   range = (uint32_t)CodeBins * (range << (12 - (Length)));
   return;
 }
+
 void EncodeLongDictionarySymbol(uint32_t BinCode, uint16_t BinNum, uint16_t DictionaryBins, uint8_t CodeLength,
     uint16_t CodeBins) {
   NormalizeEncoder((uint32_t)1 << 12);
@@ -840,11 +860,13 @@ void EncodeLongDictionarySymbol(uint32_t BinCode, uint16_t BinNum, uint16_t Dict
   range *= (uint32_t)CodeBins;
   return;
 }
+
 void EncodeBaseSymbol(uint32_t BaseSymbol, uint8_t Bits, uint32_t NumBaseSymbols) {
   NormalizeEncoder((uint32_t)1 << Bits);
   low += BaseSymbol * (range /= NumBaseSymbols);
   return;
 }
+
 void EncodeFirstChar(uint8_t Symbol, uint8_t SymType, uint8_t LastChar) {
   NormalizeEncoder(FREQ_FIRST_CHAR_BOT);
   if (Symbol == SymbolFirstChar[SymType][LastChar][0]) {
@@ -887,6 +909,7 @@ void EncodeFirstChar(uint8_t Symbol, uint8_t SymType, uint8_t LastChar) {
   }
   return;
 }
+
 void EncodeFirstCharBinary(uint8_t Symbol, uint8_t LastChar) {
   NormalizeEncoder(FREQ_FIRST_CHAR_BOT);
   if (RangeScaleFirstCharSection[LastChar][3] > count) {
@@ -990,15 +1013,19 @@ void EncodeFirstCharBinary(uint8_t Symbol, uint8_t LastChar) {
     rescaleFirstCharBinary(LastChar);
   return;
 }
+
 void WriteInCharNum(uint32_t value) {
   InCharNum = value;
 }
+
 void WriteOutCharNum(uint32_t value) {
   OutCharNum = value;
 }
+
 uint32_t ReadOutCharNum() {
   return(OutCharNum);
 }
+
 void InitEncoder(uint8_t max_regular_code_length, uint8_t num_inst_codes, uint8_t cap_encoded, uint8_t UTF8_compliant,
     uint8_t use_mtf, uint8_t use_mtfg) {
   low = 0, range = -1;
@@ -1017,6 +1044,7 @@ void InitEncoder(uint8_t max_regular_code_length, uint8_t num_inst_codes, uint8_
     StartModelFirstCharBinary();
   }
 }
+
 void FinishEncoder() {
   while (low ^ (low + range)) {
     OutBuffer[OutCharNum++] = (uint8_t)(low >> 24);
@@ -1024,6 +1052,7 @@ void FinishEncoder() {
     range <<= 8;
   }
 }
+
 #define NormalizeDecoder(bot) {                                                                  \
   while ((low ^ (low + range)) < TOP || (range < (bot) && ((range = -low & ((bot) - 1)), 1))) {  \
     code = (code << 8) | InBuffer[InCharNum++];                                                  \
@@ -1031,18 +1060,21 @@ void FinishEncoder() {
     range <<= 8;                                                                                 \
   }                                                                                              \
 }
+
 void DecodeSymTypeStart(uint8_t Context) {
   NormalizeDecoder(FREQ_SYM_TYPE_BOT);
   extra_range = range & (FREQ_SYM_TYPE_BOT - 1);
   count = (code - low) / (range >>= 14);
   return;
 }
+
 uint8_t DecodeSymTypeCheckDict(uint8_t Context) {
   if (FreqSymType[Context][0] > count)
     return(1);
   else
     return(0);
 }
+
 void DecodeSymTypeFinishDict(uint8_t Context) {
   range *= FreqSymType[Context][0];
   uint8_t sum = 0;
@@ -1056,12 +1088,14 @@ void DecodeSymTypeFinishDict(uint8_t Context) {
   FreqSymType[Context][0] += sum;
   return;
 }
+
 uint8_t DecodeSymTypeCheckNew(uint8_t Context) {
   if ((RangeHigh = FreqSymType[Context][0] + FreqSymType[Context][1]) > count)
     return(1);
   else
     return(0);
 }
+
 void DecodeSymTypeFinishNew(uint8_t Context) {
   low += range * FreqSymType[Context][0];
   range *= FreqSymType[Context][1];
@@ -1076,12 +1110,14 @@ void DecodeSymTypeFinishNew(uint8_t Context) {
   FreqSymType[Context][1] += sum;
   return;
 }
+
 uint8_t DecodeSymTypeCheckMtfg(uint8_t Context) {
   if ((RangeHigh + FreqSymType[Context][2]) > count)
     return(1);
   else
     return(0);
 }
+
 void DecodeSymTypeFinishMtfg(uint8_t Context) {
   low += range * RangeHigh;
   range *= FreqSymType[Context][2];
@@ -1096,6 +1132,7 @@ void DecodeSymTypeFinishMtfg(uint8_t Context) {
   FreqSymType[Context][2] += sum;
   return;
 }
+
 void DecodeSymTypeFinishMtf(uint8_t Context) {
   low += range * (RangeHigh + FreqSymType[Context][2]);
   range *= FreqSymType[Context][3];
@@ -1111,21 +1148,25 @@ void DecodeSymTypeFinishMtf(uint8_t Context) {
   FreqSymType[Context][3] += sum;
   return;
 }
+
 void DecodeMtfQueueNumStart(uint8_t Context) {
   NormalizeDecoder(FREQ_MTF_QUEUE_NUM_BOT);
   count = (code - low) / (range /= RangeScaleMtfQueueNum[Context]);
   return;
 }
+
 uint8_t DecodeMtfQueueNumCheck0(uint8_t Context) {
   if ((RangeHigh = FreqMtfQueueNum[Context][0]) > count)
     return(1);
   else
     return(0);
 }
+
 void DecodeMtfQueueNumFinish0(uint8_t Context) {
   range *= RangeHigh;
   return;
 }
+
 uint8_t DecodeMtfQueueNumFinish(uint8_t Context) {
   uint8_t mtf_queue_number = 1;
   while ((RangeHigh += FreqMtfQueueNum[Context][mtf_queue_number]) <= count)
@@ -1134,6 +1175,7 @@ uint8_t DecodeMtfQueueNumFinish(uint8_t Context) {
   range *= FreqMtfQueueNum[Context][mtf_queue_number];
   return(mtf_queue_number);
 }
+
 void DecodeMtfQueuePosStart(uint8_t Context, uint8_t mtf_queue_number, uint8_t * mtf_queue_size) {
   NormalizeDecoder(FREQ_MTF_QUEUE_POS_BOT);
   uint16_t RangeScale = RangeScaleMtfQueuePos[Context][mtf_queue_number];
@@ -1146,18 +1188,21 @@ void DecodeMtfQueuePosStart(uint8_t Context, uint8_t mtf_queue_number, uint8_t *
   count = (code - low) / (range /= RangeScale);
   return;
 }
+
 uint8_t DecodeMtfQueuePosCheck0(uint8_t Context, uint8_t mtf_queue_number) {
   if ((RangeHigh = FreqMtfQueuePos[Context][mtf_queue_number][0]) > count)
     return(1);
   else
     return(0);
 }
+
 void DecodeMtfQueuePosFinish0(uint8_t Context, uint8_t mtf_queue_number) {
   range *= RangeHigh;
   FreqMtfQueuePos[Context][mtf_queue_number][0] = RangeHigh + UP_FREQ_MTF_QUEUE_POS;
   if ((RangeScaleMtfQueuePos[Context][mtf_queue_number] += UP_FREQ_MTF_QUEUE_POS) > FREQ_MTF_QUEUE_POS_BOT)
     rescaleMtfQueuePos(Context, mtf_queue_number);
 }
+
 uint8_t DecodeMtfQueuePosFinish(uint8_t Context, uint8_t mtf_queue_number) {
   uint32_t Symbol = 1;
   while ((RangeHigh += FreqMtfQueuePos[Context][mtf_queue_number][Symbol]) <= count)
@@ -1185,17 +1230,20 @@ uint8_t DecodeMtfQueuePosFinish(uint8_t Context, uint8_t mtf_queue_number) {
     rescaleMtfQueuePos(Context, mtf_queue_number);
   return(Symbol);
 }
+
 void DecodeMtfgQueuePosStart(uint8_t Context) {
   NormalizeDecoder(FREQ_MTFG_QUEUE_POS_BOT);
   count = (code - low) / (range /= RangeScaleMtfgQueuePos[Context]);
   return;
 }
+
 uint8_t DecodeMtfgQueuePosCheck0(uint8_t Context) {
   if ((RangeHigh = FreqMtfgQueuePos[Context][0]) > count)
     return(1);
   else
     return(0);
 }
+
 uint8_t DecodeMtfgQueuePosFinish0(uint8_t Context) {
   range *= RangeHigh;
   FreqMtfgQueuePos[Context][0] = RangeHigh + UP_FREQ_MTFG_QUEUE_POS;
@@ -1203,6 +1251,7 @@ uint8_t DecodeMtfgQueuePosFinish0(uint8_t Context) {
     rescaleMtfgQueuePos(Context);
   return(0);
 }
+
 uint8_t DecodeMtfgQueuePosFinish(uint8_t Context) {
   uint8_t mtfg_queue_position = 1;
   while ((RangeHigh += FreqMtfgQueuePos[Context][mtfg_queue_position]) <= count)
@@ -1230,17 +1279,20 @@ uint8_t DecodeMtfgQueuePosFinish(uint8_t Context) {
     rescaleMtfgQueuePos(Context);
   return(mtfg_queue_position);
 }
+
 void DecodeSIDStart(uint8_t Context) {
   NormalizeDecoder(FREQ_SID_BOT);
   count = (code - low) / (range /= RangeScaleSID[Context]);
   return;
 }
+
 uint8_t DecodeSIDCheck0(uint8_t Context) {
   if ((RangeHigh = FreqSID[Context][0]) > count)
     return(1);
   else
     return(0);
 }
+
 uint8_t DecodeSIDFinish0(uint8_t Context) {
   range *= RangeHigh;
   FreqSID[Context][0] = RangeHigh + UP_FREQ_SID;
@@ -1248,6 +1300,7 @@ uint8_t DecodeSIDFinish0(uint8_t Context) {
     rescaleSID(Context);
   return(0);
 }
+
 uint8_t DecodeSIDFinish(uint8_t Context) {
   uint8_t SIDSymbol = 1;
   while ((RangeHigh += FreqSID[Context][SIDSymbol]) <= count)
@@ -1259,22 +1312,26 @@ uint8_t DecodeSIDFinish(uint8_t Context) {
     rescaleSID(Context);
   return(SIDSymbol);
 }
+
 uint8_t DecodeExtraLength() {
   NormalizeDecoder((uint32_t)1 << 2);
   uint32_t Symbol = (code - low) / (range >>= 2);
   low += range * Symbol;
   return((uint8_t)Symbol);
 }
+
 void DecodeINSTStart(uint8_t Context, uint8_t SIDSymbol) {
   NormalizeDecoder(FREQ_INST_BOT);
   count = (code - low) / (range /= RangeScaleINST[Context][SIDSymbol]);
 }
+
 uint8_t DecodeINSTCheck0(uint8_t Context, uint8_t SIDSymbol) {
   if ((RangeHigh = FreqINST[Context][SIDSymbol][0]) > count)
     return(1);
   else
     return(0);
 }
+
 void DecodeINSTFinish0(uint8_t Context, uint8_t SIDSymbol) {
   range *= RangeHigh;
   if (RangeScaleINST[Context][SIDSymbol] >= (FREQ_INST_BOT >> 1)) {
@@ -1288,6 +1345,7 @@ void DecodeINSTFinish0(uint8_t Context, uint8_t SIDSymbol) {
   }
   return;
 }
+
 uint8_t DecodeINSTFinish(uint8_t Context, uint8_t SIDSymbol) {
   uint8_t Instances = 1;
   while ((RangeHigh += FreqINST[Context][SIDSymbol][Instances]) <= count)
@@ -1305,6 +1363,7 @@ uint8_t DecodeINSTFinish(uint8_t Context, uint8_t SIDSymbol) {
   }
   return(Instances);
 }
+
 uint8_t DecodeERG(uint8_t Context) {
   uint8_t nonergodic;
   NormalizeDecoder(FREQ_ERG_BOT);
@@ -1325,6 +1384,7 @@ uint8_t DecodeERG(uint8_t Context) {
   }
   return(nonergodic);
 }
+
 uint8_t DecodeWordTag() {
   uint8_t Tag;
   NormalizeDecoder(FREQ_WORD_TAG_BOT);
@@ -1345,23 +1405,26 @@ uint8_t DecodeWordTag() {
   }
   return(Tag);
 }
+
 uint16_t DecodeDictionaryBin(uint8_t FirstChar, uint8_t * lookup_bits, uint8_t * CodeLengthPtr, uint16_t DictionaryBins,
-    uint8_t * bin_code_length) {
+    uint8_t bin_extra_bits) {
   uint16_t BinNum;
   NormalizeDecoder((uint32_t)1 << 12);
   *CodeLengthPtr = lookup_bits[BinNum = (code - low) / (range /= DictionaryBins)];
-  int8_t BitsUnderBinSize = bin_code_length[FirstChar] - *CodeLengthPtr;
+  int8_t BitsUnderBinSize = bin_extra_bits - *CodeLengthPtr;
   if (BitsUnderBinSize > 0)
     low += (range <<= BitsUnderBinSize) * (BinNum >> BitsUnderBinSize);
   else
     low += range * BinNum;
   return(BinNum);
 }
+
 uint32_t DecodeBinCode(uint8_t Bits) {
   NormalizeDecoder((uint32_t)1 << Bits);
   uint32_t BinCode = (code - low) / (range >>= Bits);
   return(BinCode);
 }
+
 uint32_t DecodeBaseSymbol(uint8_t Bits, uint32_t NumBaseSymbols) {
   NormalizeDecoder((uint32_t)1 << Bits);
   range /= NumBaseSymbols;
@@ -1369,6 +1432,7 @@ uint32_t DecodeBaseSymbol(uint8_t Bits, uint32_t NumBaseSymbols) {
   low += range * (BaseSymbol = (code - low) / range);
   return(BaseSymbol);
 }
+
 uint8_t DecodeFirstChar(uint8_t SymType, uint8_t LastChar) {
   NormalizeDecoder(FREQ_FIRST_CHAR_BOT);
   count = (code - low) / (range /= RangeScaleFirstChar[SymType][LastChar]);
@@ -1418,6 +1482,7 @@ uint8_t DecodeFirstChar(uint8_t SymType, uint8_t LastChar) {
   }
   return(FirstChar);
 }
+
 uint8_t DecodeFirstCharBinary(uint8_t LastChar) {
   NormalizeDecoder(FREQ_FIRST_CHAR_BOT);
   count = (code - low) / (range /= RangeScaleFirstChar[0][LastChar]);
@@ -1483,6 +1548,7 @@ uint8_t DecodeFirstCharBinary(uint8_t LastChar) {
     rescaleFirstCharBinary(LastChar);
   return(FirstChar);
 }
+
 void InitDecoder(uint8_t max_regular_code_length, uint8_t num_inst_codes, uint8_t cap_encoded, uint8_t UTF8_compliant,
     uint8_t use_mtf, uint8_t use_mtfg, uint8_t * inbuf) {
   InBuffer = inbuf;
