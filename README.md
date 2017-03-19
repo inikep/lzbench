@@ -96,7 +96,7 @@ lzg 1.0.8
 lzham 1.0
 lzjb 2010
 lzlib 1.8
-lzma 9.38
+lzma v16.04
 lzmat 1.01 (WARNING: it contains bugs (decompression error; returns 0); it can throw SEGFAULT compiled with gcc 4.9+ -O3)
 lzo 2.09
 lzrw 15-Jul-1991
