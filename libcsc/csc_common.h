@@ -3,8 +3,9 @@
 
 #include <stdint.h>
 
-//ifdef _7Z_TYPES_
-#include "Types.h"
+//#ifdef _7Z_TYPES_
+#include <Types.h>
+//#else
 //#endif
 
 #define CSC_PROP_SIZE (4 + 3 + 3)

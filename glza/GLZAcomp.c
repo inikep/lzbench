@@ -24,30 +24,39 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "GLZA.h"
 #include "GLZAformat.h"
 #include "GLZAcompress.h"
 #include "GLZAencode.h"
 
 
-uint8_t GLZAcomp(size_t insize, uint8_t * inbuf, size_t * outsize_ptr, uint8_t *outbuf, FILE * fd)
+uint8_t GLZAcomp(size_t insize, uint8_t * inbuf, size_t * outsize_ptr, uint8_t *outbuf, FILE * fd,
+    struct param_data * params)
 {
   uint8_t status;
   uint8_t * temp2buf = 0;
-  uint8_t * tempbuf = (uint8_t *)malloc(insize);
-  if (tempbuf == 0) return(0);
-  memcpy(tempbuf, inbuf, insize);
-  status = GLZAformat(insize, (uint8_t *)tempbuf, outsize_ptr, &temp2buf);
-  free(tempbuf);
+  uint8_t * tempbuf;
+  size_t tempsize;
+
+  if (fd == 0) {
+    tempbuf = (uint8_t *)malloc(insize);
+    if (tempbuf == 0) return(0);
+    memcpy(tempbuf, inbuf, insize);
+    status = GLZAformat(insize, (uint8_t *)tempbuf, outsize_ptr, &temp2buf);
+    free(tempbuf);
+  }
+  else
+    status = GLZAformat(insize, (uint8_t *)inbuf, outsize_ptr, &temp2buf);
   if (status == 0)
     return(0);
-  insize = *outsize_ptr;
-  status = GLZAcompress(insize, (uint8_t *)temp2buf, outsize_ptr, &tempbuf);
+  tempsize = *outsize_ptr;
+  status = GLZAcompress(tempsize, (uint8_t *)temp2buf, outsize_ptr, &tempbuf, params);
   free(temp2buf);
   if (status == 0)
     return(0);
   inbuf = tempbuf;
-  insize = *outsize_ptr;
-  status = GLZAencode(insize, inbuf, outsize_ptr, outbuf, (FILE *)fd);
+  tempsize = *outsize_ptr;
+  status = GLZAencode(tempsize, inbuf, outsize_ptr, outbuf, (FILE *)fd, insize);
   free(inbuf);
   if (status == 0)
     return(0);

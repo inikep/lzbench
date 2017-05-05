@@ -1,6 +1,6 @@
 #ifndef _CSC_MF_H_
 #define _CSC_MF_H_
-#include "csc_typedef.h"
+#include <csc_typedef.h>
 
 
 class Model;
@@ -17,6 +17,7 @@ class MatchFinder {
     static const uint32_t HT3_SIZE_ = 64 * KB;
     static const uint32_t HT2_SIZE_ = 16 * KB;
 
+    ISzAlloc *alloc_;
     uint8_t *wnd_;
     uint32_t wnd_size_;
     uint32_t vld_rge_; // valid range, wnd_size - blocksize
@@ -55,7 +56,8 @@ public:
             uint32_t bt_size, 
             uint32_t bt_bits, 
             uint32_t ht_width,
-            uint32_t ht_bits
+            uint32_t ht_bits,
+            ISzAlloc *alloc
             );
 
     void SetArg(int bt_cyc, int ht_cyc, int ht_low, int good_len);

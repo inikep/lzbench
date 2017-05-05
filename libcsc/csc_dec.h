@@ -1,6 +1,6 @@
 #ifndef _CSC_DEC_H_
 #define _CSC_DEC_H_
-#include "csc_common.h"
+#include <csc_common.h>
 
 EXTERN_C_BEGIN
 
@@ -9,7 +9,10 @@ void CSCDec_ReadProperties(CSCProps *props, uint8_t *stream);
 
 typedef void * CSCDecHandle;
 
-CSCDecHandle CSCDec_Create(const CSCProps *props, ISeqInStream *instream);
+// alloc can be NULL, so default malloc/free will be used
+CSCDecHandle CSCDec_Create(const CSCProps *props,
+                           ISeqInStream *instream,
+                           ISzAlloc *alloc);
 
 void CSCDec_Destroy(CSCDecHandle p);
 

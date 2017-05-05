@@ -33,14 +33,15 @@ limitations under the License.
 #include <time.h>
 #include "GLZAmodel.h"
 
+#define START_UTF8_2BYTE_SYMBOLS 0x80
+#define START_UTF8_3BYTE_SYMBOLS 0x800
+#define START_UTF8_4BYTE_SYMBOLS 0x10000
+#define MAX_INSTANCES_FOR_MTF_QUEUE 15
+#define MTF_QUEUE_SIZE 64
+
 const uint8_t MAX_BITS_IN_CODE = 25;
 const uint32_t UNIQUE_CHAR = 0xFFFFFFFF;
-const uint32_t START_UTF8_2BYTE_SYMBOLS = 0x80;
-const uint32_t START_UTF8_3BYTE_SYMBOLS = 0x800;
-const uint32_t START_UTF8_4BYTE_SYMBOLS = 0x10000;
 const uint32_t READ_SIZE = 0x80000;
-const uint32_t MAX_INSTANCES_FOR_MTF_QUEUE = 15;
-const uint32_t EMTF_QUEUE_SIZE = 64;
 
 uint8_t UTF8_compliant, base_bits, cap_encoded, prior_is_cap, use_mtf, use_mtfg, format, CodeLength, SIDSymbol;
 uint8_t symbol_code_length, symbol_bits, temp_bits, max_code_length, max_regular_code_length, found_first_symbol, end_symbol;
@@ -66,6 +67,7 @@ uint32_t *symbol, *symbol_ptr, *ranked_symbols, *first_define_ptr;
 uint32_t *sym_list_ptrs[0x100][26];
 int32_t prior_symbol;
 
+
 // type:  bit 0: string ends 'C' or 'B' (cap symbol/cap lock symbol), bit1: string starts a-z, bit 2: non-ergodic, bit 3: in queue
 // bit 4: "word"ness determined, bit 5: "word", bit 6: >15 instance word, bit 7: >15 instance word likely to be followed by ' '
 
@@ -76,11 +78,13 @@ struct symbol_data {
 } *sd;
 
 
+uint32_t z1[0x100], z2[0x100];
+
 
 void print_string(uint32_t symbol_number) {
   uint32_t *symbol_ptr, *next_symbol_ptr;
   if (symbol_number < start_my_symbols) {
-    if (UTF8_compliant) {
+    if (UTF8_compliant != 0) {
       if (symbol_number < START_UTF8_2BYTE_SYMBOLS)
         printf("%c",(unsigned char)symbol_number);
       else if (symbol_number < START_UTF8_3BYTE_SYMBOLS) {
@@ -115,7 +119,7 @@ void print_string(uint32_t symbol_number) {
 void print_string2(uint32_t symbol_number) {
   uint32_t *symbol_ptr, *next_symbol_ptr;
   if (symbol_number < start_my_symbols) {
-    if (UTF8_compliant) {
+    if (UTF8_compliant != 0) {
       if (symbol_number < START_UTF8_2BYTE_SYMBOLS)
         fprintf(stderr,"%c",(unsigned char)symbol_number);
       else if (symbol_number < START_UTF8_3BYTE_SYMBOLS) {
@@ -190,9 +194,44 @@ uint8_t find_first_UTF8(uint32_t symbol_number) {
     }
     return(first_char);
   }
-  if (first_symbol < 0x80)
+  if (first_symbol < START_UTF8_2BYTE_SYMBOLS)
     return((uint8_t)first_symbol);
-  return(0x80);
+  else if (first_symbol < 0x250)
+    return(0x80);
+  else if (first_symbol < 0x370)
+    return(0x81);
+  else if (first_symbol < 0x400)
+    return(0x82);
+  else if (first_symbol < 0x530)
+    return(0x83);
+  else if (first_symbol < 0x590)
+    return(0x84);
+  else if (first_symbol < 0x600)
+    return(0x85);
+  else if (first_symbol < 0x700)
+    return(0x86);
+  else if (first_symbol < START_UTF8_3BYTE_SYMBOLS)
+    return(0x87);
+  else if (first_symbol < 0x1000)
+    return(0x88);
+  else if (first_symbol < 0x2000)
+    return(0x89);
+  else if (first_symbol < 0x3000)
+    return(0x8A);
+  else if (first_symbol < 0x3040)
+    return(0x8B);
+  else if (first_symbol < 0x30A0)
+    return(0x8C);
+  else if (first_symbol < 0x3100)
+    return(0x8D);
+  else if (first_symbol < 0x3200)
+    return(0x8E);
+  else if (first_symbol < 0xA000)
+    return(0x8F);
+  else if (first_symbol < START_UTF8_4BYTE_SYMBOLS)
+    return(0x8E);
+  else
+    return(0x90);
 }
 
 
@@ -206,7 +245,7 @@ uint8_t find_last(uint32_t symbol_number) {
     }
     return(last_char);
   }
-  if (cap_encoded && (last_symbol == 'B'))
+  if ((cap_encoded != 0) && (last_symbol == 'B'))
     return('C');
   return((uint8_t)last_symbol);
 }
@@ -222,19 +261,54 @@ uint8_t find_last_UTF8(uint32_t symbol_number) {
     }
     return(last_char);
   }
-  if (cap_encoded && (last_symbol == 'B'))
+  if ((cap_encoded != 0) && (last_symbol == 'B'))
     return('C');
-  if (last_symbol < 0x80)
+  if (last_symbol < START_UTF8_2BYTE_SYMBOLS)
     return((uint8_t)last_symbol);
-  return(0x80);
+  else if (last_symbol < 0x250)
+    return(0x80);
+  else if (last_symbol < 0x370)
+    return(0x81);
+  else if (last_symbol < 0x400)
+    return(0x82);
+  else if (last_symbol < 0x530)
+    return(0x83);
+  else if (last_symbol < 0x590)
+    return(0x84);
+  else if (last_symbol < 0x600)
+    return(0x85);
+  else if (last_symbol < 0x700)
+    return(0x86);
+  else if (last_symbol < START_UTF8_3BYTE_SYMBOLS)
+    return(0x87);
+  else if (last_symbol < 0x1000)
+    return(0x88);
+  else if (last_symbol < 0x2000)
+    return(0x89);
+  else if (last_symbol < 0x3000)
+    return(0x8A);
+  else if (last_symbol < 0x3040)
+    return(0x8B);
+  else if (last_symbol < 0x30A0)
+    return(0x8C);
+  else if (last_symbol < 0x3100)
+    return(0x8D);
+  else if (last_symbol < 0x3200)
+    return(0x8E);
+  else if (last_symbol < 0xA000)
+    return(0x8F);
+  else if (last_symbol < START_UTF8_4BYTE_SYMBOLS)
+    return(0x8E);
+  else
+    return(0x90);
 }
 
 
 void remove_mtfg_queue_symbol_16(uint8_t mtfg_queue_position) {
-  uint8_t qp = mtfg_queue_position - 16;
-  while (qp != 15) {
-    *(mtfg_queue_16 + ((mtfg_queue_16_offset + qp) & 0xF)) = *(mtfg_queue_16 + ((mtfg_queue_16_offset + qp + 1) & 0xF));
-    qp++;
+  while (mtfg_queue_position != 31) {
+    *(mtfg_queue_16 + ((mtfg_queue_16_offset + mtfg_queue_position) & 0xF))
+        = *(mtfg_queue_16 + ((mtfg_queue_16_offset + mtfg_queue_position + 1) & 0xF));
+    mtfg_queue_position++;
   }
   *(mtfg_queue_16 + ((mtfg_queue_16_offset - 1) & 0xF)) = *(mtfg_queue_32 + mtfg_queue_32_offset);
   *(mtfg_queue_32 + mtfg_queue_32_offset) = *(mtfg_queue_64 + mtfg_queue_64_offset);
@@ -250,10 +324,10 @@ void remove_mtfg_queue_symbol_16(uint8_t mtfg_queue_position) {
 
 
 void remove_mtfg_queue_symbol_32(uint8_t mtfg_queue_position) {
-  uint8_t qp = mtfg_queue_position - 32;
-  while (qp != 31) {
-    *(mtfg_queue_32 + ((mtfg_queue_32_offset + qp) & 0x1F)) = *(mtfg_queue_32 + ((mtfg_queue_32_offset + qp + 1) & 0x1F));
-    qp++;
+  while (mtfg_queue_position != 63) {
+    *(mtfg_queue_32 + ((mtfg_queue_32_offset + mtfg_queue_position) & 0x1F))
+        = *(mtfg_queue_32 + ((mtfg_queue_32_offset + mtfg_queue_position + 1) & 0x1F));
+    mtfg_queue_position++;
   }
   *(mtfg_queue_32 + ((mtfg_queue_32_offset - 1) & 0x1F)) = *(mtfg_queue_64 + mtfg_queue_64_offset);
   *(mtfg_queue_64 + mtfg_queue_64_offset) = *(mtfg_queue_128 + mtfg_queue_128_offset);
@@ -267,10 +341,10 @@ void remove_mtfg_queue_symbol_32(uint8_t mtfg_queue_position) {
 
 
 void remove_mtfg_queue_symbol_64(uint8_t mtfg_queue_position) {
-  uint8_t qp = mtfg_queue_position - 64;
-  while (qp != 63) {
-    *(mtfg_queue_64 + ((mtfg_queue_64_offset + qp) & 0x3F)) = *(mtfg_queue_64 + ((mtfg_queue_64_offset + qp + 1) & 0x3F));
-    qp++;
+  while (mtfg_queue_position != 127) {
+    *(mtfg_queue_64 + ((mtfg_queue_64_offset + mtfg_queue_position) & 0x3F))
+        = *(mtfg_queue_64 + ((mtfg_queue_64_offset + mtfg_queue_position + 1) & 0x3F));
+    mtfg_queue_position++;
   }
   *(mtfg_queue_64 + ((mtfg_queue_64_offset - 1) & 0x3F)) = *(mtfg_queue_128 + mtfg_queue_128_offset);
   *(mtfg_queue_128 + mtfg_queue_128_offset) = *(mtfg_queue_192 + mtfg_queue_192_offset);
@@ -282,11 +356,10 @@ void remove_mtfg_queue_symbol_64(uint8_t mtfg_queue_position) {
 
 
 void remove_mtfg_queue_symbol_128(uint8_t mtfg_queue_position) {
-  uint8_t qp = mtfg_queue_position - 128;
-  while (qp != 63) {
-    *(mtfg_queue_128 + ((mtfg_queue_128_offset + qp) & 0x3F))
-        = *(mtfg_queue_128 + ((mtfg_queue_128_offset + qp + 1) & 0x3F));
-    qp++;
+  while (mtfg_queue_position != 191) {
+    *(mtfg_queue_128 + ((mtfg_queue_128_offset + mtfg_queue_position) & 0x3F))
+        = *(mtfg_queue_128 + ((mtfg_queue_128_offset + mtfg_queue_position + 1) & 0x3F));
+    mtfg_queue_position++;
   }
   *(mtfg_queue_128 + ((mtfg_queue_128_offset - 1) & 0x3F)) = *(mtfg_queue_192 + mtfg_queue_192_offset);
   *(mtfg_queue_192 + mtfg_queue_192_offset) = end_symbols;
@@ -296,13 +369,12 @@ void remove_mtfg_queue_symbol_128(uint8_t mtfg_queue_position) {
 
 
 void remove_mtfg_queue_symbol_192(uint8_t mtfg_queue_position) {
-  uint8_t qp = mtfg_queue_position - 192;
-  while (qp != 63) {
-    *(mtfg_queue_192 + ((mtfg_queue_192_offset + qp) & 0x3F))
-        = *(mtfg_queue_192 + ((mtfg_queue_192_offset + qp + 1) & 0x3F));
-    qp++;
+  while (mtfg_queue_position != 255) {
+    *(mtfg_queue_192 + ((mtfg_queue_192_offset + mtfg_queue_position) & 0x3F))
+        = *(mtfg_queue_192 + ((mtfg_queue_192_offset + mtfg_queue_position + 1) & 0x3F));
+    mtfg_queue_position++;
   }
-  *(mtfg_queue_192 + ((mtfg_queue_192_offset + qp) & 0x3F)) = end_symbols;
+  *(mtfg_queue_192 + ((mtfg_queue_192_offset - 1) & 0x3F)) = end_symbols;
   return;
 }
 
@@ -1141,7 +1213,7 @@ void manage_mtfg_queue_prior_cap(uint32_t symbol_number, uint8_t in_definition) 
 void encode_dictionary_symbol(uint32_t dsymbol) {
   uint8_t first_char = sd[dsymbol].starts;
   symbol_index = sd[dsymbol].array_index;
-  if (cap_encoded) {
+  if (cap_encoded != 0) {
     if (prior_end != 0xA) {
       if (sd[prior_symbol].type & 0x20) {
         if (sd[prior_symbol].type & 0x80)
@@ -1155,7 +1227,7 @@ void encode_dictionary_symbol(uint32_t dsymbol) {
         EncodeFirstChar(first_char, 0, prior_end);
     }
   }
-  else if (UTF8_compliant)
+  else if (UTF8_compliant != 0)
     EncodeFirstChar(first_char, 0, prior_end);
   else 
     EncodeFirstCharBinary(first_char, prior_end);
@@ -1244,7 +1316,7 @@ void update_mtf_queue(uint32_t this_symbol, uint32_t symbol_inst, uint32_t this_
     }
     else { // symbol not in mtf queue, move it back into the queue
       sd[this_symbol].type |= 8;
-      if (mtf_queue_size[this_symbol_count] < EMTF_QUEUE_SIZE)
+      if (mtf_queue_size[this_symbol_count] < MTF_QUEUE_SIZE)
         mtf_queue[this_symbol_count][mtf_queue_size[this_symbol_count]++] = this_symbol;
       else { // move the queue elements down
         sd[mtf_queue[this_symbol_count][0]].type &= 0xF7;
@@ -1390,7 +1462,7 @@ uint8_t manage_mtf_queue(uint32_t this_symbol, uint32_t symbol_inst, uint32_t th
     encode_dictionary_symbol(this_symbol);
     // move the symbol back into the mtf queue
     symbol_bits = mtf_queue_overflow_code_length[this_symbol_count];
-    if (mtf_queue_size[this_symbol_count] < EMTF_QUEUE_SIZE) {
+    if (mtf_queue_size[this_symbol_count] < MTF_QUEUE_SIZE) {
       mtf_queue[this_symbol_count][mtf_queue_size[this_symbol_count]++] = this_symbol;
       remove_dictionary_symbol(this_symbol, symbol_bits);
     }
@@ -1628,7 +1700,7 @@ void count_embedded_definition_symbols(uint32_t define_symbol) {
       if (mtf_queue_started[define_symbol_instances] - mtf_queue_done[define_symbol_instances]
           > mtf_queue_peak[define_symbol_instances])
         mtf_queue_peak[define_symbol_instances]++;
-      if (mtf_queue_size[define_symbol_instances] < EMTF_QUEUE_SIZE)
+      if (mtf_queue_size[define_symbol_instances] < MTF_QUEUE_SIZE)
         mtf_queue[define_symbol_instances][mtf_queue_size[define_symbol_instances]++] = define_symbol;
       else {
         sd[mtf_queue[define_symbol_instances][0]].type &= 0xF7;
@@ -1734,7 +1806,7 @@ uint8_t embed_define_binary(uint32_t define_symbol, uint8_t in_definition) {
     uint8_t j1 = 0xFF;
     do {
       InitFirstCharBinBinary(j1, (uint8_t)define_symbol, new_symbol_code_length);
-    } while (j1--);
+    } while (j1-- != 0);
     InitTrailingCharBinary(define_symbol, symbol_lengths);
     prior_end = define_symbol;
 
@@ -1847,7 +1919,7 @@ uint8_t embed_define_binary(uint32_t define_symbol, uint8_t in_definition) {
         UpFreqMtfQueueNum(NOT_CAP, mtf_queue_number);
         // Handle initial mtf symbol instance
         sd[define_symbol].type |= 8;
-        if (mtf_queue_size[define_symbol_instances] < EMTF_QUEUE_SIZE)
+        if (mtf_queue_size[define_symbol_instances] < MTF_QUEUE_SIZE)
           mtf_queue[define_symbol_instances][mtf_queue_size[define_symbol_instances]++] = define_symbol;
         else {
           symbol_to_move = mtf_queue[define_symbol_instances][0];
@@ -1975,55 +2047,89 @@ uint8_t embed_define(uint32_t define_symbol, uint8_t in_definition) {
     else
       EncodeINST(prior_is_cap, 0, MAX_INSTANCES_FOR_MTF_QUEUE + max_regular_code_length - new_symbol_code_length);
     uint32_t new_symbol = define_symbol;
-    if (cap_encoded) {
+    if (cap_encoded != 0) {
       if (new_symbol > 'Z')
         new_symbol -= 24;
       else if (new_symbol > 'A')
         new_symbol -= 1;
     }
     EncodeBaseSymbol(new_symbol, base_bits, num_base_symbols);
-    if ((UTF8_compliant == 0) || (define_symbol < 0x80)) {
+    if ((UTF8_compliant == 0) || (define_symbol < START_UTF8_2BYTE_SYMBOLS)) {
       if (define_symbol & 1) {
-        if (symbol_lengths[define_symbol - 1]) {
-        DoubleRangeDown();
-        }
+        if (symbol_lengths[define_symbol - 1])
+          DoubleRangeDown();
       }
       else if (symbol_lengths[define_symbol + 1])
         DoubleRange();
     }
 
-    if (cap_encoded) {
-      if (UTF8_compliant) {
-        if (define_symbol < 0x80) {
+    if (cap_encoded != 0) {
+      if (UTF8_compliant != 0) {
+        if (define_symbol < START_UTF8_2BYTE_SYMBOLS) {
           symbol_lengths[define_symbol] = new_symbol_code_length;
-          InitBaseSymbolCap(define_symbol, 0x80, new_symbol_code_length, &cap_symbol_defined, &cap_lock_symbol_defined,
+          InitBaseSymbolCap(define_symbol, 0x90, new_symbol_code_length, &cap_symbol_defined, &cap_lock_symbol_defined,
               symbol_lengths);
           prior_end = define_symbol;
           if (prior_end == 'B')
             prior_end = 'C';
         }
         else {
-          prior_end = 0x80;
-          if (symbol_lengths[0x80] == 0) {
-            symbol_lengths[0x80] = new_symbol_code_length;
-            uint8_t j1 = 0x7F;
+          if (define_symbol < 0x250)
+            prior_end = 0x80;
+          else if (define_symbol < 0x370)
+            prior_end = 0x81;
+          else if (define_symbol < 0x400)
+            prior_end = 0x82;
+          else if (define_symbol < 0x530)
+            prior_end = 0x83;
+          else if (define_symbol < 0x590)
+            prior_end = 0x84;
+          else if (define_symbol < 0x600)
+            prior_end = 0x85;
+          else if (define_symbol < 0x700)
+            prior_end = 0x86;
+          else if (define_symbol < START_UTF8_3BYTE_SYMBOLS)
+            prior_end = 0x87;
+          else if (define_symbol < 0x1000)
+            prior_end = 0x88;
+          else if (define_symbol < 0x2000)
+            prior_end = 0x89;
+          else if (define_symbol < 0x3000)
+            prior_end = 0x8A;
+          else if (define_symbol < 0x3040)
+            prior_end = 0x8B;
+          else if (define_symbol < 0x30A0)
+            prior_end = 0x8C;
+          else if (define_symbol < 0x3100)
+            prior_end = 0x8D;
+          else if (define_symbol < 0x3200)
+            prior_end = 0x8E;
+          else if (define_symbol < 0xA000)
+            prior_end = 0x8F;
+          else if (define_symbol < START_UTF8_4BYTE_SYMBOLS)
+            prior_end = 0x8E;
+          else
+            prior_end = 0x90;
+          if (symbol_lengths[prior_end] == 0) {
+            symbol_lengths[prior_end] = new_symbol_code_length;
+            uint8_t j1 = 0x90;
             do {
-              InitFirstCharBin(j1, 0x80, new_symbol_code_length, cap_symbol_defined, cap_lock_symbol_defined);
+              InitFirstCharBin(j1, prior_end, new_symbol_code_length, cap_symbol_defined, cap_lock_symbol_defined);
             } while (--j1 != 'Z');
             j1 = 'A' - 1;
             do {
-              InitFirstCharBin(j1, 0x80, new_symbol_code_length, cap_symbol_defined, cap_lock_symbol_defined);
-            } while (j1--);
-            j1 = 0x80;
+              InitFirstCharBin(j1, prior_end, new_symbol_code_length, cap_symbol_defined, cap_lock_symbol_defined);
+            } while (j1-- != 0);
+            j1 = 0x90;
             do {
-              InitSymbolFirstChar(0x80, j1);
+              InitSymbolFirstChar(prior_end, j1);
               if (symbol_lengths[j1])
-                InitTrailingCharBin(0x80, j1, symbol_lengths[j1]);
+                InitTrailingCharBin(prior_end, j1, symbol_lengths[j1]);
               else if ((j1 == 'C') && cap_symbol_defined)
-                InitTrailingCharBin(0x80, 'C', symbol_lengths[j1]);
+                InitTrailingCharBin(prior_end, 'C', symbol_lengths[j1]);
               else if ((j1 == 'B') && cap_lock_symbol_defined)
-                InitTrailingCharBin(0x80, 'B', symbol_lengths[j1]);
-            } while (j1--);
+                InitTrailingCharBin(prior_end, 'B', symbol_lengths[j1]);
+            } while (j1-- != 0);
           }
         }
       }
@@ -2035,51 +2141,87 @@ uint8_t embed_define(uint32_t define_symbol, uint8_t in_definition) {
       }
     }
     else {
-      if (UTF8_compliant) {
-        if (define_symbol < 0x80) {
+      if (UTF8_compliant != 0) {
+        if (define_symbol < START_UTF8_2BYTE_SYMBOLS) {
           symbol_lengths[define_symbol] = new_symbol_code_length;
-          uint8_t j1 = 0x80;
+          uint8_t j1 = 0x90;
           do {
             InitFirstCharBin(j1, (uint8_t)define_symbol, new_symbol_code_length, cap_symbol_defined,
                 cap_lock_symbol_defined);
-          } while (j1--);
-          j1 = 0x80;
+          } while (j1-- != 0);
+          j1 = 0x90;
           do {
             InitSymbolFirstChar(define_symbol, j1);
             if (symbol_lengths[j1])
               InitTrailingCharBin((uint8_t)define_symbol, j1, symbol_lengths[j1]);
-          } while (j1--);
+          } while (j1-- != 0);
+          prior_end = define_symbol;
         }
-        else if (symbol_lengths[0x80] == 0) {
-          symbol_lengths[0x80] = new_symbol_code_length;
-          uint8_t j1 = 0x7F;
-          do {
-            InitFirstCharBin(j1, 0x80, new_symbol_code_length, cap_symbol_defined, cap_lock_symbol_defined);
-          } while (j1--);
-          j1 = 0x80;
-          do {
-            InitSymbolFirstChar(0x80, j1);
-            if (symbol_lengths[j1])
-              InitTrailingCharBin(0x80, j1, symbol_lengths[j1]);
-          } while (j1--);
-          InitFreqFirstChar(0x80, 0x80);
+        else {
+          if (define_symbol < 0x250)
+            prior_end = 0x80;
+          else if (define_symbol < 0x370)
+            prior_end = 0x81;
+          else if (define_symbol < 0x400)
+            prior_end = 0x82;
+          else if (define_symbol < 0x530)
+            prior_end = 0x83;
+          else if (define_symbol < 0x590)
+            prior_end = 0x84;
+          else if (define_symbol < 0x600)
+            prior_end = 0x85;
+          else if (define_symbol < 0x700)
+            prior_end = 0x86;
+          else if (define_symbol < START_UTF8_3BYTE_SYMBOLS)
+            prior_end = 0x87;
+          else if (define_symbol < 0x1000)
+            prior_end = 0x88;
+          else if (define_symbol < 0x2000)
+            prior_end = 0x89;
+          else if (define_symbol < 0x3000)
+            prior_end = 0x8A;
+          else if (define_symbol < 0x3040)
+            prior_end = 0x8B;
+          else if (define_symbol < 0x30A0)
+            prior_end = 0x8C;
+          else if (define_symbol < 0x3100)
+            prior_end = 0x8D;
+          else if (define_symbol < 0x3200)
+            prior_end = 0x8E;
+          else if (define_symbol < 0xA000)
+            prior_end = 0x8F;
+          else if (define_symbol < START_UTF8_4BYTE_SYMBOLS)
+            prior_end = 0x8E;
+          else
+            prior_end = 0x90;
+          if (symbol_lengths[prior_end] == 0) {
+            symbol_lengths[prior_end] = new_symbol_code_length;
+            uint8_t j1 = 0x90;
+            do {
+              InitFirstCharBin(j1, prior_end, new_symbol_code_length, cap_symbol_defined, cap_lock_symbol_defined);
+            } while (j1-- != 0);
+            j1 = 0x90;
+            do {
+              InitSymbolFirstChar(prior_end, j1);
+              if (symbol_lengths[j1])
+                InitTrailingCharBin(prior_end, j1, symbol_lengths[j1]);
+            } while (j1-- != 0);
+            InitFreqFirstChar(prior_end, prior_end);
+          }
         }
-        prior_end = define_symbol;
-        if (prior_end > 0x80)
-          prior_end = 0x80;
       }
       else {
         symbol_lengths[define_symbol] = new_symbol_code_length;
         uint8_t j1 = 0xFF;
         do {
           InitFirstCharBin(j1, (uint8_t)define_symbol, new_symbol_code_length, cap_symbol_defined, cap_lock_symbol_defined);
-        } while (j1--);
+        } while (j1-- != 0);
         j1 = 0xFF;
         do {
           InitSymbolFirstChar(define_symbol, j1);
           if (symbol_lengths[j1])
             InitTrailingCharBin((uint8_t)define_symbol, j1, symbol_lengths[j1]);
-        } while (j1--);
+        } while (j1-- != 0);
         prior_end = define_symbol;
       }
     }
@@ -2089,7 +2231,10 @@ uint8_t embed_define(uint32_t define_symbol, uint8_t in_definition) {
     prior_is_cap = cap_encoded & sd[define_symbol].type;
     if (found_first_symbol == 0) {
       found_first_symbol = 1;
-      end_symbol = prior_end;
+      if (prior_end != 0x43)
+        end_symbol = prior_end;
+      else
+        end_symbol = define_symbol;
       sym_list_ptrs[end_symbol][max_code_length][0] = end_symbols;
       nsob[end_symbol][max_code_length] = 1;
       nbob[end_symbol][max_code_length] = 1;
@@ -2205,7 +2350,7 @@ uint8_t embed_define(uint32_t define_symbol, uint8_t in_definition) {
 
   if (define_symbol_instances != 1) { // assign symbol code
     uint8_t tag_type = 0;
-    if (cap_encoded) {
+    if (cap_encoded != 0) {
       if (sd[define_symbol].type & 0x40) {
         if (sd[define_symbol].type & 0x80) {
           tag_type = 2;
@@ -2230,7 +2375,7 @@ uint8_t embed_define(uint32_t define_symbol, uint8_t in_definition) {
         }
         // Handle initial mtf symbol instance
         sd[define_symbol].type |= 8;
-        if (mtf_queue_size[define_symbol_instances] < EMTF_QUEUE_SIZE)
+        if (mtf_queue_size[define_symbol_instances] < MTF_QUEUE_SIZE)
           mtf_queue[define_symbol_instances][mtf_queue_size[define_symbol_instances]++] = define_symbol;
         else {
           symbol_to_move = mtf_queue[define_symbol_instances][0];
@@ -2263,7 +2408,7 @@ uint8_t embed_define(uint32_t define_symbol, uint8_t in_definition) {
 }
 
 
-uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_t * outbuf, FILE * fd) {
+uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_t * outbuf, FILE * fd, size_t file_size) {
   const uint8_t INSERT_SYMBOL_CHAR = 0xFE;
   const uint8_t DEFINE_SYMBOL_CHAR = 0xFF;
   const size_t WRITE_SIZE = 0x40000;
@@ -2375,7 +2520,7 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
   rules_reduced = 0;
 
   symbol = 0;
-  if (UTF8_compliant)
+  if (UTF8_compliant != 0)
     symbol = (uint32_t *)malloc(sizeof(uint32_t) * (num_symbols + 1));
   else
     symbol = (uint32_t *)malloc(sizeof(uint32_t) * (in_size + 1));
@@ -2388,13 +2533,13 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
   start_my_symbols = 0x00080000;
   first_define_ptr = 0;
 
-  if (UTF8_compliant) {
+  if (UTF8_compliant != 0) {
     base_bits = 0;
     while (max_UTF8_value >> base_bits)
       base_bits++;
     start_my_symbols = 1 << base_bits;
     num_base_symbols = start_my_symbols;
-    if (cap_encoded)
+    if (cap_encoded != 0)
       num_base_symbols -= 24;
     while (in_char_ptr < end_char_ptr) {
       this_char = *in_char_ptr++;
@@ -2506,7 +2651,7 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
   }
   sd[start_my_symbols + num_symbols_defined].define_symbol_start_index = symbol_ptr - symbol;
 
-  if (cap_encoded) {
+  if (cap_encoded != 0) {
     i1 = 0;
     do {
       sd[i1].type = 0;
@@ -2667,19 +2812,155 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
     sd[i1].ends = 0;
   }
 
-  if (UTF8_compliant) {
+  if (UTF8_compliant != 0) {
     i1 = 0;
     while (i1 < 0x80) {
       sd[i1].starts = (uint8_t)i1;
       sd[i1].ends = (uint8_t)i1;
       i1++;
     }
-    while (i1 <= max_UTF8_value) {
+    uint32_t temp_UTF8_limit = 0x250;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
       sd[i1].starts = 0x80;
       sd[i1].ends = 0x80;
       i1++;
     }
-    if (cap_encoded)
+    temp_UTF8_limit = 0x370;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x81;
+      sd[i1].ends = 0x81;
+      i1++;
+    }
+    temp_UTF8_limit = 0x400;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x82;
+      sd[i1].ends = 0x82;
+      i1++;
+    }
+    temp_UTF8_limit = 0x530;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x83;
+      sd[i1].ends = 0x83;
+      i1++;
+    }
+    temp_UTF8_limit = 0x590;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x84;
+      sd[i1].ends = 0x84;
+      i1++;
+    }
+    temp_UTF8_limit = 0x600;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x85;
+      sd[i1].ends = 0x85;
+      i1++;
+    }
+    temp_UTF8_limit = 0x700;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x86;
+      sd[i1].ends = 0x86;
+      i1++;
+    }
+    temp_UTF8_limit = START_UTF8_3BYTE_SYMBOLS;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x87;
+      sd[i1].ends = 0x87;
+      i1++;
+    }
+    temp_UTF8_limit = 0x1000;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x88;
+      sd[i1].ends = 0x88;
+      i1++;
+    }
+    temp_UTF8_limit = 0x2000;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x89;
+      sd[i1].ends = 0x89;
+      i1++;
+    }
+    temp_UTF8_limit = 0x3000;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x8A;
+      sd[i1].ends = 0x8A;
+      i1++;
+    }
+    temp_UTF8_limit = 0x3040;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x8B;
+      sd[i1].ends = 0x8B;
+      i1++;
+    }
+    temp_UTF8_limit = 0x30A0;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x8C;
+      sd[i1].ends = 0x8C;
+      i1++;
+    }
+    temp_UTF8_limit = 0x3100;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x8D;
+      sd[i1].ends = 0x8D;
+      i1++;
+    }
+    temp_UTF8_limit = 0x3200;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x8E;
+      sd[i1].ends = 0x8E;
+      i1++;
+    }
+    temp_UTF8_limit = 0xA000;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x8F;
+      sd[i1].ends = 0x8F;
+      i1++;
+    }
+    temp_UTF8_limit = START_UTF8_4BYTE_SYMBOLS;
+    if (max_UTF8_value < temp_UTF8_limit)
+      temp_UTF8_limit = max_UTF8_value + 1;
+    while (i1 < temp_UTF8_limit) {
+      sd[i1].starts = 0x8E;
+      sd[i1].ends = 0x8E;
+      i1++;
+    }
+    while (i1 <= max_UTF8_value) {
+      sd[i1].starts = 0x90;
+      sd[i1].ends = 0x90;
+      i1++;
+    }
+    if (cap_encoded != 0)
       sd['B'].ends = 'C';
     i1 = start_my_symbols;
     while (i1 < end_symbols) {
@@ -2697,7 +2978,7 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
       sd[i1].ends = (uint8_t)i1;
       i1++;
     }
-    if (cap_encoded)
+    if (cap_encoded != 0)
       sd['B'].ends = 'C';
     i1 = start_my_symbols;
     while (i1 < end_symbols) {
@@ -2839,10 +3120,10 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
   for (i1 = 0 ; i1 < 64 ; i1++)
     mtfg_queue_192[i1] = end_symbols;
 
-  if (mtf_queue_peak[2] > EMTF_QUEUE_SIZE) {
+  if (mtf_queue_peak[2] > MTF_QUEUE_SIZE) {
     if (use_mtf)
       mtf_queue_overflow_code_length[2] = (uint32_t)(0.5 + log2((double)num_symbols_to_code * 2.0 / 3.0
-          * (double)(mtf_queue_peak[2] - EMTF_QUEUE_SIZE) / (double)(mtf_queue_started[2] - mtf_queue_hit_count[2])));
+          * (double)(mtf_queue_peak[2] - MTF_QUEUE_SIZE) / (double)(mtf_queue_started[2] - mtf_queue_hit_count[2])));
     else
       mtf_queue_overflow_code_length[2] = (uint32_t)(0.5 + log2((double)num_symbols_to_code * 2.0 / 3.0
           * (double)mtf_queue_peak[2] / (double)mtf_queue_started[2]));
@@ -2859,10 +3140,10 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
     mtf_queue_overflow_code_length[2] = 25;
 
   for (i1 = 3 ; i1 <= MAX_INSTANCES_FOR_MTF_QUEUE ; i1++) {
-    if (mtf_queue_peak[i1] > EMTF_QUEUE_SIZE) {
+    if (mtf_queue_peak[i1] > MTF_QUEUE_SIZE) {
       if (use_mtf)
         mtf_queue_overflow_code_length[i1] = (uint32_t)(0.5 + log2((double)num_symbols_to_code
-            * (double)i1 / (double)(i1 + 1) * (double)(mtf_queue_peak[i1] - EMTF_QUEUE_SIZE)
+            * (double)i1 / (double)(i1 + 1) * (double)(mtf_queue_peak[i1] - MTF_QUEUE_SIZE)
             / (double)(mtf_queue_started[i1] * (i1 - 1) - mtf_queue_hit_count[i1])));
       else
         mtf_queue_overflow_code_length[i1] = (uint32_t)(0.5 + log2((double)num_symbols_to_code
@@ -2889,9 +3170,9 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
     mtf_queue_miss_code_space = 0;
     mtf_overflow_symbols_to_code = 0;
     for (i1 = 2 ; i1 <= MAX_INSTANCES_FOR_MTF_QUEUE ; i1++) {
-      if (mtf_queue_peak[i1] > EMTF_QUEUE_SIZE)
+      if (mtf_queue_peak[i1] > MTF_QUEUE_SIZE)
         mtf_queue_miss_code_space += (1 << (30 - mtf_queue_overflow_code_length[i1]))
-            * (mtf_queue_peak[i1] - EMTF_QUEUE_SIZE);
+            * (mtf_queue_peak[i1] - MTF_QUEUE_SIZE);
       mtf_overflow_symbols_to_code += (i1-1) * mtf_queue_started[i1];
       mtf_queue_size[i1] = 0;
     }
@@ -2960,7 +3241,7 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
       }
     }
   }
-  if (verbose) {
+  if (verbose != 0) {
     if (verbose == 1) {
       for (i1 = 0 ; i1 < num_definitions_to_code ; i1++) {
         if ((sd[ranked_symbols[i1]].code_length >= 11)
@@ -3062,20 +3343,22 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
   }
 
   // HEADER:
-  // BYTE 0:  7=cap_encoded, 6=UTF8_compliant, 5=use_mtf, 4-0=max_code_length-1
-  // BYTE 1:  7=M4D, 6=M3D, 5=use_delta, 4-0=min_code_length-1
-  // BYTE 2:  7=M7D, 6=M6D, 5=M5D, 4-0=max_code_length-max_regular_code_length
-  // BYTE 3:  7=M15D, 6=M14D, 5=M13D, 4=M12D, 3=M11D, 2=M10D, 1=M9D, 0=M8D
+  // BYTE 0:  4.0 * log2(file_size)
+  // BYTE 1:  7=cap_encoded, 6=UTF8_compliant, 5=use_mtf, 4-0=max_code_length-1
+  // BYTE 2:  7=M4D, 6=M3D, 5=use_delta, 4-0=min_code_length-1
+  // BYTE 3:  7=M7D, 6=M6D, 5=M5D, 4-0=max_code_length-max_regular_code_length
+  // BYTE 4:  7=M15D, 6=M14D, 5=M13D, 4=M12D, 3=M11D, 2=M10D, 1=M9D, 0=M8D
   // if UTF8_compliant
-  // BYTE 4:  7-5=unused, 4-0=base_bits
+  // BYTE 5:  7-5=unused, 4-0=base_bits
   // else if use_delta
   //   if stride <= 4
-  // BYTE 4:  7=0, 6-5=unused, 4=two channel, 3=little endian, 2=any endian, 1-0=stride-1
+  // BYTE 5:  7=0, 6-5=unused, 4=two channel, 3=little endian, 2=any endian, 1-0=stride-1
   //   else
-  // BYTE 4:  7=1, 6-0=stride
+  // BYTE 5:  7=1, 6-0=stride
 
   SetOutBuffer(outbuf);
   WriteOutCharNum(0);
+  WriteOutBuffer((uint8_t)(4.0 * log2((double)file_size) + 1.0));
   WriteOutBuffer((cap_encoded << 7) | (UTF8_compliant << 6) | (use_mtf << 5) | (mtf_queue_overflow_code_length[2] - 1));
   this_char = (((format & 0xFE) != 0) << 5) | (sd[ranked_symbols[0]].code_length - 1);
   if (mtf_queue_overflow_code_length[3] != mtf_queue_overflow_code_length[2])
@@ -3093,8 +3376,10 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
     this_char = (this_char << 1) | (mtf_queue_overflow_code_length[i1] != mtf_queue_overflow_code_length[i1-1]);
   } while (--i1 != 7);
   WriteOutBuffer(this_char);
-  if (UTF8_compliant) {
+  i1 = 0xFF;
+  if (UTF8_compliant != 0) {
     WriteOutBuffer(base_bits);
+    i1 = 0x90;
   }
   else if ((format & 0xFE) != 0) {
     if ((format & 0x80) == 0)
@@ -3102,10 +3387,6 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
     else
       WriteOutBuffer(format);
   }
-
-  i1 = 0xFF;
-  if (UTF8_compliant)
-    i1 = 0x80;
   do {
     for (i2 = 2 ; i2 <= max_code_length ; i2++) {
       sym_list_bits[i1][i2] = 2;
@@ -3130,7 +3411,7 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
       (unsigned int)use_mtf,(unsigned int)max_code_length,(unsigned int)max_regular_code_length);
 #endif
 
-  if (UTF8_compliant || cap_encoded) {
+  if ((UTF8_compliant != 0) || (cap_encoded != 0)) {
     cap_symbol_defined = 0;
     cap_lock_symbol_defined = 0;
     while (symbol_ptr < first_define_ptr) {
@@ -3230,7 +3511,7 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
     EncodeDictType(LEVEL0);
   else
     EncodeDictType(LEVEL0_CAP);
-  if (cap_encoded) {
+  if (cap_encoded != 0) {
     if (sd[prior_symbol].type & 0x20) {
       if (sd[prior_symbol].type & 0x80)
         EncodeFirstChar(end_symbol, 2, prior_end);
@@ -3242,7 +3523,7 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
     else
       EncodeFirstChar(end_symbol, 0, prior_end);
   }
-  else if (UTF8_compliant)
+  else if (UTF8_compliant != 0)
     EncodeFirstChar(end_symbol, 0, prior_end);
   else
     EncodeFirstCharBinary(end_symbol, prior_end);
@@ -3259,8 +3540,8 @@ uint8_t GLZAencode(size_t in_size, uint8_t * inbuf, size_t * outsize_ptr, uint8_
   fprintf(stderr,"%u grammar rules.  Grammar size: %u symbols\n",(unsigned int)num_grammar_rules,(unsigned int)grammar_size);
 #endif
   i1 = 0xFF;
-  if (UTF8_compliant)
-    i1 = 0x80;
+  if (UTF8_compliant != 0)
+    i1 = 0x90;
   do {
     for (i2 = 2 ; i2 <= max_code_length ; i2++)
       free(sym_list_ptrs[i1][i2]);

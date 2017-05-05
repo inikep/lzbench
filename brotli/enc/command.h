@@ -9,8 +9,9 @@
 #ifndef BROTLI_ENC_COMMAND_H_
 #define BROTLI_ENC_COMMAND_H_
 
-#include "../common/types.h"
-#include "../common/port.h"
+#include "../common/constants.h"
+#include <brotli/port.h>
+#include <brotli/types.h>
 #include "./fast_log.h"
 #include "./prefix.h"
 
@@ -64,11 +65,17 @@ static BROTLI_INLINE uint16_t CombineLengthCodes(
   if (use_last_distance && inscode < 8 && copycode < 16) {
     return (copycode < 8) ? bits64 : (bits64 | 64);
   } else {
-    /* "To convert an insert-and-copy length code to an insert length code and
-       a copy length code, the following table can be used" */
-    static const uint16_t cells[9] = { 128u, 192u, 384u, 256u, 320u, 512u,
-                                       448u, 576u, 640u };
-    return cells[(copycode >> 3) + 3 * (inscode >> 3)] | bits64;
+    /* Specification: 5 Encoding of ... (last table) */
+    /* offset = 2 * index, where index is in range [0..8] */
+    int offset = 2 * ((copycode >> 3) + 3 * (inscode >> 3));
+    /* All values in specification are K * 64,
+       where   K = [2, 3, 6, 4, 5, 8, 7, 9, 10],
+           i + 1 = [1, 2, 3, 4, 5, 6, 7, 8,  9],
+       K - i - 1 = [1, 1, 3, 0, 0, 2, 0, 1,  2] = D.
+       All values in D require only 2 bits to encode.
+       Magic constant is shifted 6 bits left, to avoid final multiplication. */
+    offset = (offset << 5) + 0x40 + ((0x520D40 >> offset) & 0xC0);
+    return (uint16_t)offset | bits64;
   }
 }
 
@@ -124,18 +131,25 @@ static BROTLI_INLINE void InitInsertCommand(Command* self, size_t insertlen) {
   self->insert_len_ = (uint32_t)insertlen;
   self->copy_len_ = 4 << 24;
   self->dist_extra_ = 0;
-  self->dist_prefix_ = 16;
+  self->dist_prefix_ = BROTLI_NUM_DISTANCE_SHORT_CODES;
   GetLengthCode(insertlen, 4, BROTLI_FALSE, &self->cmd_prefix_);
 }
 
-static BROTLI_INLINE uint32_t CommandDistanceCode(const Command* self) {
-  if (self->dist_prefix_ < 16) {
+static BROTLI_INLINE uint32_t CommandRestoreDistanceCode(const Command* self) {
+  if (self->dist_prefix_ < BROTLI_NUM_DISTANCE_SHORT_CODES) {
     return self->dist_prefix_;
   } else {
     uint32_t nbits = self->dist_extra_ >> 24;
     uint32_t extra = self->dist_extra_ & 0xffffff;
-    uint32_t prefix = self->dist_prefix_ - 12u - 2u * nbits;
-    return (prefix << nbits) + extra + 12;
+    /* It is assumed that the distance was first encoded with NPOSTFIX = 0 and
+       NDIRECT = 0, so the code itself is of this form:
+         BROTLI_NUM_DISTANCE_SHORT_CODES + 2 * (nbits - 1) + prefix_bit
+       Therefore, the following expression results in (2 + prefix_bit). */
+    uint32_t prefix =
+        self->dist_prefix_ + 4u - BROTLI_NUM_DISTANCE_SHORT_CODES - 2u * nbits;
+    /* Subtract 4 for offset (Chapter 4.) and
+       increase by BROTLI_NUM_DISTANCE_SHORT_CODES - 1  */
+    return (prefix << nbits) + extra + BROTLI_NUM_DISTANCE_SHORT_CODES - 4u;
   }
 }
 

@@ -1,14 +1,14 @@
 #ifndef _CSC_LZ_H_
 #define _CSC_LZ_H_
-#include "csc_typedef.h"
-#include "csc_mf.h"
+#include <csc_typedef.h>
+#include <csc_mf.h>
 
 class Model;
 
 class LZ
 {
 public:
-    int Init(const CSCProps *p, Model *model);
+    int Init(const CSCProps *p, Model *model, ISzAlloc *alloc);
     void EncodeNormal(uint8_t *src, uint32_t size, uint32_t lz_mode);
     bool IsDuplicateBlock(uint8_t *src,uint32_t size);
     void DuplicateInsert(uint8_t *src,uint32_t size);
@@ -18,6 +18,7 @@ public:
     uint32_t wnd_curpos_;
 
 private:
+    ISzAlloc *alloc_;
     uint8_t  *wnd_;
     uint32_t rep_dist_[4];
     uint32_t wnd_size_;

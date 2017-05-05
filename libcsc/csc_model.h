@@ -1,7 +1,7 @@
 #ifndef _CSC_MODEL_H_
 #define _CSC_MODEL_H_
-#include "csc_typedef.h"
-#include "csc_coder.h"
+#include <csc_typedef.h>
+#include <csc_coder.h>
 
 
 /*  Current specific 
@@ -59,7 +59,7 @@ public:
     Coder *coder_;
 
     void Reset(void);
-    int Init(Coder *coder);
+    int Init(Coder *coder, ISzAlloc *alloc);
     void Destroy();
 
     void EncodeLiteral(uint32_t c);
@@ -74,16 +74,10 @@ public:
 
     void EncodeRep0Len1(void);
     void CompressDelta(uint8_t *src,uint32_t size);
-    //void DecompressDelta(uint8_t *dst,uint32_t *size);
-
-    //void CompressHard(uint8_t *src,uint32_t size);
-    //void DecompressHard(uint8_t *dst,uint32_t *size);
     void CompressLiterals(uint8_t *src,uint32_t size);
     void CompressBad(uint8_t *src,uint32_t size);
 
     void CompressRLE(uint8_t *src,uint32_t size);
-
-    void CompressValue(uint8_t *src, uint32_t size,uint32_t width,uint32_t channelNum);
 
     void EncodeInt(uint32_t num);
 
@@ -100,6 +94,8 @@ public:
 
 
 private:
+    ISzAlloc *alloc_;
+
     uint32_t p_rle_flag_;
     uint32_t p_rle_len_[16];
 

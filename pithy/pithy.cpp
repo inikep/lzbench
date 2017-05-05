@@ -157,7 +157,13 @@ PITHY_STATIC_INLINE void     pithy_Store64(void *p, uint64_t v) { memcpy(p, &v, 
 
 #ifdef __BIG_ENDIAN__
 
-#ifdef _MSC_VER
+#if defined(__GNUC__)
+
+#define pithy_bswap_16(x) __builtin_bswap16(x)
+#define pithy_bswap_32(x) __builtin_bswap32(x)
+#define pithy_bswap_64(x) __builtin_bswap64(x)
+
+#elif defined(_MSC_VER)
 #include <stdlib.h>
 #define pithy_bswap_16(x) _byteswap_ushort(x)
 #define pithy_bswap_32(x) _byteswap_ulong(x)
@@ -172,6 +178,7 @@ PITHY_STATIC_INLINE void     pithy_Store64(void *p, uint64_t v) { memcpy(p, &v, 
 #define pithy_bswap_64(x) OSSwapInt64(x)
 #else
 #include <byteswap.h>
+// bswap16
 #endif
 
 #endif  // __BIG_ENDIAN__
@@ -364,7 +371,9 @@ size_t pithy_Compress(const char *uncompressed, size_t uncompressedLength, char 
     const char *uncompressedPtr = uncompressed, *uncompressedEnd = uncompressed + uncompressedLength, *nextEmitUncompressedPtr = uncompressedPtr;
     DCHECK((hashTableSize & (hashTableSize - 1l)) == 0);
     const int shift = 32 - pithy_Log2Floor(hashTableSize);
-#define UINT32_MAX 0xffffffff
+#ifndef UINT32_MAX
+    #define UINT32_MAX 0xffffffff
+#endif
     DCHECK((UINT32_MAX >> shift) == (hashTableSize - 1l));
     size_t skip = 32ul;
     

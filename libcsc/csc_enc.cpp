@@ -1,13 +1,15 @@
-#include "csc_enc.h"
-#include "csc_memio.h"
-#include "csc_typedef.h"
-#include "csc_encoder_main.h"
+#include <csc_enc.h>
+#include <csc_memio.h>
+#include <csc_typedef.h>
+#include <csc_encoder_main.h>
+#include <csc_default_alloc.h>
 #include <stdlib.h>
 
-struct CSCInstance
+struct CSCEncInstance
 {
     CSCEncoder *encoder;
     MemIO *io;
+    ISzAlloc *alloc;
     uint32_t raw_blocksize;
 };
 
@@ -110,16 +112,20 @@ uint64_t CSCEnc_EstMemUsage(const CSCProps *p)
 }
 
 CSCEncHandle CSCEnc_Create(const CSCProps *props, 
-        ISeqOutStream *outstream)
+        ISeqOutStream *outstream,
+        ISzAlloc *alloc)
 {
-    CSCInstance *csc = new CSCInstance();
+    if (alloc == NULL) {
+        alloc = default_alloc;
+    }
+    CSCEncInstance *csc = (CSCEncInstance *)alloc->Alloc(alloc, sizeof(CSCEncInstance));
 
-    csc->io = new MemIO();
-    csc->io->Init(outstream, props->csc_blocksize);
+    csc->io = (MemIO *)alloc->Alloc(alloc, sizeof(MemIO));
+    csc->io->Init(outstream, props->csc_blocksize, alloc);
     csc->raw_blocksize = props->raw_blocksize;
-
-    csc->encoder = new CSCEncoder();
-    if (csc->encoder->Init(props, csc->io) < 0) {
+    csc->encoder = (CSCEncoder *)alloc->Alloc(alloc, sizeof(CSCEncoder));
+    csc->alloc = alloc;
+    if (csc->encoder->Init(props, csc->io, alloc) < 0) {
         CSCEnc_Destroy((void *)csc);
         return NULL;
     } else
@@ -128,11 +134,12 @@ CSCEncHandle CSCEnc_Create(const CSCProps *props,
 
 void CSCEnc_Destroy(CSCEncHandle p)
 {
-    CSCInstance *csc = (CSCInstance *)p;
+    CSCEncInstance *csc = (CSCEncInstance *)p;
     csc->encoder->Destroy();
-    delete csc->encoder;
-    delete csc->io;
-    delete csc;
+    ISzAlloc *alloc = csc->alloc;
+    alloc->Free(alloc, csc->encoder);
+    alloc->Free(alloc, csc->io);
+    alloc->Free(alloc, csc);
 }
 
 void CSCEnc_WriteProperties(const CSCProps *props, uint8_t *s, int full)
@@ -155,8 +162,8 @@ int CSCEnc_Encode(CSCEncHandle p,
         ICompressProgress *progress)
 {
     int ret = 0;
-    CSCInstance *csc = (CSCInstance *)p;
-    uint8_t *buf = new uint8_t[csc->raw_blocksize];
+    CSCEncInstance *csc = (CSCEncInstance *)p;
+    uint8_t *buf = (uint8_t *)csc->alloc->Alloc(csc->alloc, csc->raw_blocksize);
     uint64_t insize = 0;
 
     for(;;) {
@@ -172,21 +179,26 @@ int CSCEnc_Encode(CSCEncHandle p,
             }
             if (progress)
                 progress->Progress(progress, insize, csc->encoder->GetCompressedSize());
-        } else if (ret < 0)
+        } else if (ret < 0) {
             ret = READ_ERROR;
+        }
 
         if (ret < 0 || size == 0)
             break;
     }
-    delete []buf;
+    csc->alloc->Free(csc->alloc, buf);
     return ret;
 }
 
 int CSCEnc_Encode_Flush(CSCEncHandle p)
 {
-    CSCInstance *csc = (CSCInstance *)p;
-    csc->encoder->WriteEOF();
-    csc->encoder->Flush();
+    CSCEncInstance *csc = (CSCEncInstance *)p;
+    try {
+        csc->encoder->WriteEOF();
+        csc->encoder->Flush();
+    } catch (int errcode) {
+        return errcode;
+    }
     return 0;
 }
 

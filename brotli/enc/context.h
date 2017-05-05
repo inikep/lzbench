@@ -9,8 +9,8 @@
 #ifndef BROTLI_ENC_CONTEXT_H_
 #define BROTLI_ENC_CONTEXT_H_
 
-#include "../common/types.h"
-#include "../common/port.h"
+#include <brotli/port.h>
+#include <brotli/types.h>
 
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
@@ -127,8 +127,8 @@ static const uint8_t kUTF8ContextLookup[512] = {
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   /* UTF8 lead byte range. */
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
   2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,

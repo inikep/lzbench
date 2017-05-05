@@ -228,7 +228,7 @@ uint8_t GLZAformat(size_t insize, uint8_t * inbuf, size_t * outsize_ptr, uint8_t
           symbol_counts[0xFF & (inbuf[insize-1] - inbuf[insize-1-k])]++;
           order_1_counts[0xFF & (inbuf[insize-1] - inbuf[insize-1-k])][0x80]++;
           order_1_entropy = calculate_order_1_entropy(symbol_counts, order_1_counts);
-          if ((order_1_entropy < 0.95 * best_stride_entropy) || ((stride != 0) && (order_1_entropy < best_stride_entropy))) {
+          if ((order_1_entropy < 0.9 * best_stride_entropy) || ((stride != 0) && (order_1_entropy < best_stride_entropy))) {
             stride = k;
             best_stride_entropy = order_1_entropy;
           }

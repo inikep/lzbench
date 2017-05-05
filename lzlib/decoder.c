@@ -1,5 +1,5 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2015 Antonio Diaz Diaz.
+    Copyright (C) 2009-2016 Antonio Diaz Diaz.
 
     This library is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -28,28 +28,29 @@
 static bool LZd_verify_trailer( struct LZ_decoder * const d )
   {
   File_trailer trailer;
-  const unsigned long long member_size = d->rdec->member_position + Ft_size;
-
   int size = Rd_read_data( d->rdec, trailer, Ft_size );
+
   if( size < Ft_size )
     return false;
 
-  return ( d->rdec->code == 0 &&
-           Ft_get_data_crc( trailer ) == LZd_crc( d ) &&
+  return ( Ft_get_data_crc( trailer ) == LZd_crc( d ) &&
            Ft_get_data_size( trailer ) == LZd_data_position( d ) &&
-           Ft_get_member_size( trailer ) == member_size );
+           Ft_get_member_size( trailer ) == d->rdec->member_position );
   }
 
 
 /* Return value: 0 = OK, 1 = decoder error, 2 = unexpected EOF,
-                 3 = trailer error, 4 = unknown marker found. */
+                 3 = trailer error, 4 = unknown marker found,
+                 5 = library error. */
 static int LZd_decode_member( struct LZ_decoder * const d )
   {
   struct Range_decoder * const rdec = d->rdec;
   State * const state = &d->state;
+/*  unsigned long long old_mpos = d->rdec->member_position; */
 
   if( d->member_finished ) return 0;
-  if( !Rd_try_reload( rdec, false ) ) return 0;
+  if( !Rd_try_reload( rdec, false ) )
+    { if( !rdec->at_stream_end ) return 0; else return 2; }
   if( d->verify_trailer_pending )
     {
     if( Rd_available_bytes( rdec ) < Ft_size && !rdec->at_stream_end )
@@ -62,8 +63,12 @@ static int LZd_decode_member( struct LZ_decoder * const d )
   while( !Rd_finished( rdec ) )
     {
     const int pos_state = LZd_data_position( d ) & pos_state_mask;
-    if( !Rd_enough_available_bytes( rdec ) || !LZd_enough_free_bytes( d ) )
-      return 0;
+/*    const unsigned long long mpos = d->rdec->member_position;
+    if( mpos - old_mpos > rd_min_available_bytes ) return 5;
+    old_mpos = mpos; */
+    if( !Rd_enough_available_bytes( rdec ) )	/* check unexpected eof */
+      { if( !rdec->at_stream_end ) return 0; else break; }
+    if( !LZd_enough_free_bytes( d ) ) return 0;
     if( Rd_decode_bit( rdec, &d->bm_match[*state][pos_state] ) == 0 )	/* 1st bit */
       {
       const uint8_t prev_byte = LZd_peek_prev( d );
@@ -113,8 +118,8 @@ static int LZd_decode_member( struct LZ_decoder * const d )
         }
       else					/* match */
         {
-        int dis_slot;
         const unsigned rep0_saved = d->rep0;
+        int dis_slot;
         len = min_match_len + Rd_decode_len( rdec, &d->match_len_model, pos_state );
         dis_slot = Rd_decode_tree6( rdec, d->bm_dis_slot[get_len_state(len)] );
         if( dis_slot < start_dis_model ) d->rep0 = dis_slot;
@@ -142,8 +147,8 @@ static int LZd_decode_member( struct LZ_decoder * const d )
                 }
               if( len == min_match_len + 1 )	/* Sync Flush marker */
                 {
-                if( Rd_try_reload( rdec, true ) ) continue;
-                else return 0;
+                if( Rd_try_reload( rdec, true ) ) { /*old_mpos += 5;*/ continue; }
+                else { if( !rdec->at_stream_end ) return 0; else break; }
                 }
               return 4;
               }
@@ -151,7 +156,8 @@ static int LZd_decode_member( struct LZ_decoder * const d )
           }
         d->rep3 = d->rep2; d->rep2 = d->rep1; d->rep1 = rep0_saved;
         *state = St_set_match( *state );
-        if( d->rep0 >= d->dictionary_size || d->rep0 >= LZd_data_position( d ) )
+        if( d->rep0 >= d->dictionary_size ||
+            ( d->rep0 >= d->cb.put && !d->pos_wrapped ) )
           return 1;
         }
       LZd_copy_block( d, d->rep0, len );

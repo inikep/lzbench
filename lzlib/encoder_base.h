@@ -1,5 +1,5 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2015 Antonio Diaz Diaz.
+    Copyright (C) 2009-2016 Antonio Diaz Diaz.
 
     This library is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -306,7 +306,7 @@ static inline bool Mb_move_pos( struct Matchfinder_base * const mb )
 struct Range_encoder
   {
   struct Circular_buffer cb;
-  int min_free_bytes;
+  unsigned min_free_bytes;
   uint64_t low;
   unsigned long long partial_member_pos;
   uint32_t range;
@@ -344,7 +344,7 @@ static inline void Re_reset( struct Range_encoder * const renc )
 
 static inline bool Re_init( struct Range_encoder * const renc,
                             const unsigned dictionary_size,
-                            const int min_free_bytes )
+                            const unsigned min_free_bytes )
   {
   if( !Cb_init( &renc->cb, 65536 + min_free_bytes ) ) return false;
   renc->min_free_bytes = min_free_bytes;
@@ -362,7 +362,7 @@ Re_member_position( const struct Range_encoder * const renc )
   { return renc->partial_member_pos + Cb_used_bytes( &renc->cb ) + renc->ff_count; }
 
 static inline bool Re_enough_free_bytes( const struct Range_encoder * const renc )
-  { return Cb_free_bytes( &renc->cb ) >= renc->min_free_bytes; }
+  { return Cb_free_bytes( &renc->cb ) >= renc->min_free_bytes + renc->ff_count; }
 
 static inline int Re_read_data( struct Range_encoder * const renc,
                                 uint8_t * const out_buffer, const int out_size )
@@ -518,7 +518,7 @@ static inline bool LZeb_init( struct LZ_encoder_base * const eb,
                               const int after_size, const int dict_factor,
                               const int num_prev_positions23,
                               const int pos_array_factor,
-                              const int min_free_bytes,
+                              const unsigned min_free_bytes,
                               const unsigned long long member_size )
   {
   if( !Mb_init( &eb->mb, before, dict_size, after_size, dict_factor,

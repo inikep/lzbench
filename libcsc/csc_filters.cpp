@@ -1,41 +1,40 @@
 #include <stdlib.h>
 #include <string.h>
-//#include <memory.h>
-#include "csc_filters.h"
+#include <csc_filters.h>
 #include <stdio.h>
 
 const uint32_t wordNum=123;
 
 uint8_t wordList[wordNum][8]=
 {
-	"",
-	"ac","ad","ai","al","am",
-	"an","ar","as","at","ea",
-	"ec","ed","ee","el","en",
-	"er","es","et","id","ie",
-	"ig","il","in","io","is",
-	"it","of","ol","on","oo",
-	"or","os","ou","ow","ul",
-	"un","ur","us","ba","be",
-	"ca","ce","co","ch","de",
-	"di","ge","gh","ha","he",
-	"hi","ho","ra","re","ri",
-	"ro","rs","la","le","li",
-	"lo","ld","ll","ly","se",
-	"si","so","sh","ss","st",
-	"ma","me","mi","ne","nc",
-	"nd","ng","nt","pa","pe",
-	"ta","te","ti","to","th",
-	"tr","wa","ve",
-	"all","and","but","dow",
-	"for","had","hav","her",
-	"him","his","man","mor",
-	"not","now","one","out",
-	"she","the","was","wer",
-	"whi","whe","wit","you",
-	"any","are",
-	"that","said","with","have",
-	"this","from","were","tion",
+    "",
+    "ac","ad","ai","al","am",
+    "an","ar","as","at","ea",
+    "ec","ed","ee","el","en",
+    "er","es","et","id","ie",
+    "ig","il","in","io","is",
+    "it","of","ol","on","oo",
+    "or","os","ou","ow","ul",
+    "un","ur","us","ba","be",
+    "ca","ce","co","ch","de",
+    "di","ge","gh","ha","he",
+    "hi","ho","ra","re","ri",
+    "ro","rs","la","le","li",
+    "lo","ld","ll","ly","se",
+    "si","so","sh","ss","st",
+    "ma","me","mi","ne","nc",
+    "nd","ng","nt","pa","pe",
+    "ta","te","ti","to","th",
+    "tr","wa","ve",
+    "all","and","but","dow",
+    "for","had","hav","her",
+    "him","his","man","mor",
+    "not","now","one","out",
+    "she","the","was","wer",
+    "whi","whe","wit","you",
+    "any","are",
+    "that","said","with","have",
+    "this","from","were","tion",
     //==================
     /*
     "the",   "th",   "he",   "in",   "er",   "an",   
@@ -87,51 +86,46 @@ uint8_t wordList[wordNum][8]=
 
 void Filters::MakeWordTree()
 {
-	uint32_t i,j;
-	uint32_t treePos;
-	uint8_t symbolIndex=0x82;
+    uint32_t i,j;
+    uint32_t treePos;
+    uint8_t symbolIndex=0x82;
 
-	nodeMum=1;
-
-	memset(wordTree,0,sizeof(wordTree));
-
-	for (i=1;i<wordNum;i++)
-	{	
-		treePos=0;
-		for(j=0;wordList[i][j]!=0;j++)
-		{
-			uint32_t idx=wordList[i][j]-'a';
-			if (wordTree[treePos].next[idx])
-				treePos=wordTree[treePos].next[idx];
-			else
-			{
-				wordTree[treePos].next[idx]=nodeMum;
-				treePos=nodeMum;
-				nodeMum++;
-			}
-		}
-		wordIndex[symbolIndex]=i;
-		wordTree[treePos].symbol=symbolIndex++;
-	}
-
-	maxSymbol=symbolIndex;
-
+    nodeMum=1;
+    memset(wordTree,0,sizeof(wordTree));
+    for (i=1;i<wordNum;i++) {	
+        treePos=0;
+        for(j=0;wordList[i][j]!=0;j++) {
+            uint32_t idx=wordList[i][j]-'a';
+            if (wordTree[treePos].next[idx]) {
+                treePos=wordTree[treePos].next[idx];
+            } else {
+                wordTree[treePos].next[idx]=nodeMum;
+                treePos=nodeMum;
+                nodeMum++;
+            }
+        }
+        wordIndex[symbolIndex]=i;
+        wordTree[treePos].symbol=symbolIndex++;
+    }
+    maxSymbol=symbolIndex;
 }
 
 
-void Filters::Init()
+void Filters::Init(ISzAlloc *alloc)
 {
-	m_fltSwapSize=0;
-	MakeWordTree();
+    alloc_ = alloc;
+    m_fltSwapSize = 0;
+    MakeWordTree();
 }
 
 
 
 void Filters::Destroy()
 {
-	if (m_fltSwapSize>0)
-		free(m_fltSwapBuf);
-	m_fltSwapBuf=0;
+    if (m_fltSwapSize > 0) {
+        alloc_->Free(alloc_, m_fltSwapBuf);
+    }
+    m_fltSwapBuf = 0;
 }
 
 
@@ -144,9 +138,10 @@ void Filters::Forward_Delta(uint8_t *src,uint32_t size,uint32_t chnNum)
 		return;
 
 	if (m_fltSwapSize < size) {
-		if (m_fltSwapSize>0)
-			free(m_fltSwapBuf);
-		m_fltSwapBuf = (uint8_t*)malloc(size);
+		if (m_fltSwapSize > 0) {
+            alloc_->Free(alloc_, m_fltSwapBuf);
+        }
+        m_fltSwapBuf = (uint8_t*)alloc_->Alloc(alloc_, size);
 		m_fltSwapSize = size;
 	}
 
@@ -260,158 +255,146 @@ void Filters::Inverse_Audio(uint8_t *src,uint32_t size,uint32_t width,uint32_t c
 
 uint32_t Filters::Foward_Dict(uint8_t *src,uint32_t size)
 {
-	if (size<16384) 
-		return 0;
+    if (size < 16384) {
+        return 0;
+    }
 
-	if (m_fltSwapSize<size) {
-		if (m_fltSwapSize>0)
-			free(m_fltSwapBuf);
+    if (m_fltSwapSize < size) {
+        if (m_fltSwapSize > 0) {
+            alloc_->Free(alloc_, m_fltSwapBuf);
+        }
 
-		m_fltSwapBuf=(uint8_t*)malloc(size);
-		m_fltSwapSize=size;
-	}
+        m_fltSwapBuf = (uint8_t*)alloc_->Alloc(alloc_, size);
+        m_fltSwapSize = size;
+    }
 
-	uint8_t *dst=m_fltSwapBuf;
-	uint32_t i,j,treePos=0;
-	uint32_t dstSize=0;
-	uint32_t idx;
+    uint8_t *dst = m_fltSwapBuf;
+    uint32_t i, j, treePos = 0;
+    uint32_t dstSize = 0;
+    uint32_t idx;
 
 
-	for(i=0;i<size-5;)
-	{
-		if (dstSize>m_fltSwapSize-16)
-		{
-			return 0;
-		}
-		if (src[i]>='a'&& src[i]<='z')
-		{
+    for(i=0;i<size-5;) {
+        if (dstSize>m_fltSwapSize-16) {
+            return 0;
+        }
 
-			uint32_t matchSymbol=0,longestWord=0;
-			treePos=0;
-			for(j=0;;)
-			{
-				idx=src[i+j]-'a';
-				if (idx>25)
-					break;
-				if (wordTree[treePos].next[idx]==0)
-					break;
+        if (src[i]>='a'&& src[i]<='z') {
+            uint32_t matchSymbol = 0,longestWord = 0;
+            treePos = 0;
+            for(j = 0;;) {
+                idx = src[i+j]-'a';
+                if (idx > 25 || wordTree[treePos].next[idx] == 0) {
+                    break;
+                }
 
-				treePos=wordTree[treePos].next[idx];
-				j++;
-				if (wordTree[treePos].symbol)  
-				{
-					matchSymbol=wordTree[treePos].symbol;
-					longestWord=j;
-				}
-			}
+                treePos = wordTree[treePos].next[idx];
+                j++;
+                if (wordTree[treePos].symbol) {
+                    matchSymbol = wordTree[treePos].symbol;
+                    longestWord = j;
+                }
+            }
 
-			if (matchSymbol)
-			{
-				dst[dstSize++]=matchSymbol;
-				i+=longestWord;
-				continue;
-			}
-			dst[dstSize++]=src[i];
-			i++;
-		}
-		else
-		{
-			if (src[i]>=0x82)// && src[i]<maxSymbol)
-			{
-				dst[dstSize++]=254;
-				dst[dstSize++]=src[i];
-			}
-			else
-				dst[dstSize++]=src[i];
+            if (matchSymbol) {
+                dst[dstSize++] = matchSymbol;
+                i+=longestWord;
+                continue;
+            }
+            dst[dstSize++] = src[i];
+            i++;
+        } else {
+            if (src[i] >= 0x82) {
+                dst[dstSize++] = 254;
+                dst[dstSize++] = src[i];
+            } else {
+                dst[dstSize++] = src[i];
+            }
+            treePos = 0;
+            i++;
+        }
 
-			treePos=0;
-			i++;
-		}
+    }
 
-	}
+    for (;i<size;i++) {
+        if (src[i]>=0x82) {
+            dst[dstSize++]=254;
+            dst[dstSize++]=src[i];
+        } else {
+            dst[dstSize++]=src[i];
+        }
+    }
 
-	for (;i<size;i++)
-	{
-		if (src[i]>=0x82)// && src[i]<maxSymbol)
-		{
-			dst[dstSize++]=254;
-			dst[dstSize++]=src[i];
-		}
-		else
-			dst[dstSize++]=src[i];
-	}
+    if (dstSize > size * 0.82) {
+        return 0;
+    }
 
-	if (dstSize>size*0.82)
-		return 0;
-
-	memset(dst+dstSize,0x20,size-dstSize);
-	memcpy(src,dst,size);
-	//FILE *f=fopen("r:\\mid.txt","a+b");
-	//fwrite(src,1,dstSize,f);
-	//fclose(f);
-	return 1;
-
+    memset(dst + dstSize, 0x20, size - dstSize);
+    memcpy(src, dst, size);
+    return 1;
 }
 
 void Filters::Inverse_Dict(uint8_t *src,uint32_t size)
 {
 
-	if (m_fltSwapSize<size) {
-		if (m_fltSwapSize>0)
-			free(m_fltSwapBuf);
+    if (m_fltSwapSize<size) {
+        if (m_fltSwapSize > 0) {
+            alloc_->Free(alloc_, m_fltSwapBuf);
+        }
 
-		m_fltSwapBuf = (uint8_t*)malloc(size);
-		m_fltSwapSize = size;
+        m_fltSwapBuf = (uint8_t*)alloc_->Alloc(alloc_, size);
+        m_fltSwapSize = size;
 	}
 
-	uint8_t *dst=m_fltSwapBuf;
-	uint32_t i=0,j;
-	uint32_t dstPos=0,idx;
+    uint8_t *dst=m_fltSwapBuf;
+    uint32_t i=0,j;
+    uint32_t dstPos=0,idx;
 
-	while(dstPos<size) {
-		if (src[i]>=0x82 && src[i]<maxSymbol) {
-			idx=wordIndex[src[i]];
-			for(j=0;wordList[idx][j];j++)
-				dst[dstPos++]=wordList[idx][j];
-		} else if (src[i]==254 && (i+1<size && src[i+1]>=0x82)) { // && src[i+1]<maxSymbol))
-			i++;
-			dst[dstPos++]=src[i];
-		} else 
-			dst[dstPos++]=src[i];
-		i++;
-	}
-	memcpy(src, dst, size);
+    while(dstPos < size) {
+        if (src[i] >= 0x82 && src[i] < maxSymbol) {
+            idx = wordIndex[src[i]];
+            for(j = 0; wordList[idx][j] && dstPos < size; j++) {
+                dst[dstPos++] = wordList[idx][j];
+            }
+        } else if (src[i] == 254 && (i + 1 < size && src[i+1] >= 0x82)) { 
+            i++;
+            dst[dstPos++] = src[i];
+        } else {
+            dst[dstPos++] = src[i];
+        }
+        i++;
+    }
+    memcpy(src, dst, size);
 }
 
 
 void Filters::Inverse_Delta(uint8_t *src,uint32_t size,uint32_t chnNum)
 {
-	uint32_t dstPos,i,j,prevByte;
+    uint32_t dstPos,i,j,prevByte;
 
-	if (size<512) 
-		return;
+    if (size<512) 
+        return;
 
-	if (m_fltSwapSize<size) {
-		if (m_fltSwapSize>0)
-			free(m_fltSwapBuf);
+    if (m_fltSwapSize<size) {
+        if (m_fltSwapSize>0) {
+            alloc_->Free(alloc_, m_fltSwapBuf);
+        }
 
-		m_fltSwapBuf=(uint8_t*)malloc(size);
-		m_fltSwapSize=size;
-	}
+        m_fltSwapBuf = (uint8_t*)alloc_->Alloc(alloc_, size);
+        m_fltSwapSize=size;
+    }
 
-	memcpy(m_fltSwapBuf,src,size);
+    memcpy(m_fltSwapBuf,src,size);
 
-	dstPos=0;
-	prevByte=0;
-	for (i=0;i<chnNum;i++)
-		for(j=i;j<size;j+=chnNum)
-		{
-			src[j]=m_fltSwapBuf[dstPos++]+prevByte;
-			prevByte=src[j];
-			/*src[j]=m_fltSwapBuf[dstPos++]+prevByte+lastDelta;
-			lastDelta=src[j]-prevByte;
-			prevByte=src[j];*/
-		}
+    dstPos = 0;
+    prevByte = 0;
+    for (i = 0; i < chnNum; i++) {
+        for(j = i; j < size;j += chnNum)
+        {
+            src[j] = m_fltSwapBuf[dstPos++] + prevByte;
+            prevByte = src[j];
+        }
+    }
 }
 
 

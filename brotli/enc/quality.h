@@ -10,14 +10,14 @@
 #ifndef BROTLI_ENC_QUALITY_H_
 #define BROTLI_ENC_QUALITY_H_
 
-#include "./encode.h"
+#include <brotli/encode.h>
 
 #define FAST_ONE_PASS_COMPRESSION_QUALITY 0
 #define FAST_TWO_PASS_COMPRESSION_QUALITY 1
 #define ZOPFLIFICATION_QUALITY 10
 #define HQ_ZOPFLIFICATION_QUALITY 11
 
-#define MAX_QUALITY_FOR_STATIC_ENRTOPY_CODES 2
+#define MAX_QUALITY_FOR_STATIC_ENTROPY_CODES 2
 #define MIN_QUALITY_FOR_BLOCK_SPLIT 4
 #define MIN_QUALITY_FOR_OPTIMIZE_HISTOGRAMS 4
 #define MIN_QUALITY_FOR_EXTENSIVE_REFERENCE_SEARCH 5
@@ -31,15 +31,26 @@
    so we buffer at most this much literals and commands. */
 #define MAX_NUM_DELAYED_SYMBOLS 0x2fff
 
+typedef struct BrotliHasherParams {
+  int type;
+  int bucket_bits;
+  int block_bits;
+  int hash_len;
+  int num_last_distances_to_check;
+} BrotliHasherParams;
+
 /* Encoding parameters */
 typedef struct BrotliEncoderParams {
   BrotliEncoderMode mode;
   int quality;
   int lgwin;
   int lgblock;
+  size_t size_hint;
+  BROTLI_BOOL disable_literal_context_modeling;
+  BrotliHasherParams hasher;
 } BrotliEncoderParams;
 
-/* Returns hashtable size for quality levels 0 and 1. */
+/* Returns hash-table size for quality levels 0 and 1. */
 static BROTLI_INLINE size_t MaxHashTableSize(int quality) {
   return quality == FAST_ONE_PASS_COMPRESSION_QUALITY ? 1 << 15 : 1 << 17;
 }
@@ -48,13 +59,16 @@ static BROTLI_INLINE size_t MaxHashTableSize(int quality) {
 #define MAX_ZOPFLI_LEN_QUALITY_10 150
 #define MAX_ZOPFLI_LEN_QUALITY_11 325
 
+/* Do not thoroughly search when a long copy is found. */
+#define BROTLI_LONG_COPY_QUICK_STEP 16384
+
 static BROTLI_INLINE size_t MaxZopfliLen(const BrotliEncoderParams* params) {
   return params->quality <= 10 ?
       MAX_ZOPFLI_LEN_QUALITY_10 :
       MAX_ZOPFLI_LEN_QUALITY_11;
 }
 
-/* Number of best candidates to evaluate to expand zopfli chain. */
+/* Number of best candidates to evaluate to expand Zopfli chain. */
 static BROTLI_INLINE size_t MaxZopfliCandidates(
   const BrotliEncoderParams* params) {
   return params->quality <= 10 ? 1 : 5;
@@ -63,10 +77,10 @@ static BROTLI_INLINE size_t MaxZopfliCandidates(
 static BROTLI_INLINE void SanitizeParams(BrotliEncoderParams* params) {
   params->quality = BROTLI_MIN(int, BROTLI_MAX_QUALITY,
       BROTLI_MAX(int, BROTLI_MIN_QUALITY, params->quality));
-  if (params->lgwin < kBrotliMinWindowBits) {
-    params->lgwin = kBrotliMinWindowBits;
-  } else if (params->lgwin > kBrotliMaxWindowBits) {
-    params->lgwin = kBrotliMaxWindowBits;
+  if (params->lgwin < BROTLI_MIN_WINDOW_BITS) {
+    params->lgwin = BROTLI_MIN_WINDOW_BITS;
+  } else if (params->lgwin > BROTLI_MAX_WINDOW_BITS) {
+    params->lgwin = BROTLI_MAX_WINDOW_BITS;
   }
 }
 
@@ -84,8 +98,8 @@ static BROTLI_INLINE int ComputeLgBlock(const BrotliEncoderParams* params) {
       lgblock = BROTLI_MIN(int, 18, params->lgwin);
     }
   } else {
-    lgblock = BROTLI_MIN(int, kBrotliMaxInputBlockBits,
-        BROTLI_MAX(int, kBrotliMinInputBlockBits, lgblock));
+    lgblock = BROTLI_MIN(int, BROTLI_MAX_INPUT_BLOCK_BITS,
+        BROTLI_MAX(int, BROTLI_MIN_INPUT_BLOCK_BITS, lgblock));
   }
   return lgblock;
 }
@@ -94,14 +108,15 @@ static BROTLI_INLINE int ComputeLgBlock(const BrotliEncoderParams* params) {
    Allocate at least lgwin + 1 bits for the ring buffer so that the newly
    added block fits there completely and we still get lgwin bits and at least
    read_block_size_bits + 1 bits because the copy tail length needs to be
-   smaller than ringbuffer size. */
+   smaller than ring-buffer size. */
 static BROTLI_INLINE int ComputeRbBits(const BrotliEncoderParams* params) {
   return 1 + BROTLI_MAX(int, params->lgwin, params->lgblock);
 }
 
 static BROTLI_INLINE size_t MaxMetablockSize(
     const BrotliEncoderParams* params) {
-  int bits = BROTLI_MIN(int, ComputeRbBits(params), kBrotliMaxInputBlockBits);
+  int bits =
+      BROTLI_MIN(int, ComputeRbBits(params), BROTLI_MAX_INPUT_BLOCK_BITS);
   return (size_t)1 << bits;
 }
 
@@ -116,15 +131,30 @@ static BROTLI_INLINE size_t LiteralSpreeLengthForSparseSearch(
   return params->quality < 9 ? 64 : 512;
 }
 
-static BROTLI_INLINE int ChooseHasher(const BrotliEncoderParams* params) {
+static BROTLI_INLINE void ChooseHasher(const BrotliEncoderParams* params,
+                                       BrotliHasherParams* hparams) {
   if (params->quality > 9) {
-    return 10;
+    hparams->type = 10;
+  } else if (params->quality == 4 && params->size_hint >= (1 << 20)) {
+    hparams->type = 54;
   } else if (params->quality < 5) {
-    return params->quality;
+    hparams->type = params->quality;
   } else if (params->lgwin <= 16) {
-    return params->quality < 7 ? 40 : params->quality < 9 ? 41 : 42;
+    hparams->type = params->quality < 7 ? 40 : params->quality < 9 ? 41 : 42;
+  } else if (params->size_hint >= (1 << 20) && params->lgwin >= 19) {
+    hparams->type = 6;
+    hparams->block_bits = params->quality - 1;
+    hparams->bucket_bits = 15;
+    hparams->hash_len = 5;
+    hparams->num_last_distances_to_check =
+        params->quality < 7 ? 4 : params->quality < 9 ? 10 : 16;
+  } else {
+    hparams->type = 5;
+    hparams->block_bits = params->quality - 1;
+    hparams->bucket_bits = params->quality < 7 ? 14 : 15;
+    hparams->num_last_distances_to_check =
+        params->quality < 7 ? 4 : params->quality < 9 ? 10 : 16;
   }
-  return params->quality;
 }
 
 #endif  /* BROTLI_ENC_QUALITY_H_ */

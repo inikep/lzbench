@@ -29,10 +29,10 @@
 
 /* Test for a little-endian machine */
 #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    #define FREEARC_INTEL_BYTE_ORDER
+    #define FREEARC_INTEL_BYTE_ORDER 1
 #endif
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    #define FREEARC_MOTOROLA_BYTE_ORDER
+    #define FREEARC_MOTOROLA_BYTE_ORDER 1
 #endif
 
 #include <stdint.h>

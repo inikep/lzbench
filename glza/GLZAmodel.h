@@ -85,7 +85,7 @@ uint8_t DecodeINSTFinish(uint8_t Context, uint8_t SIDSymbol);
 uint8_t DecodeERG(uint8_t Context);
 uint8_t DecodeWordTag();
 uint16_t DecodeDictionaryBin(uint8_t FirstChar, uint8_t * lookup_bits, uint8_t * CodeLengthPtr, uint16_t DictionaryBins,
-    uint8_t * bin_code_length);
+    uint8_t bin_extra_bits);
 uint32_t DecodeBinCode(uint8_t Bits);
 uint32_t DecodeBaseSymbol(uint8_t Bits, uint32_t NumBaseSymbols);
 uint8_t DecodeFirstChar(uint8_t SymType, uint8_t LastChar);

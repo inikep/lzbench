@@ -11,7 +11,6 @@
 //
 ///////////////////////////////////////////////////////////////////////////////
 
-#include <string.h>
 #include "lz_encoder.h"
 #include "lz_encoder_hash.h"
 #include "memcmplen.h"

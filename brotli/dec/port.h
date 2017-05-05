@@ -16,6 +16,7 @@
       features and attributes
     * BROTLI_BUILD_PORTABLE disables dangerous optimizations, like unaligned
       read and overlapping memcpy; this reduces decompression speed by 5%
+    * BROTLI_BUILD_NO_RBIT disables "rbit" optimization for ARM CPUs
     * BROTLI_DEBUG dumps file name and line number when decoder detects stream
       or memory error
     * BROTLI_ENABLE_LOG enables asserts and dumps various state information
@@ -29,16 +30,16 @@
 #include <stdio.h>
 #endif
 
-#include "../common/port.h"
+#include <brotli/port.h>
 
 #if defined(__arm__) || defined(__thumb__) || \
-    defined(_M_ARM) || defined(_M_ARMT)
+    defined(_M_ARM) || defined(_M_ARMT) || defined(__ARM64_ARCH_8__)
 #define BROTLI_TARGET_ARM
-#if (defined(__ARM_ARCH) && (__ARM_ARCH >= 7)) || \
-    (defined(M_ARM) && (M_ARM >= 7))
+#if (defined(__ARM_ARCH) && (__ARM_ARCH == 7)) || \
+    (defined(M_ARM) && (M_ARM == 7))
 #define BROTLI_TARGET_ARMV7
 #endif  /* ARMv7 */
-#if defined(__aarch64__)
+#if defined(__aarch64__) || defined(__ARM64_ARCH_8__)
 #define BROTLI_TARGET_ARMV8
 #endif  /* ARMv8 */
 #endif  /* ARM */
@@ -59,7 +60,7 @@
 #define BROTLI_ALIGNED_READ (!!1)
 #elif defined(BROTLI_TARGET_X86) || defined(BROTLI_TARGET_X64) || \
      defined(BROTLI_TARGET_ARMV7) || defined(BROTLI_TARGET_ARMV8)
-/* Allow unaligned read only for whitelisted CPUs. */
+/* Allow unaligned read only for white-listed CPUs. */
 #define BROTLI_ALIGNED_READ (!!0)
 #else
 #define BROTLI_ALIGNED_READ (!!1)
@@ -101,6 +102,12 @@ static BROTLI_INLINE void BrotliDump(const char* f, int l, const char* fn) {
 #define BROTLI_64_BITS 0
 #endif
 
+#if (BROTLI_64_BITS)
+#define reg_t uint64_t
+#else
+#define reg_t uint32_t
+#endif
+
 #if defined(BROTLI_BUILD_BIG_ENDIAN)
 #define BROTLI_LITTLE_ENDIAN 0
 #define BROTLI_BIG_ENDIAN 1
@@ -132,10 +139,12 @@ static BROTLI_INLINE void BrotliDump(const char* f, int l, const char* fn) {
   if ((N & 4) != 0) {X; X; X; X;} \
 }
 
-#if BROTLI_MODERN_COMPILER || defined(__llvm__)
-#if defined(BROTLI_TARGET_ARMV7)
-static BROTLI_INLINE unsigned BrotliRBit(unsigned input) {
-  unsigned output;
+#if (BROTLI_MODERN_COMPILER || defined(__llvm__)) && \
+    !defined(BROTLI_BUILD_NO_RBIT)
+#if defined(BROTLI_TARGET_ARMV7) || defined(BROTLI_TARGET_ARMV8)
+/* TODO: detect ARMv6T2 and enable this code for it. */
+static BROTLI_INLINE reg_t BrotliRBit(reg_t input) {
+  reg_t output;
   __asm__("rbit %0, %1\n" : "=r"(output) : "r"(input));
   return output;
 }

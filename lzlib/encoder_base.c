@@ -1,5 +1,5 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2015 Antonio Diaz Diaz.
+    Copyright (C) 2009-2016 Antonio Diaz Diaz.
 
     This library is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -91,7 +91,7 @@ static bool Mb_init( struct Matchfinder_base * const mb,
   }
 
 
-static void Mb_adjust_distionary_size( struct Matchfinder_base * const mb )
+static void Mb_adjust_dictionary_size( struct Matchfinder_base * const mb )
   {
   if( mb->stream_pos < mb->dictionary_size )
     {
@@ -133,7 +133,7 @@ static bool LZeb_full_flush( struct LZ_encoder_base * const eb )
   const State state = eb->state;
   File_trailer trailer;
   if( eb->member_finished ||
-      Cb_free_bytes( &eb->renc.cb ) < max_marker_size + Ft_size )
+      Cb_free_bytes( &eb->renc.cb ) < max_marker_size + eb->renc.ff_count + Ft_size )
     return false;
   Re_encode_bit( &eb->renc, &eb->bm_match[state][pos_state], 1 );
   Re_encode_bit( &eb->renc, &eb->bm_rep[state], 0 );
@@ -154,7 +154,8 @@ static bool LZeb_sync_flush( struct LZ_encoder_base * const eb )
   int i;
   const int pos_state = Mb_data_position( &eb->mb ) & pos_state_mask;
   const State state = eb->state;
-  if( eb->member_finished || Cb_free_bytes( &eb->renc.cb ) < 2 * max_marker_size )
+  if( eb->member_finished ||
+      Cb_free_bytes( &eb->renc.cb ) < (2 * max_marker_size) + eb->renc.ff_count )
     return false;
   for( i = 0; i < 2; ++i )	/* 2 consecutive markers guarantee decoding */
     {

@@ -1,5 +1,5 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2015 Antonio Diaz Diaz.
+    Copyright (C) 2009-2016 Antonio Diaz Diaz.
 
     This library is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -58,74 +58,56 @@ static inline void Rd_finish( struct Range_decoder * const rdec )
   { rdec->at_stream_end = true; }
 
 static inline bool Rd_enough_available_bytes( const struct Range_decoder * const rdec )
-  {
-  return ( Cb_used_bytes( &rdec->cb ) >= rd_min_available_bytes ||
-           ( rdec->at_stream_end && Cb_used_bytes( &rdec->cb ) > 0 ) );
-  }
+  { return ( Cb_used_bytes( &rdec->cb ) >= rd_min_available_bytes ); }
 
-static inline int Rd_available_bytes( const struct Range_decoder * const rdec )
+static inline unsigned Rd_available_bytes( const struct Range_decoder * const rdec )
   { return Cb_used_bytes( &rdec->cb ); }
 
-static inline int Rd_free_bytes( const struct Range_decoder * const rdec )
+static inline unsigned Rd_free_bytes( const struct Range_decoder * const rdec )
   { if( rdec->at_stream_end ) return 0; return Cb_free_bytes( &rdec->cb ); }
 
-static inline void Rd_purge( struct Range_decoder * const rdec )
-  { rdec->at_stream_end = true; Cb_reset( &rdec->cb ); }
+static inline unsigned long long Rd_purge( struct Range_decoder * const rdec )
+  {
+  const unsigned long long size =
+    rdec->member_position + Cb_used_bytes( &rdec->cb );
+  Cb_reset( &rdec->cb );
+  rdec->member_position = 0; rdec->at_stream_end = true;
+  return size;
+  }
 
 static inline void Rd_reset( struct Range_decoder * const rdec )
-  { rdec->at_stream_end = false; Cb_reset( &rdec->cb ); }
+  { Cb_reset( &rdec->cb );
+    rdec->member_position = 0; rdec->at_stream_end = false; }
 
 
-/* Seeks a member header and updates 'get'.
-   Returns true if it finds a valid header.
+/* Seeks a member header and updates 'get'. '*skippedp' is set to the
+   number of bytes skipped. Returns true if it finds a valid header.
 */
-static bool Rd_find_header( struct Range_decoder * const rdec )
+static bool Rd_find_header( struct Range_decoder * const rdec,
+                            int * const skippedp )
   {
+  *skippedp = 0;
   while( rdec->cb.get != rdec->cb.put )
     {
     if( rdec->cb.buffer[rdec->cb.get] == magic_string[0] )
       {
-      int get = rdec->cb.get;
+      unsigned get = rdec->cb.get;
       int i;
       File_header header;
       for( i = 0; i < Fh_size; ++i )
         {
-        if( get == rdec->cb.put ) return false;	/* not enough data */
+        if( get == rdec->cb.put ) return false;		/* not enough data */
         header[i] = rdec->cb.buffer[get];
         if( ++get >= rdec->cb.buffer_size ) get = 0;
         }
       if( Fh_verify( header ) ) return true;
       }
     if( ++rdec->cb.get >= rdec->cb.buffer_size ) rdec->cb.get = 0;
+    ++*skippedp;
     }
   return false;
   }
 
-
-/* Returns true, fills 'header', and updates 'get' if 'get' points to a
-   valid header.
-   Else returns false and leaves 'get' unmodified.
-*/
-static bool Rd_read_header( struct Range_decoder * const rdec,
-                            File_header header )
-  {
-  int get = rdec->cb.get;
-  int i;
-  for( i = 0; i < Fh_size; ++i )
-    {
-    if( get == rdec->cb.put ) return false;	/* not enough data */
-    header[i] = rdec->cb.buffer[get];
-    if( ++get >= rdec->cb.buffer_size ) get = 0;
-    }
-  if( Fh_verify( header ) )
-    {
-    rdec->cb.get = get;
-    rdec->member_position = Fh_size;
-    rdec->reload_pending = true;
-    return true;
-    }
-  return false;
-  }
 
 static inline int Rd_write_data( struct Range_decoder * const rdec,
                                  const uint8_t * const inbuf, const int size )
@@ -146,6 +128,15 @@ static inline int Rd_read_data( struct Range_decoder * const rdec,
   const int sz = Cb_read_data( &rdec->cb, outbuf, size );
   if( sz > 0 ) rdec->member_position += sz;
   return sz;
+  }
+
+static inline bool Rd_unread_data( struct Range_decoder * const rdec,
+                                   const unsigned size )
+  {
+  if( size > rdec->member_position || !Cb_unread_data( &rdec->cb, size ) )
+    return false;
+  rdec->member_position -= size;
+  return true;
   }
 
 static bool Rd_try_reload( struct Range_decoder * const rdec, const bool force )
@@ -314,6 +305,7 @@ struct LZ_decoder
   uint32_t crc;
   bool member_finished;
   bool verify_trailer_pending;
+  bool pos_wrapped;
   unsigned rep0;		/* rep[0-3] latest four distances */
   unsigned rep1;		/* used for efficient coding of */
   unsigned rep2;		/* repeated distances */
@@ -340,15 +332,15 @@ static inline bool LZd_enough_free_bytes( const struct LZ_decoder * const d )
 
 static inline uint8_t LZd_peek_prev( const struct LZ_decoder * const d )
   {
-  const int i = ( ( d->cb.put > 0 ) ? d->cb.put : d->cb.buffer_size ) - 1;
+  const unsigned i = ( ( d->cb.put > 0 ) ? d->cb.put : d->cb.buffer_size ) - 1;
   return d->cb.buffer[i];
   }
 
 static inline uint8_t LZd_peek( const struct LZ_decoder * const d,
-                                const int distance )
+                                const unsigned distance )
   {
-  int i = d->cb.put - distance - 1;
-  if( i < 0 ) i += d->cb.buffer_size;
+  unsigned i = d->cb.put - distance - 1;
+  if( d->cb.put <= distance ) i += d->cb.buffer_size;
   return d->cb.buffer[i];
   }
 
@@ -357,16 +349,20 @@ static inline void LZd_put_byte( struct LZ_decoder * const d, const uint8_t b )
   CRC32_update_byte( &d->crc, b );
   d->cb.buffer[d->cb.put] = b;
   if( ++d->cb.put >= d->cb.buffer_size )
-    { d->partial_data_pos += d->cb.put; d->cb.put = 0; }
+    { d->partial_data_pos += d->cb.put; d->cb.put = 0; d->pos_wrapped = true; }
   }
 
 static inline void LZd_copy_block( struct LZ_decoder * const d,
-                                   const int distance, int len )
+                                   const unsigned distance, unsigned len )
   {
-  int i = d->cb.put - distance - 1;
-  if( i < 0 ) i += d->cb.buffer_size;
-  if( len < d->cb.buffer_size - max( d->cb.put, i ) &&
-      len <= abs( d->cb.put - i ) )		/* no wrap, no overlap */
+  unsigned i = d->cb.put - distance - 1;
+  bool fast;
+  if( d->cb.put <= distance )
+    { i += d->cb.buffer_size;
+      fast = ( len <= d->cb.buffer_size - i && len <= i - d->cb.put ); }
+  else
+    fast = ( len < d->cb.buffer_size - d->cb.put && len <= d->cb.put - i );
+  if( fast )					/* no wrap, no overlap */
     {
     CRC32_update_buf( &d->crc, d->cb.buffer + i, len );
     memcpy( d->cb.buffer + d->cb.put, d->cb.buffer + i, len );
@@ -381,7 +377,7 @@ static inline void LZd_copy_block( struct LZ_decoder * const d,
 
 static inline bool LZd_init( struct LZ_decoder * const d,
                              struct Range_decoder * const rde,
-                             const int dict_size )
+                             const unsigned dict_size )
   {
   if( !Cb_init( &d->cb, max( 65536, dict_size ) + lzd_min_free_bytes ) )
     return false;
@@ -391,6 +387,7 @@ static inline bool LZd_init( struct LZ_decoder * const d,
   d->crc = 0xFFFFFFFFU;
   d->member_finished = false;
   d->verify_trailer_pending = false;
+  d->pos_wrapped = false;
   d->rep0 = 0;
   d->rep1 = 0;
   d->rep2 = 0;

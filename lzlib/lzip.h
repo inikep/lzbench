@@ -1,5 +1,5 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2015 Antonio Diaz Diaz.
+    Copyright (C) 2009-2016 Antonio Diaz Diaz.
 
     This library is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -60,6 +60,7 @@ enum {
   max_dictionary_bits = 29,
   max_dictionary_size = 1 << max_dictionary_bits,
   literal_context_bits = 3,
+  literal_pos_state_bits = 0,				/* not used */
   pos_state_bits = 2,
   pos_states = 1 << pos_state_bits,
   pos_state_mask = pos_states - 1,
@@ -100,8 +101,8 @@ typedef int Bit_model;
 static inline void Bm_init( Bit_model * const probability )
   { *probability = bit_model_total / 2; }
 
-static inline void Bm_array_init( Bit_model * const p, const int size )
-  { int i = 0; while( i < size ) p[i++] = bit_model_total / 2; }
+static inline void Bm_array_init( Bit_model bm[], const int size )
+  { int i; for( i = 0; i < size; ++i ) Bm_init( &bm[i] ); }
 
 struct Len_model
   {
@@ -183,6 +184,11 @@ static inline void CRC32_update_buf( uint32_t * const crc,
   }
 
 
+static inline bool isvalid_ds( const unsigned dictionary_size )
+  { return ( dictionary_size >= min_dictionary_size &&
+             dictionary_size <= max_dictionary_size ); }
+
+
 static inline int real_bits( unsigned value )
   {
   int bits = 0;
@@ -204,6 +210,14 @@ static inline void Fh_set_magic( File_header data )
 static inline bool Fh_verify_magic( const File_header data )
   { return ( memcmp( data, magic_string, 4 ) == 0 ); }
 
+/* detect truncated header */
+static inline bool Fh_verify_prefix( const File_header data, const int size )
+  {
+  int i; for( i = 0; i < size && i < 4; ++i )
+    if( data[i] != magic_string[i] ) return false;
+  return ( size > 0 );
+  }
+
 static inline uint8_t Fh_version( const File_header data )
   { return data[4]; }
 
@@ -220,31 +234,24 @@ static inline unsigned Fh_get_dictionary_size( const File_header data )
 
 static inline bool Fh_set_dictionary_size( File_header data, const unsigned sz )
   {
-  if( sz >= min_dictionary_size && sz <= max_dictionary_size )
+  if( !isvalid_ds( sz ) ) return false;
+  data[5] = real_bits( sz - 1 );
+  if( sz > min_dictionary_size )
     {
-    data[5] = real_bits( sz - 1 );
-    if( sz > min_dictionary_size )
-      {
-      const unsigned base_size = 1 << data[5];
-      const unsigned fraction = base_size / 16;
-      int i;
-      for( i = 7; i >= 1; --i )
-        if( base_size - ( i * fraction ) >= sz )
-          { data[5] |= ( i << 5 ); break; }
-      }
-    return true;
+    const unsigned base_size = 1 << data[5];
+    const unsigned fraction = base_size / 16;
+    int i;
+    for( i = 7; i >= 1; --i )
+      if( base_size - ( i * fraction ) >= sz )
+        { data[5] |= ( i << 5 ); break; }
     }
-  return false;
+  return true;
   }
 
 static inline bool Fh_verify( const File_header data )
   {
   if( Fh_verify_magic( data ) && Fh_verify_version( data ) )
-    {
-    const unsigned dictionary_size = Fh_get_dictionary_size( data );
-    return ( dictionary_size >= min_dictionary_size &&
-             dictionary_size <= max_dictionary_size );
-    }
+    return isvalid_ds( Fh_get_dictionary_size( data ) );
   return false;
   }
 

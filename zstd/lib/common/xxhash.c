@@ -104,7 +104,9 @@ static void  XXH_free  (void* p)  { free(p); }
 #include <string.h>
 static void* XXH_memcpy(void* dest, const void* src, size_t size) { return memcpy(dest,src,size); }
 
-#define XXH_STATIC_LINKING_ONLY
+#ifndef XXH_STATIC_LINKING_ONLY
+#  define XXH_STATIC_LINKING_ONLY
+#endif
 #include "xxhash.h"
 
 
@@ -115,7 +117,7 @@ static void* XXH_memcpy(void* dest, const void* src, size_t size) { return memcp
 #  pragma warning(disable : 4127)      /* disable: C4127: conditional expression is constant */
 #  define FORCE_INLINE static __forceinline
 #else
-#  if defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L   /* C99 */
+#  if defined (__cplusplus) || defined (__STDC_VERSION__) && __STDC_VERSION__ >= 199901L   /* C99 */
 #    ifdef __GNUC__
 #      define FORCE_INLINE static inline __attribute__((always_inline))
 #    else
