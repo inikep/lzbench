@@ -5,6 +5,7 @@ ifeq ($(shell echo|$(CC) -dM -E - -march=native|grep -c SSE4_1), 0)
 	DONT_BUILD_LZSSE ?= 1
 endif
 
+CC=gcc
 COMPILER = $(shell $(CC) -v 2>&1 | grep -q "clang version" && echo clang || echo gcc)
 GCC_VERSION = $(shell $(CC) -dumpversion | sed -e 's:\([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*version \([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
@@ -35,7 +36,7 @@ else
     ifeq ($(shell uname -s),Darwin)
         DONT_BUILD_LZHAM ?= 1
     else
-        LDFLAGS	+= -lrt -static
+        LDFLAGS	+= -lrt
     endif
     LDFLAGS	+= -lpthread
 endif
