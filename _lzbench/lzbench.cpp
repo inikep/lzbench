@@ -650,6 +650,19 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
             return 1;
         }
 
+
+        if(params->random_read){
+          long long unsigned pos = 0;
+          if (params->chunk_size < real_insize){
+            pos = (rand() % (real_insize / params->chunk_size)) * params->chunk_size;
+            insize = params->chunk_size;
+            fseeko(in, pos, SEEK_SET);
+          }else{
+            insize = real_insize;
+          }
+          printf("Seeking to: %llu %Zu %Zu\n", pos, params->chunk_size, insize);
+        }
+
         insize = fread(inbuf, 1, insize, in);
 
         if (i == 0)
@@ -707,6 +720,7 @@ void usage(lzbench_params_t* params)
     fprintf(stderr, " -iX,Y set min. number of compression and decompression iterations (default = %d, %d)\n", params->c_iters, params->d_iters);
     fprintf(stderr, " -j    join files in memory but compress them independently (for many small files)\n");
     fprintf(stderr, " -l    list of available compressors and aliases\n");
+    fprintf(stderr, " -R    read block/chunk size from random blocks (to estimate for large files)\n");
     fprintf(stderr, " -m#   set memory limit to # MB (default = no limit)\n");
     fprintf(stderr, " -o#   output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV (default = %d)\n", params->textformat);
     fprintf(stderr, " -p#   print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
@@ -806,6 +820,10 @@ int main( int argc, char** argv)
             break;
         case 'r':
             recursive = 1;
+            break;
+        case 'R':
+            params->random_read = 1;
+            srand(time(NULL));
             break;
         case 's':
             params->cspeed = number;
