@@ -6,6 +6,7 @@ ifeq ($(BUILD_ARCH),32-bit)
 	DONT_BUILD_LZSSE ?= 1
 endif
 
+CC?=gcc
 COMPILER = $(shell $(CC) -v 2>&1 | grep -q "clang version" && echo clang || echo gcc)
 GCC_VERSION = $(shell $(CC) -dumpversion | sed -e 's:\([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*version \([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
