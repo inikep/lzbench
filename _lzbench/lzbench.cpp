@@ -20,9 +20,9 @@
 #include "util.h"
 #include <numeric>
 #include <algorithm> // sort
-#include <stdlib.h> 
-#include <stdio.h> 
-#include <stdint.h> 
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 
 
@@ -37,7 +37,7 @@ int istrcmp(const char *str1, const char *str2)
 }
 
 
-void format(std::string& s,const char* formatstring, ...) 
+void format(std::string& s,const char* formatstring, ...)
 {
    char buff[1024];
    va_list args;
@@ -52,10 +52,11 @@ void format(std::string& s,const char* formatstring, ...)
    va_end(args);
 
    s=buff;
-} 
+}
 
 
-std::vector<std::string> split(const std::string &text, char sep) {
+std::vector<std::string> split(const std::string &text, char sep)
+{
   std::vector<std::string> tokens;
   std::size_t start = 0, end = 0;
   while (text[start] == sep) start++;
@@ -65,7 +66,7 @@ std::vector<std::string> split(const std::string &text, char sep) {
   }
   tokens.push_back(text.substr(start));
   return tokens;
-} 
+}
 
 
 void print_header(lzbench_params_t *params)
@@ -74,7 +75,7 @@ void print_header(lzbench_params_t *params)
     {
         case CSV:
             if (params->show_speed)
-                printf("Compressor name,Compression speed,Decompression speed,Original size,Compressed size,Ratio,Filename\n"); 
+                printf("Compressor name,Compression speed,Decompression speed,Original size,Compressed size,Ratio,Filename\n");
             else
                 printf("Compressor name,Compression time in us,Decompression time in us,Original size,Compressed size,Ratio,Filename\n"); break;
             break;
@@ -85,12 +86,12 @@ void print_header(lzbench_params_t *params)
         case TEXT_FULL:
             printf("Compressor name         Compress. Decompress.  Orig. size  Compr. size  Ratio Filename\n"); break;
         case MARKDOWN:
-            printf("| Compressor name         | Compression| Decompress.| Compr. size | Ratio | Filename |\n"); 
-            printf("| ---------------         | -----------| -----------| ----------- | ----- | -------- |\n"); 
+            printf("| Compressor name         | Compression| Decompress.| Compr. size | Ratio | Filename |\n");
+            printf("| ---------------         | -----------| -----------| ----------- | ----- | -------- |\n");
             break;
         case MARKDOWN2:
-            printf("| Compressor name         | Ratio | Compression| Decompress.|\n"); 
-            printf("| ---------------         | ------| -----------| ---------- |\n"); 
+            printf("| Compressor name         | Ratio | Compression| Decompress.|\n");
+            printf("| ---------------         | ------| -----------| ---------- |\n");
             break;
     }
 }
@@ -116,9 +117,9 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
             if (!dspeed)
                 printf("      ERROR");
             else
-                if (dspeed < 10) printf("%6.2f MB/s", dspeed); else printf("%6d MB/s", (int)dspeed); 
+                if (dspeed < 10) printf("%6.2f MB/s", dspeed); else printf("%6d MB/s", (int)dspeed);
             if (params->textformat == TEXT_FULL)
-                printf("%12llu %12llu %6.2f %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); 
+                printf("%12llu %12llu %6.2f %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             else
                 printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
@@ -128,7 +129,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
             if (!dspeed)
                 printf("|      ERROR ");
             else
-                if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed); 
+                if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed);
             printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
         case MARKDOWN2:
@@ -138,7 +139,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
             if (!dspeed)
                 printf("|      ERROR ");
             else
-                if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed); 
+                if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed);
             printf("|\n");
             break;
     }
@@ -164,9 +165,9 @@ void print_time(lzbench_params_t *params, string_table_t& row)
             if (!dtime)
                 printf("      ERROR");
             else
-                printf("%8llu us", (unsigned long long)dtime); 
+                printf("%8llu us", (unsigned long long)dtime);
             if (params->textformat == TEXT_FULL)
-                printf("%12llu %12llu %6.2f %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); 
+                printf("%12llu %12llu %6.2f %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             else
                 printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
@@ -176,7 +177,7 @@ void print_time(lzbench_params_t *params, string_table_t& row)
             if (!dtime)
                 printf("|      ERROR ");
             else
-                printf("|%8llu us ", (unsigned long long)dtime); 
+                printf("|%8llu us ", (unsigned long long)dtime);
             printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
     }
@@ -382,7 +383,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
         speed = (float)insize*i*1000/nanosec;
         LZBENCH_PRINT(8, "%s nanosec=%d\n", desc->name, (int)nanosec);
 
-        if ((uint32_t)speed < params->cspeed) { LZBENCH_PRINT(7, "%s slower than %d MB/s\n", desc->name, (uint32_t)speed); return; } 
+        if ((uint32_t)speed < params->cspeed) { LZBENCH_PRINT(7, "%s slower than %d MB/s\n", desc->name, (uint32_t)speed); return; }
 
         total_nanosec = GetDiffTime(rate, timer_ticks, end_ticks);
         total_c_iters += i;
@@ -417,13 +418,13 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
 
         if (insize != decomplen)
         {   
-            decomp_error = true; 
+            decomp_error = true;
             LZBENCH_PRINT(5, "ERROR: inlen[%d] != outlen[%d]\n", (int32_t)insize, (int32_t)decomplen);
         }
         
         if (memcmp(inbuf, decomp, insize) != 0)
         {
-            decomp_error = true; 
+            decomp_error = true;
 
             size_t cmn = common(inbuf, decomp);
             LZBENCH_PRINT(5, "ERROR in %s: common=%d/%d\n", desc->name, (int32_t)cmn, (int32_t)insize);
@@ -960,6 +961,3 @@ _clean:
         free((void*)inFileNames);
     return result;
 }
-
-
-
