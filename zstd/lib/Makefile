@@ -22,9 +22,11 @@ VERSION?= $(LIBVER)
 
 CPPFLAGS+= -I. -I./common -DXXH_NAMESPACE=ZSTD_
 CFLAGS  ?= -O3
-DEBUGFLAGS = -g -Wall -Wextra -Wcast-qual -Wcast-align -Wshadow \
-           -Wstrict-aliasing=1 -Wswitch-enum -Wdeclaration-after-statement \
-           -Wstrict-prototypes -Wundef -Wpointer-arith -Wformat-security
+DEBUGFLAGS = -Wall -Wextra -Wcast-qual -Wcast-align -Wshadow \
+            -Wstrict-aliasing=1 -Wswitch-enum -Wdeclaration-after-statement \
+            -Wstrict-prototypes -Wundef -Wpointer-arith -Wformat-security \
+            -Wvla -Wformat=2 -Winit-self -Wfloat-equal -Wwrite-strings \
+            -Wredundant-decls
 CFLAGS  += $(DEBUGFLAGS) $(MOREFLAGS)
 FLAGS    = $(CPPFLAGS) $(CFLAGS)
 
@@ -71,6 +73,9 @@ libzstd.a: $(ZSTD_OBJ)
 	@echo compiling static library
 	@$(AR) $(ARFLAGS) $@ $^
 
+libzstd.a-mt: CPPFLAGS += -DZSTD_MULTITHREAD
+libzstd.a-mt: libzstd.a
+
 $(LIBZSTD): LDFLAGS += -shared -fPIC -fvisibility=hidden
 $(LIBZSTD): $(ZSTD_FILES)
 	@echo compiling dynamic library $(LIBVER)
@@ -86,10 +91,17 @@ endif
 
 libzstd : $(LIBZSTD)
 
+libzstd-mt : CPPFLAGS += -DZSTD_MULTITHREAD
+libzstd-mt : libzstd
+
 lib: libzstd.a libzstd
 
-lib-release: DEBUGFLAGS :=
+lib-mt: CPPFLAGS += -DZSTD_MULTITHREAD
+lib-mt: lib
+
+lib-release lib-release-mt: DEBUGFLAGS :=
 lib-release: lib
+lib-release-mt: lib-mt
 
 clean:
 	@$(RM) -r *.dSYM   # Mac OS-X specific
@@ -137,7 +149,7 @@ install: libzstd.a libzstd libzstd.pc
 	@$(INSTALL) -d -m 755 $(DESTDIR)$(PKGCONFIGDIR)/ $(DESTDIR)$(INCLUDEDIR)/
 	@$(INSTALL_DATA) libzstd.pc $(DESTDIR)$(PKGCONFIGDIR)/
 	@echo Installing libraries
-	@$(INSTALL_LIB) libzstd.a $(DESTDIR)$(LIBDIR)
+	@$(INSTALL_DATA) libzstd.a $(DESTDIR)$(LIBDIR)
 	@$(INSTALL_LIB) libzstd.$(SHARED_EXT_VER) $(DESTDIR)$(LIBDIR)
 	@ln -sf libzstd.$(SHARED_EXT_VER) $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT_MAJOR)
 	@ln -sf libzstd.$(SHARED_EXT_VER) $(DESTDIR)$(LIBDIR)/libzstd.$(SHARED_EXT)

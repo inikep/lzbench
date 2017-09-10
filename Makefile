@@ -108,8 +108,8 @@ BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/utf8_
 BROTLI_FILES += brotli/enc/cluster.o brotli/enc/bit_cost.o brotli/enc/backward_references_hq.o brotli/enc/dictionary_hash.o
 
 ZSTD_FILES = zstd/lib/decompress/zstd_decompress.o zstd/lib/decompress/huf_decompress.o zstd/lib/common/zstd_common.o zstd/lib/common/fse_decompress.o 
-ZSTD_FILES += zstd/lib/common/xxhash.o zstd/lib/common/error_private.o zstd/lib/common/entropy_common.o 
-ZSTD_FILES += zstd/lib/compress/zstd_compress.o zstd/lib/compress/fse_compress.o zstd/lib/compress/huf_compress.o 
+ZSTD_FILES += zstd/lib/common/xxhash.o zstd/lib/common/error_private.o zstd/lib/common/entropy_common.o zstd/lib/common/pool.o 
+ZSTD_FILES += zstd/lib/compress/zstd_compress.o zstd/lib/compress/zstdmt_compress.o zstd/lib/compress/fse_compress.o zstd/lib/compress/huf_compress.o 
 
 BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depacks.o 
 

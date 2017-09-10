@@ -1,3 +1,6 @@
+v1.7.2
+- zstd updated to v1.3.1
+
 v1.7.1
 - brotli updated to 2017-03-10
 - glza updated to v0.8

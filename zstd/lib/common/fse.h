@@ -31,12 +31,13 @@
    You can contact the author at :
    - Source repository : https://github.com/Cyan4973/FiniteStateEntropy
 ****************************************************************** */
-#ifndef FSE_H
-#define FSE_H
 
 #if defined (__cplusplus)
 extern "C" {
 #endif
+
+#ifndef FSE_H
+#define FSE_H
 
 
 /*-*****************************************
@@ -297,8 +298,10 @@ FSE_decompress_usingDTable() result will tell how many bytes were regenerated (<
 If there is an error, the function will return an error code, which can be tested using FSE_isError(). (ex: dst buffer too small)
 */
 
+#endif  /* FSE_H */
 
-#ifdef FSE_STATIC_LINKING_ONLY
+#if defined(FSE_STATIC_LINKING_ONLY) && !defined(FSE_H_FSE_STATIC_LINKING_ONLY)
+#define FSE_H_FSE_STATIC_LINKING_ONLY
 
 /* *** Dependency *** */
 #include "bitstream.h"
@@ -315,6 +318,10 @@ If there is an error, the function will return an error code, which can be teste
 /* It is possible to statically allocate FSE CTable/DTable as a table of FSE_CTable/FSE_DTable using below macros */
 #define FSE_CTABLE_SIZE_U32(maxTableLog, maxSymbolValue)   (1 + (1<<(maxTableLog-1)) + ((maxSymbolValue+1)*2))
 #define FSE_DTABLE_SIZE_U32(maxTableLog)                   (1 + (1<<maxTableLog))
+
+/* or use the size to malloc() space directly. Pay attention to alignment restrictions though */
+#define FSE_CTABLE_SIZE(maxTableLog, maxSymbolValue)   (FSE_CTABLE_SIZE_U32(maxTableLog, maxSymbolValue) * sizeof(FSE_CTable))
+#define FSE_DTABLE_SIZE(maxTableLog)                   (FSE_DTABLE_SIZE_U32(maxTableLog) * sizeof(FSE_DTable))
 
 
 /* *****************************************
@@ -353,7 +360,7 @@ unsigned FSE_optimalTableLog_internal(unsigned maxTableLog, size_t srcSize, unsi
  * Same as FSE_compress2(), but using an externally allocated scratch buffer (`workSpace`).
  * FSE_WKSP_SIZE_U32() provides the minimum size required for `workSpace` as a table of FSE_CTable.
  */
-#define FSE_WKSP_SIZE_U32(maxTableLog, maxSymbolValue)   ( FSE_CTABLE_SIZE_U32(maxTableLog, maxSymbolValue) + (1<<((maxTableLog>2)?(maxTableLog-2):0)) )
+#define FSE_WKSP_SIZE_U32(maxTableLog, maxSymbolValue)   ( FSE_CTABLE_SIZE_U32(maxTableLog, maxSymbolValue) + ((maxTableLog > 12) ? (1 << (maxTableLog - 2)) : 1024) )
 size_t FSE_compress_wksp (void* dst, size_t dstSize, const void* src, size_t srcSize, unsigned maxSymbolValue, unsigned tableLog, void* workSpace, size_t wkspSize);
 
 size_t FSE_buildCTable_raw (FSE_CTable* ct, unsigned nbBits);
@@ -377,6 +384,11 @@ size_t FSE_buildDTable_rle (FSE_DTable* dt, unsigned char symbolValue);
 size_t FSE_decompress_wksp(void* dst, size_t dstCapacity, const void* cSrc, size_t cSrcSize, FSE_DTable* workSpace, unsigned maxLog);
 /**< same as FSE_decompress(), using an externally allocated `workSpace` produced with `FSE_DTABLE_SIZE_U32(maxLog)` */
 
+typedef enum {
+   FSE_repeat_none,  /**< Cannot use the previous table */
+   FSE_repeat_check, /**< Can use the previous table but it must be checked */
+   FSE_repeat_valid  /**< Can use the previous table and it is asumed to be valid */
+ } FSE_repeat;
 
 /* *****************************************
 *  FSE symbol compression API
@@ -550,9 +562,9 @@ MEM_STATIC void FSE_initCState2(FSE_CState_t* statePtr, const FSE_CTable* ct, U3
 
 MEM_STATIC void FSE_encodeSymbol(BIT_CStream_t* bitC, FSE_CState_t* statePtr, U32 symbol)
 {
-    const FSE_symbolCompressionTransform symbolTT = ((const FSE_symbolCompressionTransform*)(statePtr->symbolTT))[symbol];
+    FSE_symbolCompressionTransform const symbolTT = ((const FSE_symbolCompressionTransform*)(statePtr->symbolTT))[symbol];
     const U16* const stateTable = (const U16*)(statePtr->stateTable);
-    U32 nbBitsOut  = (U32)((statePtr->value + symbolTT.deltaNbBits) >> 16);
+    U32 const nbBitsOut  = (U32)((statePtr->value + symbolTT.deltaNbBits) >> 16);
     BIT_addBits(bitC, statePtr->value, nbBitsOut);
     statePtr->value = stateTable[ (statePtr->value >> nbBitsOut) + symbolTT.deltaFindState];
 }
@@ -690,5 +702,3 @@ MEM_STATIC unsigned FSE_endOfDState(const FSE_DState_t* DStatePtr)
 #if defined (__cplusplus)
 }
 #endif
-
-#endif  /* FSE_H */

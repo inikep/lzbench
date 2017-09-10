@@ -50,13 +50,15 @@
 #include "fse.h"        /* header compression */
 #define HUF_STATIC_LINKING_ONLY
 #include "huf.h"
+#include "error_private.h"
 
 
 /* **************************************************************
 *  Error Management
 ****************************************************************/
+#define HUF_isError ERR_isError
 #define HUF_STATIC_ASSERT(c) { enum { HUF_static_assert = 1/(int)(!!(c)) }; }   /* use only *after* variable declarations */
-#define CHECK_V_F(e, f) size_t const e = f; if (ERR_isError(e)) return f
+#define CHECK_V_F(e, f) size_t const e = f; if (ERR_isError(e)) return e
 #define CHECK_F(f)   { CHECK_V_F(_var_err__, f); }
 
 
@@ -266,7 +268,8 @@ static U32 HUF_setMaxHeight(nodeElt* huffNode, U32 lastNonNull, U32 maxNbBits)
                         if (highTotal <= lowTotal) break;
                 }   }
                 /* only triggered when no more rank 1 symbol left => find closest one (note : there is necessarily at least one !) */
-                while ((nBitsToDecrease<=HUF_TABLELOG_MAX) && (rankLast[nBitsToDecrease] == noSymbol))  /* HUF_MAX_TABLELOG test just to please gcc 5+; but it should not be necessary */
+                /* HUF_MAX_TABLELOG test just to please gcc 5+; but it should not be necessary */
+                while ((nBitsToDecrease<=HUF_TABLELOG_MAX) && (rankLast[nBitsToDecrease] == noSymbol))
                     nBitsToDecrease ++;
                 totalCost -= 1 << (nBitsToDecrease-1);
                 if (rankLast[nBitsToDecrease-1] == noSymbol)
@@ -435,7 +438,7 @@ static void HUF_encodeSymbol(BIT_CStream_t* bitCPtr, U32 symbol, const HUF_CElt*
 
 size_t HUF_compressBound(size_t size) { return HUF_COMPRESSBOUND(size); }
 
-#define HUF_FLUSHBITS(s)  (fast ? BIT_flushBitsFast(s) : BIT_flushBits(s))
+#define HUF_FLUSHBITS(s)  BIT_flushBits(s)
 
 #define HUF_FLUSHBITS_1(stream) \
     if (sizeof((stream)->bitContainer)*8 < HUF_TABLELOG_MAX*2+7) HUF_FLUSHBITS(stream)
@@ -450,7 +453,6 @@ size_t HUF_compress1X_usingCTable(void* dst, size_t dstSize, const void* src, si
     BYTE* const oend = ostart + dstSize;
     BYTE* op = ostart;
     size_t n;
-    const unsigned fast = (dstSize >= HUF_BLOCKBOUND(srcSize));
     BIT_CStream_t bitC;
 
     /* init */
@@ -463,12 +465,15 @@ size_t HUF_compress1X_usingCTable(void* dst, size_t dstSize, const void* src, si
     {
         case 3 : HUF_encodeSymbol(&bitC, ip[n+ 2], CTable);
                  HUF_FLUSHBITS_2(&bitC);
+		 /* fall-through */
         case 2 : HUF_encodeSymbol(&bitC, ip[n+ 1], CTable);
                  HUF_FLUSHBITS_1(&bitC);
+		 /* fall-through */
         case 1 : HUF_encodeSymbol(&bitC, ip[n+ 0], CTable);
                  HUF_FLUSHBITS(&bitC);
-        case 0 :
-        default: ;
+		 /* fall-through */
+        case 0 : /* fall-through */
+        default: break;
     }
 
     for (; n>0; n-=4) {  /* note : n&3==0 at this stage */
@@ -674,7 +679,7 @@ size_t HUF_compress2 (void* dst, size_t dstSize,
                 const void* src, size_t srcSize,
                 unsigned maxSymbolValue, unsigned huffLog)
 {
-    unsigned workSpace[1024+512];
+    unsigned workSpace[1024];
     return HUF_compress4X_wksp(dst, dstSize, src, srcSize, maxSymbolValue, huffLog, workSpace, sizeof(workSpace));
 }
 
