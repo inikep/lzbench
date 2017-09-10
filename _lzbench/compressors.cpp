@@ -662,9 +662,11 @@ int64_t lzbench_lzlib_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #include "lzma/LzmaDec.h"
 #include "lzma/LzmaEnc.h"
 
+#ifndef BENCH_REMOVE_TORNADO
 static void *SzAlloc(void *p, size_t size) { p = p; return MyAlloc(size); }
 static void SzFree(void *p, void *address) { p = p; MyFree(address); }
 ISzAlloc g_Alloc = { SzAlloc, SzFree };
+#endif
 
 int64_t lzbench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
