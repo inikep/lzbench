@@ -1,5 +1,5 @@
 /*
-(C) 2011-2016 by Przemyslaw Skibinski (inikep@gmail.com)
+(C) 2011-2017 by Przemyslaw Skibinski (inikep@gmail.com)
 
     LICENSE
 
@@ -172,6 +172,7 @@ void print_time(lzbench_params_t *params, string_table_t& row)
                 printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
         case MARKDOWN:
+        case MARKDOWN2:
             printf("| %-23s ", row.col1_algname.c_str());
             printf("|%8llu us ", (unsigned long long)ctime);
             if (!dtime)
@@ -652,16 +653,16 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
         }
 
 
-        if(params->random_read){
-          long long unsigned pos = 0;
+        if (params->random_read){
+          unsigned long long pos = 0;
           if (params->chunk_size < real_insize){
             pos = (rand() % (real_insize / params->chunk_size)) * params->chunk_size;
             insize = params->chunk_size;
             fseeko(in, pos, SEEK_SET);
-          }else{
+          } else {
             insize = real_insize;
           }
-          printf("Seeking to: %llu %Zu %Zu\n", pos, params->chunk_size, insize);
+          printf("Seeking to: %llu %llu %llu\n", pos, (unsigned long long)params->chunk_size, (unsigned long long)insize);
         }
 
         insize = fread(inbuf, 1, insize, in);
@@ -819,9 +820,11 @@ int main( int argc, char** argv)
         case 'p':
             params->timetype = (timetype_e)number;
             break;
+#ifdef UTIL_HAS_CREATEFILELIST
         case 'r':
             recursive = 1;
             break;
+#endif
         case 'R':
             params->random_read = 1;
             srand(time(NULL));
