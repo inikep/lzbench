@@ -27,12 +27,14 @@
 	#define FREEARC_UNIX
 #endif
 
-/* Test for a little-endian machine */
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-    #define FREEARC_INTEL_BYTE_ORDER 1
-#endif
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+/* Test for a big-endian machine */
+#if defined(__BIG_ENDIAN__) || defined(__BIG_ENDIAN) || defined(_BIG_ENDIAN) || \
+    (defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__))
     #define FREEARC_MOTOROLA_BYTE_ORDER 1
+#else
+    #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+        #define FREEARC_INTEL_BYTE_ORDER 1
+    #endif
 #endif
 
 #include <stdint.h>
