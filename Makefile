@@ -1,3 +1,13 @@
+# direct GNU Make to search the directories relative to the
+# parent directory of this file
+SOURCE_PATH=$(dir $(lastword $(MAKEFILE_LIST)))
+vpath
+vpath %.c $(SOURCE_PATH)
+vpath %.cc $(SOURCE_PATH)
+vpath %.cpp $(SOURCE_PATH)
+vpath _lzbench/lzbench.h $(SOURCE_PATH)
+vpath wflz/wfLZ.h $(SOURCE_PATH)
+
 #BUILD_ARCH = 32-bit
 
 ifeq ($(BUILD_ARCH),32-bit)
@@ -47,7 +57,7 @@ else
 endif
 
 
-DEFINES     += -I. -Izstd/lib -Izstd/lib/common -Ixpack/common -Ilibcsc
+DEFINES     += $(addprefix -I$(SOURCE_PATH),. zstd/lib zstd/lib/common xpack/common libcsc)
 DEFINES     += -DHAVE_CONFIG_H
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
@@ -197,38 +207,25 @@ endif
 
 all: lzbench
 
+MKDIR = mkdir -p
+
 # FIX for SEGFAULT on GCC 4.9+
-wflz/wfLZ.o: wflz/wfLZ.c wflz/wfLZ.h 
-	$(CC) $(CFLAGS_O2) $< -c -o $@
+wflz/wfLZ.o: wflz/wfLZ.c wflz/wfLZ.h
 
-shrinker/shrinker.o: shrinker/shrinker.c
-	$(CC) $(CFLAGS_O2) $< -c -o $@
-
-lzmat/lzmat_dec.o: lzmat/lzmat_dec.c
-	$(CC) $(CFLAGS_O2) $< -c -o $@
-
-lzmat/lzmat_enc.o: lzmat/lzmat_enc.c
-	$(CC) $(CFLAGS_O2) $< -c -o $@
-
-lzrw/lzrw1-a.o: lzrw/lzrw1-a.c
-	$(CC) $(CFLAGS_O2) $< -c -o $@
-
-lzrw/lzrw1.o: lzrw/lzrw1.c
+wflz/wfLZ.o shrinker/shrinker.o lzmat/lzmat_dec.o lzmat/lzmat_enc.o lzrw/lzrw1-a.o lzrw/lzrw1.o: %.o : %.c
+	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 pithy/pithy.o: pithy/pithy.cpp
+	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) $< -c -o $@
 
-lzsse/lzsse2/lzsse2.o: lzsse/lzsse2/lzsse2.cpp
+lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o: %.o : %.cpp
+	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
 
-lzsse/lzsse4/lzsse4.o: lzsse/lzsse4/lzsse4.cpp
-	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
-
-lzsse/lzsse8/lzsse8.o: lzsse/lzsse8/lzsse8.cpp
-	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
-
-nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c 
+nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c
+	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -mavx $< -c -o $@
 
 
@@ -239,12 +236,15 @@ lzbench: $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
 .c.o:
+	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) $< -std=c99 -c -o $@
 
 .cc.o:
+	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS) $< -c -o $@
 
 .cpp.o:
+	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS) $< -c -o $@
 
 clean:
