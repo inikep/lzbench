@@ -41,7 +41,7 @@ extern "C" {
 #endif
 
 #if defined(FREEARC_INTEL_BYTE_ORDER)
-#if _BIG_ENDIAN
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
 #error "You're compiling for Motorola byte order, but FREEARC_INTEL_BYTE_ORDER was defined."
 #endif
 #elif defined(FREEARC_MOTOROLA_BYTE_ORDER)
