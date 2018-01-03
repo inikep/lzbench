@@ -11,10 +11,10 @@
 
 #include "../common/constants.h"
 #include "../common/dictionary.h"
+#include "../common/platform.h"
 #include <brotli/types.h>
 #include "./bit_reader.h"
 #include "./huffman.h"
-#include "./port.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
@@ -172,7 +172,7 @@ struct BrotliDecoderStateStruct {
   uint32_t space;
 
   HuffmanCode table[32];
-  /* List of of symbol chains. */
+  /* List of heads of symbol chains. */
   uint16_t* symbol_lists;
   /* Storage from symbol_lists. */
   uint16_t symbols_lists_array[BROTLI_HUFFMAN_MAX_CODE_LENGTH + 1 +
@@ -197,10 +197,6 @@ struct BrotliDecoderStateStruct {
   uint32_t mtf_upper_bound;
   uint32_t mtf[64 + 1];
 
-  /* For custom dictionaries */
-  const uint8_t* custom_dict;
-  int custom_dict_size;
-
   /* less used attributes are in the end of this struct */
   /* States inside function calls */
   BrotliRunningMetablockHeaderState substate_metablock_header;
@@ -215,6 +211,7 @@ struct BrotliDecoderStateStruct {
   unsigned int is_uncompressed : 1;
   unsigned int is_metadata : 1;
   unsigned int should_wrap_ringbuffer : 1;
+  unsigned int canny_ringbuffer_allocation : 1;
   unsigned int size_nibbles : 8;
   uint32_t window_bits;
 
@@ -223,6 +220,7 @@ struct BrotliDecoderStateStruct {
   uint32_t num_literal_htrees;
   uint8_t* context_map;
   uint8_t* context_modes;
+
   const BrotliDictionary* dictionary;
 
   uint32_t trivial_literal_contexts[8];  /* 256 bits */
@@ -242,6 +240,13 @@ BROTLI_INTERNAL void BrotliDecoderStateCleanupAfterMetablock(
 BROTLI_INTERNAL BROTLI_BOOL BrotliDecoderHuffmanTreeGroupInit(
     BrotliDecoderState* s, HuffmanTreeGroup* group, uint32_t alphabet_size,
     uint32_t ntrees);
+
+#define BROTLI_DECODER_ALLOC(S, L) S->alloc_func(S->memory_manager_opaque, L)
+
+#define BROTLI_DECODER_FREE(S, X) {          \
+  S->free_func(S->memory_manager_opaque, X); \
+  X = NULL;                                  \
+}
 
 #if defined(__cplusplus) || defined(c_plusplus)
 }  /* extern "C" */

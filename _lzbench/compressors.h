@@ -458,15 +458,19 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 
 
 #ifndef BENCH_REMOVE_ZSTD
-    char* lzbench_zstd_init(size_t insize, size_t level, size_t);
-    void lzbench_zstd_deinit(char* workmem);
+	char* lzbench_zstd_init(size_t insize, size_t level, size_t);
+	void lzbench_zstd_deinit(char* workmem);
 	int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
 	int64_t lzbench_zstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+	char* lzbench_zstd_LDM_init(size_t insize, size_t level, size_t);
+	int64_t lzbench_zstd_LDM_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
 #else
 	#define lzbench_zstd_init NULL
 	#define lzbench_zstd_deinit NULL
 	#define lzbench_zstd_compress NULL
 	#define lzbench_zstd_decompress NULL
+	#define lzbench_zstd_LDM_init NULL
+	#define lzbench_zstd_LDM_compress NULL
 #endif
 
 

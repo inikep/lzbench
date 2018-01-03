@@ -1,3 +1,9 @@
+v1.7.3
+- brotli updated to 2017-12-12
+- lz4 updated to v1.8.0
+- zstd updated to v1.3.3
+- added zstd compressor with long distance matcher
+
 v1.7.2
 - zstd updated to v1.3.1
 
