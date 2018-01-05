@@ -80,7 +80,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
 ```
 blosclz 2015-11-10
 brieflz 1.1.0
-brotli 2017-03-10
+brotli 2017-12-12
 crush 1.0
 csc 2016-10-13 (WARNING: it can throw SEGFAULT compiled with Apple LLVM version 7.3.0 (clang-703.0.31))
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
@@ -89,7 +89,7 @@ gipfeli 2016-07-13
 glza 0.8
 libdeflate v0.7
 lizard v1.0 (formerly lz5)
-lz4/lz4hc v1.7.5
+lz4/lz4hc v1.8.0
 lzf 3.6
 lzfse/lzvn 2017-03-08
 lzg 1.0.8
@@ -115,7 +115,7 @@ yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.11
 zling 2016-04-10 (according to the author using libzling in a production environment is not a good idea)
-zstd 1.3.1
+zstd 1.3.3
 ```
 
 
