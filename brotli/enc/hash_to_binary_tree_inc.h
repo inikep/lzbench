@@ -19,11 +19,13 @@
 
 #define BUCKET_SIZE (1 << BUCKET_BITS)
 
-static size_t FN(HashTypeLength)(void) { return 4; }
-static size_t FN(StoreLookahead)(void) { return MAX_TREE_COMP_LENGTH; }
+static BROTLI_INLINE size_t FN(HashTypeLength)(void) { return 4; }
+static BROTLI_INLINE size_t FN(StoreLookahead)(void) {
+  return MAX_TREE_COMP_LENGTH;
+}
 
 static uint32_t FN(HashBytes)(const uint8_t *data) {
-  uint32_t h = BROTLI_UNALIGNED_LOAD32(data) * kHashMul32;
+  uint32_t h = BROTLI_UNALIGNED_LOAD32LE(data) * kHashMul32;
   /* The higher bits contain more mixture from the multiplication,
      so we take our results from there. */
   return h >> (32 - BUCKET_BITS);
@@ -152,12 +154,13 @@ static BROTLI_INLINE BackwardMatch* FN(StoreAndFindMatches)(
     {
       const size_t cur_len = BROTLI_MIN(size_t, best_len_left, best_len_right);
       size_t len;
-      assert(cur_len <= MAX_TREE_COMP_LENGTH);
+      BROTLI_DCHECK(cur_len <= MAX_TREE_COMP_LENGTH);
       len = cur_len +
           FindMatchLengthWithLimit(&data[cur_ix_masked + cur_len],
                                    &data[prev_ix_masked + cur_len],
                                    max_length - cur_len);
-      assert(0 == memcmp(&data[cur_ix_masked], &data[prev_ix_masked], len));
+      BROTLI_DCHECK(
+          0 == memcmp(&data[cur_ix_masked], &data[prev_ix_masked], len));
       if (matches && len > *best_len) {
         *best_len = len;
         InitBackwardMatch(matches++, backward, len);
@@ -199,7 +202,7 @@ static BROTLI_INLINE BackwardMatch* FN(StoreAndFindMatches)(
 static BROTLI_INLINE size_t FN(FindAllMatches)(HasherHandle handle,
     const BrotliDictionary* dictionary, const uint8_t* data,
     const size_t ring_buffer_mask, const size_t cur_ix,
-    const size_t max_length, const size_t max_backward,
+    const size_t max_length, const size_t max_backward, const size_t gap,
     const BrotliEncoderParams* params, BackwardMatch* matches) {
   BackwardMatch* const orig_matches = matches;
   const size_t cur_ix_masked = cur_ix & ring_buffer_mask;
@@ -248,8 +251,10 @@ static BROTLI_INLINE size_t FN(FindAllMatches)(HasherHandle handle,
       for (l = minlen; l <= maxlen; ++l) {
         uint32_t dict_id = dict_matches[l];
         if (dict_id < kInvalidMatch) {
-          InitDictionaryBackwardMatch(matches++,
-              max_backward + (dict_id >> 5) + 1, l, dict_id & 31);
+          size_t distance = max_backward + gap + (dict_id >> 5) + 1;
+          if (distance < BROTLI_MAX_DISTANCE) {
+            InitDictionaryBackwardMatch(matches++, distance, l, dict_id & 31);
+          }
         }
       }
     }

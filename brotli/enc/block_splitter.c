@@ -8,16 +8,15 @@
 
 #include "./block_splitter.h"
 
-#include <assert.h>
 #include <string.h>  /* memcpy, memset */
 
+#include "../common/platform.h"
 #include "./bit_cost.h"
 #include "./cluster.h"
 #include "./command.h"
 #include "./fast_log.h"
 #include "./histogram.h"
 #include "./memory.h"
-#include "./port.h"
 #include "./quality.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
@@ -74,11 +73,9 @@ static void CopyLiteralsToByteArray(const Command* cmds,
   }
 }
 
-static BROTLI_INLINE unsigned int MyRand(unsigned int* seed) {
+static BROTLI_INLINE uint32_t MyRand(uint32_t* seed) {
+  /* Initial seed should be 7. In this case, loop length is (1 << 29). */
   *seed *= 16807U;
-  if (*seed == 0) {
-    *seed = 1;
-  }
   return *seed;
 }
 

@@ -16,13 +16,13 @@
 #ifndef BROTLI_ENC_BROTLI_BIT_STREAM_H_
 #define BROTLI_ENC_BROTLI_BIT_STREAM_H_
 
+#include "../common/platform.h"
 #include <brotli/types.h>
 #include "./command.h"
 #include "./context.h"
 #include "./entropy_encode.h"
 #include "./memory.h"
 #include "./metablock.h"
-#include "./port.h"
 
 #if defined(__cplusplus) || defined(c_plusplus)
 extern "C" {
@@ -95,10 +95,6 @@ BROTLI_INTERNAL void BrotliStoreMetaBlockFast(MemoryManager* m,
 BROTLI_INTERNAL void BrotliStoreUncompressedMetaBlock(
     BROTLI_BOOL is_final_block, const uint8_t* input, size_t position,
     size_t mask, size_t len, size_t* storage_ix, uint8_t* storage);
-
-/* Stores an empty metadata meta-block and syncs to a byte boundary. */
-BROTLI_INTERNAL void BrotliStoreSyncMetaBlock(size_t* storage_ix,
-                                              uint8_t* storage);
 
 #if defined(__cplusplus) || defined(c_plusplus)
 }  /* extern "C" */

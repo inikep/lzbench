@@ -10,7 +10,7 @@
 #include "lizard/lizard_compress.h"    // LIZARD_MAX_CLEVEL
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "1.7.2"
+#define PROGVERSION "1.7.3"
 #define PAD_SIZE (16*1024)
 #define MIN_PAGE_SIZE 4096  // smallest page size we expect, if it's wrong the first algorithm might be a bit slower
 #define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second
@@ -137,16 +137,16 @@ typedef struct
 
 
 
-#define LZBENCH_COMPRESSOR_COUNT 65
+#define LZBENCH_COMPRESSOR_COUNT 68
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
     { "memcpy",     "",            0,   0,    0,       0, lzbench_return_0,            lzbench_memcpy,                NULL,                    NULL },
     { "blosclz",    "2015-11-10",  1,   9,    0, 64*1024, lzbench_blosclz_compress,    lzbench_blosclz_decompress,    NULL,                    NULL },
     { "brieflz",    "1.1.0",       0,   0,    0,       0, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
-    { "brotli",     "2017-03-10",  0,  11,    0,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
-    { "brotli22",   "2017-03-10",  0,  11,   22,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
-    { "brotli24",   "2017-03-10",  0,  11,   24,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
+    { "brotli",     "2017-12-12",  0,  11,    0,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
+    { "brotli22",   "2017-12-12",  0,  11,   22,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
+    { "brotli24",   "2017-12-12",  0,  11,   24,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "crush",      "1.0",         0,   2,    0,       0, lzbench_crush_compress,      lzbench_crush_decompress,      NULL,                    NULL },
     { "csc",        "2016-10-13",  1,   5,    0,       0, lzbench_csc_compress,        lzbench_csc_decompress,        NULL,                    NULL },
     { "density",    "0.12.5 beta", 1,   3,    0,       0, lzbench_density_compress,    lzbench_density_decompress,    NULL,                    NULL }, // decompression error (shortened output)
@@ -154,9 +154,9 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "gipfeli",    "2016-07-13",  0,   0,    0,       0, lzbench_gipfeli_compress,    lzbench_gipfeli_decompress,    NULL,                    NULL },
     { "glza",       "0.8",         0,   0,    0,       0, lzbench_glza_compress,       lzbench_glza_decompress,       NULL,                    NULL },
     { "libdeflate", "0.7",         1,  12,    0,       0, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
-    { "lz4",        "1.7.5",       0,   0,    0,       0, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
-    { "lz4fast",    "1.7.5",       1,  99,    0,       0, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
-    { "lz4hc",      "1.7.5",       1,  12,    0,       0, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },
+    { "lz4",        "1.8.0",       0,   0,    0,       0, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
+    { "lz4fast",    "1.8.0",       1,  99,    0,       0, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
+    { "lz4hc",      "1.8.0",       1,  12,    0,       0, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },
     { "lizard",     "1.0",  LIZARD_MIN_CLEVEL, LIZARD_MAX_CLEVEL, 0, 0, lzbench_lizard_compress,      lzbench_lizard_decompress,        NULL,                    NULL },
     { "lzf",        "3.6",         0,   1,    0,       0, lzbench_lzf_compress,        lzbench_lzf_decompress,        NULL,                    NULL },
     { "lzfse",      "2017-03-08",  0,   0,    0,       0, lzbench_lzfse_compress,      lzbench_lzfse_decompress,      lzbench_lzfse_init,      lzbench_lzfse_deinit },
@@ -202,9 +202,12 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "yappy",      "2014-03-22",  0,  99,    0,       0, lzbench_yappy_compress,      lzbench_yappy_decompress,      lzbench_yappy_init,      NULL },
     { "zlib",       "1.2.11",      1,   9,    0,       0, lzbench_zlib_compress,       lzbench_zlib_decompress,       NULL,                    NULL },
     { "zling",      "2016-01-10",  0,   4,    0,       0, lzbench_zling_compress,      lzbench_zling_decompress,      NULL,                    NULL },
-    { "zstd",       "1.3.1",       1,  22,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zstd22",     "1.3.1",       1,  22,   22,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zstd24",     "1.3.1",       1,  22,   24,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstd",       "1.3.3",       1,  22,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstd22",     "1.3.3",       1,  22,   22,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstd24",     "1.3.3",       1,  22,   24,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstdLDM",    "1.3.3",       1,  22,    0,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
+    { "zstd22LDM",  "1.3.3",       1,  22,   22,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
+    { "zstd24LDM",  "1.3.3",       1,  22,   24,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "nakamichi",  "okamigan",    0,   0,    0,       0, lzbench_nakamichi_compress,  lzbench_nakamichi_decompress,  NULL,                    NULL },
 };
 
