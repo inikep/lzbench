@@ -66,7 +66,7 @@
 #define DENSITY_UNLIKELY(x)			(x)
 #define DENSITY_PREFETCH(x)			((void)(x))
 
-uint_fast8_t __forceinline density_msvc_ctz(uint64_t value) {
+DENSITY_FORCE_INLINE uint_fast8_t density_msvc_ctz(uint64_t value) {
 	unsigned long trailing_zero = 0;
 	if (_BitScanForward(&trailing_zero, (unsigned long)value))
 		return (uint_fast8_t)trailing_zero;

@@ -81,6 +81,8 @@ solution "Density"
 		kind "ConsoleApp"
 		language "C"
 		files {
+			"../benchmark/libs/spookyhash/src/*.h",
+			"../benchmark/libs/spookyhash/src/*.c",
 			"../benchmark/libs/cputime/src/*.h",
 			"../benchmark/libs/cputime/src/*.c",
 			"../benchmark/src/*.h",

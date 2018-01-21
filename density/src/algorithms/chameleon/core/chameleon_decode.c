@@ -43,30 +43,75 @@
  */
 
 #include "chameleon_decode.h"
+#include <inttypes.h>
 
 DENSITY_FORCE_INLINE void density_chameleon_decode_process_compressed(const uint16_t hash, uint8_t **DENSITY_RESTRICT out, density_chameleon_dictionary *const DENSITY_RESTRICT dictionary) {
     DENSITY_MEMCPY(*out, &dictionary->entries[hash].as_uint32_t, sizeof(uint32_t));
 }
 
-DENSITY_FORCE_INLINE void density_chameleon_decode_process_uncompressed(const uint32_t chunk, uint8_t **DENSITY_RESTRICT out, density_chameleon_dictionary *const DENSITY_RESTRICT dictionary) {
+DENSITY_FORCE_INLINE void density_chameleon_decode_process_uncompressed(const uint32_t chunk, density_chameleon_dictionary *const DENSITY_RESTRICT dictionary) {
     const uint16_t hash = DENSITY_CHAMELEON_HASH_ALGORITHM(chunk);
     (&dictionary->entries[hash])->as_uint32_t = chunk;
-    DENSITY_MEMCPY(*out, &chunk, sizeof(uint32_t));
 }
 
 DENSITY_FORCE_INLINE void density_chameleon_decode_kernel(const uint8_t **DENSITY_RESTRICT in, uint8_t **DENSITY_RESTRICT out, const density_bool compressed, density_chameleon_dictionary *const DENSITY_RESTRICT dictionary) {
     if (compressed) {
         uint16_t hash;
         DENSITY_MEMCPY(&hash, *in, sizeof(uint16_t));
-        density_chameleon_decode_process_compressed(hash, out, dictionary);
+        DENSITY_MEMCPY(*out, &dictionary->entries[hash].as_uint32_t, sizeof(uint32_t));
         *in += sizeof(uint16_t);
     } else {
         uint32_t unit;
         DENSITY_MEMCPY(&unit, *in, sizeof(uint32_t));
-        density_chameleon_decode_process_uncompressed(unit, out, dictionary);
+        density_chameleon_decode_process_uncompressed(unit/*, out*/, dictionary);
+        DENSITY_MEMCPY(*out, &unit, sizeof(uint32_t));
         *in += sizeof(uint32_t);
     }
     *out += sizeof(uint32_t);
+}
+
+DENSITY_FORCE_INLINE void density_chameleon_decode_kernel_dual(const uint8_t **DENSITY_RESTRICT in, uint8_t **DENSITY_RESTRICT out, const uint_fast64_t signature, const uint_fast8_t shift, density_chameleon_dictionary *const DENSITY_RESTRICT dictionary) {
+    uint32_t chunk;
+    uint32_t unit_32;
+    uint64_t unit_64;
+
+    switch((signature >> shift) & 0x3) {
+        case 0x0:
+            DENSITY_MEMCPY(&unit_64, *in, sizeof(uint32_t) + sizeof(uint32_t));
+            density_chameleon_decode_process_uncompressed((uint32_t)(unit_64 & 0xffffffff), dictionary);
+            density_chameleon_decode_process_uncompressed((uint32_t)(unit_64 >> 32), dictionary);
+            DENSITY_MEMCPY(*out, &unit_64, sizeof(uint32_t) + sizeof(uint32_t));
+            *in += (sizeof(uint32_t) + sizeof(uint32_t));
+            *out += sizeof(uint64_t);
+            break;
+        case 0x1:
+            DENSITY_MEMCPY(&unit_64, *in, sizeof(uint16_t) + sizeof(uint32_t));
+            density_chameleon_decode_process_compressed((uint16_t)(unit_64 & 0xffff), out, dictionary);
+            chunk = (uint32_t)((unit_64 >> 16) & 0xffffffff);
+            density_chameleon_decode_process_uncompressed(chunk, dictionary);
+            DENSITY_MEMCPY(*out + sizeof(uint32_t), &chunk, sizeof(uint32_t));
+            *in += (sizeof(uint16_t) + sizeof(uint32_t));
+            *out += sizeof(uint64_t);
+            break;
+        case 0x2:
+            DENSITY_MEMCPY(&unit_64, *in, sizeof(uint32_t) + sizeof(uint16_t));
+            chunk = (uint32_t)(unit_64 & 0xffffffff);
+            density_chameleon_decode_process_uncompressed(chunk, dictionary);
+            DENSITY_MEMCPY(*out, &chunk, sizeof(uint32_t));
+            *out += sizeof(uint32_t);
+            density_chameleon_decode_process_compressed((uint16_t)((unit_64 >> 32) & 0xffff), out, dictionary);
+            *in += (sizeof(uint32_t) + sizeof(uint16_t));
+            *out += sizeof(uint32_t);
+            break;
+        case 0x3:
+            DENSITY_MEMCPY(&unit_32, *in, sizeof(uint16_t) + sizeof(uint16_t));
+            density_chameleon_decode_process_compressed((uint16_t)(unit_32 & 0xffff), out, dictionary);
+            *out += sizeof(uint32_t);
+            density_chameleon_decode_process_compressed((uint16_t)(unit_32 >> 16), out, dictionary);
+            *in += (sizeof(uint16_t) + sizeof(uint16_t));
+            *out += sizeof(uint32_t);
+            break;
+    }
 }
 
 DENSITY_FORCE_INLINE bool density_chameleon_decode_test_compressed(const uint_fast64_t signature, const uint_fast8_t shift) {
@@ -81,12 +126,12 @@ DENSITY_FORCE_INLINE void density_chameleon_decode_256(const uint8_t **DENSITY_R
     uint_fast8_t count = 0;
 
 #ifdef __clang__
-    for(uint_fast8_t count_b = 0; count_b < 8; count_b ++) {
-        DENSITY_UNROLL_8(density_chameleon_decode_kernel(in, out, density_chameleon_decode_test_compressed(signature, count++), dictionary));
+    for(uint_fast8_t count_b = 0; count_b < 16; count_b ++) {
+        DENSITY_UNROLL_2(density_chameleon_decode_kernel_dual(in, out, signature, count, dictionary); count+= 2);
     }
 #else
-    for (uint_fast8_t count_b = 0; count_b < 16; count_b++) {
-        DENSITY_UNROLL_4(density_chameleon_decode_kernel(in, out, density_chameleon_decode_test_compressed(signature, count++), dictionary));
+    for(uint_fast8_t count_b = 0; count_b < 32; count_b ++) {
+        DENSITY_UNROLL_2(density_chameleon_decode_4(in, out, signature, count ++, dictionary));
     }
 #endif
 }

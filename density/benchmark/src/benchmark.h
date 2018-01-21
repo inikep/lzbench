@@ -34,6 +34,8 @@
 #include <inttypes.h>
 #include <time.h>
 #include "../../src/density_api.h"
+#include "../libs/cputime/src/cputime_api.h"
+#include "../libs/spookyhash/src/spookyhash_api.h"
 
 #if defined(_WIN64) || defined(_WIN32)
 #else
@@ -88,9 +90,6 @@
 #define DENSITY_BENCHMARK_PLATFORM_STRING         "an unknown platform"
 #endif
 
-#include "../../src/density_api.h"
-#include "../libs/cputime/src/cputime_api.h"
-
 #define DENSITY_ESCAPE_CHARACTER            ((char)27)
 
 #ifdef DENSITY_BENCHMARK_ALLOW_ANSI_ESCAPE_SEQUENCES
@@ -122,6 +121,9 @@
                                                 DENSITY_BENCHMARK_BOLD(printf("Thank you !\n"));\
                                             }\
                                             fflush(stdout);\
-                                            exit(0);
+                                            exit(EXIT_FAILURE);
 
 #endif
+
+#define DENSITY_BENCHMARK_HASH_SEED_1       0x0123456789abcdefllu
+#define DENSITY_BENCHMARK_HASH_SEED_2       0xfedcba9876543210llu

@@ -46,7 +46,7 @@ void density_benchmark_client_usage() {
     printf("                                    3 = Lion algorithm\n");
     printf("  -c                                Compress only\n");
     printf("  -f                                Activate fuzzer mode (pseudorandom generated data)\n\n");
-    exit(0);
+    exit(EXIT_SUCCESS);
 }
 
 void density_benchmark_format_decimal(uint64_t number) {
@@ -154,6 +154,10 @@ int main(int argc, char *argv[]) {
     density_benchmark_format_decimal(2 * memory_allocated);
     printf(" bytes of in-memory work space\n");
 
+    uint64_t original_hash_1 = DENSITY_BENCHMARK_HASH_SEED_1;
+    uint64_t original_hash_2 = DENSITY_BENCHMARK_HASH_SEED_2;
+    spookyhash_128(in, uncompressed_size, &original_hash_1, &original_hash_2);
+
     printf("\n");
     for (DENSITY_ALGORITHM compression_mode = start_mode; compression_mode <= end_mode; compression_mode++) {
         // Print algorithm info
@@ -182,7 +186,6 @@ int main(int argc, char *argv[]) {
             DENSITY_BENCHMARK_BOLD(printf("%s", file_path));
         }
         printf(" copied in memory\n");
-        printf("Pre-heating ...\n");
         density_processing_result result = density_compress(in, uncompressed_size, out, memory_allocated, compression_mode);
         if (result.state) {
             DENSITY_BENCHMARK_ERROR(printf("During compress API returned error %i (%s).", result.state, density_benchmark_convert_state_to_text(result.state)), true);
@@ -190,6 +193,7 @@ int main(int argc, char *argv[]) {
         const uint_fast64_t compressed_size = result.bytesWritten;
 
         if (!compression_only) {
+            memset(in, 0, memory_allocated);
             result = density_decompress(out, compressed_size, in, memory_allocated);
             if (result.state) {
                 DENSITY_BENCHMARK_ERROR(printf("During decompress API returned error %i (%s).", result.state, density_benchmark_convert_state_to_text(result.state)), true);
@@ -201,6 +205,19 @@ int main(int argc, char *argv[]) {
                 density_benchmark_format_decimal(uncompressed_size);
                 printf(" bytes).");, true);
             }
+
+            uint64_t hash_1 = DENSITY_BENCHMARK_HASH_SEED_1;
+            uint64_t hash_2 = DENSITY_BENCHMARK_HASH_SEED_2;
+            spookyhash_128(in, uncompressed_size, &hash_1, &hash_2);
+            if(hash_1 != original_hash_1 || hash_2 != original_hash_2) {
+                DENSITY_BENCHMARK_ERROR(printf("Original and round-trip data hashes do not match (");
+                printf("0x%" PRIx64 "%" PRIx64, hash_1, hash_2);
+                printf(" vs. ");
+                printf("0x%" PRIx64 "%" PRIx64, original_hash_1, original_hash_2);
+                printf(").");, true);
+            }
+
+            printf("Original and round-trip data hashes match. ");
         }
         printf("Starting main bench.\n");
         if (compression_only)
