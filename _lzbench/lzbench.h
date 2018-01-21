@@ -42,22 +42,22 @@
 	typedef LARGE_INTEGER bench_rate_t;
 	typedef LARGE_INTEGER bench_timer_t;
 	#define InitTimer(rate) if (!QueryPerformanceFrequency(&rate)) { printf("QueryPerformance not present"); };
-	#define GetTime(now) QueryPerformanceCounter(&now); 
+	#define GetTime(now) QueryPerformanceCounter(&now);
 	#define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/rate.QuadPart)
 	void uni_sleep(UINT milisec) { Sleep(milisec); };
     #ifndef fseeko
 		#ifdef _fseeki64
-            #define fseeko _fseeki64 
+            #define fseeko _fseeki64
             #define ftello _ftelli64
 		#else
-            #define fseeko fseek 
+            #define fseeko fseek
             #define ftello ftell
         #endif
 	#endif
 	#define PROGOS "Windows"
 #else
     #include <stdarg.h> // va_args
-	#include <time.h>   
+	#include <time.h>
 	#include <unistd.h>
 	#include <sys/resource.h>
 	void uni_sleep(uint32_t milisec) { usleep(milisec * 1000); };
@@ -149,7 +149,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "brotli24",   "2017-12-12",  0,  11,   24,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "crush",      "1.0",         0,   2,    0,       0, lzbench_crush_compress,      lzbench_crush_decompress,      NULL,                    NULL },
     { "csc",        "2016-10-13",  1,   5,    0,       0, lzbench_csc_compress,        lzbench_csc_decompress,        NULL,                    NULL },
-    { "density",    "0.12.5 beta", 1,   3,    0,       0, lzbench_density_compress,    lzbench_density_decompress,    NULL,                    NULL }, // decompression error (shortened output)
+    { "density",    "0.14.1",	   1,   3,    0,       0, lzbench_density_compress,    lzbench_density_decompress,    NULL,                    NULL },
     { "fastlz",     "0.1",         1,   2,    0,       0, lzbench_fastlz_compress,     lzbench_fastlz_decompress,     NULL,                    NULL },
     { "gipfeli",    "2016-07-13",  0,   0,    0,       0, lzbench_gipfeli_compress,    lzbench_gipfeli_decompress,    NULL,                    NULL },
     { "glza",       "0.8",         0,   0,    0,       0, lzbench_glza_compress,       lzbench_glza_decompress,       NULL,                    NULL },
