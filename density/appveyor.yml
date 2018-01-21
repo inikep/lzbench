@@ -1,0 +1,22 @@
+version: 0.14.1.{build}
+image: Visual Studio 2015
+init:
+- cmd:
+install:
+- cmd: >-
+    choco install wget unzip
+
+    cd build
+
+    wget https://github.com/premake/premake-core/releases/download/v5.0.0-alpha12/premake-5.0.0-alpha12-windows.zip -nv -O premake5.zip
+
+    unzip premake5.zip
+
+    del premake5.zip
+build_script:
+- cmd: >-
+    premake5.exe vs2015
+
+    msbuild.exe Density.sln
+test_script:
+- cmd: bin\Release\benchmark.exe -f

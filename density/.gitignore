@@ -1,0 +1,4 @@
+build/*.make
+build/Makefile
+build/bin/
+build/obj/
