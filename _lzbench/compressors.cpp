@@ -1767,6 +1767,7 @@ int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 
 #if 1
     zstd_params->zparams = ZSTD_getParams(level, insize, 0);
+    ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_p_compressionLevel, level);
     zstd_params->zparams.fParams.contentSizeFlag = 1;
 
     if (windowLog && zstd_params->zparams.cParams.windowLog > windowLog) {
