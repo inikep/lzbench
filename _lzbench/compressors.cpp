@@ -1427,7 +1427,7 @@ int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 
-#ifndef BENCH_REMOVE_XZ
+#ifndef BENCH_REMOVE_XPACK
 #include "xpack/lib/libxpack.h" 
 
 typedef struct {
