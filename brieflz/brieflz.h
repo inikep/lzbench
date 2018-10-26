@@ -3,7 +3,7 @@
  *
  * C/C++ header file
  *
- * Copyright (c) 2002-2015 Joergen Ibsen
+ * Copyright (c) 2002-2018 Joergen Ibsen
  *
  * This software is provided 'as-is', without any express or implied
  * warranty. In no event will the authors be held liable for any damages
@@ -33,9 +33,9 @@ extern "C" {
 #endif
 
 #define BLZ_VER_MAJOR 1        /**< Major version number */
-#define BLZ_VER_MINOR 1        /**< Minor version number */
+#define BLZ_VER_MINOR 2        /**< Minor version number */
 #define BLZ_VER_PATCH 0        /**< Patch version number */
-#define BLZ_VER_STRING "1.1.0" /**< Version number as a string */
+#define BLZ_VER_STRING "1.2.0" /**< Version number as a string */
 
 #ifdef BLZ_DLL
 #  if defined(_WIN32) || defined(__CYGWIN__)
@@ -69,17 +69,6 @@ extern "C" {
 #endif
 
 /**
- * Get required size of `workmem` buffer.
- *
- * @see blz_pack
- *
- * @param src_size number of bytes to compress
- * @return required size in bytes of `workmem` buffer
- */
-BLZ_API unsigned long
-blz_workmem_size(unsigned long src_size);
-
-/**
  * Get bound on compressed data size.
  *
  * @see blz_pack
@@ -89,6 +78,17 @@ blz_workmem_size(unsigned long src_size);
  */
 BLZ_API unsigned long
 blz_max_packed_size(unsigned long src_size);
+
+/**
+ * Get required size of `workmem` buffer.
+ *
+ * @see blz_pack
+ *
+ * @param src_size number of bytes to compress
+ * @return required size in bytes of `workmem` buffer
+ */
+BLZ_API unsigned long
+blz_workmem_size(unsigned long src_size);
 
 /**
  * Compress `src_size` bytes of data from `src` to `dst`.
@@ -101,6 +101,35 @@ blz_max_packed_size(unsigned long src_size);
  */
 BLZ_API unsigned long
 blz_pack(const void *src, void *dst, unsigned long src_size, void *workmem);
+
+/**
+ * Get required size of `workmem` buffer.
+ *
+ * @see blz_pack_level
+ *
+ * @param src_size number of bytes to compress
+ * @param level compression level
+ * @return required size in bytes of `workmem` buffer
+ */
+BLZ_API unsigned long
+blz_workmem_size_level(unsigned long src_size, int level);
+
+/**
+ * Compress `src_size` bytes of data from `src` to `dst`.
+ *
+ * Compression levels between 1 and 9 offer a trade-off between
+ * time/space and ratio. Level 10 is optimal but very slow.
+ *
+ * @param src pointer to data
+ * @param dst pointer to where to place compressed data
+ * @param src_size number of bytes to compress
+ * @param workmem pointer to memory for temporary use
+ * @param level compression level
+ * @return size of compressed data
+ */
+BLZ_API unsigned long
+blz_pack_level(const void *src, void *dst, unsigned long src_size,
+               void *workmem, int level);
 
 /**
  * Decompress `depacked_size` bytes of data from `src` to `dst`.
