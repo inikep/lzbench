@@ -29,19 +29,30 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * 01/11/13 13:39
+ * 11/10/13 02:06
  */
 
-#include "globals.h"
+#ifndef DENSITY_FILE_HEADER_H
+#define DENSITY_FILE_HEADER_H
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_major() {
-    return DENSITY_MAJOR_VERSION;
-}
+#include <stdio.h>
+#include <time.h>
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_minor() {
-    return DENSITY_MINOR_VERSION;
-}
+#include "../globals.h"
+#include "../density_api.h"
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_revision() {
-    return DENSITY_REVISION;
-}
+#pragma pack(push)
+#pragma pack(4)
+
+typedef struct {
+    density_byte version[3];
+    density_byte algorithm;
+    density_byte reserved[4];
+} density_header;
+
+#pragma pack(pop)
+
+DENSITY_WINDOWS_EXPORT void density_header_read(const uint8_t ** DENSITY_RESTRICT_DECLARE, density_header * DENSITY_RESTRICT_DECLARE);
+DENSITY_WINDOWS_EXPORT void density_header_write(uint8_t ** DENSITY_RESTRICT_DECLARE, const DENSITY_ALGORITHM);
+
+#endif

@@ -1,7 +1,7 @@
 /*
  * Centaurean Density
  *
- * Copyright (c) 2013, Guillaume Voirin
+ * Copyright (c) 2015, Guillaume Voirin
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,19 +29,15 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * 01/11/13 13:39
+ * 14/10/15 02:06
  */
 
-#include "globals.h"
+#include "algorithms.h"
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_major() {
-    return DENSITY_MAJOR_VERSION;
-}
-
-DENSITY_WINDOWS_EXPORT uint8_t density_version_minor() {
-    return DENSITY_MINOR_VERSION;
-}
-
-DENSITY_WINDOWS_EXPORT uint8_t density_version_revision() {
-    return DENSITY_REVISION;
+DENSITY_WINDOWS_EXPORT DENSITY_FORCE_INLINE void density_algorithms_prepare_state(density_algorithm_state *const DENSITY_RESTRICT state, void *const DENSITY_RESTRICT dictionary) {
+    state->dictionary = dictionary;
+    state->copy_penalty = 0;
+    state->copy_penalty_start = 1;
+    state->previous_incompressible = false;
+    state->counter = 0;
 }

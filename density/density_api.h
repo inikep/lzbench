@@ -35,18 +35,58 @@
 #ifndef DENSITY_API_H
 #define DENSITY_API_H
 
-#include "density_api_data_structures.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <stdio.h>
+#include <stdint.h>
+#include <stdbool.h>
+
+#if defined(_WIN64) || defined(_WIN32)
+#define DENSITY_WINDOWS_EXPORT __declspec(dllexport)
+#else
+#define DENSITY_WINDOWS_EXPORT
+#endif
+
 
 /***********************************************************************************************************************
  *                                                                                                                     *
- * Density condition sets                                                                                              *
+ * API data structures                                                                                                 *
  *                                                                                                                     *
  ***********************************************************************************************************************/
 
-/*
- * This is the minimum output buffer size accepted (1024 bytes), please use bigger buffers when possible to preserve performance
- */
-#define DENSITY_MINIMUM_OUTPUT_BUFFER_SIZE         (1 << 10)
+typedef uint8_t density_byte;
+typedef bool density_bool;
+
+typedef enum {
+    DENSITY_ALGORITHM_CHAMELEON = 1,
+    DENSITY_ALGORITHM_CHEETAH = 2,
+    DENSITY_ALGORITHM_LION = 3,
+} DENSITY_ALGORITHM;
+
+typedef enum {
+    DENSITY_STATE_OK = 0,                                        // Everything went alright
+    DENSITY_STATE_ERROR_INPUT_BUFFER_TOO_SMALL,                  // Input buffer size is too small
+    DENSITY_STATE_ERROR_OUTPUT_BUFFER_TOO_SMALL,                 // Output buffer size is too small
+    DENSITY_STATE_ERROR_DURING_PROCESSING,                       // Error during processing
+    DENSITY_STATE_ERROR_INVALID_CONTEXT,                         // Invalid context
+    DENSITY_STATE_ERROR_INVALID_ALGORITHM,                       // Invalid algorithm
+} DENSITY_STATE;
+
+typedef struct {
+    DENSITY_ALGORITHM algorithm;
+    bool dictionary_type;
+    size_t dictionary_size;
+    void* dictionary;
+} density_context;
+
+typedef struct {
+    DENSITY_STATE state;
+    uint_fast64_t bytesRead;
+    uint_fast64_t bytesWritten;
+    density_context* context;
+} density_processing_result;
 
 
 
@@ -75,151 +115,106 @@ DENSITY_WINDOWS_EXPORT uint8_t density_version_revision(void);
 
 /***********************************************************************************************************************
  *                                                                                                                     *
- * Density buffer API functions                                                                                        *
+ * Density API functions                                                                                               *
  *                                                                                                                     *
  ***********************************************************************************************************************/
 
 /*
- * Compress an input_buffer of input_size bytes and store the result in output_buffer, using compression_mode and block_type.
- * mem_alloc and mem_free can be used to allocate/free memory using specific malloc and free functions.
- * If NULL is specified, the standard malloc/free will be used.
+ * Return the required size of an algorithm's dictionary
+ *
+ * @param algorithm the algorithm to use this dictionary for
+ */
+DENSITY_WINDOWS_EXPORT size_t density_get_dictionary_size(DENSITY_ALGORITHM algorithm);
+
+/*
+ * Return an output buffer byte size which guarantees enough space for encoding input_size bytes
+ *
+ * @param input_size the size of the input data which is about to be compressed
+ */
+DENSITY_WINDOWS_EXPORT uint_fast64_t density_compress_safe_size(const uint_fast64_t input_size);
+
+/*
+ * Return an output buffer byte size which, if expected_decompressed_output_size is correct, will enable density to decompress properly
+ *
+ * @param expected_decompressed_output_size the expected (original) size of the decompressed data
+ */
+DENSITY_WINDOWS_EXPORT uint_fast64_t density_decompress_safe_size(const uint_fast64_t expected_decompressed_output_size);
+
+/*
+ * Releases a context from memory.
+ *
+ * @param context the context to free
+ * @param mem_free the memory freeing function. If set to NULL, free() is used
+ */
+DENSITY_WINDOWS_EXPORT void density_free_context(density_context *const context, void (*mem_free)(void *));
+
+/*
+ * Allocate a context in memory using the provided function and optional dictionary
+ *
+ * @param algorithm the required algorithm
+ * @param custom_dictionary use an eventual custom dictionary ? If set to true the context's dictionary will have to be allocated
+ * @param mem_alloc the memory allocation function. If set to NULL, malloc() is used
+ */
+DENSITY_WINDOWS_EXPORT density_processing_result density_compress_prepare_context(const DENSITY_ALGORITHM algorithm, const bool custom_dictionary, void *(*mem_alloc)(size_t));
+
+/*
+ * Compress an input_buffer of input_size bytes and store the result in output_buffer, using the provided context.
+ * Important note   * this function could be unsafe memory-wise if not used properly.
  *
  * @param input_buffer a buffer of bytes
  * @param input_size the size in bytes of input_buffer
  * @param output_buffer a buffer of bytes
  * @param output_size the size of output_buffer, must be at least DENSITY_MINIMUM_OUTPUT_BUFFER_SIZE
- * @param compression_mode the compression mode
- * @param block_type the type of data blocks Density will generate.
- *      The option DENSITY_BLOCK_TYPE_WITH_HASHSUM_INTEGRITY_CHECK adds data integrity checks in the encoded output.
- *      The output size becomes therefore slightly bigger (a few hundred bytes for huge input files).
- * @param mem_alloc the memory allocation function
- * @param mem_free the memory freeing function
+ * @param context a pointer to a context structure
  */
-DENSITY_WINDOWS_EXPORT density_buffer_processing_result density_buffer_compress(const uint8_t* input_buffer, const uint_fast64_t input_size, uint8_t* output_buffer, const uint_fast64_t output_size, const DENSITY_COMPRESSION_MODE compression_mode, const DENSITY_BLOCK_TYPE block_type, void *(*mem_alloc)(size_t), void (*mem_free)(void *));
+DENSITY_WINDOWS_EXPORT density_processing_result density_compress_with_context(const uint8_t *input_buffer, const uint_fast64_t input_size, uint8_t *output_buffer, const uint_fast64_t output_size, density_context *const context);
+
+/*
+ * Compress an input_buffer of input_size bytes and store the result in output_buffer.
+ *
+ * @param input_buffer a buffer of bytes
+ * @param input_size the size in bytes of input_buffer
+ * @param output_buffer a buffer of bytes
+ * @param output_size the size of output_buffer, must be at least DENSITY_MINIMUM_OUTPUT_BUFFER_SIZE
+ * @param algorithm the algorithm to use
+ */
+DENSITY_WINDOWS_EXPORT density_processing_result density_compress(const uint8_t *input_buffer, const uint_fast64_t input_size, uint8_t *output_buffer, const uint_fast64_t output_size, const DENSITY_ALGORITHM algorithm);
+
+/*
+ * Reads the compressed data's header and creates an adequate decompression context.
+ *
+ * @param input_buffer a buffer of bytes
+ * @param input_size the size in bytes of input_buffer
+ * @param custom_dictionary use a custom dictionary ? If set to true the context's dictionary will have to be allocated
+ * @param mem_alloc the memory allocation function. If set to NULL, malloc() is used
+ */
+DENSITY_WINDOWS_EXPORT density_processing_result density_decompress_prepare_context(const uint8_t *input_buffer, const uint_fast64_t input_size, const bool custom_dictionary, void *(*mem_alloc)(size_t));
+
+/*
+ * Decompress an input_buffer of input_size bytes and store the result in output_buffer, using the provided dictionary.
+ * Important notes  * You must know in advance the algorithm used for compression to provide the proper dictionary.
+ *                  * This function could be unsafe memory-wise if not used properly.
+ *
+ * @param input_buffer a buffer of bytes
+ * @param input_size the size in bytes of input_buffer
+ * @param output_buffer a buffer of bytes
+ * @param output_size the size of output_buffer, must be at least DENSITY_MINIMUM_OUTPUT_BUFFER_SIZE
+ * @param dictionaries a pointer to a dictionary
+ */
+DENSITY_WINDOWS_EXPORT density_processing_result density_decompress_with_context(const uint8_t * input_buffer, const uint_fast64_t input_size, uint8_t *output_buffer, const uint_fast64_t output_size, density_context *const context);
 
 /*
  * Decompress an input_buffer of input_size bytes and store the result in output_buffer.
- * mem_alloc and mem_free can be used to allocate/free memory using specific malloc and free functions.
- * If NULL is specified, the standard malloc/free will be used.
  *
  * @param input_buffer a buffer of bytes
  * @param input_size the size in bytes of input_buffer
  * @param output_buffer a buffer of bytes
  * @param output_size the size of output_buffer, must be at least DENSITY_MINIMUM_OUTPUT_BUFFER_SIZE
- * @param mem_alloc the memory allocation function
- * @param mem_free the memory freeing function
  */
-DENSITY_WINDOWS_EXPORT density_buffer_processing_result density_buffer_decompress(const uint8_t* input_buffer, const uint_fast64_t input_size, uint8_t* output_buffer, const uint_fast64_t output_size, void *(*mem_alloc)(size_t), void (*mem_free)(void *));
+DENSITY_WINDOWS_EXPORT density_processing_result density_decompress(const uint8_t *input_buffer, const uint_fast64_t input_size, uint8_t *output_buffer, const uint_fast64_t output_size);
 
-
-
-/***********************************************************************************************************************
- *                                                                                                                     *
- * Density stream API functions                                                                                        *
- *                                                                                                                     *
- ***********************************************************************************************************************/
-
-/*
- * Allocate a stream in memory, with a user-defined memory allocation function.
- * This function will then be used throughout the library to allocate memory.
- * If NULL is specified, the standard malloc will be used.
- *
- * @param mem_alloc the memory allocation function
- * @param mem_free the memory freeing function
- */
-DENSITY_WINDOWS_EXPORT density_stream *density_stream_create(void *(*mem_alloc)(size_t), void (*mem_free)(void *));
-
-/*
- * Frees a stream from memory. This method uses a supplied memory freeing function.
- * If NULL is specified, the standard free will be used.
- *
- * @param stream the stream
- */
-DENSITY_WINDOWS_EXPORT void density_stream_destroy(density_stream *stream);
-
-/*
- * Prepare a stream with the encapsulated input/output buffers. This function *must* be called upon changing either buffer pointers / sizes.
- *
- * @param stream the stream
- * @param input_buffer a buffer of bytes
- * @param input_size the size in bytes of input_buffer
- * @param output_buffer a buffer of bytes
- * @param output_size the size of output_buffer, must be at least DENSITY_MINIMUM_OUTPUT_BUFFER_SIZE
- * @param mem_alloc a pointer to a memory allocation function. If NULL, the standard malloc(size_t) is used.
- * @param mem_free a pointer to a memory freeing function. If NULL, the standard free(void*) is used.
- */
-DENSITY_WINDOWS_EXPORT DENSITY_STREAM_STATE density_stream_prepare(density_stream *stream, const uint8_t* input_buffer, const uint_fast64_t input_size, uint8_t* output_buffer, const uint_fast64_t output_size);
-
-/*
- * Update the stream's input
- *
- * @param stream the stream
- * @param in a byte array
- * @param availableIn the size of the byte array
- */
-DENSITY_WINDOWS_EXPORT DENSITY_STREAM_STATE density_stream_update_input(density_stream *stream, const uint8_t *in, const uint_fast64_t availableIn);
-
-/*
- * Update the stream's output
- *
- * @param stream the stream
- * @param out a byte array
- * @param availableOut the size of the byte array
- */
-DENSITY_WINDOWS_EXPORT DENSITY_STREAM_STATE density_stream_update_output(density_stream *stream, uint8_t *out, const uint_fast64_t availableOut);
-
-/*
- * Returns the usable bytes (bytes that have been written by Density) on the output memory location
- *
- * @param stream the stream
- */
-DENSITY_WINDOWS_EXPORT uint_fast64_t density_stream_output_available_for_use(density_stream* stream);
-
-/*
- * Initialize compression
- *
- * @param stream the stream
- * @param compression_mode the compression mode
- * @param block_type the type of data blocks Density will generate.
- *      The option DENSITY_BLOCK_TYPE_WITH_HASHSUM_INTEGRITY_CHECK adds data integrity checks in the encoded output.
- *      The output size becomes therefore slightly bigger (a few hundred bytes for huge input files).
- */
-DENSITY_WINDOWS_EXPORT DENSITY_STREAM_STATE density_stream_compress_init(density_stream *stream, const DENSITY_COMPRESSION_MODE compression_mode, const DENSITY_BLOCK_TYPE block_type);
-
-/*
- * Stream decompression initialization
- *
- * @param stream the stream
- * @param header_information stream header information, use NULL if you don't need it
- */
-DENSITY_WINDOWS_EXPORT DENSITY_STREAM_STATE density_stream_decompress_init(density_stream *stream, density_stream_header_information *header_information);
-
-/*
- * Stream compression function, has to be called repetitively.
- *
- * @param stream the stream
- */
-DENSITY_WINDOWS_EXPORT DENSITY_STREAM_STATE density_stream_compress_continue(density_stream *stream);
-
-/*
- * Stream decompression function, has to be called repetitively.
- *
- * @param stream the stream
- */
-DENSITY_WINDOWS_EXPORT DENSITY_STREAM_STATE density_stream_decompress_continue(density_stream *stream);
-
-/*
- * Call once processing is finished, to clear up the environment and release eventual allocated memory.
- *
- * @param stream the stream
- */
-DENSITY_WINDOWS_EXPORT DENSITY_STREAM_STATE density_stream_compress_finish(density_stream *stream);
-
-/*
- * Call once processing is finished, to clear up the environment and release eventual allocated memory.
- *
- * @param stream the stream
- */
-DENSITY_WINDOWS_EXPORT DENSITY_STREAM_STATE density_stream_decompress_finish(density_stream *stream);
+#ifdef __cplusplus
+}
+#endif
 
 #endif

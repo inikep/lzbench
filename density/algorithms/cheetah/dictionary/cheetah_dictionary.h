@@ -29,19 +29,42 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * 01/11/13 13:39
+ * 06/12/13 20:20
+ *
+ * -----------------
+ * Cheetah algorithm
+ * -----------------
+ *
+ * Author(s)
+ * Guillaume Voirin (https://github.com/gpnuma)
+ * Piotr Tarsa (https://github.com/tarsa)
+ *
+ * Description
+ * Very fast two level dictionary hash algorithm derived from Chameleon, with predictions lookup
  */
 
-#include "globals.h"
+#ifndef DENSITY_CHEETAH_DICTIONARY_H
+#define DENSITY_CHEETAH_DICTIONARY_H
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_major() {
-    return DENSITY_MAJOR_VERSION;
-}
+#include "../cheetah.h"
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_minor() {
-    return DENSITY_MINOR_VERSION;
-}
+#include <string.h>
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_revision() {
-    return DENSITY_REVISION;
-}
+#pragma pack(push)
+#pragma pack(4)
+typedef struct {
+    uint32_t chunk_a;
+    uint32_t chunk_b;
+} density_cheetah_dictionary_entry;
+
+typedef struct {
+    uint32_t next_chunk_prediction;
+} density_cheetah_dictionary_prediction_entry;
+
+typedef struct {
+    density_cheetah_dictionary_entry entries[1 << DENSITY_CHEETAH_HASH_BITS];
+    density_cheetah_dictionary_prediction_entry prediction_entries[1 << DENSITY_CHEETAH_HASH_BITS];
+} density_cheetah_dictionary;
+#pragma pack(pop)
+
+#endif

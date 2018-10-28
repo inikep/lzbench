@@ -29,19 +29,29 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * 01/11/13 13:39
+ * 11/10/13 17:56
  */
 
-#include "globals.h"
+#include "header.h"
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_major() {
-    return DENSITY_MAJOR_VERSION;
+DENSITY_WINDOWS_EXPORT DENSITY_FORCE_INLINE void density_header_read(const uint8_t **DENSITY_RESTRICT in, density_header *DENSITY_RESTRICT header) {
+    header->version[0] = *(*in);
+    header->version[1] = *(*in + 1);
+    header->version[2] = *(*in + 2);
+    header->algorithm = *(*in + 3);
+
+    *in += sizeof(density_header);
 }
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_minor() {
-    return DENSITY_MINOR_VERSION;
-}
+DENSITY_WINDOWS_EXPORT DENSITY_FORCE_INLINE void density_header_write(uint8_t **DENSITY_RESTRICT out, const DENSITY_ALGORITHM algorithm) {
+    *(*out) = DENSITY_MAJOR_VERSION;
+    *(*out + 1) = DENSITY_MINOR_VERSION;
+    *(*out + 2) = DENSITY_REVISION;
+    *(*out + 3) = algorithm;
+    *(*out + 4) = 0;
+    *(*out + 5) = 0;
+    *(*out + 6) = 0;
+    *(*out + 7) = 0;
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_revision() {
-    return DENSITY_REVISION;
+    *out += sizeof(density_header);
 }

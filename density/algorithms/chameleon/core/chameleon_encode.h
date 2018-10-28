@@ -29,19 +29,25 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * 01/11/13 13:39
+ * 23/06/15 21:51
+ *
+ * -------------------
+ * Chameleon algorithm
+ * -------------------
+ *
+ * Author(s)
+ * Guillaume Voirin (https://github.com/gpnuma)
+ *
+ * Description
+ * Hash based superfast kernel
  */
 
-#include "globals.h"
+#ifndef DENSITY_CHAMELEON_ENCODE_H
+#define DENSITY_CHAMELEON_ENCODE_H
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_major() {
-    return DENSITY_MAJOR_VERSION;
-}
+#include "../dictionary/chameleon_dictionary.h"
+#include "../../algorithms.h"
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_minor() {
-    return DENSITY_MINOR_VERSION;
-}
+DENSITY_WINDOWS_EXPORT density_algorithm_exit_status density_chameleon_encode(density_algorithm_state *const DENSITY_RESTRICT_DECLARE, const uint8_t **DENSITY_RESTRICT_DECLARE, const uint_fast64_t, uint8_t **DENSITY_RESTRICT_DECLARE, const uint_fast64_t);
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_revision() {
-    return DENSITY_REVISION;
-}
+#endif

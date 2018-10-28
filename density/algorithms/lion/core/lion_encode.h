@@ -1,7 +1,7 @@
 /*
  * Centaurean Density
  *
- * Copyright (c) 2013, Guillaume Voirin
+ * Copyright (c) 2015, Guillaume Voirin
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,19 +29,26 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * 01/11/13 13:39
+ * 24/06/15 18:56
+ *
+ * --------------
+ * Lion algorithm
+ * --------------
+ *
+ * Author(s)
+ * Guillaume Voirin (https://github.com/gpnuma)
+ *
+ * Description
+ * Multiform compression algorithm
  */
 
-#include "globals.h"
+#ifndef DENSITY_LION_ENCODE_H
+#define DENSITY_LION_ENCODE_H
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_major() {
-    return DENSITY_MAJOR_VERSION;
-}
+#include "../dictionary/lion_dictionary.h"
+#include "../forms/lion_form_model.h"
+#include "../../algorithms.h"
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_minor() {
-    return DENSITY_MINOR_VERSION;
-}
+DENSITY_WINDOWS_EXPORT density_algorithm_exit_status density_lion_encode(density_algorithm_state *const DENSITY_RESTRICT_DECLARE, const uint8_t **DENSITY_RESTRICT_DECLARE, const uint_fast64_t, uint8_t **DENSITY_RESTRICT_DECLARE, const uint_fast64_t);
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_revision() {
-    return DENSITY_REVISION;
-}
+#endif

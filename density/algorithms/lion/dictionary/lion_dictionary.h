@@ -1,7 +1,7 @@
 /*
  * Centaurean Density
  *
- * Copyright (c) 2013, Guillaume Voirin
+ * Copyright (c) 2015, Guillaume Voirin
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -29,19 +29,45 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * 01/11/13 13:39
+ * 12/02/15 23:09
+ *
+ * --------------
+ * Lion algorithm
+ * --------------
+ *
+ * Author(s)
+ * Guillaume Voirin (https://github.com/gpnuma)
+ *
+ * Description
+ * Multiform compression algorithm
  */
 
-#include "globals.h"
+#ifndef DENSITY_LION_DICTIONARY_H
+#define DENSITY_LION_DICTIONARY_H
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_major() {
-    return DENSITY_MAJOR_VERSION;
-}
+#include "../lion.h"
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_minor() {
-    return DENSITY_MINOR_VERSION;
-}
+#pragma pack(push)
+#pragma pack(4)
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_revision() {
-    return DENSITY_REVISION;
-}
+typedef struct {
+    uint32_t chunk_a;
+    uint32_t chunk_b;
+    uint32_t chunk_c;
+    uint32_t chunk_d;
+    uint32_t chunk_e;
+} density_lion_dictionary_chunk_entry;
+
+typedef struct {
+    uint32_t next_chunk_a;
+    uint32_t next_chunk_b;
+    uint32_t next_chunk_c;
+} density_lion_dictionary_chunk_prediction_entry;
+
+typedef struct {
+    density_lion_dictionary_chunk_entry chunks[1 << DENSITY_LION_CHUNK_HASH_BITS];
+    density_lion_dictionary_chunk_prediction_entry predictions[1 << DENSITY_LION_CHUNK_HASH_BITS];
+} density_lion_dictionary;
+#pragma pack(pop)
+
+#endif

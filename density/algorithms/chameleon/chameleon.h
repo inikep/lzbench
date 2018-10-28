@@ -29,19 +29,42 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * 01/11/13 13:39
+ * 24/10/13 11:57
+ *
+ * -------------------
+ * Chameleon algorithm
+ * -------------------
+ *
+ * Author(s)
+ * Guillaume Voirin (https://github.com/gpnuma)
+ *
+ * Description
+ * Hash based superfast kernel
  */
 
-#include "globals.h"
+#ifndef DENSITY_CHAMELEON_H
+#define DENSITY_CHAMELEON_H
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_major() {
-    return DENSITY_MAJOR_VERSION;
-}
+#include "../../globals.h"
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_minor() {
-    return DENSITY_MINOR_VERSION;
-}
+#define DENSITY_CHAMELEON_HASH_BITS                                         16
+#define DENSITY_CHAMELEON_HASH_MULTIPLIER                                   (uint32_t)0x9D6EF916lu
 
-DENSITY_WINDOWS_EXPORT uint8_t density_version_revision() {
-    return DENSITY_REVISION;
-}
+#define DENSITY_CHAMELEON_HASH_ALGORITHM(value32)                           (uint16_t)((value32 * DENSITY_CHAMELEON_HASH_MULTIPLIER) >> (32 - DENSITY_CHAMELEON_HASH_BITS))
+
+typedef enum {
+    DENSITY_CHAMELEON_SIGNATURE_FLAG_CHUNK = 0x0,
+    DENSITY_CHAMELEON_SIGNATURE_FLAG_MAP = 0x1,
+} DENSITY_CHAMELEON_SIGNATURE_FLAG;
+
+typedef uint64_t density_chameleon_signature;
+
+#define DENSITY_CHAMELEON_MAXIMUM_COMPRESSED_BODY_SIZE_PER_SIGNATURE        (density_bitsizeof(density_chameleon_signature) * sizeof(uint32_t))   // Uncompressed chunks
+#define DENSITY_CHAMELEON_DECOMPRESSED_BODY_SIZE_PER_SIGNATURE              (density_bitsizeof(density_chameleon_signature) * sizeof(uint32_t))
+
+#define DENSITY_CHAMELEON_MAXIMUM_COMPRESSED_UNIT_SIZE                      (sizeof(density_chameleon_signature) + DENSITY_CHAMELEON_MAXIMUM_COMPRESSED_BODY_SIZE_PER_SIGNATURE)
+#define DENSITY_CHAMELEON_DECOMPRESSED_UNIT_SIZE                            (DENSITY_CHAMELEON_DECOMPRESSED_BODY_SIZE_PER_SIGNATURE)
+
+#define DENSITY_CHAMELEON_WORK_BLOCK_SIZE                                   256
+
+#endif
