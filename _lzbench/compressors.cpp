@@ -211,6 +211,16 @@ extern "C"
 	#include "density/density_api.h"
 }
 
+char* lzbench_density_init(size_t insize, size_t level, size_t)
+{
+    return (char*) malloc(MAX(density_compress_safe_size(insize), density_decompress_safe_size(insize)));
+}
+
+void lzbench_density_deinit(char* workmem)
+{
+    free(workmem);
+}
+
 int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
 	density_processing_result result = density_compress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize, (DENSITY_ALGORITHM)level);
