@@ -223,7 +223,7 @@ void lzbench_density_deinit(char* workmem)
 
 int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
-	density_processing_result result = density_compress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize, (DENSITY_ALGORITHM)level);
+	density_processing_result result = density_compress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, density_compress_safe_size(outsize), (DENSITY_ALGORITHM)level);
 	if (result.state) 
 		return 0;
 		
@@ -232,7 +232,7 @@ int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_
 
 int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
-	density_processing_result result = density_decompress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+	density_processing_result result = density_decompress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, density_decompress_safe_size(outsize));
 	if (result.state) 
 		return 0;
 		
