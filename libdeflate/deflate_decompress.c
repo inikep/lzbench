@@ -1,8 +1,6 @@
 /*
  * deflate_decompress.c - a decompressor for DEFLATE
  *
- * Originally public domain; changes after 2016-09-07 are copyrighted.
- *
  * Copyright 2016 Eric Biggers
  *
  * Permission is hereby granted, free of charge, to any person
@@ -51,7 +49,6 @@
 
 #include "deflate_constants.h"
 #include "unaligned.h"
-#include "x86_cpu_features.h"
 
 #include "libdeflate.h"
 
@@ -204,18 +201,20 @@ typedef machine_word_t bitbuf_t;
 /*
  * Fill the bitbuffer variable, reading one byte at a time.
  *
- * Note: if we would overrun the input buffer, we just don't read anything,
- * leaving the bits as 0 but marking them as filled.  This makes the
- * implementation simpler because this removes the need to distinguish between
- * "real" overruns and overruns that occur because of our own lookahead during
- * Huffman decoding.  The disadvantage is that a "real" overrun can go
- * undetected, and libdeflate_deflate_decompress() may return a success status
- * rather than the expected failure status if one occurs.  However, this is
- * irrelevant because even if this specific case were to be handled "correctly",
- * one could easily come up with a different case where the compressed data
- * would be corrupted in such a way that fully retains its validity.  Users
- * should run a checksum against the uncompressed data if they wish to detect
- * corruptions.
+ * If we would overread the input buffer, we just don't read anything, leaving
+ * the bits zeroed but marking them filled.  This simplifies the decompressor
+ * because it removes the need to distinguish between real overreads and
+ * overreads that occur only because of the decompressor's own lookahead.
+ *
+ * The disadvantage is that real overreads are not detected immediately.
+ * However, this is safe because the decompressor is still guaranteed to make
+ * forward progress when presented never-ending 0 bits.  In an existing block
+ * output will be getting generated, whereas new blocks can only be uncompressed
+ * (since the type code for uncompressed blocks is 0), for which we check for
+ * previous overread.  But even if we didn't check, uncompressed blocks would
+ * fail to validate because LEN would not equal ~NLEN.  So the decompressor will
+ * eventually either detect that the output buffer is full, or detect invalid
+ * input, or finish the final block.
  */
 #define FILL_BITS_BYTEWISE()					\
 do {								\
@@ -277,17 +276,19 @@ if (!HAVE_BITS(n)) {						\
 #define POP_BITS(n) (tmp32 = BITS(n), REMOVE_BITS(n), tmp32)
 
 /*
- * Align the input to the next byte boundary, discarding any remaining bits in
- * the current byte.
+ * Verify that the input buffer hasn't been overread, then align the input to
+ * the next byte boundary, discarding any remaining bits in the current byte.
  *
- * Note that if the bitbuffer variable currently contains more than 8 bits, then
+ * Note that if the bitbuffer variable currently contains more than 7 bits, then
  * we must rewind 'in_next', effectively putting those bits back.  Only the bits
  * in what would be the "current" byte if we were reading one byte at a time can
  * be actually discarded.
  */
 #define ALIGN_INPUT()							\
 do {									\
-	in_next -= (bitsleft >> 3) - MIN(overrun_count, bitsleft >> 3);	\
+	SAFETY_CHECK(overrun_count <= (bitsleft >> 3));			\
+	in_next -= (bitsleft >> 3) - overrun_count;			\
+	overrun_count = 0;						\
 	bitbuf = 0;							\
 	bitsleft = 0;							\
 } while(0)
@@ -800,80 +801,83 @@ copy_word_unaligned(const void *src, void *dst)
  *                         Main decompression routine
  *****************************************************************************/
 
-#define FUNCNAME deflate_decompress_default
-#define ATTRIBUTES
-#include "decompress_impl.h"
-#undef FUNCNAME
-#undef ATTRIBUTES
-
-#if X86_CPU_FEATURES_ENABLED && \
-	COMPILER_SUPPORTS_BMI2_TARGET && !defined(__BMI2__)
-#  define FUNCNAME deflate_decompress_bmi2
-#  define ATTRIBUTES __attribute__((target("bmi2")))
-#  include "decompress_impl.h"
-#  undef FUNCNAME
-#  undef ATTRIBUTES
-#  define DISPATCH_ENABLED 1
-#else
-#  define DISPATCH_ENABLED 0
-#endif
-
-#if DISPATCH_ENABLED
-
-static enum libdeflate_result
-dispatch(struct libdeflate_decompressor * restrict d,
-	 const void * restrict in, size_t in_nbytes,
-	 void * restrict out, size_t out_nbytes_avail,
-	 size_t *actual_out_nbytes_ret);
-
 typedef enum libdeflate_result (*decompress_func_t)
 	(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
-	 size_t *actual_out_nbytes_ret);
+	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
 
-static decompress_func_t decompress_impl = dispatch;
+#undef DEFAULT_IMPL
+#undef DISPATCH
+#if defined(__i386__) || defined(__x86_64__)
+#  include "x86/decompress_impl.h"
+#endif
 
+#ifndef DEFAULT_IMPL
+#  define FUNCNAME deflate_decompress_default
+#  define ATTRIBUTES
+#  include "decompress_template.h"
+#  define DEFAULT_IMPL deflate_decompress_default
+#endif
+
+#ifdef DISPATCH
 static enum libdeflate_result
 dispatch(struct libdeflate_decompressor * restrict d,
 	 const void * restrict in, size_t in_nbytes,
 	 void * restrict out, size_t out_nbytes_avail,
-	 size_t *actual_out_nbytes_ret)
+	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret);
+
+static volatile decompress_func_t decompress_impl = dispatch;
+
+/* Choose the fastest implementation at runtime */
+static enum libdeflate_result
+dispatch(struct libdeflate_decompressor * restrict d,
+	 const void * restrict in, size_t in_nbytes,
+	 void * restrict out, size_t out_nbytes_avail,
+	 size_t *actual_in_nbytes_ret, size_t *actual_out_nbytes_ret)
 {
-	decompress_func_t f = deflate_decompress_default;
-#if X86_CPU_FEATURES_ENABLED
-	if (x86_have_cpu_features(X86_CPU_FEATURE_BMI2))
-		f = deflate_decompress_bmi2;
-#endif
+	decompress_func_t f = arch_select_decompress_func();
+
+	if (f == NULL)
+		f = DEFAULT_IMPL;
+
 	decompress_impl = f;
 	return (*f)(d, in, in_nbytes, out, out_nbytes_avail,
-		    actual_out_nbytes_ret);
+		    actual_in_nbytes_ret, actual_out_nbytes_ret);
 }
-#endif /* DISPATCH_ENABLED */
+#else
+#  define decompress_impl DEFAULT_IMPL /* only one implementation, use it */
+#endif
 
 
 /*
  * This is the main DEFLATE decompression routine.  See libdeflate.h for the
  * documentation.
  *
- * Note that the real code is in decompress_impl.h.  The part here just handles
- * calling the appropriate implementation depending on the CPU features at
- * runtime.
+ * Note that the real code is in decompress_template.h.  The part here just
+ * handles calling the appropriate implementation depending on the CPU features
+ * at runtime.
  */
+LIBDEFLATEAPI enum libdeflate_result
+libdeflate_deflate_decompress_ex(struct libdeflate_decompressor * restrict d,
+				 const void * restrict in, size_t in_nbytes,
+				 void * restrict out, size_t out_nbytes_avail,
+				 size_t *actual_in_nbytes_ret,
+				 size_t *actual_out_nbytes_ret)
+{
+	return decompress_impl(d, in, in_nbytes, out, out_nbytes_avail,
+			       actual_in_nbytes_ret, actual_out_nbytes_ret);
+}
+
 LIBDEFLATEAPI enum libdeflate_result
 libdeflate_deflate_decompress(struct libdeflate_decompressor * restrict d,
 			      const void * restrict in, size_t in_nbytes,
 			      void * restrict out, size_t out_nbytes_avail,
 			      size_t *actual_out_nbytes_ret)
 {
-#if DISPATCH_ENABLED
-	return (*decompress_impl)(d, in, in_nbytes, out, out_nbytes_avail,
-				  actual_out_nbytes_ret);
-#else
-	return deflate_decompress_default(d, in, in_nbytes, out,
-					  out_nbytes_avail,
-					  actual_out_nbytes_ret);
-#endif
+	return libdeflate_deflate_decompress_ex(d, in, in_nbytes,
+						out, out_nbytes_avail,
+						NULL, actual_out_nbytes_ret);
 }
 
 LIBDEFLATEAPI struct libdeflate_decompressor *

@@ -21,17 +21,16 @@
 
 #define MAX_QUALITY_FOR_STATIC_ENTROPY_CODES 2
 #define MIN_QUALITY_FOR_BLOCK_SPLIT 4
+#define MIN_QUALITY_FOR_NONZERO_DISTANCE_PARAMS 4
 #define MIN_QUALITY_FOR_OPTIMIZE_HISTOGRAMS 4
 #define MIN_QUALITY_FOR_EXTENSIVE_REFERENCE_SEARCH 5
 #define MIN_QUALITY_FOR_CONTEXT_MODELING 5
 #define MIN_QUALITY_FOR_HQ_CONTEXT_MODELING 7
 #define MIN_QUALITY_FOR_HQ_BLOCK_SPLITTING 10
-/* Only for "font" mode. */
-#define MIN_QUALITY_FOR_RECOMPUTE_DISTANCE_PREFIXES 10
 
 /* For quality below MIN_QUALITY_FOR_BLOCK_SPLIT there is no block splitting,
    so we buffer at most this much literals and commands. */
-#define MAX_NUM_DELAYED_SYMBOLS 0x2fff
+#define MAX_NUM_DELAYED_SYMBOLS 0x2FFF
 
 /* Returns hash-table size for quality levels 0 and 1. */
 static BROTLI_INLINE size_t MaxHashTableSize(int quality) {
@@ -60,10 +59,15 @@ static BROTLI_INLINE size_t MaxZopfliCandidates(
 static BROTLI_INLINE void SanitizeParams(BrotliEncoderParams* params) {
   params->quality = BROTLI_MIN(int, BROTLI_MAX_QUALITY,
       BROTLI_MAX(int, BROTLI_MIN_QUALITY, params->quality));
+  if (params->quality <= MAX_QUALITY_FOR_STATIC_ENTROPY_CODES) {
+    params->large_window = BROTLI_FALSE;
+  }
   if (params->lgwin < BROTLI_MIN_WINDOW_BITS) {
     params->lgwin = BROTLI_MIN_WINDOW_BITS;
-  } else if (params->lgwin > BROTLI_MAX_WINDOW_BITS) {
-    params->lgwin = BROTLI_MAX_WINDOW_BITS;
+  } else {
+    int max_lgwin = params->large_window ? BROTLI_LARGE_MAX_WINDOW_BITS :
+                                           BROTLI_MAX_WINDOW_BITS;
+    if (params->lgwin > max_lgwin) params->lgwin = max_lgwin;
   }
 }
 
@@ -137,6 +141,24 @@ static BROTLI_INLINE void ChooseHasher(const BrotliEncoderParams* params,
     hparams->bucket_bits = params->quality < 7 ? 14 : 15;
     hparams->num_last_distances_to_check =
         params->quality < 7 ? 4 : params->quality < 9 ? 10 : 16;
+  }
+
+  if (params->lgwin > 24) {
+    /* Different hashers for large window brotli: not for qualities <= 2,
+       these are too fast for large window. Not for qualities >= 10: their
+       hasher already works well with large window. So the changes are:
+       H3 --> H35: for quality 3.
+       H54 --> H55: for quality 4 with size hint > 1MB
+       H6 --> H65: for qualities 5, 6, 7, 8, 9. */
+    if (hparams->type == 3) {
+      hparams->type = 35;
+    }
+    if (hparams->type == 54) {
+      hparams->type = 55;
+    }
+    if (hparams->type == 6) {
+      hparams->type = 65;
+    }
   }
 }
 

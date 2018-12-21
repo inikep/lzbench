@@ -38,7 +38,7 @@ extern "C" {
    * There is no effort to ensure that it is a prime, the oddity is enough
      for this use.
    * The number has been tuned heuristically against compression benchmarks. */
-static const uint32_t kHashMul32 = 0x1e35a7bd;
+static const uint32_t kHashMul32 = 0x1E35A7BD;
 
 static BROTLI_INLINE uint32_t Hash(const uint8_t* p, size_t shift) {
   const uint64_t h = (BROTLI_UNALIGNED_LOAD64LE(p) << 24) * kHashMul32;
@@ -202,7 +202,7 @@ static BROTLI_INLINE void EmitInsertLen(size_t insertlen,
   } else {
     BrotliWriteBits(depth[61], bits[61], storage_ix, storage);
     BrotliWriteBits(12, insertlen - 2114, storage_ix, storage);
-    ++histo[21];
+    ++histo[61];
   }
 }
 
@@ -215,11 +215,11 @@ static BROTLI_INLINE void EmitLongInsertLen(size_t insertlen,
   if (insertlen < 22594) {
     BrotliWriteBits(depth[62], bits[62], storage_ix, storage);
     BrotliWriteBits(14, insertlen - 6210, storage_ix, storage);
-    ++histo[22];
+    ++histo[62];
   } else {
     BrotliWriteBits(depth[63], bits[63], storage_ix, storage);
     BrotliWriteBits(24, insertlen - 22594, storage_ix, storage);
-    ++histo[23];
+    ++histo[63];
   }
 }
 
@@ -251,7 +251,7 @@ static BROTLI_INLINE void EmitCopyLen(size_t copylen,
   } else {
     BrotliWriteBits(depth[39], bits[39], storage_ix, storage);
     BrotliWriteBits(24, copylen - 2118, storage_ix, storage);
-    ++histo[47];
+    ++histo[39];
   }
 }
 
@@ -293,7 +293,7 @@ static BROTLI_INLINE void EmitCopyLenLastDistance(size_t copylen,
     BrotliWriteBits(depth[39], bits[39], storage_ix, storage);
     BrotliWriteBits(24, copylen - 2120, storage_ix, storage);
     BrotliWriteBits(depth[64], bits[64], storage_ix, storage);
-    ++histo[47];
+    ++histo[39];
     ++histo[64];
   }
 }
@@ -343,7 +343,7 @@ static void BrotliStoreMetaBlockHeader(
 }
 
 static void UpdateBits(size_t n_bits, uint32_t bits, size_t pos,
-    uint8_t *array) {
+    uint8_t* array) {
   while (n_bits > 0) {
     size_t byte_pos = pos >> 3;
     size_t n_unchanged_bits = pos & 7;

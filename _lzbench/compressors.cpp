@@ -211,9 +211,19 @@ extern "C"
 	#include "density/density_api.h"
 }
 
+char* lzbench_density_init(size_t insize, size_t level, size_t)
+{
+    return (char*) malloc(MAX(density_compress_safe_size(insize), density_decompress_safe_size(insize)));
+}
+
+void lzbench_density_deinit(char* workmem)
+{
+    free(workmem);
+}
+
 int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
-	density_buffer_processing_result result = density_buffer_compress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize, (DENSITY_COMPRESSION_MODE)level, DENSITY_BLOCK_TYPE_DEFAULT, NULL, NULL);
+	density_processing_result result = density_compress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, density_compress_safe_size(outsize), (DENSITY_ALGORITHM)level);
 	if (result.state) 
 		return 0;
 		
@@ -222,7 +232,7 @@ int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_
 
 int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
-    density_buffer_processing_result result = density_buffer_decompress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize, NULL, NULL);
+	density_processing_result result = density_decompress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, density_decompress_safe_size(outsize));
 	if (result.state) 
 		return 0;
 		
