@@ -1,7 +1,7 @@
 /*
  * BriefLZ - small fast Lempel-Ziv
  *
- * C safe depacker
+ * C depacker
  *
  * Copyright (c) 2002-2018 Joergen Ibsen
  *
@@ -31,8 +31,6 @@
 struct blz_state {
 	const unsigned char *src;
 	unsigned char *dst;
-	unsigned long src_avail;
-	unsigned long dst_avail;
 	unsigned int tag;
 	int bits_left;
 };
@@ -125,18 +123,13 @@ static const unsigned char blz_gamma_lookup[256][2] = {
 };
 #endif
 
-static int
-blz_getbit_safe(struct blz_state *bs, unsigned int *result)
+static unsigned int
+blz_getbit(struct blz_state *bs)
 {
 	unsigned int bit;
 
 	/* Check if tag is empty */
 	if (!bs->bits_left--) {
-		if (bs->src_avail < 2) {
-			return 0;
-		}
-		bs->src_avail -= 2;
-
 		/* Load next tag */
 		bs->tag = (unsigned int) bs->src[0]
 		       | ((unsigned int) bs->src[1] << 8);
@@ -148,16 +141,13 @@ blz_getbit_safe(struct blz_state *bs, unsigned int *result)
 	bit = (bs->tag & 0x8000) ? 1 : 0;
 	bs->tag <<= 1;
 
-	*result = bit;
-
-	return 1;
+	return bit;
 }
 
-static int
-blz_getgamma_safe(struct blz_state *bs, unsigned long *result)
+static unsigned long
+blz_getgamma(struct blz_state *bs)
 {
-	unsigned int bit;
-	unsigned long v = 1;
+	unsigned long result = 1;
 
 #if !defined(BLZ_NO_LUT)
 	/* Decode up to 8 bits of gamma2 code using lookup if possible */
@@ -165,16 +155,13 @@ blz_getgamma_safe(struct blz_state *bs, unsigned long *result)
 		unsigned int top8 = (bs->tag >> 8) & 0x00FF;
 		int shift;
 
-		v = blz_gamma_lookup[top8][0];
+		result = blz_gamma_lookup[top8][0];
 		shift = (int) blz_gamma_lookup[top8][1];
 
 		if (shift) {
 			bs->tag <<= shift;
 			bs->bits_left -= shift;
-
-			*result = v;
-
-			return 1;
+			return result;
 		}
 
 		bs->tag <<= 8;
@@ -184,83 +171,33 @@ blz_getgamma_safe(struct blz_state *bs, unsigned long *result)
 
 	/* Input gamma2-encoded bits */
 	do {
-		if (!blz_getbit_safe(bs, &bit)) {
-			return 0;
-		}
+		result = (result << 1) + blz_getbit(bs);
+	} while (blz_getbit(bs));
 
-		if (v & 0x80000000UL) {
-			return 0;
-		}
-
-		v = (v << 1) + bit;
-
-		if (!blz_getbit_safe(bs, &bit)) {
-			return 0;
-		}
-	} while (bit);
-
-	*result = v;
-
-	return 1;
+	return result;
 }
 
 unsigned long
-blz_depack_safe(const void *src, unsigned long src_size,
-                void *dst, unsigned long depacked_size)
+blz_depack(const void *src, void *dst, unsigned long depacked_size)
 {
 	struct blz_state bs;
 	unsigned long dst_size = 0;
-	unsigned int bit;
 
 	bs.src = (const unsigned char *) src;
-	bs.src_avail = src_size;
 	bs.dst = (unsigned char *) dst;
-	bs.dst_avail = depacked_size;
 
 	/* Initialise to one bit left in tag; that bit is zero (a literal) */
 	bs.bits_left = 1;
-	bs.tag = 0;
+	bs.tag = 0x4000;
 
 	/* Main decompression loop */
 	while (dst_size < depacked_size) {
-		if (!blz_getbit_safe(&bs, &bit)) {
-			return BLZ_ERROR;
-		}
-
-		if (bit) {
-			unsigned long len;
-			unsigned long off;
-
+		if (blz_getbit(&bs)) {
 			/* Input match length and offset */
-			if (!blz_getgamma_safe(&bs, &len)) {
-				return BLZ_ERROR;
-			}
-			if (!blz_getgamma_safe(&bs, &off)) {
-				return BLZ_ERROR;
-			}
-
-			len += 2;
-			off -= 2;
-
-			if (off >= 0x00FFFFFFUL) {
-				return BLZ_ERROR;
-			}
-
-			if (!bs.src_avail--) {
-				return BLZ_ERROR;
-			}
+			unsigned long len = blz_getgamma(&bs) + 2;
+			unsigned long off = blz_getgamma(&bs) - 2;
 
 			off = (off << 8) + (unsigned long) *bs.src++ + 1;
-
-			if (off > depacked_size - bs.dst_avail) {
-				return BLZ_ERROR;
-			}
-
-			if (len > bs.dst_avail) {
-				return BLZ_ERROR;
-			}
-
-			bs.dst_avail -= len;
 
 			/* Copy match */
 			{
@@ -276,9 +213,6 @@ blz_depack_safe(const void *src, unsigned long src_size,
 		}
 		else {
 			/* Copy literal */
-			if (!bs.src_avail-- || !bs.dst_avail--) {
-				return BLZ_ERROR;
-			}
 			*bs.dst++ = *bs.src++;
 
 			dst_size++;
@@ -288,23 +222,3 @@ blz_depack_safe(const void *src, unsigned long src_size,
 	/* Return decompressed size */
 	return dst_size;
 }
-
-/* clang -g -O1 -fsanitize=fuzzer,address -DBLZ_FUZZING depacks.c */
-#if defined(BLZ_FUZZING)
-#include <limits.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
-
-extern int
-LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
-{
-	if (size > ULONG_MAX / 2) { return 0; }
-	void *depacked = malloc(4096);
-	if (!depacked) { abort(); }
-	blz_depack_safe(data, size, depacked, 4096);
-	free(depacked);
-	return 0;
-}
-#endif

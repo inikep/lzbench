@@ -122,7 +122,7 @@ ZSTD_FILES += zstd/lib/common/xxhash.o zstd/lib/common/error_private.o zstd/lib/
 ZSTD_FILES += zstd/lib/compress/zstd_compress.o zstd/lib/compress/zstdmt_compress.o zstd/lib/compress/zstd_double_fast.o zstd/lib/compress/zstd_fast.o
 ZSTD_FILES += zstd/lib/compress/zstd_lazy.o zstd/lib/compress/zstd_ldm.o zstd/lib/compress/zstd_opt.o zstd/lib/compress/fse_compress.o zstd/lib/compress/huf_compress.o 
 
-BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depacks.o 
+BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depack.o brieflz/depacks.o 
 
 LIBLZG_FILES = liblzg/decode.o liblzg/encode.o liblzg/checksum.o 
 
