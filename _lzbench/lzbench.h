@@ -143,7 +143,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
     { "memcpy",     "",            0,   0,    0,       0, lzbench_return_0,            lzbench_memcpy,                NULL,                    NULL },
     { "blosclz",    "2015-11-10",  1,   9,    0, 64*1024, lzbench_blosclz_compress,    lzbench_blosclz_decompress,    NULL,                    NULL },
-    { "brieflz",    "1.1.0",       0,   0,    0,       0, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
+    { "brieflz",    "1.2.0",       1,   9,    0,       0, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
     { "brotli",     "1.0.7",       0,  11,    0,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli22",   "1.0.7",       0,  11,   22,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli24",   "1.0.7",       0,  11,   24,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
@@ -221,14 +221,14 @@ static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
     { "fast", "density/fastlz/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzf/lzfse/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
               "lzrw,1,3,4,5/lzsse4fast/lzsse8fast/lzvn/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/zstd,1,2,3,4,5" }, // default alias
 #if !defined(__arm__) && !defined(__aarch64__)
-    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8,11/" \
+    { "all",  "blosclz,1,3,6,9/brieflz,1,3,6,9/brotli,0,2,5,8,11/" \
               "crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/gipfeli/libdeflate,1,3,6,9,12/lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4/lz4fast,3,17/lz4hc,1,4,9,12/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5,9/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
               "lzrw,1,3,4,5/lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/pithy,0,3,6,9/quicklz,1,2,3/slz_zlib/snappy/tornado,1,2,3,4,5,6,7,10,13,16/" \
               "ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/xpack,1,6,9/xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,22/" \
               "shrinker/wflz/lzmat" }, // these can SEGFAULT
 #else
-    { "all",  "blosclz,1,3,6,9/brieflz/brotli,0,2,5,8/" \
+    { "all",  "blosclz,1,3,6,9/brieflz,1,3,6,9/brotli,0,2,5,8/" \
               "crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/gipfeli/libdeflate,1,3,6,9,12/lizard,10,12,15,20,22,25,30,32,35,40,42,45/lz4/lz4fast,3,17/lz4hc,1,4,9/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
               "lzrw,1,3,4,5/lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/pithy,0,3,6,9/quicklz,1,2,3/slz_zlib/snappy/tornado,1,2,3,4,5,6,7,10,13,16/" \

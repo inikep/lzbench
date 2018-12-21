@@ -44,7 +44,7 @@ int64_t lzbench_blosclz_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 char* lzbench_brieflz_init(size_t insize, size_t level, size_t)
 {
-    return (char*) malloc(blz_workmem_size(insize));
+    return (char*) malloc(blz_workmem_size_level(insize, level));
 }
 
 void lzbench_brieflz_deinit(char* workmem)
@@ -57,14 +57,14 @@ int64_t lzbench_brieflz_compress(char *inbuf, size_t insize, char *outbuf, size_
     if (!workmem)
         return 0;
 
-    int64_t res = blz_pack(inbuf, outbuf, insize, (void*)workmem);
+    int64_t res = blz_pack_level(inbuf, outbuf, insize, (void*)workmem, level);
 
     return res;
 }
 
 int64_t lzbench_brieflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
-    return blz_depack_safe(inbuf, insize, outbuf, outsize);
+    return blz_depack(inbuf, outbuf, outsize);
 }
 
 #endif
