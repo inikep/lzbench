@@ -1777,7 +1777,7 @@ int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 
 #if 1
     zstd_params->zparams = ZSTD_getParams(level, insize, 0);
-    ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_p_compressionLevel, level);
+    ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_compressionLevel, level);
     zstd_params->zparams.fParams.contentSizeFlag = 1;
 
     if (windowLog && zstd_params->zparams.cParams.windowLog > windowLog) {
@@ -1807,7 +1807,7 @@ char* lzbench_zstd_LDM_init(size_t insize, size_t level, size_t windowLog)
 {
     zstd_params_s* zstd_params = (zstd_params_s*) lzbench_zstd_init(insize, level, windowLog);
     if (!zstd_params) return NULL;
-    ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_p_enableLongDistanceMatching, 1);
+    ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_enableLongDistanceMatching, 1);
     return (char*) zstd_params;
 }
 
@@ -1815,7 +1815,7 @@ int64_t lzbench_zstd_LDM_compress(char *inbuf, size_t insize, char *outbuf, size
 {
     zstd_params_s* zstd_params = (zstd_params_s*) workmem;
     if (!zstd_params || !zstd_params->cctx) return 0;
-    ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_p_enableLongDistanceMatching, 1);
+    ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_enableLongDistanceMatching, 1);
     return lzbench_zstd_compress(inbuf, insize, outbuf, outsize, level, windowLog, (char*) zstd_params);
 }
 #endif
