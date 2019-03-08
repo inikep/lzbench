@@ -1,5 +1,81 @@
+v1.3.8
+perf: better decompression speed on large files (+7%) and cold dictionaries (+15%)
+perf: slightly better compression ratio at high compression modes
+api : finalized advanced API, last stage before "stable" status
+api : new --rsyncable mode, by @terrelln
+api : support decompression of empty frames into NULL (used to be an error) (#1385)
+build: new set of macros to build a minimal size decoder, by @felixhandte
+build: fix compilation on MIPS32, reported by @clbr (#1441)
+build: fix compilation with multiple -arch flags, by @ryandesign
+build: highly upgraded meson build, by @lzutao
+build: improved buck support, by @obelisk
+build: fix cmake script : can create debug build, by @pitrou
+build: Makefile : grep works on both colored consoles and systems without color support
+build: fixed zstd-pgo, by @bmwiedemann
+cli : support ZSTD_CLEVEL environment variable, by @yijinfb (#1423)
+cli : --no-progress flag, preserving final summary (#1371), by @terrelln
+cli : ensure destination file is not source file (#1422)
+cli : clearer error messages, especially when input file not present
+doc : clarified zstd_compression_format.md, by @ulikunitz
+misc: fixed zstdgrep, returns 1 on failure, by @lzutao
+misc: NEWS renamed as CHANGELOG, in accordance with fboss
+
+v1.3.7
+perf: slightly better decompression speed on clang (depending on hardware target)
+fix : performance of dictionary compression for small input < 4 KB at levels 9 and 10
+build: no longer build backtrace by default in release mode; restrict further automatic mode
+build: control backtrace support through build macro BACKTRACE
+misc: added man pages for zstdless and zstdgrep, by @samrussell
+
+v1.3.6
+perf: much faster dictionary builder, by @jenniferliu
+perf: faster dictionary compression on small data when using multiple contexts, by @felixhandte
+perf: faster dictionary decompression when using a very large number of dictionaries simultaneously
+cli : fix : does no longer overwrite destination when source does not exist (#1082)
+cli : new command --adapt, for automatic compression level adaptation
+api : fix : block api can be streamed with > 4 GB, reported by @catid
+api : reduced ZSTD_DDict size by 2 KB
+api : minimum negative compression level is defined, and can be queried using ZSTD_minCLevel().
+build: support Haiku target, by @korli
+build: Read Legacy format is limited to v0.5+ by default. Can be changed at compile time with macro ZSTD_LEGACY_SUPPORT.
+doc : zstd_compression_format.md updated to match wording in IETF RFC 8478
+misc: tests/paramgrill, a parameter optimizer, by @GeorgeLu97
+
+v1.3.5
+perf: much faster dictionary compression, by @felixhandte
+perf: small quality improvement for dictionary generation, by @terrelln
+perf: slightly improved high compression levels (notably level 19)
+mem : automatic memory release for long duration contexts
+cli : fix : overlapLog can be manually set
+cli : fix : decoding invalid lz4 frames
+api : fix : performance degradation for dictionary compression when using advanced API, by @terrelln
+api : change : clarify ZSTD_CCtx_reset() vs ZSTD_CCtx_resetParameters(), by @terrelln
+build: select custom libzstd scope through control macros, by @GeorgeLu97
+build: OpenBSD patch, by @bket
+build: make and make all are compatible with -j
+doc : clarify zstd_compression_format.md, updated for IETF RFC process
+misc: pzstd compatible with reproducible compilation, by @lamby
+
+v1.3.4
+perf: faster speed (especially decoding speed) on recent cpus (haswell+)
+perf: much better performance associating --long with multi-threading, by @terrelln
+perf: better compression at levels 13-15
+cli : asynchronous compression by default, for faster experience (use --single-thread for former behavior)
+cli : smoother status report in multi-threading mode
+cli : added command --fast=#, for faster compression modes
+cli : fix crash when not overwriting existing files, by Pádraig Brady (@pixelb)
+api : `nbThreads` becomes `nbWorkers` : 1 triggers asynchronous mode
+api : compression levels can be negative, for even more speed
+api : ZSTD_getFrameProgression() : get precise progress status of ZSTDMT anytime
+api : ZSTDMT can accept new compression parameters during compression
+api : implemented all advanced dictionary decompression prototypes
+build: improved meson recipe, by Shawn Landden (@shawnl)
+build: VS2017 scripts, by @HaydnTrigg
+misc: all /contrib projects fixed
+misc: added /contrib/docker script by @gyscos
+
 v1.3.3
-perf: faster zstd_opt strategy (levels 17-19)
+perf: faster zstd_opt strategy (levels 16-19)
 fix : bug #944 : multithreading with shared ditionary and large data, reported by @gsliepen
 cli : fix : content size written in header by default
 cli : fix : improved LZ4 format support, by @felixhandte
