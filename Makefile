@@ -33,6 +33,11 @@ ifneq ($(shell echo|$(CC) -dM -E - -march=native|egrep -c '__(SSE4_1|x86_64)__')
     DONT_BUILD_LZSSE ?= 1
 endif
 
+# zling requires c++14
+ifeq (1,$(filter 1,$(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \< 60000) $(shell [ "$(COMPILER)" = "clang" ] && expr $(CLANG_VERSION) \< 60000)))
+  DONT_BUILD_ZLING ?= 1
+endif
+
 
 # detect Windows
 ifneq (,$(filter Windows%,$(OS)))
@@ -119,8 +124,6 @@ LZFSE_FILES = lzfse/lzfse_decode.o lzfse/lzfse_decode_base.o lzfse/lzfse_encode.
 
 QUICKLZ_FILES = quicklz/quicklz151b7.o quicklz/quicklz1.o quicklz/quicklz2.o quicklz/quicklz3.o
 
-SNAPPY_FILES = snappy/snappy-sinksource.o snappy/snappy-stubs-internal.o snappy/snappy.o 
-
 BROTLI_FILES = brotli/common/dictionary.o brotli/common/transform.o brotli/dec/bit_reader.o brotli/dec/decode.o brotli/dec/huffman.o brotli/dec/state.o
 BROTLI_FILES += brotli/enc/backward_references.o brotli/enc/block_splitter.o brotli/enc/brotli_bit_stream.o brotli/enc/encode.o brotli/enc/encoder_dict.o
 BROTLI_FILES += brotli/enc/entropy_encode.o brotli/enc/histogram.o brotli/enc/literal_cost.o brotli/enc/memory.o
@@ -171,6 +174,12 @@ MISC_FILES = crush/crush.o shrinker/shrinker.o fastlz/fastlz.o pithy/pithy.o lzj
 MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o blosclz/fastcopy.o slz/slz.o
 
 
+ifeq "$(DONT_BUILD_SNAPPY)" "1"
+	DEFINES += -DBENCH_REMOVE_SNAPPY
+else
+	SNAPPY_FILES = snappy/snappy-sinksource.o snappy/snappy-stubs-internal.o snappy/snappy.o
+endif
+
 ifeq "$(DONT_BUILD_FASTLZMA2)" "1"
 	DEFINES += -DBENCH_REMOVE_FASTLZMA2
 else
@@ -194,18 +203,20 @@ endif
 ifeq "$(DONT_BUILD_DENSITY)" "1"
     DEFINES += -DBENCH_REMOVE_DENSITY
 else
-	DENSITY_FILES  = density/buffers/buffer.o
-	DENSITY_FILES += density/algorithms/cheetah/core/cheetah_decode.o
-	DENSITY_FILES += density/algorithms/cheetah/core/cheetah_encode.o
-	DENSITY_FILES += density/algorithms/lion/forms/lion_form_model.o
-	DENSITY_FILES += density/algorithms/lion/core/lion_decode.o
-	DENSITY_FILES += density/algorithms/lion/core/lion_encode.o
-	DENSITY_FILES += density/algorithms/dictionaries.o
-	DENSITY_FILES += density/algorithms/chameleon/core/chameleon_decode.o
-	DENSITY_FILES += density/algorithms/chameleon/core/chameleon_encode.o
-	DENSITY_FILES += density/algorithms/algorithms.o
-	DENSITY_FILES += density/structure/header.o
-	DENSITY_FILES += density/globals.o
+#    DENSITY_SRC = $(shell find ./density -name '*.c')
+#    DENSITY_FILES = $(DENSITY_SRC:.c=.o)
+    DENSITY_FILES  = density/buffers/buffer.o
+    DENSITY_FILES += density/algorithms/cheetah/core/cheetah_decode.o
+    DENSITY_FILES += density/algorithms/cheetah/core/cheetah_encode.o
+    DENSITY_FILES += density/algorithms/lion/forms/lion_form_model.o
+    DENSITY_FILES += density/algorithms/lion/core/lion_decode.o
+    DENSITY_FILES += density/algorithms/lion/core/lion_encode.o
+    DENSITY_FILES += density/algorithms/dictionaries.o
+    DENSITY_FILES += density/algorithms/chameleon/core/chameleon_decode.o
+    DENSITY_FILES += density/algorithms/chameleon/core/chameleon_encode.o
+    DENSITY_FILES += density/algorithms/algorithms.o
+    DENSITY_FILES += density/structure/header.o
+    DENSITY_FILES += density/globals.o
 endif
 
 ifeq "$(DONT_BUILD_GLZA)" "1"
@@ -254,13 +265,12 @@ ifeq "$(BENCH_HAS_NAKAMICHI)" "1"
 endif
 
 
+
 all: lzbench
 
 MKDIR = mkdir -p
 
 # FIX for SEGFAULT on GCC 4.9+
-wflz/wfLZ.o: wflz/wfLZ.c wflz/wfLZ.h
-
 wflz/wfLZ.o shrinker/shrinker.o lzmat/lzmat_dec.o lzmat/lzmat_enc.o lzrw/lzrw1-a.o lzrw/lzrw1.o: %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS_O2) $< -c -o $@
@@ -268,6 +278,14 @@ wflz/wfLZ.o shrinker/shrinker.o lzmat/lzmat_dec.o lzmat/lzmat_enc.o lzrw/lzrw1-a
 pithy/pithy.o: pithy/pithy.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) $< -c -o $@
+
+_lzbench/compressors.o: %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CFLAGS) -std=c++11 $< -c -o $@
+
+snappy/snappy-sinksource.o snappy/snappy-stubs-internal.o snappy/snappy.o: %.o : %.cc
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CFLAGS) -std=c++11 $< -c -o $@
 
 lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o: %.o : %.cpp
 	@$(MKDIR) $(dir $@)
@@ -280,7 +298,7 @@ nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
-lzbench: $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(DENSITY_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
+lzbench: $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) _lzbench/lzbench.o _lzbench/compressors.o
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
