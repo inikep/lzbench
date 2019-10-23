@@ -44,23 +44,55 @@ namespace lzham
       typedef long long             int64;
    #endif
 
+#ifndef UINT8_MIN
    const uint8  UINT8_MIN  = 0;
+#endif
+#ifndef UINT8_MAX
    const uint8  UINT8_MAX  = 0xFFU;
+#endif
+#ifndef UINT16_MIN
    const uint16 UINT16_MIN = 0;
+#endif
+#ifndef UINT16_MAX
    const uint16 UINT16_MAX = 0xFFFFU;
+#endif
+#ifndef UINT32_MIN
    const uint32 UINT32_MIN = 0;
+#endif
+#ifndef UINT32_MAX
    const uint32 UINT32_MAX = 0xFFFFFFFFU;
+#endif
+#ifndef UINT64_MIN
    const uint64 UINT64_MIN = 0;
+#endif
+#ifndef UINT64_MAX
    const uint64 UINT64_MAX = 0xFFFFFFFFFFFFFFFFULL;    //0xFFFFFFFFFFFFFFFFui64;
+#endif
 
+#ifndef INT8_MIN
    const int8  INT8_MIN  = -128;
+#endif
+#ifndef INT8_MAX
    const int8  INT8_MAX  = 127;
+#endif
+#ifndef INT16_MIN
    const int16 INT16_MIN = -32768;
+#endif
+#ifndef INT16_MAX
    const int16 INT16_MAX = 32767;
+#endif
+#ifndef INT32_MIN
    const int32 INT32_MIN = (-2147483647 - 1);
+#endif
+#ifndef INT32_MAX
    const int32 INT32_MAX = 2147483647;
+#endif
+#ifndef INT64_MIN
    const int64 INT64_MIN = (int64)0x8000000000000000ULL; //(-9223372036854775807i64 - 1);
+#endif
+#ifndef INT64_MAX
    const int64 INT64_MAX = (int64)0x7FFFFFFFFFFFFFFFULL; //9223372036854775807i64;
+#endif
 
 #if LZHAM_64BIT_POINTERS
    typedef uint64 uint_ptr;

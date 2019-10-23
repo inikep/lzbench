@@ -156,7 +156,7 @@ typedef int CALLBACK_FUNC (const char *what, void *data, int size, void *auxdata
 
 #define PROGRESS(insize,outsize)                                           \
 {                                                                          \
-    int64 localSize[2] = {(insize),(outsize)};                             \
+    int64 localSize[2] = {(int64)(insize),(int64)(outsize)};                             \
     callback ("progress", localSize, 0, auxdata);                          \
 }
 

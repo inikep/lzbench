@@ -37,7 +37,6 @@
 #include <stdint.h>
 #include "tor_test.h" 
 
-#include "_lzbench/clang34_fix.h"  /* before <math.h> */
 #include "Tornado.cpp"
 #include "Common.cpp"
 

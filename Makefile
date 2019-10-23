@@ -17,8 +17,9 @@ ifeq ($(BUILD_ARCH),32-bit)
 endif
 
 CC?=gcc
+
 COMPILER = $(shell $(CC) -v 2>&1 | grep -q "clang version" && echo clang || echo gcc)
-GCC_VERSION = $(shell $(CC) -dumpversion | sed -e 's:\([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
+GCC_VERSION = $(shell echo | $(CC) -dM -E - | grep __VERSION__  | sed -e 's:\#define __VERSION__ "\([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*version \([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 
 # glza doesn't work with gcc < 4.9 and clang < 3.6 (missing stdatomic.h)
@@ -26,9 +27,9 @@ ifeq (1,$(filter 1,$(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \< 4
     DONT_BUILD_GLZA ?= 1
 endif
 
-# LZSSE requires gcc with support of __SSE4_1__
-ifeq ($(shell echo|$(CC) -dM -E - -march=native|grep -c SSE4_1), 0)
-	DONT_BUILD_LZSSE ?= 1
+# LZSSE requires compiler with __SSE4_1__ support and 64-bit CPU
+ifneq ($(shell echo|$(CC) -dM -E - -march=native|egrep -c '__(SSE4_1|x86_64)__'), 2)
+    DONT_BUILD_LZSSE ?= 1
 endif
 
 
@@ -46,6 +47,12 @@ else
 		DONT_BUILD_ZLING ?= 1
 	endif
 
+	LDFLAGS	+= -pthread
+
+	ifeq (1, $(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \>= 80000))
+	  LDFLAGS += -lmvec
+	endif
+
 	# MacOS doesn't support -lrt -static
 	ifeq ($(shell uname -s),Darwin)
 		DONT_BUILD_LZHAM ?= 1
@@ -53,7 +60,6 @@ else
 	else
 		LDFLAGS	+= -lrt -static
 	endif
-	LDFLAGS	+= -lpthread
 endif
 
 
@@ -141,9 +147,6 @@ ZSTD_FILES += zstd/lib/decompress/zstd_decompress.o
 ZSTD_FILES += zstd/lib/decompress/huf_decompress.o
 ZSTD_FILES += zstd/lib/decompress/zstd_ddict.o
 ZSTD_FILES += zstd/lib/decompress/zstd_decompress_block.o
-ZSTD_FILES += zstd/lib/deprecated/zbuff_common.o
-ZSTD_FILES += zstd/lib/deprecated/zbuff_compress.o
-ZSTD_FILES += zstd/lib/deprecated/zbuff_decompress.o
 ZSTD_FILES += zstd/lib/dictBuilder/divsufsort.o
 
 BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depack.o brieflz/depacks.o 

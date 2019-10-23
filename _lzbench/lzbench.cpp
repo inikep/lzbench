@@ -926,10 +926,11 @@ int main( int argc, char** argv)
     else
         result = lzbench_main(params, inFileNames, ifnIdx, encoder_list);
 
-    if (params->chunk_size > 10 * (1<<20))
+    if (params->chunk_size > 10 * (1<<20)) {
         LZBENCH_PRINT(2, "done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dMB cSpeed=%dMB)\n", params->c_iters, params->d_iters, params->cmintime/1000.0, params->dmintime/1000.0, (int)(params->chunk_size >> 20), params->cspeed);
-    else
+    } else {
         LZBENCH_PRINT(2, "done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dKB cSpeed=%dMB)\n", params->c_iters, params->d_iters, params->cmintime/1000.0, params->dmintime/1000.0, (int)(params->chunk_size >> 10), params->cspeed);
+    }
 
     if (sort_col <= 0) goto _clean;
 
