@@ -143,7 +143,7 @@ matrix:
 
     - dist: trusty
       sudo: required
-      env: CC_COMPILER=gcc CXX_COMPILER=g++
+      env: CC_COMPILER=gcc-4.8 CXX_COMPILER=g++-4.8
 
     - dist: trusty
       sudo: required
@@ -152,7 +152,7 @@ matrix:
           packages:
             - libc6-dev-i386
             - g++-multilib
-      env: CC_COMPILER=gcc CXX_COMPILER=g++ MORE_OPTIONS="BUILD_ARCH=32-bit"
+      env: CC_COMPILER=gcc-4.8 CXX_COMPILER=g++-4.8 MORE_OPTIONS="BUILD_ARCH=32-bit"
 
     - dist: trusty
       sudo: required
