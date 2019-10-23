@@ -33,128 +33,92 @@
  * @brief  manipulate huffman encoding.
  */
 #include "libzling_huffman.h"
-
-#ifndef __GNUC__  // __builtin_clz() implement on other compilers
-#define __builtin_clz(x) __clz_impl(x)
-
-static inline int __clz_impl(uint32_t x, int c = 32) {
-    while (x > 0) {
-        c -= 1;
-        x /= 2;
-    }
-    return c;
-}
-#endif
+#include <functional>
 
 namespace baidu {
 namespace zling {
 namespace huffman {
 
-static inline uint32_t RoundDown(uint32_t x) {
-    while (x & (-x ^ x)) {
-        x &= -x ^ x;
+void ZlingMakeLengthTable(const uint32_t* freq_table, uint32_t* length_table, int max_codes, int max_codelen) {
+    std::fill(&length_table[0], &length_table[max_codes], 0);
+    auto scaling = 0;
+
+    struct huffman_node {
+        int id;
+        int weight;
+        huffman_node* child1;
+        huffman_node* child2;
+
+        inline huffman_node(int id, int weight, huffman_node* child1 = NULL, huffman_node* child2 = NULL) {
+            this->id = id;
+            this->weight = weight;
+            this->child1 = child1;
+            this->child2 = child2;
+        }
+
+        inline ~huffman_node() {
+            delete child1;
+            delete child2;
+        }
+
+        struct ptr_weight_gt_comparator {
+            inline bool operator()(const huffman_node* lhs, const huffman_node* rhs) const {
+                return lhs->weight > rhs->weight;
+            }
+        };
+    };
+
+build_huffman:
+    // setup heap of leaf nodes
+    auto nodes = std::vector<huffman_node*>();
+
+    for (auto i = 0; i < max_codes; i++) {
+        if (freq_table[i] > 0) {
+            nodes.push_back(new huffman_node(i, (freq_table[i] + ((1 << scaling) - 1)) >> scaling));
+        }
     }
-    return x;
-}
-static inline uint32_t RoundUp(uint32_t x) {
-    while (x & (-x ^ x)) {
-        x &= -x ^ x;
+    if (nodes.empty()) {
+        return;
     }
-    return x << 1;
-}
+    auto nodes_heap = std::priority_queue<
+        huffman_node*,
+        std::vector<huffman_node*>,
+        huffman_node::ptr_weight_gt_comparator>(nodes.begin(), nodes.end());
 
-void ZlingMakeLengthTable(const uint32_t* freq_table,
-                          uint32_t* length_table,
-                          int scaling,
-                          int max_codes,
-                          int max_codelen) {
+    // construct huffman tree
+    while (nodes_heap.size() > 1) {
+        auto min1 = nodes_heap.top(); nodes_heap.pop();
+        auto min2 = nodes_heap.top(); nodes_heap.pop();
+        nodes_heap.push(new huffman_node(-1, min1->weight + min2->weight, min1, min2));
+    }
 
-    static const int kMaxCodes = 1024;  /* max_codes > kMaxCodes not supported */
-    int symbols[kMaxCodes];
-
-    // init
-    for (int i = 0; i < max_codes; i++) {
-        if (freq_table[i] > 0 && freq_table[i] >> scaling == 0) {
-            length_table[i] = 1;
+    // extract code length
+    std::function<void (huffman_node*, int)> code_length_extractor = [&](auto node, auto code_length) {
+        if (node->id >= 0) {
+            length_table[node->id] = std::max(code_length, 1);
         } else {
-            length_table[i] = freq_table[i] >> scaling;
+            code_length_extractor(node->child1, code_length + 1);
+            code_length_extractor(node->child2, code_length + 1);
         }
-    }
+    };
+    code_length_extractor(nodes_heap.top(), 0);
+    delete nodes_heap.top();
 
-    // sort symbols (using CombSort)
-    int delta = max_codes;
-    int nswap = 1;
-
-    for (int i = 0; i < max_codes; i++) {
-        symbols[i] = i;
-    }
-    while (delta + nswap > 1) {
-        nswap = 0;
-        delta = int(delta / 1.33);
-
-        for (int i = 0; i + delta < max_codes; i++) {
-            if (length_table[symbols[i]] < length_table[symbols[i + delta]]) {
-                nswap = 0;
-                std::swap(symbols[i], symbols[i + delta]);
-            }
-        }
-    }
-
-    // round frequency
-    uint32_t sum = 0;
-    uint32_t run = 0;
-
-    for (int i = 0; i < max_codes; i++) {
-        sum += length_table[i];
-    }
-    for (int i = 0; i < max_codes; i++) {
-        length_table[i] = RoundDown(length_table[i]);
-        run += length_table[i];
-    }
-    sum = RoundUp(sum);
-
-    while (run < sum) {
-        for (int i = 0; i < max_codes; i++) {
-            if (run + length_table[symbols[i]] <= sum) {
-                run += length_table[symbols[i]];
-                length_table[symbols[i]] += length_table[symbols[i]];
-            }
-        }
-    }
-
-    // get code length
-    for (int i = 0; i < max_codes; i++) {
-        if (length_table[i] > 0) {
-            length_table[i] = 31 - (__builtin_clz(sum / length_table[i]));
-
-            // bugfix: 20131229
-            // only happens when all symbols except i have zero frequency (sum == length_table[i])
-            if (freq_table[i] > 0 && length_table[i] == 0) {
-                length_table[i] = 1;
-            }
-
-            // code length too long? -- scale and rebuild table
-            if (length_table[i] > uint32_t(max_codelen)) {
-                ZlingMakeLengthTable(freq_table, length_table, ++scaling, max_codes, max_codelen);
-                return;
-            }
-        }
+    // need rescaling?
+    if (*std::max_element(&length_table[0], &length_table[max_codes]) > max_codelen) {
+        scaling++;
+        goto build_huffman;
     }
     return;
 }
 
-void ZlingMakeEncodeTable(
-    const uint32_t* length_table,
-    uint16_t* encode_table,
-    int max_codes,
-    int max_codelen) {
-
-    int code = 0;
-    memset(encode_table, 0, sizeof(encode_table[0]) * max_codes);
+void ZlingMakeEncodeTable(const uint32_t* length_table, uint16_t* encode_table, int max_codes, int max_codelen) {
+    std::fill(&encode_table[0], &encode_table[max_codes], 0);
+    auto code = 0;
 
     // make code for each symbol
-    for (int codelen = 1; codelen <= max_codelen; codelen++) {
-        for (int i = 0; i < max_codes; i++) {
+    for (auto codelen = 1; codelen <= max_codelen; codelen++) {
+        for (auto i = 0; i < max_codes; i++) {
             if (length_table[i] == static_cast<uint32_t>(codelen)) {
                 encode_table[i] = code;
                 code += 1;
@@ -164,7 +128,7 @@ void ZlingMakeEncodeTable(
     }
 
     // reverse each code
-    for (int i = 0; i < max_codes; i++) {
+    for (auto i = 0; i < max_codes; i++) {
         encode_table[i] = ((encode_table[i] & 0xff00) >> 8 | (encode_table[i] & 0x00ff) << 8);
         encode_table[i] = ((encode_table[i] & 0xf0f0) >> 4 | (encode_table[i] & 0x0f0f) << 4);
         encode_table[i] = ((encode_table[i] & 0xcccc) >> 2 | (encode_table[i] & 0x3333) << 2);
@@ -174,18 +138,14 @@ void ZlingMakeEncodeTable(
     return;
 }
 
-void ZlingMakeDecodeTable(
-    const uint32_t* length_table,
-    uint16_t* encode_table,
-    uint16_t* decode_table,
+void ZlingMakeDecodeTable(const uint32_t* length_table, uint16_t* encode_table, uint16_t* decode_table,
     int max_codes,
     int max_codelen) {
+    std::fill(&decode_table[0], &decode_table[1 << max_codelen], -1);
 
-    memset(decode_table, -1, sizeof(decode_table[0]) * (1 << max_codelen));
-
-    for (int c = 0; c < max_codes; c++) {
+    for (auto c = 0; c < max_codes; c++) {
         if (length_table[c] > 0 && length_table[c] <= uint16_t(max_codelen)) {
-            for (int i = encode_table[c]; i < (1 << max_codelen); i += (1 << length_table[c])) {
+            for (auto i = encode_table[c]; i < (1 << max_codelen); i += (1 << length_table[c])) {
                 decode_table[i] = c;
             }
         }

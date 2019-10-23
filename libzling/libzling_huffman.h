@@ -46,25 +46,15 @@ namespace huffman {
 //
 //  arg freq_table   frequency_table
 //  arg length_table length_table
-//  arg scaling      scaling factor
 //  arg max_codes    max codes       -- codes shoude be even
 //  arg max_codelen  max code length -- codelen should be < 16
-void ZlingMakeLengthTable(const uint32_t* freq_table,
-                          uint32_t* length_table,
-                          int scaling,
-                          int max_codes,
-                          int max_codelen);
+void ZlingMakeLengthTable(const uint32_t* freq_table, uint32_t* length_table, int max_codes, int max_codelen);
 
 // ZlingMakeEncodeTable: build encode table from canonical length table.
-void ZlingMakeEncodeTable(const uint32_t* length_table,
-                          uint16_t* encode_table,
-                          int max_codes,
-                          int max_codelen);
+void ZlingMakeEncodeTable(const uint32_t* length_table, uint16_t* encode_table, int max_codes, int max_codelen);
 
 // ZlingMakeDecodeTable: build decode table from canonical length table.
-void ZlingMakeDecodeTable(const uint32_t* length_table,
-                          uint16_t* encode_table,
-                          uint16_t* decode_table,
+void ZlingMakeDecodeTable(const uint32_t* length_table, uint16_t* encode_table, uint16_t* decode_table,
                           int max_codes,
                           int max_codelen);
 

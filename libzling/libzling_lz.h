@@ -47,19 +47,6 @@ static const int kMatchMinLenEnableLazy = 128;
 static const int kMatchMinLen = 4;
 static const int kMatchMaxLen = 259;
 
-static const struct {
-    int m_match_depth;
-    int m_lazymatch1_depth;
-    int m_lazymatch2_depth;
-
-} kPredefinedConfigs[] = {
-    {2,  1, 0},
-    {4,  1, 0},
-    {6,  2, 0},
-    {8,  3, 1},
-    {16, 4, 2},
-};
-
 class ZlingMTFEncoder {
 public:
     ZlingMTFEncoder();
@@ -80,7 +67,6 @@ private:
 class ZlingRolzEncoder {
 public:
     ZlingRolzEncoder(int compression_level = 0) {
-        SetLevel(compression_level);
         Reset();
     }
 
@@ -92,12 +78,21 @@ public:
      *  arg decpos: start encoding at ibuf[encpos], limited by ilen and olen
      *  ret: out length.
      */
-    int  Encode(unsigned char* ibuf, uint16_t* obuf, int ilen, int olen, int* encpos);
-    void SetLevel(int compression_level);
+    int Encode(int level, unsigned char* ibuf, uint16_t* obuf, int ilen, int olen, int* encpos);
     void Reset();
 
 private:
-    int MatchAndUpdate(unsigned char* buf, int pos, int* match_idx, int* match_len, int match_depth);
+    template<int kMatchDepth, int kLazyMatch1Depth, int kLazyMatch2Depth> int EncodeImpl(
+            unsigned char* ibuf,
+            uint16_t* obuf,
+            int ilen,
+            int olen,
+            int* encpos);
+    template<int kMatchDepth, int kLazyMatch1Depth, int kLazyMatch2Depth> int MatchAndUpdate(
+            unsigned char* buf,
+            int pos,
+            int* match_idx,
+            int* match_len);
     int MatchLazy(unsigned char* buf, int pos, int maxlen, int depth);
 
     struct ZlingEncodeBucket {
@@ -108,9 +103,6 @@ private:
     };
     ZlingEncodeBucket m_buckets[256];
     ZlingMTFEncoder m_mtf[256];
-    int m_match_depth;
-    int m_lazymatch1_depth;
-    int m_lazymatch2_depth;
 
     ZlingRolzEncoder(const ZlingRolzEncoder&);
     ZlingRolzEncoder& operator = (const ZlingRolzEncoder&);
@@ -131,7 +123,7 @@ public:
      *  ret: -1: failed
      *        0: success
      */
-    int  Decode(uint16_t* ibuf, unsigned char* obuf, int ilen, int encpos, int* decpos);
+    int Decode(uint16_t* ibuf, unsigned char* obuf, int ilen, int encpos, int* decpos);
     void Reset();
 
 private:

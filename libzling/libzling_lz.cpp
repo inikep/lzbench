@@ -125,8 +125,23 @@ unsigned char ZlingMTFDecoder::Decode(unsigned char i) {
     return c;
 }
 
+int ZlingRolzEncoder::Encode(int level, unsigned char* ibuf, uint16_t* obuf, int ilen, int olen, int* encpos) {
+    switch (level) {
+        case 0: return EncodeImpl<2,  1, 0>(ibuf, obuf, ilen, olen, encpos);
+        case 1: return EncodeImpl<4,  1, 0>(ibuf, obuf, ilen, olen, encpos);
+        case 2: return EncodeImpl<6,  2, 0>(ibuf, obuf, ilen, olen, encpos);
+        case 3: return EncodeImpl<8,  3, 1>(ibuf, obuf, ilen, olen, encpos);
+        case 4: return EncodeImpl<16, 4, 2>(ibuf, obuf, ilen, olen, encpos);
+    }
+    return -1;
+}
 
-int ZlingRolzEncoder::Encode(unsigned char* ibuf, uint16_t* obuf, int ilen, int olen, int* encpos) {
+template<int kMatchDepth, int kLazyMatch1Depth, int kLazyMatch2Depth> int ZlingRolzEncoder::EncodeImpl(
+        unsigned char* ibuf,
+        uint16_t* obuf,
+        int ilen,
+        int olen,
+        int* encpos) {
     int ipos = encpos[0];
     int opos = 0;
     uint16_t word_mru[256][2] = {};
@@ -141,7 +156,7 @@ int ZlingRolzEncoder::Encode(unsigned char* ibuf, uint16_t* obuf, int ilen, int 
 
         // encode as match
         if (ipos + kMatchMaxLen + 16 < ilen) {  // avoid overflow
-            if (MatchAndUpdate(ibuf, ipos, &match_idx, &match_len, m_match_depth)) {
+            if (MatchAndUpdate<kMatchDepth, kLazyMatch1Depth, kLazyMatch2Depth>(ibuf, ipos, &match_idx, &match_len)) {
                 obuf[opos++] = 258 + match_len - kMatchMinLen;
                 obuf[opos++] = match_idx;
                 ipos += match_len;
@@ -179,13 +194,6 @@ int ZlingRolzEncoder::Encode(unsigned char* ibuf, uint16_t* obuf, int ilen, int 
     return opos;
 }
 
-void ZlingRolzEncoder::SetLevel(int compression_level) {
-    m_match_depth = kPredefinedConfigs[compression_level].m_match_depth;
-    m_lazymatch1_depth = kPredefinedConfigs[compression_level].m_lazymatch1_depth;
-    m_lazymatch2_depth = kPredefinedConfigs[compression_level].m_lazymatch2_depth;
-    return;
-}
-
 void ZlingRolzEncoder::Reset() {
     for (int context = 0; context < 256; context++) {
         for (int i = 0; i < kBucketItemSize; i++) {
@@ -200,7 +208,11 @@ void ZlingRolzEncoder::Reset() {
     return;
 }
 
-int inline ZlingRolzEncoder::MatchAndUpdate(unsigned char* buf, int pos, int* match_idx, int* match_len, int match_depth) {
+template<int kMatchDepth, int kLazyMatch1Depth, int kLazyMatch2Depth> int inline ZlingRolzEncoder::MatchAndUpdate(
+        unsigned char* buf,
+        int pos,
+        int* match_idx,
+        int* match_len) {
     int maxlen = kMatchMinLen - 1;
     int maxnode = 0;
     uint32_t hash = HashContext(buf + pos);
@@ -225,7 +237,7 @@ int inline ZlingRolzEncoder::MatchAndUpdate(unsigned char* buf, int pos, int* ma
     }
 
     // start matching
-    for (int i = 0; i < match_depth; i++) {
+    for (int i = 0; i < kMatchDepth; i++) {
         LIBZLING_DEBUG_COUNT("lz:access_bucket_node", 1);
 
         uint32_t offset = bucket->offset[node] & 0xffffff;
@@ -256,12 +268,12 @@ int inline ZlingRolzEncoder::MatchAndUpdate(unsigned char* buf, int pos, int* ma
 
     if (maxlen >= kMatchMinLen) {
         if (maxlen < kMatchMinLenEnableLazy) {  // fast and stupid lazy parsing
-            if (m_lazymatch1_depth > 0 && MatchLazy(buf, pos + 1, maxlen, m_lazymatch1_depth)) {
+            if (kLazyMatch1Depth > 0 && MatchLazy(buf, pos + 1, maxlen, kLazyMatch1Depth)) {
                 LIBZLING_DEBUG_COUNT("lz:lazy_skip_1", 1);
                 LIBZLING_DEBUG_COUNT("lz:match_fail", 1);
                 return 0;
             }
-            if (m_lazymatch2_depth > 0 && MatchLazy(buf, pos + 2, maxlen, m_lazymatch2_depth)) {
+            if (kLazyMatch2Depth > 0 && MatchLazy(buf, pos + 2, maxlen, kLazyMatch2Depth)) {
                 LIBZLING_DEBUG_COUNT("lz:lazy_skip_2", 1);
                 LIBZLING_DEBUG_COUNT("lz:match_fail", 1);
                 return 0;
