@@ -98,7 +98,7 @@ lzjb 2010
 lzlib 1.11
 lzma v19.00
 lzmat 1.01 (WARNING: it contains bugs (decompression error; returns 0); it can throw SEGFAULT compiled with gcc 4.9+ -O3)
-lzo 2.09
+lzo 2.10
 lzrw 15-Jul-1991
 lzsse 2019-04-18 (1847c3e827)
 pithy 2011-12-24 (WARNING: it contains bugs (decompression error; returns 0))
