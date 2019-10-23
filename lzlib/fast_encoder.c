@@ -1,28 +1,20 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2016 Antonio Diaz Diaz.
+    Copyright (C) 2009-2019 Antonio Diaz Diaz.
 
-    This library is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 2 of the License, or
-    (at your option) any later version.
+    This library is free software. Redistribution and use in source and
+    binary forms, with or without modification, are permitted provided
+    that the following conditions are met:
+
+    1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+    2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this library.  If not, see <http://www.gnu.org/licenses/>.
-
-    As a special exception, you may use this file as part of a free
-    software library without restriction.  Specifically, if other files
-    instantiate templates or use macros or inline functions from this
-    file, or you compile this file and link it with other files to
-    produce an executable, this file does not by itself cause the
-    resulting executable to be covered by the GNU General Public
-    License.  This exception does not however invalidate any other
-    reasons why the executable file might be covered by the GNU General
-    Public License.
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 int FLZe_longest_match_len( struct FLZ_encoder * const fe, int * const distance )
@@ -30,21 +22,22 @@ int FLZe_longest_match_len( struct FLZ_encoder * const fe, int * const distance 
   enum { len_limit = 16 };
   const uint8_t * const data = Mb_ptr_to_current_pos( &fe->eb.mb );
   int32_t * ptr0 = fe->eb.mb.pos_array + fe->eb.mb.cyclic_pos;
-  int32_t * newptr;
   const int pos1 = fe->eb.mb.pos + 1;
-  int maxlen = 0;
-  int count, delta, newpos;
-  if( len_limit > Mb_available_bytes( &fe->eb.mb ) ) { *ptr0 = 0; return 0; }
+  int maxlen = 0, newpos1, count;
+  const int available = min( Mb_available_bytes( &fe->eb.mb ), max_match_len );
+  if( available < len_limit ) { *ptr0 = 0; return 0; }
 
   fe->key4 = ( ( fe->key4 << 4 ) ^ data[3] ) & fe->eb.mb.key4_mask;
-  newpos = fe->eb.mb.prev_positions[fe->key4];
+  newpos1 = fe->eb.mb.prev_positions[fe->key4];
   fe->eb.mb.prev_positions[fe->key4] = pos1;
 
   for( count = 4; ; )
     {
-    if( --count < 0 || newpos <= 0 ) { *ptr0 = 0; break; }
-    delta = pos1 - newpos;
-    if( delta > fe->eb.mb.dictionary_size ) { *ptr0 = 0; break; }
+    int32_t * newptr;
+    int delta;
+    if( newpos1 <= 0 || --count < 0 ||
+        ( delta = pos1 - newpos1 ) > fe->eb.mb.dictionary_size )
+      { *ptr0 = 0; break; }
     newptr = fe->eb.mb.pos_array +
       ( fe->eb.mb.cyclic_pos - delta +
         ( ( fe->eb.mb.cyclic_pos >= delta ) ? 0 : fe->eb.mb.dictionary_size + 1 ) );
@@ -52,23 +45,15 @@ int FLZe_longest_match_len( struct FLZ_encoder * const fe, int * const distance 
     if( data[maxlen-delta] == data[maxlen] )
       {
       int len = 0;
-      while( len < len_limit && data[len-delta] == data[len] ) ++len;
-      if( maxlen < len ) { maxlen = len; *distance = delta - 1; }
+      while( len < available && data[len-delta] == data[len] ) ++len;
+      if( maxlen < len )
+        { maxlen = len; *distance = delta - 1;
+          if( maxlen >= len_limit ) { *ptr0 = *newptr; break; } }
       }
 
-    if( maxlen < len_limit )
-      {
-      *ptr0 = newpos;
-      ptr0 = newptr;
-      newpos = *ptr0;
-      }
-    else
-      {
-      *ptr0 = *newptr;
-      maxlen += Mb_true_match_len( &fe->eb.mb, maxlen, *distance + 1,
-                                   max_match_len - maxlen );
-      break;
-      }
+    *ptr0 = newpos1;
+    ptr0 = newptr;
+    newpos1 = *ptr0;
     }
   return maxlen;
   }
@@ -81,10 +66,7 @@ bool FLZe_encode_member( struct FLZ_encoder * const fe )
 
   if( fe->eb.member_finished ) return true;
   if( Re_member_position( &fe->eb.renc ) >= fe->eb.member_size_limit )
-    {
-    if( LZeb_full_flush( &fe->eb ) ) fe->eb.member_finished = true;
-    return true;
-    }
+    { LZeb_try_full_flush( &fe->eb ); return true; }
 
   if( Mb_data_position( &fe->eb.mb ) == 0 &&
       !Mb_data_finished( &fe->eb.mb ) )		/* encode first byte */
@@ -105,7 +87,8 @@ bool FLZe_encode_member( struct FLZ_encoder * const fe )
          Re_member_position( &fe->eb.renc ) < fe->eb.member_size_limit )
     {
     int match_distance;
-    int main_len, pos_state, len = 0;
+    int main_len, pos_state;
+    int len = 0;
     if( !Mb_enough_available_bytes( &fe->eb.mb ) ||
         !Re_enough_free_bytes( &fe->eb.renc ) ) return true;
     main_len = FLZe_longest_match_len( fe, &match_distance );
@@ -113,8 +96,7 @@ bool FLZe_encode_member( struct FLZ_encoder * const fe )
 
     for( i = 0; i < num_rep_distances; ++i )
       {
-      const int tlen = Mb_true_match_len( &fe->eb.mb, 0,
-                                          fe->eb.reps[i] + 1, max_match_len );
+      const int tlen = Mb_true_match_len( &fe->eb.mb, 0, fe->eb.reps[i] + 1 );
       if( tlen > len ) { len = tlen; rep = i; }
       }
     if( len > min_match_len && len + 3 > main_len )
@@ -195,6 +177,6 @@ bool FLZe_encode_member( struct FLZ_encoder * const fe )
     }
     }
 
-  if( LZeb_full_flush( &fe->eb ) ) fe->eb.member_finished = true;
+  LZeb_try_full_flush( &fe->eb );
   return true;
   }

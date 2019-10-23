@@ -1,28 +1,20 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2016 Antonio Diaz Diaz.
+    Copyright (C) 2009-2019 Antonio Diaz Diaz.
 
-    This library is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 2 of the License, or
-    (at your option) any later version.
+    This library is free software. Redistribution and use in source and
+    binary forms, with or without modification, are permitted provided
+    that the following conditions are met:
+
+    1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+    2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this library.  If not, see <http://www.gnu.org/licenses/>.
-
-    As a special exception, you may use this file as part of a free
-    software library without restriction.  Specifically, if other files
-    instantiate templates or use macros or inline functions from this
-    file, or you compile this file and link it with other files to
-    produce an executable, this file does not by itself cause the
-    resulting executable to be covered by the GNU General Public
-    License.  This exception does not however invalidate any other
-    reasons why the executable file might be covered by the GNU General
-    Public License.
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 struct Circular_buffer
@@ -32,9 +24,6 @@ struct Circular_buffer
   unsigned get;			/* buffer is empty when get == put */
   unsigned put;
   };
-
-static inline void Cb_reset( struct Circular_buffer * const cb )
-  { cb->get = 0; cb->put = 0; }
 
 static inline bool Cb_init( struct Circular_buffer * const cb,
                             const unsigned buf_size )
@@ -49,6 +38,12 @@ static inline bool Cb_init( struct Circular_buffer * const cb,
 
 static inline void Cb_free( struct Circular_buffer * const cb )
   { free( cb->buffer ); cb->buffer = 0; }
+
+static inline void Cb_reset( struct Circular_buffer * const cb )
+  { cb->get = 0; cb->put = 0; }
+
+static unsigned Cb_empty( const struct Circular_buffer * const cb )
+  { return cb->get == cb->put; }
 
 static inline unsigned Cb_used_bytes( const struct Circular_buffer * const cb )
   { return ( (cb->get <= cb->put) ? 0 : cb->buffer_size ) + cb->put - cb->get; }
@@ -82,7 +77,8 @@ static bool Cb_unread_data( struct Circular_buffer * const cb,
 
 
 /* Copies up to 'out_size' bytes to 'out_buffer' and updates 'get'.
-   Returns the number of bytes copied.
+   If 'out_buffer' is null, the bytes are discarded.
+   Returns the number of bytes copied or discarded.
 */
 static unsigned Cb_read_data( struct Circular_buffer * const cb,
                               uint8_t * const out_buffer,
@@ -95,7 +91,7 @@ static unsigned Cb_read_data( struct Circular_buffer * const cb,
     size = min( cb->buffer_size - cb->get, out_size );
     if( size > 0 )
       {
-      memcpy( out_buffer, cb->buffer + cb->get, size );
+      if( out_buffer ) memcpy( out_buffer, cb->buffer + cb->get, size );
       cb->get += size;
       if( cb->get >= cb->buffer_size ) cb->get = 0;
       }
@@ -105,7 +101,7 @@ static unsigned Cb_read_data( struct Circular_buffer * const cb,
     const unsigned size2 = min( cb->put - cb->get, out_size - size );
     if( size2 > 0 )
       {
-      memcpy( out_buffer + size, cb->buffer + cb->get, size2 );
+      if( out_buffer ) memcpy( out_buffer + size, cb->buffer + cb->get, size2 );
       cb->get += size2;
       size += size2;
       }

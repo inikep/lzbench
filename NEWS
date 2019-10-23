@@ -2,6 +2,7 @@ v1.8
 - blosclz updated to 2.0.0
 - liblzg updated to 1.0.10
 - libdeflate updated to v1.3
+- lzlib updated to 1.11
 - snappy updated to 2019-09-30 (e9e11b84e6)
 - xz updated to v5.2.4
 - zling updated to 2018-10-12

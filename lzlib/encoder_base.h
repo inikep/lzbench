@@ -1,28 +1,20 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2016 Antonio Diaz Diaz.
+    Copyright (C) 2009-2019 Antonio Diaz Diaz.
 
-    This library is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 2 of the License, or
-    (at your option) any later version.
+    This library is free software. Redistribution and use in source and
+    binary forms, with or without modification, are permitted provided
+    that the following conditions are met:
+
+    1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+    2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this library.  If not, see <http://www.gnu.org/licenses/>.
-
-    As a special exception, you may use this file as part of a free
-    software library without restriction.  Specifically, if other files
-    instantiate templates or use macros or inline functions from this
-    file, or you compile this file and link it with other files to
-    produce an executable, this file does not by itself cause the
-    resulting executable to be covered by the GNU General Public
-    License.  This exception does not however invalidate any other
-    reasons why the executable file might be covered by the GNU General
-    Public License.
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 enum { price_shift_bits = 6,
@@ -149,22 +141,48 @@ static inline int price0( const Bit_model probability )
 static inline int price1( const Bit_model probability )
   { return get_price( bit_model_total - probability ); }
 
-static inline int price_bit( const Bit_model bm, const int bit )
-  { if( bit ) return price1( bm ); else return price0( bm ); }
+static inline int price_bit( const Bit_model bm, const bool bit )
+  { return ( bit ? price1( bm ) : price0( bm ) ); }
 
 
-static inline int price_symbol( const Bit_model bm[], int symbol,
-                                const int num_bits )
+static inline int price_symbol3( const Bit_model bm[], int symbol )
   {
-  int price = 0;
-  symbol |= ( 1 << num_bits );
-  while( symbol > 1 )
-    {
-    const int bit = symbol & 1;
-    symbol >>= 1;
-    price += price_bit( bm[symbol], bit );
-    }
-  return price;
+  int price;
+  bool bit = symbol & 1;
+  symbol |= 8; symbol >>= 1;
+  price = price_bit( bm[symbol], bit );
+  bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
+  return price + price_bit( bm[1], symbol & 1 );
+  }
+
+
+static inline int price_symbol6( const Bit_model bm[], unsigned symbol )
+  {
+  int price;
+  bool bit = symbol & 1;
+  symbol |= 64; symbol >>= 1;
+  price = price_bit( bm[symbol], bit );
+  bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
+  bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
+  bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
+  bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
+  return price + price_bit( bm[1], symbol & 1 );
+  }
+
+
+static inline int price_symbol8( const Bit_model bm[], int symbol )
+  {
+  int price;
+  bool bit = symbol & 1;
+  symbol |= 0x100; symbol >>= 1;
+  price = price_bit( bm[symbol], bit );
+  bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
+  bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
+  bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
+  bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
+  bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
+  bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
+  return price + price_bit( bm[1], symbol & 1 );
   }
 
 
@@ -176,33 +194,29 @@ static inline int price_symbol_reversed( const Bit_model bm[], int symbol,
   int i;
   for( i = num_bits; i > 0; --i )
     {
-    const int bit = symbol & 1;
+    const bool bit = symbol & 1;
+    symbol >>= 1;
     price += price_bit( bm[model], bit );
     model = ( model << 1 ) | bit;
-    symbol >>= 1;
     }
   return price;
   }
 
 
-static inline int price_matched( const Bit_model bm[], int symbol,
-                                 int match_byte )
+static inline int price_matched( const Bit_model bm[], unsigned symbol,
+                                 unsigned match_byte )
   {
   int price = 0;
-  int mask = 0x100;
+  unsigned mask = 0x100;
   symbol |= mask;
-
-  do {
-    int match_bit, bit;
-    match_byte <<= 1;
-    match_bit = match_byte & mask;
-    symbol <<= 1;
-    bit = symbol & 0x100;
-    price += price_bit( bm[match_bit+(symbol>>9)+mask], bit );
-    mask &= ~(match_byte ^ symbol);	/* if( match_bit != bit ) mask = 0; */
+  while( true )
+    {
+    const unsigned match_bit = ( match_byte <<= 1 ) & mask;
+    const bool bit = ( symbol <<= 1 ) & 0x100;
+    price += price_bit( bm[(symbol>>9)+match_bit+mask], bit );
+    if( symbol >= 0x10000 ) return price;
+    mask &= ~(match_bit ^ symbol);	/* if( match_bit != bit ) mask = 0; */
     }
-  while( symbol < 0x10000 );
-  return price;
   }
 
 
@@ -224,16 +238,16 @@ struct Matchfinder_base
   int num_prev_positions23;
   int num_prev_positions;	/* size of prev_positions */
   int pos_array_size;
+  int saved_dictionary_size;	/* dictionary_size restored by Mb_reset */
   bool at_stream_end;		/* stream_pos shows real end of file */
   bool flushing;
   };
 
 static bool Mb_normalize_pos( struct Matchfinder_base * const mb );
 
-static bool Mb_init( struct Matchfinder_base * const mb,
-                     const int before, const int dict_size,
-                     const int after_size, const int dict_factor,
-                     const int num_prev_positions23,
+static bool Mb_init( struct Matchfinder_base * const mb, const int before_size,
+                     const int dict_size, const int after_size,
+                     const int dict_factor, const int num_prev_positions23,
                      const int pos_array_factor );
 
 static inline void Mb_free( struct Matchfinder_base * const mb )
@@ -264,10 +278,8 @@ static inline int Mb_free_bytes( const struct Matchfinder_base * const mb )
     return mb->buffer_size - mb->stream_pos; }
 
 static inline bool Mb_enough_available_bytes( const struct Matchfinder_base * const mb )
-  {
-  return ( mb->pos + mb->after_size <= mb->stream_pos ||
-           ( Mb_flushing_or_end( mb ) && mb->pos < mb->stream_pos ) );
-  }
+  { return ( mb->pos + mb->after_size <= mb->stream_pos ||
+             ( Mb_flushing_or_end( mb ) && mb->pos < mb->stream_pos ) ); }
 
 static inline const uint8_t *
 Mb_ptr_to_current_pos( const struct Matchfinder_base * const mb )
@@ -284,13 +296,11 @@ static int Mb_write_data( struct Matchfinder_base * const mb,
   }
 
 static inline int Mb_true_match_len( const struct Matchfinder_base * const mb,
-                                     const int index, const int distance,
-                                     int len_limit )
+                                     const int index, const int distance )
   {
-  const uint8_t * const data = mb->buffer + mb->pos + index;
-  int i = 0;
-  if( index + len_limit > Mb_available_bytes( mb ) )
-    len_limit = Mb_available_bytes( mb ) - index;
+  const uint8_t * const data = mb->buffer + mb->pos;
+  int i = index;
+  const int len_limit = min( Mb_available_bytes( mb ), max_match_len );
   while( i < len_limit && data[i-distance] == data[i] ) ++i;
   return i;
   }
@@ -312,14 +322,14 @@ struct Range_encoder
   uint32_t range;
   unsigned ff_count;
   uint8_t cache;
-  File_header header;
+  Lzip_header header;
   };
 
 static inline void Re_shift_low( struct Range_encoder * const renc )
   {
-  const bool carry = ( renc->low > 0xFFFFFFFFU );
-  if( carry || renc->low < 0xFF000000U )
+  if( renc->low >> 24 != 0xFF )
     {
+    const bool carry = ( renc->low > 0xFFFFFFFFU );
     Cb_put_byte( &renc->cb, renc->cache + carry );
     for( ; renc->ff_count > 0; --renc->ff_count )
       Cb_put_byte( &renc->cb, 0xFF + carry );
@@ -329,7 +339,8 @@ static inline void Re_shift_low( struct Range_encoder * const renc )
   renc->low = ( renc->low & 0x00FFFFFFU ) << 8;
   }
 
-static inline void Re_reset( struct Range_encoder * const renc )
+static inline void Re_reset( struct Range_encoder * const renc,
+                             const unsigned dictionary_size )
   {
   int i;
   Cb_reset( &renc->cb );
@@ -338,7 +349,8 @@ static inline void Re_reset( struct Range_encoder * const renc )
   renc->range = 0xFFFFFFFFU;
   renc->ff_count = 0;
   renc->cache = 0;
-  for( i = 0; i < Fh_size; ++i )
+  Lh_set_dictionary_size( renc->header, dictionary_size );
+  for( i = 0; i < Lh_size; ++i )
     Cb_put_byte( &renc->cb, renc->header[i] );
   }
 
@@ -348,9 +360,8 @@ static inline bool Re_init( struct Range_encoder * const renc,
   {
   if( !Cb_init( &renc->cb, 65536 + min_free_bytes ) ) return false;
   renc->min_free_bytes = min_free_bytes;
-  Fh_set_magic( renc->header );
-  Fh_set_dictionary_size( renc->header, dictionary_size );
-  Re_reset( renc );
+  Lh_set_magic( renc->header );
+  Re_reset( renc, dictionary_size );
   return true;
   }
 
@@ -384,18 +395,18 @@ static inline void Re_flush( struct Range_encoder * const renc )
 static inline void Re_encode( struct Range_encoder * const renc,
                               const int symbol, const int num_bits )
   {
-  int i;
-  for( i = num_bits - 1; i >= 0; --i )
+  unsigned mask;
+  for( mask = 1 << ( num_bits - 1 ); mask > 0; mask >>= 1 )
     {
     renc->range >>= 1;
-    if( (symbol >> i) & 1 ) renc->low += renc->range;
+    if( symbol & mask ) renc->low += renc->range;
     if( renc->range <= 0x00FFFFFFU )
       { renc->range <<= 8; Re_shift_low( renc ); }
     }
   }
 
 static inline void Re_encode_bit( struct Range_encoder * const renc,
-                                  Bit_model * const probability, const int bit )
+                                  Bit_model * const probability, const bool bit )
   {
   const uint32_t bound = ( renc->range >> bit_model_total_bits ) * *probability;
   if( !bit )
@@ -409,56 +420,78 @@ static inline void Re_encode_bit( struct Range_encoder * const renc,
     renc->range -= bound;
     *probability -= *probability >> bit_model_move_bits;
     }
-  if( renc->range <= 0x00FFFFFFU )
-    { renc->range <<= 8; Re_shift_low( renc ); }
+  if( renc->range <= 0x00FFFFFFU ) { renc->range <<= 8; Re_shift_low( renc ); }
   }
 
-static inline void Re_encode_tree( struct Range_encoder * const renc,
-                                   Bit_model bm[], const int symbol, const int num_bits )
+static inline void Re_encode_tree3( struct Range_encoder * const renc,
+                                    Bit_model bm[], const int symbol )
   {
-  int mask = ( 1 << ( num_bits - 1 ) );
+  int model = 1;
+  bool bit = ( symbol >> 2 ) & 1;
+  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  bit = ( symbol >> 1 ) & 1;
+  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  Re_encode_bit( renc, &bm[model], symbol & 1 );
+  }
+
+static inline void Re_encode_tree6( struct Range_encoder * const renc,
+                                    Bit_model bm[], const unsigned symbol )
+  {
+  int model = 1;
+  bool bit = ( symbol >> 5 ) & 1;
+  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  bit = ( symbol >> 4 ) & 1;
+  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  bit = ( symbol >> 3 ) & 1;
+  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  bit = ( symbol >> 2 ) & 1;
+  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  bit = ( symbol >> 1 ) & 1;
+  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  Re_encode_bit( renc, &bm[model], symbol & 1 );
+  }
+
+static inline void Re_encode_tree8( struct Range_encoder * const renc,
+                                    Bit_model bm[], const int symbol )
+  {
   int model = 1;
   int i;
-  for( i = num_bits; i > 0; --i, mask >>= 1 )
+  for( i = 7; i >= 0; --i )
     {
-    const int bit = ( symbol & mask );
+    const bool bit = ( symbol >> i ) & 1;
     Re_encode_bit( renc, &bm[model], bit );
-    model <<= 1;
-    if( bit ) model |= 1;
+    model = ( model << 1 ) | bit;
     }
   }
 
 static inline void Re_encode_tree_reversed( struct Range_encoder * const renc,
-                                            Bit_model bm[], int symbol, const int num_bits )
+                     Bit_model bm[], int symbol, const int num_bits )
   {
   int model = 1;
   int i;
   for( i = num_bits; i > 0; --i )
     {
-    const int bit = symbol & 1;
+    const bool bit = symbol & 1;
+    symbol >>= 1;
     Re_encode_bit( renc, &bm[model], bit );
     model = ( model << 1 ) | bit;
-    symbol >>= 1;
     }
   }
 
 static inline void Re_encode_matched( struct Range_encoder * const renc,
-                                      Bit_model bm[], int symbol,
-                                      int match_byte )
+                                      Bit_model bm[], unsigned symbol,
+                                      unsigned match_byte )
   {
-  int mask = 0x100;
+  unsigned mask = 0x100;
   symbol |= mask;
-
-  do {
-    int match_bit, bit;
-    match_byte <<= 1;
-    match_bit = match_byte & mask;
-    symbol <<= 1;
-    bit = symbol & 0x100;
-    Re_encode_bit( renc, &bm[match_bit+(symbol>>9)+mask], bit );
-    mask &= ~(match_byte ^ symbol);	/* if( match_bit != bit ) mask = 0; */
+  while( true )
+    {
+    const unsigned match_bit = ( match_byte <<= 1 ) & mask;
+    const bool bit = ( symbol <<= 1 ) & 0x100;
+    Re_encode_bit( renc, &bm[(symbol>>9)+match_bit+mask], bit );
+    if( symbol >= 0x10000 ) break;
+    mask &= ~(match_bit ^ symbol);	/* if( match_bit != bit ) mask = 0; */
     }
-  while( symbol < 0x10000 );
   }
 
 static inline void Re_encode_len( struct Range_encoder * const renc,
@@ -468,17 +501,15 @@ static inline void Re_encode_len( struct Range_encoder * const renc,
   bool bit = ( ( symbol -= min_match_len ) >= len_low_symbols );
   Re_encode_bit( renc, &lm->choice1, bit );
   if( !bit )
-    Re_encode_tree( renc, lm->bm_low[pos_state], symbol, len_low_bits );
+    Re_encode_tree3( renc, lm->bm_low[pos_state], symbol );
   else
     {
-    bit = ( symbol >= len_low_symbols + len_mid_symbols );
+    bit = ( ( symbol -= len_low_symbols ) >= len_mid_symbols );
     Re_encode_bit( renc, &lm->choice2, bit );
     if( !bit )
-      Re_encode_tree( renc, lm->bm_mid[pos_state],
-                      symbol - len_low_symbols, len_mid_bits );
+      Re_encode_tree3( renc, lm->bm_mid[pos_state], symbol );
     else
-      Re_encode_tree( renc, lm->bm_high,
-                      symbol - len_low_symbols - len_mid_symbols, len_high_bits );
+      Re_encode_tree8( renc, lm->bm_high, symbol - len_mid_symbols );
     }
   }
 
@@ -500,7 +531,7 @@ struct LZ_encoder_base
   Bit_model bm_rep2[states];
   Bit_model bm_len[states][pos_states];
   Bit_model bm_dis_slot[len_states][1<<dis_slot_bits];
-  Bit_model bm_dis[modeled_distances-end_dis_model];
+  Bit_model bm_dis[modeled_distances-end_dis_model+1];
   Bit_model bm_align[dis_align_size];
   struct Len_model match_len_model;
   struct Len_model rep_len_model;
@@ -514,14 +545,14 @@ static void LZeb_reset( struct LZ_encoder_base * const eb,
                         const unsigned long long member_size );
 
 static inline bool LZeb_init( struct LZ_encoder_base * const eb,
-                              const int before, const int dict_size,
+                              const int before_size, const int dict_size,
                               const int after_size, const int dict_factor,
                               const int num_prev_positions23,
                               const int pos_array_factor,
                               const unsigned min_free_bytes,
                               const unsigned long long member_size )
   {
-  if( !Mb_init( &eb->mb, before, dict_size, after_size, dict_factor,
+  if( !Mb_init( &eb->mb, before_size, dict_size, after_size, dict_factor,
                 num_prev_positions23, pos_array_factor ) ) return false;
   if( !Re_init( &eb->renc, eb->mb.dictionary_size, min_free_bytes ) )
     return false;
@@ -539,23 +570,21 @@ static inline unsigned LZeb_crc( const struct LZ_encoder_base * const eb )
   { return eb->crc ^ 0xFFFFFFFFU; }
 
 static inline int LZeb_price_literal( const struct LZ_encoder_base * const eb,
-                                      uint8_t prev_byte, uint8_t symbol )
-  { return price_symbol( eb->bm_literal[get_lit_state(prev_byte)], symbol, 8 ); }
+                            const uint8_t prev_byte, const uint8_t symbol )
+  { return price_symbol8( eb->bm_literal[get_lit_state(prev_byte)], symbol ); }
 
 static inline int LZeb_price_matched( const struct LZ_encoder_base * const eb,
-                                      uint8_t prev_byte, uint8_t symbol,
-                                      uint8_t match_byte )
+  const uint8_t prev_byte, const uint8_t symbol, const uint8_t match_byte )
   { return price_matched( eb->bm_literal[get_lit_state(prev_byte)], symbol,
                           match_byte ); }
 
 static inline void LZeb_encode_literal( struct LZ_encoder_base * const eb,
-                                        uint8_t prev_byte, uint8_t symbol )
-  { Re_encode_tree( &eb->renc,
-                    eb->bm_literal[get_lit_state(prev_byte)], symbol, 8 ); }
+                            const uint8_t prev_byte, const uint8_t symbol )
+  { Re_encode_tree8( &eb->renc, eb->bm_literal[get_lit_state(prev_byte)],
+                     symbol ); }
 
 static inline void LZeb_encode_matched( struct LZ_encoder_base * const eb,
-                                        uint8_t prev_byte, uint8_t symbol,
-                                        uint8_t match_byte )
+  const uint8_t prev_byte, const uint8_t symbol, const uint8_t match_byte )
   { Re_encode_matched( &eb->renc, eb->bm_literal[get_lit_state(prev_byte)],
                        symbol, match_byte ); }
 
@@ -563,10 +592,9 @@ static inline void LZeb_encode_pair( struct LZ_encoder_base * const eb,
                                      const unsigned dis, const int len,
                                      const int pos_state )
   {
-  const int dis_slot = get_slot( dis );
+  const unsigned dis_slot = get_slot( dis );
   Re_encode_len( &eb->renc, &eb->match_len_model, len, pos_state );
-  Re_encode_tree( &eb->renc, eb->bm_dis_slot[get_len_state(len)], dis_slot,
-                  dis_slot_bits );
+  Re_encode_tree6( &eb->renc, eb->bm_dis_slot[get_len_state(len)], dis_slot );
 
   if( dis_slot >= start_dis_model )
     {
@@ -575,7 +603,7 @@ static inline void LZeb_encode_pair( struct LZ_encoder_base * const eb,
     const unsigned direct_dis = dis - base;
 
     if( dis_slot < end_dis_model )
-      Re_encode_tree_reversed( &eb->renc, eb->bm_dis + base - dis_slot - 1,
+      Re_encode_tree_reversed( &eb->renc, eb->bm_dis + ( base - dis_slot ),
                                direct_dis, direct_bits );
     else
       {

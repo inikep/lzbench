@@ -1,28 +1,20 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2016 Antonio Diaz Diaz.
+    Copyright (C) 2009-2019 Antonio Diaz Diaz.
 
-    This library is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 2 of the License, or
-    (at your option) any later version.
+    This library is free software. Redistribution and use in source and
+    binary forms, with or without modification, are permitted provided
+    that the following conditions are met:
+
+    1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+    2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this library.  If not, see <http://www.gnu.org/licenses/>.
-
-    As a special exception, you may use this file as part of a free
-    software library without restriction.  Specifically, if other files
-    instantiate templates or use macros or inline functions from this
-    file, or you compile this file and link it with other files to
-    produce an executable, this file does not by itself cause the
-    resulting executable to be covered by the GNU General Public
-    License.  This exception does not however invalidate any other
-    reasons why the executable file might be covered by the GNU General
-    Public License.
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 struct Len_prices
@@ -31,7 +23,7 @@ struct Len_prices
   int len_symbols;
   int count;
   int prices[pos_states][max_len_symbols];
-  int counters[pos_states];
+  int counters[pos_states];			/* may decrement below 0 */
   };
 
 static inline void Lp_update_low_mid_prices( struct Len_prices * const lp,
@@ -40,14 +32,13 @@ static inline void Lp_update_low_mid_prices( struct Len_prices * const lp,
   int * const pps = lp->prices[pos_state];
   int tmp = price0( lp->lm->choice1 );
   int len = 0;
-  lp->counters[pos_state] = lp->count;
   for( ; len < len_low_symbols && len < lp->len_symbols; ++len )
-    pps[len] = tmp + price_symbol( lp->lm->bm_low[pos_state], len, len_low_bits );
+    pps[len] = tmp + price_symbol3( lp->lm->bm_low[pos_state], len );
   if( len >= lp->len_symbols ) return;
   tmp = price1( lp->lm->choice1 ) + price0( lp->lm->choice2 );
   for( ; len < len_low_symbols + len_mid_symbols && len < lp->len_symbols; ++len )
     pps[len] = tmp +
-               price_symbol( lp->lm->bm_mid[pos_state], len - len_low_symbols, len_mid_bits );
+               price_symbol3( lp->lm->bm_mid[pos_state], len - len_low_symbols );
     }
 
 static inline void Lp_update_high_prices( struct Len_prices * const lp )
@@ -58,7 +49,7 @@ static inline void Lp_update_high_prices( struct Len_prices * const lp )
     /* using 4 slots per value makes "Lp_price" faster */
     lp->prices[3][len] = lp->prices[2][len] =
     lp->prices[1][len] = lp->prices[0][len] = tmp +
-      price_symbol( lp->lm->bm_high, len - len_low_symbols - len_mid_symbols, len_high_bits );
+      price_symbol8( lp->lm->bm_high, len - len_low_symbols - len_mid_symbols );
   }
 
 static inline void Lp_reset( struct Len_prices * const lp )
@@ -84,14 +75,15 @@ static inline void Lp_update_prices( struct Len_prices * const lp )
   bool high_pending = false;
   for( pos_state = 0; pos_state < pos_states; ++pos_state )
     if( lp->counters[pos_state] <= 0 )
-      { Lp_update_low_mid_prices( lp, pos_state ); high_pending = true; }
+      { lp->counters[pos_state] = lp->count;
+        Lp_update_low_mid_prices( lp, pos_state ); high_pending = true; }
   if( high_pending && lp->len_symbols > len_low_symbols + len_mid_symbols )
     Lp_update_high_prices( lp );
   }
 
 static inline int Lp_price( const struct Len_prices * const lp,
-                            const int symbol, const int pos_state )
-  { return lp->prices[pos_state][symbol - min_match_len]; }
+                            const int len, const int pos_state )
+  { return lp->prices[pos_state][len - min_match_len]; }
 
 
 struct Pair			/* distance-length pair */
@@ -109,7 +101,7 @@ struct Trial
   {
   State state;
   int price;		/* dual use var; cumulative price, match length */
-  int dis;		/* rep index or match distance. (-1 for literal) */
+  int dis4;		/* -1 for literal, or rep, or match distance + 4 */
   int prev_index;	/* index of prev trial in trials[] */
   int prev_index2;	/*   -2  trial is single step */
 			/*   -1  literal + rep0 */
@@ -118,34 +110,28 @@ struct Trial
   };
 
 static inline void Tr_update( struct Trial * const trial, const int pr,
-                              const int distance, const int p_i )
+                              const int distance4, const int p_i )
   {
   if( pr < trial->price )
-    {
-    trial->price = pr; trial->dis = distance; trial->prev_index = p_i;
-    trial->prev_index2 = single_step_trial;
-    }
+    { trial->price = pr; trial->dis4 = distance4; trial->prev_index = p_i;
+      trial->prev_index2 = single_step_trial; }
   }
 
 static inline void Tr_update2( struct Trial * const trial, const int pr,
                                const int p_i )
   {
   if( pr < trial->price )
-    {
-    trial->price = pr; trial->dis = 0; trial->prev_index = p_i;
-    trial->prev_index2 = dual_step_trial;
-    }
+    { trial->price = pr; trial->dis4 = 0; trial->prev_index = p_i;
+      trial->prev_index2 = dual_step_trial; }
   }
 
 static inline void Tr_update3( struct Trial * const trial, const int pr,
-                               const int distance, const int p_i,
+                               const int distance4, const int p_i,
                                const int p_i2 )
   {
   if( pr < trial->price )
-    {
-    trial->price = pr; trial->dis = distance; trial->prev_index = p_i;
-    trial->prev_index2 = p_i2;
-    }
+    { trial->price = pr; trial->dis4 = distance4; trial->prev_index = p_i;
+      trial->prev_index2 = p_i2; }
   }
 
 
@@ -164,7 +150,7 @@ struct LZ_encoder
   int dis_prices[len_states][modeled_distances];
   int align_prices[dis_align_size];
   int num_dis_slots;
-  int price_counter;
+  int price_counter;		/* counters may decrement below 0 */
   int dis_price_counter;
   int align_price_counter;
   bool been_flushed;
@@ -175,26 +161,25 @@ static inline bool Mb_dec_pos( struct Matchfinder_base * const mb,
   {
   if( ahead < 0 || mb->pos < ahead ) return false;
   mb->pos -= ahead;
+  if( mb->cyclic_pos < ahead ) mb->cyclic_pos += mb->dictionary_size + 1;
   mb->cyclic_pos -= ahead;
-  if( mb->cyclic_pos < 0 ) mb->cyclic_pos += mb->dictionary_size + 1;
   return true;
   }
 
 static int LZe_get_match_pairs( struct LZ_encoder * const e, struct Pair * pairs );
 
-       /* move-to-front dis in/into reps if( dis > 0 ) */
-static inline void mtf_reps( const int dis, int reps[num_rep_distances] )
+       /* move-to-front dis in/into reps; do nothing if( dis4 <= 0 ) */
+static inline void mtf_reps( const int dis4, int reps[num_rep_distances] )
   {
-  int i;
-  if( dis >= num_rep_distances )
+  if( dis4 >= num_rep_distances )			/* match */
     {
-    for( i = num_rep_distances - 1; i > 0; --i ) reps[i] = reps[i-1];
-    reps[0] = dis - num_rep_distances;
+    reps[3] = reps[2]; reps[2] = reps[1]; reps[1] = reps[0];
+    reps[0] = dis4 - num_rep_distances;
     }
-  else if( dis > 0 )
+  else if( dis4 > 0 )				/* repeated match */
     {
-    const int distance = reps[dis];
-    for( i = dis; i > 0; --i ) reps[i] = reps[i-1];
+    const int distance = reps[dis4];
+    int i; for( i = dis4; i > 0; --i ) reps[i] = reps[i-1];
     reps[0] = distance;
     }
   }
@@ -206,8 +191,8 @@ static inline int LZeb_price_shortrep( const struct LZ_encoder_base * const eb,
   }
 
 static inline int LZeb_price_rep( const struct LZ_encoder_base * const eb,
-                                  const int rep,
-                                  const State state, const int pos_state )
+                                  const int rep, const State state,
+                                  const int pos_state )
   {
   int price;
   if( rep == 0 ) return price0( eb->bm_rep0[state] ) +
@@ -224,8 +209,8 @@ static inline int LZeb_price_rep( const struct LZ_encoder_base * const eb,
   }
 
 static inline int LZe_price_rep0_len( const struct LZ_encoder * const e,
-                                      const int len,
-                                      const State state, const int pos_state )
+                                      const int len, const State state,
+                                      const int pos_state )
   {
   return LZeb_price_rep( &e->eb, 0, state, pos_state ) +
          Lp_price( &e->rep_len_prices, len, pos_state );
@@ -249,13 +234,10 @@ static inline int LZe_read_match_distances( struct LZ_encoder * const e )
   const int num_pairs = LZe_get_match_pairs( e, e->pairs );
   if( num_pairs > 0 )
     {
-    int len = e->pairs[num_pairs-1].len;
+    const int len = e->pairs[num_pairs-1].len;
     if( len == e->match_len_limit && len < max_match_len )
-      {
-      len += Mb_true_match_len( &e->eb.mb, len, e->pairs[num_pairs-1].dis + 1,
-                                max_match_len - len );
-      e->pairs[num_pairs-1].len = len;
-      }
+      e->pairs[num_pairs-1].len =
+        Mb_true_match_len( &e->eb.mb, len, e->pairs[num_pairs-1].dis + 1 );
     }
   return num_pairs;
   }
@@ -273,7 +255,7 @@ static inline bool LZe_move_and_update( struct LZ_encoder * const e, int n )
 
 static inline void LZe_backward( struct LZ_encoder * const e, int cur )
   {
-  int * const dis = &e->trials[cur].dis;
+  int dis4 = e->trials[cur].dis4;
   while( cur > 0 )
     {
     const int prev_index = e->trials[cur].prev_index;
@@ -281,19 +263,19 @@ static inline void LZe_backward( struct LZ_encoder * const e, int cur )
 
     if( e->trials[cur].prev_index2 != single_step_trial )
       {
-      prev_trial->dis = -1;
+      prev_trial->dis4 = -1;					/* literal */
       prev_trial->prev_index = prev_index - 1;
       prev_trial->prev_index2 = single_step_trial;
       if( e->trials[cur].prev_index2 >= 0 )
         {
         struct Trial * const prev_trial2 = &e->trials[prev_index-1];
-        prev_trial2->dis = *dis; *dis = 0;
+        prev_trial2->dis4 = dis4; dis4 = 0;			/* rep0 */
         prev_trial2->prev_index = e->trials[cur].prev_index2;
         prev_trial2->prev_index2 = single_step_trial;
         }
       }
     prev_trial->price = cur - prev_index;			/* len */
-    cur = *dis; *dis = prev_trial->dis; prev_trial->dis = cur;
+    cur = dis4; dis4 = prev_trial->dis4; prev_trial->dis4 = cur;
     cur = prev_index;
     }
   }
@@ -305,7 +287,7 @@ static inline bool LZe_init( struct LZ_encoder * const e,
                              const int dict_size, const int len_limit,
                              const unsigned long long member_size )
   {
-  enum { before = max_num_trials + 1,
+  enum { before_size = max_num_trials,
          /* bytes to keep in buffer after pos */
          after_size = max_num_trials + ( 2 * max_match_len ) + 1,
          dict_factor = 2,
@@ -313,7 +295,7 @@ static inline bool LZe_init( struct LZ_encoder * const e,
          pos_array_factor = 2,
          min_free_bytes = 2 * max_num_trials };
 
-  if( !LZeb_init( &e->eb, before, dict_size, after_size, dict_factor,
+  if( !LZeb_init( &e->eb, before_size, dict_size, after_size, dict_factor,
                   num_prev_positions23, pos_array_factor, min_free_bytes,
                   member_size ) ) return false;
   e->cycles = ( len_limit < max_match_len ) ? 16 + ( len_limit / 2 ) : 256;

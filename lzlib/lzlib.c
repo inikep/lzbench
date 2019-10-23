@@ -1,28 +1,20 @@
 /*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2016 Antonio Diaz Diaz.
+    Copyright (C) 2009-2019 Antonio Diaz Diaz.
 
-    This library is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 2 of the License, or
-    (at your option) any later version.
+    This library is free software. Redistribution and use in source and
+    binary forms, with or without modification, are permitted provided
+    that the following conditions are met:
+
+    1. Redistributions of source code must retain the above copyright
+    notice, this list of conditions and the following disclaimer.
+
+    2. Redistributions in binary form must reproduce the above copyright
+    notice, this list of conditions and the following disclaimer in the
+    documentation and/or other materials provided with the distribution.
 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this library.  If not, see <http://www.gnu.org/licenses/>.
-
-    As a special exception, you may use this file as part of a free
-    software library without restriction.  Specifically, if other files
-    instantiate templates or use macros or inline functions from this
-    file, or you compile this file and link it with other files to
-    produce an executable, this file does not by itself cause the
-    resulting executable to be covered by the GNU General Public
-    License.  This exception does not however invalidate any other
-    reasons why the executable file might be covered by the GNU General
-    Public License.
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 #include <stdbool.h>
@@ -73,7 +65,7 @@ struct LZ_Decoder
   struct Range_decoder * rdec;
   struct LZ_decoder * lz_decoder;
   enum LZ_Errno lz_errno;
-  File_header member_header;		/* header of current member */
+  Lzip_header member_header;		/* header of current member */
   bool fatal;
   bool first_header;			/* true until first header is read */
   bool seeking;
@@ -87,7 +79,7 @@ static void LZ_Decoder_init( struct LZ_Decoder * const d )
   d->rdec = 0;
   d->lz_decoder = 0;
   d->lz_errno = LZ_ok;
-  for( i = 0; i < Fh_size; ++i ) d->member_header[i] = 0;
+  for( i = 0; i < Lh_size; ++i ) d->member_header[i] = 0;
   d->fatal = false;
   d->first_header = true;
   d->seeking = false;
@@ -127,7 +119,7 @@ const char * LZ_strerror( const enum LZ_Errno lz_errno )
     case LZ_mem_error     : return "Not enough memory";
     case LZ_sequence_error: return "Sequence error";
     case LZ_header_error  : return "Header error";
-    case LZ_unexpected_eof: return "Unexpected eof";
+    case LZ_unexpected_eof: return "Unexpected EOF";
     case LZ_data_error    : return "Data error";
     case LZ_library_error : return "Library error";
     }
@@ -149,12 +141,12 @@ struct LZ_Encoder * LZ_compress_open( const int dictionary_size,
                                       const int match_len_limit,
                                       const unsigned long long member_size )
   {
-  File_header header;
+  Lzip_header header;
   struct LZ_Encoder * const e =
     (struct LZ_Encoder *)malloc( sizeof (struct LZ_Encoder) );
   if( !e ) return 0;
   LZ_Encoder_init( e );
-  if( !Fh_set_dictionary_size( header, dictionary_size ) ||
+  if( !Lh_set_dictionary_size( header, dictionary_size ) ||
       match_len_limit < min_match_len_limit ||
       match_len_limit > max_match_len ||
       member_size < min_dictionary_size )
@@ -171,7 +163,7 @@ struct LZ_Encoder * LZ_compress_open( const int dictionary_size,
     else
       {
       e->lz_encoder = (struct LZ_encoder *)malloc( sizeof (struct LZ_encoder) );
-      if( e->lz_encoder && LZe_init( e->lz_encoder, Fh_get_dictionary_size( header ),
+      if( e->lz_encoder && LZe_init( e->lz_encoder, Lh_get_dictionary_size( header ),
                                      match_len_limit, member_size ) )
         { e->lz_encoder_base = &e->lz_encoder->eb; return e; }
       free( e->lz_encoder ); e->lz_encoder = 0;
@@ -201,10 +193,10 @@ int LZ_compress_finish( struct LZ_Encoder * const e )
   /* if (open --> write --> finish) use same dictionary size as lzip. */
   /* this does not save any memory. */
   if( Mb_data_position( &e->lz_encoder_base->mb ) == 0 &&
-      LZ_compress_total_out_size( e ) == Fh_size )
+      Re_member_position( &e->lz_encoder_base->renc ) == Lh_size )
     {
     Mb_adjust_dictionary_size( &e->lz_encoder_base->mb );
-    Fh_set_dictionary_size( e->lz_encoder_base->renc.header,
+    Lh_set_dictionary_size( e->lz_encoder_base->renc.header,
                             e->lz_encoder_base->mb.dictionary_size );
     e->lz_encoder_base->renc.cb.buffer[5] = e->lz_encoder_base->renc.header[5];
     }
@@ -387,7 +379,7 @@ int LZ_decompress_reset( struct LZ_Decoder * const d )
 
 int LZ_decompress_sync_to_member( struct LZ_Decoder * const d )
   {
-  int skipped = 0;
+  unsigned skipped = 0;
   if( !verify_decoder( d ) ) return -1;
   if( d->lz_decoder )
     { LZd_free( d->lz_decoder ); free( d->lz_decoder ); d->lz_decoder = 0; }
@@ -408,7 +400,10 @@ int LZ_decompress_read( struct LZ_Decoder * const d,
                         uint8_t * const buffer, const int size )
   {
   int result;
-  if( !verify_decoder( d ) || d->fatal ) return -1;
+  if( !verify_decoder( d ) ) return -1;
+  if( d->fatal )	/* don't return error until pending bytes are read */
+    { if( d->lz_decoder && !Cb_empty( &d->lz_decoder->cb ) ) goto get_data;
+      return -1; }
   if( d->seeking || size < 0 ) return 0;
 
   if( d->lz_decoder && LZd_member_finished( d->lz_decoder ) )
@@ -421,25 +416,42 @@ int LZ_decompress_read( struct LZ_Decoder * const d,
     int rd;
     d->partial_in_size += d->rdec->member_position;
     d->rdec->member_position = 0;
-    if( Rd_available_bytes( d->rdec ) < Fh_size + 5 &&
+    if( Rd_available_bytes( d->rdec ) < Lh_size + 5 &&
         !d->rdec->at_stream_end ) return 0;
     if( Rd_finished( d->rdec ) && !d->first_header ) return 0;
-    rd = Rd_read_data( d->rdec, d->member_header, Fh_size );
-    if( Rd_finished( d->rdec ) )
+    rd = Rd_read_data( d->rdec, d->member_header, Lh_size );
+    if( rd < Lh_size || Rd_finished( d->rdec ) )	/* End Of File */
       {
-      if( rd <= 0 || Fh_verify_prefix( d->member_header, rd ) )
+      if( rd <= 0 || Lh_verify_prefix( d->member_header, rd ) )
         d->lz_errno = LZ_unexpected_eof;
       else
         d->lz_errno = LZ_header_error;
       d->fatal = true;
       return -1;
       }
-    if( !Fh_verify( d->member_header ) )
+    if( !Lh_verify_magic( d->member_header ) )
       {
       /* unreading the header prevents sync_to_member from skipping a member
          if leading garbage is shorter than a full header; "lgLZIP\x01\x0C" */
       if( Rd_unread_data( d->rdec, rd ) )
-        d->lz_errno = LZ_header_error;
+        {
+        if( d->first_header || !Lh_verify_corrupt( d->member_header ) )
+          d->lz_errno = LZ_header_error;
+        else
+          d->lz_errno = LZ_data_error;		/* corrupt header */
+        }
+      else
+        d->lz_errno = LZ_library_error;
+      d->fatal = true;
+      return -1;
+      }
+    if( !Lh_verify_version( d->member_header ) ||
+        !isvalid_ds( Lh_get_dictionary_size( d->member_header ) ) )
+      {
+      /* Skip a possible "LZIP" leading garbage; "LZIPLZIP\x01\x0C".
+         Leave member_pos pointing to the first error. */
+      if( Rd_unread_data( d->rdec, 1 + !Lh_verify_version( d->member_header ) ) )
+        d->lz_errno = LZ_data_error;	/* bad version or bad dict size */
       else
         d->lz_errno = LZ_library_error;
       d->fatal = true;
@@ -457,7 +469,7 @@ int LZ_decompress_read( struct LZ_Decoder * const d,
       }
     d->lz_decoder = (struct LZ_decoder *)malloc( sizeof (struct LZ_decoder) );
     if( !d->lz_decoder || !LZd_init( d->lz_decoder, d->rdec,
-                             Fh_get_dictionary_size( d->member_header ) ) )
+                             Lh_get_dictionary_size( d->member_header ) ) )
       {					/* not enough free memory */
       if( d->lz_decoder )
         { LZd_free( d->lz_decoder ); free( d->lz_decoder ); d->lz_decoder = 0; }
@@ -470,15 +482,16 @@ int LZ_decompress_read( struct LZ_Decoder * const d,
   result = LZd_decode_member( d->lz_decoder );
   if( result != 0 )
     {
-    if( result == 2 )
-      { d->lz_errno = LZ_unexpected_eof;
-        d->rdec->member_position += Cb_used_bytes( &d->rdec->cb );
-        Cb_reset( &d->rdec->cb ); }
+    if( result == 2 )			/* set input position at EOF */
+      { d->rdec->member_position += Cb_used_bytes( &d->rdec->cb );
+        Cb_reset( &d->rdec->cb );
+        d->lz_errno = LZ_unexpected_eof; }
     else if( result == 5 ) d->lz_errno = LZ_library_error;
     else d->lz_errno = LZ_data_error;
     d->fatal = true;
-    return -1;
+    if( Cb_empty( &d->lz_decoder->cb ) ) return -1;
     }
+get_data:
   return Cb_read_data( &d->lz_decoder->cb, buffer, size );
   }
 
@@ -493,7 +506,8 @@ int LZ_decompress_write( struct LZ_Decoder * const d,
   result = Rd_write_data( d->rdec, buffer, size );
   while( d->seeking )
     {
-    int size2, skipped = 0;
+    int size2;
+    unsigned skipped = 0;
     if( Rd_find_header( d->rdec, &skipped ) ) d->seeking = false;
     d->partial_in_size += skipped;
     if( result >= size ) break;
@@ -521,7 +535,7 @@ enum LZ_Errno LZ_decompress_errno( struct LZ_Decoder * const d )
 
 int LZ_decompress_finished( struct LZ_Decoder * const d )
   {
-  if( !verify_decoder( d ) ) return -1;
+  if( !verify_decoder( d ) || d->fatal ) return -1;
   return ( Rd_finished( d->rdec ) &&
            ( !d->lz_decoder || LZd_member_finished( d->lz_decoder ) ) );
   }
@@ -529,7 +543,7 @@ int LZ_decompress_finished( struct LZ_Decoder * const d )
 
 int LZ_decompress_member_finished( struct LZ_Decoder * const d )
   {
-  if( !verify_decoder( d ) ) return -1;
+  if( !verify_decoder( d ) || d->fatal ) return -1;
   return ( d->lz_decoder && LZd_member_finished( d->lz_decoder ) );
   }
 
@@ -537,14 +551,14 @@ int LZ_decompress_member_finished( struct LZ_Decoder * const d )
 int LZ_decompress_member_version( struct LZ_Decoder * const d )
   {
   if( !verify_decoder( d ) ) return -1;
-  return Fh_version( d->member_header );
+  return Lh_version( d->member_header );
   }
 
 
 int LZ_decompress_dictionary_size( struct LZ_Decoder * const d )
   {
   if( !verify_decoder( d ) ) return -1;
-  return Fh_get_dictionary_size( d->member_header );
+  return Lh_get_dictionary_size( d->member_header );
   }
 
 
