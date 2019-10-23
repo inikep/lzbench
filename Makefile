@@ -9,6 +9,7 @@ vpath _lzbench/lzbench.h $(SOURCE_PATH)
 vpath wflz/wfLZ.h $(SOURCE_PATH)
 
 #BUILD_ARCH = 32-bit
+#BUILD_STATIC = 1
 
 ifeq ($(BUILD_ARCH),32-bit)
 	CODE_FLAGS += -m32
@@ -38,7 +39,9 @@ ifneq (,$(filter Windows%,$(OS)))
 	ifeq ($(COMPILER),clang)
 		DONT_BUILD_GLZA ?= 1
 	endif
-	LDFLAGS += -lshell32 -lole32 -loleaut32 -static
+	ifeq ($(BUILD_STATIC),1)
+		LDFLAGS += -lshell32 -lole32 -loleaut32 -static
+	endif
 else
 	ifeq ($(shell uname -p),powerpc)
 		# density and yappy don't work with big-endian PowerPC
@@ -47,18 +50,19 @@ else
 		DONT_BUILD_ZLING ?= 1
 	endif
 
-	LDFLAGS	+= -pthread
-
-	ifeq (1, $(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \>= 80000))
-	  LDFLAGS += -lmvec
-	endif
-
-	# MacOS doesn't support -lrt -static
+	# detect MacOS
 	ifeq ($(shell uname -s),Darwin)
 		DONT_BUILD_LZHAM ?= 1
 		DONT_BUILD_CSC ?= 1
-	else
+	endif
+
+	LDFLAGS	+= -pthread
+
+	ifeq ($(BUILD_STATIC),1)
 		LDFLAGS	+= -lrt -static
+		ifeq (1, $(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \>= 80000))
+		  LDFLAGS += -lmvec
+		endif
 	endif
 endif
 
