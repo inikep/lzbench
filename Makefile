@@ -67,7 +67,7 @@ else
 endif
 
 
-DEFINES     += $(addprefix -I$(SOURCE_PATH),. zstd/lib zstd/lib/common brotli/include xpack/common libcsc xz xz/check xz/common xz/lz xz/lzma xz/rangecoder)
+DEFINES     += $(addprefix -I$(SOURCE_PATH),. zstd/lib zstd/lib/common brotli/include xpack/common libcsc xz xz/api xz/check xz/common xz/lz xz/lzma xz/rangecoder)
 DEFINES     += -DHAVE_CONFIG_H -DFL2_SINGLETHREAD
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
