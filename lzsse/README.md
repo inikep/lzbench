@@ -6,7 +6,7 @@ Three variants:
 - LZSSE4, for a more balanced mix of literals and matches.
 - LZSSE8, for lower compression data with longer runs of matches.
 
-All three variants have an optimal parser implementation, which uses a quite strong match finder (very similar to LzFind) combined with a Storer-Szymanksi style parse. LZSSE4 and LZSSE8 have "fast" compressor implementations, which use a simple hash table based matching and a greedy parse.
+All three variants have an optimal parser implementation, which uses a quite strong match finder (very similar to LzFind) combined with a Storer-Szymanski style parse. LZSSE4 and LZSSE8 have "fast" compressor implementations, which use a simple hash table based matching and a greedy parse.
 
 Currently LZSSE8 is the recommended variant to use in the general case, as it generally performs well in most cases (and you have the option of both optimal parse and fast compression). LZSSE2 is recommended if you are only using text, especially heavily compressible text, but is slow/doesn't compress as well on less compressible data and binaries.
 

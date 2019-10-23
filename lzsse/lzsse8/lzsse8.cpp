@@ -23,7 +23,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <memory.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -117,7 +117,6 @@ struct TreeNode
 
 struct LZSSE8_OptimalParseState
 {
-    // Note, we should really replace this with a BST, hash chaining works but is *slooooooooooooooow* for optimal parse.
     int32_t roots[ OPTIMAL_BUCKETS_COUNT ];
 
     TreeNode window[ LZ_WINDOW_SIZE ];
@@ -130,6 +129,11 @@ struct LZSSE8_OptimalParseState
 
 LZSSE8_OptimalParseState* LZSSE8_MakeOptimalParseState( size_t bufferSize )
 {
+    if ( bufferSize > 0 && ( SIZE_MAX / sizeof( Arrival ) ) < bufferSize )
+    {
+        return nullptr;
+    }
+
     LZSSE8_OptimalParseState* result = reinterpret_cast< LZSSE8_OptimalParseState* >( ::malloc( sizeof( LZSSE8_OptimalParseState ) ) );
 
     result->bufferSize = bufferSize;

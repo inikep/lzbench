@@ -4,6 +4,7 @@ v1.8
 - libdeflate updated to v1.3
 - lzma updated to 19.00
 - lzlib updated to 1.11
+- lzsse updated to 2019-04-18 (1847c3e827)
 - snappy updated to 2019-09-30 (e9e11b84e6)
 - xz updated to v5.2.4
 - zling updated to 2018-10-12

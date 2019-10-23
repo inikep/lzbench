@@ -23,7 +23,7 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <memory.h>
+#include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
@@ -96,6 +96,11 @@ struct LZSSE2_OptimalParseState
 
 LZSSE2_OptimalParseState* LZSSE2_MakeOptimalParseState( size_t bufferSize )
 {
+    if ( bufferSize > 0 && ( SIZE_MAX / sizeof( Arrival ) ) < bufferSize )
+    {
+        return nullptr;
+    }
+
     LZSSE2_OptimalParseState* result = reinterpret_cast< LZSSE2_OptimalParseState* >( ::malloc( sizeof( LZSSE2_OptimalParseState ) ) );
 
     result->bufferSize = bufferSize;
