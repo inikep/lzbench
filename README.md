@@ -85,6 +85,7 @@ crush 1.0
 csc 2016-10-13 (WARNING: it can throw SEGFAULT compiled with Apple LLVM version 7.3.0 (clang-703.0.31))
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
 fastlz 0.1
+fast-lzma2 1.0.1
 gipfeli 2016-07-13
 glza 0.8
 libdeflate v1.3

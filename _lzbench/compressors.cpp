@@ -262,6 +262,26 @@ int64_t lzbench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size
 #endif
 
 
+
+#ifndef BENCH_REMOVE_FASTLZMA2
+#include "fast-lzma2/fast-lzma2.h"
+
+int64_t lzbench_fastlzma2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char* workmem)
+{
+    size_t ret = FL2_compress(outbuf, outsize, inbuf, insize, level);
+    if (FL2_isError(ret)) return 0;
+    return ret;
+}
+
+int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
+{
+    size_t ret = FL2_decompress(outbuf, outsize, inbuf, insize);
+    if (FL2_isError(ret)) return 0;
+    return ret;
+}
+#endif // BENCH_REMOVE_FASTLZMA2
+
+
 #ifndef BENCH_REMOVE_GIPFELI
 #include "gipfeli/gipfeli.h"
 

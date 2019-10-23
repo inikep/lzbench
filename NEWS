@@ -1,4 +1,5 @@
 v1.8
+- added fast-lzma2 1.0.1
 - blosclz updated to 2.0.0
 - liblzg updated to 1.0.10
 - libdeflate updated to v1.3
