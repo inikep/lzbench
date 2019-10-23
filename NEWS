@@ -1,4 +1,8 @@
 v1.7.3
+- lz4 updated to v1.9.2
+- zstd updated to v1.4.3
+
+v1.7.3
 - brotli updated to 2017-12-12
 - lz4 updated to v1.8.0
 - zstd updated to v1.3.3

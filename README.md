@@ -89,7 +89,7 @@ gipfeli 2016-07-13
 glza 0.8
 libdeflate v0.7
 lizard v1.0 (formerly lz5)
-lz4/lz4hc v1.8.0
+lz4/lz4hc v1.9.2
 lzf 3.6
 lzfse/lzvn 2017-03-08
 lzg 1.0.8
@@ -115,7 +115,7 @@ yalz77 2015-09-19
 yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
 zlib 1.2.11
 zling 2016-04-10 (according to the author using libzling in a production environment is not a good idea)
-zstd 1.3.8
+zstd 1.4.3
 ```
 
 

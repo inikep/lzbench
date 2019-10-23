@@ -1,3 +1,82 @@
+v1.4.3
+bug: Fix Dictionary Compression Ratio Regression by @cyan4973 (#1709)
+bug: Fix Buffer Overflow in v0.3 Decompression by @felixhandte (#1722)
+build: Add support for IAR C/C++ Compiler for Arm by @joseph0918 (#1705)
+misc: Add NULL pointer check in util.c by @leeyoung624 (#1706)
+
+v1.4.2
+bug: Fix bug in zstd-0.5 decoder by @terrelln (#1696)
+bug: Fix seekable decompression in-memory API by @iburinoc (#1695)
+misc: Validate blocks are smaller than size limit by @vivekmg (#1685)
+misc: Restructure source files by @ephiepark (#1679)
+
+v1.4.1
+bug: Fix data corruption in niche use cases by @terrelln (#1659)
+bug: Fuzz legacy modes, fix uncovered bugs by @terrelln (#1593, #1594, #1595)
+bug: Fix out of bounds read by @terrelln (#1590)
+perf: Improve decode speed by ~7% @mgrice (#1668)
+perf: Slightly improved compression ratio of level 3 and 4 (ZSTD_dfast) by @cyan4973 (#1681)
+perf: Slightly faster compression speed when re-using a context by @cyan4973 (#1658)
+perf: Improve compression ratio for small windowLog by @cyan4973 (#1624)
+perf: Faster compression speed in high compression mode for repetitive data by @terrelln (#1635)
+api: Add parameter to generate smaller dictionaries by @tyler-tran (#1656)
+cli: Recognize symlinks when built in C99 mode by @felixhandte (#1640)
+cli: Expose cpu load indicator for each file on -vv mode by @ephiepark (#1631)
+cli: Restrict read permissions on destination files by @chungy (#1644)
+cli: zstdgrep: handle -f flag by @felixhandte (#1618)
+cli: zstdcat: follow symlinks by @vejnar (#1604)
+doc: Remove extra size limit on compressed blocks by @felixhandte (#1689)
+doc: Fix typo by @yk-tanigawa (#1633)
+doc: Improve documentation on streaming buffer sizes by @cyan4973 (#1629)
+build: CMake: support building with LZ4 @leeyoung624 (#1626)
+build: CMake: install zstdless and zstdgrep by @leeyoung624 (#1647)
+build: CMake: respect existing uninstall target by @j301scott (#1619)
+build: Make: skip multithread tests when built without support by @michaelforney (#1620)
+build: Make: Fix examples/ test target by @sjnam (#1603)
+build: Meson: rename options out of deprecated namespace by @lzutao (#1665)
+build: Meson: fix build by @lzutao (#1602)
+build: Visual Studio: don't export symbols in static lib by @scharan (#1650)
+build: Visual Studio: fix linking by @absotively (#1639)
+build: Fix MinGW-W64 build by @myzhang1029 (#1600)
+misc: Expand decodecorpus coverage by @ephiepark (#1664)
+
+v1.4.0
+perf: Improve level 1 compression speed in most scenarios by 6% by @gbtucker and @terrelln
+api: Move the advanced API, including all functions in the staging section, to the stable section
+api: Make ZSTD_e_flush and ZSTD_e_end block for maximum forward progress
+api: Rename ZSTD_CCtxParam_getParameter to ZSTD_CCtxParams_getParameter
+api: Rename ZSTD_CCtxParam_setParameter to ZSTD_CCtxParams_setParameter
+api: Don't export ZSTDMT functions from the shared library by default
+api: Require ZSTD_MULTITHREAD to be defined to use ZSTDMT
+api: Add ZSTD_decompressBound() to provide an upper bound on decompressed size by @shakeelrao
+api: Fix ZSTD_decompressDCtx() corner cases with a dictionary
+api: Move ZSTD_getDictID_*() functions to the stable section
+api: Add ZSTD_c_literalCompressionMode flag to enable or disable literal compression by @terrelln
+api: Allow compression parameters to be set when a dictionary is used
+api: Allow setting parameters before or after ZSTD_CCtx_loadDictionary() is called
+api: Fix ZSTD_estimateCStreamSize_usingCCtxParams()
+api: Setting ZSTD_d_maxWindowLog to 0 means use the default
+cli: Ensure that a dictionary is not used to compress itself by @shakeelrao
+cli: Add --[no-]compress-literals flag to enable or disable literal compression
+doc: Update the examples to use the advanced API
+doc: Explain how to transition from old streaming functions to the advanced API in the header
+build: Improve the Windows release packages
+build: Improve CMake build by @hjmjohnson
+build: Build fixes for FreeBSD by @lwhsu
+build: Remove redundant warnings by @thatsafunnyname
+build: Fix tests on OpenBSD by @bket
+build: Extend fuzzer build system to work with the new clang engine
+build: CMake now creates the libzstd.so.1 symlink
+build: Improve Menson build by @lzutao
+misc: Fix symbolic link detection on FreeBSD
+misc: Use physical core count for -T0 on FreeBSD by @cemeyer
+misc: Fix zstd --list on truncated files by @kostmo
+misc: Improve logging in debug mode by @felixhandte
+misc: Add CirrusCI tests by @lwhsu
+misc: Optimize dictionary memory usage in corner cases
+misc: Improve the dictionary builder on small or homogeneous data
+misc: Fix spelling across the repo by @jsoref
+
 v1.3.8
 perf: better decompression speed on large files (+7%) and cold dictionaries (+15%)
 perf: slightly better compression ratio at high compression modes
@@ -239,7 +318,7 @@ v1.0.0
 Change Licensing, all project is now BSD, Copyright Facebook
 Small decompression speed improvement
 API : Streaming API supports legacy format
-API : ZDICT_getDictID(), ZSTD_sizeof_{CCtx, DCtx, CStream, DStream}(), ZSTD_setDStreamParamter()
+API : ZDICT_getDictID(), ZSTD_sizeof_{CCtx, DCtx, CStream, DStream}(), ZSTD_setDStreamParameter()
 CLI supports legacy formats v0.4+
 Fixed : compression fails on certain huge files, reported by Jesse McGrew
 Enhanced documentation, by Przemyslaw Skibinski
