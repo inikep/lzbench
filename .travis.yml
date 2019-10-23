@@ -106,7 +106,7 @@ matrix:
             - qemu-user-static
             - gcc-aarch64-linux-gnu
             - g++-aarch64-linux-gnu
-      env: QEMU_INTERPRETER=qemu-aarch64-static CC_COMPILER=aarch64-linux-gnu-gcc CXX_COMPILER=aarch64-linux-gnu-g++
+      env: QEMU_INTERPRETER=qemu-aarch64-static CC_COMPILER=aarch64-linux-gnu-gcc CXX_COMPILER=aarch64-linux-gnu-g++ MORE_OPTIONS="BUILD_STATIC=1"
 
     - dist: trusty
       sudo: required
@@ -117,7 +117,7 @@ matrix:
             - qemu-user-static
             - gcc-arm-linux-gnueabi
             - g++-arm-linux-gnueabi
-      env: QEMU_INTERPRETER=qemu-arm-static CC_COMPILER=arm-linux-gnueabi-gcc CXX_COMPILER=arm-linux-gnueabi-g++
+      env: QEMU_INTERPRETER=qemu-arm-static CC_COMPILER=arm-linux-gnueabi-gcc CXX_COMPILER=arm-linux-gnueabi-g++ MORE_OPTIONS="BUILD_STATIC=1"
 
     - dist: trusty
       sudo: required
@@ -128,7 +128,7 @@ matrix:
             - qemu-user-static
             - gcc-powerpc-linux-gnu
             - g++-powerpc-linux-gnu
-      env: QEMU_INTERPRETER=qemu-ppc64-static CC_COMPILER=powerpc-linux-gnu-gcc CXX_COMPILER=powerpc-linux-gnu-g++ MORE_OPTIONS="MOREFLAGS=-m64 DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1 DONT_BUILD_ZLING=1"
+      env: QEMU_INTERPRETER=qemu-ppc64-static CC_COMPILER=powerpc-linux-gnu-gcc CXX_COMPILER=powerpc-linux-gnu-g++ MORE_OPTIONS="MOREFLAGS=-m64 BUILD_STATIC=1 DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1 DONT_BUILD_ZLING=1"
 
     - dist: trusty
       sudo: required
@@ -139,7 +139,7 @@ matrix:
             - qemu-user-static
             - gcc-powerpc-linux-gnu
             - g++-powerpc-linux-gnu
-      env: QEMU_INTERPRETER=qemu-ppc-static CC_COMPILER=powerpc-linux-gnu-gcc CXX_COMPILER=powerpc-linux-gnu-g++ MORE_OPTIONS="DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1 DONT_BUILD_ZLING=1"
+      env: QEMU_INTERPRETER=qemu-ppc-static CC_COMPILER=powerpc-linux-gnu-gcc CXX_COMPILER=powerpc-linux-gnu-g++ MORE_OPTIONS="BUILD_STATIC=1 DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1 DONT_BUILD_ZLING=1"
 
     - dist: trusty
       sudo: required
