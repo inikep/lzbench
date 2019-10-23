@@ -1,4 +1,5 @@
 v1.8
+- libdeflate updated to v1.3
 - snappy updated to 2019-09-30 (e9e11b84e6)
 - xz updated to v5.2.4
 - zling updated to 2018-10-12

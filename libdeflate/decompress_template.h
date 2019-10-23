@@ -89,19 +89,13 @@ next_block:
 		STATIC_ASSERT(DEFLATE_NUM_PRECODE_SYMS == ((1 << 4) - 1) + 4);
 		num_explicit_precode_lens = POP_BITS(4) + 4;
 
+		d->static_codes_loaded = false;
+
 		/* Read the precode codeword lengths.  */
 		STATIC_ASSERT(DEFLATE_MAX_PRE_CODEWORD_LEN == (1 << 3) - 1);
-		if (CAN_ENSURE(DEFLATE_NUM_PRECODE_SYMS * 3)) {
-
-			ENSURE_BITS(DEFLATE_NUM_PRECODE_SYMS * 3);
-
-			for (i = 0; i < num_explicit_precode_lens; i++)
-				d->u.precode_lens[deflate_precode_lens_permutation[i]] = POP_BITS(3);
-		} else {
-			for (i = 0; i < num_explicit_precode_lens; i++) {
-				ENSURE_BITS(3);
-				d->u.precode_lens[deflate_precode_lens_permutation[i]] = POP_BITS(3);
-			}
+		for (i = 0; i < num_explicit_precode_lens; i++) {
+			ENSURE_BITS(3);
+			d->u.precode_lens[deflate_precode_lens_permutation[i]] = POP_BITS(3);
 		}
 
 		for (; i < DEFLATE_NUM_PRECODE_SYMS; i++)
@@ -217,9 +211,20 @@ next_block:
 	} else {
 		SAFETY_CHECK(block_type == DEFLATE_BLOCKTYPE_STATIC_HUFFMAN);
 
-		/* Static Huffman block: set the static Huffman codeword
-		 * lengths.  Then the remainder is the same as decompressing a
-		 * dynamic Huffman block.  */
+		/*
+		 * Static Huffman block: build the decode tables for the static
+		 * codes.  Skip doing so if the tables are already set up from
+		 * an earlier static block; this speeds up decompression of
+		 * degenerate input of many empty or very short static blocks.
+		 *
+		 * Afterwards, the remainder is the same as decompressing a
+		 * dynamic Huffman block.
+		 */
+
+		if (d->static_codes_loaded)
+			goto have_decode_tables;
+
+		d->static_codes_loaded = true;
 
 		STATIC_ASSERT(DEFLATE_NUM_LITLEN_SYMS == 288);
 		STATIC_ASSERT(DEFLATE_NUM_OFFSET_SYMS == 32);
@@ -238,19 +243,21 @@ next_block:
 
 		num_litlen_syms = 288;
 		num_offset_syms = 32;
-
 	}
 
 	/* Decompressing a Huffman block (either dynamic or static)  */
 
 	SAFETY_CHECK(build_offset_decode_table(d, num_litlen_syms, num_offset_syms));
 	SAFETY_CHECK(build_litlen_decode_table(d, num_litlen_syms, num_offset_syms));
+have_decode_tables:
 
 	/* The main DEFLATE decode loop  */
 	for (;;) {
 		u32 entry;
 		u32 length;
 		u32 offset;
+		const u8 *src;
+		u8 *dst;
 
 		/* Decode a litlen symbol.  */
 		ENSURE_BITS(DEFLATE_MAX_LITLEN_CODEWORD_LEN);
@@ -323,65 +330,66 @@ next_block:
 		 * output buffer.  */
 		SAFETY_CHECK(offset <= out_next - (const u8 *)out);
 
-		/* Copy the match: 'length' bytes at 'out_next - offset' to
-		 * 'out_next'.  */
+		/*
+		 * Copy the match: 'length' bytes at 'out_next - offset' to
+		 * 'out_next', possibly overlapping.  If the match doesn't end
+		 * too close to the end of the buffer and offset >= WORDBYTES ||
+		 * offset == 1, take a fast path which copies a word at a time
+		 * -- potentially more than the length of the match, but that's
+		 * fine as long as we check for enough extra space.
+		 *
+		 * The remaining cases are not performance-critical so are
+		 * handled by a simple byte-by-byte copy.
+		 */
+
+		src = out_next - offset;
+		dst = out_next;
+		out_next += length;
 
 		if (UNALIGNED_ACCESS_IS_FAST &&
-		    length <= (3 * WORDBYTES) &&
-		    offset >= WORDBYTES &&
-		    length + (3 * WORDBYTES) <= out_end - out_next)
-		{
-			/* Fast case: short length, no overlaps if we copy one
-			 * word at a time, and we aren't getting too close to
-			 * the end of the output array.  */
-			copy_word_unaligned(out_next - offset + (0 * WORDBYTES),
-					    out_next + (0 * WORDBYTES));
-			copy_word_unaligned(out_next - offset + (1 * WORDBYTES),
-					    out_next + (1 * WORDBYTES));
-			copy_word_unaligned(out_next - offset + (2 * WORDBYTES),
-					    out_next + (2 * WORDBYTES));
-		} else {
-			const u8 *src = out_next - offset;
-			u8 *dst = out_next;
-			u8 *end = out_next + length;
-
-			if (UNALIGNED_ACCESS_IS_FAST &&
-			    likely(out_end - end >= WORDBYTES - 1)) {
-				if (offset >= WORDBYTES) {
+		    /* max overrun is writing 3 words for a min length match */
+		    likely(out_end - out_next >=
+			   3 * WORDBYTES - DEFLATE_MIN_MATCH_LEN)) {
+			if (offset >= WORDBYTES) { /* words don't overlap? */
+				copy_word_unaligned(src, dst);
+				src += WORDBYTES;
+				dst += WORDBYTES;
+				copy_word_unaligned(src, dst);
+				src += WORDBYTES;
+				dst += WORDBYTES;
+				do {
 					copy_word_unaligned(src, dst);
 					src += WORDBYTES;
 					dst += WORDBYTES;
-					if (dst < end) {
-						do {
-							copy_word_unaligned(src, dst);
-							src += WORDBYTES;
-							dst += WORDBYTES;
-						} while (dst < end);
-					}
-				} else if (offset == 1) {
-					machine_word_t v = repeat_byte(*(dst - 1));
-					do {
-						store_word_unaligned(v, dst);
-						src += WORDBYTES;
-						dst += WORDBYTES;
-					} while (dst < end);
-				} else {
-					*dst++ = *src++;
-					*dst++ = *src++;
-					do {
-						*dst++ = *src++;
-					} while (dst < end);
-				}
+				} while (dst < out_next);
+			} else if (offset == 1) {
+				/* RLE encoding of previous byte, common if the
+				 * data contains many repeated bytes */
+				machine_word_t v = repeat_byte(*src);
+
+				store_word_unaligned(v, dst);
+				dst += WORDBYTES;
+				store_word_unaligned(v, dst);
+				dst += WORDBYTES;
+				do {
+					store_word_unaligned(v, dst);
+					dst += WORDBYTES;
+				} while (dst < out_next);
 			} else {
 				*dst++ = *src++;
 				*dst++ = *src++;
 				do {
 					*dst++ = *src++;
-				} while (dst < end);
+				} while (dst < out_next);
 			}
+		} else {
+			STATIC_ASSERT(DEFLATE_MIN_MATCH_LEN == 3);
+			*dst++ = *src++;
+			*dst++ = *src++;
+			do {
+				*dst++ = *src++;
+			} while (dst < out_next);
 		}
-
-		out_next += length;
 	}
 
 block_done:
