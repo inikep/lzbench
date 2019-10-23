@@ -3,7 +3,7 @@
 /*
 * This file is part of liblzg.
 *
-* Copyright (c) 2010-2014 Marcus Geelnard
+* Copyright (c) 2010-2018 Marcus Geelnard
 *
 * This software is provided 'as-is', without any express or implied
 * warranty. In no event will the authors be held liable for any damages
@@ -183,18 +183,14 @@ static int hist_rec_compare(const void *p1, const void *p2)
     return h1->symbol - h2->symbol;
 }
 
-static int _LZG_DetermineMarkers(const unsigned char *in, lzg_uint32_t insize,
+static void _LZG_DetermineMarkers(const unsigned char *in, lzg_uint32_t insize,
     unsigned char *leastCommon1, unsigned char *leastCommon2,
-    unsigned char *leastCommon3, unsigned char *leastCommon4)
+    unsigned char *leastCommon3, unsigned char *leastCommon4,
+    void *workingMemory)
 {
-    hist_rec *hist;
+    hist_rec *hist = (hist_rec *) workingMemory;
     unsigned int i;
     unsigned char *src;
-
-    /* Allocate memory for histogram */
-    hist = (hist_rec*) malloc(sizeof(hist_rec) * 256);
-    if (!hist)
-        return FALSE;
 
     /* Build histogram, O(n) */
     for (i = 0; i < 256; ++i)
@@ -215,11 +211,6 @@ static int _LZG_DetermineMarkers(const unsigned char *in, lzg_uint32_t insize,
     *leastCommon2 = (unsigned char) hist[1].symbol;
     *leastCommon3 = (unsigned char) hist[2].symbol;
     *leastCommon4 = (unsigned char) hist[3].symbol;
-
-    /* Free memory for histogram */
-    free(hist);
-
-    return TRUE;
 }
 
 typedef struct {
@@ -232,32 +223,14 @@ typedef struct {
     lzg_bool_t  fast;
 } search_accel_t;
 
-static search_accel_t* _LZG_SearchAccel_Create(const tune_params_t* params,
-    lzg_uint32_t size, lzg_bool_t fast)
+static void _LZG_SearchAccel_Init(search_accel_t* self,
+    const tune_params_t* params, lzg_uint32_t size, lzg_bool_t fast,
+    void* workingMemory)
 {
-    search_accel_t *self;
-
-    /* Allocate memory for the sarch tab object */
-    self = malloc(sizeof(search_accel_t));
-    if (!self)
-        return (search_accel_t*) 0;
-
-    /* Allocate memory for the table */
-    self->tab = calloc(params->window, sizeof(unsigned char *));
-    if (!self->tab)
-    {
-        free(self);
-        return (search_accel_t*) 0;
-    }
-
-    /* Allocate memory for the "last symbol occurance" array */
-    self->last = calloc(fast ? 16777216 : 65536, sizeof(unsigned char *));
-    if (!self->last)
-    {
-        free(self->tab);
-        free(self);
-        return (search_accel_t*) 0;
-    }
+    self->tab = (unsigned char**) (((hist_rec*) workingMemory) + 256);
+    memset(self->tab, 0, params->window * sizeof(unsigned char**));
+    self->last = self->tab + params->window;
+    memset(self->last, 0, (fast ? 16777216 : 65536) * sizeof(unsigned char *));
 
     /* Init parameters */
     self->params = *params;
@@ -265,18 +238,6 @@ static search_accel_t* _LZG_SearchAccel_Create(const tune_params_t* params,
     self->size = size;
     self->preMatch = fast ? 3 : 2;
     self->fast = fast;
-
-    return self;
-}
-
-static void _LZG_SearchAccel_Destroy(search_accel_t *self)
-{
-    if (!self)
-        return;
-
-    free(self->last);
-    free(self->tab);
-    free(self);
 }
 
 static void _LZG_UpdateLastPos(search_accel_t *sa,
@@ -383,6 +344,15 @@ static lzg_uint32_t _LZG_FindMatch(search_accel_t *sa, const unsigned char *firs
         return 0;
 }
 
+static lzg_uint32_t _LZG_WorkMemSize(lzg_encoder_config_t *config,
+    const tune_params_t *params)
+{
+    return
+        (sizeof(hist_rec) * 256) +
+        (params->window * sizeof(unsigned char *)) +
+        ((config->fast ? 16777216 : 65536) * sizeof(unsigned char*));
+}
+
 
 /*-- PUBLIC ------------------------------------------------------------------*/
 
@@ -400,8 +370,38 @@ void LZG_InitEncoderConfig(lzg_encoder_config_t *config)
     config->userdata = NULL;
 }
 
-lzg_uint32_t LZG_Encode(const unsigned char *in, lzg_uint32_t insize,
-    unsigned char *out, lzg_uint32_t outsize, lzg_encoder_config_t *config)
+lzg_uint32_t LZG_WorkMemSize(lzg_encoder_config_t *config)
+{
+    lzg_encoder_config_t defaultConfig;
+    int level;
+    const tune_params_t *params;
+
+    /* Use default configuration? */
+    if (!config)
+    {
+        LZG_InitEncoderConfig(&defaultConfig);
+        config = &defaultConfig;
+    }
+
+    /* Clamp the compression level to [1, 9] */
+    if (config->level < 1)
+        level = 1;
+    else if (config->level > 9)
+        level = 9;
+    else
+        level = config->level;
+
+    /* Get the compression tuning parameters (window size etc) */
+    params = &_LZG_TUNING_PARAMETERS[level - 1];
+
+    return _LZG_WorkMemSize(config, params);
+
+    return 0;
+}
+
+lzg_uint32_t LZG_EncodeFull(const unsigned char *in, lzg_uint32_t insize,
+    unsigned char *out, lzg_uint32_t outsize, lzg_encoder_config_t *config,
+    void *workmem)
 {
     unsigned char *src, *inEnd, *dst, *outEnd, symbol;
     unsigned char marker1, marker2, marker3, marker4;
@@ -409,8 +409,9 @@ lzg_uint32_t LZG_Encode(const unsigned char *in, lzg_uint32_t insize,
     lzg_uint32_t lengthEnc, length, offset = 0, symbolCost, i;
     int level, progress, oldProgress = -1;
     char isMarkerSymbol, isMarkerSymbolLUT[256];
+    void *workingMemory = workmem;
 
-    search_accel_t *sa = (search_accel_t*) 0;
+    search_accel_t sa;
     lzg_encoder_config_t defaultConfig;
     lzg_header hdr;
 
@@ -436,15 +437,20 @@ lzg_uint32_t LZG_Encode(const unsigned char *in, lzg_uint32_t insize,
     /* Get the compression tuning parameters (window size etc) */
     params = &_LZG_TUNING_PARAMETERS[level - 1];
 
+    /* Allocate work memory if none is provided */
+    if (workingMemory == NULL)
+    {
+        workingMemory = malloc(_LZG_WorkMemSize(config, params));
+        if (workingMemory == NULL)
+            goto fail;
+    }
+
     /* Calculate histogram and find optimal marker symbols */
-    if (!_LZG_DetermineMarkers(in, insize, &marker1, &marker2, &marker3,
-                               &marker4))
-        goto fail;
+    _LZG_DetermineMarkers(in, insize, &marker1, &marker2, &marker3,
+                          &marker4, workingMemory);
 
     /* Initialize search accelerator */
-    sa = _LZG_SearchAccel_Create(params, insize, config->fast);
-    if (!sa)
-        goto fail;
+    _LZG_SearchAccel_Init(&sa, params, insize, config->fast, workingMemory);
 
     /* Initialize the byte streams */
     src = (unsigned char *)in;
@@ -491,10 +497,10 @@ lzg_uint32_t LZG_Encode(const unsigned char *in, lzg_uint32_t insize,
         symbolCost = isMarkerSymbol ? 2 : 1;
 
         /* Update search accelerator */
-        _LZG_UpdateLastPos(sa, in, src);
+        _LZG_UpdateLastPos(&sa, in, src);
 
         /* Find best history match for this position in the input buffer */
-        length = _LZG_FindMatch(sa, in, inEnd, src, symbolCost, &offset);
+        length = _LZG_FindMatch(&sa, in, inEnd, src, symbolCost, &offset);
 
         if (UNLIKELY(length > 0))
         {
@@ -537,7 +543,7 @@ lzg_uint32_t LZG_Encode(const unsigned char *in, lzg_uint32_t insize,
 
             /* Skip ahead (and update search accelerator)... */
             for (i = 1; i < length; ++i)
-                _LZG_UpdateLastPos(sa, in, src + i);
+                _LZG_UpdateLastPos(&sa, in, src + i);
             src += length;
         }
         else
@@ -567,7 +573,8 @@ lzg_uint32_t LZG_Encode(const unsigned char *in, lzg_uint32_t insize,
     _LZG_SetHeader(out, &hdr);
 
     /* Free resources */
-    _LZG_SearchAccel_Destroy(sa);
+    if (workingMemory != workmem)
+        free(workingMemory);
 
     /* Return size of compressed buffer */
     return LZG_HEADER_SIZE + hdr.encodedSize;
@@ -588,7 +595,8 @@ overflow:
     _LZG_SetHeader(out, &hdr);
 
     /* Free resources */
-    _LZG_SearchAccel_Destroy(sa);
+    if (workingMemory != workmem)
+        free(workingMemory);
 
     /* Return size of compressed buffer */
     return LZG_HEADER_SIZE + hdr.encodedSize;
@@ -596,8 +604,13 @@ overflow:
 
 fail:
     /* Exit routine for failure situations */
-    if (sa)
-        _LZG_SearchAccel_Destroy(sa);
+    if (workingMemory != workmem)
+        free(workingMemory);
     return 0;
 }
 
+lzg_uint32_t LZG_Encode(const unsigned char *in, lzg_uint32_t insize,
+    unsigned char *out, lzg_uint32_t outsize, lzg_encoder_config_t *config)
+{
+    return LZG_EncodeFull(in, insize, out, outsize, config, NULL);
+}

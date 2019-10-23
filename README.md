@@ -92,7 +92,7 @@ lizard v1.0 (formerly lz5)
 lz4/lz4hc v1.9.2
 lzf 3.6
 lzfse/lzvn 2017-03-08
-lzg 1.0.8
+lzg 1.0.10
 lzham 1.0
 lzjb 2010
 lzlib 1.8
