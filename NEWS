@@ -1,12 +1,15 @@
 v1.8
-- liblzg updated to lzg 1.0.10
+- blosclz updated to 2.0.0
+- liblzg updated to 1.0.10
 - libdeflate updated to v1.3
 - snappy updated to 2019-09-30 (e9e11b84e6)
 - xz updated to v5.2.4
 - zling updated to 2018-10-12
 
 v1.7.4
+- brieflz updated to 1.2.0
 - brotli updated to 2019-10-01 (c435f06675)
+- density updated to 0.14.2
 - lz4 updated to v1.9.2
 - zstd updated to v1.4.3
 

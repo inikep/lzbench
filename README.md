@@ -78,7 +78,7 @@ Supported compressors
 no longer maintained.  For information about the security of the various compressors, 
 see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page.
 ```
-blosclz 2015-11-10
+blosclz 2.0.0
 brieflz 1.1.0
 brotli 2019-10-01 (c435f06675)
 crush 1.0

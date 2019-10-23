@@ -168,7 +168,7 @@ LIBDEFLATE_FILES += libdeflate/deflate_decompress.o libdeflate/gzip_compress.o l
 LIBDEFLATE_FILES += libdeflate/x86/cpu_features.o libdeflate/arm/cpu_features.o libdeflate/zlib_compress.o libdeflate/zlib_decompress.o
 
 MISC_FILES = crush/crush.o shrinker/shrinker.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
-MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o slz/slz.o
+MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o blosclz/fastcopy.o slz/slz.o
 
 ifeq "$(DONT_BUILD_XPACK)" "1"
 	DEFINES += -DBENCH_REMOVE_XPACK

@@ -41,7 +41,7 @@ extern "C" {
 */
 
 int blosclz_compress(const int opt_level, const void* input, int length,
-                     void* output, int maxout, int accel);
+                     void* output, int maxout, int shuffle);
 
 /**
   Decompress a block of compressed data and returns the size of the
@@ -56,6 +56,13 @@ int blosclz_compress(const int opt_level, const void* input, int length,
  */
 
 int blosclz_decompress(const void* input, int length, void* output, int maxout);
+
+/**
+  Same as above, except that it is not safe to run on invalid/untrusted input,
+  and may be slightly faster.
+ */
+int blosclz_decompress_unsafe(const void* input, int length, void* output,
+                              int maxout);
 
 #if defined (__cplusplus)
 }
