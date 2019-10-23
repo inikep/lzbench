@@ -1780,7 +1780,7 @@ int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t o
     ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_compressionLevel, level);
     zstd_params->zparams.fParams.contentSizeFlag = 1;
 
-    if (windowLog && zstd_params->zparams.cParams.windowLog > windowLog) {
+    if (windowLog && zstd_params->zparams.cParams.windowLog < windowLog) {
         zstd_params->zparams.cParams.windowLog = windowLog;
         zstd_params->zparams.cParams.chainLog = windowLog + ((zstd_params->zparams.cParams.strategy == ZSTD_btlazy2) || (zstd_params->zparams.cParams.strategy == ZSTD_btopt) || (zstd_params->zparams.cParams.strategy == ZSTD_btultra));
     }
