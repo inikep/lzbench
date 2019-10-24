@@ -44,6 +44,7 @@ ifneq (,$(filter Windows%,$(OS)))
 	ifeq ($(COMPILER),clang)
 		DONT_BUILD_GLZA ?= 1
 	endif
+	BUILD_STATIC ?= 1
 	ifeq ($(BUILD_STATIC),1)
 		LDFLAGS += -lshell32 -lole32 -loleaut32 -static
 	endif

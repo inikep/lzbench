@@ -1,11 +1,13 @@
 v1.8
+- fixed gcc-9 and clang-9 compilation issues
+- default linking for Linux is dynamic and static for Windows (can be changed with `make BUILD_STATIC=0/1`)
 - added fast-lzma2 1.0.1
 - added bzip2 1.0.8 (thanks to @tansy)
 - blosclz updated to 2.0.0
-- liblzg updated to 1.0.10
 - libdeflate updated to v1.3
-- lzma updated to 19.00
+- liblzg updated to 1.0.10
 - lzlib updated to 1.11
+- lzma updated to 19.00
 - lzo updated to 2.10
 - lzsse updated to 2019-04-18 (1847c3e827)
 - snappy updated to 2019-09-30 (e9e11b84e6)

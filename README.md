@@ -62,6 +62,8 @@ make BUILD_ARCH=32-bit
 
 ```
 
+The default linking for Linux is dynamic and static for Windows. This can be changed with `make BUILD_STATIC=0/1`.
+
 To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ4` to remove LZ4). 
 You also have to remove corresponding `*.o` files (e.g. `lz4/lz4.o` and `lz4/lz4hc.o`).
 
