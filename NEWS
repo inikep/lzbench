@@ -1,5 +1,6 @@
 v1.8
 - added fast-lzma2 1.0.1
+- added bzip2 1.0.8 (thanks to @tansy)
 - blosclz updated to 2.0.0
 - liblzg updated to 1.0.10
 - libdeflate updated to v1.3
@@ -12,13 +13,13 @@ v1.8
 - zling updated to 2018-10-12
 
 v1.7.4
-- brieflz updated to 1.2.0
+- brieflz updated to 1.2.0 (thanks to @jibsen)
 - brotli updated to 2019-10-01 (c435f06675)
-- density updated to 0.14.2
+- density updated to 0.14.2 (thanks to @morotti)
 - lz4 updated to v1.9.2
 - zstd updated to v1.4.3
 
-v1.7.3
+v1.7.3 (done by @data-man)
 - brotli updated to 2017-12-12
 - lz4 updated to v1.8.0
 - zstd updated to v1.3.3

@@ -81,6 +81,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
 blosclz 2.0.0
 brieflz 1.1.0
 brotli 2019-10-01 (c435f06675)
+bzip2 1.0.8
 crush 1.0
 csc 2016-10-13 (WARNING: it can throw SEGFAULT compiled with Apple LLVM version 7.3.0 (clang-703.0.31))
 density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
