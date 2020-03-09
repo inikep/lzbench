@@ -3,7 +3,7 @@
 //
 // C packer
 //
-// Copyright (c) 2002-2018 Joergen Ibsen
+// Copyright (c) 2002-2020 Joergen Ibsen
 //
 // This software is provided 'as-is', without any express or implied
 // warranty. In no event will the authors be held liable for any damages
@@ -29,6 +29,7 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <stdint.h>
 
 #if _MSC_VER >= 1400
 #  include <intrin.h>
@@ -40,6 +41,15 @@
 #elif __GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 4)
 #  define BLZ_BUILTIN_GCC
 #endif
+
+// Type used to store values in workmem.
+//
+// This is used to store positions and lengths, so src_size has to be within
+// the range of this type.
+//
+typedef uint32_t blz_word;
+
+#define BLZ_WORD_MAX UINT32_MAX
 
 // Number of bits of hash to use for lookup.
 //
@@ -55,9 +65,7 @@
 
 #define LOOKUP_SIZE (1UL << BLZ_HASH_BITS)
 
-#define WORKMEM_SIZE (LOOKUP_SIZE * sizeof(unsigned long))
-
-#define NO_MATCH_POS ((unsigned long) -1)
+#define NO_MATCH_POS ((blz_word) -1)
 
 // Internal data structure
 struct blz_state {
@@ -388,6 +396,21 @@ blz_putgamma(struct blz_state *bs, unsigned long val)
 	blz_putbit(bs, 0);
 }
 
+static unsigned char*
+blz_finalize(struct blz_state *bs)
+{
+	// Trailing one bit to delimit any literal tags
+	blz_putbit(bs, 1);
+
+	// Shift last tag into position and store
+	bs->tag <<= bs->bits_left;
+	bs->tag_out[0] = bs->tag & 0x00FF;
+	bs->tag_out[1] = (bs->tag >> 8) & 0x00FF;
+
+	// Return pointer one past end of output
+	return bs->next_out;
+}
+
 // Hash four bytes starting a p.
 //
 // This is Fibonacci hashing, also known as Knuth's multiplicative hash. The
@@ -398,12 +421,12 @@ blz_hash4_bits(const unsigned char *p, int bits)
 {
 	assert(bits > 0 && bits <= 32);
 
-	unsigned long val = (unsigned long) p[0]
-	                 | ((unsigned long) p[1] << 8)
-	                 | ((unsigned long) p[2] << 16)
-	                 | ((unsigned long) p[3] << 24);
+	uint32_t val = (uint32_t) p[0]
+	             | ((uint32_t) p[1] << 8)
+	             | ((uint32_t) p[2] << 16)
+	             | ((uint32_t) p[3] << 24);
 
-	return ((val * 2654435761UL) & 0xFFFFFFFFUL) >> (32 - bits);
+	return (val * UINT32_C(2654435761)) >> (32 - bits);
 }
 
 static unsigned long
@@ -412,18 +435,18 @@ blz_hash4(const unsigned char *p)
 	return blz_hash4_bits(p, BLZ_HASH_BITS);
 }
 
-unsigned long
-blz_max_packed_size(unsigned long src_size)
+size_t
+blz_max_packed_size(size_t src_size)
 {
 	return src_size + src_size / 8 + 64;
 }
 
-unsigned long
-blz_workmem_size(unsigned long src_size)
+size_t
+blz_workmem_size(size_t src_size)
 {
 	(void) src_size;
 
-	return WORKMEM_SIZE;
+	return LOOKUP_SIZE * sizeof(blz_word);
 }
 
 // Simple LZSS using hashing.
@@ -435,11 +458,13 @@ unsigned long
 blz_pack(const void *src, void *dst, unsigned long src_size, void *workmem)
 {
 	struct blz_state bs;
-	unsigned long *const lookup = (unsigned long *) workmem;
+	blz_word *const lookup = (blz_word *) workmem;
 	const unsigned char *const in = (const unsigned char *) src;
 	const unsigned long last_match_pos = src_size > 4 ? src_size - 4 : 0;
 	unsigned long hash_pos = 0;
 	unsigned long cur = 0;
+
+	assert(src_size < BLZ_WORD_MAX);
 
 	// Check for empty input
 	if (src_size == 0) {
@@ -543,13 +568,13 @@ blz_pack(const void *src, void *dst, unsigned long src_size, void *workmem)
 }
 
 // Include compression algorithms used by blz_pack_level
-#include "brieflz_lazy.h"
+#include "brieflz_btparse.h"
 #include "brieflz_hashbucket.h"
+#include "brieflz_lazy.h"
 #include "brieflz_leparse.h"
-#include "brieflz_ssparse.h"
 
-unsigned long
-blz_workmem_size_level(unsigned long src_size, int level)
+size_t
+blz_workmem_size_level(size_t src_size, int level)
 {
 	switch (level) {
 	case 1:
@@ -563,13 +588,13 @@ blz_workmem_size_level(unsigned long src_size, int level)
 	case 5:
 	case 6:
 	case 7:
+		return blz_leparse_workmem_size(src_size);
 	case 8:
 	case 9:
-		return blz_leparse_workmem_size(src_size);
 	case 10:
-		return blz_ssparse_workmem_size(src_size);
+		return blz_btparse_workmem_size(src_size);
 	default:
-		return BLZ_ERROR;
+		return (size_t) -1;
 	}
 }
 
@@ -593,11 +618,11 @@ blz_pack_level(const void *src, void *dst, unsigned long src_size,
 	case 7:
 		return blz_pack_leparse(src, dst, src_size, workmem, 64, 64);
 	case 8:
-		return blz_pack_leparse(src, dst, src_size, workmem, 512, 128);
+		return blz_pack_btparse(src, dst, src_size, workmem, 16, 96);
 	case 9:
-		return blz_pack_leparse(src, dst, src_size, workmem, 4096, 256);
+		return blz_pack_btparse(src, dst, src_size, workmem, 32, 224);
 	case 10:
-		return blz_pack_ssparse(src, dst, src_size, workmem, ULONG_MAX, ULONG_MAX);
+		return blz_pack_btparse(src, dst, src_size, workmem, ULONG_MAX, ULONG_MAX);
 	default:
 		return BLZ_ERROR;
 	}
