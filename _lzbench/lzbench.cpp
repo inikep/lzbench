@@ -340,7 +340,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
     {
         size_t part = MIN(100*1024, chunk_size);
         GetTime(start_ticks);
-        int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, comprsize, param1, param2, workmem);
+        int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, GET_COMPRESS_BOUND(part), param1, param2, workmem);
         GetTime(end_ticks);
         nanosec = GetDiffTime(rate, start_ticks, end_ticks)/1000;
         if (clen>0 && nanosec>=1000)
@@ -469,6 +469,8 @@ void lzbench_test_with_params(lzbench_params_t *params, std::vector<size_t> &fil
 
 	if (!namesWithParams) return;
 
+    LZBENCH_PRINT(5, "*** lzbench_test_with_params insize=%d comprsize=%d\n", (int)insize, (int)comprsize);
+
     cnames = split(namesWithParams, '/');
 
     for (int k=0; k<cnames.size(); k++)
@@ -578,7 +580,7 @@ int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned if
     format(text, "%d files", file_sizes.size());
     params->in_filename = text.c_str();
 
-    LZBENCH_PRINT(5, "totalsize=%d inpos=%d\n", (int)totalsize, (int)inpos);
+    LZBENCH_PRINT(5, "totalsize=%d comprsize=%d inpos=%d\n", (int)totalsize, (int)comprsize, (int)inpos);
     totalsize = inpos;
 
     {
