@@ -3,7 +3,7 @@
 //
 // Lazy (non-greedy) parsing with one-byte-lookahead
 //
-// Copyright (c) 2016-2018 Joergen Ibsen
+// Copyright (c) 2016-2020 Joergen Ibsen
 //
 // This software is provided 'as-is', without any express or implied
 // warranty. In no event will the authors be held liable for any damages
@@ -28,12 +28,12 @@
 #ifndef BRIEFLZ_LAZY_H_INCLUDED
 #define BRIEFLZ_LAZY_H_INCLUDED
 
-static unsigned long
-blz_lazy_workmem_size(unsigned long src_size)
+static size_t
+blz_lazy_workmem_size(size_t src_size)
 {
 	(void) src_size;
 
-	return LOOKUP_SIZE * sizeof(unsigned long);
+	return LOOKUP_SIZE * sizeof(blz_word);
 }
 
 // Lazy (non-greedy) parsing with one-byte-lookahead.
@@ -45,11 +45,13 @@ static unsigned long
 blz_pack_lazy(const void *src, void *dst, unsigned long src_size, void *workmem)
 {
 	struct blz_state bs;
-	unsigned long *const lookup = (unsigned long *) workmem;
+	blz_word *const lookup = (blz_word *) workmem;
 	const unsigned char *const in = (const unsigned char *) src;
 	const unsigned long last_match_pos = src_size > 4 ? src_size - 4 : 0;
 	unsigned long hash_pos = 0;
 	unsigned long cur = 0;
+
+	assert(src_size < BLZ_WORD_MAX);
 
 	// Check for empty input
 	if (src_size == 0) {

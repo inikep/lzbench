@@ -3,7 +3,7 @@
  *
  * C/C++ header file
  *
- * Copyright (c) 2002-2018 Joergen Ibsen
+ * Copyright (c) 2002-2020 Joergen Ibsen
  *
  * This software is provided 'as-is', without any express or implied
  * warranty. In no event will the authors be held liable for any damages
@@ -28,14 +28,16 @@
 #ifndef BRIEFLZ_H_INCLUDED
 #define BRIEFLZ_H_INCLUDED
 
+#include <stddef.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define BLZ_VER_MAJOR 1        /**< Major version number */
-#define BLZ_VER_MINOR 2        /**< Minor version number */
+#define BLZ_VER_MINOR 3        /**< Minor version number */
 #define BLZ_VER_PATCH 0        /**< Patch version number */
-#define BLZ_VER_STRING "1.2.0" /**< Version number as a string */
+#define BLZ_VER_STRING "1.3.0" /**< Version number as a string */
 
 #ifdef BLZ_DLL
 #  if defined(_WIN32) || defined(__CYGWIN__)
@@ -76,8 +78,8 @@ extern "C" {
  * @param src_size number of bytes to compress
  * @return maximum size of compressed data
  */
-BLZ_API unsigned long
-blz_max_packed_size(unsigned long src_size);
+BLZ_API size_t
+blz_max_packed_size(size_t src_size);
 
 /**
  * Get required size of `workmem` buffer.
@@ -87,8 +89,8 @@ blz_max_packed_size(unsigned long src_size);
  * @param src_size number of bytes to compress
  * @return required size in bytes of `workmem` buffer
  */
-BLZ_API unsigned long
-blz_workmem_size(unsigned long src_size);
+BLZ_API size_t
+blz_workmem_size(size_t src_size);
 
 /**
  * Compress `src_size` bytes of data from `src` to `dst`.
@@ -111,8 +113,8 @@ blz_pack(const void *src, void *dst, unsigned long src_size, void *workmem);
  * @param level compression level
  * @return required size in bytes of `workmem` buffer
  */
-BLZ_API unsigned long
-blz_workmem_size_level(unsigned long src_size, int level);
+BLZ_API size_t
+blz_workmem_size_level(size_t src_size, int level);
 
 /**
  * Compress `src_size` bytes of data from `src` to `dst`.

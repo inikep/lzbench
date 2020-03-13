@@ -3,7 +3,7 @@
 //
 // Lazy parsing with multiple previous positions per hash
 //
-// Copyright (c) 2016-2018 Joergen Ibsen
+// Copyright (c) 2016-2020 Joergen Ibsen
 //
 // This software is provided 'as-is', without any express or implied
 // warranty. In no event will the authors be held liable for any damages
@@ -28,16 +28,16 @@
 #ifndef BRIEFLZ_HASHBUCKET_H_INCLUDED
 #define BRIEFLZ_HASHBUCKET_H_INCLUDED
 
-static unsigned long
-blz_hashbucket_workmem_size(unsigned long src_size, unsigned int bucket_size)
+static size_t
+blz_hashbucket_workmem_size(size_t src_size, unsigned int bucket_size)
 {
 	(void) src_size;
 
 	assert(bucket_size > 0);
-	assert(sizeof(bucket_size) < sizeof(unsigned long)
-	    || bucket_size < ULONG_MAX / (LOOKUP_SIZE * sizeof(unsigned long)));
+	assert(sizeof(bucket_size) < sizeof(size_t)
+	    || bucket_size < SIZE_MAX / (LOOKUP_SIZE * sizeof(blz_word)));
 
-	return (LOOKUP_SIZE * bucket_size) * sizeof(unsigned long);
+	return (LOOKUP_SIZE * bucket_size) * sizeof(blz_word);
 }
 
 // Lazy parsing with multiple previous positions per hash.
@@ -58,11 +58,13 @@ blz_pack_hashbucket(const void *src, void *dst, unsigned long src_size, void *wo
                     const unsigned int bucket_size, const unsigned long accept_len)
 {
 	struct blz_state bs;
-	unsigned long *const lookup = (unsigned long *) workmem;
+	blz_word *const lookup = (blz_word *) workmem;
 	const unsigned char *const in = (const unsigned char *) src;
 	const unsigned long last_match_pos = src_size > 4 ? src_size - 4 : 0;
 	unsigned long hash_pos = 0;
 	unsigned long cur = 0;
+
+	assert(src_size < BLZ_WORD_MAX);
 
 	// Check for empty input
 	if (src_size == 0) {
@@ -87,7 +89,7 @@ blz_pack_hashbucket(const void *src, void *dst, unsigned long src_size, void *wo
 
 	assert(bucket_size > 0);
 	assert(sizeof(bucket_size) < sizeof(unsigned long)
-	    || bucket_size < ULONG_MAX / (LOOKUP_SIZE * sizeof(unsigned long)));
+	    || bucket_size < ULONG_MAX / LOOKUP_SIZE);
 
 	// Initialize lookup
 	for (unsigned long i = 0; i < LOOKUP_SIZE * bucket_size; ++i) {
@@ -98,7 +100,7 @@ blz_pack_hashbucket(const void *src, void *dst, unsigned long src_size, void *wo
 	for (cur = 1; cur <= last_match_pos; ) {
 		// Update lookup up to current position
 		while (hash_pos < cur) {
-			unsigned long *const bucket = &lookup[blz_hash4(&in[hash_pos]) * bucket_size];
+			blz_word *const bucket = &lookup[blz_hash4(&in[hash_pos]) * bucket_size];
 			unsigned long next = hash_pos;
 
 			// Insert hash_pos at start of bucket
@@ -115,7 +117,7 @@ blz_pack_hashbucket(const void *src, void *dst, unsigned long src_size, void *wo
 		unsigned long best_len = 0;
 
 		// Look up first match for current position
-		const unsigned long *const bucket = &lookup[blz_hash4(&in[cur]) * bucket_size];
+		const blz_word *const bucket = &lookup[blz_hash4(&in[cur]) * bucket_size];
 		unsigned long pos = bucket[0];
 		unsigned int bucket_idx = 0;
 
@@ -153,7 +155,7 @@ blz_pack_hashbucket(const void *src, void *dst, unsigned long src_size, void *wo
 		if (best_len > 3 && best_len < accept_len && cur < last_match_pos) {
 			// Update lookup up to next position
 			{
-				unsigned long *const next_bucket = &lookup[blz_hash4(&in[hash_pos]) * bucket_size];
+				blz_word *const next_bucket = &lookup[blz_hash4(&in[hash_pos]) * bucket_size];
 				unsigned long next = hash_pos;
 
 				// Insert hash_pos at start of bucket
@@ -167,7 +169,7 @@ blz_pack_hashbucket(const void *src, void *dst, unsigned long src_size, void *wo
 			}
 
 			// Look up first match for next position
-			const unsigned long *const next_bucket = &lookup[blz_hash4(&in[cur + 1]) * bucket_size];
+			const blz_word *const next_bucket = &lookup[blz_hash4(&in[cur + 1]) * bucket_size];
 			unsigned long next_pos = next_bucket[0];
 			unsigned int next_bucket_idx = 0;
 

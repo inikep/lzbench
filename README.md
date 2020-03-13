@@ -81,7 +81,7 @@ no longer maintained.  For information about the security of the various compres
 see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page.
 ```
 blosclz 2.0.0
-brieflz 1.1.0
+brieflz 1.3.0
 brotli 2019-10-01 (c435f06675)
 bzip2 1.0.8
 crush 1.0
