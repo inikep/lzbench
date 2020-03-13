@@ -37,10 +37,14 @@
 #if defined(__x86_64__)
 #define UNALIGNED_LE_OK
 #define UNALIGNED_FASTER
+#define USE_64BIT_QUEUE
 #elif defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__)
 #define UNALIGNED_LE_OK
 //#define UNALIGNED_FASTER
 #elif defined(__ARMEL__) && defined(__ARM_ARCH_7A__)
+#define UNALIGNED_LE_OK
+#define UNALIGNED_FASTER
+#elif defined(__ARM_ARCH_8A) || defined(__ARM_FEATURE_UNALIGNED)
 #define UNALIGNED_LE_OK
 #define UNALIGNED_FASTER
 #endif
@@ -64,8 +68,12 @@ enum {
 };
 
 struct slz_stream {
+#ifdef USE_64BIT_QUEUE
+	uint64_t queue; /* last pending bits, LSB first */
+#else
 	uint32_t queue; /* last pending bits, LSB first */
-	uint32_t qbits; /* number of bits in queue, < 8 */
+#endif
+	uint32_t qbits; /* number of bits in queue, < 8 on 32-bit, < 32 on 64-bit */
 	unsigned char *outbuf; /* set by encode() */
 	uint16_t state; /* one of slz_state */
 	uint8_t level:1; /* 0 = no compression, 1 = compression */
@@ -76,13 +84,13 @@ struct slz_stream {
 };
 
 /* Functions specific to rfc1951 (deflate) */
-void slz_prepare_dist_table();
+void slz_prepare_dist_table(); /* obsolete, not needed anymore */
 long slz_rfc1951_encode(struct slz_stream *strm, unsigned char *out, const unsigned char *in, long ilen, int more);
 int slz_rfc1951_init(struct slz_stream *strm, int level);
 int slz_rfc1951_finish(struct slz_stream *strm, unsigned char *buf);
 
 /* Functions specific to rfc1952 (gzip) */
-void slz_make_crc_table(void);
+void slz_make_crc_table(void); /* obsolete, not needed anymore */
 uint32_t slz_crc32_by1(uint32_t crc, const unsigned char *buf, int len);
 uint32_t slz_crc32_by4(uint32_t crc, const unsigned char *buf, int len);
 long slz_rfc1952_encode(struct slz_stream *strm, unsigned char *out, const unsigned char *in, long ilen, int more);
