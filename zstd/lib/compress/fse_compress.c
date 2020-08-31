@@ -1,50 +1,30 @@
 /* ******************************************************************
-   FSE : Finite State Entropy encoder
-   Copyright (C) 2013-present, Yann Collet.
-
-   BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
-
-   Redistribution and use in source and binary forms, with or without
-   modification, are permitted provided that the following conditions are
-   met:
-
-       * Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.
-       * Redistributions in binary form must reproduce the above
-   copyright notice, this list of conditions and the following disclaimer
-   in the documentation and/or other materials provided with the
-   distribution.
-
-   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-   "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-   A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-   OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-    You can contact the author at :
-    - FSE source repository : https://github.com/Cyan4973/FiniteStateEntropy
-    - Public forum : https://groups.google.com/forum/#!forum/lz4c
+ * FSE : Finite State Entropy encoder
+ * Copyright (c) 2013-2020, Yann Collet, Facebook, Inc.
+ *
+ *  You can contact the author at :
+ *  - FSE source repository : https://github.com/Cyan4973/FiniteStateEntropy
+ *  - Public forum : https://groups.google.com/forum/#!forum/lz4c
+ *
+ * This source code is licensed under both the BSD-style license (found in the
+ * LICENSE file in the root directory of this source tree) and the GPLv2 (found
+ * in the COPYING file in the root directory of this source tree).
+ * You may select, at your option, one of the above-listed licenses.
 ****************************************************************** */
 
 /* **************************************************************
 *  Includes
 ****************************************************************/
-#include <stdlib.h>     /* malloc, free, qsort */
-#include <string.h>     /* memcpy, memset */
-#include "compiler.h"
-#include "mem.h"        /* U32, U16, etc. */
-#include "debug.h"      /* assert, DEBUGLOG */
+#include "../common/compiler.h"
+#include "../common/mem.h"        /* U32, U16, etc. */
+#include "../common/debug.h"      /* assert, DEBUGLOG */
 #include "hist.h"       /* HIST_count_wksp */
-#include "bitstream.h"
+#include "../common/bitstream.h"
 #define FSE_STATIC_LINKING_ONLY
-#include "fse.h"
-#include "error_private.h"
+#include "../common/fse.h"
+#include "../common/error_private.h"
+#define ZSTD_DEPS_NEED_MALLOC
+#include "../common/zstd_deps.h"  /* ZSTD_malloc, ZSTD_free, ZSTD_memcpy, ZSTD_memset */
 
 
 /* **************************************************************
@@ -109,7 +89,7 @@ size_t FSE_buildCTable_wksp(FSE_CTable* ct,
      * http://fastcompression.blogspot.fr/2014/02/fse-distributing-symbol-values.html */
 
      #ifdef __clang_analyzer__
-     memset(tableSymbol, 0, sizeof(*tableSymbol) * tableSize);   /* useless initialization, just to keep scan-build happy */
+     ZSTD_memset(tableSymbol, 0, sizeof(*tableSymbol) * tableSize);   /* useless initialization, just to keep scan-build happy */
      #endif
 
     /* symbol start positions */
@@ -327,10 +307,10 @@ FSE_CTable* FSE_createCTable (unsigned maxSymbolValue, unsigned tableLog)
     size_t size;
     if (tableLog > FSE_TABLELOG_ABSOLUTE_MAX) tableLog = FSE_TABLELOG_ABSOLUTE_MAX;
     size = FSE_CTABLE_SIZE_U32 (tableLog, maxSymbolValue) * sizeof(U32);
-    return (FSE_CTable*)malloc(size);
+    return (FSE_CTable*)ZSTD_malloc(size);
 }
 
-void FSE_freeCTable (FSE_CTable* ct) { free(ct); }
+void FSE_freeCTable (FSE_CTable* ct) { ZSTD_free(ct); }
 
 /* provides the minimum logSize to safely represent a distribution */
 static unsigned FSE_minTableLog(size_t srcSize, unsigned maxSymbolValue)
@@ -361,11 +341,10 @@ unsigned FSE_optimalTableLog(unsigned maxTableLog, size_t srcSize, unsigned maxS
     return FSE_optimalTableLog_internal(maxTableLog, srcSize, maxSymbolValue, 2);
 }
 
-
 /* Secondary normalization method.
    To be used when primary method fails. */
 
-static size_t FSE_normalizeM2(short* norm, U32 tableLog, const unsigned* count, size_t total, U32 maxSymbolValue)
+static size_t FSE_normalizeM2(short* norm, U32 tableLog, const unsigned* count, size_t total, U32 maxSymbolValue, short lowProbCount)
 {
     short const NOT_YET_ASSIGNED = -2;
     U32 s;
@@ -382,7 +361,7 @@ static size_t FSE_normalizeM2(short* norm, U32 tableLog, const unsigned* count, 
             continue;
         }
         if (count[s] <= lowThreshold) {
-            norm[s] = -1;
+            norm[s] = lowProbCount;
             distributed++;
             total -= count[s];
             continue;
@@ -451,10 +430,9 @@ static size_t FSE_normalizeM2(short* norm, U32 tableLog, const unsigned* count, 
     return 0;
 }
 
-
 size_t FSE_normalizeCount (short* normalizedCounter, unsigned tableLog,
                            const unsigned* count, size_t total,
-                           unsigned maxSymbolValue)
+                           unsigned maxSymbolValue, unsigned useLowProbCount)
 {
     /* Sanity checks */
     if (tableLog==0) tableLog = FSE_DEFAULT_TABLELOG;
@@ -463,6 +441,7 @@ size_t FSE_normalizeCount (short* normalizedCounter, unsigned tableLog,
     if (tableLog < FSE_minTableLog(total, maxSymbolValue)) return ERROR(GENERIC);   /* Too small tableLog, compression potentially impossible */
 
     {   static U32 const rtbTable[] = {     0, 473195, 504333, 520860, 550000, 700000, 750000, 830000 };
+        short const lowProbCount = useLowProbCount ? -1 : 1;
         U64 const scale = 62 - tableLog;
         U64 const step = ((U64)1<<62) / total;   /* <== here, one division ! */
         U64 const vStep = 1ULL<<(scale-20);
@@ -476,7 +455,7 @@ size_t FSE_normalizeCount (short* normalizedCounter, unsigned tableLog,
             if (count[s] == total) return 0;   /* rle special case */
             if (count[s] == 0) { normalizedCounter[s]=0; continue; }
             if (count[s] <= lowThreshold) {
-                normalizedCounter[s] = -1;
+                normalizedCounter[s] = lowProbCount;
                 stillToDistribute--;
             } else {
                 short proba = (short)((count[s]*step) >> scale);
@@ -490,7 +469,7 @@ size_t FSE_normalizeCount (short* normalizedCounter, unsigned tableLog,
         }   }
         if (-stillToDistribute >= (normalizedCounter[largest] >> 1)) {
             /* corner case, need another normalization method */
-            size_t const errorCode = FSE_normalizeM2(normalizedCounter, tableLog, count, total, maxSymbolValue);
+            size_t const errorCode = FSE_normalizeM2(normalizedCounter, tableLog, count, total, maxSymbolValue, lowProbCount);
             if (FSE_isError(errorCode)) return errorCode;
         }
         else normalizedCounter[largest] += (short)stillToDistribute;
@@ -645,9 +624,6 @@ size_t FSE_compress_usingCTable (void* dst, size_t dstSize,
 
 size_t FSE_compressBound(size_t size) { return FSE_COMPRESSBOUND(size); }
 
-#define CHECK_V_F(e, f) size_t const e = f; if (ERR_isError(e)) return e
-#define CHECK_F(f)   { CHECK_V_F(_var_err__, f); }
-
 /* FSE_compress_wksp() :
  * Same as FSE_compress2(), but using an externally allocated scratch buffer (`workSpace`).
  * `wkspSize` size must be `(1<<tableLog)`.
@@ -666,7 +642,7 @@ size_t FSE_compress_wksp (void* dst, size_t dstSize, const void* src, size_t src
     size_t const scratchBufferSize = wkspSize - (CTableSize * sizeof(FSE_CTable));
 
     /* init conditions */
-    if (wkspSize < FSE_WKSP_SIZE_U32(tableLog, maxSymbolValue)) return ERROR(tableLog_tooLarge);
+    if (wkspSize < FSE_COMPRESS_WKSP_SIZE_U32(tableLog, maxSymbolValue)) return ERROR(tableLog_tooLarge);
     if (srcSize <= 1) return 0;  /* Not compressible */
     if (!maxSymbolValue) maxSymbolValue = FSE_MAX_SYMBOL_VALUE;
     if (!tableLog) tableLog = FSE_DEFAULT_TABLELOG;
@@ -679,7 +655,7 @@ size_t FSE_compress_wksp (void* dst, size_t dstSize, const void* src, size_t src
     }
 
     tableLog = FSE_optimalTableLog(tableLog, srcSize, maxSymbolValue);
-    CHECK_F( FSE_normalizeCount(norm, tableLog, count, srcSize, maxSymbolValue) );
+    CHECK_F( FSE_normalizeCount(norm, tableLog, count, srcSize, maxSymbolValue, /* useLowProbCount */ srcSize >= 2048) );
 
     /* Write table description header */
     {   CHECK_V_F(nc_err, FSE_writeNCount(op, oend-op, norm, maxSymbolValue, tableLog) );
@@ -701,13 +677,16 @@ size_t FSE_compress_wksp (void* dst, size_t dstSize, const void* src, size_t src
 
 typedef struct {
     FSE_CTable CTable_max[FSE_CTABLE_SIZE_U32(FSE_MAX_TABLELOG, FSE_MAX_SYMBOL_VALUE)];
-    BYTE scratchBuffer[1 << FSE_MAX_TABLELOG];
+    union {
+      U32 hist_wksp[HIST_WKSP_SIZE_U32];
+      BYTE scratchBuffer[1 << FSE_MAX_TABLELOG];
+    } workspace;
 } fseWkspMax_t;
 
 size_t FSE_compress2 (void* dst, size_t dstCapacity, const void* src, size_t srcSize, unsigned maxSymbolValue, unsigned tableLog)
 {
     fseWkspMax_t scratchBuffer;
-    DEBUG_STATIC_ASSERT(sizeof(scratchBuffer) >= FSE_WKSP_SIZE_U32(FSE_MAX_TABLELOG, FSE_MAX_SYMBOL_VALUE));   /* compilation failures here means scratchBuffer is not large enough */
+    DEBUG_STATIC_ASSERT(sizeof(scratchBuffer) >= FSE_COMPRESS_WKSP_SIZE_U32(FSE_MAX_TABLELOG, FSE_MAX_SYMBOL_VALUE));   /* compilation failures here means scratchBuffer is not large enough */
     if (tableLog > FSE_MAX_TABLELOG) return ERROR(tableLog_tooLarge);
     return FSE_compress_wksp(dst, dstCapacity, src, srcSize, maxSymbolValue, tableLog, &scratchBuffer, sizeof(scratchBuffer));
 }

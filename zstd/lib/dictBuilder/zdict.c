@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-present, Yann Collet, Facebook, Inc.
+ * Copyright (c) 2016-2020, Yann Collet, Facebook, Inc.
  * All rights reserved.
  *
  * This source code is licensed under both the BSD-style license (found in the
@@ -37,17 +37,18 @@
 #include <stdio.h>         /* fprintf, fopen, ftello64 */
 #include <time.h>          /* clock */
 
-#include "mem.h"           /* read */
-#include "fse.h"           /* FSE_normalizeCount, FSE_writeNCount */
+#include "../common/mem.h"           /* read */
+#include "../common/fse.h"           /* FSE_normalizeCount, FSE_writeNCount */
 #define HUF_STATIC_LINKING_ONLY
-#include "huf.h"           /* HUF_buildCTable, HUF_writeCTable */
-#include "zstd_internal.h" /* includes zstd.h */
-#include "xxhash.h"        /* XXH64 */
+#include "../common/huf.h"           /* HUF_buildCTable, HUF_writeCTable */
+#include "../common/zstd_internal.h" /* includes zstd.h */
+#include "../common/xxhash.h"        /* XXH64 */
 #include "divsufsort.h"
 #ifndef ZDICT_STATIC_LINKING_ONLY
 #  define ZDICT_STATIC_LINKING_ONLY
 #endif
 #include "zdict.h"
+#include "../compress/zstd_compress_internal.h" /* ZSTD_loadCEntropy() */
 
 
 /*-*************************************
@@ -68,7 +69,9 @@ static const U32 g_selectivity_default = 9;
 /*-*************************************
 *  Console display
 ***************************************/
+#undef  DISPLAY
 #define DISPLAY(...)         { fprintf(stderr, __VA_ARGS__); fflush( stderr ); }
+#undef  DISPLAYLEVEL
 #define DISPLAYLEVEL(l, ...) if (notificationLevel>=l) { DISPLAY(__VA_ARGS__); }    /* 0 : no display;   1: errors;   2: default;  3: details;  4: debug */
 
 static clock_t ZDICT_clockSpan(clock_t nPrevious) { return clock() - nPrevious; }
@@ -99,6 +102,26 @@ unsigned ZDICT_getDictID(const void* dictBuffer, size_t dictSize)
     return MEM_readLE32((const char*)dictBuffer + 4);
 }
 
+size_t ZDICT_getDictHeaderSize(const void* dictBuffer, size_t dictSize)
+{
+    size_t headerSize;
+    if (dictSize <= 8 || MEM_readLE32(dictBuffer) != ZSTD_MAGIC_DICTIONARY) return ERROR(dictionary_corrupted);
+
+    {   ZSTD_compressedBlockState_t* bs = (ZSTD_compressedBlockState_t*)malloc(sizeof(ZSTD_compressedBlockState_t));
+        U32* wksp = (U32*)malloc(HUF_WORKSPACE_SIZE);
+        if (!bs || !wksp) {
+            headerSize = ERROR(memory_allocation);
+        } else {
+            ZSTD_reset_compressedBlockState(bs);
+            headerSize = ZSTD_loadCEntropy(bs, wksp, dictBuffer, dictSize);
+        }
+
+        free(bs);
+        free(wksp);
+    }
+
+    return headerSize;
+}
 
 /*-********************************************************
 *  Dictionary training functions
@@ -508,6 +531,7 @@ static size_t ZDICT_trainBuffer_legacy(dictItem* dictList, U32 dictListSize,
     clock_t displayClock = 0;
     clock_t const refreshRate = CLOCKS_PER_SEC * 3 / 10;
 
+#   undef  DISPLAYUPDATE
 #   define DISPLAYUPDATE(l, ...) if (notificationLevel>=l) { \
             if (ZDICT_clockSpan(displayClock) > refreshRate)  \
             { displayClock = clock(); DISPLAY(__VA_ARGS__); \
@@ -588,12 +612,12 @@ typedef struct
 
 #define MAXREPOFFSET 1024
 
-static void ZDICT_countEStats(EStats_ress_t esr, ZSTD_parameters params,
+static void ZDICT_countEStats(EStats_ress_t esr, const ZSTD_parameters* params,
                               unsigned* countLit, unsigned* offsetcodeCount, unsigned* matchlengthCount, unsigned* litlengthCount, U32* repOffsets,
                               const void* src, size_t srcSize,
                               U32 notificationLevel)
 {
-    size_t const blockSizeMax = MIN (ZSTD_BLOCKSIZE_MAX, 1 << params.cParams.windowLog);
+    size_t const blockSizeMax = MIN (ZSTD_BLOCKSIZE_MAX, 1 << params->cParams.windowLog);
     size_t cSize;
 
     if (srcSize > blockSizeMax) srcSize = blockSizeMax;   /* protection vs large samples */
@@ -731,7 +755,7 @@ static size_t ZDICT_analyzeEntropy(void*  dstBuffer, size_t maxDstSize,
 
     /* collect stats on all samples */
     for (u=0; u<nbFiles; u++) {
-        ZDICT_countEStats(esr, params,
+        ZDICT_countEStats(esr, &params,
                           countLit, offcodeCount, matchLengthCount, litLengthCount, repOffset,
                          (const char*)srcBuffer + pos, fileSizes[u],
                           notificationLevel);
@@ -762,7 +786,7 @@ static size_t ZDICT_analyzeEntropy(void*  dstBuffer, size_t maxDstSize,
     /* note : the result of this phase should be used to better appreciate the impact on statistics */
 
     total=0; for (u=0; u<=offcodeMax; u++) total+=offcodeCount[u];
-    errorCode = FSE_normalizeCount(offcodeNCount, Offlog, offcodeCount, total, offcodeMax);
+    errorCode = FSE_normalizeCount(offcodeNCount, Offlog, offcodeCount, total, offcodeMax, /* useLowProbCount */ 1);
     if (FSE_isError(errorCode)) {
         eSize = errorCode;
         DISPLAYLEVEL(1, "FSE_normalizeCount error with offcodeCount \n");
@@ -771,7 +795,7 @@ static size_t ZDICT_analyzeEntropy(void*  dstBuffer, size_t maxDstSize,
     Offlog = (U32)errorCode;
 
     total=0; for (u=0; u<=MaxML; u++) total+=matchLengthCount[u];
-    errorCode = FSE_normalizeCount(matchLengthNCount, mlLog, matchLengthCount, total, MaxML);
+    errorCode = FSE_normalizeCount(matchLengthNCount, mlLog, matchLengthCount, total, MaxML, /* useLowProbCount */ 1);
     if (FSE_isError(errorCode)) {
         eSize = errorCode;
         DISPLAYLEVEL(1, "FSE_normalizeCount error with matchLengthCount \n");
@@ -780,7 +804,7 @@ static size_t ZDICT_analyzeEntropy(void*  dstBuffer, size_t maxDstSize,
     mlLog = (U32)errorCode;
 
     total=0; for (u=0; u<=MaxLL; u++) total+=litLengthCount[u];
-    errorCode = FSE_normalizeCount(litLengthNCount, llLog, litLengthCount, total, MaxLL);
+    errorCode = FSE_normalizeCount(litLengthNCount, llLog, litLengthCount, total, MaxLL, /* useLowProbCount */ 1);
     if (FSE_isError(errorCode)) {
         eSize = errorCode;
         DISPLAYLEVEL(1, "FSE_normalizeCount error with litLengthCount \n");
