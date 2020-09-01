@@ -142,6 +142,7 @@ ZSTD_FILES += zstd/lib/common/threading.o
 ZSTD_FILES += zstd/lib/compress/zstd_compress.o
 ZSTD_FILES += zstd/lib/compress/zstd_compress_literals.o
 ZSTD_FILES += zstd/lib/compress/zstd_compress_sequences.o
+ZSTD_FILES += zstd/lib/compress/zstd_compress_superblock.o
 ZSTD_FILES += zstd/lib/compress/zstdmt_compress.o
 ZSTD_FILES += zstd/lib/compress/zstd_double_fast.o
 ZSTD_FILES += zstd/lib/compress/zstd_fast.o
