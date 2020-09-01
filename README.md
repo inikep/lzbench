@@ -79,48 +79,47 @@ Supported compressors
 **Warning**: some of the compressors listed here have security issues and/or are 
 no longer maintained.  For information about the security of the various compressors, 
 see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page.
-```
-blosclz 2.0.0
-brieflz 1.3.0
-brotli 2019-10-01 (c435f06675)
-bzip2 1.0.8
-crush 1.0
-csc 2016-10-13 (WARNING: it can throw SEGFAULT compiled with Apple LLVM version 7.3.0 (clang-703.0.31))
-density 0.12.5 beta (WARNING: it contains bugs (shortened decompressed output))
-fastlz 0.1
-fast-lzma2 1.0.1
-gipfeli 2016-07-13
-glza 0.8
-libdeflate v1.3
-lizard v1.0 (formerly lz5)
-lz4/lz4hc v1.9.2
-lzf 3.6
-lzfse/lzvn 2017-03-08
-lzg 1.0.10
-lzham 1.0
-lzjb 2010
-lzlib 1.11
-lzma v19.00
-lzmat 1.01 (WARNING: it contains bugs (decompression error; returns 0); it can throw SEGFAULT compiled with gcc 4.9+ -O3)
-lzo 2.10
-lzrw 15-Jul-1991
-lzsse 2019-04-18 (1847c3e827)
-pithy 2011-12-24 (WARNING: it contains bugs (decompression error; returns 0))
-quicklz 1.5.0
-shrinker 0.1 (WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3)
-slz 1.0.0 (only a compressor, uses zlib for decompression)
-snappy 2019-09-30 (e9e11b84e6)
-tornado 0.6a
-ucl 1.03
-wflz 2015-09-16 (WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3)
-xpack 2016-06-02
-xz 5.2.4
-yalz77 2015-09-19
-yappy 2014-03-22 (WARNING: fails to decompress properly on ARM)
-zlib 1.2.11
-zling 2018-10-12 (according to the author using libzling in a production environment is not a good idea)
-zstd 1.4.5
-```
+
+ - [blosclz 2.0.0](https://github.com/Blosc/c-blosc2)
+ - [brieflz 1.3.0](https://github.com/jibsen/brieflz)
+ - [brotli 2019-10-01 (c435f06675)](https://github.com/google/brotli)
+ - [bzip2 1.0.8](http://www.bzip.org/downloads.html)
+ - [crush 1.0](https://sourceforge.net/projects/crush/)
+ - [csc 2016-10-13](https://github.com/fusiyuan2010/CSC) - WARNING: it can throw SEGFAULT compiled with Apple LLVM version 7.3.0 (clang-703.0.31)
+ - [density 0.12.5 beta](https://github.com/centaurean/density) - WARNING: it contains bugs (shortened decompressed output))
+ - [fastlz 0.1](http://fastlz.org)
+ - [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2)
+ - [gipfeli 2016-07-13](https://github.com/google/gipfeli)
+ - [glza 0.8](https://encode.su/threads/2427-GLZA)
+ - [libdeflate v1.3](https://github.com/ebiggers/libdeflate)
+ - [lizard v1.0 (formerly lz5)](https://github.com/inikep/lizard)
+ - [lz4/lz4hc v1.9.2](https://github.com/lz4/lz4)
+ - [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html)
+ - [lzfse/lzvn 2017-03-08](https://github.com/lzfse/lzfse)
+ - [lzg 1.0.10](https://liblzg.bitsnbites.eu/)
+ - [lzham 1.0](https://github.com/richgel999/lzham_codec)
+ lzjb 2010
+ - [lzlib 1.11](http://www.nongnu.org/lzip)
+ - [lzma v19.00](http://7-zip.org)
+ - [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat) - WARNING: it contains bugs (decompression error; returns 0); it can throw SEGFAULT compiled with gcc 4.9+ -O3
+ - [lzo 2.10](http://www.oberhumer.com/opensource/lzo)
+ - [lzrw 15-Jul-1991](https://en.wikipedia.org/wiki/LZRW)
+ - [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE)
+ - [pithy 2011-12-24](https://github.com/johnezang/pithy) - WARNING: it contains bugs (decompression error; returns 0)
+ - [quicklz 1.5.0](http://www.quicklz.com)
+ - [shrinker 0.1](https://code.google.com/p/data-shrinker) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
+ - [slz 1.0.0](http://www.libslz.org/) - only a compressor, uses zlib for decompression
+ - [snappy 2019-09-30 (e9e11b84e6)](https://github.com/google/snappy)
+ - [tornado 0.6a](http://freearc.org)
+ - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
+ - [wflz 2015-09-16](https://github.com/ShaneWF/wflz) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
+ - [xpack 2016-06-02](https://github.com/ebiggers/xpack)
+ - [xz 5.2.4](https://tukaani.org/xz/)
+ - [yalz77 2015-09-19](https://github.com/ivan-tkatchev/yalz77)
+ - [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) - WARNING: fails to decompress properly on ARM
+ - [zlib 1.2.11](http://zlib.net)
+ - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
+ - [zstd 1.4.5](https://github.com/facebook/zstd)
 
 
 Benchmarks
