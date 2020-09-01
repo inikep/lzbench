@@ -1,4 +1,5 @@
 language: c
+dist: bionic
 matrix:
   fast_finish: true
   include:
@@ -7,9 +8,15 @@ matrix:
       env: CC_COMPILER=clang CXX_COMPILER=clang++
 
 
-    # Ubuntu 16.04 LTS
-    - dist: xenial
-      addons:
+    - addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-10
+      env: CC_COMPILER=gcc-10 CXX_COMPILER=g++-10
+
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
@@ -17,8 +24,7 @@ matrix:
             - g++-9
       env: CC_COMPILER=gcc-9 CXX_COMPILER=g++-9
 
-    - dist: xenial
-      addons:
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
@@ -26,8 +32,7 @@ matrix:
             - g++-8
       env: CC_COMPILER=gcc-8 CXX_COMPILER=g++-8
 
-    - dist: xenial
-      addons:
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
@@ -35,8 +40,7 @@ matrix:
             - g++-7
       env: CC_COMPILER=gcc-7 CXX_COMPILER=g++-7
 
-    - dist: xenial
-      addons:
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
@@ -44,8 +48,7 @@ matrix:
             - g++-6
       env: CC_COMPILER=gcc-6 CXX_COMPILER=g++-6
 
-    - dist: xenial
-      addons:
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
@@ -55,8 +58,7 @@ matrix:
             - gcc-multilib
       env: CC_COMPILER=gcc-6 CXX_COMPILER=g++-6 MORE_OPTIONS="BUILD_ARCH=32-bit"
 
-    - dist: xenial
-      addons:
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
@@ -64,8 +66,7 @@ matrix:
             - g++-5
       env: CC_COMPILER=gcc-5 CXX_COMPILER=g++-5
 
-    - dist: xenial
-      addons:
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
@@ -75,53 +76,58 @@ matrix:
             - gcc-multilib
       env: CC_COMPILER=gcc-5 CXX_COMPILER=g++-5 MORE_OPTIONS="BUILD_ARCH=32-bit"
 
-    - dist: xenial
-      addons:
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
-            - sourceline: 'deb https://apt.llvm.org/xenial/ llvm-toolchain-xenial-9 main'
+            - sourceline: 'deb https://apt.llvm.org/$TRAVIS_DIST/ llvm-toolchain-$TRAVIS_DIST-10 main'
+              key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
+          packages:
+            - clang-10
+      env: CC_COMPILER=clang-10 CXX_COMPILER=clang++-10
+
+    - addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - sourceline: 'deb https://apt.llvm.org/$TRAVIS_DIST/ llvm-toolchain-$TRAVIS_DIST-9 main'
               key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
           packages:
             - clang-9
       env: CC_COMPILER=clang-9 CXX_COMPILER=clang++-9
 
-    - dist: xenial
-      addons:
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
-            - llvm-toolchain-xenial-8
+            - llvm-toolchain-$TRAVIS_DIST-8
           packages:
             - clang-8
       env: CC_COMPILER=clang-8 CXX_COMPILER=clang++-8
 
-    - dist: xenial
-      addons:
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
-            - llvm-toolchain-xenial-7
+            - llvm-toolchain-$TRAVIS_DIST-7
           packages:
             - clang-7
       env: CC_COMPILER=clang-7 CXX_COMPILER=clang++-7
 
-    - dist: xenial
-      addons:
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
-            - llvm-toolchain-xenial-6.0
+            - llvm-toolchain-$TRAVIS_DIST-6.0
           packages:
             - clang-6.0
       env: CC_COMPILER=clang-6.0 CXX_COMPILER=clang++-6.0
 
-    - dist: xenial
-      addons:
+    - addons:
         apt:
           sources:
             - ubuntu-toolchain-r-test
-            - llvm-toolchain-xenial-5.0
+            - llvm-toolchain-$TRAVIS_DIST-5.0
           packages:
             - clang-5.0
       env: CC_COMPILER=clang-5.0 CXX_COMPILER=clang++-5.0
@@ -201,17 +207,6 @@ matrix:
         apt:
           sources:
             - ubuntu-toolchain-r-test
-            - llvm-toolchain-trusty-3.5
-          packages:
-            - clang-3.5
-      env: CC_COMPILER=clang-3.5 CXX_COMPILER=clang++-3.5
-
-    - dist: trusty
-      sudo: required
-      addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
             - llvm-toolchain-trusty-3.6
           packages:
             - clang-3.6
@@ -227,17 +222,6 @@ matrix:
           packages:
             - clang-3.8
       env: CC_COMPILER=clang-3.8 CXX_COMPILER=clang++-3.8
-
-    - dist: trusty
-      sudo: required
-      addons:
-        apt:
-          sources:
-            - ubuntu-toolchain-r-test
-            - llvm-toolchain-trusty-3.9
-          packages:
-            - clang-3.9
-      env: CC_COMPILER=clang-3.9 CXX_COMPILER=clang++-3.9
 
     - dist: trusty
       sudo: required
