@@ -105,6 +105,10 @@ struct find_substitutions_data {
   atomic_uint_least32_t read_index;
 } find_substitutions_data[6];
 
+#define symbol_count c_symbol_count
+#define UTF8_compliant c_UTF8_compliant
+#define cap_encoded c_cap_encoded
+
 uint32_t this_symbol, max_match_length, max_scores, i1;
 uint32_t num_simple_symbols, node_instances, num_match_nodes, best_score_num_symbols, sibling_node_number;
 uint32_t new_symbol_number[30000];

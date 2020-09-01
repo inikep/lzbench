@@ -43,6 +43,55 @@ const uint8_t MAX_BITS_IN_CODE = 25;
 const uint32_t UNIQUE_CHAR = 0xFFFFFFFF;
 const uint32_t READ_SIZE = 0x80000;
 
+#define nsob g_nsob
+#define nbob g_nbob
+#define fbob g_fbob
+#define sum_nbob g_sum_nbob
+#define max_code_length g_max_code_length
+#define prior_is_cap g_prior_is_cap
+#define prior_end g_prior_end
+#define UTF8_compliant g_UTF8_compliant
+#define max_regular_code_length g_max_regular_code_length
+#define num_base_symbols g_num_base_symbols
+#define symbol_lengths g_symbol_lengths
+#define cap_symbol_defined g_cap_symbol_defined
+#define cap_lock_symbol_defined g_cap_lock_symbol_defined
+#define end_char_ptr g_end_char_ptr
+#define in_char_ptr g_in_char_ptr
+#define mtfg_queue_16_offset g_mtfg_queue_16_offset
+#define mtfg_queue_16 g_mtfg_queue_16
+#define mtfg_queue_32_offset g_mtfg_queue_32_offset
+#define mtfg_queue_32 g_mtfg_queue_32
+#define mtfg_queue_64_offset g_mtfg_queue_64_offset
+#define mtfg_queue_64 g_mtfg_queue_64
+#define mtfg_queue_128_offset g_mtfg_queue_128_offset
+#define mtfg_queue_128 g_mtfg_queue_128
+#define mtfg_queue_192_offset g_mtfg_queue_192_offset
+#define mtfg_queue_192 g_mtfg_queue_192
+#define mtfg_queue_8 g_mtfg_queue_8
+#define mtfg_queue_8_offset g_mtfg_queue_8_offset
+#define mtfg_queue_0 g_mtfg_queue_0
+#define cap_encoded g_cap_encoded
+#define sym_list_bits g_sym_list_bits
+#define sym_list_ptrs g_sym_list_ptrs
+#define CodeLength g_CodeLength
+#define symbol_count g_symbol_count
+#define mtf_queue_number g_mtf_queue_number
+#define mtf_queue_size g_mtf_queue_size
+#define mtf_queue g_mtf_queue
+#define mtf_queue_ptr g_mtf_queue_ptr
+#define min_extra_reduce_index g_min_extra_reduce_index
+#define BinNum g_BinNum
+#define end_symbol g_end_symbol
+#define SIDSymbol g_SIDSymbol
+#define base_bits g_base_bits
+#define use_mtf g_use_mtf
+#define use_mtfg g_use_mtfg
+#define cap_encoded g_cap_encoded
+#define symbol g_symbol
+#define symbol_to_move g_symbol_to_move
+#define symbol_index g_symbol_index
+
 uint8_t UTF8_compliant, base_bits, cap_encoded, prior_is_cap, use_mtf, use_mtfg, format, CodeLength, SIDSymbol;
 uint8_t symbol_code_length, symbol_bits, temp_bits, max_code_length, max_regular_code_length, found_first_symbol, end_symbol;
 uint8_t cap_symbol_defined, cap_lock_symbol_defined, mtf_queue_number;
