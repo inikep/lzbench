@@ -24,7 +24,6 @@
 #define BROTLI_COMMON_PLATFORM_H_
 
 #include <string.h>  /* memcpy */
-#include <stdlib.h>  /* malloc, free */
 
 #include <brotli/port.h>
 #include <brotli/types.h>
@@ -39,6 +38,10 @@
 #define BROTLI_X_BYTE_ORDER BYTE_ORDER
 #define BROTLI_X_LITTLE_ENDIAN LITTLE_ENDIAN
 #define BROTLI_X_BIG_ENDIAN BIG_ENDIAN
+#endif
+
+#if BROTLI_MSVC_VERSION_CHECK(12, 0, 0)
+#include <intrin.h>
 #endif
 
 #if defined(BROTLI_ENABLE_LOG) || defined(BROTLI_DEBUG)
@@ -355,7 +358,7 @@ static BROTLI_INLINE void BrotliUnalignedWrite64(void* p, uint64_t v) {
 typedef BROTLI_ALIGNED(1) uint64_t brotli_unaligned_uint64_t;
 
 static BROTLI_INLINE uint64_t BrotliUnalignedRead64(const void* p) {
-  return (uint64_t) ((brotli_unaligned_uint64_t*) p)[0];
+  return (uint64_t) ((const brotli_unaligned_uint64_t*) p)[0];
 }
 static BROTLI_INLINE void BrotliUnalignedWrite64(void* p, uint64_t v) {
   brotli_unaligned_uint64_t* dwords = (brotli_unaligned_uint64_t*) p;
@@ -522,17 +525,41 @@ BROTLI_MIN_MAX(size_t) BROTLI_MIN_MAX(uint32_t) BROTLI_MIN_MAX(uint8_t)
   (A)[(J)] = __brotli_swap_tmp;   \
 }
 
-/* Default brotli_alloc_func */
-static void* BrotliDefaultAllocFunc(void* opaque, size_t size) {
-  BROTLI_UNUSED(opaque);
-  return malloc(size);
+#if BROTLI_64_BITS
+#if BROTLI_GNUC_HAS_BUILTIN(__builtin_ctzll, 3, 4, 0) || \
+    BROTLI_INTEL_VERSION_CHECK(16, 0, 0)
+#define BROTLI_TZCNT64 __builtin_ctzll
+#elif BROTLI_MSVC_VERSION_CHECK(12, 0, 0)
+#if defined(BROTLI_TARGET_X64)
+#define BROTLI_TZCNT64 _tzcnt_u64
+#else /* BROTLI_TARGET_X64 */
+static BROTLI_INLINE uint32_t BrotliBsf64Msvc(uint64_t x) {
+  uint32_t lsb;
+  _BitScanForward64(&lsb, x);
+  return lsb;
 }
+#define BROTLI_TZCNT64 BrotliBsf64Msvc
+#endif /* BROTLI_TARGET_X64 */
+#endif /* __builtin_ctzll */
+#endif /* BROTLI_64_BITS */
+
+#if BROTLI_GNUC_HAS_BUILTIN(__builtin_clz, 3, 4, 0) || \
+    BROTLI_INTEL_VERSION_CHECK(16, 0, 0)
+#define BROTLI_BSR32(x) (31u ^ (uint32_t)__builtin_clz(x))
+#elif BROTLI_MSVC_VERSION_CHECK(12, 0, 0)
+static BROTLI_INLINE uint32_t BrotliBsr32Msvc(uint32_t x) {
+  unsigned long msb;
+  _BitScanReverse(&msb, x);
+  return (uint32_t)msb;
+}
+#define BROTLI_BSR32 BrotliBsr32Msvc
+#endif /* __builtin_clz */
+
+/* Default brotli_alloc_func */
+BROTLI_COMMON_API void* BrotliDefaultAllocFunc(void* opaque, size_t size);
 
 /* Default brotli_free_func */
-static void BrotliDefaultFreeFunc(void* opaque, void* address) {
-  BROTLI_UNUSED(opaque);
-  free(address);
-}
+BROTLI_COMMON_API void BrotliDefaultFreeFunc(void* opaque, void* address);
 
 BROTLI_UNUSED_FUNCTION void BrotliSuppressUnusedFunctions(void) {
   BROTLI_UNUSED(&BrotliSuppressUnusedFunctions);

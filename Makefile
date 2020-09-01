@@ -111,23 +111,24 @@ ZLIB_FILES = zlib/adler32.o zlib/compress.o zlib/crc32.o zlib/deflate.o zlib/gzc
 ZLIB_FILES += zlib/gzwrite.o zlib/infback.o zlib/inffast.o zlib/inflate.o zlib/inftrees.o zlib/trees.o
 ZLIB_FILES += zlib/uncompr.o zlib/zutil.o
 
-LZMAT_FILES = lzmat/lzmat_dec.o lzmat/lzmat_enc.o 
+LZMAT_FILES = lzmat/lzmat_dec.o lzmat/lzmat_enc.o
 
 LZRW_FILES = lzrw/lzrw1-a.o lzrw/lzrw1.o lzrw/lzrw2.o lzrw/lzrw3.o lzrw/lzrw3-a.o
 
 LZMA_FILES = lzma/LzFind.o lzma/LzmaDec.o lzma/LzmaEnc.o
 
-LZ4_FILES = lizard/lizard_compress.o lizard/lizard_decompress.o lz4/lz4.o lz4/lz4hc.o 
+LZ4_FILES = lizard/lizard_compress.o lizard/lizard_decompress.o lz4/lz4.o lz4/lz4hc.o
 
 LZF_FILES = lzf/lzf_c_ultra.o lzf/lzf_c_very.o lzf/lzf_d.o
 
-LZFSE_FILES = lzfse/lzfse_decode.o lzfse/lzfse_decode_base.o lzfse/lzfse_encode.o lzfse/lzfse_encode_base.o lzfse/lzfse_fse.o lzfse/lzvn_decode.o lzfse/lzvn_decode_base.o lzfse/lzvn_encode_base.o 
+LZFSE_FILES = lzfse/lzfse_decode.o lzfse/lzfse_decode_base.o lzfse/lzfse_encode.o lzfse/lzfse_encode_base.o lzfse/lzfse_fse.o lzfse/lzvn_decode.o lzfse/lzvn_decode_base.o lzfse/lzvn_encode_base.o
 
 QUICKLZ_FILES = quicklz/quicklz151b7.o quicklz/quicklz1.o quicklz/quicklz2.o quicklz/quicklz3.o
 
-BROTLI_FILES = brotli/common/dictionary.o brotli/common/transform.o brotli/dec/bit_reader.o brotli/dec/decode.o brotli/dec/huffman.o brotli/dec/state.o
+BROTLI_FILES = brotli/common/constants.o brotli/common/context.o brotli/common/dictionary.o brotli/common/platform.o brotli/common/transform.o
+BROTLI_FILES += brotli/dec/bit_reader.o brotli/dec/decode.o brotli/dec/huffman.o brotli/dec/state.o
 BROTLI_FILES += brotli/enc/backward_references.o brotli/enc/block_splitter.o brotli/enc/brotli_bit_stream.o brotli/enc/encode.o brotli/enc/encoder_dict.o
-BROTLI_FILES += brotli/enc/entropy_encode.o brotli/enc/histogram.o brotli/enc/literal_cost.o brotli/enc/memory.o
+BROTLI_FILES += brotli/enc/entropy_encode.o brotli/enc/fast_log.o brotli/enc/histogram.o brotli/enc/command.o brotli/enc/literal_cost.o brotli/enc/memory.o
 BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/utf8_util.o brotli/enc/compress_fragment.o brotli/enc/compress_fragment_two_pass.o
 BROTLI_FILES += brotli/enc/cluster.o brotli/enc/bit_cost.o brotli/enc/backward_references_hq.o brotli/enc/dictionary_hash.o
 
@@ -158,15 +159,15 @@ ZSTD_FILES += zstd/lib/decompress/zstd_ddict.o
 ZSTD_FILES += zstd/lib/decompress/zstd_decompress_block.o
 ZSTD_FILES += zstd/lib/dictBuilder/divsufsort.o
 
-BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depack.o brieflz/depacks.o 
+BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depack.o brieflz/depacks.o
 
-LIBLZG_FILES = liblzg/decode.o liblzg/encode.o liblzg/checksum.o 
+LIBLZG_FILES = liblzg/decode.o liblzg/encode.o liblzg/checksum.o
 
 XZ_FILES = xz/lzma/lzma_decoder.o xz/lzma/lzma_encoder.o xz/lzma/lzma_encoder_optimum_fast.o xz/lzma/lzma_encoder_optimum_normal.o xz/lzma/fastpos_table.o
 XZ_FILES += xz/lzma/lzma_encoder_presets.o xz/lz/lz_decoder.o xz/lz/lz_encoder.o xz/lz/lz_encoder_mf.o xz/common/common.o xz/rangecoder/price_table.o
 XZ_FILES += xz/common/alone_encoder.o xz/common/alone_decoder.o xz/check/crc32_table.o xz/alone.o
 
-GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o 
+GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o
 
 LIBDEFLATE_FILES = libdeflate/adler32.o libdeflate/aligned_malloc.o libdeflate/crc32.o libdeflate/deflate_compress.o
 LIBDEFLATE_FILES += libdeflate/deflate_decompress.o libdeflate/gzip_compress.o libdeflate/gzip_decompress.o
@@ -199,14 +200,14 @@ endif
 ifeq "$(DONT_BUILD_XPACK)" "1"
 	DEFINES += -DBENCH_REMOVE_XPACK
 else
-	XPACK_FILES = xpack/lib/x86_cpu_features.o xpack/lib/xpack_common.o xpack/lib/xpack_compress.o xpack/lib/xpack_decompress.o 
+	XPACK_FILES = xpack/lib/x86_cpu_features.o xpack/lib/xpack_common.o xpack/lib/xpack_compress.o xpack/lib/xpack_decompress.o
 endif
 
 ifeq "$(DONT_BUILD_CSC)" "1"
     DEFINES += -DBENCH_REMOVE_CSC
 else
 	CSC_FILES = libcsc/csc_analyzer.o libcsc/csc_coder.o libcsc/csc_dec.o libcsc/csc_enc.o libcsc/csc_encoder_main.o
-	CSC_FILES += libcsc/csc_filters.o libcsc/csc_lz.o libcsc/csc_memio.o libcsc/csc_mf.o libcsc/csc_model.o libcsc/csc_profiler.o libcsc/csc_default_alloc.o 
+	CSC_FILES += libcsc/csc_filters.o libcsc/csc_lz.o libcsc/csc_memio.o libcsc/csc_mf.o libcsc/csc_model.o libcsc/csc_profiler.o libcsc/csc_default_alloc.o
 endif
 
 ifeq "$(DONT_BUILD_DENSITY)" "1"
@@ -259,7 +260,7 @@ endif
 ifeq "$(DONT_BUILD_YAPPY)" "1"
     DEFINES += -DBENCH_REMOVE_YAPPY
 else
-    MISC_FILES += yappy/yappy.o 
+    MISC_FILES += yappy/yappy.o
 endif
 
 ifeq "$(DONT_BUILD_ZLING)" "1"

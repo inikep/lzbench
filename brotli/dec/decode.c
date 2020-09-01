@@ -275,7 +275,8 @@ static BrotliDecoderErrorCode BROTLI_NOINLINE DecodeMetaBlockLength(
             s->loop_counter = i;
             return BROTLI_DECODER_NEEDS_MORE_INPUT;
           }
-          if (i + 1 == s->size_nibbles && s->size_nibbles > 4 && bits == 0) {
+          if (i + 1 == (int)s->size_nibbles && s->size_nibbles > 4 &&
+              bits == 0) {
             return BROTLI_FAILURE(BROTLI_DECODER_ERROR_FORMAT_EXUBERANT_NIBBLE);
           }
           s->meta_block_remaining_len |= (int)(bits << (i * 4));
@@ -324,7 +325,8 @@ static BrotliDecoderErrorCode BROTLI_NOINLINE DecodeMetaBlockLength(
             s->loop_counter = i;
             return BROTLI_DECODER_NEEDS_MORE_INPUT;
           }
-          if (i + 1 == s->size_nibbles && s->size_nibbles > 1 && bits == 0) {
+          if (i + 1 == (int)s->size_nibbles && s->size_nibbles > 1 &&
+              bits == 0) {
             return BROTLI_FAILURE(
                 BROTLI_DECODER_ERROR_FORMAT_EXUBERANT_META_NIBBLE);
           }
@@ -873,8 +875,8 @@ static BROTLI_INLINE uint32_t ReadBlockLength(const HuffmanCode* table,
   uint32_t code;
   uint32_t nbits;
   code = ReadSymbol(table, br);
-  nbits = kBlockLengthPrefixCode[code].nbits;  /* nbits == 2..24 */
-  return kBlockLengthPrefixCode[code].offset + BrotliReadBits24(br, nbits);
+  nbits = _kBrotliPrefixCodeRanges[code].nbits;  /* nbits == 2..24 */
+  return _kBrotliPrefixCodeRanges[code].offset + BrotliReadBits24(br, nbits);
 }
 
 /* WARNING: if state is not BROTLI_STATE_READ_BLOCK_LENGTH_NONE, then
@@ -892,13 +894,14 @@ static BROTLI_INLINE BROTLI_BOOL SafeReadBlockLength(
   }
   {
     uint32_t bits;
-    uint32_t nbits = kBlockLengthPrefixCode[index].nbits;  /* nbits == 2..24 */
+    uint32_t nbits = _kBrotliPrefixCodeRanges[index].nbits;
+    uint32_t offset = _kBrotliPrefixCodeRanges[index].offset;
     if (!BrotliSafeReadBits(br, nbits, &bits)) {
       s->block_length_index = index;
       s->substate_read_block_length = BROTLI_STATE_READ_BLOCK_LENGTH_SUFFIX;
       return BROTLI_FALSE;
     }
-    *result = kBlockLengthPrefixCode[index].offset + bits;
+    *result = offset + bits;
     s->substate_read_block_length = BROTLI_STATE_READ_BLOCK_LENGTH_NONE;
     return BROTLI_TRUE;
   }
