@@ -169,7 +169,7 @@ XZ_FILES += xz/common/alone_encoder.o xz/common/alone_decoder.o xz/check/crc32_t
 
 GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o
 
-LIBDEFLATE_FILES = libdeflate/adler32.o libdeflate/aligned_malloc.o libdeflate/crc32.o libdeflate/deflate_compress.o
+LIBDEFLATE_FILES = libdeflate/adler32.o libdeflate/utils.o libdeflate/crc32.o libdeflate/deflate_compress.o
 LIBDEFLATE_FILES += libdeflate/deflate_decompress.o libdeflate/gzip_compress.o libdeflate/gzip_decompress.o
 LIBDEFLATE_FILES += libdeflate/x86/cpu_features.o libdeflate/arm/cpu_features.o libdeflate/zlib_compress.o libdeflate/zlib_decompress.o
 

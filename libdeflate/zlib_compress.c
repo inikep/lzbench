@@ -33,9 +33,9 @@
 
 #include "libdeflate.h"
 
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_zlib_compress(struct libdeflate_compressor *c,
-			 const void *in, size_t in_size,
+			 const void *in, size_t in_nbytes,
 			 void *out, size_t out_nbytes_avail)
 {
 	u8 *out_next = out;
@@ -65,20 +65,20 @@ libdeflate_zlib_compress(struct libdeflate_compressor *c,
 	out_next += 2;
 
 	/* Compressed data  */
-	deflate_size = libdeflate_deflate_compress(c, in, in_size, out_next,
+	deflate_size = libdeflate_deflate_compress(c, in, in_nbytes, out_next,
 					out_nbytes_avail - ZLIB_MIN_OVERHEAD);
 	if (deflate_size == 0)
 		return 0;
 	out_next += deflate_size;
 
 	/* ADLER32  */
-	put_unaligned_be32(libdeflate_adler32(1, in, in_size), out_next);
+	put_unaligned_be32(libdeflate_adler32(1, in, in_nbytes), out_next);
 	out_next += 4;
 
 	return out_next - (u8 *)out;
 }
 
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_zlib_compress_bound(struct libdeflate_compressor *c,
 			       size_t in_nbytes)
 {

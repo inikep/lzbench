@@ -47,9 +47,7 @@
 #endif
 
 /* Fixed-width integer types */
-#ifndef PRIu32
-#  include <inttypes.h>
-#endif
+#include <stdint.h>
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -245,39 +243,6 @@ static forceinline u64 bswap64(u64 n)
 #ifndef UNALIGNED_ACCESS_IS_FAST
 #  define UNALIGNED_ACCESS_IS_FAST 0
 #endif
-
-/*
- * DEFINE_UNALIGNED_TYPE(type) - a macro that, given an integer type 'type',
- * defines load_type_unaligned(addr) and store_type_unaligned(v, addr) functions
- * which load and store variables of type 'type' from/to unaligned memory
- * addresses.  If not defined, a fallback is used.
- */
-#ifndef DEFINE_UNALIGNED_TYPE
-
-/*
- * Although memcpy() may seem inefficient, it *usually* gets optimized
- * appropriately by modern compilers.  It's portable and may be the best we can
- * do for a fallback...
- */
-#include <string.h>
-
-#define DEFINE_UNALIGNED_TYPE(type)				\
-								\
-static forceinline type						\
-load_##type##_unaligned(const void *p)				\
-{								\
-	type v;							\
-	memcpy(&v, p, sizeof(v));				\
-	return v;						\
-}								\
-								\
-static forceinline void						\
-store_##type##_unaligned(type v, void *p)			\
-{								\
-	memcpy(p, &v, sizeof(v));				\
-}
-
-#endif /* !DEFINE_UNALIGNED_TYPE */
 
 /* ========================================================================== */
 /*                             Bit scan functions                             */

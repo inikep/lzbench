@@ -8,7 +8,9 @@
 #include "../lib_common.h"
 
 #if (defined(__arm__) || defined(__aarch64__)) && \
-	defined(__linux__) && COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
+	defined(__linux__) && \
+	COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE && \
+	!defined(FREESTANDING)
 #  define ARM_CPU_FEATURES_ENABLED 1
 #else
 #  define ARM_CPU_FEATURES_ENABLED 0
@@ -23,7 +25,7 @@
 
 extern volatile u32 _cpu_features;
 
-extern void setup_cpu_features(void);
+void setup_cpu_features(void);
 
 static inline u32 get_cpu_features(void)
 {
