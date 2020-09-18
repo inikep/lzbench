@@ -27,10 +27,6 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <stdlib.h>
-#include <string.h>
-
-#include "aligned_malloc.h"
 #include "deflate_compress.h"
 #include "deflate_constants.h"
 #include "unaligned.h"
@@ -1857,7 +1853,7 @@ deflate_finish_sequence(struct deflate_sequence *seq, u32 litrunlen)
  * but rather we combine many symbols into a single "observation type".  For
  * literals we only look at the high bits and low bits, and for matches we only
  * look at whether the match is long or not.  The assumption is that for typical
- * "real" data, places that are good block boundaries will tend to be noticable
+ * "real" data, places that are good block boundaries will tend to be noticeable
  * based only on changes in these aggregate frequencies, without looking for
  * subtle differences in individual symbols.  For example, a change from ASCII
  * bytes to non-ASCII bytes, or from few matches (generally less compressible)
@@ -2669,7 +2665,7 @@ deflate_init_offset_slot_fast(struct libdeflate_compressor *c)
 	}
 }
 
-LIBDEFLATEAPI struct libdeflate_compressor *
+LIBDEFLATEEXPORT struct libdeflate_compressor * LIBDEFLATEAPI
 libdeflate_alloc_compressor(int compression_level)
 {
 	struct libdeflate_compressor *c;
@@ -2682,7 +2678,7 @@ libdeflate_alloc_compressor(int compression_level)
 #endif
 		size = offsetof(struct libdeflate_compressor, p) + sizeof(c->p.g);
 
-	c = aligned_malloc(MATCHFINDER_ALIGNMENT, size);
+	c = libdeflate_aligned_malloc(MATCHFINDER_ALIGNMENT, size);
 	if (!c)
 		return NULL;
 
@@ -2766,7 +2762,7 @@ libdeflate_alloc_compressor(int compression_level)
 		break;
 #endif
 	default:
-		aligned_free(c);
+		libdeflate_aligned_free(c);
 		return NULL;
 	}
 
@@ -2778,7 +2774,7 @@ libdeflate_alloc_compressor(int compression_level)
 	return c;
 }
 
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_deflate_compress(struct libdeflate_compressor *c,
 			    const void *in, size_t in_nbytes,
 			    void *out, size_t out_nbytes_avail)
@@ -2799,10 +2795,10 @@ libdeflate_deflate_compress(struct libdeflate_compressor *c,
 	return (*c->impl)(c, in, in_nbytes, out, out_nbytes_avail);
 }
 
-LIBDEFLATEAPI void
+LIBDEFLATEEXPORT void LIBDEFLATEAPI
 libdeflate_free_compressor(struct libdeflate_compressor *c)
 {
-	aligned_free(c);
+	libdeflate_aligned_free(c);
 }
 
 unsigned int
@@ -2811,7 +2807,7 @@ deflate_get_compression_level(struct libdeflate_compressor *c)
 	return c->compression_level;
 }
 
-LIBDEFLATEAPI size_t
+LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
 libdeflate_deflate_compress_bound(struct libdeflate_compressor *c,
 				  size_t in_nbytes)
 {
