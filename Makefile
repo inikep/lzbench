@@ -314,7 +314,7 @@ lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_F
 
 .c.o:
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $< -std=c99 -c -o $@
+	$(CC) $(CFLAGS) $< -std=gnu99 -c -o $@
 
 .cc.o:
 	@$(MKDIR) $(dir $@)
