@@ -151,7 +151,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "crush",      "1.0",         0,   2,    0,       0, lzbench_crush_compress,      lzbench_crush_decompress,      NULL,                    NULL },
     { "csc",        "2016-10-13",  1,   5,    0,       0, lzbench_csc_compress,        lzbench_csc_decompress,        NULL,                    NULL },
     { "density",    "0.14.2",      1,   3,    0,       0, lzbench_density_compress,    lzbench_density_decompress,    lzbench_density_init,    lzbench_density_deinit },
-    { "fastlz",     "0.1",         1,   2,    0,       0, lzbench_fastlz_compress,     lzbench_fastlz_decompress,     NULL,                    NULL },
+    { "fastlz",     "0.5.0",       1,   2,    0,       0, lzbench_fastlz_compress,     lzbench_fastlz_decompress,     NULL,                    NULL },
     { "fastlzma2",   "1.0.1",      1,  10,    0,       0, lzbench_fastlzma2_compress,  lzbench_fastlzma2_decompress,  NULL,                    NULL },
     { "gipfeli",    "2016-07-13",  0,   0,    0,       0, lzbench_gipfeli_compress,    lzbench_gipfeli_decompress,    NULL,                    NULL },
     { "glza",       "0.8",         0,   0,    0,       0, lzbench_glza_compress,       lzbench_glza_decompress,       NULL,                    NULL },
