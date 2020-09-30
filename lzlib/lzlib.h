@@ -1,35 +1,41 @@
-/*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2019 Antonio Diaz Diaz.
+/* Lzlib - Compression library for the lzip format
+   Copyright (C) 2009-2020 Antonio Diaz Diaz.
 
-    This library is free software. Redistribution and use in source and
-    binary forms, with or without modification, are permitted provided
-    that the following conditions are met:
+   This library is free software. Redistribution and use in source and
+   binary forms, with or without modification, are permitted provided
+   that the following conditions are met:
 
-    1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
+   1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions, and the following disclaimer.
 
-    2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
+   2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions, and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
 
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+   This library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define LZ_API_VERSION 1
+/* LZ_API_VERSION  lzlib_version  (LZ_API_VERSION was first defined in 1.8)
+         1             1.8
+         2             1.12
+*/
 
-static const char * const LZ_version_string = "1.11";
+#define LZ_API_VERSION 2
+
+static const char * const LZ_version_string = "1.12-rc2";
 
 enum LZ_Errno { LZ_ok = 0,         LZ_bad_argument, LZ_mem_error,
                 LZ_sequence_error, LZ_header_error, LZ_unexpected_eof,
                 LZ_data_error,     LZ_library_error };
 
 
+int LZ_api_version( void );				/* new in 1.12 */
 const char * LZ_version( void );
 const char * LZ_strerror( const enum LZ_Errno lz_errno );
 
@@ -41,7 +47,7 @@ int LZ_min_match_len_limit( void );
 int LZ_max_match_len_limit( void );
 
 
-/*---------------------- Compression Functions ----------------------*/
+/* --------------------- Compression Functions --------------------- */
 
 struct LZ_Encoder;
 
@@ -71,7 +77,7 @@ unsigned long long LZ_compress_total_in_size( struct LZ_Encoder * const encoder 
 unsigned long long LZ_compress_total_out_size( struct LZ_Encoder * const encoder );
 
 
-/*--------------------- Decompression Functions ---------------------*/
+/* -------------------- Decompression Functions -------------------- */
 
 struct LZ_Decoder;
 

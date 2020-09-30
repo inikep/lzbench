@@ -1,20 +1,20 @@
-/*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2019 Antonio Diaz Diaz.
+/* Lzlib - Compression library for the lzip format
+   Copyright (C) 2009-2020 Antonio Diaz Diaz.
 
-    This library is free software. Redistribution and use in source and
-    binary forms, with or without modification, are permitted provided
-    that the following conditions are met:
+   This library is free software. Redistribution and use in source and
+   binary forms, with or without modification, are permitted provided
+   that the following conditions are met:
 
-    1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
+   1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions, and the following disclaimer.
 
-    2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
+   2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions, and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
 
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+   This library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 static int LZe_get_match_pairs( struct LZ_encoder * const e, struct Pair * pairs )
@@ -23,7 +23,7 @@ static int LZe_get_match_pairs( struct LZ_encoder * const e, struct Pair * pairs
   int32_t * ptr1 = ptr0 + 1;
   int32_t * newptr;
   int len = 0, len0 = 0, len1 = 0;
-  int maxlen = 0;
+  int maxlen = 3;			/* only used if pairs != 0 */
   int num_pairs = 0;
   const int pos1 = e->eb.mb.pos + 1;
   const int min_pos = ( e->eb.mb.pos > e->eb.mb.dictionary_size ) ?
@@ -49,8 +49,8 @@ static int LZe_get_match_pairs( struct LZ_encoder * const e, struct Pair * pairs
 
   if( pairs )
     {
-    int np2 = e->eb.mb.prev_positions[key2];
-    int np3 = e->eb.mb.prev_positions[key3];
+    const int np2 = e->eb.mb.prev_positions[key2];
+    const int np3 = e->eb.mb.prev_positions[key3];
     if( np2 > min_pos && e->eb.mb.buffer[np2-1] == data[0] )
       {
       pairs[0].dis = e->eb.mb.pos - np2;
@@ -60,19 +60,17 @@ static int LZe_get_match_pairs( struct LZ_encoder * const e, struct Pair * pairs
     if( np2 != np3 && np3 > min_pos && e->eb.mb.buffer[np3-1] == data[0] )
       {
       maxlen = 3;
-      np2 = np3;
-      pairs[num_pairs].dis = e->eb.mb.pos - np2;
-      ++num_pairs;
+      pairs[num_pairs++].dis = e->eb.mb.pos - np3;
       }
     if( num_pairs > 0 )
       {
-      const int delta = pos1 - np2;
+      const int delta = pairs[num_pairs-1].dis + 1;
       while( maxlen < len_limit && data[maxlen-delta] == data[maxlen] )
         ++maxlen;
       pairs[num_pairs-1].len = maxlen;
+      if( maxlen < 3 ) maxlen = 3;
       if( maxlen >= len_limit ) pairs = 0;	/* done. now just skip */
       }
-    if( maxlen < 3 ) maxlen = 3;
     }
 
   e->eb.mb.prev_positions[key2] = pos1;

@@ -1,23 +1,23 @@
-/*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2019 Antonio Diaz Diaz.
+/* Lzlib - Compression library for the lzip format
+   Copyright (C) 2009-2020 Antonio Diaz Diaz.
 
-    This library is free software. Redistribution and use in source and
-    binary forms, with or without modification, are permitted provided
-    that the following conditions are met:
+   This library is free software. Redistribution and use in source and
+   binary forms, with or without modification, are permitted provided
+   that the following conditions are met:
 
-    1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
+   1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions, and the following disclaimer.
 
-    2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
+   2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions, and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
 
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+   This library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-int FLZe_longest_match_len( struct FLZ_encoder * const fe, int * const distance )
+static int FLZe_longest_match_len( struct FLZ_encoder * const fe, int * const distance )
   {
   enum { len_limit = 16 };
   const uint8_t * const data = Mb_ptr_to_current_pos( &fe->eb.mb );
@@ -59,7 +59,7 @@ int FLZe_longest_match_len( struct FLZ_encoder * const fe, int * const distance 
   }
 
 
-bool FLZe_encode_member( struct FLZ_encoder * const fe )
+static bool FLZe_encode_member( struct FLZ_encoder * const fe )
   {
   int rep = 0, i;
   State * const state = &fe->eb.state;
@@ -86,7 +86,7 @@ bool FLZe_encode_member( struct FLZ_encoder * const fe )
   while( !Mb_data_finished( &fe->eb.mb ) &&
          Re_member_position( &fe->eb.renc ) < fe->eb.member_size_limit )
     {
-    int match_distance;
+    int match_distance = 0;		/* avoid warning from gcc 6.1.0 */
     int main_len, pos_state;
     int len = 0;
     if( !Mb_enough_available_bytes( &fe->eb.mb ) ||

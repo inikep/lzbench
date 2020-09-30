@@ -1,13 +1,51 @@
+2020-08-13  Antonio Diaz Diaz  <antonio@gnu.org>
+
+	* Version 1.12-rc2 released.
+	* lzlib.h: Define LZ_API_VERSION to 2. This does not affect soversion.
+	* lzlib.h lzlib.c: New function LZ_api_version.
+	* main.c: New option '--check-lib'.
+	* lzlib.texi: Document the new way of verifying the library version.
+	  Document that 'LZ_(de)compress_read' can be called with a null
+	  buffer pointer argument.
+	* ffexample.c: Set stdin/stdout in binary mode on Windows and OS2.
+
+2020-06-06  Antonio Diaz Diaz  <antonio@gnu.org>
+
+	* Version 1.12-rc1 released.
+	* LZd_try_verify_trailer: Return 2 if EOF at trailer or EOS marker.
+	* Decompression speed has been slightly increased.
+	* main.c (do_decompress): Fix false report about library stall.
+	  (main): Report an error if a file name is empty.
+	  Make '-o' behave like '-c', but writing to file instead of stdout.
+	  Make '-c' and '-o' check whether the output is a terminal only once.
+	  Replace 'decompressed', 'compressed' with 'out', 'in' in output.
+	  Set a valid invocation_name even if argc == 0.
+	* lzlib.texi: Document that 'LZ_(de)compress_close' and
+	  'LZ_(de)compress_errno' can be called with a null argument.
+	  Document that sync flush marker is not allowed in lzip files.
+	  Document the consequences of not calling 'LZ_decompress_finish'.
+	  Document that 'LZ_decompress_read' returns at least once per member.
+	  Real code examples have been added to the tutorial.
+	* bbexample.c: Don't use 'LZ_(de)compress_write_size'.
+	* lzcheck.c: Test member by member without 'LZ_decompress_finish'.
+	* ffexample.c: New file containing example functions for file-to-file
+	  compression/decompression.
+	* Document extraction from tar.lz in '--help' output and man page.
+	* Makefile.in: 'install-bin' no longer installs the man page.
+	  New targets 'install-bin-compress' and 'install-bin-strip-compress'.
+	* testsuite: Add 9 new test files.
+
 2019-01-02  Antonio Diaz Diaz  <antonio@gnu.org>
 
 	* Version 1.11 released.
-	* File_* renamed to Lzip_*.
+	* Rename File_* to Lzip_*.
 	* LZ_decompress_read: Don't return error until all data is read.
 	* decoder.c (LZd_decode_member): Decode truncated data until EOF.
+	* cbuffer.c (Cb_read_data): Allow a null buffer pointer.
 	* main.c: Don't allow mixing different operations (-d and -t).
 	* main.c: Check return value of close( infd ).
 	* main.c: Compile on DOS with DJGPP.
-	* lzlib.texi: Improved descriptions of '-0..-9', '-m' and '-s'.
+	* lzlib.texi: Improve descriptions of '-0..-9', '-m', and '-s'.
 	  Document that 'LZ_(de)compress_finish' can be called repeatedly.
 	* configure: Accept appending to CFLAGS, 'CFLAGS+=OPTIONS'.
 	* Makefile.in: Targets 'install-bin*' renamed to 'install-lib*'.
@@ -19,13 +57,13 @@
 	* Version 1.10 released.
 	* LZ_compress_finish now adjusts dictionary size for each member.
 	* lzlib.c (LZ_decompress_read): Detect corrupt header with HD=3.
-	* main.c: Added new option '--loose-trailing'.
+	* main.c: New option '--loose-trailing'.
 	* main.c (main): Option '-S, --volume-size' now keeps input files.
-	* main.c: Replaced 'bits/byte' with inverse compression ratio.
+	* main.c: Replace 'bits/byte' with inverse compression ratio.
 	* main.c: Show final diagnostic when testing multiple files.
 	* main.c: Do not add a second .lz extension to the arg of -o.
 	* main.c: Show dictionary size at verbosity level 4 (-vvvv).
-	* lzlib.texi: Added chapter 'Invoking minilzip'.
+	* lzlib.texi: New chapter 'Invoking minilzip'.
 
 2017-04-11  Antonio Diaz Diaz  <antonio@gnu.org>
 
@@ -34,14 +72,15 @@
 	* Compression time of options -1 to -9 has been reduced by 1%.
 	* Decompression time has been reduced by 3%.
 	* main.c: Continue testing if any input file is a terminal.
-	* License of the library changed to "2-clause BSD".
+	* Change the license of the library to "2-clause BSD".
 
 2016-05-17  Antonio Diaz Diaz  <antonio@gnu.org>
 
 	* Version 1.8 released.
 	* lzlib.h: Define LZ_API_VERSION to 1.
-	* decoder.c (LZd_verify_trailer): Removed test of final code.
-	* main.c: Added new option '-a, --trailing-error'.
+	* lzlib.c (LZ_decompress_sync_to_member): Add skipped size to in_size.
+	* decoder.c (LZd_verify_trailer): Remove test of final code.
+	* main.c: New option '-a, --trailing-error'.
 	* main.c (main): Delete '--output' file if infd is a terminal.
 	* main.c (main): Don't use stdin more than once.
 	* configure: Avoid warning on some shells when testing for gcc.
@@ -52,26 +91,25 @@
 2015-07-08  Antonio Diaz Diaz  <antonio@gnu.org>
 
 	* Version 1.7 released.
-	* Ported fast encoder and option '-0' from lzip.
+	* Port fast encoder and option '-0' from lzip.
 	* If open-->write-->finish, produce same dictionary size as lzip.
-	* Makefile.in: Added new targets 'install*-compress'.
+	* Makefile.in: New targets 'install*-compress'.
 
 2014-08-27  Antonio Diaz Diaz  <antonio@gnu.org>
 
 	* Version 1.6 released.
 	* Compression ratio of option '-9' has been slightly increased.
-	* configure: Added new option '--disable-static'.
-	* configure: Added new option '--disable-ldconfig'.
+	* configure: New options '--disable-static' and '--disable-ldconfig'.
 	* Makefile.in: Ignore errors from ldconfig.
 	* Makefile.in: Use 'CFLAGS' in every invocation of 'CC'.
 	* main.c (close_and_set_permissions): Behave like 'cp -p'.
-	* lzlib.texinfo: Renamed to lzlib.texi.
-	* License changed to "GPL version 2 or later with link exception".
+	* lzlib.texinfo: Rename to lzlib.texi.
+	* Change license to "GPL version 2 or later with link exception".
 
 2013-09-15  Antonio Diaz Diaz  <antonio@gnu.org>
 
 	* Version 1.5 released.
-	* Removed decompression support for version 0 files.
+	* Remove decompression support for version 0 files.
 	* The LZ_compress_sync_flush mechanism has been fixed (again).
 	* Minor fixes.
 
@@ -82,12 +120,11 @@
 	* Compression ratio has been slightly increased.
 	* Compression time has been reduced by 8%.
 	* Decompression time has been reduced by 7%.
-	* lzlib.h: Changed 'long long' values to 'unsigned long long'.
+	* lzlib.h: Change 'long long' values to 'unsigned long long'.
 	* encoder.c (Mf_init): Reduce minimum buffer size to 64KiB.
 	* lzlib.c (LZ_decompress_read): Tell LZ_header_error from
 	  LZ_unexpected_eof the same way as lzip does.
-	* Makefile.in: Added new target 'install-as-lzip'.
-	* Makefile.in: Added new target 'install-bin'.
+	* Makefile.in: New targets 'install-as-lzip' and 'install-bin'.
 	* main.c: Use 'setmode' instead of '_setmode' on Windows and OS/2.
 	* main.c: Define 'strtoull' to 'strtoul' on Windows.
 
@@ -95,7 +132,7 @@
 
 	* Version 1.3 released.
 	* Translated to C from the C++ source of lzlib 1.2.
-	* configure: 'datadir' renamed to 'datarootdir'.
+	* configure: Rename 'datadir' to 'datarootdir'.
 
 2011-10-25  Antonio Diaz Diaz  <ant_diaz@teleline.es>
 
@@ -104,10 +141,9 @@
 	  independently of the value of 'pos_state'. This gives better
 	  compression for large values of '--match-length' without being
 	  slower.
-	* encoder.h encoder.cc: Optimize pair price calculations. This
-	  reduces compression time for large values of '--match-length'
-	  by up to 6%.
-	* main.cc: Added new option '-F, --recompress'.
+	* encoder.h encoder.cc: Optimize pair price calculations, reducing
+	  compression time for large values of '--match-length' by up to 6%.
+	* main.cc: New option '-F, --recompress'.
 	* Makefile.in: 'make install' no longer tries to run
 	  '/sbin/ldconfig' on systems lacking it.
 
@@ -117,7 +153,7 @@
 	* Compression time has been reduced by 2%.
 	* All declarations not belonging to the API have been
 	  encapsulated in the namespace 'Lzlib'.
-	* testsuite: 'test1' renamed to 'test.txt'. Added new tests.
+	* testsuite: Rename 'test1' to 'test.txt'. New tests.
 	* Match length limits set by options -1 to -9 of minilzip have
 	  been changed to match those of lzip 1.11.
 	* main.cc: Set stdin/stdout in binary mode on OS2.
@@ -127,13 +163,10 @@
 2010-05-08  Antonio Diaz Diaz  <ant_diaz@teleline.es>
 
 	* Version 1.0 released.
-	* Added new function LZ_decompress_member_finished.
-	* Added new function LZ_decompress_member_version.
-	* Added new function LZ_decompress_dictionary_size.
-	* Added new function LZ_decompress_data_crc.
-	* Variables declared 'extern' have been encapsulated in a
-	  namespace.
-	* main.cc: Fixed warning about fchown's return value being ignored.
+	* New functions LZ_decompress_member_version, LZ_decompress_data_crc,
+	  LZ_decompress_member_finished, and LZ_decompress_dictionary_size.
+	* Variables declared 'extern' have been encapsulated in a namespace.
+	* main.cc: Fix warning about fchown's return value being ignored.
 	* decoder.h: Input_buffer integrated in Range_decoder.
 
 2010-02-10  Antonio Diaz Diaz  <ant_diaz@teleline.es>
@@ -145,28 +178,26 @@
 2010-01-17  Antonio Diaz Diaz  <ant_diaz@teleline.es>
 
 	* Version 0.8 released.
-	* Added new function LZ_decompress_reset.
-	* Added new function LZ_decompress_sync_to_member.
-	* Added new function LZ_decompress_write_size.
-	* Added new function LZ_strerror.
-	* lzlib.h: API change. Replaced 'enum' with functions for values
-	  of dictionary size limits to make interface names consistent.
-	* lzlib.h: API change. 'LZ_errno' replaced with 'LZ_Errno'.
-	* lzlib.h: API change. Replaced 'void *' with 'struct LZ_Encoder *'
+	* New functions LZ_decompress_reset, LZ_decompress_sync_to_member,
+	  LZ_decompress_write_size, and LZ_strerror.
+	* lzlib.h: API change. Replace 'enum' with functions for values of
+	  dictionary size limits to make interface names consistent.
+	* lzlib.h: API change. Rename 'LZ_errno' to 'LZ_Errno'.
+	* lzlib.h: API change. Replace 'void *' with 'struct LZ_Encoder *'
 	  and 'struct LZ_Decoder *' to make interface type safe.
-	* decoder.cc: Truncated member trailer is now correctly detected.
+	* decoder.cc: A truncated member trailer is now correctly detected.
 	* encoder.cc: Matchfinder::reset now also clears at_stream_end_,
 	  allowing LZ_compress_restart_member to restart a finished stream.
 	* lzlib.cc: Accept only query or close operations after a fatal
 	  error has occurred.
-	* Shared version of lzlib is no longer built by default.
+	* The shared version of lzlib is no longer built by default.
 	* check.sh: Use 'test1' instead of 'COPYING' for testing.
 
 2009-10-20  Antonio Diaz Diaz  <ant_diaz@teleline.es>
 
 	* Version 0.7 released.
 	* Compression time has been reduced by 4%.
-	* check.sh: Removed -9 to run in less than 256MiB of RAM.
+	* check.sh: Remove -9 to run in less than 256MiB of RAM.
 	* lzcheck.cc: Read files of any size up to 2^63 bytes.
 
 2009-09-02  Antonio Diaz Diaz  <ant_diaz@teleline.es>
@@ -178,15 +209,14 @@
 
 	* Version 0.5 released.
 	* Decompression speed has been improved.
-	* main.cc (signal_handler): Declared as 'extern "C"'.
+	* main.cc (signal_handler): Declare as 'extern "C"'.
 
 2009-06-03  Antonio Diaz Diaz  <ant_diaz@teleline.es>
 
 	* Version 0.4 released.
-	* Added new function LZ_compress_sync_flush.
-	* Added new function LZ_compress_write_size.
+	* New functions LZ_compress_sync_flush and LZ_compress_write_size.
 	* Decompression speed has been improved.
-	* Added chapter 'Buffering' to the manual.
+	* lzlib.texinfo: New chapter 'Buffering'.
 
 2009-05-03  Antonio Diaz Diaz  <ant_diaz@teleline.es>
 
@@ -196,16 +226,16 @@
 2009-04-26  Antonio Diaz Diaz  <ant_diaz@teleline.es>
 
 	* Version 0.2 released.
-	* Fixed a segfault when decompressing trailing garbage.
-	* Fixed a false positive in LZ_(de)compress_finished.
+	* Fix a segfault when decompressing trailing garbage.
+	* Fix a false positive in LZ_(de)compress_finished.
 
 2009-04-21  Antonio Diaz Diaz  <ant_diaz@teleline.es>
 
 	* Version 0.1 released.
 
 
-Copyright (C) 2009-2019 Antonio Diaz Diaz.
+Copyright (C) 2009-2020 Antonio Diaz Diaz.
 
 This file is a collection of facts, and thus it is not copyrightable,
-but just in case, you have unlimited permission to copy, distribute and
+but just in case, you have unlimited permission to copy, distribute, and
 modify it.
