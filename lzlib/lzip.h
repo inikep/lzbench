@@ -1,20 +1,20 @@
-/*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2019 Antonio Diaz Diaz.
+/* Lzlib - Compression library for the lzip format
+   Copyright (C) 2009-2020 Antonio Diaz Diaz.
 
-    This library is free software. Redistribution and use in source and
-    binary forms, with or without modification, are permitted provided
-    that the following conditions are met:
+   This library is free software. Redistribution and use in source and
+   binary forms, with or without modification, are permitted provided
+   that the following conditions are met:
 
-    1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
+   1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions, and the following disclaimer.
 
-    2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
+   2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions, and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
 
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+   This library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 #ifndef max
@@ -83,7 +83,7 @@ static inline int get_len_state( const int len )
   { return min( len - min_match_len, len_states - 1 ); }
 
 static inline int get_lit_state( const uint8_t prev_byte )
-  { return ( prev_byte >> ( 8 - literal_context_bits ) ); }
+  { return prev_byte >> ( 8 - literal_context_bits ); }
 
 
 enum { bit_model_move_bits = 5,
@@ -197,7 +197,7 @@ static const uint8_t lzip_magic[4] = { 0x4C, 0x5A, 0x49, 0x50 }; /* "LZIP" */
 
 typedef uint8_t Lzip_header[6];		/* 0-3 magic bytes */
 					/*   4 version */
-					/*   5 coded_dict_size */
+					/*   5 coded dictionary size */
 enum { Lh_size = 6 };
 
 static inline void Lh_set_magic( Lzip_header data )
@@ -255,9 +255,8 @@ static inline bool Lh_set_dictionary_size( Lzip_header data, const unsigned sz )
 
 static inline bool Lh_verify( const Lzip_header data )
   {
-  if( Lh_verify_magic( data ) && Lh_verify_version( data ) )
-    return isvalid_ds( Lh_get_dictionary_size( data ) );
-  return false;
+  return Lh_verify_magic( data ) && Lh_verify_version( data ) &&
+         isvalid_ds( Lh_get_dictionary_size( data ) );
   }
 
 

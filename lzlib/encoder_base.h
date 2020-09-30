@@ -1,20 +1,20 @@
-/*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2019 Antonio Diaz Diaz.
+/* Lzlib - Compression library for the lzip format
+   Copyright (C) 2009-2020 Antonio Diaz Diaz.
 
-    This library is free software. Redistribution and use in source and
-    binary forms, with or without modification, are permitted provided
-    that the following conditions are met:
+   This library is free software. Redistribution and use in source and
+   binary forms, with or without modification, are permitted provided
+   that the following conditions are met:
 
-    1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
+   1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions, and the following disclaimer.
 
-    2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
+   2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions, and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
 
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+   This library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 enum { price_shift_bits = 6,
@@ -197,7 +197,7 @@ static inline int price_symbol_reversed( const Bit_model bm[], int symbol,
     const bool bit = symbol & 1;
     symbol >>= 1;
     price += price_bit( bm[model], bit );
-    model = ( model << 1 ) | bit;
+    model <<= 1; model |= bit;
     }
   return price;
   }
@@ -240,7 +240,7 @@ struct Matchfinder_base
   int pos_array_size;
   int saved_dictionary_size;	/* dictionary_size restored by Mb_reset */
   bool at_stream_end;		/* stream_pos shows real end of file */
-  bool flushing;
+  bool sync_flush_pending;
   };
 
 static bool Mb_normalize_pos( struct Matchfinder_base * const mb );
@@ -265,19 +265,20 @@ Mb_data_position( const struct Matchfinder_base * const mb )
   { return mb->partial_data_pos + mb->pos; }
 
 static inline void Mb_finish( struct Matchfinder_base * const mb )
-  { mb->at_stream_end = true; mb->flushing = false; }
+  { mb->at_stream_end = true; mb->sync_flush_pending = false; }
 
 static inline bool Mb_data_finished( const struct Matchfinder_base * const mb )
-  { return mb->at_stream_end && !mb->flushing && mb->pos >= mb->stream_pos; }
+  { return mb->at_stream_end && mb->pos >= mb->stream_pos; }
 
 static inline bool Mb_flushing_or_end( const struct Matchfinder_base * const mb )
-  { return mb->at_stream_end || mb->flushing; }
+  { return mb->at_stream_end || mb->sync_flush_pending; }
 
 static inline int Mb_free_bytes( const struct Matchfinder_base * const mb )
   { if( Mb_flushing_or_end( mb ) ) return 0;
     return mb->buffer_size - mb->stream_pos; }
 
-static inline bool Mb_enough_available_bytes( const struct Matchfinder_base * const mb )
+static inline bool
+Mb_enough_available_bytes( const struct Matchfinder_base * const mb )
   { return ( mb->pos + mb->after_size <= mb->stream_pos ||
              ( Mb_flushing_or_end( mb ) && mb->pos < mb->stream_pos ) ); }
 
@@ -426,28 +427,30 @@ static inline void Re_encode_bit( struct Range_encoder * const renc,
 static inline void Re_encode_tree3( struct Range_encoder * const renc,
                                     Bit_model bm[], const int symbol )
   {
-  int model = 1;
+  int model;
   bool bit = ( symbol >> 2 ) & 1;
-  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  Re_encode_bit( renc, &bm[1], bit );
+  model = 2 | bit;
   bit = ( symbol >> 1 ) & 1;
-  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  Re_encode_bit( renc, &bm[model], bit ); model <<= 1; model |= bit;
   Re_encode_bit( renc, &bm[model], symbol & 1 );
   }
 
 static inline void Re_encode_tree6( struct Range_encoder * const renc,
                                     Bit_model bm[], const unsigned symbol )
   {
-  int model = 1;
+  int model;
   bool bit = ( symbol >> 5 ) & 1;
-  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  Re_encode_bit( renc, &bm[1], bit );
+  model = 2 | bit;
   bit = ( symbol >> 4 ) & 1;
-  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  Re_encode_bit( renc, &bm[model], bit ); model <<= 1; model |= bit;
   bit = ( symbol >> 3 ) & 1;
-  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  Re_encode_bit( renc, &bm[model], bit ); model <<= 1; model |= bit;
   bit = ( symbol >> 2 ) & 1;
-  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  Re_encode_bit( renc, &bm[model], bit ); model <<= 1; model |= bit;
   bit = ( symbol >> 1 ) & 1;
-  Re_encode_bit( renc, &bm[model], bit ); model = ( model << 1 ) | bit;
+  Re_encode_bit( renc, &bm[model], bit ); model <<= 1; model |= bit;
   Re_encode_bit( renc, &bm[model], symbol & 1 );
   }
 
@@ -460,7 +463,7 @@ static inline void Re_encode_tree8( struct Range_encoder * const renc,
     {
     const bool bit = ( symbol >> i ) & 1;
     Re_encode_bit( renc, &bm[model], bit );
-    model = ( model << 1 ) | bit;
+    model <<= 1; model |= bit;
     }
   }
 
@@ -474,7 +477,7 @@ static inline void Re_encode_tree_reversed( struct Range_encoder * const renc,
     const bool bit = symbol & 1;
     symbol >>= 1;
     Re_encode_bit( renc, &bm[model], bit );
-    model = ( model << 1 ) | bit;
+    model <<= 1; model |= bit;
     }
   }
 
@@ -561,7 +564,7 @@ static inline bool LZeb_init( struct LZ_encoder_base * const eb,
   }
 
 static inline bool LZeb_member_finished( const struct LZ_encoder_base * const eb )
-  { return ( eb->member_finished && !Cb_used_bytes( &eb->renc.cb ) ); }
+  { return ( eb->member_finished && Cb_empty( &eb->renc.cb ) ); }
 
 static inline void LZeb_free( struct LZ_encoder_base * const eb )
   { Re_free( &eb->renc ); Mb_free( &eb->mb ); }

@@ -1,20 +1,20 @@
-/*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2019 Antonio Diaz Diaz.
+/* Lzlib - Compression library for the lzip format
+   Copyright (C) 2009-2020 Antonio Diaz Diaz.
 
-    This library is free software. Redistribution and use in source and
-    binary forms, with or without modification, are permitted provided
-    that the following conditions are met:
+   This library is free software. Redistribution and use in source and
+   binary forms, with or without modification, are permitted provided
+   that the following conditions are met:
 
-    1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
+   1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions, and the following disclaimer.
 
-    2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
+   2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions, and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
 
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+   This library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 enum { rd_min_available_bytes = 8 };
@@ -133,9 +133,8 @@ static inline bool Rd_unread_data( struct Range_decoder * const rdec,
   return true;
   }
 
-static bool Rd_try_reload( struct Range_decoder * const rdec, const bool force )
+static bool Rd_try_reload( struct Range_decoder * const rdec )
   {
-  if( force ) rdec->reload_pending = true;
   if( rdec->reload_pending && Rd_available_bytes( rdec ) >= 5 )
     {
     int i;
@@ -168,7 +167,7 @@ static inline unsigned Rd_decode( struct Range_decoder * const rdec,
 /*    symbol <<= 1; */
 /*    if( rdec->code >= rdec->range ) { rdec->code -= rdec->range; symbol |= 1; } */
     bit = ( rdec->code >= rdec->range );
-    symbol = ( symbol << 1 ) + bit;
+    symbol <<= 1; symbol += bit;
     rdec->code -= rdec->range & ( 0U - bit );
     }
   return symbol;
@@ -182,15 +181,15 @@ static inline unsigned Rd_decode_bit( struct Range_decoder * const rdec,
   bound = ( rdec->range >> bit_model_total_bits ) * *probability;
   if( rdec->code < bound )
     {
-    rdec->range = bound;
     *probability += (bit_model_total - *probability) >> bit_model_move_bits;
+    rdec->range = bound;
     return 0;
     }
   else
     {
-    rdec->range -= bound;
-    rdec->code -= bound;
     *probability -= *probability >> bit_model_move_bits;
+    rdec->code -= bound;
+    rdec->range -= bound;
     return 1;
     }
   }
@@ -198,8 +197,7 @@ static inline unsigned Rd_decode_bit( struct Range_decoder * const rdec,
 static inline unsigned Rd_decode_tree3( struct Range_decoder * const rdec,
                                         Bit_model bm[] )
   {
-  unsigned symbol = 1;
-  symbol = ( symbol << 1 ) | Rd_decode_bit( rdec, &bm[symbol] );
+  unsigned symbol = 2 | Rd_decode_bit( rdec, &bm[1] );
   symbol = ( symbol << 1 ) | Rd_decode_bit( rdec, &bm[symbol] );
   symbol = ( symbol << 1 ) | Rd_decode_bit( rdec, &bm[symbol] );
   return symbol & 7;
@@ -208,8 +206,7 @@ static inline unsigned Rd_decode_tree3( struct Range_decoder * const rdec,
 static inline unsigned Rd_decode_tree6( struct Range_decoder * const rdec,
                                         Bit_model bm[] )
   {
-  unsigned symbol = 1;
-  symbol = ( symbol << 1 ) | Rd_decode_bit( rdec, &bm[symbol] );
+  unsigned symbol = 2 | Rd_decode_bit( rdec, &bm[1] );
   symbol = ( symbol << 1 ) | Rd_decode_bit( rdec, &bm[symbol] );
   symbol = ( symbol << 1 ) | Rd_decode_bit( rdec, &bm[symbol] );
   symbol = ( symbol << 1 ) | Rd_decode_bit( rdec, &bm[symbol] );
@@ -238,7 +235,7 @@ Rd_decode_tree_reversed( struct Range_decoder * const rdec,
   for( i = 0; i < num_bits; ++i )
     {
     const unsigned bit = Rd_decode_bit( rdec, &bm[model] );
-    model = ( model << 1 ) + bit;
+    model <<= 1; model += bit;
     symbol |= ( bit << i );
     }
   return symbol;
@@ -248,12 +245,9 @@ static inline unsigned
 Rd_decode_tree_reversed4( struct Range_decoder * const rdec, Bit_model bm[] )
   {
   unsigned symbol = Rd_decode_bit( rdec, &bm[1] );
-  unsigned model = 2 + symbol;
-  unsigned bit = Rd_decode_bit( rdec, &bm[model] );
-  model = ( model << 1 ) + bit; symbol |= ( bit << 1 );
-  bit = Rd_decode_bit( rdec, &bm[model] );
-  model = ( model << 1 ) + bit; symbol |= ( bit << 2 );
-  symbol |= ( Rd_decode_bit( rdec, &bm[model] ) << 3 );
+  symbol += Rd_decode_bit( rdec, &bm[2+symbol] ) << 1;
+  symbol += Rd_decode_bit( rdec, &bm[4+symbol] ) << 2;
+  symbol += Rd_decode_bit( rdec, &bm[8+symbol] ) << 3;
   return symbol;
   }
 
@@ -266,7 +260,7 @@ static inline unsigned Rd_decode_matched( struct Range_decoder * const rdec,
     {
     const unsigned match_bit = ( match_byte <<= 1 ) & mask;
     const unsigned bit = Rd_decode_bit( rdec, &bm[symbol+match_bit+mask] );
-    symbol = ( symbol << 1 ) + bit;
+    symbol <<= 1; symbol += bit;
     if( symbol > 0xFF ) return symbol & 0xFF;
     mask &= ~(match_bit ^ (bit << 8));	/* if( match_bit != bit ) mask = 0; */
     }

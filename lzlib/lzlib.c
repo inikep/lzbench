@@ -1,20 +1,20 @@
-/*  Lzlib - Compression library for the lzip format
-    Copyright (C) 2009-2019 Antonio Diaz Diaz.
+/* Lzlib - Compression library for the lzip format
+   Copyright (C) 2009-2020 Antonio Diaz Diaz.
 
-    This library is free software. Redistribution and use in source and
-    binary forms, with or without modification, are permitted provided
-    that the following conditions are met:
+   This library is free software. Redistribution and use in source and
+   binary forms, with or without modification, are permitted provided
+   that the following conditions are met:
 
-    1. Redistributions of source code must retain the above copyright
-    notice, this list of conditions and the following disclaimer.
+   1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions, and the following disclaimer.
 
-    2. Redistributions in binary form must reproduce the above copyright
-    notice, this list of conditions and the following disclaimer in the
-    documentation and/or other materials provided with the distribution.
+   2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions, and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
 
-    This library is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+   This library is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
 #include <stdbool.h>
@@ -105,10 +105,11 @@ static bool verify_decoder( struct LZ_Decoder * const d )
   }
 
 
-/*------------------------- Misc Functions -------------------------*/
+/* ------------------------- Misc Functions ------------------------- */
+
+int LZ_api_version( void ) { return LZ_API_VERSION; }
 
 const char * LZ_version( void ) { return LZ_version_string; }
-
 
 const char * LZ_strerror( const enum LZ_Errno lz_errno )
   {
@@ -135,7 +136,7 @@ int LZ_min_match_len_limit( void ) { return min_match_len_limit; }
 int LZ_max_match_len_limit( void ) { return max_match_len; }
 
 
-/*---------------------- Compression Functions ----------------------*/
+/* --------------------- Compression Functions --------------------- */
 
 struct LZ_Encoder * LZ_compress_open( const int dictionary_size,
                                       const int match_len_limit,
@@ -226,8 +227,8 @@ int LZ_compress_restart_member( struct LZ_Encoder * const e,
 int LZ_compress_sync_flush( struct LZ_Encoder * const e )
   {
   if( !verify_encoder( e ) || e->fatal ) return -1;
-  if( !Mb_flushing_or_end( &e->lz_encoder_base->mb ) )
-    e->lz_encoder_base->mb.flushing = true;
+  if( !e->lz_encoder_base->mb.at_stream_end )
+    e->lz_encoder_base->mb.sync_flush_pending = true;
   return 0;
   }
 
@@ -235,24 +236,22 @@ int LZ_compress_sync_flush( struct LZ_Encoder * const e )
 int LZ_compress_read( struct LZ_Encoder * const e,
                       uint8_t * const buffer, const int size )
   {
-  int out_size = 0;
   if( !verify_encoder( e ) || e->fatal ) return -1;
   if( size < 0 ) return 0;
-  do {
+
+  { struct LZ_encoder_base * const eb = e->lz_encoder_base;
+  int out_size = Re_read_data( &eb->renc, buffer, size );
+  /* minimize number of calls to encode_member */
+  if( out_size < size || size == 0 )
+    {
     if( ( e->flz_encoder && !FLZe_encode_member( e->flz_encoder ) ) ||
         ( e->lz_encoder && !LZe_encode_member( e->lz_encoder ) ) )
       { e->lz_errno = LZ_library_error; e->fatal = true; return -1; }
-    if( e->lz_encoder_base->mb.flushing &&
-        Mb_available_bytes( &e->lz_encoder_base->mb ) <= 0 &&
-        LZeb_sync_flush( e->lz_encoder_base ) )
-      e->lz_encoder_base->mb.flushing = false;
-    out_size += Re_read_data( &e->lz_encoder_base->renc,
-                              buffer + out_size, size - out_size );
+    if( eb->mb.sync_flush_pending && Mb_available_bytes( &eb->mb ) <= 0 )
+      LZeb_try_sync_flush( eb );
+    out_size += Re_read_data( &eb->renc, buffer + out_size, size - out_size );
     }
-  while( e->lz_encoder_base->mb.flushing && out_size < size &&
-         Mb_enough_available_bytes( &e->lz_encoder_base->mb ) &&
-         Re_enough_free_bytes( &e->lz_encoder_base->renc ) );
-  return out_size;
+  return out_size; }
   }
 
 
@@ -321,7 +320,7 @@ unsigned long long LZ_compress_total_out_size( struct LZ_Encoder * const e )
   }
 
 
-/*--------------------- Decompression Functions ---------------------*/
+/* -------------------- Decompression Functions -------------------- */
 
 struct LZ_Decoder * LZ_decompress_open( void )
   {
@@ -401,10 +400,11 @@ int LZ_decompress_read( struct LZ_Decoder * const d,
   {
   int result;
   if( !verify_decoder( d ) ) return -1;
+  if( size < 0 ) return 0;
   if( d->fatal )	/* don't return error until pending bytes are read */
     { if( d->lz_decoder && !Cb_empty( &d->lz_decoder->cb ) ) goto get_data;
       return -1; }
-  if( d->seeking || size < 0 ) return 0;
+  if( d->seeking ) return 0;
 
   if( d->lz_decoder && LZd_member_finished( d->lz_decoder ) )
     {
