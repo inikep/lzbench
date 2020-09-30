@@ -95,7 +95,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [lizard v1.0 (formerly lz5)](https://github.com/inikep/lizard)
  - [lz4/lz4hc v1.9.2](https://github.com/lz4/lz4)
  - [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html)
- - [lzfse/lzvn 2017-03-08](https://github.com/lzfse/lzfse)
+ - [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse)
  - [lzg 1.0.10](https://liblzg.bitsnbites.eu/)
  - [lzham 1.0](https://github.com/richgel999/lzham_codec)
  lzjb 2010
@@ -108,7 +108,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [pithy 2011-12-24](https://github.com/johnezang/pithy) - WARNING: it contains bugs (decompression error; returns 0)
  - [quicklz 1.5.0](http://www.quicklz.com)
  - [shrinker 0.1](https://code.google.com/p/data-shrinker) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
- - [slz 1.0.0](http://www.libslz.org/) - only a compressor, uses zlib for decompression
+ - [slz 1.2.0](http://www.libslz.org/) - only a compressor, uses zlib for decompression
  - [snappy 2020-07-11 (4dd277f)](https://github.com/google/snappy)
  - [tornado 0.6a](http://freearc.org)
  - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
