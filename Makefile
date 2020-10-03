@@ -263,16 +263,20 @@ else
     MISC_FILES += yappy/yappy.o
 endif
 
+detected_OS := $(shell uname)
+
 ifeq "$(DONT_BUILD_ZLING)" "1"
     DEFINES += -DBENCH_REMOVE_ZLING
 else
-	ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
-	CFLAGS += -std=c++14
+    ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
+ifeq ($(detected_OS), Darwin)
+    CFLAGS += -std=c++14
+endif
 endif
 
 ifeq "$(BENCH_HAS_NAKAMICHI)" "1"
     DEFINES += -DBENCH_HAS_NAKAMICHI
-	MISC_FILES += nakamichi/Nakamichi_Okamigan.o
+    MISC_FILES += nakamichi/Nakamichi_Okamigan.o
 endif
 
 
