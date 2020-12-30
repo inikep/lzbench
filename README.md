@@ -119,7 +119,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) - WARNING: fails to decompress properly on ARM
  - [zlib 1.2.11](http://zlib.net)
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
- - [zstd 1.4.5](https://github.com/facebook/zstd)
+ - [zstd 1.4.8](https://github.com/facebook/zstd)
 
 
 Benchmarks
