@@ -119,7 +119,8 @@ endif
 ifeq "$(DONT_BUILD_ZLIB_NG)" "1"
 	DEFINES += -DBENCH_REMOVE_ZLIB_NG
 else
-	ZLIB_NG_FILES = zlib-ng/adler32.o zlib-ng/chunkset.o zlib-ng/compare258.o zlib-ng/compress.o zlib-ng/crc32.o
+	ZLIB_NG_FILES = _lzbench/zlib-ng.c
+	ZLIB_NG_FILES += zlib-ng/adler32.o zlib-ng/chunkset.o zlib-ng/compare258.o zlib-ng/compress.o zlib-ng/crc32.o
 	ZLIB_NG_FILES += zlib-ng/crc32_comb.c zlib-ng/deflate.o zlib-ng/deflate_fast.o zlib-ng/deflate_medium.o
 	ZLIB_NG_FILES += zlib-ng/deflate_quick.o zlib-ng/deflate_slow.o zlib-ng/functable.o
 #	ZLIB_NG_FILES += zlib-ng/gzlib.o zlib-ng/gzread.o zlib-ng/gzwrite.o
