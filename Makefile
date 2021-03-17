@@ -15,6 +15,7 @@ ifeq ($(BUILD_ARCH),32-bit)
 	CODE_FLAGS += -m32
 	LDFLAGS += -m32
 	DONT_BUILD_LZSSE ?= 1
+	DONT_BUILD_ZLIB_NG ?= 1
 endif
 
 CC?=gcc
