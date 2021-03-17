@@ -25,17 +25,17 @@ CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*versi
 
 # glza doesn't work with gcc < 4.9 and clang < 3.6 (missing stdatomic.h)
 ifeq (1,$(filter 1,$(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \< 40900) $(shell [ "$(COMPILER)" = "clang" ] && expr $(CLANG_VERSION) \< 30600)))
-    DONT_BUILD_GLZA ?= 1
+	DONT_BUILD_GLZA ?= 1
 endif
 
 # LZSSE requires compiler with __SSE4_1__ support and 64-bit CPU
 ifneq ($(shell echo|$(CC) -dM -E - -march=native|egrep -c '__(SSE4_1|x86_64)__'), 2)
-    DONT_BUILD_LZSSE ?= 1
+	DONT_BUILD_LZSSE ?= 1
 endif
 
 # zling requires c++14
 ifeq (1,$(filter 1,$(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \< 60000) $(shell [ "$(COMPILER)" = "clang" ] && expr $(CLANG_VERSION) \< 60000)))
-  DONT_BUILD_ZLING ?= 1
+	DONT_BUILD_ZLING ?= 1
 endif
 
 
@@ -67,13 +67,13 @@ else
 	ifeq ($(BUILD_STATIC),1)
 		LDFLAGS	+= -lrt -static
 		ifeq (1, $(shell [ "$(COMPILER)" = "gcc" ] && [ "$(shell uname -m)" != "aarch64" ] && expr $(GCC_VERSION) \>= 80000 ))
-		  LDFLAGS += -lmvec
+			LDFLAGS += -lmvec
 		endif
 	endif
 endif
 
 
-DEFINES     += $(addprefix -I$(SOURCE_PATH),. zstd/lib zstd/lib/common brotli/include xpack/common libcsc xz xz/api xz/check xz/common xz/lz xz/lzma xz/rangecoder)
+DEFINES     += $(addprefix -I$(SOURCE_PATH),. zstd/lib zstd/lib/common brotli/include xpack/common libcsc xz xz/api xz/check xz/common xz/lz xz/lzma xz/rangecoder zlib-ng zlib-ng/arch zlib-ng/arch/)
 DEFINES     += -DHAVE_CONFIG_H -DFL2_SINGLETHREAD
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
@@ -107,9 +107,45 @@ UCL_FILES = ucl/alloc.o ucl/n2b_99.o ucl/n2b_d.o ucl/n2b_ds.o ucl/n2b_to.o ucl/n
 UCL_FILES += ucl/n2d_to.o ucl/n2e_99.o ucl/n2e_d.o ucl/n2e_ds.o ucl/n2e_to.o ucl/ucl_crc.o ucl/ucl_init.o
 UCL_FILES += ucl/ucl_ptr.o ucl/ucl_str.o ucl/ucl_util.o
 
-ZLIB_FILES = zlib/adler32.o zlib/compress.o zlib/crc32.o zlib/deflate.o zlib/gzclose.o zlib/gzlib.o zlib/gzread.o
-ZLIB_FILES += zlib/gzwrite.o zlib/infback.o zlib/inffast.o zlib/inflate.o zlib/inftrees.o zlib/trees.o
-ZLIB_FILES += zlib/uncompr.o zlib/zutil.o
+ifeq "$(DONT_BUILD_ZLIB)" "1"
+	DEFINES += -DBENCH_REMOVE_ZLIB
+	DONT_BUILD_SLZ = 1
+else
+	ZLIB_FILES = zlib/adler32.o zlib/compress.o zlib/crc32.o zlib/deflate.o zlib/gzclose.o zlib/gzlib.o zlib/gzread.o
+	ZLIB_FILES += zlib/gzwrite.o zlib/infback.o zlib/inffast.o zlib/inflate.o zlib/inftrees.o zlib/trees.o
+	ZLIB_FILES += zlib/uncompr.o zlib/zutil.o
+endif
+
+ifeq "$(DONT_BUILD_ZLIB_NG)" "1"
+	DEFINES += -DBENCH_REMOVE_ZLIB_NG
+else
+	ZLIB_NG_FILES = zlib-ng/adler32.o zlib-ng/chunkset.o zlib-ng/compare258.o zlib-ng/compress.o zlib-ng/crc32.o
+	ZLIB_NG_FILES += zlib-ng/crc32_comb.c zlib-ng/deflate.o zlib-ng/deflate_fast.o zlib-ng/deflate_medium.o
+	ZLIB_NG_FILES += zlib-ng/deflate_quick.o zlib-ng/deflate_slow.o zlib-ng/functable.o
+#	ZLIB_NG_FILES += zlib-ng/gzlib.o zlib-ng/gzread.o zlib-ng/gzwrite.o
+	ZLIB_NG_FILES += zlib-ng/infback.o zlib-ng/inffast.o zlib-ng/inflate.o zlib-ng/inftrees.o zlib-ng/insert_string.o
+	ZLIB_NG_FILES += zlib-ng/trees.o zlib-ng/uncompr.o zlib-ng/zutil.o
+
+	ifeq ($(shell uname -p),powerpc)
+		ZLIB_NG_FILES += zlib-ng/arch/power/adler32_power8.o
+		ZLIB_NG_FILES += zlib-ng/arch/power/power.o
+		ZLIB_NG_FILES += zlib-ng/arch/power/slide_hash_power8.c
+	endif
+
+	ifeq ($(shell uname -m),x86_64)
+#		ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_avx.o
+		ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_ssse3.o
+#		ZLIB_NG_FILES += zlib-ng/arch/x86/chunkset_avx.o
+		ZLIB_NG_FILES += zlib-ng/arch/x86/chunkset_sse.o
+#		ZLIB_NG_FILES += zlib-ng/arch/x86/compare258_avx.o
+		ZLIB_NG_FILES += zlib-ng/arch/x86/compare258_sse.o
+		ZLIB_NG_FILES += zlib-ng/arch/x86/crc_folding.o
+		ZLIB_NG_FILES += zlib-ng/arch/x86/insert_string_sse.o
+#		ZLIB_NG_FILES += zlib-ng/arch/x86/slide_avx.o
+		ZLIB_NG_FILES += zlib-ng/arch/x86/slide_sse.o
+		ZLIB_NG_FILES += zlib-ng/arch/x86/x86.o
+	endif
+endif
 
 LZMAT_FILES = lzmat/lzmat_dec.o lzmat/lzmat_enc.o
 
@@ -174,14 +210,20 @@ LIBDEFLATE_FILES += libdeflate/deflate_decompress.o libdeflate/gzip_compress.o l
 LIBDEFLATE_FILES += libdeflate/x86/cpu_features.o libdeflate/arm/cpu_features.o libdeflate/zlib_compress.o libdeflate/zlib_decompress.o
 
 MISC_FILES = crush/crush.o shrinker/shrinker.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
-MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o blosclz/fastcopy.o slz/slz.o
+MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o blosclz/fastcopy.o
 
 LZBENCH_FILES = _lzbench/lzbench.o _lzbench/compressors.o _lzbench/csc_codec.o
 
-ifeq "$(DONT_BUILD_BZIP2)" "1"
-    DEFINES += -DBENCH_REMOVE_BZIP2
+ifeq "$(DONT_BUILD_SLZ)" "1"
+	DEFINES += -DBENCH_REMOVE_SLZ
 else
-    BZIP2_FILES += bzip2/blocksort.o bzip2/huffman.o bzip2/crctable.o bzip2/randtable.o bzip2/compress.o bzip2/decompress.o bzip2/bzlib.o
+	SLZ_FILES = slz/slz.o
+endif
+
+ifeq "$(DONT_BUILD_BZIP2)" "1"
+	DEFINES += -DBENCH_REMOVE_BZIP2
+else
+	BZIP2_FILES += bzip2/blocksort.o bzip2/huffman.o bzip2/crctable.o bzip2/randtable.o bzip2/compress.o bzip2/decompress.o bzip2/bzlib.o
 endif
 
 ifeq "$(DONT_BUILD_SNAPPY)" "1"
@@ -204,82 +246,80 @@ else
 endif
 
 ifeq "$(DONT_BUILD_CSC)" "1"
-    DEFINES += -DBENCH_REMOVE_CSC
+	DEFINES += -DBENCH_REMOVE_CSC
 else
 	CSC_FILES = libcsc/csc_analyzer.o libcsc/csc_coder.o libcsc/csc_dec.o libcsc/csc_enc.o libcsc/csc_encoder_main.o
 	CSC_FILES += libcsc/csc_filters.o libcsc/csc_lz.o libcsc/csc_memio.o libcsc/csc_mf.o libcsc/csc_model.o libcsc/csc_profiler.o libcsc/csc_default_alloc.o
 endif
 
 ifeq "$(DONT_BUILD_DENSITY)" "1"
-    DEFINES += -DBENCH_REMOVE_DENSITY
+	DEFINES += -DBENCH_REMOVE_DENSITY
 else
-#    DENSITY_SRC = $(shell find ./density -name '*.c')
-#    DENSITY_FILES = $(DENSITY_SRC:.c=.o)
-    DENSITY_FILES  = density/buffers/buffer.o
-    DENSITY_FILES += density/algorithms/cheetah/core/cheetah_decode.o
-    DENSITY_FILES += density/algorithms/cheetah/core/cheetah_encode.o
-    DENSITY_FILES += density/algorithms/lion/forms/lion_form_model.o
-    DENSITY_FILES += density/algorithms/lion/core/lion_decode.o
-    DENSITY_FILES += density/algorithms/lion/core/lion_encode.o
-    DENSITY_FILES += density/algorithms/dictionaries.o
-    DENSITY_FILES += density/algorithms/chameleon/core/chameleon_decode.o
-    DENSITY_FILES += density/algorithms/chameleon/core/chameleon_encode.o
-    DENSITY_FILES += density/algorithms/algorithms.o
-    DENSITY_FILES += density/structure/header.o
-    DENSITY_FILES += density/globals.o
+#	DENSITY_SRC = $(shell find ./density -name '*.c')
+#	DENSITY_FILES = $(DENSITY_SRC:.c=.o)
+	DENSITY_FILES  = density/buffers/buffer.o
+	DENSITY_FILES += density/algorithms/cheetah/core/cheetah_decode.o
+	DENSITY_FILES += density/algorithms/cheetah/core/cheetah_encode.o
+	DENSITY_FILES += density/algorithms/lion/forms/lion_form_model.o
+	DENSITY_FILES += density/algorithms/lion/core/lion_decode.o
+	DENSITY_FILES += density/algorithms/lion/core/lion_encode.o
+	DENSITY_FILES += density/algorithms/dictionaries.o
+	DENSITY_FILES += density/algorithms/chameleon/core/chameleon_decode.o
+	DENSITY_FILES += density/algorithms/chameleon/core/chameleon_encode.o
+	DENSITY_FILES += density/algorithms/algorithms.o
+	DENSITY_FILES += density/structure/header.o
+	DENSITY_FILES += density/globals.o
 endif
 
 ifeq "$(DONT_BUILD_GLZA)" "1"
-    DEFINES += -DBENCH_REMOVE_GLZA
+	DEFINES += -DBENCH_REMOVE_GLZA
 else
-    GLZA_FILES = glza/GLZAcomp.o glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
+	GLZA_FILES = glza/GLZAcomp.o glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
 endif
 
 ifeq "$(DONT_BUILD_LZHAM)" "1"
-    DEFINES += -DBENCH_REMOVE_LZHAM
+	DEFINES += -DBENCH_REMOVE_LZHAM
 else
-    LZHAM_FILES = lzham/lzham_assert.o lzham/lzham_checksum.o lzham/lzham_huffman_codes.o lzham/lzham_lzbase.o
-    LZHAM_FILES += lzham/lzham_lzcomp.o lzham/lzham_lzcomp_internal.o lzham/lzham_lzdecomp.o lzham/lzham_lzdecompbase.o
-    LZHAM_FILES += lzham/lzham_match_accel.o lzham/lzham_mem.o lzham/lzham_platform.o lzham/lzham_lzcomp_state.o
-    LZHAM_FILES += lzham/lzham_prefix_coding.o lzham/lzham_symbol_codec.o lzham/lzham_timer.o lzham/lzham_vector.o lzham/lzham_lib.o
+	LZHAM_FILES = lzham/lzham_assert.o lzham/lzham_checksum.o lzham/lzham_huffman_codes.o lzham/lzham_lzbase.o
+	LZHAM_FILES += lzham/lzham_lzcomp.o lzham/lzham_lzcomp_internal.o lzham/lzham_lzdecomp.o lzham/lzham_lzdecompbase.o
+	LZHAM_FILES += lzham/lzham_match_accel.o lzham/lzham_mem.o lzham/lzham_platform.o lzham/lzham_lzcomp_state.o
+	LZHAM_FILES += lzham/lzham_prefix_coding.o lzham/lzham_symbol_codec.o lzham/lzham_timer.o lzham/lzham_vector.o lzham/lzham_lib.o
 endif
 
 ifeq "$(DONT_BUILD_LZSSE)" "1"
-    DEFINES += -DBENCH_REMOVE_LZSSE
+	DEFINES += -DBENCH_REMOVE_LZSSE
 else
-    LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
+	LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
 endif
 
 ifeq "$(DONT_BUILD_TORNADO)" "1"
-    DEFINES += "-DBENCH_REMOVE_TORNADO"
-    LZMA_FILES += lzma/Alloc.o
+	DEFINES += "-DBENCH_REMOVE_TORNADO"
+	LZMA_FILES += lzma/Alloc.o
 else
-    MISC_FILES += tornado/tor_test.o
+	MISC_FILES += tornado/tor_test.o
 endif
 
 ifeq "$(DONT_BUILD_YAPPY)" "1"
-    DEFINES += -DBENCH_REMOVE_YAPPY
+	DEFINES += -DBENCH_REMOVE_YAPPY
 else
-    MISC_FILES += yappy/yappy.o
+	MISC_FILES += yappy/yappy.o
 endif
 
 detected_OS := $(shell uname)
 
 ifeq "$(DONT_BUILD_ZLING)" "1"
-    DEFINES += -DBENCH_REMOVE_ZLING
+	DEFINES += -DBENCH_REMOVE_ZLING
 else
-    ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
+	ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
 ifeq ($(detected_OS), Darwin)
-    CFLAGS += -std=c++14
+	CFLAGS += -std=c++14
 endif
 endif
 
 ifeq "$(BENCH_HAS_NAKAMICHI)" "1"
-    DEFINES += -DBENCH_HAS_NAKAMICHI
-    MISC_FILES += nakamichi/Nakamichi_Okamigan.o
+	DEFINES += -DBENCH_HAS_NAKAMICHI
+	MISC_FILES += nakamichi/Nakamichi_Okamigan.o
 endif
-
-
 
 all: lzbench
 
@@ -313,7 +353,10 @@ nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
-lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(LZBENCH_FILES)
+lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) \
+	$(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) \
+	$(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) \
+	$(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(SLZ_FILES) $(LZBENCH_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -330,4 +373,10 @@ lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_F
 	$(CXX) $(CFLAGS) $< -c -o $@
 
 clean:
-	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lizard/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/*.o libdeflate/x86/*.o libdeflate/arm/*.o nakamichi/*.o
+	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o \
+	lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o \
+	lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o \
+	density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o \
+	density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o \
+	pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o zlib-ng/*.o zlib-ng/arch/arm/*.o zlib-ng/arch/power/*.o zlib-ng/arch/s390/*.o zlib-ng/arch/x86/*.o lzham/*.o lzmat/*.o lizard/*.o lz4/*.o crush/*.o \
+	lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/*.o libdeflate/x86/*.o libdeflate/arm/*.o nakamichi/*.o
