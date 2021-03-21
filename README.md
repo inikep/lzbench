@@ -122,6 +122,18 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [zstd 1.4.8](https://github.com/facebook/zstd)
 
 
+CUDA support
+-------------------------
+
+If CUDA is available, lzbench supports additional compressors:
+  - [cudaMemcpy](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__MEMORY.html#group__CUDART__MEMORY_1gc263dbe6574220cc776b45438fc351e8) - similar to the reference `memcpy` benchmark, using GPU memory
+  - [nvcomp 1.2.2](https://github.com/NVIDIA/nvcomp) LZ4 GPU-only compressor
+
+The directory where the CUDA compiler and libraries are available can be passed to `make` via the `CUDA_BASE` variable, *e.g.*:
+```
+make CUDA_BASE=/usr/local/cuda
+```
+
 Benchmarks
 -------------------------
 
