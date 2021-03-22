@@ -1802,6 +1802,11 @@ int64_t lzbench_cuda_memcpy(char *inbuf, size_t insize, char *outbuf, size_t out
     return insize;
 }
 
+int64_t lzbench_cuda_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* )
+{
+    return 0;
+}
+
 #ifdef BENCH_HAS_NVCOMP
 #include "nvcomp/lz4.h"
 
