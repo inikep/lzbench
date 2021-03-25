@@ -38,7 +38,6 @@ ifeq (1,$(filter 1,$(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \< 6
   DONT_BUILD_ZLING ?= 1
 endif
 
-
 # detect Windows
 ifneq (,$(filter Windows%,$(OS)))
 	ifeq ($(COMPILER),clang)
@@ -140,6 +139,7 @@ ZSTD_FILES += zstd/lib/common/entropy_common.o
 ZSTD_FILES += zstd/lib/common/pool.o
 ZSTD_FILES += zstd/lib/common/debug.o
 ZSTD_FILES += zstd/lib/common/threading.o
+ZSTD_FILES += zstd/lib/common/zstd_trace.o
 ZSTD_FILES += zstd/lib/compress/zstd_compress.o
 ZSTD_FILES += zstd/lib/compress/zstd_compress_literals.o
 ZSTD_FILES += zstd/lib/compress/zstd_compress_sequences.o
@@ -157,7 +157,10 @@ ZSTD_FILES += zstd/lib/decompress/zstd_decompress.o
 ZSTD_FILES += zstd/lib/decompress/huf_decompress.o
 ZSTD_FILES += zstd/lib/decompress/zstd_ddict.o
 ZSTD_FILES += zstd/lib/decompress/zstd_decompress_block.o
+ZSTD_FILES += zstd/lib/dictBuilder/cover.o
 ZSTD_FILES += zstd/lib/dictBuilder/divsufsort.o
+ZSTD_FILES += zstd/lib/dictBuilder/fastcover.o
+ZSTD_FILES += zstd/lib/dictBuilder/zdict.o
 
 BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depack.o brieflz/depacks.o
 
@@ -279,7 +282,31 @@ ifeq "$(BENCH_HAS_NAKAMICHI)" "1"
     MISC_FILES += nakamichi/Nakamichi_Okamigan.o
 endif
 
+CUDA_BASE ?= /usr/local/cuda
+LIBCUDART=$(wildcard $(CUDA_BASE)/lib64/libcudart.so)
 
+ifneq "$(LIBCUDART)" ""
+    DEFINES += -DBENCH_HAS_CUDA -I$(CUDA_BASE)/include
+    LDFLAGS += -L$(CUDA_BASE)/lib64 -lcudart -Wl,-rpath=$(CUDA_BASE)/lib64
+    CUDA_COMPILER = nvcc
+    CUDA_CC = $(CUDA_BASE)/bin/nvcc --compiler-bindir $(CXX)
+    CUDA_ARCH = 50 60 70 80
+    CUDA_CFLAGS = -x cu -std=c++14 -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
+else
+    CUDA_BASE =
+    LIBCUDART =
+endif
+
+ifneq "$(LIBCUDART)" ""
+ifneq "$(DONT_BUILD_NVCOMP)" "1"
+    DEFINES += -DBENCH_HAS_NVCOMP
+    NVCOMP_CPP_SRC = $(wildcard nvcomp/*.cpp)
+    NVCOMP_CPP_OBJ = $(NVCOMP_CPP_SRC:%=%.o)
+    NVCOMP_CU_SRC  = $(wildcard nvcomp/*.cu)
+    NVCOMP_CU_OBJ  = $(NVCOMP_CU_SRC:%=%.o)
+    NVCOMP_FILES   = $(NVCOMP_CU_OBJ) $(NVCOMP_CPP_OBJ)
+endif
+endif
 
 all: lzbench
 
@@ -310,10 +337,21 @@ nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -mavx $< -c -o $@
 
+$(NVCOMP_CU_OBJ): %.cu.o: %.cu
+	@$(MKDIR) $(dir $@)
+	$(CUDA_CC) $(CUDA_CFLAGS) $(CFLAGS) -c $< -o $@
+
+$(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CFLAGS) -c $< -o $@
+
+# disable the implicit rule for making a binary out of a single object file
+%: %.o
+
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
-lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(LZBENCH_FILES)
+lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -330,4 +368,4 @@ lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_F
 	$(CXX) $(CFLAGS) $< -c -o $@
 
 clean:
-	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lizard/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/*.o libdeflate/x86/*.o libdeflate/arm/*.o nakamichi/*.o
+	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lizard/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/*.o libdeflate/x86/*.o libdeflate/arm/*.o nakamichi/*.o nvcomp/*.o
