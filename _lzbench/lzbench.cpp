@@ -18,6 +18,7 @@
 
 #include "lzbench.h"
 #include "util.h"
+#include "cpuid1.h"
 #include <numeric>
 #include <algorithm> // sort
 #include <stdlib.h>
@@ -744,6 +745,30 @@ void usage(lzbench_params_t* params)
     fprintf(stderr,"  " PROGNAME " -t0u0i3j5 -ezstd fname = the same as above with aggregated parameters\n");
 }
 
+char* cpu_brand_string(void)
+{
+    uint32_t mx[4], i, a, d;
+    //static char cpu_brand_string[3*sizeof(mx)+1];
+
+    char* cpu_brand_string = (char*)malloc(3*sizeof(mx)+1);
+    if (!cpu_brand_string)
+        return NULL;
+    cpuid2(CPUID_EXTENDED, &a, &d);
+    if (a >= CPUID_BRANDSTRINGEND)
+        {
+        for(i=0; i<=2; i++)
+            {
+            cpuid_string(CPUID_BRANDSTRING+i, (uint32_t*)mx);
+            strncpy(cpu_brand_string+sizeof(mx)*i, (char*)mx, sizeof(mx));
+            }
+        }
+    else
+        return NULL; // CPUID_EXTENDED unsupported by cpu
+
+    cpu_brand_string[3*sizeof(mx)+1] = '\0'; // in case string was not null terminated
+    return cpu_brand_string;
+}
+
 
 int main( int argc, char** argv)
 {
@@ -758,7 +783,7 @@ int main( int argc, char** argv)
 #ifdef UTIL_HAS_CREATEFILELIST
     const char** extendedFileList = NULL;
     char* fileNamesBuf = NULL;
-    unsigned fileNamesNb, recursive=0;
+    unsigned fileNamesNb, recursive = 0;
 #endif
 
     if (inFileNames==NULL) {
@@ -869,7 +894,6 @@ int main( int argc, char** argv)
             printf("fast - alias for compressors with compression speed over 100 MB/s (default)\n");
             printf("opt - compressors with optimal parsing (slow compression, fast decompression)\n");
             printf("lzo / ucl - aliases for all levels of given compressors\n");
-            printf("cuda - alias for all CUDA-based compressors\n");
             for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
             {
                 if (comp_desc[i].compress)
@@ -897,7 +921,7 @@ int main( int argc, char** argv)
         argc--;
     }
 
-    LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")   Assembled by P.Skibinski\n", (uint32_t)(8 * sizeof(uint8_t*)));
+    LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")  @%s\nAssembled by P.Skibinski\n", (uint32_t)(8 * sizeof(uint8_t*)), cpu_brand_string());
     LZBENCH_PRINT(5, "params: chunk_size=%d c_iters=%d d_iters=%d cspeed=%d cmintime=%d dmintime=%d encoder_list=%s\n", (int)params->chunk_size, params->c_iters, params->d_iters, params->cspeed, params->cmintime, params->dmintime, encoder_list);
 
     if (ifnIdx < 1)  { usage(params); goto _clean; }
