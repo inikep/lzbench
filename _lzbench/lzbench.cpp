@@ -748,8 +748,8 @@ void usage(lzbench_params_t* params)
 char* cpu_brand_string(void)
 {
     uint32_t mx[4], i, a, d;
-    //static char cpu_brand_string[3*sizeof(mx)+1];
 
+    #if (defined(__i386__) || defined(__x86_64__))
     char* cpu_brand_string = (char*)malloc(3*sizeof(mx)+1);
     if (!cpu_brand_string)
         return NULL;
@@ -767,6 +767,9 @@ char* cpu_brand_string(void)
 
     cpu_brand_string[3*sizeof(mx)+1] = '\0'; // in case string was not null terminated
     return cpu_brand_string;
+    #else
+    return NULL;
+    #endif // (defined(__i386__) || defined(__x86_64__))
 }
 
 
@@ -921,7 +924,7 @@ int main( int argc, char** argv)
         argc--;
     }
 
-    LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")  @%s\nAssembled by P.Skibinski\n", (uint32_t)(8 * sizeof(uint8_t*)), cpu_brand_string());
+    LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")  %s\nAssembled by P.Skibinski\n\n", (uint32_t)(8 * sizeof(uint8_t*)), cpu_brand_string());
     LZBENCH_PRINT(5, "params: chunk_size=%d c_iters=%d d_iters=%d cspeed=%d cmintime=%d dmintime=%d encoder_list=%s\n", (int)params->chunk_size, params->c_iters, params->d_iters, params->cspeed, params->cmintime, params->dmintime, encoder_list);
 
     if (ifnIdx < 1)  { usage(params); goto _clean; }
