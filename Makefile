@@ -293,6 +293,8 @@ ifneq "$(LIBCUDART)" ""
     CUDA_ARCH = 50 60 70 80
     CUDA_CFLAGS = -x cu -std=c++14 -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
 else
+    $(info CUDA Toolkit not found at $(CUDA_BASE), CUDA support will be disabled.)
+    $(info Run "make CUDA_BASE=..." to use a different path.)
     CUDA_BASE =
     LIBCUDART =
 endif
