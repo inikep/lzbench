@@ -104,7 +104,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
     cspeed = row.col5_origsize * 1000.0 / row.col2_ctime;
     dspeed = (!row.col3_dtime) ? 0 : (row.col5_origsize * 1000.0 / row.col3_dtime);
     ratio = row.col4_comprsize * 100.0 / row.col5_origsize;
-    
+
     switch (params->textformat)
     {
         case CSV:
@@ -192,7 +192,7 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
     std::sort(ctime.begin(), ctime.end());
     std::sort(dtime.begin(), dtime.end());
     uint64_t best_ctime, best_dtime;
-    
+
     switch (params->timetype)
     {
         default:
@@ -275,7 +275,7 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
             memcpy(outbuf, inbuf, part);
             clen = part;
         }
-        
+
         inbuf += part;
         outbuf += clen;
         outsize -= clen;
@@ -312,7 +312,7 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>&
         outbuf += dlen;
         sum += dlen;
     }
-    
+
     return sum;
 }
 
@@ -359,7 +359,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
             tmpsize -= MIN(tmpsize, chunk_size);
         }
     }
-    
+
     LZBENCH_PRINT(5, "%s chunk_sizes=%d\n", desc->name, (int)chunk_sizes.size());
 
     total_c_iters = 0;
@@ -423,14 +423,14 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
             decomp_error = true;
             LZBENCH_PRINT(5, "ERROR: inlen[%d] != outlen[%d]\n", (int32_t)insize, (int32_t)decomplen);
         }
-        
+
         if (memcmp(inbuf, decomp, insize) != 0)
         {
             decomp_error = true;
 
             size_t cmn = common(inbuf, decomp);
             LZBENCH_PRINT(5, "ERROR in %s: common=%d/%d\n", desc->name, (int32_t)cmn, (int32_t)insize);
-            
+
             if (params->verbose >= 10)
             {
                 char text[256];
@@ -448,7 +448,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
         memset(decomp, 0, insize); // clear output buffer
 
         if (decomp_error) break;
-        
+
         total_nanosec = GetDiffTime(rate, timer_ticks, end_ticks);
         total_d_iters += i;
         if ((total_d_iters >= params->d_iters) && (total_nanosec > ((uint64_t)params->dmintime*1000000))) break;
@@ -537,7 +537,7 @@ int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned if
         printf("Could not find input files\n");
         return 1;
     }
-    
+
     comprsize = GET_COMPRESS_BOUND(totalsize);
     inbuf = (uint8_t*)alloc_and_touch(totalsize + PAD_SIZE, false);
     compbuf = (uint8_t*)alloc_and_touch(comprsize, false);
@@ -623,12 +623,12 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
             fprintf(stderr, "warning: use -r to process directories (%s)\n", inFileNames[i]);
             continue;
         } 
-        
+
         if (!(in=fopen(inFileNames[i], "rb"))) {
             perror(inFileNames[i]);
             continue;
         } 
-        
+
         pch = strrchr(inFileNames[i], '\\');
         params->in_filename = pch ? pch+1 : inFileNames[i];
 
@@ -711,7 +711,7 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
         free(compbuf);
         free(decomp);
     }
-    
+
     return 0;
 }
 
@@ -747,26 +747,27 @@ void usage(lzbench_params_t* params)
 
 char* cpu_brand_string(void)
 {
-    uint32_t mx[4], i, a, d;
+    uint32_t mx[4], i, a, b, c, d;
 
     #if (defined(__i386__) || defined(__x86_64__))
-    char* cpu_brand_string = (char*)malloc(3*sizeof(mx)+1);
-    if (!cpu_brand_string)
+    char* cpu_brand_str = (char*)malloc(3*sizeof(mx)+1);
+    if (!cpu_brand_str)
         return NULL;
-    cpuid2(CPUID_EXTENDED, &a, &d);
+
+    __cpuid(CPUID_EXTENDED, a, b, c, d); // check availability of extended functions
     if (a >= CPUID_BRANDSTRINGEND)
         {
         for(i=0; i<=2; i++)
             {
             cpuid_string(CPUID_BRANDSTRING+i, (uint32_t*)mx);
-            strncpy(cpu_brand_string+sizeof(mx)*i, (char*)mx, sizeof(mx));
+            strncpy(cpu_brand_str+sizeof(mx)*i, (char*)mx, sizeof(mx));
             }
         }
     else
         return NULL; // CPUID_EXTENDED unsupported by cpu
 
-    cpu_brand_string[3*sizeof(mx)+1] = '\0'; // in case string was not null terminated
-    return cpu_brand_string;
+    cpu_brand_str[3*sizeof(mx)+1] = '\0';
+    return cpu_brand_str;
     #else
     return NULL;
     #endif // (defined(__i386__) || defined(__x86_64__))
@@ -781,8 +782,9 @@ int main( int argc, char** argv)
     lzbench_params_t lzparams;
     lzbench_params_t* params = &lzparams;
     const char** inFileNames = (const char**) calloc(argc, sizeof(char*));
-    unsigned ifnIdx=0;
+    unsigned ifnIdx = 0;
     bool join = false;
+    char* cpu_brand;
 #ifdef UTIL_HAS_CREATEFILELIST
     const char** extendedFileList = NULL;
     char* fileNamesBuf = NULL;
@@ -897,6 +899,7 @@ int main( int argc, char** argv)
             printf("fast - alias for compressors with compression speed over 100 MB/s (default)\n");
             printf("opt - compressors with optimal parsing (slow compression, fast decompression)\n");
             printf("lzo / ucl - aliases for all levels of given compressors\n");
+            printf("cuda - alias for all CUDA-based compressors\n");
             for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
             {
                 if (comp_desc[i].compress)
@@ -924,7 +927,8 @@ int main( int argc, char** argv)
         argc--;
     }
 
-    LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")  %s\nAssembled by P.Skibinski\n\n", (uint32_t)(8 * sizeof(uint8_t*)), cpu_brand_string());
+    cpu_brand = cpu_brand_string();
+    LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")  %s\nAssembled by P.Skibinski\n\n", (uint32_t)(8 * sizeof(uint8_t*)), cpu_brand);
     LZBENCH_PRINT(5, "params: chunk_size=%d c_iters=%d d_iters=%d cspeed=%d cmintime=%d dmintime=%d encoder_list=%s\n", (int)params->chunk_size, params->c_iters, params->d_iters, params->cspeed, params->cmintime, params->dmintime, encoder_list);
 
     if (ifnIdx < 1)  { usage(params); goto _clean; }
@@ -993,5 +997,6 @@ _clean:
     else
 #endif
         free((void*)inFileNames);
+        free(cpu_brand);
     return result;
 }

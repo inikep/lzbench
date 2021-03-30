@@ -31,4 +31,7 @@ _visual/
 # Linux
 lzbench
 
+# backups, old versions
+*~
+
 todo.txt
