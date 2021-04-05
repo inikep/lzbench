@@ -419,7 +419,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
         LZBENCH_PRINT(9, "%s dnanosec=%d\n", desc->name, (int)nanosec);
 
         if (insize != decomplen)
-        {   
+        {
             decomp_error = true;
             LZBENCH_PRINT(5, "ERROR: inlen[%d] != outlen[%d]\n", (int32_t)insize, (int32_t)decomplen);
         }
@@ -468,7 +468,7 @@ void lzbench_test_with_params(lzbench_params_t *params, std::vector<size_t> &fil
 {
     std::vector<std::string> cnames, cparams;
 
-	if (!namesWithParams) return;
+    if (!namesWithParams) return;
 
     LZBENCH_PRINT(5, "*** lzbench_test_with_params insize=%d comprsize=%d\n", (int)insize, (int)comprsize);
 
@@ -502,7 +502,7 @@ void lzbench_test_with_params(lzbench_params_t *params, std::vector<size_t> &fil
                         found = true;
                        // printf("%s %s %s\n", cparams[0].c_str(), comp_desc[i].version, cparams[j].c_str());
                         if (j >= cparams.size())
-                        {                          
+                        {
                             for (int level=comp_desc[i].first_level; level<=comp_desc[i].last_level; level++)
                                 lzbench_test(params, file_sizes, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, rate, level);
                         }
@@ -750,7 +750,7 @@ char* cpu_brand_string(void)
     uint32_t mx[4], i, a, b, c, d;
 
     #if (defined(__i386__) || defined(__x86_64__))
-    char* cpu_brand_str = (char*)malloc(3*sizeof(mx)+1);
+    char* cpu_brand_str = (char*)calloc(1, 3*sizeof(mx)+1);
     if (!cpu_brand_str)
         return NULL;
 
@@ -997,6 +997,7 @@ _clean:
     else
 #endif
         free((void*)inFileNames);
-        free(cpu_brand);
+        if (cpu_brand)
+            free(cpu_brand);
     return result;
 }
