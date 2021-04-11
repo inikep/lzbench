@@ -120,7 +120,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [zlib 1.2.11](http://zlib.net)
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
  - [zstd 1.4.9](https://github.com/facebook/zstd)
- - [nvcomp 1.2.2](https://github.com/NVIDIA/nvcomp) - If CUDA is available.
+ - [nvcomp 1.2.3](https://github.com/NVIDIA/nvcomp) - If CUDA is available.
 
 
 CUDA support
