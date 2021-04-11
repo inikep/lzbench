@@ -41,7 +41,7 @@ extern "C" {
 
 #define NVCOMP_MAJOR_VERSION 1
 #define NVCOMP_MINOR_VERSION 2
-#define NVCOMP_PATCH_VERSION 2
+#define NVCOMP_PATCH_VERSION 3
 
 typedef enum nvcompError_t
 {
