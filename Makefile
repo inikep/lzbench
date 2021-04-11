@@ -61,7 +61,7 @@ else
 		DONT_BUILD_CSC ?= 1
 	endif
 
-	LDFLAGS	+= -pthread
+	LDFLAGS	+= -pthread -lrt
 
 	ifeq ($(BUILD_STATIC),1)
 		LDFLAGS	+= -lrt -static
