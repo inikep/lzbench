@@ -121,10 +121,20 @@ inline __device__ int warpMatchAny(const int participants, T val)
   int mask = 0;
 
   // full search
+  __shared__ T values[32];
   assert(blockDim.x == 32);
-  for (int d = 1; d < 32; ++d) {
-    const int nbr_id = (threadIdx.x + d) & 31;
-    mask |= (val == __shfl_sync(participants, val, nbr_id)) << nbr_id;
+  assert(blockDim.y == 1);
+  if ((1 << threadIdx.x) & participants) {
+    values[threadIdx.x] = val;
+    __syncwarp(participants);
+    for (int d = 0; d < 32; ++d) {
+      const int nbr_id = (threadIdx.x + d) & 31;
+      if ((1 << nbr_id) & participants) {
+        const T nbr_val = values[nbr_id];
+        mask |= (val == nbr_val) << nbr_id;
+      }
+    }
+    __syncwarp(participants);
   }
 
   return mask;
