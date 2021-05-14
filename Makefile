@@ -139,7 +139,6 @@ ZSTD_FILES += zstd/lib/common/entropy_common.o
 ZSTD_FILES += zstd/lib/common/pool.o
 ZSTD_FILES += zstd/lib/common/debug.o
 ZSTD_FILES += zstd/lib/common/threading.o
-ZSTD_FILES += zstd/lib/common/zstd_trace.o
 ZSTD_FILES += zstd/lib/compress/zstd_compress.o
 ZSTD_FILES += zstd/lib/compress/zstd_compress_literals.o
 ZSTD_FILES += zstd/lib/compress/zstd_compress_sequences.o
