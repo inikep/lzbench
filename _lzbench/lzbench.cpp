@@ -114,11 +114,15 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
         case TEXT:
         case TEXT_FULL:
             printf("%-23s", row.col1_algname.c_str());
-            if (cspeed < 10) printf("%6.2f MB/s", cspeed); else printf("%6d MB/s", (int)cspeed);
+            if (cspeed < 10) printf("%6.2f MB/s", cspeed);
+            else if (cspeed < 100) printf("%6.1f MB/s", cspeed);
+            else printf("%6d MB/s", (int)cspeed);
             if (!dspeed)
                 printf("      ERROR");
             else
-                if (dspeed < 10) printf("%6.2f MB/s", dspeed); else printf("%6d MB/s", (int)dspeed);
+                if (dspeed < 10) printf("%6.2f MB/s", dspeed);
+                else if (dspeed < 100) printf("%6.1f MB/s", dspeed);
+                else printf("%6d MB/s", (int)dspeed);
             if (params->textformat == TEXT_FULL)
                 printf("%12llu %12llu %6.2f %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             else
@@ -126,21 +130,29 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
             break;
         case MARKDOWN:
             printf("| %-23s ", row.col1_algname.c_str());
-            if (cspeed < 10) printf("|%6.2f MB/s ", cspeed); else printf("|%6d MB/s ", (int)cspeed);
+            if (cspeed < 10) printf("|%6.2f MB/s ", cspeed);
+            else if (cspeed < 100) printf("|%6.1f MB/s ", cspeed);
+            else printf("|%6d MB/s ", (int)cspeed);
             if (!dspeed)
                 printf("|      ERROR ");
             else
-                if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed);
+                if (dspeed < 10) printf("|%6.2f MB/s ", dspeed);
+                else if (dspeed < 100) printf("|%6.1f MB/s ", dspeed);
+                else printf("|%6d MB/s ", (int)dspeed);
             printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
             break;
         case MARKDOWN2:
             ratio = 1.0*row.col5_origsize / row.col4_comprsize;
             printf("| %-23s |%6.3f ", row.col1_algname.c_str(), ratio);
-            if (cspeed < 10) printf("|%6.2f MB/s ", cspeed); else printf("|%6d MB/s ", (int)cspeed);
+            if (cspeed < 10) printf("|%6.2f MB/s ", cspeed);
+            else if (cspeed < 100) printf("|%6.1f MB/s ", cspeed);
+            else printf("|%6d MB/s ", (int)cspeed);
             if (!dspeed)
                 printf("|      ERROR ");
             else
-                if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed);
+                if (dspeed < 10) printf("|%6.2f MB/s ", dspeed);
+                else if (dspeed < 100) printf("|%6.1f MB/s ", dspeed);
+                else printf("|%6d MB/s ", (int)dspeed);
             printf("|\n");
             break;
     }
@@ -990,14 +1002,15 @@ int main( int argc, char** argv)
     }
 
 _clean:
-    if (encoder_list) free(encoder_list);
+    if (encoder_list)
+        free(encoder_list);
 #ifdef UTIL_HAS_CREATEFILELIST
     if (extendedFileList)
         UTIL_freeFileList(extendedFileList, fileNamesBuf);
     else
 #endif
-        free((void*)inFileNames);
-        if (cpu_brand)
-            free(cpu_brand);
+    free((void*)inFileNames);
+    if (cpu_brand)
+        free(cpu_brand);
     return result;
 }
