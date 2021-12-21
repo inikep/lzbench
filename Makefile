@@ -110,6 +110,7 @@ ifeq "$(DONT_BUILD_ZLIB)" "1"
 	DEFINES += -DBENCH_REMOVE_ZLIB
 	DONT_BUILD_SLZ = 1
 else
+        DONT_BUILD_ZLIB_NG = 1
 	ZLIB_FILES = zlib/adler32.o zlib/compress.o zlib/crc32.o zlib/deflate.o zlib/gzclose.o zlib/gzlib.o zlib/gzread.o
 	ZLIB_FILES += zlib/gzwrite.o zlib/infback.o zlib/inffast.o zlib/inflate.o zlib/inftrees.o zlib/trees.o
 	ZLIB_FILES += zlib/uncompr.o zlib/zutil.o
