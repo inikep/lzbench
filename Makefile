@@ -154,6 +154,7 @@ ZSTD_FILES += zstd/lib/compress/huf_compress.o
 ZSTD_FILES += zstd/lib/compress/hist.o
 ZSTD_FILES += zstd/lib/decompress/zstd_decompress.o
 ZSTD_FILES += zstd/lib/decompress/huf_decompress.o
+ZSTD_FILES += zstd/lib/decompress/huf_decompress_amd64.S
 ZSTD_FILES += zstd/lib/decompress/zstd_ddict.o
 ZSTD_FILES += zstd/lib/decompress/zstd_decompress_block.o
 ZSTD_FILES += zstd/lib/dictBuilder/cover.o
