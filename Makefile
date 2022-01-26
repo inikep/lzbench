@@ -72,7 +72,7 @@ else
 endif
 
 
-DEFINES     += $(addprefix -I$(SOURCE_PATH),. zstd/lib zstd/lib/common brotli/include xpack/common libcsc xz xz/api xz/check xz/common xz/lz xz/lzma xz/rangecoder)
+DEFINES     += $(addprefix -I$(SOURCE_PATH),. brotli/include libcsc libdeflate xpack/common xz xz/api xz/check xz/common xz/lz xz/lzma xz/rangecoder zstd/lib zstd/lib/common)
 DEFINES     += -DHAVE_CONFIG_H -DFL2_SINGLETHREAD
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
@@ -171,9 +171,9 @@ XZ_FILES += xz/common/alone_encoder.o xz/common/alone_decoder.o xz/check/crc32_t
 
 GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o
 
-LIBDEFLATE_FILES = libdeflate/adler32.o libdeflate/utils.o libdeflate/crc32.o libdeflate/deflate_compress.o
-LIBDEFLATE_FILES += libdeflate/deflate_decompress.o libdeflate/gzip_compress.o libdeflate/gzip_decompress.o
-LIBDEFLATE_FILES += libdeflate/x86/cpu_features.o libdeflate/arm/cpu_features.o libdeflate/zlib_compress.o libdeflate/zlib_decompress.o
+LIBDEFLATE_FILES = libdeflate/lib/adler32.o libdeflate/lib/utils.o libdeflate/lib/crc32.o libdeflate/lib/deflate_compress.o
+LIBDEFLATE_FILES += libdeflate/lib/deflate_decompress.o libdeflate/lib/gzip_compress.o libdeflate/lib/gzip_decompress.o
+LIBDEFLATE_FILES += libdeflate/lib/x86/cpu_features.o libdeflate/lib/arm/cpu_features.o libdeflate/lib/zlib_compress.o libdeflate/lib/zlib_decompress.o
 
 MISC_FILES = crush/crush.o shrinker/shrinker.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
 MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o blosclz/fastcopy.o slz/slz.o
@@ -369,4 +369,4 @@ lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_F
 	$(CXX) $(CFLAGS) $< -c -o $@
 
 clean:
-	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lizard/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/*.o libdeflate/x86/*.o libdeflate/arm/*.o nakamichi/*.o nvcomp/*.o
+	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lizard/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/lib/*.o libdeflate/lib/x86/*.o libdeflate/lib/arm/*.o nakamichi/*.o nvcomp/*.o
