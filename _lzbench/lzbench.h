@@ -137,7 +137,7 @@ typedef struct
 
 
 
-#define LZBENCH_COMPRESSOR_COUNT 73
+#define LZBENCH_COMPRESSOR_COUNT 76
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
@@ -214,14 +214,20 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "nakamichi",  "okamigan",    0,   0,    0,       0, lzbench_nakamichi_compress,  lzbench_nakamichi_decompress,  NULL,                    NULL },
     { "cudaMemcpy", "",            0,   0,    0,       0, lzbench_cuda_return_0,       lzbench_cuda_memcpy,           lzbench_cuda_init,       lzbench_cuda_deinit },
     { "nvcomp_lz4", "1.2.2",       0,   5,    0,       0, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },
+    { "qpl",        "0.0.0",       0,   0,    1,   1<<20, lzbench_qpl_compress,        lzbench_qpl_decompress,        lzbench_qpl_init,        lzbench_qpl_deinit },
+    { "qpl_sw",     "0.0.0",       0,   0,    2,       0, lzbench_qpl_compress,        lzbench_qpl_decompress,        lzbench_qpl_init,        lzbench_qpl_deinit },
+    { "qpl_hl",     "0.0.0",       0,   0,    1,   1<<20, lzbench_qpl_hl_compress,     lzbench_qpl_hl_decompress,     lzbench_qpl_hl_init,     NULL },
 };
 
 
 
-#define LZBENCH_ALIASES_COUNT 13
+#define LZBENCH_ALIASES_COUNT 14
 
 static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
+    { "qijia", "zstd,1,2,5,8,11,15/" \
+               "lz4/lz4fast,1,3,6,9,12,20,30,40,50/"
+               "qpl"},
     { "fast", "density/fastlz/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzf/lzfse/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
               "lzrw,1,3,4,5/lzsse4fast/lzsse8fast/lzvn/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/zstd,1,2,3,4,5" }, // default alias
 #if !defined(__arm__) && !defined(__aarch64__)

@@ -1982,3 +1982,36 @@ int64_t lzbench_nvcomp_decompress(char *inbuf, size_t insize, char *outbuf, size
 #endif  // BENCH_HAS_NVCOMP
 
 #endif  // BENCH_HAS_CUDA
+
+
+#ifndef BENCH_REMOVE_QPL
+    #include "qpl/qpl_compress.h"    
+    int64_t lzbench_qpl_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t path, char* workmem) {
+        return qpl_compress(inbuf, insize, outbuf, outsize, level, path, workmem);
+    }
+    int64_t lzbench_qpl_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t path, char* workmem) {
+        return qpl_decompress(inbuf, insize, outbuf, outsize, level, path, workmem);
+    }
+	char* lzbench_qpl_init(size_t insize, size_t level, size_t path) {
+        return qpl_init(insize, level, path);
+    }
+	void lzbench_qpl_deinit(char* workmem) {
+        return qpl_deinit(workmem);
+    }
+#endif
+
+#ifndef BENCH_REMOVE_QPL_HL
+    #include "qpl/qpl_compress.h"    
+    int64_t lzbench_qpl_hl_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t path, char* workmem) {
+        return qpl_hl_compress(inbuf, insize, outbuf, outsize, level, path, workmem);
+    }
+    int64_t lzbench_qpl_hl_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t path, char* workmem) {
+        return qpl_hl_decompress(inbuf, insize, outbuf, outsize, level, path, workmem);
+    }
+	char* lzbench_qpl_hl_init(size_t insize, size_t level, size_t path) {
+        return qpl_hl_init(insize, level, path);
+    }
+	void lzbench_qpl_hl_deinit(char* workmem) {
+        return qpl_hl_deinit(workmem);
+    }
+#endif

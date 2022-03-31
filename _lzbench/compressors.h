@@ -529,4 +529,31 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
         #define lzbench_nvcomp_decompress NULL
 #endif
 
+
+#ifndef BENCH_REMOVE_QPL
+    int64_t lzbench_qpl_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem);
+    int64_t lzbench_qpl_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem);
+    char* lzbench_qpl_init(size_t, size_t, size_t);
+    void lzbench_qpl_deinit(char* workmem);
+#else
+    #define lzbench_qpl_compress NULL
+    #define lzbench_qpl_decompress NULL
+    #define lzbench_qpl_init NULL
+    #define lzbench_qpl_deinit NULL
+#endif
+
+
+#ifndef BENCH_REMOVE_QPL_HL
+    int64_t lzbench_qpl_hl_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem);
+    int64_t lzbench_qpl_hl_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem);
+    char* lzbench_qpl_hl_init(size_t, size_t, size_t);
+    void lzbench_qpl_hl_deinit(char* workmem);
+#else
+    #define lzbench_qpl_hl_compress NULL
+    #define lzbench_qpl_hl_decompress NULL
+    #define lzbench_qpl_hl_init NULL
+    #define lzbench_qpl_hl_deinit NULL
+#endif
+
+
 #endif // LZBENCH_COMPRESSORS_H
