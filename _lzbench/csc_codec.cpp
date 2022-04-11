@@ -39,7 +39,7 @@ size_t stdio_write(void *p, const void *buf, size_t size)
     return size;
 }
 
-int64_t lzbench_csc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dict_size, char*)
+int64_t lzbench_csc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dict_size, char*, bool)
 {
 	MemSeqStream isss, osss;
 	CSCProps p;
@@ -71,7 +71,7 @@ int64_t lzbench_csc_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
 }
 
 
-int64_t lzbench_csc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_csc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*, bool)
 {
 	MemSeqStream isss, osss;
 	CSCProps p;

@@ -84,8 +84,9 @@ typedef struct string_table
 {
     std::string col1_algname;
     uint64_t col2_ctime, col3_dtime, col4_comprsize, col5_origsize;
-    std::string col6_filename;
-    string_table(std::string c1, uint64_t c2, uint64_t c3, uint64_t c4, uint64_t c5, std::string filename) : col1_algname(c1), col2_ctime(c2), col3_dtime(c3), col4_comprsize(c4), col5_origsize(c5), col6_filename(filename) {}
+    bool col6_dictionary;
+    std::string col7_filename;
+    string_table(std::string c1, uint64_t c2, uint64_t c3, uint64_t c4, uint64_t c5, bool dictionary, std::string filename) : col1_algname(c1), col2_ctime(c2), col3_dtime(c3), col4_comprsize(c4), col5_origsize(c5), col6_dictionary(dictionary), col7_filename(filename) {}
 } string_table_t;
 
 enum textformat_e { MARKDOWN=1, TEXT, TEXT_FULL, CSV, TURBOBENCH, MARKDOWN2 };
@@ -102,6 +103,7 @@ typedef struct
     int random_read;
     std::vector<string_table_t> results;
     const char* in_filename;
+    const char* dictionary;
 } lzbench_params_t;
 
 struct less_using_1st_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col1_algname < struct2.col1_algname); } };
@@ -110,8 +112,8 @@ struct less_using_3rd_column { inline bool operator() (const string_table_t& str
 struct less_using_4th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col4_comprsize < struct2.col4_comprsize); } };
 struct less_using_5th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col5_origsize < struct2.col5_origsize); } };
 
-typedef int64_t (*compress_func)(char *in, size_t insize, char *out, size_t outsize, size_t, size_t, char*);
-typedef char* (*init_func)(size_t insize, size_t, size_t);
+typedef int64_t (*compress_func)(char *in, size_t insize, char *out, size_t outsize, size_t, size_t, char*, bool);
+typedef char* (*init_func)(size_t insize, size_t, size_t, const std::string&);
 typedef void (*deinit_func)(char* workmem);
 
 typedef struct
