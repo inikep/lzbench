@@ -92,6 +92,73 @@ int64_t lzbench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 
+#ifdef BENCH_HAS_BSC
+#include "libbsc/libbsc/libbsc.h"
+
+char *lzbench_bsc_init(size_t insize, size_t level, size_t)
+{
+    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING;
+    bsc_init(features);
+    return 0;
+}
+
+int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING;
+    int lzpHashSize = 15;         // -H
+    int lzpMinLen = 128;          // -M
+    int blockSorter = level == 2 ? 1 : (int)level; // -m, note: 2 doesn't exist, default to 1
+    int coder = 1;                // -e
+
+    int res = bsc_compress((unsigned char *)inbuf, (unsigned char *)outbuf, (int)insize, lzpHashSize, lzpMinLen, blockSorter, coder, features);
+    return res;
+}
+
+int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING;
+    int insize_bsc;
+    int outsize_bsc;
+
+    bsc_block_info((unsigned char *)inbuf, LIBBSC_HEADER_SIZE, &insize_bsc, &outsize_bsc, features);
+    bsc_decompress((unsigned char *)inbuf, insize_bsc, (unsigned char *)outbuf, outsize_bsc, features);
+    return outsize;
+}
+
+char *lzbench_bsc_cuda_init(size_t insize, size_t level, size_t)
+{
+    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING | LIBBSC_FEATURE_CUDA;
+    bsc_init(features);
+    return 0;
+}
+
+int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING | LIBBSC_FEATURE_CUDA;
+    int lzpHashSize = 15;
+    int lzpMinLen = 128;
+    int blockSorter = (int)level;
+    int coder = 1;
+
+    int res = bsc_compress((unsigned char *)inbuf, (unsigned char *)outbuf, (int)insize, lzpHashSize, lzpMinLen, blockSorter, coder, features);
+    return res;
+}
+
+int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING | LIBBSC_FEATURE_CUDA;
+    int insize_bsc;
+    int outsize_bsc;
+
+    bsc_block_info((unsigned char *)inbuf, LIBBSC_HEADER_SIZE, &insize_bsc, &outsize_bsc, features);
+    bsc_decompress((unsigned char *)inbuf, insize_bsc, (unsigned char *)outbuf, outsize_bsc, features);
+    return outsize;
+}
+
+#endif // BENCH_HAS_BSC
+
+
+
 #ifndef BENCH_REMOVE_BZIP2
 #include "bzip2/bzlib.h"
 

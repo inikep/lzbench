@@ -83,6 +83,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [blosclz 2.0.0](https://github.com/Blosc/c-blosc2)
  - [brieflz 1.3.0](https://github.com/jibsen/brieflz)
  - [brotli 1.0.9](https://github.com/google/brotli)
+ - [bsc 3.2.4](https://github.com/IlyaGrebnov/libbsc)
  - [bzip2 1.0.8](http://www.bzip.org/downloads.html)
  - [crush 1.0](https://sourceforge.net/projects/crush/)
  - [csc 2016-10-13](https://github.com/fusiyuan2010/CSC) - WARNING: it can throw SEGFAULT compiled with Apple LLVM version 7.3.0 (clang-703.0.31)
