@@ -21,6 +21,9 @@
 #include "cpuid1.h"
 #include <numeric>
 #include <algorithm> // sort
+#include <map>
+#include <fstream>
+#include <sstream>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -76,19 +79,19 @@ void print_header(lzbench_params_t *params)
     {
         case CSV:
             if (params->show_speed)
-                printf("Compressor name,Compression speed,Decompression speed,Original size,Compressed size,Ratio,Filename\n");
+                printf("Compressor name,Compression speed,Decompression speed,Original size,Compressed size,Ratio,Dictionary,Filename\n");
             else
-                printf("Compressor name,Compression time in us,Decompression time in us,Original size,Compressed size,Ratio,Filename\n"); break;
+                printf("Compressor name,Compression time in us,Decompression time in us,Original size,Compressed size,Ratio,Dictionary,Filename\n"); break;
             break;
         case TURBOBENCH:
             printf("  Compressed  Ratio   Cspeed   Dspeed         Compressor name Filename\n"); break;
         case TEXT:
-            printf("Compressor name         Compress. Decompress. Compr. size  Ratio Filename\n"); break;
+            printf("Compressor name         Compress. Decompress. Compr. size  Ratio Dict Filename\n"); break;
         case TEXT_FULL:
-            printf("Compressor name         Compress. Decompress.  Orig. size  Compr. size  Ratio Filename\n"); break;
+            printf("Compressor name         Compress. Decompress.  Orig. size  Compr. size  Ratio Dict Filename\n"); break;
         case MARKDOWN:
-            printf("| Compressor name         | Compression| Decompress.| Compr. size | Ratio | Filename |\n");
-            printf("| ---------------         | -----------| -----------| ----------- | ----- | -------- |\n");
+            printf("| Compressor name         | Compression| Decompress.| Compr. size | Ratio | Dict | Filename |\n");
+            printf("| ---------------         | -----------| -----------| ----------- | ----- | ---- | -------- |\n");
             break;
         case MARKDOWN2:
             printf("| Compressor name         | Ratio | Compression| Decompress.|\n");
@@ -104,13 +107,14 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
     cspeed = row.col5_origsize * 1000.0 / row.col2_ctime;
     dspeed = (!row.col3_dtime) ? 0 : (row.col5_origsize * 1000.0 / row.col3_dtime);
     ratio = row.col4_comprsize * 100.0 / row.col5_origsize;
+    std::string dictionary = row.col6_dictionary ? "Y" : "N";
 
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%.2f,%.2f,%llu,%llu,%.2f,%s\n", row.col1_algname.c_str(), cspeed, dspeed, (unsigned long long)row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); break;
+            printf("%s,%.2f,%.2f,%llu,%llu,%.2f,%s,%s\n", row.col1_algname.c_str(), cspeed, dspeed, (unsigned long long)row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, dictionary.c_str(), row.col7_filename.c_str()); break;
         case TURBOBENCH:
-            printf("%12llu %6.1f%9.2f%9.2f  %22s %s\n", (unsigned long long)row.col4_comprsize, ratio, cspeed, dspeed, row.col1_algname.c_str(), row.col6_filename.c_str()); break;
+            printf("%12llu %6.1f%9.2f%9.2f  %22s %s\n", (unsigned long long)row.col4_comprsize, ratio, cspeed, dspeed, row.col1_algname.c_str(), row.col7_filename.c_str()); break;
         case TEXT:
         case TEXT_FULL:
             printf("%-23s", row.col1_algname.c_str());
@@ -120,9 +124,9 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
             else
                 if (dspeed < 10) printf("%6.2f MB/s", dspeed); else printf("%6d MB/s", (int)dspeed);
             if (params->textformat == TEXT_FULL)
-                printf("%12llu %12llu %6.2f %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
+                printf("%12llu %12llu %6.2f %4s %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, dictionary.c_str(), row.col7_filename.c_str());
             else
-                printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
+                printf("%12llu %6.2f %4s %s\n", (unsigned long long)row.col4_comprsize, ratio, dictionary.c_str(), row.col7_filename.c_str());
             break;
         case MARKDOWN:
             printf("| %-23s ", row.col1_algname.c_str());
@@ -131,7 +135,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
                 printf("|      ERROR ");
             else
                 if (dspeed < 10) printf("|%6.2f MB/s ", dspeed); else printf("|%6d MB/s ", (int)dspeed);
-            printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
+            printf("|%12llu |%6.2f | %-s | %-s|\n", (unsigned long long)row.col4_comprsize, ratio, dictionary.c_str(), row.col7_filename.c_str());
             break;
         case MARKDOWN2:
             ratio = 1.0*row.col5_origsize / row.col4_comprsize;
@@ -152,13 +156,14 @@ void print_time(lzbench_params_t *params, string_table_t& row)
     float ratio = row.col4_comprsize * 100.0 / row.col5_origsize;
     uint64_t ctime = row.col2_ctime / 1000;
     uint64_t dtime = row.col3_dtime / 1000;
+    std::string dictionary = row.col6_dictionary ? "Y" : "N";
 
     switch (params->textformat)
     {
         case CSV:
-            printf("%s,%llu,%llu,%llu,%llu,%.2f,%s\n", row.col1_algname.c_str(), (unsigned long long)ctime, (unsigned long long)dtime,  (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str()); break; 
+            printf("%s,%llu,%llu,%llu,%llu,%.2f,%s,%s\n", row.col1_algname.c_str(), (unsigned long long)ctime, (unsigned long long)dtime,  (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, dictionary.c_str(), row.col7_filename.c_str()); break; 
         case TURBOBENCH:
-            printf("%12llu %6.1f%9llu%9llu  %22s %s\n", (unsigned long long)row.col4_comprsize, ratio, (unsigned long long)ctime, (unsigned long long)dtime, row.col1_algname.c_str(), row.col6_filename.c_str()); break;
+            printf("%12llu %6.1f%9llu%9llu  %22s %s\n", (unsigned long long)row.col4_comprsize, ratio, (unsigned long long)ctime, (unsigned long long)dtime, row.col1_algname.c_str(), row.col7_filename.c_str()); break;
         case TEXT:
         case TEXT_FULL:
             printf("%-23s", row.col1_algname.c_str());
@@ -168,9 +173,9 @@ void print_time(lzbench_params_t *params, string_table_t& row)
             else
                 printf("%8llu us", (unsigned long long)dtime);
             if (params->textformat == TEXT_FULL)
-                printf("%12llu %12llu %6.2f %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
+                printf("%12llu %12llu %6.2f %4s %s\n", (unsigned long long) row.col5_origsize, (unsigned long long)row.col4_comprsize, ratio, dictionary.c_str(), row.col7_filename.c_str());
             else
-                printf("%12llu %6.2f %s\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
+                printf("%12llu %6.2f %4s %s\n", (unsigned long long)row.col4_comprsize, ratio, dictionary.c_str(), row.col7_filename.c_str());
             break;
         case MARKDOWN:
         case MARKDOWN2:
@@ -180,7 +185,7 @@ void print_time(lzbench_params_t *params, string_table_t& row)
                 printf("|      ERROR ");
             else
                 printf("|%8llu us ", (unsigned long long)dtime);
-            printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.col4_comprsize, ratio, row.col6_filename.c_str());
+            printf("|%12llu |%6.2f | %-s|\n", (unsigned long long)row.col4_comprsize, ratio, row.col7_filename.c_str());
             break;
     }
 }
@@ -215,7 +220,7 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
     else
         format(col1_algname, "%s %s -%d", desc->name, desc->version, level);
 
-    params->results.push_back(string_table_t(col1_algname, best_ctime, (decomp_error)?0:best_dtime, outsize, insize, params->in_filename));
+    params->results.push_back(string_table_t(col1_algname, best_ctime, (decomp_error)?0:best_dtime, outsize, insize, params->dictionary, params->in_filename));
     if (params->show_speed)
         print_speed(params, params->results[params->results.size()-1]);
     else
@@ -266,7 +271,7 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
         outpart = GET_COMPRESS_BOUND(part);
         if (outpart > outsize) outpart = outsize;
 
-        clen = compress((char*)inbuf, part, (char*)outbuf, outpart, param1, param2, workmem);
+        clen = compress((char*)inbuf, part, (char*)outbuf, outpart, param1, param2, workmem, i == cscount-1);
         LZBENCH_PRINT(9, "ENC part=%d clen=%d in=%d\n", (int)part, (int)clen, (int)(inbuf-start));
 
         if (clen <= 0 || clen == part)
@@ -303,7 +308,7 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>&
         }
         else
         {
-            dlen = decompress((char*)inbuf, part, (char*)outbuf, chunk_sizes[i], param1, param2, workmem);
+            dlen = decompress((char*)inbuf, part, (char*)outbuf, chunk_sizes[i], param1, param2, workmem, i == cscount-1);
         }
         LZBENCH_PRINT(9, "DEC part=%d dlen=%d out=%d\n", (int)part, (int)dlen, (int)(outbuf - outstart));
         if (dlen <= 0) return dlen;
@@ -317,7 +322,7 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>&
 }
 
 
-void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate, size_t param1)
+void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate, size_t param1, const std::string &dictionary)
 {
     float speed;
     int i, total_c_iters, total_d_iters;
@@ -335,13 +340,13 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
 
     if (desc->max_block_size != 0 && chunk_size > desc->max_block_size) chunk_size = desc->max_block_size;
     if (!desc->compress || !desc->decompress) goto done;
-    if (desc->init) workmem = desc->init(chunk_size, param1, param2);
+    if (desc->init) workmem = desc->init(chunk_size, param1, param2, dictionary);
 
     if (params->cspeed > 0)
     {
         size_t part = MIN(100*1024, chunk_size);
         GetTime(start_ticks);
-        int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, GET_COMPRESS_BOUND(part), param1, param2, workmem);
+        int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, GET_COMPRESS_BOUND(part), param1, param2, workmem, false);
         GetTime(end_ticks);
         nanosec = GetDiffTime(rate, start_ticks, end_ticks)/1000;
         if (clen>0 && nanosec>=1000)
@@ -464,9 +469,11 @@ done:
 }
 
 
-void lzbench_test_with_params(lzbench_params_t *params, std::vector<size_t> &file_sizes, const char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
+void lzbench_test_with_params(lzbench_params_t *params, std::vector<size_t> &file_sizes, const char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate, const std::map<std::string, std::pair<std::string, std::string> > &dictionary_map)
 {
     std::vector<std::string> cnames, cparams;
+    std::string dictionary, dict_content, dict_name;
+    std::map<std::string, std::pair<std::string, std::string> >::const_iterator it;
 
     if (!namesWithParams) return;
 
@@ -483,38 +490,57 @@ void lzbench_test_with_params(lzbench_params_t *params, std::vector<size_t> &fil
         {
             if (istrcmp(cnames[k].c_str(), alias_desc[i].name)==0)
             {
-                lzbench_test_with_params(params, file_sizes, alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+                lzbench_test_with_params(params, file_sizes, alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, rate, dictionary_map);
                 goto next_k;
             }
         }
 
         LZBENCH_PRINT(5, "params = %s\n", cnames[k].c_str());
         cparams = split(cnames[k].c_str(), ',');
+
         if (cparams.size() >= 1)
         {
-            int j=1;
-            do {
-                bool found = false;
-                for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
-                {
-                    if (istrcmp(comp_desc[i].name, cparams[0].c_str()) == 0)
-                    {
-                        found = true;
-                       // printf("%s %s %s\n", cparams[0].c_str(), comp_desc[i].version, cparams[j].c_str());
-                        if (j >= cparams.size())
-                        {
-                            for (int level=comp_desc[i].first_level; level<=comp_desc[i].last_level; level++)
-                                lzbench_test(params, file_sizes, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, rate, level);
-                        }
-                        else
-                            lzbench_test(params, file_sizes, &comp_desc[i], atoi(cparams[j].c_str()), inbuf, insize, compbuf, comprsize, decomp, rate, atoi(cparams[j].c_str()));
-                        break;
-                    }
-                }
-                if (!found) printf("NOT FOUND: %s %s\n", cparams[0].c_str(), (j<cparams.size()) ? cparams[j].c_str() : NULL);
-                j++;
+            int round = 1;
+            it = dictionary_map.find(cparams[0]);
+            if (it != dictionary_map.end()) {
+                round = 2;
+                dict_name = it->second.first;
+                dict_content = it->second.second;
             }
-            while (j < cparams.size());
+
+            for (int l=0; l<round; l++)
+            {
+                if (l == 1) {
+                    dictionary = dict_content;
+                    params->dictionary = dict_name.c_str();
+                } else {
+                    dictionary = "";
+                    params->dictionary = NULL;
+                }
+                int j=1;
+                do {
+                    bool found = false;
+                    for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
+                    {
+                        if (istrcmp(comp_desc[i].name, cparams[0].c_str()) == 0)
+                        {
+                            found = true;
+                           // printf("%s %s %s\n", cparams[0].c_str(), comp_desc[i].version, cparams[j].c_str());
+                            if (j >= cparams.size())
+                            {
+                                for (int level=comp_desc[i].first_level; level<=comp_desc[i].last_level; level++)
+                                    lzbench_test(params, file_sizes, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, rate, level, dictionary);
+                            }
+                            else
+                                lzbench_test(params, file_sizes, &comp_desc[i], atoi(cparams[j].c_str()), inbuf, insize, compbuf, comprsize, decomp, rate, atoi(cparams[j].c_str()), dictionary);
+                            break;
+                        }
+                    }
+                    if (!found) printf("NOT FOUND: %s %s\n", cparams[0].c_str(), (j<cparams.size()) ? cparams[j].c_str() : NULL);
+                    j++;
+                }
+                while (j < cparams.size());
+            }
         }
 next_k:
         continue;
@@ -531,6 +557,7 @@ int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned if
     std::string text;
     FILE* in;
     const char* pch;
+    std::map<std::string, std::pair<std::string, std::string> > fake_map;
 
     totalsize = UTIL_getTotalFileSize(inFileNames, ifnIdx);
     if (totalsize == 0) {
@@ -594,10 +621,10 @@ int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned if
         params_memcpy.c_iters = params_memcpy.d_iters = 0;
         params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
         single_file.push_back(totalsize);
-        lzbench_test(&params_memcpy, file_sizes, &comp_desc[0], 0, inbuf, totalsize, compbuf, totalsize, decomp, rate, 0);
+        lzbench_test(&params_memcpy, file_sizes, &comp_desc[0], 0, inbuf, totalsize, compbuf, totalsize, decomp, rate, 0, "");
     }
 
-    lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, totalsize, compbuf, comprsize, decomp, rate);
+    lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, totalsize, compbuf, comprsize, decomp, rate, fake_map);
 
 _clean:
     free(inbuf);
@@ -608,7 +635,40 @@ _clean:
 }
 
 
-int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned ifnIdx, char* encoder_list)
+// -dzstd=path1&brotli=path2
+std::map<std::string, std::pair<std::string, std::string> > get_dictionary(lzbench_params_t* params, const char *dictionary_list)
+{
+    // convert to <compressor:dictionary_content>
+    std::map<std::string, std::pair<std::string, std::string> > dictionary_map;
+    if (!dictionary_list)
+        return dictionary_map;
+
+    std::vector<std::string> compressor_dict_conf = split(dictionary_list, ',');
+    std::ios::sync_with_stdio(false);
+    for (int i=0; i<compressor_dict_conf.size(); i++)
+    {
+        std::vector<std::string> dict_conf = split(compressor_dict_conf[i], '=');
+        if (dict_conf.size() != 2) {
+            fprintf(stderr, "warning: unknown dictionary config (%s)\n", compressor_dict_conf[i].c_str());
+            continue;
+        }
+        std::ifstream file(dict_conf[1]);
+        if (file.fail()) {
+            fprintf(stderr, "warning: unknown dictionary path (%s)\n", dict_conf[1].c_str());
+            continue;
+        }
+        std::stringstream file_string;
+        file_string << file.rdbuf();
+        const char* pch = strrchr(dict_conf[1].c_str(), '\\');
+        dictionary_map.emplace(dict_conf[0], std::pair<std::string, std::string>{pch ? pch+1 : dict_conf[1], file_string.str()});
+        LZBENCH_PRINT(2, "Dictionary(%s) will be uesd in compressor(%s)\n", dict_conf[1].c_str(), dict_conf[0].c_str());
+    }
+
+    return dictionary_map;
+}
+
+
+int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned ifnIdx, char* encoder_list, char* dictionary_list)
 {
     bench_rate_t rate;
     size_t comprsize, insize, real_insize;
@@ -616,6 +676,7 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
     std::vector<size_t> file_sizes;
     FILE* in;
     const char* pch;
+    std::map<std::string, std::pair<std::string, std::string> > dictionary_map = get_dictionary(params, dictionary_list);
 
     for (int i=0; i<ifnIdx; i++)
     {
@@ -680,7 +741,7 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
             params_memcpy.c_iters = params_memcpy.d_iters = 0;
             params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
             file_sizes.push_back(insize);
-            lzbench_test(&params_memcpy, file_sizes, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
+            lzbench_test(&params_memcpy, file_sizes, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0, "");
             file_sizes.clear();
         }
 
@@ -694,7 +755,7 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
                 format(partname, "%s part %d", filename, i);
                 params->in_filename = partname.c_str();
                 file_sizes.push_back(insize);
-                lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+                lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate, dictionary_map);
                 file_sizes.clear();
                 insize = fread(inbuf, 1, insize, in);
             }
@@ -702,7 +763,7 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
         else
         {
             file_sizes.push_back(insize);
-            lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+            lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, compbuf, comprsize, decomp, rate, dictionary_map);
             file_sizes.clear();
         }
 
@@ -778,6 +839,7 @@ int main( int argc, char** argv)
 {
     FILE *in;
     char* encoder_list = NULL;
+    char* dictionary_list = NULL;
     int result = 0, sort_col = 0, real_time = 1;
     lzbench_params_t lzparams;
     lzbench_params_t* params = &lzparams;
@@ -823,6 +885,10 @@ int main( int argc, char** argv)
             break;
         case 'c':
             sort_col = number;
+            break;
+        case 'd':
+            dictionary_list = strdup(argument + 1);
+            numPtr += strlen(numPtr);
             break;
         case 'e':
             encoder_list = strdup(argument + 1);
@@ -929,7 +995,7 @@ int main( int argc, char** argv)
 
     cpu_brand = cpu_brand_string();
     LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")  %s\nAssembled by P.Skibinski\n\n", (uint32_t)(8 * sizeof(uint8_t*)), cpu_brand);
-    LZBENCH_PRINT(5, "params: chunk_size=%d c_iters=%d d_iters=%d cspeed=%d cmintime=%d dmintime=%d encoder_list=%s\n", (int)params->chunk_size, params->c_iters, params->d_iters, params->cspeed, params->cmintime, params->dmintime, encoder_list);
+    LZBENCH_PRINT(5, "params: chunk_size=%d c_iters=%d d_iters=%d cspeed=%d cmintime=%d dmintime=%d encoder_list=%s dictionary_list=%s\n", (int)params->chunk_size, params->c_iters, params->d_iters, params->cspeed, params->cmintime, params->dmintime, encoder_list, dictionary_list);
 
     if (ifnIdx < 1)  { usage(params); goto _clean; }
 
@@ -958,7 +1024,7 @@ int main( int argc, char** argv)
     if (join)
         result = lzbench_join(params, inFileNames, ifnIdx, encoder_list);
     else
-        result = lzbench_main(params, inFileNames, ifnIdx, encoder_list);
+        result = lzbench_main(params, inFileNames, ifnIdx, encoder_list, dictionary_list);
 
     if (params->chunk_size > 10 * (1<<20)) {
         LZBENCH_PRINT(2, "done... (cIters=%d dIters=%d cTime=%.1f dTime=%.1f chunkSize=%dMB cSpeed=%dMB)\n", params->c_iters, params->d_iters, params->cmintime/1000.0, params->dmintime/1000.0, (int)(params->chunk_size >> 20), params->cspeed);
@@ -991,6 +1057,7 @@ int main( int argc, char** argv)
 
 _clean:
     if (encoder_list) free(encoder_list);
+    if (dictionary_list) free(dictionary_list);
 #ifdef UTIL_HAS_CREATEFILELIST
     if (extendedFileList)
         UTIL_freeFileList(extendedFileList, fileNamesBuf);

@@ -350,7 +350,9 @@ $(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
 %: %.o
 
 
-_lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
+_lzbench/lzbench.o: %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CFLAGS) -std=gnu++11 $< -c -o $@
 
 lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
