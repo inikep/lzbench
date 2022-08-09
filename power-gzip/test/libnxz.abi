@@ -1,0 +1,1034 @@
+<abi-corpus architecture='elf-powerpc-64' soname='libnxz.so.0'>
+  <elf-needed>
+    <dependency name='libdl.so.2'/>
+    <dependency name='libc.so.6'/>
+  </elf-needed>
+  <elf-function-symbols>
+    <elf-symbol name='adler32' type='func-type' binding='global-binding' visibility='default-visibility' alias='nx_adler32_z@@LIBNXZ_0.61.0,adler32_z@@ZLIB_1.2.9' is-defined='yes'/>
+    <elf-symbol name='adler32_combine64' version='ZLIB_1.2.3.3' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='adler32_combine' version='ZLIB_1.2.2' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' alias='adler32_combine64@@ZLIB_1.2.3.3,nx_adler32_combine@@LIBNXZ_0.61.0' is-defined='yes'/>
+    <elf-symbol name='adler32_z' version='ZLIB_1.2.9' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='compress' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='compress2' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='compressBound' version='ZLIB_1.2.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='crc32' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='crc32_combine64' version='ZLIB_1.2.3.3' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' alias='nx_crc32_combine64@@LIBNXZ_0.61.0' is-defined='yes'/>
+    <elf-symbol name='crc32_combine' version='ZLIB_1.2.2' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='deflate' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='deflateBound' version='ZLIB_1.2.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='deflateCopy' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='deflateEnd' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='deflateInit2_' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='deflateInit_' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='deflateReset' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='deflateResetKeep' version='ZLIB_1.2.5.2' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='deflateSetDictionary' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='deflateSetHeader' version='ZLIB_1.2.2' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='inflate' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='inflateCopy' version='ZLIB_1.2.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='inflateEnd' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='inflateGetHeader' version='ZLIB_1.2.2' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='inflateInit2_' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='inflateInit_' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='inflateReset' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='inflateReset2' version='ZLIB_1.2.3.4' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='inflateResetKeep' version='ZLIB_1.2.5.2' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='inflateSetDictionary' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='inflateSyncPoint' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_adler32' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_adler32_combine' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_adler32_z' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_compress2' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_compress' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_compressBound' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_crc32' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_crc32_combine64' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_crc32_combine' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' alias='crc32_combine@@ZLIB_1.2.2' is-defined='yes'/>
+    <elf-symbol name='nx_deflate' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_deflateBound' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_deflateCopy' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_deflateEnd' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_deflateInit2_' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_deflateInit_' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_deflateReset' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_deflateSetDictionary' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_deflateSetHeader' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_inflate' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_inflateCopy' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_inflateEnd' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_inflateGetHeader' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_inflateInit2_' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_inflateInit_' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_inflateReset' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_inflateResetKeep' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_inflateSetDictionary' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_inflateSyncPoint' version='LIBNXZ_0.63.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_uncompress2' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='nx_uncompress' version='LIBNXZ_0.61.0' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='uncompress' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='uncompress2' version='ZLIB_1.2.9' is-default-version='yes' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+    <elf-symbol name='zlibVersion' type='func-type' binding='global-binding' visibility='default-visibility' is-defined='yes'/>
+  </elf-function-symbols>
+  <abi-instr version='1.0' address-size='64' path='gzip_vas.c' language='LANG_C99'>
+    <var-decl name='nx_fault_storage_address' type-id='type-id-1' visibility='default'/>
+    <var-decl name='tb_freq' type-id='type-id-2' visibility='default'/>
+    <typedef-decl name='uint64_t' type-id='type-id-3' id='type-id-2'/>
+    <pointer-type-def type-id='type-id-4' size-in-bits='64' id='type-id-1'/>
+    <typedef-decl name='__uint64_t' type-id='type-id-5' id='type-id-3'/>
+    <type-decl name='void' id='type-id-4'/>
+    <type-decl name='unsigned long int' size-in-bits='64' id='type-id-5'/>
+  </abi-instr>
+  <abi-instr version='1.0' address-size='64' path='nx_adler32.c' language='LANG_C99'>
+    <typedef-decl name='z_off64_t' type-id='type-id-6' id='type-id-7'/>
+    <typedef-decl name='off_t' type-id='type-id-8' id='type-id-6'/>
+    <typedef-decl name='z_size_t' type-id='type-id-9' id='type-id-10'/>
+    <function-decl name='nx_adler32_combine' mangled-name='adler32_combine' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='adler32_combine@@ZLIB_1.2.2'>
+      <parameter type-id='type-id-5' name='adler1'/>
+      <parameter type-id='type-id-5' name='adler2'/>
+      <parameter type-id='type-id-7' name='len2'/>
+      <return type-id='type-id-5'/>
+    </function-decl>
+    <function-decl name='nx_adler32' mangled-name='nx_adler32' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_adler32@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-5' name='adler'/>
+      <parameter type-id='type-id-11' name='buf'/>
+      <parameter type-id='type-id-12' name='len'/>
+      <return type-id='type-id-5'/>
+    </function-decl>
+    <function-decl name='nx_adler32_z' mangled-name='adler32' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='adler32'>
+      <parameter type-id='type-id-5' name='adler'/>
+      <parameter type-id='type-id-11' name='buf'/>
+      <parameter type-id='type-id-10' name='len'/>
+      <return type-id='type-id-5'/>
+    </function-decl>
+    <pointer-type-def type-id='type-id-13' size-in-bits='64' id='type-id-11'/>
+    <typedef-decl name='__off_t' type-id='type-id-14' id='type-id-8'/>
+    <typedef-decl name='size_t' type-id='type-id-5' id='type-id-9'/>
+    <type-decl name='unsigned int' size-in-bits='32' id='type-id-12'/>
+    <qualified-type-def type-id='type-id-15' const='yes' id='type-id-13'/>
+    <type-decl name='long int' size-in-bits='64' id='type-id-14'/>
+    <type-decl name='char' size-in-bits='8' id='type-id-15'/>
+  </abi-instr>
+  <abi-instr version='1.0' address-size='64' path='nx_compress.c' language='LANG_C99'>
+    <typedef-decl name='uLongf' type-id='type-id-16' id='type-id-17'/>
+    <pointer-type-def type-id='type-id-17' size-in-bits='64' id='type-id-18'/>
+    <function-decl name='compressBound' mangled-name='compressBound' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='compressBound@@ZLIB_1.2.0'>
+      <parameter type-id='type-id-16' name='sourceLen'/>
+      <return type-id='type-id-16'/>
+    </function-decl>
+    <function-decl name='compress2' mangled-name='compress2' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='compress2'>
+      <parameter type-id='type-id-19' name='dest'/>
+      <parameter type-id='type-id-18' name='destLen'/>
+      <parameter type-id='type-id-20' name='source'/>
+      <parameter type-id='type-id-16' name='sourceLen'/>
+      <parameter type-id='type-id-21' name='level'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='compress' mangled-name='compress' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='compress'>
+      <parameter type-id='type-id-19' name='dest'/>
+      <parameter type-id='type-id-18' name='destLen'/>
+      <parameter type-id='type-id-20' name='source'/>
+      <parameter type-id='type-id-16' name='sourceLen'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_compressBound' mangled-name='nx_compressBound' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_compressBound@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-16' name='sourceLen'/>
+      <return type-id='type-id-16'/>
+    </function-decl>
+    <function-decl name='nx_compress' mangled-name='nx_compress' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_compress@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-19' name='dest'/>
+      <parameter type-id='type-id-18' name='destLen'/>
+      <parameter type-id='type-id-20' name='source'/>
+      <parameter type-id='type-id-16' name='sourceLen'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_compress2' mangled-name='nx_compress2' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_compress2@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-19' name='dest'/>
+      <parameter type-id='type-id-18' name='destLen'/>
+      <parameter type-id='type-id-20' name='source'/>
+      <parameter type-id='type-id-16' name='sourceLen'/>
+      <parameter type-id='type-id-21' name='level'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <pointer-type-def type-id='type-id-22' size-in-bits='64' id='type-id-19'/>
+    <pointer-type-def type-id='type-id-23' size-in-bits='64' id='type-id-20'/>
+    <type-decl name='int' size-in-bits='32' id='type-id-21'/>
+    <typedef-decl name='uLong' type-id='type-id-5' id='type-id-16'/>
+    <qualified-type-def type-id='type-id-22' const='yes' id='type-id-23'/>
+    <typedef-decl name='Bytef' type-id='type-id-24' id='type-id-22'/>
+    <typedef-decl name='Byte' type-id='type-id-25' id='type-id-24'/>
+    <type-decl name='unsigned char' size-in-bits='8' id='type-id-25'/>
+  </abi-instr>
+  <abi-instr version='1.0' address-size='64' path='nx_crc.c' language='LANG_C99'>
+    <function-decl name='crc32' mangled-name='crc32' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='crc32'>
+      <parameter type-id='type-id-5' name='crc'/>
+      <parameter type-id='type-id-26' name='buf'/>
+      <parameter type-id='type-id-27' name='len'/>
+      <return type-id='type-id-5'/>
+    </function-decl>
+    <function-decl name='nx_crc32' mangled-name='nx_crc32' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_crc32@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-5' name='crc'/>
+      <parameter type-id='type-id-26' name='buf'/>
+      <parameter type-id='type-id-2' name='len'/>
+      <return type-id='type-id-5'/>
+    </function-decl>
+    <function-decl name='nx_crc32_combine' mangled-name='nx_crc32_combine' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_crc32_combine@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-16' name='crc1'/>
+      <parameter type-id='type-id-16' name='crc2'/>
+      <parameter type-id='type-id-2' name='len2'/>
+      <return type-id='type-id-16'/>
+    </function-decl>
+    <pointer-type-def type-id='type-id-28' size-in-bits='64' id='type-id-26'/>
+    <typedef-decl name='uInt' type-id='type-id-12' id='type-id-27'/>
+    <qualified-type-def type-id='type-id-25' const='yes' id='type-id-28'/>
+  </abi-instr>
+  <abi-instr version='1.0' address-size='64' path='nx_deflate.c' language='LANG_C99'>
+    <qualified-type-def type-id='type-id-25' const='yes' id='type-id-28'/>
+    <pointer-type-def type-id='type-id-28' size-in-bits='64' id='type-id-26'/>
+    <function-decl name='deflateCopy' mangled-name='deflateCopy' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='deflateCopy'>
+      <parameter type-id='type-id-29' name='dest'/>
+      <parameter type-id='type-id-29' name='source'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='deflateSetDictionary' mangled-name='deflateSetDictionary' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='deflateSetDictionary'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-20' name='dictionary'/>
+      <parameter type-id='type-id-27' name='dictLength'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='deflateSetHeader' mangled-name='deflateSetHeader' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='deflateSetHeader@@ZLIB_1.2.2'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-30' name='head'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='deflateBound' mangled-name='deflateBound' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='deflateBound@@ZLIB_1.2.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-5' name='sourceLen'/>
+      <return type-id='type-id-5'/>
+    </function-decl>
+    <function-decl name='deflate' mangled-name='deflate' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='deflate'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-21' name='flush'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='deflateEnd' mangled-name='deflateEnd' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='deflateEnd'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='deflateResetKeep' mangled-name='deflateResetKeep' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='deflateResetKeep@@ZLIB_1.2.5.2'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='deflateReset' mangled-name='deflateReset' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='deflateReset'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='deflateInit2_' mangled-name='deflateInit2_' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='deflateInit2_'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-21' name='level'/>
+      <parameter type-id='type-id-21' name='method'/>
+      <parameter type-id='type-id-21' name='windowBits'/>
+      <parameter type-id='type-id-21' name='memLevel'/>
+      <parameter type-id='type-id-21' name='strategy'/>
+      <parameter type-id='type-id-11' name='version'/>
+      <parameter type-id='type-id-21' name='stream_size'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='deflateInit_' mangled-name='deflateInit_' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='deflateInit_'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-21' name='level'/>
+      <parameter type-id='type-id-11' name='version'/>
+      <parameter type-id='type-id-21' name='stream_size'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_deflateCopy' mangled-name='nx_deflateCopy' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_deflateCopy@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='dest'/>
+      <parameter type-id='type-id-29' name='source'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_deflateSetDictionary' mangled-name='nx_deflateSetDictionary' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_deflateSetDictionary@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-26' name='dictionary'/>
+      <parameter type-id='type-id-12' name='dictLength'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_deflateSetHeader' mangled-name='nx_deflateSetHeader' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_deflateSetHeader@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-30' name='head'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_deflateBound' mangled-name='nx_deflateBound' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_deflateBound@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-5' name='sourceLen'/>
+      <return type-id='type-id-5'/>
+    </function-decl>
+    <function-decl name='nx_deflate' mangled-name='nx_deflate' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_deflate@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-21' name='flush'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_deflateInit2_' mangled-name='nx_deflateInit2_' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_deflateInit2_@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-21' name='level'/>
+      <parameter type-id='type-id-21' name='method'/>
+      <parameter type-id='type-id-21' name='windowBits'/>
+      <parameter type-id='type-id-21' name='memLevel'/>
+      <parameter type-id='type-id-21' name='strategy'/>
+      <parameter type-id='type-id-11' name='version'/>
+      <parameter type-id='type-id-21' name='stream_size'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_deflateInit_' mangled-name='nx_deflateInit_' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_deflateInit_@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-21' name='level'/>
+      <parameter type-id='type-id-11' name='version'/>
+      <parameter type-id='type-id-21' name='stream_size'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_deflateEnd' mangled-name='nx_deflateEnd' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_deflateEnd@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_deflateReset' mangled-name='nx_deflateReset' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_deflateReset@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <typedef-decl name='gz_headerp' type-id='type-id-31' id='type-id-30'/>
+    <typedef-decl name='z_streamp' type-id='type-id-32' id='type-id-29'/>
+    <pointer-type-def type-id='type-id-33' size-in-bits='64' id='type-id-31'/>
+    <pointer-type-def type-id='type-id-34' size-in-bits='64' id='type-id-32'/>
+    <typedef-decl name='gz_header' type-id='type-id-35' id='type-id-33'/>
+    <typedef-decl name='z_stream' type-id='type-id-36' id='type-id-34'/>
+    <class-decl name='gz_header_s' size-in-bits='640' is-struct='yes' visibility='default' id='type-id-35'>
+      <data-member access='public' layout-offset-in-bits='0'>
+        <var-decl name='text' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='64'>
+        <var-decl name='time' type-id='type-id-16' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='128'>
+        <var-decl name='xflags' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='160'>
+        <var-decl name='os' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='192'>
+        <var-decl name='extra' type-id='type-id-19' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='256'>
+        <var-decl name='extra_len' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='288'>
+        <var-decl name='extra_max' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='320'>
+        <var-decl name='name' type-id='type-id-19' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='384'>
+        <var-decl name='name_max' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='448'>
+        <var-decl name='comment' type-id='type-id-19' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='512'>
+        <var-decl name='comm_max' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='544'>
+        <var-decl name='hcrc' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='576'>
+        <var-decl name='done' type-id='type-id-21' visibility='default'/>
+      </data-member>
+    </class-decl>
+    <class-decl name='z_stream_s' size-in-bits='896' is-struct='yes' visibility='default' id='type-id-36'>
+      <data-member access='public' layout-offset-in-bits='0'>
+        <var-decl name='next_in' type-id='type-id-19' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='64'>
+        <var-decl name='avail_in' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='128'>
+        <var-decl name='total_in' type-id='type-id-16' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='192'>
+        <var-decl name='next_out' type-id='type-id-19' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='256'>
+        <var-decl name='avail_out' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='320'>
+        <var-decl name='total_out' type-id='type-id-16' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='384'>
+        <var-decl name='msg' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='448'>
+        <var-decl name='state' type-id='type-id-38' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='512'>
+        <var-decl name='zalloc' type-id='type-id-39' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='576'>
+        <var-decl name='zfree' type-id='type-id-40' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='640'>
+        <var-decl name='opaque' type-id='type-id-41' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='704'>
+        <var-decl name='data_type' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='768'>
+        <var-decl name='adler' type-id='type-id-16' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='832'>
+        <var-decl name='reserved' type-id='type-id-16' visibility='default'/>
+      </data-member>
+    </class-decl>
+    <pointer-type-def type-id='type-id-15' size-in-bits='64' id='type-id-37'/>
+    <pointer-type-def type-id='type-id-42' size-in-bits='64' id='type-id-38'/>
+    <typedef-decl name='alloc_func' type-id='type-id-43' id='type-id-39'/>
+    <typedef-decl name='free_func' type-id='type-id-44' id='type-id-40'/>
+    <typedef-decl name='voidpf' type-id='type-id-1' id='type-id-41'/>
+    <class-decl name='internal_state' is-struct='yes' visibility='default' is-declaration-only='yes' id='type-id-42'/>
+    <pointer-type-def type-id='type-id-45' size-in-bits='64' id='type-id-43'/>
+    <pointer-type-def type-id='type-id-46' size-in-bits='64' id='type-id-44'/>
+  </abi-instr>
+  <abi-instr version='1.0' address-size='64' path='nx_inflate.c' language='LANG_C99'>
+    <type-decl name='char' size-in-bits='8' id='type-id-15'/>
+    <class-decl name='internal_state' is-struct='yes' visibility='default' is-declaration-only='yes' id='type-id-42'/>
+    <type-decl name='int' size-in-bits='32' id='type-id-21'/>
+    <type-decl name='unsigned char' size-in-bits='8' id='type-id-25'/>
+    <type-decl name='unsigned int' size-in-bits='32' id='type-id-12'/>
+    <type-decl name='unsigned long int' size-in-bits='64' id='type-id-5'/>
+    <type-decl name='void' id='type-id-4'/>
+    <typedef-decl name='z_streamp' type-id='type-id-32' id='type-id-29'/>
+    <typedef-decl name='z_stream' type-id='type-id-36' id='type-id-34'/>
+    <class-decl name='z_stream_s' size-in-bits='896' is-struct='yes' visibility='default' id='type-id-36'>
+      <data-member access='public' layout-offset-in-bits='0'>
+        <var-decl name='next_in' type-id='type-id-19' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='64'>
+        <var-decl name='avail_in' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='128'>
+        <var-decl name='total_in' type-id='type-id-16' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='192'>
+        <var-decl name='next_out' type-id='type-id-19' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='256'>
+        <var-decl name='avail_out' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='320'>
+        <var-decl name='total_out' type-id='type-id-16' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='384'>
+        <var-decl name='msg' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='448'>
+        <var-decl name='state' type-id='type-id-38' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='512'>
+        <var-decl name='zalloc' type-id='type-id-39' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='576'>
+        <var-decl name='zfree' type-id='type-id-40' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='640'>
+        <var-decl name='opaque' type-id='type-id-41' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='704'>
+        <var-decl name='data_type' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='768'>
+        <var-decl name='adler' type-id='type-id-16' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='832'>
+        <var-decl name='reserved' type-id='type-id-16' visibility='default'/>
+      </data-member>
+    </class-decl>
+    <typedef-decl name='Bytef' type-id='type-id-24' id='type-id-22'/>
+    <typedef-decl name='Byte' type-id='type-id-25' id='type-id-24'/>
+    <typedef-decl name='uInt' type-id='type-id-12' id='type-id-27'/>
+    <typedef-decl name='uLong' type-id='type-id-5' id='type-id-16'/>
+    <typedef-decl name='alloc_func' type-id='type-id-43' id='type-id-39'/>
+    <typedef-decl name='voidpf' type-id='type-id-1' id='type-id-41'/>
+    <typedef-decl name='free_func' type-id='type-id-44' id='type-id-40'/>
+    <typedef-decl name='gz_headerp' type-id='type-id-31' id='type-id-30'/>
+    <typedef-decl name='gz_header' type-id='type-id-35' id='type-id-33'/>
+    <class-decl name='gz_header_s' size-in-bits='640' is-struct='yes' visibility='default' id='type-id-35'>
+      <data-member access='public' layout-offset-in-bits='0'>
+        <var-decl name='text' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='64'>
+        <var-decl name='time' type-id='type-id-16' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='128'>
+        <var-decl name='xflags' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='160'>
+        <var-decl name='os' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='192'>
+        <var-decl name='extra' type-id='type-id-19' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='256'>
+        <var-decl name='extra_len' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='288'>
+        <var-decl name='extra_max' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='320'>
+        <var-decl name='name' type-id='type-id-19' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='384'>
+        <var-decl name='name_max' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='448'>
+        <var-decl name='comment' type-id='type-id-19' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='512'>
+        <var-decl name='comm_max' type-id='type-id-27' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='544'>
+        <var-decl name='hcrc' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='576'>
+        <var-decl name='done' type-id='type-id-21' visibility='default'/>
+      </data-member>
+    </class-decl>
+    <pointer-type-def type-id='type-id-22' size-in-bits='64' id='type-id-19'/>
+    <pointer-type-def type-id='type-id-15' size-in-bits='64' id='type-id-37'/>
+    <qualified-type-def type-id='type-id-22' const='yes' id='type-id-23'/>
+    <pointer-type-def type-id='type-id-23' size-in-bits='64' id='type-id-20'/>
+    <qualified-type-def type-id='type-id-15' const='yes' id='type-id-13'/>
+    <pointer-type-def type-id='type-id-13' size-in-bits='64' id='type-id-11'/>
+    <pointer-type-def type-id='type-id-33' size-in-bits='64' id='type-id-31'/>
+    <pointer-type-def type-id='type-id-42' size-in-bits='64' id='type-id-38'/>
+    <pointer-type-def type-id='type-id-45' size-in-bits='64' id='type-id-43'/>
+    <pointer-type-def type-id='type-id-46' size-in-bits='64' id='type-id-44'/>
+    <pointer-type-def type-id='type-id-4' size-in-bits='64' id='type-id-1'/>
+    <pointer-type-def type-id='type-id-34' size-in-bits='64' id='type-id-32'/>
+    <function-decl name='inflateSyncPoint' mangled-name='inflateSyncPoint' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='inflateSyncPoint'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='inflateGetHeader' mangled-name='inflateGetHeader' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='inflateGetHeader@@ZLIB_1.2.2'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-30' name='head'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='inflateCopy' mangled-name='inflateCopy' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='inflateCopy@@ZLIB_1.2.0'>
+      <parameter type-id='type-id-29' name='dest'/>
+      <parameter type-id='type-id-29' name='source'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='inflateSetDictionary' mangled-name='inflateSetDictionary' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='inflateSetDictionary'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-20' name='dictionary'/>
+      <parameter type-id='type-id-27' name='dictLength'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='inflate' mangled-name='inflate' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='inflate'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-21' name='flush'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='inflateEnd' mangled-name='inflateEnd' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='inflateEnd'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='inflateResetKeep' mangled-name='inflateResetKeep' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='inflateResetKeep@@ZLIB_1.2.5.2'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='inflateReset2' mangled-name='inflateReset2' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='inflateReset2@@ZLIB_1.2.3.4'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-21' name='windowBits'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='inflateReset' mangled-name='inflateReset' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='inflateReset'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='inflateInit_' mangled-name='inflateInit_' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='inflateInit_'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-11' name='version'/>
+      <parameter type-id='type-id-21' name='stream_size'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_inflateSyncPoint' mangled-name='nx_inflateSyncPoint' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_inflateSyncPoint@@LIBNXZ_0.63.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_inflateGetHeader' mangled-name='nx_inflateGetHeader' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_inflateGetHeader@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-30' name='head'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_inflateCopy' mangled-name='nx_inflateCopy' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_inflateCopy@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='dest'/>
+      <parameter type-id='type-id-29' name='source'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_inflateSetDictionary' mangled-name='nx_inflateSetDictionary' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_inflateSetDictionary@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-20' name='dictionary'/>
+      <parameter type-id='type-id-27' name='dictLength'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_inflate' mangled-name='nx_inflate' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_inflate@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-21' name='flush'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_inflateEnd' mangled-name='nx_inflateEnd' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_inflateEnd@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_inflateInit_' mangled-name='nx_inflateInit_' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_inflateInit_@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-11' name='version'/>
+      <parameter type-id='type-id-21' name='stream_size'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_inflateInit2_' mangled-name='nx_inflateInit2_' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_inflateInit2_@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-21' name='windowBits'/>
+      <parameter type-id='type-id-11' name='version'/>
+      <parameter type-id='type-id-21' name='stream_size'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_inflateReset' mangled-name='nx_inflateReset' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_inflateReset@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_inflateResetKeep' mangled-name='nx_inflateResetKeep' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_inflateResetKeep@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='inflateInit2_' mangled-name='inflateInit2_' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='inflateInit2_'>
+      <parameter type-id='type-id-29' name='strm'/>
+      <parameter type-id='type-id-21' name='windowBits'/>
+      <parameter type-id='type-id-11' name='version'/>
+      <parameter type-id='type-id-21' name='stream_size'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-type size-in-bits='64' id='type-id-45'>
+      <parameter type-id='type-id-41'/>
+      <parameter type-id='type-id-27'/>
+      <parameter type-id='type-id-27'/>
+      <return type-id='type-id-41'/>
+    </function-type>
+    <function-type size-in-bits='64' id='type-id-46'>
+      <parameter type-id='type-id-41'/>
+      <parameter type-id='type-id-41'/>
+      <return type-id='type-id-4'/>
+    </function-type>
+  </abi-instr>
+  <abi-instr version='1.0' address-size='64' path='nx_uncompr.c' language='LANG_C99'>
+    <pointer-type-def type-id='type-id-16' size-in-bits='64' id='type-id-47'/>
+    <function-decl name='uncompress' mangled-name='uncompress' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='uncompress'>
+      <parameter type-id='type-id-19' name='dest'/>
+      <parameter type-id='type-id-18' name='destLen'/>
+      <parameter type-id='type-id-20' name='source'/>
+      <parameter type-id='type-id-16' name='sourceLen'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='uncompress2' mangled-name='uncompress2' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='uncompress2@@ZLIB_1.2.9'>
+      <parameter type-id='type-id-19' name='dest'/>
+      <parameter type-id='type-id-18' name='destLen'/>
+      <parameter type-id='type-id-20' name='source'/>
+      <parameter type-id='type-id-47' name='sourceLen'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_uncompress' mangled-name='nx_uncompress' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_uncompress@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-19' name='dest'/>
+      <parameter type-id='type-id-18' name='destLen'/>
+      <parameter type-id='type-id-20' name='source'/>
+      <parameter type-id='type-id-16' name='sourceLen'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+    <function-decl name='nx_uncompress2' mangled-name='nx_uncompress2' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='nx_uncompress2@@LIBNXZ_0.61.0'>
+      <parameter type-id='type-id-19' name='dest'/>
+      <parameter type-id='type-id-18' name='destLen'/>
+      <parameter type-id='type-id-20' name='source'/>
+      <parameter type-id='type-id-47' name='sourceLen'/>
+      <return type-id='type-id-21'/>
+    </function-decl>
+  </abi-instr>
+  <abi-instr version='1.0' address-size='64' path='nx_zlib.c' language='LANG_C99'>
+    <array-type-def dimensions='1' type-id='type-id-15' size-in-bits='8' id='type-id-48'>
+      <subrange length='1' type-id='type-id-5' id='type-id-49'/>
+    </array-type-def>
+    <array-type-def dimensions='1' type-id='type-id-15' size-in-bits='160' id='type-id-50'>
+      <subrange length='20' type-id='type-id-5' id='type-id-51'/>
+    </array-type-def>
+    <array-type-def dimensions='1' type-id='type-id-15' size-in-bits='320' id='type-id-52'>
+      <subrange length='40' type-id='type-id-5' id='type-id-53'/>
+    </array-type-def>
+    <class-decl name='_IO_codecvt' is-struct='yes' visibility='default' is-declaration-only='yes' id='type-id-54'/>
+    <class-decl name='_IO_marker' is-struct='yes' visibility='default' is-declaration-only='yes' id='type-id-55'/>
+    <class-decl name='_IO_wide_data' is-struct='yes' visibility='default' is-declaration-only='yes' id='type-id-56'/>
+    <type-decl name='long int' size-in-bits='64' id='type-id-14'/>
+    <type-decl name='short int' size-in-bits='16' id='type-id-57'/>
+    <type-decl name='signed char' size-in-bits='8' id='type-id-58'/>
+    <array-type-def dimensions='1' type-id='type-id-5' size-in-bits='16384' id='type-id-59'>
+      <subrange length='256' type-id='type-id-5' id='type-id-60'/>
+    </array-type-def>
+    <type-decl name='unsigned short int' size-in-bits='16' id='type-id-61'/>
+    <class-decl name='nx_config_t' size-in-bits='768' is-struct='yes' visibility='default' id='type-id-62'>
+      <data-member access='public' layout-offset-in-bits='0'>
+        <var-decl name='page_sz' type-id='type-id-14' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='64'>
+        <var-decl name='line_sz' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='96'>
+        <var-decl name='stored_block_len' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='128'>
+        <var-decl name='max_byte_count_low' type-id='type-id-63' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='160'>
+        <var-decl name='max_byte_count_high' type-id='type-id-63' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='192'>
+        <var-decl name='max_byte_count_current' type-id='type-id-63' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='224'>
+        <var-decl name='max_source_dde_count' type-id='type-id-63' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='256'>
+        <var-decl name='max_target_dde_count' type-id='type-id-63' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='288'>
+        <var-decl name='max_vas_reuse_count' type-id='type-id-63' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='320'>
+        <var-decl name='per_job_len' type-id='type-id-63' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='352'>
+        <var-decl name='strm_def_bufsz' type-id='type-id-63' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='384'>
+        <var-decl name='soft_copy_threshold' type-id='type-id-63' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='416'>
+        <var-decl name='cache_threshold' type-id='type-id-63' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='448'>
+        <var-decl name='deflate_fifo_in_len' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='480'>
+        <var-decl name='deflate_fifo_out_len' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='512'>
+        <var-decl name='window_max' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='544'>
+        <var-decl name='timeout_pgfaults' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='576'>
+        <var-decl name='verbose' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='608'>
+        <var-decl name='mlock_nx_crb_csb' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='640'>
+        <var-decl name='dht' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='672'>
+        <var-decl name='nx_ratio' type-id='type-id-64' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='704'>
+        <var-decl name='strategy_override' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='736'>
+        <var-decl name='gzip_selector' type-id='type-id-64' visibility='default'/>
+      </data-member>
+    </class-decl>
+    <typedef-decl name='uint32_t' type-id='type-id-65' id='type-id-63'/>
+    <typedef-decl name='__uint32_t' type-id='type-id-12' id='type-id-65'/>
+    <typedef-decl name='uint8_t' type-id='type-id-66' id='type-id-64'/>
+    <typedef-decl name='__uint8_t' type-id='type-id-25' id='type-id-66'/>
+    <typedef-decl name='FILE' type-id='type-id-67' id='type-id-68'/>
+    <class-decl name='_IO_FILE' size-in-bits='1728' is-struct='yes' visibility='default' id='type-id-67'>
+      <data-member access='public' layout-offset-in-bits='0'>
+        <var-decl name='_flags' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='64'>
+        <var-decl name='_IO_read_ptr' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='128'>
+        <var-decl name='_IO_read_end' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='192'>
+        <var-decl name='_IO_read_base' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='256'>
+        <var-decl name='_IO_write_base' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='320'>
+        <var-decl name='_IO_write_ptr' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='384'>
+        <var-decl name='_IO_write_end' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='448'>
+        <var-decl name='_IO_buf_base' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='512'>
+        <var-decl name='_IO_buf_end' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='576'>
+        <var-decl name='_IO_save_base' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='640'>
+        <var-decl name='_IO_backup_base' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='704'>
+        <var-decl name='_IO_save_end' type-id='type-id-37' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='768'>
+        <var-decl name='_markers' type-id='type-id-69' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='832'>
+        <var-decl name='_chain' type-id='type-id-70' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='896'>
+        <var-decl name='_fileno' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='928'>
+        <var-decl name='_flags2' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='960'>
+        <var-decl name='_old_offset' type-id='type-id-8' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1024'>
+        <var-decl name='_cur_column' type-id='type-id-61' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1040'>
+        <var-decl name='_vtable_offset' type-id='type-id-58' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1048'>
+        <var-decl name='_shortbuf' type-id='type-id-48' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1088'>
+        <var-decl name='_lock' type-id='type-id-71' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1152'>
+        <var-decl name='_offset' type-id='type-id-72' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1216'>
+        <var-decl name='_codecvt' type-id='type-id-73' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1280'>
+        <var-decl name='_wide_data' type-id='type-id-74' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1344'>
+        <var-decl name='_freeres_list' type-id='type-id-70' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1408'>
+        <var-decl name='_freeres_buf' type-id='type-id-1' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1472'>
+        <var-decl name='__pad5' type-id='type-id-9' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1536'>
+        <var-decl name='_mode' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='1568'>
+        <var-decl name='_unused2' type-id='type-id-50' visibility='default'/>
+      </data-member>
+    </class-decl>
+    <typedef-decl name='__off_t' type-id='type-id-14' id='type-id-8'/>
+    <typedef-decl name='_IO_lock_t' type-id='type-id-4' id='type-id-75'/>
+    <typedef-decl name='__off64_t' type-id='type-id-14' id='type-id-72'/>
+    <typedef-decl name='size_t' type-id='type-id-5' id='type-id-9'/>
+    <typedef-decl name='pthread_mutex_t' type-id='type-id-76' id='type-id-77'/>
+    <union-decl name='__anonymous_union__' size-in-bits='320' is-anonymous='yes' visibility='default' id='type-id-76'>
+      <data-member access='private'>
+        <var-decl name='__data' type-id='type-id-78' visibility='default'/>
+      </data-member>
+      <data-member access='private'>
+        <var-decl name='__size' type-id='type-id-52' visibility='default'/>
+      </data-member>
+      <data-member access='private'>
+        <var-decl name='__align' type-id='type-id-14' visibility='default'/>
+      </data-member>
+    </union-decl>
+    <class-decl name='__pthread_mutex_s' size-in-bits='320' is-struct='yes' visibility='default' id='type-id-78'>
+      <data-member access='public' layout-offset-in-bits='0'>
+        <var-decl name='__lock' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='32'>
+        <var-decl name='__count' type-id='type-id-12' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='64'>
+        <var-decl name='__owner' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='96'>
+        <var-decl name='__nusers' type-id='type-id-12' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='128'>
+        <var-decl name='__kind' type-id='type-id-21' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='160'>
+        <var-decl name='__spins' type-id='type-id-57' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='176'>
+        <var-decl name='__elision' type-id='type-id-57' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='192'>
+        <var-decl name='__list' type-id='type-id-79' visibility='default'/>
+      </data-member>
+    </class-decl>
+    <typedef-decl name='__pthread_list_t' type-id='type-id-80' id='type-id-79'/>
+    <class-decl name='__pthread_internal_list' size-in-bits='128' is-struct='yes' visibility='default' id='type-id-80'>
+      <data-member access='public' layout-offset-in-bits='0'>
+        <var-decl name='__prev' type-id='type-id-81' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='64'>
+        <var-decl name='__next' type-id='type-id-81' visibility='default'/>
+      </data-member>
+    </class-decl>
+    <class-decl name='zlib_stats' size-in-bits='133056' is-struct='yes' visibility='default' id='type-id-82'>
+      <data-member access='public' layout-offset-in-bits='0'>
+        <var-decl name='deflateInit' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='64'>
+        <var-decl name='deflate' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='128'>
+        <var-decl name='deflate_sw' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='192'>
+        <var-decl name='deflate_nx' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='256'>
+        <var-decl name='deflate_avail_in' type-id='type-id-59' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='16640'>
+        <var-decl name='deflate_avail_out' type-id='type-id-59' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='33024'>
+        <var-decl name='deflateReset' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='33088'>
+        <var-decl name='deflate_total_in' type-id='type-id-59' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='49472'>
+        <var-decl name='deflate_total_out' type-id='type-id-59' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='65856'>
+        <var-decl name='deflateSetDictionary' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='65920'>
+        <var-decl name='deflateSetHeader' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='65984'>
+        <var-decl name='deflateParams' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='66048'>
+        <var-decl name='deflateBound' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='66112'>
+        <var-decl name='deflatePrime' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='66176'>
+        <var-decl name='deflateCopy' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='66240'>
+        <var-decl name='deflateEnd' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='66304'>
+        <var-decl name='compress' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='66368'>
+        <var-decl name='inflateInit' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='66432'>
+        <var-decl name='inflate' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='66496'>
+        <var-decl name='inflate_sw' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='66560'>
+        <var-decl name='inflate_nx' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='66624'>
+        <var-decl name='inflate_avail_in' type-id='type-id-59' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='83008'>
+        <var-decl name='inflate_avail_out' type-id='type-id-59' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='99392'>
+        <var-decl name='inflateReset' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='99456'>
+        <var-decl name='inflateReset2' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='99520'>
+        <var-decl name='inflate_total_in' type-id='type-id-59' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='115904'>
+        <var-decl name='inflate_total_out' type-id='type-id-59' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132288'>
+        <var-decl name='inflateSetDictionary' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132352'>
+        <var-decl name='inflateGetDictionary' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132416'>
+        <var-decl name='inflateGetHeader' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132480'>
+        <var-decl name='inflateSync' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132544'>
+        <var-decl name='inflatePrime' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132608'>
+        <var-decl name='inflateCopy' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132672'>
+        <var-decl name='inflateEnd' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132736'>
+        <var-decl name='uncompress' type-id='type-id-5' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132800'>
+        <var-decl name='deflate_len' type-id='type-id-2' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132864'>
+        <var-decl name='deflate_time' type-id='type-id-2' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132928'>
+        <var-decl name='inflate_len' type-id='type-id-2' visibility='default'/>
+      </data-member>
+      <data-member access='public' layout-offset-in-bits='132992'>
+        <var-decl name='inflate_time' type-id='type-id-2' visibility='default'/>
+      </data-member>
+    </class-decl>
+    <typedef-decl name='uint64_t' type-id='type-id-3' id='type-id-2'/>
+    <typedef-decl name='__uint64_t' type-id='type-id-5' id='type-id-3'/>
+    <pointer-type-def type-id='type-id-68' size-in-bits='64' id='type-id-83'/>
+    <pointer-type-def type-id='type-id-67' size-in-bits='64' id='type-id-70'/>
+    <pointer-type-def type-id='type-id-54' size-in-bits='64' id='type-id-73'/>
+    <pointer-type-def type-id='type-id-75' size-in-bits='64' id='type-id-71'/>
+    <pointer-type-def type-id='type-id-55' size-in-bits='64' id='type-id-69'/>
+    <pointer-type-def type-id='type-id-56' size-in-bits='64' id='type-id-74'/>
+    <pointer-type-def type-id='type-id-80' size-in-bits='64' id='type-id-81'/>
+    <var-decl name='nx_config' type-id='type-id-62' visibility='default'/>
+    <var-decl name='nx_dbg' type-id='type-id-21' visibility='default'/>
+    <var-decl name='nx_gzip_trace' type-id='type-id-21' visibility='default'/>
+    <var-decl name='nx_gzip_log' type-id='type-id-83' visibility='default'/>
+    <var-decl name='mutex_log' type-id='type-id-77' visibility='default'/>
+    <var-decl name='zlib_stats_mutex' type-id='type-id-77' visibility='default'/>
+    <var-decl name='zlib_stats' type-id='type-id-82' visibility='default'/>
+    <function-decl name='zlibVersion' mangled-name='zlibVersion' visibility='default' binding='global' size-in-bits='64' elf-symbol-id='zlibVersion'>
+      <return type-id='type-id-11'/>
+    </function-decl>
+  </abi-instr>
+</abi-corpus>

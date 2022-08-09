@@ -1,0 +1,13 @@
+AWK=@AWK@
+BZIP2=$(which bzip2)
+FILE=$(which file)
+GZIP=@GZIP@
+DEFLATE="./minideflate"
+MINIGZ="@srcdir@/minigzipsh"
+LIBNXZ="LD_PRELOAD=$(pwd)/../lib/.libs/libnxz.so.0 LD_LIBRARY_PATH=$(pwd):@srcdir@"
+SED=@SED@
+SHA256SUM=@SHA256SUM@
+WGET=@WGET@
+XZ=$(which xz)
+
+srcdir=@srcdir@

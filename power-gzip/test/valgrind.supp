@@ -1,0 +1,5 @@
+{
+  compare_data
+  Memcheck:Cond
+  fun:compare_data
+}

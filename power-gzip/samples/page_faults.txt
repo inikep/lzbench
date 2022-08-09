@@ -1,0 +1,9 @@
+We can get page fault on data page or CRB itself.
+
+- When fault is in data page, set CC=5 and fault address will be in csb.address or crb.stamp.nx.fault_storage_addr
+    csb.address = crb_nx_fault_addr(crb);
+- If the fault is in CSB or CRB itself, means kernel can not update CSB. In this case, set CC=5 and generates SIGSEGV
+
+1. When I got a cc=5, why I did not get a signal SIGSEGV? Should I use SIGSEGV or other to get more information?
+
+	Means the fault is not on CRB page and is expected. 

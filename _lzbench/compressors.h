@@ -126,6 +126,15 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 #endif
 
 
+#ifndef BENCH_REMOVE_LIBNXZ
+	int64_t lzbench_libnxz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+	int64_t lzbench_libnxz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+#else
+	#define lzbench_libnxz_compress NULL
+	#define lzbench_libnxz_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_LIZARD
 	int64_t lzbench_lizard_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
 	int64_t lzbench_lizard_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);

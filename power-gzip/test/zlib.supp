@@ -1,0 +1,154 @@
+# List of zlib exported symbols currently not implemented by libnxz. These
+# must be ignored in our ABI comparison for now.
+[suppress_function]
+  symbol_name = crc32_z
+
+[suppress_function]
+  symbol_name = deflateGetDictionary
+
+[suppress_function]
+  symbol_name = deflateParams
+
+[suppress_function]
+  symbol_name = deflatePending
+
+[suppress_function]
+  symbol_name = deflatePrime
+
+[suppress_function]
+  symbol_name = deflateTune
+
+[suppress_function]
+  symbol_name = get_crc_table
+
+[suppress_function]
+  symbol_name = gzbuffer
+
+[suppress_function]
+  symbol_name = gzclearerr
+
+[suppress_function]
+  symbol_name = gzclose
+
+[suppress_function]
+  symbol_name = gzclose_r
+
+[suppress_function]
+  symbol_name = gzclose_w
+
+[suppress_function]
+  symbol_name = gzdirect
+
+[suppress_function]
+  symbol_name = gzdopen
+
+[suppress_function]
+  symbol_name = gzeof
+
+[suppress_function]
+  symbol_name = gzerror
+
+[suppress_function]
+  symbol_name = gzflush
+
+[suppress_function]
+  symbol_name = gzfread
+
+[suppress_function]
+  symbol_name = gzfwrite
+
+[suppress_function]
+  symbol_name = gzgetc
+
+[suppress_function]
+  symbol_name = gzgetc_
+
+[suppress_function]
+  symbol_name = gzgets
+
+[suppress_function]
+  symbol_name = gzoffset64
+
+[suppress_function]
+  symbol_name = gzoffset
+
+[suppress_function]
+  symbol_name = gzopen
+
+[suppress_function]
+  symbol_name = gzopen64
+
+[suppress_function]
+  symbol_name = gzprintf
+
+[suppress_function]
+  symbol_name = gzputc
+
+[suppress_function]
+  symbol_name = gzputs
+
+[suppress_function]
+  symbol_name = gzread
+
+[suppress_function]
+  symbol_name = gzrewind
+
+[suppress_function]
+  symbol_name = gzseek
+
+[suppress_function]
+  symbol_name = gzseek64
+
+[suppress_function]
+  symbol_name = gzsetparams
+
+[suppress_function]
+  symbol_name = gztell
+
+[suppress_function]
+  symbol_name = gztell64
+
+[suppress_function]
+  symbol_name = gzungetc
+
+[suppress_function]
+  symbol_name = gzvprintf
+
+[suppress_function]
+  symbol_name = gzwrite
+
+[suppress_function]
+  symbol_name = inflateBack
+
+[suppress_function]
+  symbol_name = inflateBackEnd
+
+[suppress_function]
+  symbol_name = inflateBackInit_
+
+[suppress_function]
+  symbol_name = inflateCodesUsed
+
+[suppress_function]
+  symbol_name = inflateGetDictionary
+
+[suppress_function]
+  symbol_name = inflateMark
+
+[suppress_function]
+  symbol_name = inflatePrime
+
+[suppress_function]
+  symbol_name = inflateSync
+
+[suppress_function]
+  symbol_name = inflateUndermine
+
+[suppress_function]
+  symbol_name = inflateValidate
+
+[suppress_function]
+  symbol_name = zError
+
+[suppress_function]
+  symbol_name = zlibCompileFlags

@@ -1,0 +1,13 @@
+*.bz2
+*.compdecomp.*
+*.compress.*
+*.decompress.*
+*.gz
+*.log
+*.lz4
+*.test-result
+*.tgz
+*.uncompressed
+*.xz
+*.zip
+*.checksum

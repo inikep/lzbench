@@ -1,0 +1,33 @@
+One-shot compression decompression example using POWER9 on-chip compressor
+
+Usage:
+Usage: %s [-f file] [-s buffer size in mb] [-t threads]
+
+
+Examples:
+
+./gzip_simple_test -t 1 -s 128
+thread no : 1 with Thread ID : 43279  Running on 80
+thread id 1: compression time 17.8900 ms throughput 7154.8350 mb/sec
+thread id 1: decompression time 14.9180 ms throughput 8580.2383 mb/sec
+thread id 1: compression ratio:3.055
+-----
+./gzip_simple_test -t 2 -s 128
+thread no : 2 with Thread ID : 43298  Running on 0
+thread no : 1 with Thread ID : 43297  Running on 80
+thread id 1: compression time 17.8600 ms throughput 7166.8535 mb/sec
+thread id 1: decompression time 14.9380 ms throughput 8568.7510 mb/sec
+thread id 1: compression ratio:3.055
+thread id 2: compression time 17.9290 ms throughput 7139.2715 mb/sec
+thread id 2: decompression time 14.8810 ms throughput 8601.5723 mb/sec
+thread id 2: compression ratio:3.055
+----
+sudo ./gzip_simple_test -f datasets/silesia.tar -t 1
+thread no : 1 with Thread ID : 43307  Running on 80
+file name:datasets/silesia.tar  file size:211957760
+thread id 1: compression time 27.5020 ms throughput 7349.9624 mb/sec
+thread id 1: decompression time 28.2310 ms throughput 7160.1670 mb/sec
+thread id 1: compression ratio:2.400
+
+
+

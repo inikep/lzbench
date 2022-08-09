@@ -1,0 +1,144 @@
+LIBNXZ_0.61.0 {
+  global:
+    nx_compressBound;
+    nx_deflateBound;
+    nx_inflateCopy;
+    nx_deflateSetHeader;
+    nx_inflateGetHeader;
+    nx_inflateResetKeep;
+    nx_deflateResetKeep;
+    nx_uncompress2;
+    nx_inflateInit_;
+    nx_inflateInit2_;
+    nx_inflateEnd;
+    nx_inflateSetDictionary;
+    nx_inflateReset;
+    nx_inflate;
+    nx_deflateCopy;
+    nx_deflateEnd;
+    nx_deflateReset;
+    nx_deflateInit_;
+    nx_deflateInit2_;
+    nx_deflateSetDictionary;
+    nx_deflate;
+    nx_uncompress;
+    nx_compress;
+    nx_compress2;
+    nx_adler32;
+    nx_adler32_combine;
+    nx_adler32_z;
+    nx_crc32;
+    nx_crc32_combine;
+    nx_crc32_combine64;
+  local:
+    nxu_run_job;
+    crc32_ppc;
+    dht_begin;
+    dht_begin5;
+    dht_lookup;
+    dht_print;
+    dhtgen;
+    dht_copy;
+    dht_end;
+    mutex_log;
+    tb_freq;
+    zlib_stats;
+    zlib_stats_mutex;
+    gzip_header_blank;
+    fill_zero_lzcounts;
+    fill_zero_len_dist;
+    get_builtin_table;
+    sigsegv_handler;
+    str_to_num;
+    open_logfile;
+    nx_*;
+    sw_*;
+    _*;
+};
+
+LIBNXZ_0.63.0 {
+    nx_inflateSyncPoint;
+} LIBNXZ_0.61.0;
+
+ZLIB_1.2.0 {
+    compressBound;
+    deflateBound;
+    inflateBack;
+    inflateBackEnd;
+    inflateBackInit_;
+    inflateCopy;
+};
+
+ZLIB_1.2.0.2 {
+    gzclearerr;
+    gzungetc;
+    zlibCompileFlags;
+} ZLIB_1.2.0;
+
+ZLIB_1.2.0.8 {
+    deflatePrime;
+} ZLIB_1.2.0.2;
+
+ZLIB_1.2.2 {
+    adler32_combine;
+    crc32_combine;
+    deflateSetHeader;
+    inflateGetHeader;
+} ZLIB_1.2.0.8;
+
+ZLIB_1.2.2.3 {
+    deflateTune;
+    gzdirect;
+} ZLIB_1.2.2;
+
+ZLIB_1.2.2.4 {
+    inflatePrime;
+} ZLIB_1.2.2.3;
+
+ZLIB_1.2.3.3 {
+    adler32_combine64;
+    crc32_combine64;
+    gzopen64;
+    gzseek64;
+    gztell64;
+    inflateUndermine;
+} ZLIB_1.2.2.4;
+
+ZLIB_1.2.3.4 {
+    inflateReset2;
+    inflateMark;
+} ZLIB_1.2.3.3;
+
+ZLIB_1.2.3.5 {
+    gzbuffer;
+    gzoffset;
+    gzoffset64;
+    gzclose_r;
+    gzclose_w;
+} ZLIB_1.2.3.4;
+
+ZLIB_1.2.5.1 {
+    deflatePending;
+} ZLIB_1.2.3.5;
+
+ZLIB_1.2.5.2 {
+    deflateResetKeep;
+    gzgetc_;
+    inflateResetKeep;
+} ZLIB_1.2.5.1;
+
+ZLIB_1.2.7.1 {
+    inflateGetDictionary;
+    gzvprintf;
+} ZLIB_1.2.5.2;
+
+ZLIB_1.2.9 {
+    inflateCodesUsed;
+    inflateValidate;
+    uncompress2;
+    gzfread;
+    gzfwrite;
+    deflateGetDictionary;
+    adler32_z;
+    crc32_z;
+} ZLIB_1.2.7.1;

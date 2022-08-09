@@ -1,0 +1,13 @@
+*.o
+*.a
+*.d
+*.diff
+*.log
+*.patch
+*.so.*
+*.so
+*~
+config.status
+configure.scan
+autom4te.cache
+config.mk

@@ -1,0 +1,17 @@
+#!/bin/bash
+
+ac_archive_repo="http://git.savannah.gnu.org/gitweb/?p=autoconf-archive.git"
+
+get_ac_archive() {
+	echo "Downloading ${1}"
+	wget --quiet -O "m4/${1}" "${ac_archive_repo};a=blob_plain;f=m4/${1}"
+}
+
+set -e
+ac_archive_list="ax_prog_doxygen.m4 ax_pthread.m4 ax_check_compile_flag.m4\
+		 ax_with_prog.m4"
+for a in ${ac_archive_list}; do
+	get_ac_archive ${a}
+done;
+autoreconf -i
+autoscan
