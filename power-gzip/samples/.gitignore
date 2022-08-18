@@ -1,0 +1,13 @@
+gunzip_nx_test
+gzip_nxfht_test
+gzip_nxdht_test
+compdecomp_th
+zpipe
+gzm
+zpipe_dict
+crc_perf_test
+makedata
+compdecomp
+nx_gzip
+*.png
+*.log

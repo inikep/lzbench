@@ -1,0 +1,8 @@
+# Not all distros use bash, but we do depend on bash here.
+SHELL = @BASH@
+
+AWK = @AWK@
+GZIP = @GZIP@
+SED = @SED@
+SHA256SUM = @SHA256SUM@
+WGET = @WGET@

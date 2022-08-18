@@ -1,0 +1,12 @@
+test_buf_error
+test_inflate
+test_inflatesyncpoint
+test_deflate
+test_stress
+test_crc32
+test_adler32
+test_multithread_stress
+test_pid_reuse
+test_zeroinput
+*.txt
+*.log

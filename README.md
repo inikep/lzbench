@@ -92,6 +92,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [gipfeli 2016-07-13](https://github.com/google/gipfeli)
  - [glza 0.8](https://encode.su/threads/2427-GLZA)
  - [libdeflate v1.6](https://github.com/ebiggers/libdeflate)
+ - [libnxz 0.63](https://github.com/libnxz/power-gzip)
  - [lizard v1.0 (formerly lz5)](https://github.com/inikep/lizard)
  - [lz4/lz4hc v1.9.3](https://github.com/lz4/lz4)
  - [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html)

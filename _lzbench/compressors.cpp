@@ -289,6 +289,26 @@ int64_t lzbench_libdeflate_decompress(char *inbuf, size_t insize, char *outbuf, 
 
 
 
+#ifndef BENCH_REMOVE_LIBNXZ
+#include "power-gzip/libnxz.h"
+
+int64_t lzbench_libnxz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    // Only supports level=6 (see nx_deflateInit2_)
+    nx_compress2((unsigned char *)outbuf, (ulong *)&outsize,
+            (const unsigned char *)inbuf, (ulong)insize,
+            (int)level);
+    return outsize;
+}
+int64_t lzbench_libnxz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+    nx_uncompress2((unsigned char *)outbuf, (ulong *)&outsize,
+            (const unsigned char *)inbuf, (ulong *)&insize);
+    return outsize;
+}
+#endif
+
+
 #ifndef BENCH_REMOVE_LIZARD
 #include "lizard/lizard_compress.h"
 #include "lizard/lizard_decompress.h"

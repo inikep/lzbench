@@ -1,0 +1,316 @@
+Abstract
+--------
+
+PowerVM hypervisor interface of the POWER10 processor and Linux
+support for the POWER nx-gzip compression accelerator is described.
+
+
+Glossary
+--------
+
+NX: Nest Accelerator unit. Nest is defined as non-core components of
+the POWER processor chip.
+
+NX contains accelerators for compression and cryptography.
+
+nx-gzip: A DEFLATE compliant (RFC1950, 1951, 1952) compression
+accelerator in NX.
+
+Coprocessor Request Block (CRB).  A cache line sized command block for
+communicating with the NX accelerators. CRB includes a unit number, a
+function code, source and target memory addresses of the data [UM].
+
+COPY/PASTE: A pair of POWER processor instructions for submitting a
+CRB to the NX accelerator [ISA]
+
+VAS: Virtual Accelerator Switchboard (VAS) is a hardware unit that
+enables communication with the NX accelerators [VAS]
+
+VAS window: a per process private communication interface to VAS, a
+memory mapped hardware address that CRBs are written to.  VAS enables
+direct access to the accelerators without involving device drivers,
+kernel or hypervisor.
+
+VAS credit: the number of nx-gzip jobs which may be queued through the
+VAS window.
+
+PowerVM: Hypervisor used in enterprise class POWER systems, also known
+as PHYP.
+
+PowerNV: A baremetal POWER system firmware also known as OPAL used in
+mid to low-end POWER systems.  PowerNV and PowerVM are mutually
+exclusive.
+
+HCALL: A set of functions that PowerVM exports for operating systems,
+e.g., Linux and AIX to interact with it.
+
+Libnxz: A user-space software library for accessing nx-gzip.  Libnxz
+implements a subset of the zlib library API [LIBNXZ].
+
+LPAR: A logical partition of a PowerVM system like a virtual
+machine found in other hypervisor-based systems.
+
+DLPAR: Dynamic LPAR. An LPAR whose dimensions may dynamically change,
+such as number of cores, memory capacity and devices.
+
+HMC: Hardware Management Console. A systems administrator's interface
+to the POWER hardware and PowerVM.
+
+
+What's new
+----------
+
+PowerNV firmware provided a low latency direct access user-space
+interface to the nx-gzip accelerator which libnxz has relied (on see
+reference [LIBNXZ]). With the introduction of POWER10 processor,
+PowerVM also adds a direct access user-space interface to nx-gzip
+eliminating the kernel and hypervisor from the software path.
+
+This document is an addendum to the nx-gzip user manual [UM] and
+describes nx-gzip access methods on PowerVM based systems. While,
+PowerVM interface is the same for both Linux and AIX, this document is
+intended for Linux developers.  For AIX, readers may refer to the
+documentation here [AIX1, AIX2].
+
+On PowerVM, the copy/paste instruction pair and the VAS window
+mechanism and data structures used in PowerNV will work identically.
+Small changes may be required in the kernel driver to open the VAS
+window through PowerVM HCALLs (see the Linux kernel implementation here
+[P1,P2].) Additionally, PowerVM implements some admission and QoS
+policies for sharing nx-gzip resources among multiple processes and
+LPARs.
+
+H_ALLOCATE_VAS_WINDOW, H_DEALLOCATE_VAS_WINDOW, H_MODIFY_VAS_WINDOW
+hcalls are described and example usage are found in the Linux kernel
+patch series detailed here [P1, P2]
+
+
+Accessing nx-gzip on PowerVM
+----------------------------
+
+On PowerVM, an nx-gzip enabled operating system such as Linux:
+
+- Must get all VAS capabilities using the H_QUERY_VAS_CAPABILITIES
+  HCALL available in PowerVM.  The capabilities tell the operating
+  system which features and credit types are available such as
+  Default and Quality of Service (QoS). The HCALL also gives specific
+  capabilities for each credit type: Maximum VAS window credits,
+  Maximum LPAR credits, Target credits in that partition (varies from
+  maximum LPAR credits based DLPAR operation), whether the interface
+  supports user mode COPY/PASTE.
+
+- Must register LPAR VAS operations such as open window, get paste
+  address and close window with the current VAS user-space API.
+
+- Must use H_ALLOCATE_VAS_WINDOW HCALL to open a VAS window and
+  H_MODIFY_VAS_WINDOW HCALL to setup the window with LPAR PID
+
+- Must mmap the H_ALLOCATE_VAS_WINDOW HCALL returned address to paste
+  CRB commands to
+
+- Must close a VAS window with H_DEALLOCATE_VAS_WINDOW HCALL
+
+For nx-gzip enablement, the user-space application:
+
+- Must get nx-gzip capabilities from the operating
+  system. Capabilities include Maximum buffer length for a single GZIP
+  request and recommended minimum compression / decompression lengths.
+
+- Must register with VAS to enable user-space VAS API
+
+
+Main PowerVM differences from PowerNV
+-------------------------------------
+
+- Each VAS window will be configured with a number of credits limiting
+  the number of nx-gzip requests that can be simultanenously sent
+  through window, administrator configurable. On PowerNV, 1024 credits
+  are configured per window.  Whereas on PowerVM, by default 1 credit
+  per window are allowed
+
+- PowerVM introduces 2 different types of credits called the Default
+  and QoS credits. Default uses the normal priority nx-gzip queue. QoS
+  uses the high priority nx-gzip priority queue. NX-gzip prioritizes
+  the high priority queue requests over the normal priority
+  queue. NXgzip may also preempt a normal priority request in progress
+  [UM]. On PowerVM, VAS/NX resources are shared across LPARs. Total
+  number of credits available in a system depends on the number of
+  cores configured.  In practice, more credits may be assigned across
+  the system than available nx-gzip accelerators which results in
+  queued requests.  To avoid nx-gzip contention, PowerVM introduced
+  QoS credits which can be configured by system administrators through
+  HMC.  The total number of available default credits on an LPAR are
+  reduced by the number of QoS credits configured.
+
+- On PowerNV, windows are allocated on a specific VAS instance and the
+  user-space app can select a VAS instance with the open window
+  ioctl. Since VAS instances can be shared across partitions on
+  PowerVM, user-space apps are not permitted to freely select a
+  specific VAS instance.  Instead, the PowerVM hypervisor manages
+  allocations of VAS instances. The H_ALLOCATE_VAS_WINDOW hcall allows
+  selection by domain identifiers (H_HOME_NODE_ASSOCIATIVITY values by
+  cpu). By default, the hypervisor selects VAS instance closer to CPU
+  resources that the partition uses. Therefore, the vas_id field in
+  the ioctl interface is ignored on PowerVM except for vas_id=-1 which
+  is used to allocate a VAS window based on CPU that the process is
+  executing. This option is needed for process affinity to NUMA node.
+
+- PowerVM also enforces hard limits on nx-gzip data lengths, 1MB by
+  default.  A request exceeding this limit is suspended by nx-gzip and
+  must be resumed by submitting the request again, essentially putting
+  the resume request at the end of any queued requests of the same
+  priority.  The existing applications that linked with libnxz should
+  work as is since libnxz already handles suspension and resumption of
+  requests.
+
+  Note that PowerVM supports user-space NX-gzip access for POWER10
+  onwards. PowerVM does not support user-space access on POWER9.
+
+  Note also that the Linux implementation for user-space
+  access is supported only with the radix page tables.
+
+  We tested the Linux kernel patches for PowerVM based P10
+  successfully with test cases provided in [LIBNXZ]
+
+
+Further details
+---------------
+
+Credit types:
+
+- 1 credit is assigned per window on PowerVM: one nx-gzip request can
+  be issued per window.  Where as on powerNV, one thread can open a
+  window and can send multiple requests at once.  Libnxz does not
+  support multiple outstanding requests in any case. For single
+  threaded applications practically the performance will be same.  For
+  multiple threads sharing a window, the requests will not be queued
+  in the nx-gzip queue but the application, e.g., libnxz, must retry
+  rejected requests.
+
+- Two different types of credit:
+
+  Quality of service (QoS) and Default QoS credits are configured in
+  HMC. QoS credits guarantee that these credits are always available
+  for QoS windows to minimize NX resource contention.  QoS credits are
+  not shared across LPARs. They use the high priority nx-gzip queue
+  which priority over the normal queue.
+
+  Default credits: In the dedicated LPAR mode, number of default
+  credits available are based on number of cores. Number of cores
+  times 20 windows will be available by default. As such many windows
+  can be opened at any point of time.  The available default credits
+  also depend on the QoS credits.
+
+  Interfaces: By default, PowerVM issues default credits as on PowerNV
+  today.  For processes allocating a QoS credit, the following
+  interface was developed:
+
+#define VAS_WIN_QOS_CREDITS     0x0000000000000001
+
+struct vas_tx_win_open_attr {
+  __u32 version;
+  __s16 vas_id; /* specific instance of vas or -1 for default */
+  __u16 reserved; __u64 flags;
+  __u64 reserved2[6];
+};
+
+  User-space must set flags = VAS_WIN_QOS_CREDITS in the tx_win_open
+  ioctl call.
+
+  Number of credits available in LPAR will be available in sysfs.
+  Adding the following sysfs interfaces to the user-space:
+
+/sys/kernel/vas/VasCaps/VDefGzip:    (Called default GZIP capabilities)
+	avail_lpar_creds  target_lpar_creds  used_lpar_creds
+
+  On our development system with 16 cores and dedicated: these entry
+  values are 320 320 0 respectively
+
+/sys/kernel/vas/VasCaps/VQosGzip    (Called QoS GZIP capabilities)
+	avail_lpar_creds   target_lpar_creds  used_lpar_creds
+
+
+  VAS instances: There is no concept of VAS ID on PowerVM. Instead the
+  PowerVM must receive a domain ID (based on the CPU ID) in the
+  H_ALLOCATE_VAS_WINDOW hcall to allocate a VAS window on the specific
+  chip and node.  Domain ID to VAS ID mapping cannot be easily
+  determined by the user-space. Therefore, in the Linux driver
+  implementation when user-space sets vas_id= -1, the domain ID is set
+  by the Linux kernel for the cpu core the process is executing on.
+  This interface was added to support NUMA node affinity as found on
+  PowerNV.  In a future release, we are considering passing a specific
+  core ID from the user-space with the existing user-space interface
+  where vas_id may be treated as cpuid.
+
+  __s16 vas_id / CPU_id; /* specific instance of vas or -1 for default */
+
+
+Limits
+------
+
+  PowerVM restricts the maximum request buffer length to 1MB: PowerVM
+  returns this information in the NX-gzip capabilities hcall, and
+  Linux provides these values to the user-space through sysfs:
+
+/sys/devices/vio/ibm,compression-v1/NxGzCaps
+min_compress_len   --- Recommended minimum compress length in bytes
+min_decompress_len --- Recommended minimum decompress length in bytes
+req_max_processed_len ---  Maximum processed length in bytes
+On our development system, these values are:
+32768
+32768
+1048576
+
+Max request buffer length is enforced. Minimums are not enforced.
+
+
+Page Faults
+-----------
+
+  Handling of nx-gzip caused page faults is same between PowerVM and
+  PowerNV. Refer to the ERR_NX_AT_FAULT condition code in the libnxz
+  source [LIBNXZ]
+
+
+To Do
+-----
+
+  Logical partition migration (LPM) support: all the existing windows
+  have to be closed on the source LPAR and reopen on destination LPAR
+  without the user space knowledge.
+
+  DLPAR support: Whenever core resources are changed, number of
+  available credits will be changed and this information is available
+  with VAS capabilities. In the current implementation, we get these
+  capabilities initially but do not change them. With DLPAR
+  capabilities must be updated.
+
+  Debugfs: provide window status and information through debugfs
+
+
+References
+----------
+
+[P1]
+https://patchwork.ozlabs.org/project/linuxppc-dev/list/?series=238878&state=*
+
+[P2]
+https://lists.ozlabs.org/pipermail/linuxppc-dev/2021-April/227330.html
+
+[AIX1]
+https://www.ibm.com/docs/en/aix/7.2?topic=management-nest-accelerators
+
+[AIX2]
+https://www.ibm.com/docs/en/aix/7.2?topic=management-data-compression-by-using-zlibnx-library
+
+[LIBNXZ]
+https://github.com/libnxz/power-gzip
+
+[UM]
+https://github.com/libnxz/power-gzip/blob/master/doc/power_nx_gzip_um.pdf
+
+[ISA]
+https://openpowerfoundation.org/?resource_lib=power-isa-version-3-0
+
+[VAS]
+https://www.kernel.org/doc/html/latest/powerpc/vas-api.html
