@@ -1,0 +1,113 @@
+Changes in 3.2.4 (18 January, 18 2022)
+- Improved performance for AArch64 (ARM64) platform.
+
+Changes in 3.2.3 (September, 30 2021)
+- Fixed various out-of-bound memory access bugs found by LibFuzzer.
+- Fixed data corruption issue found by LibFuzzer.
+- Due to these fixes, an upgrade to this version is strongly recommended.
+
+Changes in 3.2.2 (September, 18 2021)
+- Improved performance of LZP algorithm.
+
+Changes in 3.2.1 (September, 17 2021)
+- Improved performance of LZP algorithm.
+
+Changes in 3.2.0 (September, 10 2021)
+- New BWT / ST post-coder for fast compression and decompression.
+
+Changes in 3.1.9 (August, 25 2021)
+- Updated makefile to use Clang compiler and AVX2 instruction set for maximum performance.
+- Slightly improved compression and decompression performance.
+
+Changes in 3.1.8 (August, 18 2021)
+- Slightly improved compression performance.
+
+Changes in 3.1.7 (August, 15 2021)
+- Slightly improved compression performance.
+
+Changes in 3.1.6 (August, 12 2021)
+- Slightly improved decompression performance.
+
+Changes in 3.1.5 (August, 10 2021)
+- Improved Adler-32 performance with SIMD (SSSE3).
+- Improved reverse MTF performance with SIMD (SSE4.1).
+
+Changes in 3.1.4 (August, 4 2021)
+- Implemented dynamic CPU Dispatching to SSE2, AVX and AVX2.
+- Further improved forward MTF performance.
+
+Changes in 3.1.3 (July, 14 2021)
+- Maximum compression block size increased to 2047 megabytes
+- Improved forward MTF performance with SIMD (SSE2)
+
+Changes in 3.1.2 (July, 14 2021)
+- Improved reverse BWT performance with libsais 2.4.0
+
+Changes in 3.1.1 (June, 24 2021)
+- divsufsort library is replaced with libsais 2.3.0
+- back40computing library is replaced with cub from CUDA Toolkit 11.3
+
+Changes in 3.1.0 (July 8, 2012)
+- Added Kepler GPU support with CUDA Toolkit 4.2
+
+Changes in 3.0.0 (August 26, 2011)
+- NVIDIA GPU acceleration of forward ST algorithms
+- Added Sort Transform of order 7 & 8 (GPU only)
+
+Changes in 2.8.0 (August 8, 2011)
+- Added parallel version of LZP algorithm
+- Large RAM pages (2 MB) support for Windows
+- Improved performance of ST and BWT algorithms
+
+Changes in 2.7.0 (June 5, 2011)
+- Improved performance of LZP algorithm
+
+Changes in 2.6.1 (May 4, 2011)
+- Fixed bug in segmentation algorithm
+
+Changes in 2.6.0 (April 30, 2011)
+- Added Sort Transform of order 6
+
+Changes in 2.5.0 (March 20, 2011)
+- Some minor performance improvments
+- CRC32 replaced with Adler32
+
+Changes in 2.4.5 (January 3, 2011)
+- Improved performance of reverse BWT and ST algorithms
+
+Changes in 2.4.0 (October 18, 2010)
+- Improved performance of reverse BWT and ST algorithms
+
+Changes in 2.3.0 (August 9, 2010)
+- Improved performance of QLFC algorithm
+
+Changes in 2.2.5 (July 5, 2010)
+- Added parallel version of segmentation algorithm
+
+Changes in 2.2.0 (June 15, 2010)
+- Added parallel version of reverse BWT transform
+- Added parallel version of forward ST transform
+
+Changes in 2.1.5 (June 1, 2010)
+- Improved multi-core systems support
+- Improved segmentation algorithm
+
+Changes in 2.1.0 (May 17, 2010)
+- Added GNU C++ compiler support
+- Added makefile
+
+Changes in 2.0.0 (May 3, 2010)
+- Released source code under LGPL license
+- Added multi-core systems support
+- Added fast "-f" compression mode
+- Added Sort Transform of order 3
+
+Changes in 1.0.3 (April 11, 2010)
+- Fixed bug in block-sorting algorithm
+- Added support for large files(>2Gb long)
+
+Changes in 1.0.1 (April 8, 2010)
+- Decreased memory usage from 6 to 5 times per block size
+
+Changes in 1.0.0 (April 7, 2010)
+- First public version for community technology preview
