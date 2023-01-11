@@ -1262,6 +1262,128 @@ int64_t lzbench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 #endif
 
+#ifndef BENCH_REMOVE_PPMD
+#include "lzma/Ppmd8.h"
+
+int64_t lzbench_ppmd_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    struct CharWriter
+    {
+        IByteOut streamOut;
+        char* ptr;
+
+        static void* pmalloc(ISzAllocPtr ip, size_t size)
+        {
+            (void)ip;
+            return malloc(size);
+        }
+
+        static void pfree(ISzAllocPtr ip, void* addr)
+        {
+            (void)ip;
+            free(addr);
+        }
+
+        static void write(const IByteOut* p, Byte b)
+        {
+            CharWriter* cw = (CharWriter*)p;
+            *cw->ptr++ = (char)b;
+        }
+    };
+
+    level = (level == 0) ? 1 : ((level < 9) ? level : 9); // valid range for level is [1..9]
+    const int modelOrder = 3 + level;
+    const int memMb = 1 << (level - 1);
+    const int restoreMethod = level < 7 ? PPMD8_RESTORE_METHOD_RESTART : PPMD8_RESTORE_METHOD_CUT_OFF;
+    unsigned short wPPMd = (modelOrder - 1) + ((memMb - 1) << 4) + (restoreMethod << 12);
+
+    CharWriter cw;
+    cw.streamOut.Write = &CharWriter::write;
+    cw.ptr = outbuf;
+    CPpmd8 ppmd;
+    ppmd.Stream.Out = &cw.streamOut;
+    ISzAlloc ialloc = { CharWriter::pmalloc, CharWriter::pfree };
+
+    Ppmd8_Construct(&ppmd);
+    Ppmd8_Alloc(&ppmd, memMb << 20, &ialloc);
+    Ppmd8_Init_RangeEnc(&ppmd);
+    Ppmd8_Init(&ppmd, modelOrder, restoreMethod);
+
+    ppmd.Stream.Out->Write(&cw.streamOut, wPPMd & 0xff);
+    ppmd.Stream.Out->Write(&cw.streamOut, wPPMd >> 8);
+
+    for (size_t i = 0; i < insize; ++i)
+        Ppmd8_EncodeSymbol(&ppmd, (unsigned char)inbuf[i]);
+    Ppmd8_EncodeSymbol(&ppmd, -1); /* EndMark */
+    Ppmd8_Flush_RangeEnc(&ppmd);
+    Ppmd8_Free(&ppmd, &ialloc);
+    return cw.ptr - outbuf;
+}
+
+int64_t lzbench_ppmd_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, size_t, size_t, char*)
+{
+    struct CharReader
+    {
+        IByteIn streamIn;
+        const char* ptr;
+        const char* end;
+
+        static void* pmalloc(ISzAllocPtr ip, size_t size)
+        {
+            (void)ip;
+            return malloc(size);
+        }
+
+        static void pfree(ISzAllocPtr ip, void* addr)
+        {
+            (void)ip;
+            free(addr);
+        }
+
+        static Byte read(const IByteIn* p)
+        {
+            CharReader* cr = (CharReader*)p;
+            if (cr->ptr >= cr->end)
+                return 0;
+            return *cr->ptr++;
+        }
+    };
+
+    CharReader cr;
+    cr.streamIn.Read = &CharReader::read;
+    cr.ptr = inbuf;
+    cr.end = inbuf + insize;
+
+    unsigned short wPPMd = CharReader::read(&cr.streamIn) | ((unsigned short)(CharReader::read(&cr.streamIn)) << 8);
+
+    const int modelOrder = (wPPMd & 0xf) + 1;
+    const int memMb = ((wPPMd >> 4) & 0xff) + 1;
+    const int restoreMethod = wPPMd >> 12;
+
+    CPpmd8 ppmd;
+    ppmd.Stream.In = &cr.streamIn;
+    ISzAlloc ialloc = { CharReader::pmalloc, CharReader::pfree };
+
+    Ppmd8_Construct(&ppmd);
+    Ppmd8_Alloc(&ppmd, memMb << 20, &ialloc);
+    Ppmd8_Init_RangeDec(&ppmd);
+    Ppmd8_Init(&ppmd, modelOrder, restoreMethod);
+
+    size_t sz = 0;
+    for (;;)
+    {
+        int c = Ppmd8_DecodeSymbol(&ppmd);
+        if (cr.ptr > cr.end || c < 0)
+            break;
+        outbuf[sz++] = (char)(unsigned)c;
+    }
+    int ret = Ppmd8_RangeDec_IsFinishedOK(&ppmd) && cr.ptr >= cr.end ? 0 : -1;
+    Ppmd8_Free(&ppmd, &ialloc);
+    return ret == 0 ? (int64_t)sz : (int64_t)0;
+}
+
+#endif
+
 
 #ifndef BENCH_REMOVE_QUICKLZ
 #include "quicklz/quicklz151b7.h"
