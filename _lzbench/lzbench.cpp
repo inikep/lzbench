@@ -778,7 +778,7 @@ char* cpu_brand_string(void)
     else
         return NULL; // CPUID_EXTENDED unsupported by cpu
 
-    cpu_brand_str[3*sizeof(mx)+1] = '\0';
+    cpu_brand_str[3*sizeof(mx)] = '\0';
     return cpu_brand_str;
     #else
     return NULL;
