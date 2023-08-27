@@ -116,7 +116,7 @@ LZRW_FILES = lzrw/lzrw1-a.o lzrw/lzrw1.o lzrw/lzrw2.o lzrw/lzrw3.o lzrw/lzrw3-a.
 
 LZMA_FILES = lzma/LzFind.o lzma/LzmaDec.o lzma/LzmaEnc.o
 
-LZ4_FILES = lizard/lizard_compress.o lizard/lizard_decompress.o lz4/lz4.o lz4/lz4hc.o
+LZ4_FILES = lz4/lz4.o lz4/lz4hc.o
 
 LZF_FILES = lzf/lzf_c_ultra.o lzf/lzf_c_very.o lzf/lzf_d.o
 
@@ -370,4 +370,4 @@ lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_F
 	$(CXX) $(CFLAGS) $< -c -o $@
 
 clean:
-	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lizard/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/lib/*.o libdeflate/lib/x86/*.o libdeflate/lib/arm/*.o nakamichi/*.o nvcomp/*.o
+	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/lib/*.o libdeflate/lib/x86/*.o libdeflate/lib/arm/*.o nakamichi/*.o nvcomp/*.o
