@@ -1,5 +1,5 @@
 /* Lzlib - Compression library for the lzip format
-   Copyright (C) 2009-2020 Antonio Diaz Diaz.
+   Copyright (C) 2009-2022 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided
@@ -76,9 +76,9 @@ static bool Cb_unread_data( struct Circular_buffer * const cb,
   }
 
 
-/* Copies up to 'out_size' bytes to 'out_buffer' and updates 'get'.
+/* Copy up to 'out_size' bytes to 'out_buffer' and update 'get'.
    If 'out_buffer' is null, the bytes are discarded.
-   Returns the number of bytes copied or discarded.
+   Return the number of bytes copied or discarded.
 */
 static unsigned Cb_read_data( struct Circular_buffer * const cb,
                               uint8_t * const out_buffer,
@@ -110,8 +110,8 @@ static unsigned Cb_read_data( struct Circular_buffer * const cb,
   }
 
 
-/* Copies up to 'in_size' bytes from 'in_buffer' and updates 'put'.
-   Returns the number of bytes copied.
+/* Copy up to 'in_size' bytes from 'in_buffer' and update 'put'.
+   Return the number of bytes copied.
 */
 static unsigned Cb_write_data( struct Circular_buffer * const cb,
                                const uint8_t * const in_buffer,

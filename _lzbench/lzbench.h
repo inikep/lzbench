@@ -18,11 +18,11 @@
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
 #ifndef MIN
-	#define MIN(a,b) ((a)<(b)?(a):(b))
+    #define MIN(a,b) ((a)<(b)?(a):(b))
 #endif
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(WIN64) || defined(_WIN64)
-	#define WINDOWS
+    #define WINDOWS
 #endif
 
 /* **************************************
@@ -37,44 +37,44 @@
 #endif
 
 #ifdef WINDOWS
-	#include <windows.h>
-	typedef LARGE_INTEGER bench_rate_t;
-	typedef LARGE_INTEGER bench_timer_t;
-	#define InitTimer(rate) if (!QueryPerformanceFrequency(&rate)) { printf("QueryPerformance not present"); };
-	#define GetTime(now) QueryPerformanceCounter(&now); 
-	#define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/rate.QuadPart)
-	void uni_sleep(UINT milisec) { Sleep(milisec); };
+    #include <windows.h>
+    typedef LARGE_INTEGER bench_rate_t;
+    typedef LARGE_INTEGER bench_timer_t;
+    #define InitTimer(rate) if (!QueryPerformanceFrequency(&rate)) { printf("QueryPerformance not present"); };
+    #define GetTime(now) QueryPerformanceCounter(&now);
+    #define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/rate.QuadPart)
+    void uni_sleep(UINT milisec) { Sleep(milisec); };
     #ifndef fseeko
-		#ifdef _fseeki64
-            #define fseeko _fseeki64 
+        #ifdef _fseeki64
+            #define fseeko _fseeki64
             #define ftello _ftelli64
-		#else
-            #define fseeko fseek 
+        #else
+            #define fseeko fseek
             #define ftello ftell
         #endif
-	#endif
-	#define PROGOS "Windows"
+    #endif
+    #define PROGOS "Windows"
 #else
     #include <stdarg.h> // va_args
-	#include <time.h>   
-	#include <unistd.h>
-	#include <sys/resource.h>
-	void uni_sleep(uint32_t milisec) { usleep(milisec * 1000); };
+    #include <time.h>
+    #include <unistd.h>
+    #include <sys/resource.h>
+    void uni_sleep(uint32_t milisec) { usleep(milisec * 1000); };
 #if defined(__APPLE__) || defined(__MACH__)
     #include <mach/mach_time.h>
-	typedef mach_timebase_info_data_t bench_rate_t;
+    typedef mach_timebase_info_data_t bench_rate_t;
     typedef uint64_t bench_timer_t;
-	#define InitTimer(rate) mach_timebase_info(&rate);
-	#define GetTime(now) now = mach_absolute_time();
-	#define GetDiffTime(rate, start_ticks, end_ticks) ((end_ticks - start_ticks) * (uint64_t)rate.numer) / ((uint64_t)rate.denom)
-	#define PROGOS "MacOS"
+    #define InitTimer(rate) mach_timebase_info(&rate);
+    #define GetTime(now) now = mach_absolute_time();
+    #define GetDiffTime(rate, start_ticks, end_ticks) ((end_ticks - start_ticks) * (uint64_t)rate.numer) / ((uint64_t)rate.denom)
+    #define PROGOS "MacOS"
 #else
-	typedef struct timespec bench_rate_t;
+    typedef struct timespec bench_rate_t;
     typedef struct timespec bench_timer_t;
-	#define InitTimer(rate)
-	#define GetTime(now) if (clock_gettime(CLOCK_MONOTONIC, &now) == -1 ){ printf("clock_gettime error"); };
-	#define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec ))
-	#define PROGOS "Linux"
+    #define InitTimer(rate)
+    #define GetTime(now) if (clock_gettime(CLOCK_MONOTONIC, &now) == -1 ){ printf("clock_gettime error"); };
+    #define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec ))
+    #define PROGOS "Linux"
 #endif
 #endif
 
@@ -165,7 +165,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lzham22",    "1.0",         0,   4,   22,       0, lzbench_lzham_compress,      lzbench_lzham_decompress,      NULL,                    NULL },
     { "lzham24",    "1.0",         0,   4,   24,       0, lzbench_lzham_compress,      lzbench_lzham_decompress,      NULL,                    NULL },
     { "lzjb",       "2010",        0,   0,    0,       0, lzbench_lzjb_compress,       lzbench_lzjb_decompress,       NULL,                    NULL },
-    { "lzlib",      "1.12-rc2",    0,   9,    0,       0, lzbench_lzlib_compress,      lzbench_lzlib_decompress,      NULL,                    NULL },
+    { "lzlib",      "1.13",        0,   9,    0,       0, lzbench_lzlib_compress,      lzbench_lzlib_decompress,      NULL,                    NULL },
     { "lzma",       "19.00",       0,   9,    0,       0, lzbench_lzma_compress,       lzbench_lzma_decompress,       NULL,                    NULL },
     { "lzmat",      "1.01",        0,   0,    0,       0, lzbench_lzmat_compress,      lzbench_lzmat_decompress,      NULL,                    NULL }, // decompression error (returns 0) and SEGFAULT (?)
     { "lzo1",       "2.10",        1,   1,    0,       0, lzbench_lzo1_compress,       lzbench_lzo1_decompress,       lzbench_lzo_init,        lzbench_lzo_deinit },
