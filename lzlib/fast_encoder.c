@@ -1,5 +1,5 @@
 /* Lzlib - Compression library for the lzip format
-   Copyright (C) 2009-2020 Antonio Diaz Diaz.
+   Copyright (C) 2009-2022 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided
@@ -20,25 +20,24 @@
 static int FLZe_longest_match_len( struct FLZ_encoder * const fe, int * const distance )
   {
   enum { len_limit = 16 };
-  const uint8_t * const data = Mb_ptr_to_current_pos( &fe->eb.mb );
   int32_t * ptr0 = fe->eb.mb.pos_array + fe->eb.mb.cyclic_pos;
-  const int pos1 = fe->eb.mb.pos + 1;
-  int maxlen = 0, newpos1, count;
   const int available = min( Mb_available_bytes( &fe->eb.mb ), max_match_len );
   if( available < len_limit ) { *ptr0 = 0; return 0; }
 
+  const uint8_t * const data = Mb_ptr_to_current_pos( &fe->eb.mb );
   fe->key4 = ( ( fe->key4 << 4 ) ^ data[3] ) & fe->eb.mb.key4_mask;
-  newpos1 = fe->eb.mb.prev_positions[fe->key4];
+  const int pos1 = fe->eb.mb.pos + 1;
+  int newpos1 = fe->eb.mb.prev_positions[fe->key4];
   fe->eb.mb.prev_positions[fe->key4] = pos1;
+  int maxlen = 0, count;
 
   for( count = 4; ; )
     {
-    int32_t * newptr;
     int delta;
     if( newpos1 <= 0 || --count < 0 ||
         ( delta = pos1 - newpos1 ) > fe->eb.mb.dictionary_size )
       { *ptr0 = 0; break; }
-    newptr = fe->eb.mb.pos_array +
+    int32_t * const newptr = fe->eb.mb.pos_array +
       ( fe->eb.mb.cyclic_pos - delta +
         ( ( fe->eb.mb.cyclic_pos >= delta ) ? 0 : fe->eb.mb.dictionary_size + 1 ) );
 
@@ -71,11 +70,10 @@ static bool FLZe_encode_member( struct FLZ_encoder * const fe )
   if( Mb_data_position( &fe->eb.mb ) == 0 &&
       !Mb_data_finished( &fe->eb.mb ) )		/* encode first byte */
     {
-    const uint8_t prev_byte = 0;
-    uint8_t cur_byte;
     if( !Mb_enough_available_bytes( &fe->eb.mb ) ||
         !Re_enough_free_bytes( &fe->eb.renc ) ) return true;
-    cur_byte = Mb_peek( &fe->eb.mb, 0 );
+    const uint8_t prev_byte = 0;
+    const uint8_t cur_byte = Mb_peek( &fe->eb.mb, 0 );
     Re_encode_bit( &fe->eb.renc, &fe->eb.bm_match[*state][0], 0 );
     LZeb_encode_literal( &fe->eb, prev_byte, cur_byte );
     CRC32_update_byte( &fe->eb.crc, cur_byte );
@@ -86,13 +84,12 @@ static bool FLZe_encode_member( struct FLZ_encoder * const fe )
   while( !Mb_data_finished( &fe->eb.mb ) &&
          Re_member_position( &fe->eb.renc ) < fe->eb.member_size_limit )
     {
-    int match_distance = 0;		/* avoid warning from gcc 6.1.0 */
-    int main_len, pos_state;
-    int len = 0;
     if( !Mb_enough_available_bytes( &fe->eb.mb ) ||
         !Re_enough_free_bytes( &fe->eb.renc ) ) return true;
-    main_len = FLZe_longest_match_len( fe, &match_distance );
-    pos_state = Mb_data_position( &fe->eb.mb ) & pos_state_mask;
+    int match_distance = 0;		/* avoid warning from gcc 6.1.0 */
+    const int main_len = FLZe_longest_match_len( fe, &match_distance );
+    const int pos_state = Mb_data_position( &fe->eb.mb ) & pos_state_mask;
+    int len = 0;
 
     for( i = 0; i < num_rep_distances; ++i )
       {
@@ -109,11 +106,10 @@ static bool FLZe_encode_member( struct FLZ_encoder * const fe )
         Re_encode_bit( &fe->eb.renc, &fe->eb.bm_len[*state][pos_state], 1 );
       else
         {
-        int distance;
         Re_encode_bit( &fe->eb.renc, &fe->eb.bm_rep1[*state], rep > 1 );
         if( rep > 1 )
           Re_encode_bit( &fe->eb.renc, &fe->eb.bm_rep2[*state], rep > 2 );
-        distance = fe->eb.reps[rep];
+        const int distance = fe->eb.reps[rep];
         for( i = rep; i > 0; --i ) fe->eb.reps[i] = fe->eb.reps[i-1];
         fe->eb.reps[0] = distance;
         }
@@ -138,7 +134,6 @@ static bool FLZe_encode_member( struct FLZ_encoder * const fe )
       continue;
       }
 
-    {
     const uint8_t prev_byte = Mb_peek( &fe->eb.mb, 1 );
     const uint8_t cur_byte = Mb_peek( &fe->eb.mb, 0 );
     const uint8_t match_byte = Mb_peek( &fe->eb.mb, fe->eb.reps[0] + 1 );
@@ -169,12 +164,10 @@ static bool FLZe_encode_member( struct FLZ_encoder * const fe )
 
     /* literal byte */
     Re_encode_bit( &fe->eb.renc, &fe->eb.bm_match[*state][pos_state], 0 );
-    if( St_is_char( *state ) )
+    if( ( *state = St_set_char( *state ) ) < 4 )
       LZeb_encode_literal( &fe->eb, prev_byte, cur_byte );
     else
       LZeb_encode_matched( &fe->eb, prev_byte, cur_byte, match_byte );
-    *state = St_set_char( *state );
-    }
     }
 
   LZeb_try_full_flush( &fe->eb );

@@ -1,5 +1,5 @@
 /* Lzlib - Compression library for the lzip format
-   Copyright (C) 2009-2020 Antonio Diaz Diaz.
+   Copyright (C) 2009-2022 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided
@@ -147,10 +147,9 @@ static inline int price_bit( const Bit_model bm, const bool bit )
 
 static inline int price_symbol3( const Bit_model bm[], int symbol )
   {
-  int price;
   bool bit = symbol & 1;
   symbol |= 8; symbol >>= 1;
-  price = price_bit( bm[symbol], bit );
+  int price = price_bit( bm[symbol], bit );
   bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
   return price + price_bit( bm[1], symbol & 1 );
   }
@@ -158,10 +157,9 @@ static inline int price_symbol3( const Bit_model bm[], int symbol )
 
 static inline int price_symbol6( const Bit_model bm[], unsigned symbol )
   {
-  int price;
   bool bit = symbol & 1;
   symbol |= 64; symbol >>= 1;
-  price = price_bit( bm[symbol], bit );
+  int price = price_bit( bm[symbol], bit );
   bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
   bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
   bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
@@ -172,10 +170,9 @@ static inline int price_symbol6( const Bit_model bm[], unsigned symbol )
 
 static inline int price_symbol8( const Bit_model bm[], int symbol )
   {
-  int price;
   bool bit = symbol & 1;
   symbol |= 0x100; symbol >>= 1;
-  price = price_bit( bm[symbol], bit );
+  int price = price_bit( bm[symbol], bit );
   bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
   bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
   bit = symbol & 1; symbol >>= 1; price += price_bit( bm[symbol], bit );
@@ -427,10 +424,9 @@ static inline void Re_encode_bit( struct Range_encoder * const renc,
 static inline void Re_encode_tree3( struct Range_encoder * const renc,
                                     Bit_model bm[], const int symbol )
   {
-  int model;
   bool bit = ( symbol >> 2 ) & 1;
   Re_encode_bit( renc, &bm[1], bit );
-  model = 2 | bit;
+  int model = 2 | bit;
   bit = ( symbol >> 1 ) & 1;
   Re_encode_bit( renc, &bm[model], bit ); model <<= 1; model |= bit;
   Re_encode_bit( renc, &bm[model], symbol & 1 );
@@ -439,10 +435,9 @@ static inline void Re_encode_tree3( struct Range_encoder * const renc,
 static inline void Re_encode_tree6( struct Range_encoder * const renc,
                                     Bit_model bm[], const unsigned symbol )
   {
-  int model;
   bool bit = ( symbol >> 5 ) & 1;
   Re_encode_bit( renc, &bm[1], bit );
-  model = 2 | bit;
+  int model = 2 | bit;
   bit = ( symbol >> 4 ) & 1;
   Re_encode_bit( renc, &bm[model], bit ); model <<= 1; model |= bit;
   bit = ( symbol >> 3 ) & 1;
@@ -583,8 +578,7 @@ static inline int LZeb_price_matched( const struct LZ_encoder_base * const eb,
 
 static inline void LZeb_encode_literal( struct LZ_encoder_base * const eb,
                             const uint8_t prev_byte, const uint8_t symbol )
-  { Re_encode_tree8( &eb->renc, eb->bm_literal[get_lit_state(prev_byte)],
-                     symbol ); }
+  { Re_encode_tree8( &eb->renc, eb->bm_literal[get_lit_state(prev_byte)], symbol ); }
 
 static inline void LZeb_encode_matched( struct LZ_encoder_base * const eb,
   const uint8_t prev_byte, const uint8_t symbol, const uint8_t match_byte )
@@ -595,8 +589,8 @@ static inline void LZeb_encode_pair( struct LZ_encoder_base * const eb,
                                      const unsigned dis, const int len,
                                      const int pos_state )
   {
-  const unsigned dis_slot = get_slot( dis );
   Re_encode_len( &eb->renc, &eb->match_len_model, len, pos_state );
+  const unsigned dis_slot = get_slot( dis );
   Re_encode_tree6( &eb->renc, eb->bm_dis_slot[get_len_state(len)], dis_slot );
 
   if( dis_slot >= start_dis_model )
