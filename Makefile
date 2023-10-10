@@ -182,9 +182,9 @@ XZ_FILES += xz/common/alone_encoder.o xz/common/alone_decoder.o xz/check/crc32_t
 
 GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o
 
-LIBDEFLATE_FILES = libdeflate/lib/adler32.o libdeflate/lib/utils.o libdeflate/lib/crc32.o libdeflate/lib/deflate_compress.o
-LIBDEFLATE_FILES += libdeflate/lib/deflate_decompress.o libdeflate/lib/gzip_compress.o libdeflate/lib/gzip_decompress.o
-LIBDEFLATE_FILES += libdeflate/lib/x86/cpu_features.o libdeflate/lib/arm/cpu_features.o libdeflate/lib/zlib_compress.o libdeflate/lib/zlib_decompress.o
+LIBDEFLATE_FILES = libdeflate/lib/adler32.o libdeflate/lib/crc32.o libdeflate/lib/deflate_compress.o libdeflate/lib/deflate_decompress.o
+LIBDEFLATE_FILES += libdeflate/lib/gzip_compress.o libdeflate/lib/gzip_decompress.o libdeflate/lib/utils.o libdeflate/lib/zlib_compress.o libdeflate/lib/zlib_decompress.o
+LIBDEFLATE_FILES += libdeflate/lib/x86/cpu_features.o libdeflate/lib/arm/cpu_features.o
 
 MISC_FILES = crush/crush.o shrinker/shrinker.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
 MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o blosclz/fastcopy.o slz/slz.o
