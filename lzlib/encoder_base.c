@@ -1,5 +1,5 @@
 /* Lzlib - Compression library for the lzip format
-   Copyright (C) 2009-2020 Antonio Diaz Diaz.
+   Copyright (C) 2009-2022 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided
@@ -47,7 +47,6 @@ static bool Mb_init( struct Matchfinder_base * const mb, const int before_size,
   {
   const int buffer_size_limit =
     ( dict_factor * dict_size ) + before_size + after_size;
-  unsigned size;
   int i;
 
   mb->partial_data_pos = 0;
@@ -66,9 +65,8 @@ static bool Mb_init( struct Matchfinder_base * const mb, const int before_size,
   mb->saved_dictionary_size = dict_size;
   mb->dictionary_size = dict_size;
   mb->pos_limit = mb->buffer_size - after_size;
-  size = 1 << max( 16, real_bits( mb->dictionary_size - 1 ) - 2 );
-  if( mb->dictionary_size > 1 << 26 )		/* 64 MiB */
-    size >>= 1;
+  unsigned size = 1 << max( 16, real_bits( mb->dictionary_size - 1 ) - 2 );
+  if( mb->dictionary_size > 1 << 26 ) size >>= 1;	/* 64 MiB */
   mb->key4_mask = size - 1;		/* increases with dictionary size */
   size += num_prev_positions23;
   mb->num_prev_positions = size;
@@ -88,8 +86,7 @@ static bool Mb_init( struct Matchfinder_base * const mb, const int before_size,
 static void Mb_adjust_array( struct Matchfinder_base * const mb )
   {
   int size = 1 << max( 16, real_bits( mb->dictionary_size - 1 ) - 2 );
-  if( mb->dictionary_size > 1 << 26 )		/* 64 MiB */
-    size >>= 1;
+  if( mb->dictionary_size > 1 << 26 ) size >>= 1;	/* 64 MiB */
   mb->key4_mask = size - 1;
   size += mb->num_prev_positions23;
   mb->num_prev_positions = size;
@@ -129,21 +126,21 @@ static void Mb_reset( struct Matchfinder_base * const mb )
 /* End Of Stream marker => (dis == 0xFFFFFFFFU, len == min_match_len) */
 static void LZeb_try_full_flush( struct LZ_encoder_base * const eb )
   {
-  int i;
-  const int pos_state = Mb_data_position( &eb->mb ) & pos_state_mask;
-  const State state = eb->state;
-  Lzip_trailer trailer;
   if( eb->member_finished ||
       Cb_free_bytes( &eb->renc.cb ) < max_marker_size + eb->renc.ff_count + Lt_size )
     return;
   eb->member_finished = true;
+  const int pos_state = Mb_data_position( &eb->mb ) & pos_state_mask;
+  const State state = eb->state;
   Re_encode_bit( &eb->renc, &eb->bm_match[state][pos_state], 1 );
   Re_encode_bit( &eb->renc, &eb->bm_rep[state], 0 );
   LZeb_encode_pair( eb, 0xFFFFFFFFU, min_match_len, pos_state );
   Re_flush( &eb->renc );
+  Lzip_trailer trailer;
   Lt_set_data_crc( trailer, LZeb_crc( eb ) );
   Lt_set_data_size( trailer, Mb_data_position( &eb->mb ) );
   Lt_set_member_size( trailer, Re_member_position( &eb->renc ) + Lt_size );
+  int i;
   for( i = 0; i < Lt_size; ++i )
     Cb_put_byte( &eb->renc.cb, trailer[i] );
   }
@@ -152,20 +149,20 @@ static void LZeb_try_full_flush( struct LZ_encoder_base * const eb )
 /* Sync Flush marker => (dis == 0xFFFFFFFFU, len == min_match_len + 1) */
 static void LZeb_try_sync_flush( struct LZ_encoder_base * const eb )
   {
-  int i;
+  const unsigned min_size = eb->renc.ff_count + max_marker_size;
+  if( eb->member_finished ||
+      Cb_free_bytes( &eb->renc.cb ) < min_size + max_marker_size ) return;
+  eb->mb.sync_flush_pending = false;
+  const unsigned long long old_mpos = Re_member_position( &eb->renc );
   const int pos_state = Mb_data_position( &eb->mb ) & pos_state_mask;
   const State state = eb->state;
-  if( eb->member_finished ||
-      Cb_free_bytes( &eb->renc.cb ) < (2 * max_marker_size) + eb->renc.ff_count )
-    return;
-  eb->mb.sync_flush_pending = false;
-  for( i = 0; i < 2; ++i )	/* 2 consecutive markers guarantee decoding */
-    {
+  do {		/* size of markers must be >= rd_min_available_bytes + 5 */
     Re_encode_bit( &eb->renc, &eb->bm_match[state][pos_state], 1 );
     Re_encode_bit( &eb->renc, &eb->bm_rep[state], 0 );
     LZeb_encode_pair( eb, 0xFFFFFFFFU, min_match_len + 1, pos_state );
     Re_flush( &eb->renc );
     }
+  while( Re_member_position( &eb->renc ) - old_mpos < min_size );
   }
 
 

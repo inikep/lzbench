@@ -27,8 +27,6 @@
 
 #include "lib_common.h"
 
-#include "libdeflate.h"
-
 #ifdef FREESTANDING
 #  define malloc NULL
 #  define free NULL
@@ -36,27 +34,18 @@
 #  include <stdlib.h>
 #endif
 
-static void *(*libdeflate_malloc_func)(size_t) = malloc;
-static void (*libdeflate_free_func)(void *) = free;
+malloc_func_t libdeflate_default_malloc_func = malloc;
+free_func_t libdeflate_default_free_func = free;
 
 void *
-libdeflate_malloc(size_t size)
+libdeflate_aligned_malloc(malloc_func_t malloc_func,
+			  size_t alignment, size_t size)
 {
-	return (*libdeflate_malloc_func)(size);
-}
+	void *ptr = (*malloc_func)(sizeof(void *) + alignment - 1 + size);
 
-void
-libdeflate_free(void *ptr)
-{
-	(*libdeflate_free_func)(ptr);
-}
-
-void *
-libdeflate_aligned_malloc(size_t alignment, size_t size)
-{
-	void *ptr = libdeflate_malloc(sizeof(void *) + alignment - 1 + size);
 	if (ptr) {
 		void *orig_ptr = ptr;
+
 		ptr = (void *)ALIGN((uintptr_t)ptr + sizeof(void *), alignment);
 		((void **)ptr)[-1] = orig_ptr;
 	}
@@ -64,18 +53,17 @@ libdeflate_aligned_malloc(size_t alignment, size_t size)
 }
 
 void
-libdeflate_aligned_free(void *ptr)
+libdeflate_aligned_free(free_func_t free_func, void *ptr)
 {
-	if (ptr)
-		libdeflate_free(((void **)ptr)[-1]);
+	(*free_func)(((void **)ptr)[-1]);
 }
 
-LIBDEFLATEEXPORT void LIBDEFLATEAPI
-libdeflate_set_memory_allocator(void *(*malloc_func)(size_t),
-				void (*free_func)(void *))
+LIBDEFLATEAPI void
+libdeflate_set_memory_allocator(malloc_func_t malloc_func,
+				free_func_t free_func)
 {
-	libdeflate_malloc_func = malloc_func;
-	libdeflate_free_func = free_func;
+	libdeflate_default_malloc_func = malloc_func;
+	libdeflate_default_free_func = free_func;
 }
 
 /*
@@ -140,3 +128,14 @@ memcmp(const void *s1, const void *s2, size_t n)
 	return 0;
 }
 #endif /* FREESTANDING */
+
+#ifdef LIBDEFLATE_ENABLE_ASSERTIONS
+#include <stdio.h>
+#include <stdlib.h>
+void
+libdeflate_assertion_failed(const char *expr, const char *file, int line)
+{
+	fprintf(stderr, "Assertion failed: %s at %s:%d\n", expr, file, line);
+	abort();
+}
+#endif /* LIBDEFLATE_ENABLE_ASSERTIONS */
