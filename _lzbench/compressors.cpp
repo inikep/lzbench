@@ -97,13 +97,13 @@ int64_t lzbench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 int64_t lzbench_bzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
 {
-   unsigned int a_outsize = outsize;
+   size_t a_outsize = outsize;
    return BZ2_bzBuffToBuffCompress((char *)outbuf, &a_outsize, (char *)inbuf, (unsigned int)insize, level, 0, 0)==BZ_OK?a_outsize:-1;
 }
 
 int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
-   unsigned int a_outsize = outsize;
+   size_t a_outsize = outsize;
    return BZ2_bzBuffToBuffDecompress((char *)outbuf, &a_outsize, (char *)inbuf, (unsigned int)insize, 0, 0)==BZ_OK?a_outsize:-1;
 }
 
