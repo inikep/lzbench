@@ -109,6 +109,96 @@ int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 #endif // BENCH_REMOVE_BZIP2
 
+#ifndef BENCH_REMOVE_KANZI
+#include "kanzi-cpp/src/types.hpp"
+#include "kanzi-cpp/src/util.hpp"
+#include "kanzi-cpp/src/InputStream.hpp"
+#include "kanzi-cpp/src/OutputStream.hpp"
+#include "kanzi-cpp/src/io/CompressedInputStream.hpp"
+#include "kanzi-cpp/src/io/CompressedOutputStream.hpp"
+
+int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)                                                                                                           {
+  std::string entropy;
+  std::string transform;
+  uint szBlock;
+
+  switch (level) {
+     case 0:
+         transform = "NONE";
+         entropy = "NONE";
+         szBlock = 4 * 1024 * 1024;
+         break;
+     case 1:
+         transform = "PACK+LZ";
+         entropy = "NONE";
+         szBlock = 4 * 1024 * 1024;
+         break;
+     case 2:
+         transform = "PACK+LZ";
+         entropy = "HUFFMAN";
+         szBlock = 4 * 1024 * 1024;
+         break;
+     case 3:
+         transform = "TEXT+UTF+PACK+MM+LZX";
+         entropy = "HUFFMAN";
+         szBlock = 4 * 1024 * 1024;
+         break;
+     case 4:
+         transform = "TEXT+UTF+EXE+PACK+MM+ROLZ";
+         entropy = "NONE";
+         szBlock = 4 * 1024 * 1024;
+         break;
+     case 5:
+         transform = "TEXT+UTF+BWT+RANK+ZRLT";
+         entropy = "ANS0";
+         szBlock = 4 * 1024 * 1024;
+         break;
+     case 6:
+         transform = "TEXT+UTF+BWT+SRT+ZRLT";
+         entropy = "FPAQ";
+         szBlock = 8 * 1024 * 1024;
+         break;
+     case 7:
+         transform = "LZP+TEXT+UTF+BWT+LZP";
+         entropy = "CM";
+         szBlock = 16 * 1024 * 1024;
+         break;
+     case 8:
+         transform = "EXE+RLT+TEXT+UTF";
+         entropy = "TPAQ";
+         szBlock = 16 * 1024 * 1024;
+         break;
+     case 9:
+         transform = "EXE+RLT+TEXT+UTF";
+         entropy = "TPAQX";
+         szBlock = 32 * 1024 * 1024;
+         break;
+     default:
+         return -1;
+  }
+
+  ostreambuf<char> buf(outbuf, outsize);
+  std::iostream os(&buf);
+  int cores = std::max(int(std::thread::hardware_concurrency()) / 2, 1); // Defaults to half the cores
+  kanzi::CompressedOutputStream cos(os, entropy, transform, szBlock, false, std::min(cores, 64));
+  cos.write(inbuf, insize);
+  cos.close();
+  return cos.getWritten();
+}
+
+int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+  istreambuf<char> buf(inbuf, insize);
+  std::iostream is(&buf);
+  int cores = std::max(int(std::thread::hardware_concurrency()) / 2, 1); // Defaults to half the cores
+  kanzi::CompressedInputStream cis(is, std::min(cores, 64));
+  cis.read(outbuf, outsize);
+  cis.close();
+  return outsize;//cis.getRead();
+}
+#endif // BENCH_REMOVE_KANZI
+
+
 
 
 #ifndef BENCH_REMOVE_CRUSH
@@ -187,6 +277,7 @@ int64_t lzbench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 
+/*
 #ifndef BENCH_REMOVE_FASTLZMA2
 #include "fast-lzma2/fast-lzma2.h"
 
@@ -204,6 +295,7 @@ int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, s
     return ret;
 }
 #endif // BENCH_REMOVE_FASTLZMA2
+*/
 
 
 #ifndef BENCH_REMOVE_GIPFELI

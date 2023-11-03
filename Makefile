@@ -162,6 +162,48 @@ ZSTD_FILES += zstd/lib/dictBuilder/divsufsort.o
 ZSTD_FILES += zstd/lib/dictBuilder/fastcover.o
 ZSTD_FILES += zstd/lib/dictBuilder/zdict.o
 
+KANZI_FILES = kanzi-cpp/src/io/CompressedOutputStream.o
+KANZI_FILES += kanzi-cpp/src/io/CompressedInputStream.o
+KANZI_FILES += kanzi-cpp/src/entropy/EntropyUtils.o
+KANZI_FILES += kanzi-cpp/src/entropy/ExpGolombEncoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/FPAQEncoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/ANSRangeEncoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/ANSRangeDecoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/RiceGolombEncoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/RiceGolombDecoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/ExpGolombDecoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/HuffmanEncoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/FPAQDecoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/TPAQPredictor.o
+KANZI_FILES += kanzi-cpp/src/entropy/CMPredictor.o
+KANZI_FILES += kanzi-cpp/src/entropy/HuffmanCommon.o
+KANZI_FILES += kanzi-cpp/src/entropy/RangeDecoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/RangeEncoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/BinaryEntropyEncoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/HuffmanDecoder.o
+KANZI_FILES += kanzi-cpp/src/entropy/BinaryEntropyDecoder.o
+KANZI_FILES += kanzi-cpp/src/bitstream/DefaultInputBitStream.o
+KANZI_FILES += kanzi-cpp/src/bitstream/DebugOutputBitStream.o
+KANZI_FILES += kanzi-cpp/src/bitstream/DebugInputBitStream.o
+KANZI_FILES += kanzi-cpp/src/bitstream/DefaultOutputBitStream.o
+KANZI_FILES += kanzi-cpp/src/Event.o
+KANZI_FILES += kanzi-cpp/src/Global.o
+KANZI_FILES += kanzi-cpp/src/transform/AliasCodec.o
+KANZI_FILES += kanzi-cpp/src/transform/BWT.o
+KANZI_FILES += kanzi-cpp/src/transform/RLT.o
+KANZI_FILES += kanzi-cpp/src/transform/TextCodec.o
+KANZI_FILES += kanzi-cpp/src/transform/EXECodec.o
+KANZI_FILES += kanzi-cpp/src/transform/SBRT.o
+KANZI_FILES += kanzi-cpp/src/transform/ROLZCodec.o
+KANZI_FILES += kanzi-cpp/src/transform/LZCodec.o
+KANZI_FILES += kanzi-cpp/src/transform/SRT.o
+KANZI_FILES += kanzi-cpp/src/transform/DivSufSort.o
+KANZI_FILES += kanzi-cpp/src/transform/BWTBlockCodec.o
+KANZI_FILES += kanzi-cpp/src/transform/BWTS.o
+KANZI_FILES += kanzi-cpp/src/transform/UTFCodec.o
+KANZI_FILES += kanzi-cpp/src/transform/ZRLT.o
+KANZI_FILES += kanzi-cpp/src/transform/FSDCodec.o
+
 BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depack.o brieflz/depacks.o
 
 LIBLZG_FILES = liblzg/decode.o liblzg/encode.o liblzg/checksum.o
@@ -193,12 +235,12 @@ else
 	SNAPPY_FILES = snappy/snappy-sinksource.o snappy/snappy-stubs-internal.o snappy/snappy.o
 endif
 
-ifeq "$(DONT_BUILD_FASTLZMA2)" "1"
+#ifeq "$(DONT_BUILD_FASTLZMA2)" "1"
 	DEFINES += -DBENCH_REMOVE_FASTLZMA2
-else
-	FASTLZMA2_SRC = $(wildcard fast-lzma2/*.c)
-	FASTLZMA2_OBJ = $(FASTLZMA2_SRC:.c=.o)
-endif
+#else
+#	FASTLZMA2_SRC = $(wildcard fast-lzma2/*.c)
+#	FASTLZMA2_OBJ = $(FASTLZMA2_SRC:.c=.o)
+#endif
 
 ifeq "$(DONT_BUILD_XPACK)" "1"
 	DEFINES += -DBENCH_REMOVE_XPACK
@@ -353,7 +395,7 @@ $(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
-lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES)
+lzbench: $(BZIP2_FILES) $(KANZI_FILES)  $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -370,4 +412,4 @@ lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_F
 	$(CXX) $(CFLAGS) $< -c -o $@
 
 clean:
-	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/lib/*.o libdeflate/lib/x86/*.o libdeflate/lib/arm/*.o nakamichi/*.o nvcomp/*.o
+	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/lib/*.o libdeflate/lib/x86/*.o libdeflate/lib/arm/*.o nakamichi/*.o nvcomp/*.o $KANZI_FILES
