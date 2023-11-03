@@ -91,6 +91,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2)
  - [gipfeli 2016-07-13](https://github.com/google/gipfeli)
  - [glza 0.8](https://encode.su/threads/2427-GLZA)
+ - [kanzi 2.3](https://github.com/flanglet/kanzi-cpp)
  - [libdeflate v1.23](https://github.com/ebiggers/libdeflate)
  - [lizard v1.0 (formerly lz5)](https://github.com/inikep/lizard)
  - [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4)

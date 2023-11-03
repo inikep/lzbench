@@ -1,0 +1,12 @@
+**/Debug/**
+**/Release/**
+**/*.obj
+**/*.o
+**/*.htm
+**/*.exe
+**/*.idb
+**/*.pdb
+**/*.ncb
+**/*.sln
+**/*.suo
+**/*vcproj*
