@@ -162,7 +162,7 @@ ZSTD_FILES += zstd/lib/dictBuilder/divsufsort.o
 ZSTD_FILES += zstd/lib/dictBuilder/fastcover.o
 ZSTD_FILES += zstd/lib/dictBuilder/zdict.o
 
-ifeq "$(DONT_BUILD_BZIP2)" "1"
+ifeq "$(DONT_BUILD_KANZI)" "1"
     DEFINES += -DBENCH_REMOVE_KANZI
     KANZI_FILES =
 else
