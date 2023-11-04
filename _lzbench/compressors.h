@@ -30,6 +30,13 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 	#define lzbench_brieflz_decompress NULL
 #endif
 
+#ifndef BENCH_REMOVE_KANZI
+	int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+	int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+#else
+	#define lzbench_kanzi_compress NULL
+	#define lzbench_kanzi_decompress NULL
+#endif // BENCH_REMOVE_KANZI
 
 #ifndef BENCH_REMOVE_BROTLI
 	int64_t lzbench_brotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
