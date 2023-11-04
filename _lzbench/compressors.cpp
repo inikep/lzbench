@@ -120,7 +120,7 @@ int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_
 int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)                                                                                                           {
   std::string entropy;
   std::string transform;
-  uint szBlock;
+  uint32_t szBlock;
 
   switch (level) {
      case 0:
