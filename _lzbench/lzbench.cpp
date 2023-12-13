@@ -263,7 +263,7 @@ void *alloc_and_touch(size_t size, bool must_zero) {
 }
 
 
-inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& chunk_sizes, compress_func compress, std::vector<size_t> &compr_sizes, uint8_t *inbuf, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
+inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& chunk_sizes, compress_func compress, std::vector<size_t> &compr_sizes, std::vector<bool> &compression_successful, uint8_t *inbuf, uint8_t *outbuf, size_t outsize, size_t param1, size_t param2, char* workmem)
 {
     int64_t clen;
     size_t outpart, part, sum = 0;
@@ -271,6 +271,7 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
     int cscount = chunk_sizes.size();
 
     compr_sizes.resize(cscount);
+    compression_successful.resize(cscount);
 
     for (int i=0; i<cscount; i++)
     {
@@ -281,6 +282,7 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
         clen = compress((char*)inbuf, part, (char*)outbuf, outpart, param1, param2, workmem);
         LZBENCH_PRINT(9, "ENC part=%d clen=%d in=%d\n", (int)part, (int)clen, (int)(inbuf-start));
 
+        compression_successful[i] = clen > 0;
         if (clen <= 0 || clen == part)
         {
             if (part > outsize) return 0;
@@ -298,7 +300,7 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
 }
 
 
-inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>& chunk_sizes, compress_func decompress, std::vector<size_t> &compr_sizes, uint8_t *inbuf, uint8_t *outbuf, size_t param1, size_t param2, char* workmem)
+inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>& chunk_sizes, compress_func decompress, std::vector<size_t> &compr_sizes, std::vector<bool> compression_successful, uint8_t *inbuf, uint8_t *outbuf, size_t param1, size_t param2, char* workmem)
 {
     int64_t dlen;
     size_t part, sum = 0;
@@ -308,7 +310,7 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>&
     for (int i=0; i<cscount; i++)
     {
         part = compr_sizes[i];
-        if (part == chunk_sizes[i]) // uncompressed
+      if ((part == chunk_sizes[i]) && !compression_successful[i]) // uncompressed
         {
             memcpy(outbuf, inbuf, part);
             dlen = part;
@@ -338,6 +340,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
     uint64_t nanosec, total_nanosec;
     std::vector<uint64_t> ctime, dtime;
     std::vector<size_t> compr_sizes, chunk_sizes;
+    std::vector<bool> compr_success;
     bool decomp_error = false;
     char* workmem = NULL;
     size_t param2 = desc->additional_param;
@@ -384,7 +387,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
         do
         {
             GetTime(start_ticks);
-            complen = lzbench_compress(params, chunk_sizes, desc->compress, compr_sizes, inbuf, compbuf, comprsize, param1, param2, workmem);
+            complen = lzbench_compress(params, chunk_sizes, desc->compress, compr_sizes, compr_success, inbuf, compbuf, comprsize, param1, param2, workmem);
             GetTime(end_ticks);
             nanosec = GetDiffTime(rate, start_ticks, end_ticks);
             if (nanosec >= 10000) ctime.push_back(nanosec);
@@ -418,7 +421,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
         do
         {
             GetTime(start_ticks);
-            decomplen = lzbench_decompress(params, chunk_sizes, desc->decompress, compr_sizes, compbuf, decomp, param1, param2, workmem);
+            decomplen = lzbench_decompress(params, chunk_sizes, desc->decompress, compr_sizes, compr_success, compbuf, decomp, param1, param2, workmem);
             GetTime(end_ticks);
             nanosec = GetDiffTime(rate, start_ticks, end_ticks);
             if (nanosec >= 10000) dtime.push_back(nanosec);

@@ -140,7 +140,7 @@ typedef struct
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
-    { "memcpy",     "",            0,   0,    0,       0, lzbench_return_0,            lzbench_memcpy,                NULL,                    NULL },
+    { "memcpy",     "",            0,   0,    0,       0, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
     { "blosclz",    "2.0.0",       1,   9,    0, 64*1024, lzbench_blosclz_compress,    lzbench_blosclz_decompress,    NULL,                    NULL },
     { "brieflz",    "1.3.0",       1,   9,    0,       0, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
     { "brotli",     "1.0.9",       0,  11,    0,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
@@ -210,7 +210,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "zstd22LDM",  "1.5.5",       1,  22,   22,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstd24LDM",  "1.5.5",       1,  22,   24,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "nakamichi",  "okamigan",    0,   0,    0,       0, lzbench_nakamichi_compress,  lzbench_nakamichi_decompress,  NULL,                    NULL },
-    { "cudaMemcpy", "",            0,   0,    0,       0, lzbench_cuda_return_0,       lzbench_cuda_memcpy,           lzbench_cuda_init,       lzbench_cuda_deinit },
+    { "cudaMemcpy", "",            0,   0,    0,       0, lzbench_cuda_memcpy,         lzbench_cuda_memcpy,           lzbench_cuda_init,       lzbench_cuda_deinit },
     { "nvcomp_lz4", "1.2.2",       0,   5,    0,       0, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },
 };
 

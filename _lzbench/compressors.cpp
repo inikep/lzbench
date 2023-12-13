@@ -17,11 +17,6 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
     return insize;
 }
 
-int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* )
-{
-    return 0;
-}
-
 
 #ifndef BENCH_REMOVE_BLOSCLZ
 #include "blosclz/blosclz.h"
@@ -1782,11 +1777,6 @@ int64_t lzbench_cuda_memcpy(char *inbuf, size_t insize, char *outbuf, size_t out
     cudaMemcpy(workmem, inbuf, insize, cudaMemcpyHostToDevice);
     cudaMemcpy(outbuf, workmem, insize, cudaMemcpyDeviceToHost);
     return insize;
-}
-
-int64_t lzbench_cuda_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* )
-{
-    return 0;
 }
 
 #ifdef BENCH_HAS_NVCOMP

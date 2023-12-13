@@ -5,7 +5,6 @@
 #include <stdint.h> // int64_t
 
 int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* );
-int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* );
 
 
 
@@ -500,12 +499,10 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
         char* lzbench_cuda_init(size_t insize, size_t, size_t);
         void lzbench_cuda_deinit(char* workmem);
         int64_t lzbench_cuda_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem);
-        int64_t lzbench_cuda_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* );
 #else
         #define lzbench_cuda_init NULL
         #define lzbench_cuda_deinit NULL
         #define lzbench_cuda_memcpy NULL
-        #define lzbench_cuda_return_0 NULL
 #endif
 
 #ifdef BENCH_HAS_NVCOMP
