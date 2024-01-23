@@ -22,6 +22,20 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
     return 0;
 }
 
+#ifndef BENCH_REMOVE_RLE
+#include "rle/rle.hpp"
+
+int64_t lzbench_rle_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    return rle_compress((const std::uint8_t *)inbuf, insize, (std::uint8_t *)outbuf, outsize);
+}
+
+int64_t lzbench_rle_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char*)
+{
+    return rle_decompress((const std::uint8_t *)inbuf, insize, (std::uint8_t *)outbuf, outsize);
+}
+
+#endif // BENCH_REMOVE_RLE
 
 #ifndef BENCH_REMOVE_BLOSCLZ
 #include "blosclz/blosclz.h"
