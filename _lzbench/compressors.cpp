@@ -1256,6 +1256,71 @@ int64_t lzbench_snappy_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 
+#ifndef BENCH_REMOVE_TAMP
+#include "tamp/compressor.h"
+#include "tamp/decompressor.h"
+
+char* lzbench_tamp_init(size_t, size_t level, size_t)
+{
+    return (char*) malloc(1 << level);
+}
+
+void lzbench_tamp_deinit(char* workmem)
+{
+    free(workmem);
+}
+
+int64_t lzbench_tamp_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+{
+    int64_t compressed_size = 0;
+    TampConf conf = {
+       /* Describes the size of the decompression buffer in bits.
+       A 10-bit window represents a 1024-byte buffer.
+       Must be in range [8, 15], representing [256, 32678] byte windows. */
+       .window = (uint16_t)level,
+       .literal = 8,
+       .use_custom_dictionary = false
+    };
+    TampCompressor compressor;
+    tamp_compressor_init(&compressor, &conf, (unsigned char *)workmem);
+
+    tamp_compressor_compress_and_flush(
+            &compressor,
+            (unsigned char*) outbuf,
+            outsize,
+            (size_t *)&compressed_size,
+            (unsigned char *)inbuf,
+            insize,
+            NULL,
+            false
+    );
+    return compressed_size;
+}
+
+int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
+{
+    int64_t decompressed_size = 0;
+    TampConf conf;
+    TampDecompressor decompressor;
+    size_t compressed_consumed_size;
+
+    tamp_decompressor_init(&decompressor, NULL, (unsigned char *)workmem);
+
+    tamp_decompressor_decompress(
+        &decompressor,
+        (unsigned char *)outbuf,
+        outsize,
+        (size_t *)&decompressed_size,
+        (unsigned char *)inbuf,
+        insize,
+        NULL
+    );
+
+    return decompressed_size;
+}
+#endif
+
+
 
 #ifndef BENCH_REMOVE_TORNADO
 #include "tornado/tor_test.h"
