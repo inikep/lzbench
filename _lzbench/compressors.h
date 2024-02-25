@@ -529,4 +529,16 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
         #define lzbench_nvcomp_decompress NULL
 #endif
 
+#ifndef BENCH_REMOVE_TAMP
+        char* lzbench_tamp_init(size_t, size_t level, size_t);
+        void lzbench_tamp_deinit(char* workmem);
+        int64_t lzbench_tamp_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem);
+        int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem);
+#else
+        #define lzbench_tamp_init NULL
+        #define lzbench_tamp_deinit NULL
+        #define lzbench_tamp_compress NULL
+        #define lzbench_tamp_decompress NULL
+#endif
+
 #endif // LZBENCH_COMPRESSORS_H
