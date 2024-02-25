@@ -110,6 +110,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [shrinker 0.1](https://code.google.com/p/data-shrinker) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
  - [slz 1.2.0](http://www.libslz.org/) - only a compressor, uses zlib for decompression
  - [snappy 2020-07-11 (4dd277f)](https://github.com/google/snappy)
+ - [tamp 1.3.1](https://github.com/BrianPugh/tamp)
  - [tornado 0.6a](http://freearc.org)
  - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
  - [wflz 2015-09-16](https://github.com/ShaneWF/wflz) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
