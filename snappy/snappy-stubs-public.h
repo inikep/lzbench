@@ -37,19 +37,19 @@
 
 #include <cstddef>
 
-#if ${HAVE_SYS_UIO_H_01}  // HAVE_SYS_UIO_H
+#if 0  // HAVE_SYS_UIO_H
 #include <sys/uio.h>
 #endif  // HAVE_SYS_UIO_H
 
-#define SNAPPY_MAJOR ${PROJECT_VERSION_MAJOR}
-#define SNAPPY_MINOR ${PROJECT_VERSION_MINOR}
-#define SNAPPY_PATCHLEVEL ${PROJECT_VERSION_PATCH}
+#define SNAPPY_MAJOR 1
+#define SNAPPY_MINOR 1
+#define SNAPPY_PATCHLEVEL 8
 #define SNAPPY_VERSION \
     ((SNAPPY_MAJOR << 16) | (SNAPPY_MINOR << 8) | SNAPPY_PATCHLEVEL)
 
 namespace snappy {
 
-#if !${HAVE_SYS_UIO_H_01}  // !HAVE_SYS_UIO_H
+#if !0  // !HAVE_SYS_UIO_H
 // Windows does not have an iovec type, yet the concept is universally useful.
 // It is simple to define it ourselves, so we put it inside our own namespace.
 struct iovec {
