@@ -1263,7 +1263,7 @@ void lzbench_tamp_deinit(char* workmem)
 
 int64_t lzbench_tamp_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
 {
-    int64_t compressed_size;
+    int64_t compressed_size = 0;
     TampConf conf = {
        /* Describes the size of the decompression buffer in bits.
        A 10-bit window represents a 1024-byte buffer.
@@ -1290,7 +1290,7 @@ int64_t lzbench_tamp_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 
 int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
 {
-    int64_t decompressed_size;
+    int64_t decompressed_size = 0;
     TampConf conf;
     TampDecompressor decompressor;
     size_t compressed_consumed_size;
