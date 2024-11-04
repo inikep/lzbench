@@ -1,10 +1,10 @@
 Introduction
 -------------------------
 
-lzbench is an in-memory benchmark of open-source LZ77/LZSS/LZMA compressors. It joins all compressors into a single exe. 
-At the beginning an input file is read to memory. 
-Then all compressors are used to compress and decompress the file and decompressed file is verified. 
-This approach has a big advantage of using the same compiler with the same optimizations for all compressors. 
+lzbench is an in-memory benchmark of open-source LZ77/LZSS/LZMA compressors. It joins all compressors into a single exe.
+At the beginning an input file is read to memory.
+Then all compressors are used to compress and decompress the file and decompressed file is verified.
+This approach has a big advantage of using the same compiler with the same optimizations for all compressors.
 The disadvantage is that it requires source code of each compressor (therefore Slug or lzturbo are not included).
 
 |Status   |
@@ -64,7 +64,7 @@ make BUILD_ARCH=32-bit
 
 The default linking for Linux is dynamic and static for Windows. This can be changed with `make BUILD_STATIC=0/1`.
 
-To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ4` to remove LZ4). 
+To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ4` to remove LZ4).
 You also have to remove corresponding `*.o` files (e.g. `lz4/lz4.o` and `lz4/lz4hc.o`).
 
 lzbench was tested with:
@@ -76,8 +76,8 @@ lzbench was tested with:
 
 Supported compressors
 -------------------------
-**Warning**: some of the compressors listed here have security issues and/or are 
-no longer maintained.  For information about the security of the various compressors, 
+**Warning**: some of the compressors listed here have security issues and/or are
+no longer maintained.  For information about the security of the various compressors,
 see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page.
 
  - [blosclz 2.0.0](https://github.com/Blosc/c-blosc2)
@@ -99,7 +99,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [lzg 1.0.10](https://liblzg.bitsnbites.eu/)
  - [lzham 1.0](https://github.com/richgel999/lzham_codec)
  lzjb 2010
- - [lzlib 1.12-rc2](http://www.nongnu.org/lzip)
+ - [lzlib 1.13](http://www.nongnu.org/lzip)
  - [lzma v19.00](http://7-zip.org)
  - [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat) - WARNING: it contains bugs (decompression error; returns 0); it can throw SEGFAULT compiled with gcc 4.9+ -O3
  - [lzo 2.10](http://www.oberhumer.com/opensource/lzo)
