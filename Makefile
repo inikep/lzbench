@@ -61,7 +61,11 @@ else
 		DONT_BUILD_CSC ?= 1
 	endif
 
-	LDFLAGS	+= -pthread -lrt
+	ifneq ($(shell uname -s),Darwin)
+		LDFLAGS += -lrt
+	endif
+
+	LDFLAGS	+= -pthread
 
 	ifeq ($(BUILD_STATIC),1)
 		LDFLAGS	+= -lrt -static
