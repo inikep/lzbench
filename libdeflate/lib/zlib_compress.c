@@ -26,12 +26,9 @@
  */
 
 #include "deflate_compress.h"
-#include "unaligned.h"
 #include "zlib_constants.h"
 
-#include "libdeflate.h"
-
-LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
+LIBDEFLATEAPI size_t
 libdeflate_zlib_compress(struct libdeflate_compressor *c,
 			 const void *in, size_t in_nbytes,
 			 void *out, size_t out_nbytes_avail)
@@ -47,7 +44,7 @@ libdeflate_zlib_compress(struct libdeflate_compressor *c,
 
 	/* 2 byte header: CMF and FLG  */
 	hdr = (ZLIB_CM_DEFLATE << 8) | (ZLIB_CINFO_32K_WINDOW << 12);
-	compression_level = deflate_get_compression_level(c);
+	compression_level = libdeflate_get_compression_level(c);
 	if (compression_level < 2)
 		level_hint = ZLIB_FASTEST_COMPRESSION;
 	else if (compression_level < 6)
@@ -76,7 +73,7 @@ libdeflate_zlib_compress(struct libdeflate_compressor *c,
 	return out_next - (u8 *)out;
 }
 
-LIBDEFLATEEXPORT size_t LIBDEFLATEAPI
+LIBDEFLATEAPI size_t
 libdeflate_zlib_compress_bound(struct libdeflate_compressor *c,
 			       size_t in_nbytes)
 {

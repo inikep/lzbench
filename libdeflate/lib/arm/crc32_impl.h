@@ -1,8 +1,7 @@
 /*
- * arm/crc32_impl.h
+ * arm/crc32_impl.h - ARM implementations of the gzip CRC-32 algorithm
  *
- * Copyright 2017 Jun He <jun.he@linaro.org>
- * Copyright 2018 Eric Biggers
+ * Copyright 2022 Eric Biggers
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -31,217 +30,653 @@
 
 #include "cpu_features.h"
 
-/* Implementation using ARM CRC32 instructions */
-#undef DISPATCH_ARM
-#if !defined(DEFAULT_IMPL) && \
-    (defined(__ARM_FEATURE_CRC32) || \
-     (ARM_CPU_FEATURES_ENABLED && COMPILER_SUPPORTS_CRC32_TARGET_INTRINSICS))
-#  ifdef __ARM_FEATURE_CRC32
+/*
+ * crc32_arm_crc() - implementation using crc32 instructions (only)
+ *
+ * In general this implementation is straightforward.  However, naive use of the
+ * crc32 instructions is serial: one of the two inputs to each crc32 instruction
+ * is the output of the previous one.  To take advantage of CPUs that can
+ * execute multiple crc32 instructions in parallel, when possible we interleave
+ * the checksumming of several adjacent chunks, then combine their CRCs.
+ *
+ * However, without pmull, combining CRCs is fairly slow.  So in this pmull-less
+ * version, we only use a large chunk length, and thus we only do chunked
+ * processing if there is a lot of data to checksum.  This also means that a
+ * variable chunk length wouldn't help much, so we just support a fixed length.
+ */
+#if HAVE_CRC32_INTRIN
+#  if HAVE_CRC32_NATIVE
 #    define ATTRIBUTES
-#    define DEFAULT_IMPL	crc32_arm
 #  else
-#    ifdef __arm__
+#    ifdef ARCH_ARM32
 #      ifdef __clang__
-#        define ATTRIBUTES	__attribute__((target("armv8-a,crc")))
+#        define ATTRIBUTES	_target_attribute("armv8-a,crc")
+#      elif defined(__ARM_PCS_VFP)
+	 /*
+	  * +simd is needed to avoid a "selected architecture lacks an FPU"
+	  * error with Debian arm-linux-gnueabihf-gcc when -mfpu is not
+	  * explicitly specified on the command line.
+	  */
+#        define ATTRIBUTES	_target_attribute("arch=armv8-a+crc+simd")
 #      else
-#        define ATTRIBUTES	__attribute__((target("arch=armv8-a+crc")))
+#        define ATTRIBUTES	_target_attribute("arch=armv8-a+crc")
 #      endif
 #    else
 #      ifdef __clang__
-#        define ATTRIBUTES	__attribute__((target("crc")))
+#        define ATTRIBUTES	_target_attribute("crc")
 #      else
-#        define ATTRIBUTES	__attribute__((target("+crc")))
+#        define ATTRIBUTES	_target_attribute("+crc")
 #      endif
 #    endif
-#    define DISPATCH		1
-#    define DISPATCH_ARM	1
 #  endif
 
-/*
- * gcc's (as of 10.1) version of arm_acle.h for arm32, and clang's (as of
- * 10.0.1) version of arm_acle.h for both arm32 and arm64, have a bug where they
- * only define the CRC32 functions like __crc32b() when __ARM_FEATURE_CRC32 is
- * defined.  That prevents them from being used via __attribute__((target)) when
- * the main target doesn't have CRC32 support enabled.  The actual built-ins
- * like __builtin_arm_crc32b() are available and work, however; it's just the
- * wrappers in arm_acle.h like __crc32b() that erroneously don't get defined.
- * Work around this by manually defining __ARM_FEATURE_CRC32.
- */
-#ifndef __ARM_FEATURE_CRC32
-#  define __ARM_FEATURE_CRC32	1
+#ifndef _MSC_VER
+#  include <arm_acle.h>
 #endif
-#include <arm_acle.h>
 
-static u32 ATTRIBUTES
-crc32_arm(u32 remainder, const u8 *p, size_t size)
+/*
+ * Combine the CRCs for 4 adjacent chunks of length L = CRC32_FIXED_CHUNK_LEN
+ * bytes each by computing:
+ *
+ *	[ crc0*x^(3*8*L) + crc1*x^(2*8*L) + crc2*x^(1*8*L) + crc3 ] mod G(x)
+ *
+ * This has been optimized in several ways:
+ *
+ *    - The needed multipliers (x to some power, reduced mod G(x)) were
+ *	precomputed.
+ *
+ *    - The 3 multiplications are interleaved.
+ *
+ *    - The reduction mod G(x) is delayed to the end and done using __crc32d.
+ *	Note that the use of __crc32d introduces an extra factor of x^32.  To
+ *	cancel that out along with the extra factor of x^1 that gets introduced
+ *	because of how the 63-bit products are aligned in their 64-bit integers,
+ *	the multipliers are actually x^(j*8*L - 33) instead of x^(j*8*L).
+ */
+static forceinline ATTRIBUTES u32
+combine_crcs_slow(u32 crc0, u32 crc1, u32 crc2, u32 crc3)
 {
-	while (size != 0 && (uintptr_t)p & 7) {
-		remainder = __crc32b(remainder, *p++);
-		size--;
-	}
+	u64 res0 = 0, res1 = 0, res2 = 0;
+	int i;
 
-	while (size >= 32) {
-		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 0)));
-		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 1)));
-		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 2)));
-		remainder = __crc32d(remainder, le64_bswap(*((u64 *)p + 3)));
+	/* Multiply crc{0,1,2} by CRC32_FIXED_CHUNK_MULT_{3,2,1}. */
+	for (i = 0; i < 32; i++) {
+		if (CRC32_FIXED_CHUNK_MULT_3 & (1U << i))
+			res0 ^= (u64)crc0 << i;
+		if (CRC32_FIXED_CHUNK_MULT_2 & (1U << i))
+			res1 ^= (u64)crc1 << i;
+		if (CRC32_FIXED_CHUNK_MULT_1 & (1U << i))
+			res2 ^= (u64)crc2 << i;
+	}
+	/* Add the different parts and reduce mod G(x). */
+	return __crc32d(0, res0 ^ res1 ^ res2) ^ crc3;
+}
+
+#define crc32_arm_crc	crc32_arm_crc
+static u32 ATTRIBUTES MAYBE_UNUSED
+crc32_arm_crc(u32 crc, const u8 *p, size_t len)
+{
+	if (len >= 64) {
+		const size_t align = -(uintptr_t)p & 7;
+
+		/* Align p to the next 8-byte boundary. */
+		if (align) {
+			if (align & 1)
+				crc = __crc32b(crc, *p++);
+			if (align & 2) {
+				crc = __crc32h(crc, le16_bswap(*(u16 *)p));
+				p += 2;
+			}
+			if (align & 4) {
+				crc = __crc32w(crc, le32_bswap(*(u32 *)p));
+				p += 4;
+			}
+			len -= align;
+		}
+		/*
+		 * Interleave the processing of multiple adjacent data chunks to
+		 * take advantage of instruction-level parallelism.
+		 *
+		 * Some CPUs don't prefetch the data if it's being fetched in
+		 * multiple interleaved streams, so do explicit prefetching.
+		 */
+		while (len >= CRC32_NUM_CHUNKS * CRC32_FIXED_CHUNK_LEN) {
+			const u64 *wp0 = (const u64 *)p;
+			const u64 * const wp0_end =
+				(const u64 *)(p + CRC32_FIXED_CHUNK_LEN);
+			u32 crc1 = 0, crc2 = 0, crc3 = 0;
+
+			STATIC_ASSERT(CRC32_NUM_CHUNKS == 4);
+			STATIC_ASSERT(CRC32_FIXED_CHUNK_LEN % (4 * 8) == 0);
+			do {
+				prefetchr(&wp0[64 + 0*CRC32_FIXED_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 1*CRC32_FIXED_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 2*CRC32_FIXED_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 3*CRC32_FIXED_CHUNK_LEN/8]);
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_FIXED_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_FIXED_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_FIXED_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_FIXED_CHUNK_LEN/8]));
+				wp0++;
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_FIXED_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_FIXED_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_FIXED_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_FIXED_CHUNK_LEN/8]));
+				wp0++;
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_FIXED_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_FIXED_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_FIXED_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_FIXED_CHUNK_LEN/8]));
+				wp0++;
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_FIXED_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_FIXED_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_FIXED_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_FIXED_CHUNK_LEN/8]));
+				wp0++;
+			} while (wp0 != wp0_end);
+			crc = combine_crcs_slow(crc, crc1, crc2, crc3);
+			p += CRC32_NUM_CHUNKS * CRC32_FIXED_CHUNK_LEN;
+			len -= CRC32_NUM_CHUNKS * CRC32_FIXED_CHUNK_LEN;
+		}
+		/*
+		 * Due to the large fixed chunk length used above, there might
+		 * still be a lot of data left.  So use a 64-byte loop here,
+		 * instead of a loop that is less unrolled.
+		 */
+		while (len >= 64) {
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 0)));
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 8)));
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 16)));
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 24)));
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 32)));
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 40)));
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 48)));
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 56)));
+			p += 64;
+			len -= 64;
+		}
+	}
+	if (len & 32) {
+		crc = __crc32d(crc, get_unaligned_le64(p + 0));
+		crc = __crc32d(crc, get_unaligned_le64(p + 8));
+		crc = __crc32d(crc, get_unaligned_le64(p + 16));
+		crc = __crc32d(crc, get_unaligned_le64(p + 24));
 		p += 32;
-		size -= 32;
 	}
-
-	while (size >= 8) {
-		remainder = __crc32d(remainder, le64_bswap(*(u64 *)p));
+	if (len & 16) {
+		crc = __crc32d(crc, get_unaligned_le64(p + 0));
+		crc = __crc32d(crc, get_unaligned_le64(p + 8));
+		p += 16;
+	}
+	if (len & 8) {
+		crc = __crc32d(crc, get_unaligned_le64(p));
 		p += 8;
-		size -= 8;
 	}
-
-	while (size != 0) {
-		remainder = __crc32b(remainder, *p++);
-		size--;
+	if (len & 4) {
+		crc = __crc32w(crc, get_unaligned_le32(p));
+		p += 4;
 	}
-
-	return remainder;
+	if (len & 2) {
+		crc = __crc32h(crc, get_unaligned_le16(p));
+		p += 2;
+	}
+	if (len & 1)
+		crc = __crc32b(crc, *p);
+	return crc;
 }
 #undef ATTRIBUTES
-#endif /* Implementation using ARM CRC32 instructions */
+#endif /* crc32_arm_crc() */
 
 /*
- * CRC-32 folding with ARM Crypto extension-PMULL
+ * crc32_arm_crc_pmullcombine() - implementation using crc32 instructions, plus
+ *	pmull instructions for CRC combining
  *
- * This works the same way as the x86 PCLMUL version.
- * See x86/crc32_pclmul_template.h for an explanation.
+ * This is similar to crc32_arm_crc(), but it enables the use of pmull
+ * (carryless multiplication) instructions for the steps where the CRCs of
+ * adjacent data chunks are combined.  As this greatly speeds up CRC
+ * combination, this implementation also differs from crc32_arm_crc() in that it
+ * uses a variable chunk length which can get fairly small.  The precomputed
+ * multipliers needed for the selected chunk length are loaded from a table.
+ *
+ * Note that pmull is used here only for combining the CRCs of separately
+ * checksummed chunks, not for folding the data itself.  See crc32_arm_pmull*()
+ * for implementations that use pmull for folding the data itself.
  */
-#undef DISPATCH_PMULL
-#if !defined(DEFAULT_IMPL) && \
-    (defined(__ARM_FEATURE_CRYPTO) ||	\
-     (ARM_CPU_FEATURES_ENABLED &&	\
-      COMPILER_SUPPORTS_PMULL_TARGET_INTRINSICS)) && \
-      /* not yet tested on big endian, probably needs changes to work there */ \
-    (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
-#  define FUNCNAME		crc32_pmull
-#  define FUNCNAME_ALIGNED	crc32_pmull_aligned
-#  ifdef __ARM_FEATURE_CRYPTO
+#if HAVE_CRC32_INTRIN && HAVE_PMULL_INTRIN
+#  if HAVE_CRC32_NATIVE && HAVE_PMULL_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
 #    define ATTRIBUTES
-#    define DEFAULT_IMPL	crc32_pmull
 #  else
-#    ifdef __arm__
-#      define ATTRIBUTES	__attribute__((target("fpu=crypto-neon-fp-armv8")))
+#    ifdef ARCH_ARM32
+#      define ATTRIBUTES	_target_attribute("arch=armv8-a+crc,fpu=crypto-neon-fp-armv8")
 #    else
 #      ifdef __clang__
-#        define ATTRIBUTES	__attribute__((target("crypto")))
+#        define ATTRIBUTES	_target_attribute("crc,aes")
 #      else
-#        define ATTRIBUTES	__attribute__((target("+crypto")))
+#        define ATTRIBUTES	_target_attribute("+crc,+crypto")
 #      endif
 #    endif
-#    define DISPATCH		1
-#    define DISPATCH_PMULL	1
 #  endif
 
+#ifndef _MSC_VER
+#  include <arm_acle.h>
+#endif
 #include <arm_neon.h>
 
-static forceinline ATTRIBUTES uint8x16_t
-clmul_00(uint8x16_t a, uint8x16_t b)
+/* Do carryless multiplication of two 32-bit values. */
+static forceinline ATTRIBUTES u64
+clmul_u32(u32 a, u32 b)
 {
-	return (uint8x16_t)vmull_p64((poly64_t)vget_low_u8(a),
-				     (poly64_t)vget_low_u8(b));
+	uint64x2_t res = vreinterpretq_u64_p128(
+				compat_vmull_p64((poly64_t)a, (poly64_t)b));
+
+	return vgetq_lane_u64(res, 0);
 }
 
-static forceinline ATTRIBUTES uint8x16_t
-clmul_10(uint8x16_t a, uint8x16_t b)
-{
-	return (uint8x16_t)vmull_p64((poly64_t)vget_low_u8(a),
-				     (poly64_t)vget_high_u8(b));
-}
-
-static forceinline ATTRIBUTES uint8x16_t
-clmul_11(uint8x16_t a, uint8x16_t b)
-{
-	return (uint8x16_t)vmull_high_p64((poly64x2_t)a, (poly64x2_t)b);
-}
-
-static forceinline ATTRIBUTES uint8x16_t
-fold_128b(uint8x16_t dst, uint8x16_t src, uint8x16_t multipliers)
-{
-	return dst ^ clmul_00(src, multipliers) ^ clmul_11(src, multipliers);
-}
-
+/*
+ * Like combine_crcs_slow(), but uses vmull_p64 to do the multiplications more
+ * quickly, and supports a variable chunk length.  The chunk length is
+ * 'i * CRC32_MIN_VARIABLE_CHUNK_LEN'
+ * where 1 <= i < ARRAY_LEN(crc32_mults_for_chunklen).
+ */
 static forceinline ATTRIBUTES u32
-crc32_pmull_aligned(u32 remainder, const uint8x16_t *p, size_t nr_segs)
+combine_crcs_fast(u32 crc0, u32 crc1, u32 crc2, u32 crc3, size_t i)
 {
-	/* Constants precomputed by gen_crc32_multipliers.c.  Do not edit! */
-	const uint8x16_t multipliers_4 =
-		(uint8x16_t)(uint64x2_t){ 0x8F352D95, 0x1D9513D7 };
-	const uint8x16_t multipliers_1 =
-		(uint8x16_t)(uint64x2_t){ 0xAE689191, 0xCCAA009E };
-	const uint8x16_t final_multiplier =
-		(uint8x16_t)(uint64x2_t){ 0xB8BC6765 };
-	const uint8x16_t mask32 = (uint8x16_t)(uint32x4_t){ 0xFFFFFFFF };
-	const uint8x16_t barrett_reduction_constants =
-			(uint8x16_t)(uint64x2_t){ 0x00000001F7011641,
-						  0x00000001DB710641 };
-	const uint8x16_t zeroes = (uint8x16_t){ 0 };
+	u64 res0 = clmul_u32(crc0, crc32_mults_for_chunklen[i][0]);
+	u64 res1 = clmul_u32(crc1, crc32_mults_for_chunklen[i][1]);
+	u64 res2 = clmul_u32(crc2, crc32_mults_for_chunklen[i][2]);
 
-	const uint8x16_t * const end = p + nr_segs;
-	const uint8x16_t * const end512 = p + (nr_segs & ~3);
-	uint8x16_t x0, x1, x2, x3;
+	return __crc32d(0, res0 ^ res1 ^ res2) ^ crc3;
+}
 
-	x0 = *p++ ^ (uint8x16_t)(uint32x4_t){ remainder };
-	if (nr_segs >= 4) {
-		x1 = *p++;
-		x2 = *p++;
-		x3 = *p++;
+#define crc32_arm_crc_pmullcombine	crc32_arm_crc_pmullcombine
+static u32 ATTRIBUTES MAYBE_UNUSED
+crc32_arm_crc_pmullcombine(u32 crc, const u8 *p, size_t len)
+{
+	const size_t align = -(uintptr_t)p & 7;
 
-		/* Fold 512 bits at a time */
-		while (p != end512) {
-			x0 = fold_128b(*p++, x0, multipliers_4);
-			x1 = fold_128b(*p++, x1, multipliers_4);
-			x2 = fold_128b(*p++, x2, multipliers_4);
-			x3 = fold_128b(*p++, x3, multipliers_4);
+	if (len >= align + CRC32_NUM_CHUNKS * CRC32_MIN_VARIABLE_CHUNK_LEN) {
+		/* Align p to the next 8-byte boundary. */
+		if (align) {
+			if (align & 1)
+				crc = __crc32b(crc, *p++);
+			if (align & 2) {
+				crc = __crc32h(crc, le16_bswap(*(u16 *)p));
+				p += 2;
+			}
+			if (align & 4) {
+				crc = __crc32w(crc, le32_bswap(*(u32 *)p));
+				p += 4;
+			}
+			len -= align;
+		}
+		/*
+		 * Handle CRC32_MAX_VARIABLE_CHUNK_LEN specially, so that better
+		 * code is generated for it.
+		 */
+		while (len >= CRC32_NUM_CHUNKS * CRC32_MAX_VARIABLE_CHUNK_LEN) {
+			const u64 *wp0 = (const u64 *)p;
+			const u64 * const wp0_end =
+				(const u64 *)(p + CRC32_MAX_VARIABLE_CHUNK_LEN);
+			u32 crc1 = 0, crc2 = 0, crc3 = 0;
+
+			STATIC_ASSERT(CRC32_NUM_CHUNKS == 4);
+			STATIC_ASSERT(CRC32_MAX_VARIABLE_CHUNK_LEN % (4 * 8) == 0);
+			do {
+				prefetchr(&wp0[64 + 0*CRC32_MAX_VARIABLE_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 1*CRC32_MAX_VARIABLE_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 2*CRC32_MAX_VARIABLE_CHUNK_LEN/8]);
+				prefetchr(&wp0[64 + 3*CRC32_MAX_VARIABLE_CHUNK_LEN/8]);
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				wp0++;
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				wp0++;
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				wp0++;
+				crc  = __crc32d(crc,  le64_bswap(wp0[0*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc1 = __crc32d(crc1, le64_bswap(wp0[1*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc2 = __crc32d(crc2, le64_bswap(wp0[2*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				crc3 = __crc32d(crc3, le64_bswap(wp0[3*CRC32_MAX_VARIABLE_CHUNK_LEN/8]));
+				wp0++;
+			} while (wp0 != wp0_end);
+			crc = combine_crcs_fast(crc, crc1, crc2, crc3,
+						ARRAY_LEN(crc32_mults_for_chunklen) - 1);
+			p += CRC32_NUM_CHUNKS * CRC32_MAX_VARIABLE_CHUNK_LEN;
+			len -= CRC32_NUM_CHUNKS * CRC32_MAX_VARIABLE_CHUNK_LEN;
+		}
+		/* Handle up to one variable-length chunk. */
+		if (len >= CRC32_NUM_CHUNKS * CRC32_MIN_VARIABLE_CHUNK_LEN) {
+			const size_t i = len / (CRC32_NUM_CHUNKS *
+						CRC32_MIN_VARIABLE_CHUNK_LEN);
+			const size_t chunk_len =
+				i * CRC32_MIN_VARIABLE_CHUNK_LEN;
+			const u64 *wp0 = (const u64 *)(p + 0*chunk_len);
+			const u64 *wp1 = (const u64 *)(p + 1*chunk_len);
+			const u64 *wp2 = (const u64 *)(p + 2*chunk_len);
+			const u64 *wp3 = (const u64 *)(p + 3*chunk_len);
+			const u64 * const wp0_end = wp1;
+			u32 crc1 = 0, crc2 = 0, crc3 = 0;
+
+			STATIC_ASSERT(CRC32_NUM_CHUNKS == 4);
+			STATIC_ASSERT(CRC32_MIN_VARIABLE_CHUNK_LEN % (4 * 8) == 0);
+			do {
+				prefetchr(wp0 + 64);
+				prefetchr(wp1 + 64);
+				prefetchr(wp2 + 64);
+				prefetchr(wp3 + 64);
+				crc  = __crc32d(crc,  le64_bswap(*wp0++));
+				crc1 = __crc32d(crc1, le64_bswap(*wp1++));
+				crc2 = __crc32d(crc2, le64_bswap(*wp2++));
+				crc3 = __crc32d(crc3, le64_bswap(*wp3++));
+				crc  = __crc32d(crc,  le64_bswap(*wp0++));
+				crc1 = __crc32d(crc1, le64_bswap(*wp1++));
+				crc2 = __crc32d(crc2, le64_bswap(*wp2++));
+				crc3 = __crc32d(crc3, le64_bswap(*wp3++));
+				crc  = __crc32d(crc,  le64_bswap(*wp0++));
+				crc1 = __crc32d(crc1, le64_bswap(*wp1++));
+				crc2 = __crc32d(crc2, le64_bswap(*wp2++));
+				crc3 = __crc32d(crc3, le64_bswap(*wp3++));
+				crc  = __crc32d(crc,  le64_bswap(*wp0++));
+				crc1 = __crc32d(crc1, le64_bswap(*wp1++));
+				crc2 = __crc32d(crc2, le64_bswap(*wp2++));
+				crc3 = __crc32d(crc3, le64_bswap(*wp3++));
+			} while (wp0 != wp0_end);
+			crc = combine_crcs_fast(crc, crc1, crc2, crc3, i);
+			p += CRC32_NUM_CHUNKS * chunk_len;
+			len -= CRC32_NUM_CHUNKS * chunk_len;
 		}
 
-		/* Fold 512 bits => 128 bits */
-		x1 = fold_128b(x1, x0, multipliers_1);
-		x2 = fold_128b(x2, x1, multipliers_1);
-		x0 = fold_128b(x3, x2, multipliers_1);
+		while (len >= 32) {
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 0)));
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 8)));
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 16)));
+			crc = __crc32d(crc, le64_bswap(*(u64 *)(p + 24)));
+			p += 32;
+			len -= 32;
+		}
+	} else {
+		while (len >= 32) {
+			crc = __crc32d(crc, get_unaligned_le64(p + 0));
+			crc = __crc32d(crc, get_unaligned_le64(p + 8));
+			crc = __crc32d(crc, get_unaligned_le64(p + 16));
+			crc = __crc32d(crc, get_unaligned_le64(p + 24));
+			p += 32;
+			len -= 32;
+		}
+	}
+	if (len & 16) {
+		crc = __crc32d(crc, get_unaligned_le64(p + 0));
+		crc = __crc32d(crc, get_unaligned_le64(p + 8));
+		p += 16;
+	}
+	if (len & 8) {
+		crc = __crc32d(crc, get_unaligned_le64(p));
+		p += 8;
+	}
+	if (len & 4) {
+		crc = __crc32w(crc, get_unaligned_le32(p));
+		p += 4;
+	}
+	if (len & 2) {
+		crc = __crc32h(crc, get_unaligned_le16(p));
+		p += 2;
+	}
+	if (len & 1)
+		crc = __crc32b(crc, *p);
+	return crc;
+}
+#undef ATTRIBUTES
+#endif /* crc32_arm_crc_pmullcombine() */
+
+/*
+ * crc32_arm_pmullx4() - implementation using "folding" with pmull instructions
+ *
+ * This implementation is intended for CPUs that support pmull instructions but
+ * not crc32 instructions.
+ */
+#if HAVE_PMULL_INTRIN
+#  define crc32_arm_pmullx4	crc32_arm_pmullx4
+#  define SUFFIX			 _pmullx4
+#  if HAVE_PMULL_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
+#    define ATTRIBUTES
+#  else
+#    ifdef ARCH_ARM32
+#      define ATTRIBUTES    _target_attribute("fpu=crypto-neon-fp-armv8")
+#    else
+#      ifdef __clang__
+	 /*
+	  * This used to use "crypto", but that stopped working with clang 16.
+	  * Now only "aes" works.  "aes" works with older versions too, so use
+	  * that.  No "+" prefix; clang 15 and earlier doesn't accept that.
+	  */
+#        define ATTRIBUTES  _target_attribute("aes")
+#      else
+	 /*
+	  * With gcc, only "+crypto" works.  Both the "+" prefix and the
+	  * "crypto" (not "aes") are essential...
+	  */
+#        define ATTRIBUTES  _target_attribute("+crypto")
+#      endif
+#    endif
+#  endif
+#  define ENABLE_EOR3		0
+#  include "crc32_pmull_helpers.h"
+
+static u32 ATTRIBUTES MAYBE_UNUSED
+crc32_arm_pmullx4(u32 crc, const u8 *p, size_t len)
+{
+	static const u64 _aligned_attribute(16) mults[3][2] = {
+		CRC32_1VECS_MULTS,
+		CRC32_4VECS_MULTS,
+		CRC32_2VECS_MULTS,
+	};
+	static const u64 _aligned_attribute(16) final_mults[3][2] = {
+		{ CRC32_FINAL_MULT, 0 },
+		{ CRC32_BARRETT_CONSTANT_1, 0 },
+		{ CRC32_BARRETT_CONSTANT_2, 0 },
+	};
+	const uint8x16_t zeroes = vdupq_n_u8(0);
+	const uint8x16_t mask32 = vreinterpretq_u8_u64(vdupq_n_u64(0xFFFFFFFF));
+	const poly64x2_t multipliers_1 = load_multipliers(mults[0]);
+	uint8x16_t v0, v1, v2, v3;
+
+	if (len < 64 + 15) {
+		if (len < 16)
+			return crc32_slice1(crc, p, len);
+		v0 = veorq_u8(vld1q_u8(p), u32_to_bytevec(crc));
+		p += 16;
+		len -= 16;
+		while (len >= 16) {
+			v0 = fold_vec(v0, vld1q_u8(p), multipliers_1);
+			p += 16;
+			len -= 16;
+		}
+	} else {
+		const poly64x2_t multipliers_4 = load_multipliers(mults[1]);
+		const poly64x2_t multipliers_2 = load_multipliers(mults[2]);
+		const size_t align = -(uintptr_t)p & 15;
+		const uint8x16_t *vp;
+
+		v0 = veorq_u8(vld1q_u8(p), u32_to_bytevec(crc));
+		p += 16;
+		/* Align p to the next 16-byte boundary. */
+		if (align) {
+			v0 = fold_partial_vec(v0, p, align, multipliers_1);
+			p += align;
+			len -= align;
+		}
+		vp = (const uint8x16_t *)p;
+		v1 = *vp++;
+		v2 = *vp++;
+		v3 = *vp++;
+		while (len >= 64 + 64) {
+			v0 = fold_vec(v0, *vp++, multipliers_4);
+			v1 = fold_vec(v1, *vp++, multipliers_4);
+			v2 = fold_vec(v2, *vp++, multipliers_4);
+			v3 = fold_vec(v3, *vp++, multipliers_4);
+			len -= 64;
+		}
+		v0 = fold_vec(v0, v2, multipliers_2);
+		v1 = fold_vec(v1, v3, multipliers_2);
+		if (len & 32) {
+			v0 = fold_vec(v0, *vp++, multipliers_2);
+			v1 = fold_vec(v1, *vp++, multipliers_2);
+		}
+		v0 = fold_vec(v0, v1, multipliers_1);
+		if (len & 16)
+			v0 = fold_vec(v0, *vp++, multipliers_1);
+		p = (const u8 *)vp;
+		len &= 15;
 	}
 
-	/* Fold 128 bits at a time */
-	while (p != end)
-		x0 = fold_128b(*p++, x0, multipliers_1);
+	/* Handle any remaining partial block now before reducing to 32 bits. */
+	if (len)
+		v0 = fold_partial_vec(v0, p, len, multipliers_1);
 
-	/* Fold 128 => 96 bits, implicitly appending 32 zeroes */
-	x0 = vextq_u8(x0, zeroes, 8) ^ clmul_10(x0, multipliers_1);
+	/*
+	 * Fold 128 => 96 bits.  This also implicitly appends 32 zero bits,
+	 * which is equivalent to multiplying by x^32.  This is needed because
+	 * the CRC is defined as M(x)*x^32 mod G(x), not just M(x) mod G(x).
+	 */
 
-	/* Fold 96 => 64 bits */
-	x0 = vextq_u8(x0, zeroes, 4) ^ clmul_00(x0 & mask32, final_multiplier);
+	v0 = veorq_u8(vextq_u8(v0, zeroes, 8),
+		      clmul_high(vextq_u8(zeroes, v0, 8), multipliers_1));
 
-	/* Reduce 64 => 32 bits using Barrett reduction */
-	x1 = x0;
-	x0 = clmul_00(x0 & mask32, barrett_reduction_constants);
-	x0 = clmul_10(x0 & mask32, barrett_reduction_constants);
-	return vgetq_lane_u32((uint32x4_t)(x0 ^ x1), 1);
+	/* Fold 96 => 64 bits. */
+	v0 = veorq_u8(vextq_u8(v0, zeroes, 4),
+		      clmul_low(vandq_u8(v0, mask32),
+				load_multipliers(final_mults[0])));
+
+	/* Reduce 64 => 32 bits using Barrett reduction. */
+	v1 = clmul_low(vandq_u8(v0, mask32), load_multipliers(final_mults[1]));
+	v1 = clmul_low(vandq_u8(v1, mask32), load_multipliers(final_mults[2]));
+	return vgetq_lane_u32(vreinterpretq_u32_u8(veorq_u8(v0, v1)), 1);
 }
-#define IMPL_ALIGNMENT		16
-#define IMPL_SEGMENT_SIZE	16
-#include "../crc32_vec_template.h"
-#endif /* PMULL implementation */
+#undef SUFFIX
+#undef ATTRIBUTES
+#undef ENABLE_EOR3
+#endif /* crc32_arm_pmullx4() */
 
-#ifdef DISPATCH
+/*
+ * crc32_arm_pmullx12_crc() - large-stride implementation using "folding" with
+ *	pmull instructions, where crc32 instructions are also available
+ *
+ * See crc32_pmull_wide.h for explanation.
+ */
+#if defined(ARCH_ARM64) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN
+#  define crc32_arm_pmullx12_crc	crc32_arm_pmullx12_crc
+#  define SUFFIX				 _pmullx12_crc
+#  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && !USE_PMULL_TARGET_EVEN_IF_NATIVE
+#    define ATTRIBUTES
+#  else
+#    ifdef __clang__
+#      define ATTRIBUTES  _target_attribute("aes,crc")
+#    else
+#      define ATTRIBUTES  _target_attribute("+crypto,+crc")
+#    endif
+#  endif
+#  define ENABLE_EOR3	0
+#  include "crc32_pmull_wide.h"
+#endif
+
+/*
+ * crc32_arm_pmullx12_crc_eor3()
+ *
+ * This like crc32_arm_pmullx12_crc(), but it adds the eor3 instruction (from
+ * the sha3 extension) for even better performance.
+ *
+ * Note: we require HAVE_SHA3_TARGET (or HAVE_SHA3_NATIVE) rather than
+ * HAVE_SHA3_INTRIN, as we have an inline asm fallback for eor3.
+ */
+#if defined(ARCH_ARM64) && HAVE_PMULL_INTRIN && HAVE_CRC32_INTRIN && \
+	(HAVE_SHA3_TARGET || HAVE_SHA3_NATIVE)
+#  define crc32_arm_pmullx12_crc_eor3	crc32_arm_pmullx12_crc_eor3
+#  define SUFFIX				 _pmullx12_crc_eor3
+#  if HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && HAVE_SHA3_NATIVE && \
+	!USE_PMULL_TARGET_EVEN_IF_NATIVE
+#    define ATTRIBUTES
+#  else
+#    ifdef __clang__
+#      define ATTRIBUTES  _target_attribute("aes,crc,sha3")
+     /*
+      * With gcc, arch=armv8.2-a is needed for the sha3 intrinsics, unless the
+      * default target is armv8.3-a or later in which case it must be omitted.
+      * armv8.3-a or later can be detected by checking for __ARM_FEATURE_JCVT.
+      */
+#    elif defined(__ARM_FEATURE_JCVT)
+#      define ATTRIBUTES  _target_attribute("+crypto,+crc,+sha3")
+#    else
+#      define ATTRIBUTES  _target_attribute("arch=armv8.2-a+crypto+crc+sha3")
+#    endif
+#  endif
+#  define ENABLE_EOR3	1
+#  include "crc32_pmull_wide.h"
+#endif
+
+/*
+ * On the Apple M1 processor, crc32 instructions max out at about 25.5 GB/s in
+ * the best case of using a 3-way or greater interleaved chunked implementation,
+ * whereas a pmull-based implementation achieves 68 GB/s provided that the
+ * stride length is large enough (about 10+ vectors with eor3, or 12+ without).
+ *
+ * For now we assume that crc32 instructions are preferable in other cases.
+ */
+#define PREFER_PMULL_TO_CRC	0
+#ifdef __APPLE__
+#  include <TargetConditionals.h>
+#  if TARGET_OS_OSX
+#    undef PREFER_PMULL_TO_CRC
+#    define PREFER_PMULL_TO_CRC	1
+#  endif
+#endif
+
+/*
+ * If the best implementation is statically available, use it unconditionally.
+ * Otherwise choose the best implementation at runtime.
+ */
+#if PREFER_PMULL_TO_CRC && defined(crc32_arm_pmullx12_crc_eor3) && \
+	HAVE_PMULL_NATIVE && HAVE_CRC32_NATIVE && HAVE_SHA3_NATIVE
+#  define DEFAULT_IMPL	crc32_arm_pmullx12_crc_eor3
+#elif !PREFER_PMULL_TO_CRC && defined(crc32_arm_crc_pmullcombine) && \
+	HAVE_CRC32_NATIVE && HAVE_PMULL_NATIVE
+#  define DEFAULT_IMPL	crc32_arm_crc_pmullcombine
+#else
 static inline crc32_func_t
 arch_select_crc32_func(void)
 {
-	u32 features = get_cpu_features();
+	const u32 features MAYBE_UNUSED = get_arm_cpu_features();
 
-#ifdef DISPATCH_ARM
-	if (features & ARM_CPU_FEATURE_CRC32)
-		return crc32_arm;
+#if PREFER_PMULL_TO_CRC && defined(crc32_arm_pmullx12_crc_eor3)
+	if (HAVE_PMULL(features) && HAVE_CRC32(features) && HAVE_SHA3(features))
+		return crc32_arm_pmullx12_crc_eor3;
 #endif
-#ifdef DISPATCH_PMULL
-	if (features & ARM_CPU_FEATURE_PMULL)
-		return crc32_pmull;
+#if PREFER_PMULL_TO_CRC && defined(crc32_arm_pmullx12_crc)
+	if (HAVE_PMULL(features) && HAVE_CRC32(features))
+		return crc32_arm_pmullx12_crc;
+#endif
+#ifdef crc32_arm_crc_pmullcombine
+	if (HAVE_CRC32(features) && HAVE_PMULL(features))
+		return crc32_arm_crc_pmullcombine;
+#endif
+#ifdef crc32_arm_crc
+	if (HAVE_CRC32(features))
+		return crc32_arm_crc;
+#endif
+#ifdef crc32_arm_pmullx4
+	if (HAVE_PMULL(features))
+		return crc32_arm_pmullx4;
 #endif
 	return NULL;
 }
-#endif /* DISPATCH */
+#define arch_select_crc32_func	arch_select_crc32_func
+#endif
 
 #endif /* LIB_ARM_CRC32_IMPL_H */

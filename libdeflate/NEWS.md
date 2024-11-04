@@ -1,5 +1,199 @@
 # libdeflate release notes
 
+## Version 1.19
+
+* Added new functions `libdeflate_alloc_compressor_ex()` and
+  `libdeflate_alloc_decompressor_ex()`.  These functions allow specifying a
+  custom memory allocator on a per-compressor basis.
+
+* libdeflate now always generates Huffman codes with at least 2 codewords.  This
+  fixes a compatibility issue where Windows Explorer's ZIP unpacker could not
+  decompress DEFLATE streams created by libdeflate.  libdeflate's behavior was
+  allowed by the DEFLATE RFC, but not all software was okay with it.  In rare
+  cases, compression ratios can be slightly reduced by this change.
+
+* Disabled the use of some compiler intrinsics on MSVC versions where they don't
+  work correctly.
+
+* libdeflate can now compress up to the exact size of the output buffer.
+
+* Slightly improved compression performance at levels 1-9.
+
+* Improved the compression ratio of very short inputs.
+
+## Version 1.18
+
+* Fixed a bug where the build type didn't default to "Release" when using
+  CMake 3.10 or earlier.
+
+* Fixed a bug where some optimized code wasn't used when building with
+  Clang 15 or later (x86), or with Clang 16 or later (aarch64).
+
+* Fixed build errors with some architecture and compiler combos:
+  * aarch64 with Clang 16
+  * armv6kz or armv7e-m with gcc
+  * armhf with gcc (on Debian only)
+
+## Version 1.17
+
+(Apologies for another release so soon after v1.16, but the bug fix listed below
+needed to go out.)
+
+* Fixed a bug introduced in v1.16 where compression at levels 10-12 would
+  sometimes produce an output larger than the size that was returned by the
+  corresponding `libdeflate_*_compress_bound()` function.
+
+* Converted the fuzzing scripts to use LLVM's libFuzzer and added them to the
+  GitHub Actions workflow.  (This would have detected the above bug.)
+
+* Further improved the support for direct compilation without using the official
+  build system.  The top-level source directory no longer needs to be added to
+  the include path, and building the programs no longer requires that
+  `_FILE_OFFSET_BITS` and `_POSIX_C_SOURCE` be defined on the command line.
+
+## Version 1.16
+
+* Improved the compression ratio at levels 10-12 slightly, mainly levels 11-12.
+  Some inputs (such as certain PNG files) see much improved compression ratios.
+  As a trade-off, compressing at levels 11-12 is now about 5-20% slower.
+
+* For consistency with zlib, the decompressor now returns an error on some
+  invalid inputs that were accepted before.
+
+* Fixed a build error on arm64 with gcc with certain target CPUs.  (Fixes v1.12)
+
+* Fixed a build error on arm32 with gcc 10.1-10.3 and 11.1-11.2.  (Fixes v1.15)
+
+* Fixed a build error on arm32 with gcc in soft float mode.  (Fixes v1.15)
+
+* Fixed a build error in programs/gzip.c with uClibc.  (Fixes v1.15)
+
+* Fixed the install target on Windows.  (Fixes v1.15)
+
+## Version 1.15
+
+* libdeflate now uses CMake instead of a plain Makefile.
+
+* Improved MSVC support.  Enabled most architecture-specific code with MSVC,
+  fixed building with clang in MSVC compatibility mode, and other improvements.
+
+* When libdeflate is built with MinGW, the static library and import library are
+  now named using the MinGW convention (`*.a` and `*.dll.a`) instead of the
+  Visual Studio convention.  This affects the official Windows binaries.
+
+## Version 1.14
+
+Significantly improved decompression performance on all platforms.  Examples
+include (measuring DEFLATE only):
+
+| Platform                           | Speedup over v1.13 |
+|------------------------------------|--------------------|
+| x86_64 (Intel Comet Lake), gcc     | 1.287x             |
+| x86_64 (Intel Comet Lake), clang   | 1.437x             |
+| x86_64 (Intel Ice Lake), gcc       | 1.332x             |
+| x86_64 (Intel Ice Lake), clang     | 1.296x             |
+| x86_64 (Intel Sandy Bridge), gcc   | 1.162x             |
+| x86_64 (Intel Sandy Bridge), clang | 1.092x             |
+| x86_64 (AMD Zen 2), gcc            | 1.263x             |
+| x86_64 (AMD Zen 2), clang          | 1.259x             |
+| i386 (Intel Comet Lake), gcc       | 1.570x             |
+| i386 (Intel Comet Lake), clang     | 1.344x             |
+| arm64 (Apple M1), clang            | 1.306x             |
+| arm64 (Cortex-A76), clang          | 1.355x             |
+| arm64 (Cortex-A55), clang          | 1.190x             |
+| arm32 (Cortex-A76), clang          | 1.665x             |
+| arm32 (Cortex-A55), clang          | 1.283x             |
+
+Thanks to Dougall Johnson (https://dougallj.wordpress.com/) for ideas for many
+of the improvements.
+
+## Version 1.13
+
+* Changed the 32-bit Windows build of the library to use the default calling
+  convention (cdecl) instead of stdcall, reverting a change from libdeflate 1.4.
+
+* Fixed a couple macOS compatibility issues with the gzip program.
+
+## Version 1.12
+
+This release focuses on improving the performance of the CRC-32 and Adler-32
+checksum algorithms on x86 and ARM (both 32-bit and 64-bit).
+
+* Build updates:
+
+  * Fixed building libdeflate on Apple platforms.
+
+  * For Visual Studio builds, Visual Studio 2015 or later is now required.
+
+* CRC-32 algorithm updates:
+
+  * Improved CRC-32 performance on short inputs on x86 and ARM.
+
+  * Improved CRC-32 performance on Apple Silicon Macs by using a 12-way pmull
+    implementation.   Performance on large inputs on M1 is now about 67 GB/s,
+    compared to 8 GB/s before, or 31 GB/s with the Apple-provided zlib.
+
+  * Improved CRC-32 performance on some other ARM CPUs by reworking the code so
+    that multiple crc32 instructions can be issued in parallel.
+
+  * Improved CRC-32 performance on some x86 CPUs by increasing the stride length
+    of the pclmul implementation.
+
+* Adler-32 algorithm updates:
+
+  * Improved Adler-32 performance on some x86 CPUs by optimizing the AVX-2
+    implementation.  E.g., performance on Zen 1 improved from 19 to 30 GB/s, and
+    on Ice Lake from 35 to 41 GB/s (if the AVX-512 implementation is excluded).
+
+  * Removed the AVX-512 implementation of Adler-32 to avoid CPU frequency
+    downclocking, and because the AVX-2 implementation was made faster.
+
+  * Improved Adler-32 performance on some ARM CPUs by optimizing the NEON
+    implementation.  E.g., Apple M1 improved from about 36 to 52 GB/s.
+
+## Version 1.11
+
+* Library updates:
+
+  * Improved compression performance slightly.
+
+  * Detect arm64 CPU features on Apple platforms, which should improve
+    performance in some areas such as CRC-32 computation.
+
+* Program updates:
+
+  * The included `gzip` and `gunzip` programs now support the `-q` option.
+
+  * The included `gunzip` program now passes through non-gzip data when both
+    the `-f` and `-c` options are used.
+
+* Build updates:
+
+  * Avoided a build error on arm32 with certain gcc versions, by disabling
+    building `crc32_arm()` as dynamically-dispatched code when needed.
+
+  * Support building with the LLVM toolchain on Windows.
+
+  * Disabled the use of the "stdcall" ABI in static library builds on Windows.
+
+  * Use the correct `install_name` in macOS builds.
+
+  * Support Haiku builds.
+
+## Version 1.10
+
+* Added an additional check to the decompressor to make it quickly detect
+  certain bad inputs and not try to generate an unbounded amount of output.
+
+  Note: this was only a problem when decompressing with an unknown output size,
+  which isn't the recommended use case of libdeflate.  However,
+  `libdeflate-gunzip` has to do this, and it would run out of memory as it would
+  keep trying to allocate a larger output buffer.
+
+* Fixed a build error on Solaris.
+
+* Cleaned up a few things in the compression code.
+
 ## Version 1.9
 
 * Made many improvements to the compression algorithms, and rebalanced the
@@ -9,8 +203,8 @@
     ratio on data where short matches aren't useful, such as DNA sequencing
     data.  This applies to all compression levels, but primarily to levels 1-9.
 
-  * Levels 1 was made much faster, though it often compresses slightly worse
-    than before (but still better than zlib).
+  * Level 1 was made much faster, though it often compresses slightly worse than
+    before (but still better than zlib).
 
   * Levels 8-9 were also made faster, though they often compress slightly worse
     than before (but still better than zlib).  On some data, levels 8-9 are much
