@@ -106,6 +106,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [lzrw 15-Jul-1991](https://en.wikipedia.org/wiki/LZRW)
  - [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE)
  - [pithy 2011-12-24](https://github.com/johnezang/pithy) - WARNING: it contains bugs (decompression error; returns 0)
+ - [ppmd 22.01](https://github.com/pps83/libppmd)
  - [quicklz 1.5.0](http://www.quicklz.com)
  - [shrinker 0.1](https://code.google.com/p/data-shrinker) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
  - [slz 1.2.0](http://www.libslz.org/) - only a compressor, uses zlib for decompression
