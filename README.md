@@ -9,10 +9,8 @@ The disadvantage is that it requires source code of each compressor (therefore S
 
 |Status   |
 |---------|
-| [![Build Status][travisMasterBadge]][travisLink] [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
+| [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
 
-[travisMasterBadge]: https://travis-ci.org/inikep/lzbench.svg?branch=master "Continuous Integration test suite"
-[travisLink]: https://travis-ci.org/inikep/lzbench
 [AppveyorMasterBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/master?svg=true "Visual test suite"
 [AppveyorLink]: https://ci.appveyor.com/project/inikep/lzbench
 
