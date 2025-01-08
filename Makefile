@@ -79,8 +79,13 @@ endif
 DEFINES     += $(addprefix -I$(SOURCE_PATH),. brotli/include libcsc libdeflate xpack/common xz xz/api xz/check xz/common xz/lz xz/lzma xz/rangecoder zstd/lib zstd/lib/common)
 DEFINES     += -DHAVE_CONFIG_H -DFL2_SINGLETHREAD
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
-OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
 
+# don't use "-ffast-math" for clang < 10.0
+ifeq (1, $(shell [ "$(COMPILER)" = "clang" ] && expr $(CLANG_VERSION) \< 100000 ))
+	OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing
+else
+	OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
+endif
 
 ifeq ($(BUILD_TYPE),debug)
 	OPT_FLAGS_O2 = $(OPT_FLAGS) -g
