@@ -2530,12 +2530,12 @@ uint8_t * GLZAcompress(size_t in_size, uint8_t * char_buffer, size_t * outsize_p
     if (available_RAM > max_memory_usage)
       available_RAM = max_memory_usage;
     if (0 == (start_symbol_ptr = (uint32_t *)malloc(available_RAM))) {
-      fprintf(stderr,"ERROR - Insufficient RAM to compress - unable to allocate %Iu bytes\n",
+      fprintf(stderr,"ERROR - Insufficient RAM to compress - unable to allocate %zu bytes\n",
           (size_t)((available_RAM * 10) / 9));
       return(0);
     }
     else if (available_RAM < 5.0 * (double)in_size) {
-      fprintf(stderr,"ERROR - Insufficient RAM to compress - program requires at least %Iu MB\n",
+      fprintf(stderr,"ERROR - Insufficient RAM to compress - program requires at least %zu MB\n",
           (size_t)(((uint64_t)in_size * 5 + 999999)/1000000));
       return(0);
     }
@@ -2553,7 +2553,7 @@ uint8_t * GLZAcompress(size_t in_size, uint8_t * char_buffer, size_t * outsize_p
       available_RAM = (available_RAM / 10) * 9;
     } while (available_RAM > 1500000000);
     if ((start_symbol_ptr == 0) || (available_RAM < 5.0 * (double)in_size)) {
-      fprintf(stderr,"ERROR - Insufficient RAM to compress - unable to allocate %Iu bytes\n",
+      fprintf(stderr,"ERROR - Insufficient RAM to compress - unable to allocate %zu bytes\n",
           (size_t)((available_RAM * 10) / 9));
       return(0);
     }
@@ -3119,7 +3119,7 @@ top_main_loop:
     lcp_thread_data[5].string_nodes_limit = string_node_num_limit;
 
     atomic_store_explicit(&max_symbol_ptr, 0, memory_order_relaxed);
-    atomic_store_explicit(&scan_symbol_ptr, in_symbol_ptr, memory_order_relaxed);
+    atomic_store_explicit(&scan_symbol_ptr, (uintptr_t)in_symbol_ptr, memory_order_relaxed);
 
     pthread_create(&build_lcp_thread1,NULL,build_lcp_thread,(char *)&lcp_thread_data[0]);
     pthread_create(&build_lcp_thread2,NULL,build_lcp_thread,(char *)&lcp_thread_data[1]);
@@ -3131,7 +3131,7 @@ top_main_loop:
     while (1) {
       this_symbol = *in_symbol_ptr++;
       if (this_symbol <= main_max_symbol) {
-        atomic_store_explicit(&scan_symbol_ptr, in_symbol_ptr, memory_order_relaxed);
+        atomic_store_explicit(&scan_symbol_ptr, (uintptr_t)in_symbol_ptr, memory_order_relaxed);
         add_suffix(this_symbol, in_symbol_ptr, &next_string_node_num);
         if (next_string_node_num >= main_string_nodes_limit)
           goto done_building_lcp_tree;
@@ -3142,8 +3142,8 @@ top_main_loop:
     in_symbol_ptr--;
 
 done_building_lcp_tree:
-    atomic_store_explicit(&scan_symbol_ptr, in_symbol_ptr, memory_order_release);
-    atomic_store_explicit(&max_symbol_ptr, in_symbol_ptr, memory_order_release);
+    atomic_store_explicit(&scan_symbol_ptr, (uintptr_t)in_symbol_ptr, memory_order_release);
+    atomic_store_explicit(&max_symbol_ptr, (uintptr_t)in_symbol_ptr, memory_order_release);
 
     node_ptrs_num = 0;
     atomic_store_explicit(&rank_scores_write_index, node_ptrs_num, memory_order_relaxed);
