@@ -290,8 +290,8 @@ int64_t lzbench_libdeflate_decompress(char *inbuf, size_t insize, char *outbuf, 
 
 
 #ifndef BENCH_REMOVE_LZ4
-#include "lz4/lz4.h"
-#include "lz4/lz4hc.h"
+#include "lz4/lib/lz4.h"
+#include "lz4/lib/lz4hc.h"
 
 int64_t lzbench_lz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {

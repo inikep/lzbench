@@ -51,12 +51,14 @@ Compilation
 -------------------------
 For Linux/MacOS/MinGW (Windows):
 ```
-make
+git submodule update --init
+make -j$(nproc)
 ```
 
 For 32-bit compilation:
 ```
-make BUILD_ARCH=32-bit
+git submodule update --init
+make BUILD_ARCH=32-bit -j$(nproc)
 
 ```
 
@@ -91,7 +93,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [glza 0.8](https://encode.su/threads/2427-GLZA)
  - [libdeflate v1.6](https://github.com/ebiggers/libdeflate)
  - [lizard v1.0 (formerly lz5)](https://github.com/inikep/lizard)
- - [lz4/lz4hc v1.9.4](https://github.com/lz4/lz4)
+ - [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4)
  - [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html)
  - [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse)
  - [lzg 1.0.10](https://liblzg.bitsnbites.eu/)
