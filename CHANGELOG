@@ -1,3 +1,6 @@
+v2.0
+- updated lz4 to 1.9.4 (thanks to @ChristianSchindler) and later to 1.10.0
+
 v1.9 (Jan 17, 2025)
 - added cpuid to title screen (thanks to @tansy)
 - added support for CUDA and nvcomp (thanks to @fwyzard)
