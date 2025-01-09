@@ -1,9 +1,7 @@
 # ################################################################
-# LZ4 library - Makefile
-# Copyright (C) Yann Collet 2011-2020
+# LZ4 - Makefile
+# Copyright (C) Yann Collet 2011-2023
 # All rights reserved.
-#
-# This Makefile is validated for Linux, macOS, *BSD, Hurd, Solaris, MSYS2 targets
 #
 # BSD license
 # Redistribution and use in source and binary forms, with or without modification,
@@ -31,195 +29,246 @@
 #  - LZ4 source repository : https://github.com/lz4/lz4
 #  - LZ4 forum froup : https://groups.google.com/forum/#!forum/lz4c
 # ################################################################
-SED = sed
 
-# Version numbers
-LIBVER_MAJOR_SCRIPT:=`$(SED) -n '/define LZ4_VERSION_MAJOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < ./lz4.h`
-LIBVER_MINOR_SCRIPT:=`$(SED) -n '/define LZ4_VERSION_MINOR/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < ./lz4.h`
-LIBVER_PATCH_SCRIPT:=`$(SED) -n '/define LZ4_VERSION_RELEASE/s/.*[[:blank:]]\([0-9][0-9]*\).*/\1/p' < ./lz4.h`
-LIBVER_SCRIPT:= $(LIBVER_MAJOR_SCRIPT).$(LIBVER_MINOR_SCRIPT).$(LIBVER_PATCH_SCRIPT)
-LIBVER_MAJOR := $(shell echo $(LIBVER_MAJOR_SCRIPT))
-LIBVER_MINOR := $(shell echo $(LIBVER_MINOR_SCRIPT))
-LIBVER_PATCH := $(shell echo $(LIBVER_PATCH_SCRIPT))
-LIBVER  := $(shell echo $(LIBVER_SCRIPT))
+LZ4DIR  = lib
+PRGDIR  = programs
+TESTDIR = tests
+EXDIR   = examples
+FUZZDIR = ossfuzz
 
-BUILD_SHARED:=yes
-BUILD_STATIC:=yes
+include Makefile.inc
 
-CPPFLAGS+= -DXXH_NAMESPACE=LZ4_
-CPPFLAGS+= $(MOREFLAGS)
-CFLAGS  ?= -O3
-DEBUGFLAGS:= -Wall -Wextra -Wcast-qual -Wcast-align -Wshadow \
-             -Wswitch-enum -Wdeclaration-after-statement -Wstrict-prototypes \
-             -Wundef -Wpointer-arith -Wstrict-aliasing=1
-CFLAGS  += $(DEBUGFLAGS)
-FLAGS    = $(CFLAGS) $(CPPFLAGS) $(LDFLAGS)
-
-SRCFILES := $(sort $(wildcard *.c))
-
-include ../Makefile.inc
-
-# OS X linker doesn't support -soname, and use different extension
-# see : https://developer.apple.com/library/mac/documentation/DeveloperTools/Conceptual/DynamicLibraries/100-Articles/DynamicLibraryDesignGuidelines.html
-ifeq ($(TARGET_OS), Darwin)
-	SHARED_EXT = dylib
-	SHARED_EXT_MAJOR = $(LIBVER_MAJOR).$(SHARED_EXT)
-	SHARED_EXT_VER = $(LIBVER).$(SHARED_EXT)
-	SONAME_FLAGS = -install_name $(libdir)/liblz4.$(SHARED_EXT_MAJOR) -compatibility_version $(LIBVER_MAJOR) -current_version $(LIBVER)
-else
-	SONAME_FLAGS = -Wl,-soname=liblz4.$(SHARED_EXT).$(LIBVER_MAJOR)
-	SHARED_EXT = so
-	SHARED_EXT_MAJOR = $(SHARED_EXT).$(LIBVER_MAJOR)
-	SHARED_EXT_VER = $(SHARED_EXT).$(LIBVER)
-endif
 
 .PHONY: default
-default: lib-release
+default: lib-release lz4-release
 
 # silent mode by default; verbose can be triggered by V=1 or VERBOSE=1
 $(V)$(VERBOSE).SILENT:
 
-lib-release: DEBUGFLAGS :=
-lib-release: lib
-
-.PHONY: lib
-lib: liblz4.a liblz4
-
 .PHONY: all
-all: lib
+all: allmost examples manuals build_tests
 
-.PHONY: all32
-all32: CFLAGS+=-m32
-all32: all
+.PHONY: allmost
+allmost: lib lz4
 
-liblz4.a: $(SRCFILES)
-ifeq ($(BUILD_STATIC),yes)  # can be disabled on command line
-	@echo compiling static library
-	$(COMPILE.c) $^
-	$(AR) rcs $@ *.o
-endif
+.PHONY: lib lib-release liblz4.a
+lib: liblz4.a
+lib lib-release liblz4.a:
+	$(MAKE) -C $(LZ4DIR) $@
 
-ifeq ($(WINBASED),yes)
-liblz4-dll.rc: liblz4-dll.rc.in
-	@echo creating library resource
-	$(SED) -e 's|@LIBLZ4@|$(LIBLZ4)|' \
-         -e 's|@LIBVER_MAJOR@|$(LIBVER_MAJOR)|g' \
-         -e 's|@LIBVER_MINOR@|$(LIBVER_MINOR)|g' \
-         -e 's|@LIBVER_PATCH@|$(LIBVER_PATCH)|g' \
-          $< >$@
+.PHONY: lz4 lz4-release
+lz4 : liblz4.a
+lz4-release : lib-release
+lz4 lz4-release :
+	$(MAKE) -C $(PRGDIR) $@
+	$(LN_SF) $(PRGDIR)/lz4$(EXT) .
+	echo lz4 build completed
 
-liblz4-dll.o: liblz4-dll.rc
-	$(WINDRES) -i liblz4-dll.rc -o liblz4-dll.o
+.PHONY: examples
+examples: liblz4.a
+	$(MAKE) -C $(EXDIR) all
 
-$(LIBLZ4): $(SRCFILES) liblz4-dll.o
-	@echo compiling dynamic library $(LIBVER)
-	$(CC) $(FLAGS) -DLZ4_DLL_EXPORT=1 -shared $^ -o dll/$@.dll -Wl,--out-implib,dll/$(LIBLZ4_EXP)
+.PHONY: manuals
+manuals:
+	$(MAKE) -C contrib/gen_manual $@
 
-else   # not windows
-
-$(LIBLZ4): $(SRCFILES)
-	@echo compiling dynamic library $(LIBVER)
-	$(CC) $(FLAGS) -shared $^ -fPIC -fvisibility=hidden $(SONAME_FLAGS) -o $@
-	@echo creating versioned links
-	$(LN_SF) $@ liblz4.$(SHARED_EXT_MAJOR)
-	$(LN_SF) $@ liblz4.$(SHARED_EXT)
-
-endif
-
-.PHONY: liblz4
-liblz4: $(LIBLZ4)
+.PHONY: build_tests
+build_tests:
+	$(MAKE) -C $(TESTDIR) all
 
 .PHONY: clean
 clean:
-ifeq ($(WINBASED),yes)
-	$(RM) *.rc
-endif
-	$(RM) core *.o liblz4.pc dll/$(LIBLZ4).dll dll/$(LIBLZ4_EXP)
-	$(RM) *.a *.$(SHARED_EXT) *.$(SHARED_EXT_MAJOR) *.$(SHARED_EXT_VER)
-	@echo Cleaning library completed
+	$(MAKE) -C $(LZ4DIR) $@ > $(VOID)
+	$(MAKE) -C $(PRGDIR) $@ > $(VOID)
+	$(MAKE) -C $(TESTDIR) $@ > $(VOID)
+	$(MAKE) -C $(EXDIR) $@ > $(VOID)
+	$(MAKE) -C $(FUZZDIR) $@ > $(VOID)
+	$(MAKE) -C contrib/gen_manual $@ > $(VOID)
+	$(RM) lz4$(EXT)
+	$(RM) -r $(CMAKE_BUILD_DIR) $(MESON_BUILD_DIR)
+	@echo Cleaning completed
+
 
 #-----------------------------------------------------------------------------
-# make install is validated only for Linux, OSX, BSD, Hurd and Solaris targets
+# make install is validated only for Posix environments
 #-----------------------------------------------------------------------------
 ifeq ($(POSIX_ENV),Yes)
+HOST_OS = POSIX
 
-.PHONY: listL120
-listL120:  # extract lines >= 120 characters in *.{c,h}, by Takayuki Matsuoka (note : $$, for Makefile compatibility)
-	find . -type f -name '*.c' -o -name '*.h' | while read -r filename; do awk 'length > 120 {print FILENAME "(" FNR "): " $$0}' $$filename; done
+.PHONY: install uninstall
+install uninstall:
+	$(MAKE) -C $(LZ4DIR) $@
+	$(MAKE) -C $(PRGDIR) $@
 
-DESTDIR     ?=
-# directory variables : GNU conventions prefer lowercase
-# see https://www.gnu.org/prep/standards/html_node/Makefile-Conventions.html
-# support both lower and uppercase (BSD), use lower in script
-PREFIX      ?= /usr/local
-prefix      ?= $(PREFIX)
-EXEC_PREFIX ?= $(prefix)
-exec_prefix ?= $(EXEC_PREFIX)
-BINDIR      ?= $(exec_prefix)/bin
-bindir      ?= $(BINDIR)
-LIBDIR      ?= $(exec_prefix)/lib
-libdir      ?= $(LIBDIR)
-INCLUDEDIR  ?= $(prefix)/include
-includedir  ?= $(INCLUDEDIR)
+.PHONY: test-install
+test-install:
+	$(MAKE) -j1 install DESTDIR=~/install_test_dir
 
-  ifneq (,$(filter $(TARGET_OS),OpenBSD FreeBSD NetBSD DragonFly MidnightBSD))
-PKGCONFIGDIR ?= $(prefix)/libdata/pkgconfig
-  else
-PKGCONFIGDIR ?= $(libdir)/pkgconfig
-  endif
-pkgconfigdir ?= $(PKGCONFIGDIR)
+endif   # POSIX_ENV
 
-liblz4.pc: liblz4.pc.in Makefile
-	@echo creating pkgconfig
-	$(SED) -e 's|@PREFIX@|$(prefix)|' \
-         -e 's|@LIBDIR@|$(libdir)|' \
-         -e 's|@INCLUDEDIR@|$(includedir)|' \
-         -e 's|@VERSION@|$(LIBVER)|' \
-         -e 's|=${prefix}/|=$${prefix}/|' \
-          $< >$@
 
-install: lib liblz4.pc
-	$(INSTALL_DIR) $(DESTDIR)$(pkgconfigdir)/ $(DESTDIR)$(includedir)/ $(DESTDIR)$(libdir)/ $(DESTDIR)$(bindir)/
-	$(INSTALL_DATA) liblz4.pc $(DESTDIR)$(pkgconfigdir)/
-	@echo Installing libraries in $(DESTDIR)$(libdir)
-  ifeq ($(BUILD_STATIC),yes)
-	$(INSTALL_DATA) liblz4.a $(DESTDIR)$(libdir)/liblz4.a
-	$(INSTALL_DATA) lz4frame_static.h $(DESTDIR)$(includedir)/lz4frame_static.h
-  endif
-  ifeq ($(BUILD_SHARED),yes)
-# Traditionally, one installs the DLLs in the bin directory as programs
-# search them first in their directory. This allows to not pollute system
-# directories (like c:/windows/system32), nor modify the PATH variable.
-    ifeq ($(WINBASED),yes)
-	$(INSTALL_PROGRAM) dll/$(LIBLZ4).dll $(DESTDIR)$(bindir)
-	$(INSTALL_PROGRAM) dll/$(LIBLZ4_EXP) $(DESTDIR)$(libdir)
-    else
-	$(INSTALL_PROGRAM) liblz4.$(SHARED_EXT_VER) $(DESTDIR)$(libdir)
-	$(LN_SF) liblz4.$(SHARED_EXT_VER) $(DESTDIR)$(libdir)/liblz4.$(SHARED_EXT_MAJOR)
-	$(LN_SF) liblz4.$(SHARED_EXT_VER) $(DESTDIR)$(libdir)/liblz4.$(SHARED_EXT)
-    endif
-  endif
-	@echo Installing headers in $(DESTDIR)$(includedir)
-	$(INSTALL_DATA) lz4.h $(DESTDIR)$(includedir)/lz4.h
-	$(INSTALL_DATA) lz4hc.h $(DESTDIR)$(includedir)/lz4hc.h
-	$(INSTALL_DATA) lz4frame.h $(DESTDIR)$(includedir)/lz4frame.h
-	@echo lz4 libraries installed
-
-uninstall:
-	$(RM) $(DESTDIR)$(pkgconfigdir)/liblz4.pc
-  ifeq (WINBASED,1)
-	$(RM) $(DESTDIR)$(bindir)/$(LIBLZ4).dll
-	$(RM) $(DESTDIR)$(libdir)/$(LIBLZ4_EXP)
-  else
-	$(RM) $(DESTDIR)$(libdir)/liblz4.$(SHARED_EXT)
-	$(RM) $(DESTDIR)$(libdir)/liblz4.$(SHARED_EXT_MAJOR)
-	$(RM) $(DESTDIR)$(libdir)/liblz4.$(SHARED_EXT_VER)
-  endif
-	$(RM) $(DESTDIR)$(libdir)/liblz4.a
-	$(RM) $(DESTDIR)$(includedir)/lz4.h
-	$(RM) $(DESTDIR)$(includedir)/lz4hc.h
-	$(RM) $(DESTDIR)$(includedir)/lz4frame.h
-	$(RM) $(DESTDIR)$(includedir)/lz4frame_static.h
-	@echo lz4 libraries successfully uninstalled
-
+CMAKE ?= cmake
+CMAKE_BUILD_DIR ?= build/cmake/build
+ifneq (,$(filter MSYS%,$(shell $(UNAME))))
+HOST_OS = MSYS
+CMAKE_PARAMS = -G"MSYS Makefiles"
 endif
+
+.PHONY: cmakebuild
+cmakebuild:
+	mkdir -p $(CMAKE_BUILD_DIR)
+	cd $(CMAKE_BUILD_DIR); $(CMAKE) $(CMAKE_PARAMS) ..; $(CMAKE) --build .
+
+MESON ?= meson
+MESON_BUILD_DIR ?= mesonBuildDir
+
+.PHONY: mesonbuild
+mesonbuild:
+	$(MESON) setup --fatal-meson-warnings --buildtype=debug -Db_lundef=false -Dauto_features=enabled -Dprograms=true -Dcontrib=true -Dtests=true -Dexamples=true build/meson $(MESON_BUILD_DIR)
+	$(MESON) test -C $(MESON_BUILD_DIR)
+
+#------------------------------------------------------------------------
+# make tests validated only for MSYS and Posix environments
+#------------------------------------------------------------------------
+ifneq (,$(filter $(HOST_OS),MSYS POSIX))
+
+.PHONY: list
+list:
+	$(MAKE) -pRrq -f $(lastword $(MAKEFILE_LIST)) : 2>/dev/null | awk -v RS= -F: '/^# File/,/^# Finished Make data base/ {if ($$1 !~ "^[#.]") {print $$1}}' | sort | egrep -v -e '^[^[:alnum:]]' -e '^$@$$' | xargs
+
+.PHONY: check
+check:
+	$(MAKE) -C $(TESTDIR) test-lz4-essentials
+
+.PHONY: test
+test:
+	$(MAKE) -C $(TESTDIR) $@
+	$(MAKE) -C $(EXDIR) $@
+
+.PHONY: usan
+usan: CC      = clang
+usan: CFLAGS  = -O3 -g -fsanitize=undefined -fno-sanitize-recover=undefined -fsanitize-recover=pointer-overflow
+usan: LDFLAGS = $(CFLAGS)
+usan: clean
+	CC=$(CC) CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' $(MAKE) test FUZZER_TIME="-T30s" NB_LOOPS=-i1
+
+.PHONY: usan32
+usan32: CFLAGS = -m32 -O3 -g -fsanitize=undefined -fno-sanitize-recover=undefined -fsanitize-recover=pointer-overflow
+usan32: LDFLAGS = $(CFLAGS)
+usan32: clean
+	CFLAGS='$(CFLAGS)' LDFLAGS='$(LDFLAGS)' $(MAKE) V=1 test FUZZER_TIME="-T30s" NB_LOOPS=-i1
+
+SCANBUILD ?= scan-build
+SCANBUILD_FLAGS += --status-bugs -v --force-analyze-debug-code
+.PHONY: staticAnalyze
+staticAnalyze: clean
+	CPPFLAGS=-DLZ4_DEBUG=1 CFLAGS=-g $(SCANBUILD) $(SCANBUILD_FLAGS) $(MAKE) all V=1 DEBUGLEVEL=1
+
+.PHONY: cppcheck
+cppcheck:
+	cppcheck . --force --enable=warning,portability,performance,style --error-exitcode=1 > /dev/null
+
+.PHONY: platformTest
+platformTest: clean
+	@echo "\n ---- test lz4 with $(CC) compiler ----"
+	$(CC) -v
+	CFLAGS="$(CFLAGS) -O3 -Werror"         $(MAKE) -C $(LZ4DIR) all
+	CFLAGS="$(CFLAGS) -O3 -Werror -static" $(MAKE) -C $(PRGDIR) all
+	CFLAGS="$(CFLAGS) -O3 -Werror -static" $(MAKE) -C $(TESTDIR) all
+	$(MAKE) -C $(TESTDIR) test-platform
+
+.PHONY: versionsTest
+versionsTest:
+	$(MAKE) -C $(TESTDIR) clean
+	$(MAKE) -C $(TESTDIR) $@
+
+.PHONY: test-freestanding
+test-freestanding:
+	$(MAKE) -C $(TESTDIR) clean
+	$(MAKE) -C $(TESTDIR) $@
+
+# test linking C libraries from C++ executables
+.PHONY: ctocxxtest
+ctocxxtest: LIBCC="$(CC)"
+ctocxxtest: EXECC="$(CXX) -Wno-deprecated"
+ctocxxtest: CFLAGS=-O0
+ctocxxtest:
+	CC=$(LIBCC) $(MAKE) -C $(LZ4DIR)  CFLAGS="$(CFLAGS)" all
+	CC=$(LIBCC) $(MAKE) -C $(TESTDIR) CFLAGS="$(CFLAGS)" lz4.o lz4hc.o lz4frame.o
+	CC=$(EXECC) $(MAKE) -C $(TESTDIR) CFLAGS="$(CFLAGS)" all
+
+.PHONY: cxxtest cxx32test
+cxx32test: CFLAGS += -m32
+cxxtest cxx32test: CC := "$(CXX) -Wno-deprecated"
+cxxtest cxx32test: CFLAGS = -O3 -Wall -Wextra -Wundef -Wshadow -Wcast-align -Werror
+cxxtest cxx32test:
+	$(CXX) -v
+	CC=$(CC) $(MAKE) -C $(LZ4DIR)  all CFLAGS="$(CFLAGS)"
+	CC=$(CC) $(MAKE) -C $(PRGDIR)  all CFLAGS="$(CFLAGS)"
+	CC=$(CC) $(MAKE) -C $(TESTDIR) all CFLAGS="$(CFLAGS)"
+
+.PHONY: cxx17build
+cxx17build : CC = "$(CXX) -Wno-deprecated"
+cxx17build : CFLAGS = -std=c++17 -Wall -Wextra -Wundef -Wshadow -Wcast-align -Werror -Wpedantic
+cxx17build : clean
+	$(CXX) -v
+	CC=$(CC) $(MAKE) -C $(LZ4DIR)  all CFLAGS="$(CFLAGS)"
+	CC=$(CC) $(MAKE) -C $(PRGDIR)  all CFLAGS="$(CFLAGS)"
+	CC=$(CC) $(MAKE) -C $(TESTDIR) all CFLAGS="$(CFLAGS)"
+
+.PHONY: c_standards
+c_standards: clean c_standards_c11 c_standards_c99 c_standards_c90
+
+.PHONY: c_standards_c90
+c_standards_c90: clean
+	$(MAKE) clean; CFLAGS="-std=c90   -Werror -Wpedantic -Wno-long-long -Wno-variadic-macros" $(MAKE) allmost
+	$(MAKE) clean; CFLAGS="-std=gnu90 -Werror -Wpedantic -Wno-long-long -Wno-variadic-macros" $(MAKE) allmost
+
+.PHONY: c_standards_c99
+c_standards_c99: clean
+	$(MAKE) clean; CFLAGS="-std=c99   -Werror -Wpedantic" $(MAKE) all
+	$(MAKE) clean; CFLAGS="-std=gnu99 -Werror -Wpedantic" $(MAKE) all
+
+.PHONY: c_standards_c11
+c_standards_c11: clean
+	$(MAKE) clean; CFLAGS="-std=c11 -Werror" $(MAKE) all
+
+# The following test ensures that standard Makefile variables set through environment
+# are correctly transmitted at compilation stage.
+# This test is meant to detect issues like https://github.com/lz4/lz4/issues/958
+.PHONY: standard_variables
+standard_variables:
+	$(MAKE) clean
+	@echo =================
+	@echo Check support of Makefile Standard variables through environment
+	@echo note : this test requires V=1 to work properly
+	@echo =================
+	CC="cc -DCC_TEST" \
+	CFLAGS=-DCFLAGS_TEST \
+	CPPFLAGS=-DCPPFLAGS_TEST \
+	LDFLAGS=-DLDFLAGS_TEST \
+	LDLIBS=-DLDLIBS_TEST \
+	$(MAKE) V=1 > tmpsv
+	# Note: just checking the presence of custom flags
+	# would not detect situations where custom flags are
+	# supported in some part of the Makefile, and missed in others.
+	# So the test checks if they are present the _right nb of times_.
+	# However, checking static quantities makes this test brittle,
+	# because quantities (10, 2 and 1) can still evolve in future,
+	# for example when source directories or Makefile evolve.
+	if [ $$(grep CC_TEST tmpsv | wc -l) -ne 10 ]; then \
+		echo "CC environment variable missed" && False; fi
+	if [ $$(grep CFLAGS_TEST tmpsv | wc -l) -ne 10 ]; then \
+		echo "CFLAGS environment variable missed" && False; fi
+	if [ $$(grep CPPFLAGS_TEST tmpsv | wc -l) -ne 10 ]; then \
+		echo "CPPFLAGS environment variable missed" && False; fi
+	if [ $$(grep LDFLAGS_TEST tmpsv | wc -l) -ne 2 ]; then \
+		echo "LDFLAGS environment variable missed" && False; fi
+	if [ $$(grep LDLIBS_TEST tmpsv | wc -l) -ne 1 ]; then \
+		echo "LDLIBS environment variable missed" && False; fi
+	@echo =================
+	@echo all custom variables detected
+	@echo =================
+	$(RM) tmpsv
+
+endif   # MSYS POSIX
