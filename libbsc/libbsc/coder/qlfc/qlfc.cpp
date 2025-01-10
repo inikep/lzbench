@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2021 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -1337,26 +1337,26 @@ int QLFC_FAST_ENCODE_FUNCTION_NAME (const unsigned char * RESTRICT input, unsign
 
 #endif
 
-#if (defined(QLFC_ADAPTIVE_DECODE_FUNCTION_NAME) || defined(QLFC_STATIC_DECODE_FUNCTION_NAME) || defined(QLFC_FAST_DECODE_FUNCTION_NAME)) && (LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE41)
+#if (defined(QLFC_ADAPTIVE_DECODE_FUNCTION_NAME) || defined(QLFC_STATIC_DECODE_FUNCTION_NAME) || defined(QLFC_FAST_DECODE_FUNCTION_NAME)) && (LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE41 || LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64)
 
-static const __m128i ALIGNED(64) rank16_shuffle[16] =
+static const unsigned char ALIGNED(64) rank16_shuffle[16][16] =
 {
-    _mm_setr_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 5, 0, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 5, 6, 0, 7, 8, 9, 10, 11, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 5, 6, 7, 0, 8, 9, 10, 11, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 5, 6, 7, 8, 0, 9, 10, 11, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 10, 11, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 11, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 12, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0, 13, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 14, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 15),
-    _mm_setr_epi8(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0),
+    {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+    {1, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+    {1, 2, 0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+    {1, 2, 3, 0, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+    {1, 2, 3, 4, 0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+    {1, 2, 3, 4, 5, 0, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+    {1, 2, 3, 4, 5, 6, 0, 7, 8, 9, 10, 11, 12, 13, 14, 15},
+    {1, 2, 3, 4, 5, 6, 7, 0, 8, 9, 10, 11, 12, 13, 14, 15},
+    {1, 2, 3, 4, 5, 6, 7, 8, 0, 9, 10, 11, 12, 13, 14, 15},
+    {1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 10, 11, 12, 13, 14, 15},
+    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 11, 12, 13, 14, 15},
+    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0, 12, 13, 14, 15},
+    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 0, 13, 14, 15},
+    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 0, 14, 15},
+    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 0, 15},
+    {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0},
 };
 
 #endif
@@ -1552,11 +1552,19 @@ int QLFC_ADAPTIVE_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
         {
 #if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE41
             __m128i * MTFTable_p = (__m128i *)&MTFTable[rank & (-16)];
-            __m128i r = _mm_load_si128(MTFTable_p); _mm_store_si128(MTFTable_p, _mm_shuffle_epi8(_mm_insert_epi8(r, currentChar, 0), rank16_shuffle[rank & 15]));
+            __m128i r = _mm_load_si128(MTFTable_p); _mm_store_si128(MTFTable_p, _mm_shuffle_epi8(_mm_insert_epi8(r, currentChar, 0), _mm_load_si128((const __m128i *)&rank16_shuffle[rank & 15][0])));
 
             while ((--MTFTable_p) >= (__m128i *)MTFTable)
             {
                 __m128i t = _mm_load_si128(MTFTable_p); _mm_store_si128(MTFTable_p, _mm_alignr_epi8(r, t, 1)); r = t;
+            }
+#elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
+            uint8x16_t * MTFTable_p = (uint8x16_t *)&MTFTable[rank & (-16)];
+            uint8x16_t r = vld1q_u8((const unsigned char *)MTFTable_p); vst1q_u8((unsigned char *)MTFTable_p, vqtbl1q_u8(vsetq_lane_u8((unsigned char)currentChar, r, 0), vld1q_u8((const unsigned char *)&rank16_shuffle[rank & 15][0])));
+                    
+            while ((--MTFTable_p) >= (uint8x16_t *)MTFTable)
+            {
+                uint8x16_t t = vld1q_u8((const unsigned char *)MTFTable_p); vst1q_u8((unsigned char *)MTFTable_p, vextq_u8(t, r, 1)); r = t;
             }
 #else
             for (int r = 0; r < rank; ++r)
@@ -1822,11 +1830,19 @@ int QLFC_STATIC_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char
         {
 #if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE41
             __m128i * MTFTable_p = (__m128i *)&MTFTable[rank & (-16)];
-            __m128i r = _mm_load_si128(MTFTable_p); _mm_store_si128(MTFTable_p, _mm_shuffle_epi8(_mm_insert_epi8(r, currentChar, 0), rank16_shuffle[rank & 15]));
+            __m128i r = _mm_load_si128(MTFTable_p); _mm_store_si128(MTFTable_p, _mm_shuffle_epi8(_mm_insert_epi8(r, currentChar, 0), _mm_load_si128((const __m128i *)&rank16_shuffle[rank & 15][0])));
 
             while ((--MTFTable_p) >= (__m128i *)MTFTable)
             {
                 __m128i t = _mm_load_si128(MTFTable_p); _mm_store_si128(MTFTable_p, _mm_alignr_epi8(r, t, 1)); r = t;
+            }
+#elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
+            uint8x16_t* MTFTable_p = (uint8x16_t*)&MTFTable[rank & (-16)];
+            uint8x16_t r = vld1q_u8((const unsigned char*)MTFTable_p); vst1q_u8((unsigned char*)MTFTable_p, vqtbl1q_u8(vsetq_lane_u8((unsigned char)currentChar, r, 0), vld1q_u8((const unsigned char *)&rank16_shuffle[rank & 15][0])));
+
+            while ((--MTFTable_p) >= (uint8x16_t*)MTFTable)
+            {
+                uint8x16_t t = vld1q_u8((const unsigned char*)MTFTable_p); vst1q_u8((unsigned char*)MTFTable_p, vextq_u8(t, r, 1)); r = t;
             }
 #else
             for (int r = 0; r < rank; ++r)
@@ -2016,11 +2032,19 @@ int QLFC_FAST_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char *
                 {
 #if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE41
                     __m128i * MTFTable_p = (__m128i *)&MTFTable[rank & (-16)];
-                    __m128i r = _mm_load_si128(MTFTable_p); _mm_store_si128(MTFTable_p, _mm_shuffle_epi8(_mm_insert_epi8(r, currentChar, 0), rank16_shuffle[rank & 15]));
+                    __m128i r = _mm_load_si128(MTFTable_p); _mm_store_si128(MTFTable_p, _mm_shuffle_epi8(_mm_insert_epi8(r, currentChar, 0), _mm_load_si128((const __m128i *)&rank16_shuffle[rank & 15][0])));
 
                     while ((--MTFTable_p) >= (__m128i *)MTFTable)
                     {
                         __m128i t = _mm_load_si128(MTFTable_p); _mm_store_si128(MTFTable_p, _mm_alignr_epi8(r, t, 1)); r = t;
+                    }
+#elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
+                    uint8x16_t * MTFTable_p = (uint8x16_t *)&MTFTable[rank & (-16)];
+                    uint8x16_t r = vld1q_u8((const unsigned char *)MTFTable_p); vst1q_u8((unsigned char *)MTFTable_p, vqtbl1q_u8(vsetq_lane_u8((unsigned char)currentChar, r, 0), vld1q_u8((const unsigned char *)&rank16_shuffle[rank & 15][0])));
+                    
+                    while ((--MTFTable_p) >= (uint8x16_t *)MTFTable)
+                    {
+                        uint8x16_t t = vld1q_u8((const unsigned char *)MTFTable_p); vst1q_u8((unsigned char *)MTFTable_p, vextq_u8(t, r, 1)); r = t;
                     }
 #else
                     for (unsigned int r = 0; r < rank; ++r)

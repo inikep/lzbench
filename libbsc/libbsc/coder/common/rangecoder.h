@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2021 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -80,7 +80,7 @@ private:
 #endif
     };
 
-    NOINLINE unsigned int ShiftLow()
+    NOINLINE unsigned int ShiftLowSlow()
     {
         if (ari.u.low32 < 0xffff0000U || ari.u.carry)
         {
@@ -95,6 +95,22 @@ private:
         ari.u.low32 <<= 16;
 
         return ari_range << 16;
+    }
+
+    NOINLINE unsigned int ShiftLow()
+    {
+        unsigned int ari_low32 = ari.u.low32;
+
+        if (!ari_ffnum && ari_low32 < 0xffff0000U)
+        {
+            OutputShort(ari_cache + ari.u.carry);
+
+            ari_cache = ari_low32 >> 16; ari.low = (unsigned int)(ari_low32 << 16);
+
+            return ari_range << 16;
+        }
+
+        return ShiftLowSlow();
     }
 
 public:
