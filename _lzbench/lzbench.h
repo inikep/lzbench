@@ -9,7 +9,7 @@
 #include "compressors.h"
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "1.8"
+#define PROGVERSION "2.0"
 #define PAD_SIZE (16*1024)
 #define MIN_PAGE_SIZE 4096  // smallest page size we expect, if it's wrong the first algorithm might be a bit slower
 #define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second
@@ -18,11 +18,11 @@
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
 #ifndef MIN
-	#define MIN(a,b) ((a)<(b)?(a):(b))
+    #define MIN(a,b) ((a)<(b)?(a):(b))
 #endif
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(WIN64) || defined(_WIN64)
-	#define WINDOWS
+    #define WINDOWS
 #endif
 
 /* **************************************
@@ -37,44 +37,44 @@
 #endif
 
 #ifdef WINDOWS
-	#include <windows.h>
-	typedef LARGE_INTEGER bench_rate_t;
-	typedef LARGE_INTEGER bench_timer_t;
-	#define InitTimer(rate) if (!QueryPerformanceFrequency(&rate)) { printf("QueryPerformance not present"); };
-	#define GetTime(now) QueryPerformanceCounter(&now); 
-	#define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/rate.QuadPart)
-	void uni_sleep(UINT milisec) { Sleep(milisec); };
+    #include <windows.h>
+    typedef LARGE_INTEGER bench_rate_t;
+    typedef LARGE_INTEGER bench_timer_t;
+    #define InitTimer(rate) if (!QueryPerformanceFrequency(&rate)) { printf("QueryPerformance not present"); };
+    #define GetTime(now) QueryPerformanceCounter(&now);
+    #define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/rate.QuadPart)
+    void uni_sleep(UINT milisec) { Sleep(milisec); };
     #ifndef fseeko
-		#ifdef _fseeki64
-            #define fseeko _fseeki64 
+        #ifdef _fseeki64
+            #define fseeko _fseeki64
             #define ftello _ftelli64
-		#else
-            #define fseeko fseek 
+        #else
+            #define fseeko fseek
             #define ftello ftell
         #endif
-	#endif
-	#define PROGOS "Windows"
+    #endif
+    #define PROGOS "Windows"
 #else
     #include <stdarg.h> // va_args
-	#include <time.h>   
-	#include <unistd.h>
-	#include <sys/resource.h>
-	void uni_sleep(uint32_t milisec) { usleep(milisec * 1000); };
+    #include <time.h>
+    #include <unistd.h>
+    #include <sys/resource.h>
+    void uni_sleep(uint32_t milisec) { usleep(milisec * 1000); };
 #if defined(__APPLE__) || defined(__MACH__)
     #include <mach/mach_time.h>
-	typedef mach_timebase_info_data_t bench_rate_t;
+    typedef mach_timebase_info_data_t bench_rate_t;
     typedef uint64_t bench_timer_t;
-	#define InitTimer(rate) mach_timebase_info(&rate);
-	#define GetTime(now) now = mach_absolute_time();
-	#define GetDiffTime(rate, start_ticks, end_ticks) ((end_ticks - start_ticks) * (uint64_t)rate.numer) / ((uint64_t)rate.denom)
-	#define PROGOS "MacOS"
+    #define InitTimer(rate) mach_timebase_info(&rate);
+    #define GetTime(now) now = mach_absolute_time();
+    #define GetDiffTime(rate, start_ticks, end_ticks) ((end_ticks - start_ticks) * (uint64_t)rate.numer) / ((uint64_t)rate.denom)
+    #define PROGOS "MacOS"
 #else
-	typedef struct timespec bench_rate_t;
+    typedef struct timespec bench_rate_t;
     typedef struct timespec bench_timer_t;
-	#define InitTimer(rate)
-	#define GetTime(now) if (clock_gettime(CLOCK_MONOTONIC, &now) == -1 ){ printf("clock_gettime error"); };
-	#define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec ))
-	#define PROGOS "Linux"
+    #define InitTimer(rate)
+    #define GetTime(now) if (clock_gettime(CLOCK_MONOTONIC, &now) == -1 ){ printf("clock_gettime error"); };
+    #define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*( end_ticks.tv_sec - start_ticks.tv_sec ) + ( end_ticks.tv_nsec - start_ticks.tv_nsec ))
+    #define PROGOS "Linux"
 #endif
 #endif
 
@@ -154,10 +154,10 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "fastlzma2",   "1.0.1",      1,  10,    0,       0, lzbench_fastlzma2_compress,  lzbench_fastlzma2_decompress,  NULL,                    NULL },
     { "gipfeli",    "2016-07-13",  0,   0,    0,       0, lzbench_gipfeli_compress,    lzbench_gipfeli_decompress,    NULL,                    NULL },
     { "glza",       "0.8",         0,   0,    0,       0, lzbench_glza_compress,       lzbench_glza_decompress,       NULL,                    NULL },
-    { "libdeflate", "1.9",         1,  12,    0,       0, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
-    { "lz4",        "1.9.3",       0,   0,    0,       0, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
-    { "lz4fast",    "1.9.3",       1,  99,    0,       0, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
-    { "lz4hc",      "1.9.3",       1,  12,    0,       0, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },
+    { "libdeflate", "1.23",        1,  12,    0,       0, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
+    { "lz4",        "1.10.0",      0,   0,    0,       0, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
+    { "lz4fast",    "1.10.0",      1,  99,    0,       0, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
+    { "lz4hc",      "1.10.0",      1,  12,    0,       0, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },
     { "lzf",        "3.6",         0,   1,    0,       0, lzbench_lzf_compress,        lzbench_lzf_decompress,        NULL,                    NULL },
     { "lzfse",      "2017-03-08",  0,   0,    0,       0, lzbench_lzfse_compress,      lzbench_lzfse_decompress,      lzbench_lzfse_init,      lzbench_lzfse_deinit },
     { "lzg",        "1.0.10",      1,   9,    0,       0, lzbench_lzg_compress,        lzbench_lzg_decompress,        NULL,                    NULL },
@@ -165,7 +165,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lzham22",    "1.0",         0,   4,   22,       0, lzbench_lzham_compress,      lzbench_lzham_decompress,      NULL,                    NULL },
     { "lzham24",    "1.0",         0,   4,   24,       0, lzbench_lzham_compress,      lzbench_lzham_decompress,      NULL,                    NULL },
     { "lzjb",       "2010",        0,   0,    0,       0, lzbench_lzjb_compress,       lzbench_lzjb_decompress,       NULL,                    NULL },
-    { "lzlib",      "1.12-rc2",    0,   9,    0,       0, lzbench_lzlib_compress,      lzbench_lzlib_decompress,      NULL,                    NULL },
+    { "lzlib",      "1.13",        0,   9,    0,       0, lzbench_lzlib_compress,      lzbench_lzlib_decompress,      NULL,                    NULL },
     { "lzma",       "19.00",       0,   9,    0,       0, lzbench_lzma_compress,       lzbench_lzma_decompress,       NULL,                    NULL },
     { "lzmat",      "1.01",        0,   0,    0,       0, lzbench_lzmat_compress,      lzbench_lzmat_decompress,      NULL,                    NULL }, // decompression error (returns 0) and SEGFAULT (?)
     { "lzo1",       "2.10",        1,   1,    0,       0, lzbench_lzo1_compress,       lzbench_lzo1_decompress,       lzbench_lzo_init,        lzbench_lzo_deinit },
@@ -190,7 +190,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "slz_deflate","1.2.0",       1,   3,    2,       0, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
     { "slz_gzip",   "1.2.0",       1,   3,    1,       0, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
     { "slz_zlib",   "1.2.0",       1,   3,    0,       0, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
-    { "snappy",     "2020-07-11",  0,   0,    0,       0, lzbench_snappy_compress,     lzbench_snappy_decompress,     NULL,                    NULL },
+    { "snappy",     "1.1.10",  0,   0,    0,       0, lzbench_snappy_compress,     lzbench_snappy_decompress,     NULL,                    NULL },
     { "tamp",       "1.3.1",       8,  15,    0,       0, lzbench_tamp_compress,       lzbench_tamp_decompress,       lzbench_tamp_init,       lzbench_tamp_deinit },
     { "tornado",    "0.6a",        1,  16,    0,       0, lzbench_tornado_compress,    lzbench_tornado_decompress,    NULL,                    NULL },
     { "ucl_nrv2b",  "1.03",        1,   9,    0,       0, lzbench_ucl_nrv2b_compress,  lzbench_ucl_nrv2b_decompress,  NULL,                    NULL },
@@ -203,13 +203,13 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "yappy",      "2014-03-22",  0,  99,    0,       0, lzbench_yappy_compress,      lzbench_yappy_decompress,      lzbench_yappy_init,      NULL },
     { "zlib",       "1.2.11",      1,   9,    0,       0, lzbench_zlib_compress,       lzbench_zlib_decompress,       NULL,                    NULL },
     { "zling",      "2018-10-12",  0,   4,    0,       0, lzbench_zling_compress,      lzbench_zling_decompress,      NULL,                    NULL },
-    { "zstd",       "1.5.5",       1,  22,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zstd_fast",  "1.5.5",       -5, -1,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zstd22",     "1.5.5",       1,  22,   22,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zstd24",     "1.5.5",       1,  22,   24,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zstdLDM",    "1.5.5",       1,  22,    0,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
-    { "zstd22LDM",  "1.5.5",       1,  22,   22,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
-    { "zstd24LDM",  "1.5.5",       1,  22,   24,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
+    { "zstd",       "1.5.6",       1,  22,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstd_fast",  "1.5.6",       -5, -1,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstd22",     "1.5.6",       1,  22,   22,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstd24",     "1.5.6",       1,  22,   24,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstdLDM",    "1.5.6",       1,  22,    0,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
+    { "zstd22LDM",  "1.5.6",       1,  22,   22,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
+    { "zstd24LDM",  "1.5.6",       1,  22,   24,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "nakamichi",  "okamigan",    0,   0,    0,       0, lzbench_nakamichi_compress,  lzbench_nakamichi_decompress,  NULL,                    NULL },
     { "cudaMemcpy", "",            0,   0,    0,       0, lzbench_cuda_return_0,       lzbench_cuda_memcpy,           lzbench_cuda_init,       lzbench_cuda_deinit },
     { "nvcomp_lz4", "1.2.2",       0,   5,    0,       0, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },

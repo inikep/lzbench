@@ -1,18 +1,16 @@
 Introduction
 -------------------------
 
-lzbench is an in-memory benchmark of open-source LZ77/LZSS/LZMA compressors. It joins all compressors into a single exe. 
-At the beginning an input file is read to memory. 
-Then all compressors are used to compress and decompress the file and decompressed file is verified. 
-This approach has a big advantage of using the same compiler with the same optimizations for all compressors. 
+lzbench is an in-memory benchmark of open-source LZ77/LZSS/LZMA compressors. It joins all compressors into a single exe.
+At the beginning an input file is read to memory.
+Then all compressors are used to compress and decompress the file and decompressed file is verified.
+This approach has a big advantage of using the same compiler with the same optimizations for all compressors.
 The disadvantage is that it requires source code of each compressor (therefore Slug or lzturbo are not included).
 
 |Status   |
 |---------|
-| [![Build Status][travisMasterBadge]][travisLink] [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
+| [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
 
-[travisMasterBadge]: https://travis-ci.org/inikep/lzbench.svg?branch=master "Continuous Integration test suite"
-[travisLink]: https://travis-ci.org/inikep/lzbench
 [AppveyorMasterBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/master?svg=true "Visual test suite"
 [AppveyorLink]: https://ci.appveyor.com/project/inikep/lzbench
 
@@ -53,18 +51,20 @@ Compilation
 -------------------------
 For Linux/MacOS/MinGW (Windows):
 ```
-make
+git submodule update --init
+make -j$(nproc)
 ```
 
 For 32-bit compilation:
 ```
-make BUILD_ARCH=32-bit
+git submodule update --init
+make BUILD_ARCH=32-bit -j$(nproc)
 
 ```
 
 The default linking for Linux is dynamic and static for Windows. This can be changed with `make BUILD_STATIC=0/1`.
 
-To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ4` to remove LZ4). 
+To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ4` to remove LZ4).
 You also have to remove corresponding `*.o` files (e.g. `lz4/lz4.o` and `lz4/lz4hc.o`).
 
 lzbench was tested with:
@@ -76,8 +76,8 @@ lzbench was tested with:
 
 Supported compressors
 -------------------------
-**Warning**: some of the compressors listed here have security issues and/or are 
-no longer maintained.  For information about the security of the various compressors, 
+**Warning**: some of the compressors listed here have security issues and/or are
+no longer maintained.  For information about the security of the various compressors,
 see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page.
 
  - [blosclz 2.0.0](https://github.com/Blosc/c-blosc2)
@@ -91,15 +91,15 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2)
  - [gipfeli 2016-07-13](https://github.com/google/gipfeli)
  - [glza 0.8](https://encode.su/threads/2427-GLZA)
- - [libdeflate v1.6](https://github.com/ebiggers/libdeflate)
+ - [libdeflate v1.23](https://github.com/ebiggers/libdeflate)
  - [lizard v1.0 (formerly lz5)](https://github.com/inikep/lizard)
- - [lz4/lz4hc v1.9.3](https://github.com/lz4/lz4)
+ - [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4)
  - [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html)
  - [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse)
  - [lzg 1.0.10](https://liblzg.bitsnbites.eu/)
  - [lzham 1.0](https://github.com/richgel999/lzham_codec)
  lzjb 2010
- - [lzlib 1.12-rc2](http://www.nongnu.org/lzip)
+ - [lzlib 1.13](http://www.nongnu.org/lzip)
  - [lzma v19.00](http://7-zip.org)
  - [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat) - WARNING: it contains bugs (decompression error; returns 0); it can throw SEGFAULT compiled with gcc 4.9+ -O3
  - [lzo 2.10](http://www.oberhumer.com/opensource/lzo)
@@ -109,7 +109,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [quicklz 1.5.0](http://www.quicklz.com)
  - [shrinker 0.1](https://code.google.com/p/data-shrinker) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
  - [slz 1.2.0](http://www.libslz.org/) - only a compressor, uses zlib for decompression
- - [snappy 2020-07-11 (4dd277f)](https://github.com/google/snappy)
+ - [snappy 1.1.10](https://github.com/google/snappy)
  - [tamp 1.3.1](https://github.com/BrianPugh/tamp)
  - [tornado 0.6a](http://freearc.org)
  - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
@@ -120,7 +120,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) - WARNING: fails to decompress properly on ARM
  - [zlib 1.2.11](http://zlib.net)
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
- - [zstd 1.5.5](https://github.com/facebook/zstd)
+ - [zstd 1.5.6](https://github.com/facebook/zstd)
  - [nvcomp 1.2.3](https://github.com/NVIDIA/nvcomp) - If CUDA is available.
 
 

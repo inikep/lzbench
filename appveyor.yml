@@ -21,6 +21,7 @@ install:
   - if [%PLATFORM%]==[mingw64] SET PATH=%PATH_MINGW64%;%PATH_ORIGINAL%
   - if [%CC_COMPILER%]==[clang] SET PATH=%PATH_MINGW64%;%PATH_ORIGINAL%
   - COPY C:\MinGW\bin\mingw32-make.exe C:\MinGW\bin\make.exe
+  - git submodule update --init --recursive
 
 build_script:
   - ECHO *** &&

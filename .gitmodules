@@ -1,0 +1,9 @@
+[submodule "lz4"]
+	path = lz4
+	url = https://github.com/lz4/lz4.git
+[submodule "zstd"]
+	path = zstd
+	url = https://github.com/facebook/zstd.git
+[submodule "libdeflate"]
+	path = libdeflate
+	url = https://github.com/ebiggers/libdeflate

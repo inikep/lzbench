@@ -1,5 +1,5 @@
 /*
-(C) 2011-2017 by Przemyslaw Skibinski (inikep@gmail.com)
+(C) 2011-2025 by Przemyslaw Skibinski (inikep@gmail.com)
 
     LICENSE
 
@@ -778,7 +778,7 @@ char* cpu_brand_string(void)
     else
         return NULL; // CPUID_EXTENDED unsupported by cpu
 
-    cpu_brand_str[3*sizeof(mx)+1] = '\0';
+    cpu_brand_str[3*sizeof(mx)] = '\0';
     return cpu_brand_str;
     #else
     return NULL;
@@ -940,7 +940,7 @@ int main( int argc, char** argv)
     }
 
     cpu_brand = cpu_brand_string();
-    LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")  %s\nAssembled by P.Skibinski\n\n", (uint32_t)(8 * sizeof(uint8_t*)), cpu_brand);
+    LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")  %s\n\n", (uint32_t)(8 * sizeof(uint8_t*)), cpu_brand);
     LZBENCH_PRINT(5, "params: chunk_size=%d c_iters=%d d_iters=%d cspeed=%d cmintime=%d dmintime=%d encoder_list=%s\n", (int)params->chunk_size, params->c_iters, params->d_iters, params->cspeed, params->cmintime, params->dmintime, encoder_list);
 
     if (ifnIdx < 1)  { usage(params); goto _clean; }

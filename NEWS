@@ -1,3 +1,8 @@
+v2.0
+- Update libdeflate to v1.23 using a submodule
+- Update zstd to 1.5.6 using a submodule
+- Update lz4 to 1.10.0 using a submodule
+
 v1.8.1
 - fixed linking issues with glza (multiple definition of ###)
 - update BriefLZ to 1.3.0 (thanks to @jibsen)
