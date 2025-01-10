@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2021 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -32,6 +32,11 @@ See also the bsc and libbsc web site:
 
 #ifndef _LIBBSC_LIBBSC_H
 #define _LIBBSC_LIBBSC_H
+
+#define LIBBSC_VERSION_MAJOR           3
+#define LIBBSC_VERSION_MINOR           3
+#define LIBBSC_VERSION_PATCH           4
+#define LIBBSC_VERSION_STRING          "3.3.4"
 
 #define LIBBSC_NO_ERROR                0
 #define LIBBSC_BAD_PARAMETER          -1
@@ -70,7 +75,7 @@ See also the bsc and libbsc web site:
 #define LIBBSC_FEATURE_LARGEPAGES      4
 #define LIBBSC_FEATURE_CUDA            8
 
-#define LIBBSC_DEFAULT_LZPHASHSIZE     16
+#define LIBBSC_DEFAULT_LZPHASHSIZE     15
 #define LIBBSC_DEFAULT_LZPMINLEN       128
 #define LIBBSC_DEFAULT_BLOCKSORTER     LIBBSC_BLOCKSORTER_BWT
 #define LIBBSC_DEFAULT_CODER           LIBBSC_CODER_QLFC_STATIC
@@ -104,10 +109,10 @@ extern "C" {
     * @param input                              - the input memory block of n bytes.
     * @param output                             - the output memory block of n + LIBBSC_HEADER_SIZE bytes.
     * @param n                                  - the length of the input memory block.
-    * @param lzpHashSize[0, 10..28]             - the hash table size if LZP enabled, 0 otherwise.
-    * @param lzpMinLen[0, 4..255]               - the minimum match length if LZP enabled, 0 otherwise.
-    * @param blockSorter[ST3..ST8, BWT]         - the block sorting algorithm.
-    * @param coder[MTF or QLFC]                 - the entropy coding algorithm.
+    * @param lzpHashSize                        - the hash table size if LZP enabled, 0 otherwise. Must be in range [0, 10..28].
+    * @param lzpMinLen                          - the minimum match length if LZP enabled, 0 otherwise. Must be in range [0, 4..255].
+    * @param blockSorter                        - the block sorting algorithm. Must be in range [ST3..ST8, BWT].
+    * @param coder                              - the entropy coding algorithm. Must be in range [MTF or QLFC].
     * @param features                           - the set of additional features.
     * @return the length of compressed memory block if no error occurred, error code otherwise.
     */
@@ -127,8 +132,8 @@ extern "C" {
     * Determinate the sizes of input and output memory blocks for bsc_decompress function.
     * @param blockHeader                        - the header of input(compressed) memory block of headerSize bytes.
     * @param headerSize                         - the length of header, should be at least LIBBSC_HEADER_SIZE bytes.
-    * @param pBlockSize[out]                    - the length of the input memory block for bsc_decompress function.
-    * @param pDataSize[out]                     - the length of the output memory block for bsc_decompress function.
+    * @param pBlockSize                         - the length of the input memory block for bsc_decompress function.
+    * @param pDataSize                          - the length of the output memory block for bsc_decompress function.
     * @param features                           - the set of additional features.
     * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
     */

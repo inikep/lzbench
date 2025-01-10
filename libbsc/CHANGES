@@ -1,3 +1,24 @@
+Changes in 3.3.4 (January, 24 2024)
+- Implemented GPU acceleration of reverse Burrows–Wheeler transform.
+
+Changes in 3.3.3 (November, 26 2023)
+- Fixed out-of-bound memory access issue for large inputs.
+- Slightly improved compression performance.
+
+Changes in 3.3.2 (March, 24 2023)
+- Reduced memory usage and improved performance of GPU accelerated forward BWT.
+
+Changes in 3.3.1 (February, 15 2023)
+- Added ability to specify block size in bytes as oppose to megabytes.
+
+Changes in 3.3.0 (February, 10 2023)
+- Improved GPU acceleration performance of forward ST algorithm.
+- Implemented GPU acceleration of forward Burrows–Wheeler transform.
+
+Changes in 3.2.5 (November, 23 2022)
+- Fixed data corruption issue in LZP encoder.
+- Due to these fix, an upgrade to this version is strongly recommended.
+
 Changes in 3.2.4 (18 January, 18 2022)
 - Improved performance for AArch64 (ARM64) platform.
 

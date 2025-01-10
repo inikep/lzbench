@@ -1,7 +1,7 @@
 /*--
 
-This file is a part of libsais, a library for linear time
-suffix array and burrows wheeler transform construction.
+This file is a part of libsais, a library for linear time suffix array,
+longest common prefix array and burrows wheeler transform construction.
 
    Copyright (c) 2021-2022 Ilya Grebnov <ilya.grebnov@gmail.com>
 
@@ -23,6 +23,11 @@ Please see the file LICENSE for full copyright information.
 
 #ifndef LIBSAIS_H
 #define LIBSAIS_H 1
+
+#define LIBSAIS_VERSION_MAJOR   2
+#define LIBSAIS_VERSION_MINOR   7
+#define LIBSAIS_VERSION_PATCH   2
+#define LIBSAIS_VERSION_STRING  "2.7.2"
 
 #ifdef __cplusplus
 extern "C" {
@@ -116,7 +121,7 @@ extern "C" {
 #endif
 
     /**
-    * Constructs the burrows-wheeler transformed string of a given string.
+    * Constructs the burrows-wheeler transformed string (BWT) of a given string.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
     * @param A [0..n-1+fs] The temporary array.
@@ -128,7 +133,7 @@ extern "C" {
     int32_t libsais_bwt(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, int32_t fs, int32_t * freq);
 
     /**
-    * Constructs the burrows-wheeler transformed string of a given string with auxiliary indexes.
+    * Constructs the burrows-wheeler transformed string (BWT) of a given string with auxiliary indexes.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
     * @param A [0..n-1+fs] The temporary array.
@@ -142,7 +147,7 @@ extern "C" {
     int32_t libsais_bwt_aux(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, int32_t fs, int32_t * freq, int32_t r, int32_t * I);
 
     /**
-    * Constructs the burrows-wheeler transformed string of a given string using libsais context.
+    * Constructs the burrows-wheeler transformed string (BWT) of a given string using libsais context.
     * @param ctx The libsais context.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
@@ -155,7 +160,7 @@ extern "C" {
     int32_t libsais_bwt_ctx(const void * ctx, const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, int32_t fs, int32_t * freq);
 
     /**
-    * Constructs the burrows-wheeler transformed string of a given string with auxiliary indexes using libsais context.
+    * Constructs the burrows-wheeler transformed string (BWT) of a given string with auxiliary indexes using libsais context.
     * @param ctx The libsais context.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
@@ -171,7 +176,7 @@ extern "C" {
 
 #if defined(_OPENMP)
     /**
-    * Constructs the burrows-wheeler transformed string of a given string in parallel using OpenMP.
+    * Constructs the burrows-wheeler transformed string (BWT) of a given string in parallel using OpenMP.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
     * @param A [0..n-1+fs] The temporary array.
@@ -184,7 +189,7 @@ extern "C" {
     int32_t libsais_bwt_omp(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, int32_t fs, int32_t * freq, int32_t threads);
 
     /**
-    * Constructs the burrows-wheeler transformed string of a given string with auxiliary indexes in parallel using OpenMP.
+    * Constructs the burrows-wheeler transformed string (BWT) of a given string with auxiliary indexes in parallel using OpenMP.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
     * @param A [0..n-1+fs] The temporary array.
@@ -223,7 +228,7 @@ extern "C" {
     void libsais_unbwt_free_ctx(void * ctx);
 
     /**
-    * Constructs the original string from a given burrows-wheeler transformed string with primary index.
+    * Constructs the original string from a given burrows-wheeler transformed string (BWT) with primary index.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
     * @param A [0..n] The temporary array (NOTE, temporary array must be n + 1 size).
@@ -235,7 +240,7 @@ extern "C" {
     int32_t libsais_unbwt(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, const int32_t * freq, int32_t i);
 
     /**
-    * Constructs the original string from a given burrows-wheeler transformed string with primary index using libsais reverse BWT context.
+    * Constructs the original string from a given burrows-wheeler transformed string (BWT) with primary index using libsais reverse BWT context.
     * @param ctx The libsais reverse BWT context.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
@@ -248,7 +253,7 @@ extern "C" {
     int32_t libsais_unbwt_ctx(const void * ctx, const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, const int32_t * freq, int32_t i);
 
     /**
-    * Constructs the original string from a given burrows-wheeler transformed string with auxiliary indexes.
+    * Constructs the original string from a given burrows-wheeler transformed string (BWT) with auxiliary indexes.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
     * @param A [0..n] The temporary array (NOTE, temporary array must be n + 1 size).
@@ -261,7 +266,7 @@ extern "C" {
     int32_t libsais_unbwt_aux(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, const int32_t * freq, int32_t r, const int32_t * I);
 
     /**
-    * Constructs the original string from a given burrows-wheeler transformed string with auxiliary indexes using libsais reverse BWT context.
+    * Constructs the original string from a given burrows-wheeler transformed string (BWT) with auxiliary indexes using libsais reverse BWT context.
     * @param ctx The libsais reverse BWT context.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
@@ -276,7 +281,7 @@ extern "C" {
 
 #if defined(_OPENMP)
     /**
-    * Constructs the original string from a given burrows-wheeler transformed string with primary index in parallel using OpenMP.
+    * Constructs the original string from a given burrows-wheeler transformed string (BWT) with primary index in parallel using OpenMP.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
     * @param A [0..n] The temporary array (NOTE, temporary array must be n + 1 size).
@@ -289,7 +294,7 @@ extern "C" {
     int32_t libsais_unbwt_omp(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, const int32_t * freq, int32_t i, int32_t threads);
 
     /**
-    * Constructs the original string from a given burrows-wheeler transformed string with auxiliary indexes in parallel using OpenMP.
+    * Constructs the original string from a given burrows-wheeler transformed string (BWT) with auxiliary indexes in parallel using OpenMP.
     * @param T [0..n-1] The input string.
     * @param U [0..n-1] The output string (can be T).
     * @param A [0..n] The temporary array (NOTE, temporary array must be n + 1 size).
@@ -301,6 +306,50 @@ extern "C" {
     * @return 0 if no error occurred, -1 or -2 otherwise.
     */
     int32_t libsais_unbwt_aux_omp(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, const int32_t * freq, int32_t r, const int32_t * I, int32_t threads);
+#endif
+
+    /**
+    * Constructs the permuted longest common prefix array (PLCP) of a given string and a suffix array.
+    * @param T [0..n-1] The input string.
+    * @param SA [0..n-1] The input suffix array.
+    * @param PLCP [0..n-1] The output permuted longest common prefix array.
+    * @param n The length of the string and the suffix array.
+    * @return 0 if no error occurred, -1 otherwise.
+    */
+    int32_t libsais_plcp(const uint8_t * T, const int32_t * SA, int32_t * PLCP, int32_t n);
+
+    /**
+    * Constructs the longest common prefix array (LCP) of a given permuted longest common prefix array (PLCP) and a suffix array.
+    * @param PLCP [0..n-1] The input permuted longest common prefix array.
+    * @param SA [0..n-1] The input suffix array.
+    * @param LCP [0..n-1] The output longest common prefix array (can be SA).
+    * @param n The length of the permuted longest common prefix array and the suffix array.
+    * @return 0 if no error occurred, -1 otherwise.
+    */
+    int32_t libsais_lcp(const int32_t * PLCP, const int32_t * SA, int32_t * LCP, int32_t n);
+
+#if defined(_OPENMP)
+    /**
+    * Constructs the permuted longest common prefix array (PLCP) of a given string and a suffix array in parallel using OpenMP.
+    * @param T [0..n-1] The input string.
+    * @param SA [0..n-1] The input suffix array.
+    * @param PLCP [0..n-1] The output permuted longest common prefix array.
+    * @param n The length of the string and the suffix array.
+    * @param threads The number of OpenMP threads to use (can be 0 for OpenMP default).
+    * @return 0 if no error occurred, -1 otherwise.
+    */
+    int32_t libsais_plcp_omp(const uint8_t * T, const int32_t * SA, int32_t * PLCP, int32_t n, int32_t threads);
+
+    /**
+    * Constructs the longest common prefix array (LCP) of a given permuted longest common prefix array (PLCP) and a suffix array in parallel using OpenMP.
+    * @param PLCP [0..n-1] The input permuted longest common prefix array.
+    * @param SA [0..n-1] The input suffix array.
+    * @param LCP [0..n-1] The output longest common prefix array (can be SA).
+    * @param n The length of the permuted longest common prefix array and the suffix array.
+    * @param threads The number of OpenMP threads to use (can be 0 for OpenMP default).
+    * @return 0 if no error occurred, -1 otherwise.
+    */
+    int32_t libsais_lcp_omp(const int32_t * PLCP, const int32_t * SA, int32_t * LCP, int32_t n, int32_t threads);
 #endif
 
 #ifdef __cplusplus
