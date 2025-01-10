@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2021 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -541,13 +541,16 @@ int bsc_lzp_encode_block(const unsigned char * input, const unsigned char * inpu
     if (int * lookup = (int *)bsc_zero_malloc((int)(1 << hashSize) * sizeof(int)))
     {
 #if defined(LIBBSC_ALLOW_UNALIGNED_ACCESS) && (defined(__x86_64__) || defined(__aarch64__))
-        result = (minLen == 1 * (int)sizeof(unsigned int      ) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_small  <unsigned int      >(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1) : result;
-        result = (minLen == 1 * (int)sizeof(unsigned long long) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_small  <unsigned long long>(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1) : result;
-        result = (minLen == 2 * (int)sizeof(unsigned long long) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_small2x<unsigned long long>(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1) : result;
-        result = (minLen <= 2 * (int)sizeof(unsigned int      ) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_medium <unsigned int      >(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1, minLen) : result;
-        result = (minLen <= 2 * (int)sizeof(unsigned long long) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_medium <unsigned long long>(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1, minLen) : result;
-        
-        result = result == LIBBSC_NOT_ENOUGH_MEMORY ? bsc_lzp_encode_large<unsigned long long>(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1, minLen) : result;
+        if (hashSize <= 17)
+        {
+            result = (minLen == 1 * (int)sizeof(unsigned int      ) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_small  <unsigned int      >(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1) : result;
+            result = (minLen == 1 * (int)sizeof(unsigned long long) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_small  <unsigned long long>(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1) : result;
+            result = (minLen == 2 * (int)sizeof(unsigned long long) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_small2x<unsigned long long>(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1) : result;
+            result = (minLen <= 2 * (int)sizeof(unsigned int      ) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_medium <unsigned int      >(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1, minLen) : result;
+            result = (minLen <= 2 * (int)sizeof(unsigned long long) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_medium <unsigned long long>(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1, minLen) : result;
+
+            result = result == LIBBSC_NOT_ENOUGH_MEMORY ? bsc_lzp_encode_large<unsigned long long>(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1, minLen) : result;
+        }
 #endif
 
         result = result == LIBBSC_NOT_ENOUGH_MEMORY ? bsc_lzp_encode_generic(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1, minLen) : result;

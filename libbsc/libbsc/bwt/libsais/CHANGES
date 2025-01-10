@@ -1,0 +1,37 @@
+Changes in 2.7.2 (April 18, 2023)
+- Fixed out-of-bound memory access issue for large inputs (libsais64).
+
+Changes in 2.7.1 (June 19, 2022)
+- Improved cache coherence for ARMv8 architecture.
+
+Changes in 2.7.0 (April 12, 2022)
+- Support for longest common prefix array (LCP) construction.
+
+Changes in 2.6.5 (January 1, 2022)
+- Exposed functions to construct suffix array of a given integer array.
+- Improved detection of various compiler intrinsics.
+- Capped free space parameter to avoid crashing due to 32-bit integer overflow.
+
+Changes in 2.6.0 (October 21, 2021)
+- libsais16 for 16-bit inputs.
+
+Changes in 2.5.0 (October 15, 2021)
+- Support for optional symbol frequency tables.
+
+Changes in 2.4.0 (July 14, 2021)
+- Reverse Burrows-Wheeler transform.
+
+Changes in 2.3.0 (June 23, 2021)
+- Burrows-Wheeler transform with auxiliary indexes.
+
+Changes in 2.2.0 (April 27, 2021)
+- libsais64 for inputs larger than 2GB.
+
+Changes in 2.1.0 (April 19, 2021)
+- Additional OpenMP acceleration.
+
+Changes in 2.0.0 (April 4, 2021)
+- OpenMP acceleration.
+
+Changes in 1.0.0 (February 23, 2021)
+- Initial Release.

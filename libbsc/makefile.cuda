@@ -1,5 +1,14 @@
 SHELL = /bin/sh
 
+CUDA_PATH = /usr/local/cuda
+CUDA_BIN_PATH = $(CUDA_PATH)/bin
+CUDA_LIB_PATH = $(CUDA_PATH)/lib64
+CUDA_INCLUDE_PATH = $(CUDA_PATH)/include
+
+NVCC = $(CUDA_BIN_PATH)/nvcc
+NVCCFLAGS = -m64 -O3 -Xcompiler=-fopenmp -arch=all -Wno-deprecated-gpu-targets -I $(CUDA_INCLUDE_PATH)
+NVCCEXTRAFLAGS = -DNDEBUG -DLIBBSC_CUDA_SUPPORT -DLIBBSC_SORT_TRANSFORM_SUPPORT -DLIBBSC_ALLOW_UNALIGNED_ACCESS -DLIBBSC_OPENMP_SUPPORT
+
 CC = clang++
 AR = ar
 RANLIB = ranlib
@@ -29,6 +38,9 @@ CFLAGS += -DLIBBSC_SORT_TRANSFORM_SUPPORT
 # Comment out CFLAGS line below to disable unaligned memory access
 CFLAGS += -DLIBBSC_ALLOW_UNALIGNED_ACCESS
 
+# Comment out CFLAGS line below to disable CUDA acceleration
+CFLAGS += -DLIBBSC_CUDA_SUPPORT
+
 # Where you want bsc installed when you do 'make install'
 PREFIX = /usr
 
@@ -45,11 +57,13 @@ OBJS = \
        platform.o      \
        st.o            \
        bwt.o           \
+       st.cuda.o       \
+       bwt.cuda.o      \
 
 all: libbsc.a bsc
 
 bsc: libbsc.a bsc.cpp
-	$(CC) $(CFLAGS) bsc.cpp -o bsc -L. -lbsc
+	$(CC) $(CFLAGS) bsc.cpp -o bsc -L. -L$(CUDA_LIB_PATH) -lbsc -lcudart
 
 libbsc.a: $(OBJS)
 	rm -f libbsc.a
@@ -109,3 +123,9 @@ st.o: libbsc/st/st.cpp
 
 bwt.o: libbsc/bwt/bwt.cpp
 	$(CC) $(CFLAGS) -c libbsc/bwt/bwt.cpp
+
+st.cuda.o: libbsc/st/st.cu
+	$(NVCC) $(NVCCFLAGS) $(NVCCEXTRAFLAGS) -c libbsc/st/st.cu -o st.cuda.o
+
+bwt.cuda.o: libbsc/bwt/libcubwt/libcubwt.cu
+	$(NVCC) $(NVCCFLAGS) $(NVCCEXTRAFLAGS) -c libbsc/bwt/libcubwt/libcubwt.cu -o bwt.cuda.o

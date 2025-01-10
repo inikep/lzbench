@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2021 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -49,6 +49,7 @@ int bsc_init_full(int features, void* (* malloc)(size_t size), void* (* zero_mal
 
     if (result == LIBBSC_NO_ERROR) result = bsc_platform_init(features, malloc, zero_malloc, free);
     if (result == LIBBSC_NO_ERROR) result = bsc_coder_init(features);
+    if (result == LIBBSC_NO_ERROR) result = bsc_bwt_init(features);
 
 #ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
 

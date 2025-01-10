@@ -402,8 +402,8 @@ ifneq "$(DONT_BUILD_NVCOMP)" "1"
 endif
 
 ifneq "$(DONT_BUILD_BSC)" "1"
-    CFLAGS += -DLIBBSC_CUDA_SUPPORT
-    MISC_FILES += libbsc/libbsc/st/st_cu.o
+    BSC_CXXFLAGS += -DLIBBSC_CUDA_SUPPORT
+    MISC_FILES += libbsc/libbsc/st/st_cu.o libbsc/libbsc/bwt/libcubwt/libcubwt.o
 endif
 endif
 
@@ -446,7 +446,11 @@ $(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
 
 libbsc/libbsc/st/st_cu.o: libbsc/libbsc/st/st.cu
 	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CFLAGS) $(CFLAGS) -c $< -o $@
+	$(CUDA_CC) $(CUDA_CFLAGS) $(CFLAGS) $(BSC_CXXFLAGS) -c $< -o $@
+
+libbsc/libbsc/bwt/libcubwt/libcubwt.o: libbsc/libbsc/bwt/libcubwt/libcubwt.cu
+	@$(MKDIR) $(dir $@)
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) $(BSC_CXXFLAGS) -c $< -o $@
 
 # disable the implicit rule for making a binary out of a single object file
 %: %.o

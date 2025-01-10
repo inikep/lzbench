@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2021 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -140,8 +140,10 @@ void Compression(char * argv[])
         exit(1);
     }
 
-    BSC_FILEOFFSET fileSize = BSC_FTELL(fInput);
-    if (fileSize < 0)
+    BSC_FILEOFFSET inFileSize = BSC_FTELL(fInput);
+    BSC_FILEOFFSET outFileSize = 0;
+
+    if (inFileSize < 0)
     {
         fprintf(stderr, "IO error on file: %s!\n", argv[2]);
         exit(1);
@@ -153,9 +155,9 @@ void Compression(char * argv[])
         exit(1);
     }
 
-    if (paramBlockSize > fileSize)
+    if (paramBlockSize > inFileSize)
     {
-        paramBlockSize = (int)fileSize;
+        paramBlockSize = (int)inFileSize;
     }
 
     if (fwrite(bscFileSign, sizeof(bscFileSign), 1, fOutput) != 1)
@@ -164,12 +166,16 @@ void Compression(char * argv[])
         exit(1);
     }
 
-    int nBlocks = paramBlockSize > 0 ? (int)((fileSize + paramBlockSize - 1) / paramBlockSize) : 0;
+    outFileSize += (int)(sizeof(bscFileSign));
+
+    int nBlocks = paramBlockSize > 0 ? (int)((inFileSize + paramBlockSize - 1) / paramBlockSize) : 0;
     if (fwrite(&nBlocks, sizeof(nBlocks), 1, fOutput) != 1)
     {
         fprintf(stderr, "IO error on file: %s!\n", argv[3]);
         exit(1);
     }
+
+    outFileSize += (int)(sizeof(nBlocks));
 
     double startTime = BSC_CLOCK();
 
@@ -213,13 +219,13 @@ void Compression(char * argv[])
             #pragma omp critical(input)
 #endif
             {
-                if ((feof(fInput) == 0) && (BSC_FTELL(fInput) != fileSize))
+                if ((feof(fInput) == 0) && (BSC_FTELL(fInput) != inFileSize))
                 {
 #ifdef LIBBSC_OPENMP
                     #pragma omp master
 #endif
                     {
-                        double progress = (100.0 * (double)BSC_FTELL(fInput)) / fileSize;
+                        double progress = (100.0 * (double)BSC_FTELL(fInput)) / inFileSize;
                         fprintf(stdout, "\rCompressing %.55s(%02d%%)", argv[2], (int)progress);
                         fflush(stdout);
                     }
@@ -400,11 +406,15 @@ void Compression(char * argv[])
                     exit(1);
                 }
 
+                outFileSize += (int)(sizeof(BSC_BLOCK_HEADER));
+
                 if ((int)fwrite(buffer, 1, blockSize, fOutput) != blockSize)
                 {
                     fprintf(stderr, "\nIO error on file: %s!\n", argv[3]);
                     exit(1);
                 }
+
+                outFileSize += (int)(blockSize);
             }
 
         }
@@ -412,7 +422,9 @@ void Compression(char * argv[])
         bsc_free(buffer);
     }
 
-    fprintf(stdout, "\r%.55s compressed %.0f into %.0f in %.3f seconds.\n", argv[2], (double)fileSize, (double)BSC_FTELL(fOutput), BSC_CLOCK() - startTime);
+    startTime = BSC_CLOCK() - startTime;
+
+    fprintf(stdout, "\r%.55s encoded %.0f => %.0f in %.3fs (%.2f MB/s)\n", argv[2], (double)inFileSize, (double)outFileSize, startTime, ((double)inFileSize) / 1000000.0 / startTime);
 
     fclose(fInput); fclose(fOutput);
 }
@@ -439,8 +451,10 @@ void Decompression(char * argv[])
         exit(1);
     }
 
-    BSC_FILEOFFSET fileSize = BSC_FTELL(fInput);
-    if (fileSize < 0)
+    BSC_FILEOFFSET inFileSize = BSC_FTELL(fInput);
+    BSC_FILEOFFSET outFileSize = 0;
+
+    if (inFileSize < 0)
     {
         fprintf(stderr, "IO error on file: %s!\n", argv[2]);
         exit(1);
@@ -503,13 +517,13 @@ void Decompression(char * argv[])
             #pragma omp critical(input)
 #endif
             {
-                if ((feof(fInput) == 0) && (BSC_FTELL(fInput) != fileSize))
+                if ((feof(fInput) == 0) && (BSC_FTELL(fInput) != inFileSize))
                 {
 #ifdef LIBBSC_OPENMP
                     #pragma omp master
 #endif
                     {
-                        double progress = (100.0 * (double)BSC_FTELL(fInput)) / fileSize;
+                        double progress = (100.0 * (double)BSC_FTELL(fInput)) / inFileSize;
                         fprintf(stdout, "\rDecompressing %.55s(%02d%%)", argv[2], (int)progress);
                         fflush(stdout);
                     }
@@ -647,6 +661,8 @@ void Decompression(char * argv[])
                     fprintf(stderr, "\nIO error on file: %s!\n", argv[3]);
                     exit(1);
                 }
+
+                outFileSize += (int)(dataSize);
             }
         }
 
@@ -659,7 +675,9 @@ void Decompression(char * argv[])
         exit(1);
     }
 
-    fprintf(stdout, "\r%.55s decompressed %.0f into %.0f in %.3f seconds.\n", argv[2], (double)fileSize, (double)BSC_FTELL(fOutput), BSC_CLOCK() - startTime);
+    startTime = BSC_CLOCK() - startTime;
+
+    fprintf(stdout, "\r%.55s decoded %.0f => %.0f in %.3fs (%.2f MB/s)\n", argv[2], (double)inFileSize, (double)outFileSize, startTime, ((double)outFileSize) / 1000000.0 / startTime);
 
     fclose(fInput); fclose(fOutput);
 }
@@ -739,8 +757,8 @@ void ProcessSwitch(char * s)
             case 'b':
             {
                 char * strNum = s; while ((*s >= '0') && (*s <= '9')) s++;
-                paramBlockSize = atoi(strNum) * 1024 * 1024;
-                if ((paramBlockSize < 1024 * 1024) || (paramBlockSize > 2047 * 1024 * 1024)) ShowUsage();
+                paramBlockSize = atoi(strNum); if (paramBlockSize < 10000) paramBlockSize *= 1024 * 1024;
+                if ((paramBlockSize < 10000) || (paramBlockSize > 2047 * 1024 * 1024)) ShowUsage();
                 break;
             }
 
@@ -851,8 +869,8 @@ void ProcessCommandline(int argc, char * argv[])
 
 int main(int argc, char * argv[])
 {
-    fprintf(stdout, "This is bsc, Block Sorting Compressor. Version 3.2.4. 18 January 2022.\n");
-    fprintf(stdout, "Copyright (c) 2009-2021 Ilya Grebnov <Ilya.Grebnov@gmail.com>.\n\n");
+    fprintf(stdout, "This is bsc, Block Sorting Compressor. Version 3.3.4. 24 January 2024.\n");
+    fprintf(stdout, "Copyright (c) 2009-2024 Ilya Grebnov <Ilya.Grebnov@gmail.com>.\n\n");
 
 #if defined(_OPENMP) && defined(__INTEL_COMPILER)
 
