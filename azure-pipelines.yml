@@ -1,0 +1,302 @@
+jobs:
+- job:
+  timeoutInMinutes: 240
+  pool:
+    vmImage: $(imageName)
+
+  variables:
+    USE_CCACHE: 1
+    CCACHE_DIR: $(Pipeline.Workspace)/ccache
+    CCACHE_COMPRESS: 1
+    CCACHE_COMPRESSLEVEL: 9
+    CCACHE_CPP2: 1
+    CCACHE_MAXSIZE: 2G
+    OS_NAME: $(Agent.OS)
+    PARENT_BRANCH: 1.8
+
+  strategy:
+    matrix:
+      macOS 14:
+        imageName: 'macOS-14'
+        SELECTED_CC: clang
+        SELECTED_CXX: clang++
+
+      # clang-6 and newer compilers
+      clang-19 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
+        UBUNTU_CODE_NAME: jammy
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-19 main'
+        SELECTED_CC: clang-19
+        SELECTED_CXX: clang++-19
+        PACKAGES: 'clang-19 llvm-19-dev'
+
+      clang-18 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
+        UBUNTU_CODE_NAME: jammy
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-18 main'
+        SELECTED_CC: clang-18
+        SELECTED_CXX: clang++-18
+        PACKAGES: 'clang-18 llvm-18-dev'
+
+      clang-17 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
+        UBUNTU_CODE_NAME: jammy
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-17 main'
+        SELECTED_CC: clang-17
+        SELECTED_CXX: clang++-17
+        PACKAGES: 'clang-17 llvm-17-dev'
+
+      clang-16 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
+        UBUNTU_CODE_NAME: jammy
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-16 main'
+        SELECTED_CC: clang-16
+        SELECTED_CXX: clang++-16
+        PACKAGES: 'clang-16 llvm-16-dev'
+
+      clang-15 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
+        UBUNTU_CODE_NAME: jammy
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-15 main'
+        SELECTED_CC: clang-15
+        SELECTED_CXX: clang++-15
+        PACKAGES: 'clang-15 llvm-15-dev'
+
+      clang-14 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
+        UBUNTU_CODE_NAME: jammy
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-14 main'
+        SELECTED_CC: clang-14
+        SELECTED_CXX: clang++-14
+        PACKAGES: 'clang-14 llvm-14-dev'
+
+      clang-13 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
+        UBUNTU_CODE_NAME: jammy
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-13 main'
+        SELECTED_CC: clang-13
+        SELECTED_CXX: clang++-13
+        PACKAGES: 'clang-13 llvm-13-dev'
+
+      clang-12 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        UBUNTU_CODE_NAME: focal
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-12 main'
+        SELECTED_CC: clang-12
+        SELECTED_CXX: clang++-12
+        PACKAGES: 'clang-12 llvm-12-dev'
+
+      clang-11 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        UBUNTU_CODE_NAME: focal
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-11 main'
+        SELECTED_CC: clang-11
+        SELECTED_CXX: clang++-11
+        PACKAGES: 'clang-11 llvm-11-dev'
+
+      clang-10 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        UBUNTU_CODE_NAME: focal
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-10 main'
+        SELECTED_CC: clang-10
+        SELECTED_CXX: clang++-10
+        PACKAGES: 'clang-10 llvm-10-dev'
+
+      clang-9 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        UBUNTU_CODE_NAME: focal
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-9 main'
+        SELECTED_CC: clang-9
+        SELECTED_CXX: clang++-9
+        PACKAGES: 'clang-9 llvm-9-dev'
+
+      clang-8 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        UBUNTU_CODE_NAME: focal
+        SELECTED_CC: clang-8
+        SELECTED_CXX: clang++-8
+        PACKAGES: 'clang-8 llvm-8-dev'
+
+      clang-7 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        UBUNTU_CODE_NAME: focal
+        SELECTED_CC: clang-7
+        SELECTED_CXX: clang++-7
+        PACKAGES: 'clang-7 llvm-7-dev'
+
+      clang-6 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        UBUNTU_CODE_NAME: focal
+        SELECTED_CC: clang-6.0
+        SELECTED_CXX: clang++-6.0
+        PACKAGES: 'clang-6.0 llvm-6.0-dev'
+
+
+      # gcc-7 and newer compilers
+      gcc-14 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: gcc-14
+        SELECTED_CXX: g++-14
+        PACKAGES: 'g++-14'
+
+      gcc-14 BUILD_ARCH=32-bit [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: gcc-14
+        SELECTED_CXX: g++-14
+        PACKAGES: 'g++-14 g++-14-multilib gcc-multilib'
+        MORE_OPTIONS: 'BUILD_ARCH=32-bit'
+
+      gcc-14 AArch64 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: aarch64-linux-gnu-gcc
+        SELECTED_CXX: aarch64-linux-gnu-g++
+        PACKAGES: 'qemu-system-arm qemu-user-static gcc-aarch64-linux-gnu g++-aarch64-linux-gnu'
+        MORE_OPTIONS: 'BUILD_STATIC=1'
+        QEMU_INTERPRETER: 'qemu-aarch64-static -L /usr/aarch64-linux-gnu'
+
+      gcc-13 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
+        SELECTED_CC: gcc-13
+        SELECTED_CXX: g++-13
+        PACKAGES: 'g++-13'
+
+      gcc-12 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
+        SELECTED_CC: gcc-12
+        SELECTED_CXX: g++-12
+        PACKAGES: 'g++-12'
+
+      gcc-11 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        SELECTED_CC: gcc-11
+        SELECTED_CXX: g++-11
+        PACKAGES: 'g++-11'
+
+      gcc-10 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        SELECTED_CC: gcc-10
+        SELECTED_CXX: g++-10
+        PACKAGES: 'g++-10'
+
+      gcc-9 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        SELECTED_CC: gcc-9
+        SELECTED_CXX: g++-9
+        PACKAGES: 'g++-9'
+
+      gcc-8 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        SELECTED_CC: gcc-8
+        SELECTED_CXX: g++-8
+        PACKAGES: 'g++-8'
+
+      gcc-7 [Ubuntu 20.04 Focal]:
+        imageName: 'ubuntu-20.04'
+        SELECTED_CC: gcc-7
+        SELECTED_CXX: g++-7
+        PACKAGES: 'g++-7'
+
+
+  steps:
+  - script: |
+      uname -r
+      df -Th
+      ls -l ..
+      pwd
+      ls -l
+
+      echo SELECTED_CC=$SELECTED_CC SELECTED_CXX=$SELECTED_CXX imageName=$(imageName) OS_NAME=$OS_NAME SOURCE_LINE=$SOURCE_LINE
+      echo --- Configure required LLVM and Ubuntu Toolchain repositories
+      if [[ "$SOURCE_LINE" != "" ]]; then
+        curl -sSL "http://apt.llvm.org/llvm-snapshot.gpg.key" | sudo -E apt-key add -
+        echo "$SOURCE_LINE" | sudo tee -a /etc/apt/sources.list > /dev/null
+      fi
+
+      echo --- Update list of packages and download dependencies
+      if [[ "$OS_NAME" == "Linux" ]]; then
+        sudo -E apt-add-repository -y "ppa:ubuntu-toolchain-r/test"
+        sudo -E apt-get -yq update >> ~/apt-get-update.log 2>&1
+
+        echo Instaling PACKAGES=$PACKAGES
+        PACKAGES="$(eval echo $PACKAGES)"
+        echo Instaling PACKAGES=$PACKAGES
+
+        sudo -E apt-get -yq --no-install-suggests --no-install-recommends --allow-unauthenticated install $PACKAGES ccache
+
+        if [[ "$(Compiler)" == "clang" ]]; then
+          REAL_COMPILER_VER=`$SELECTED_CC --version | grep -o "clang version.*" | awk '{print $3}'`
+        else
+          REAL_COMPILER_VER=`$SELECTED_CC --version | head -1 | awk '{print $4}'`
+        fi
+      else
+         REAL_COMPILER_VER=`$SELECTED_CC --version | grep -o "clang version.*" | awk '{print $3}'`
+         brew update
+         brew install ccache
+      fi
+
+      UPDATE_TIME=$SECONDS
+      echo --- Packages updated in $UPDATE_TIME seconds.
+
+      echo "##vso[task.setvariable variable=REAL_COMPILER_VER]${REAL_COMPILER_VER%%-*}"
+      echo "##vso[task.setvariable variable=UPDATE_TIME]$UPDATE_TIME"
+
+    displayName: '*** Install Build Dependencies'
+
+  - task: Cache@2
+    continueOnError: true
+    inputs:
+      key: '"ccache"| "$(PARENT_BRANCH)" | "$(imageName)-$(Compiler)-$(REAL_COMPILER_VER)" | "$(Build.SourceVersion)"'
+      restoreKeys: '"ccache" | "$(PARENT_BRANCH)" | "$(imageName)-$(Compiler)-$(REAL_COMPILER_VER)"'
+      path: $(CCACHE_DIR)
+    displayName: '*** Download/upload ccached files'
+
+  - checkout: self
+    fetchDepth: 32
+
+  - script: |
+      df -Th
+      git submodule sync
+      git submodule update --init --force --depth=256
+      git submodule
+    displayName: '*** Update git submodules'
+
+  - script: |
+      echo "SELECTED_CC=$SELECTED_CC (`which $SELECTED_CC`) SELECTED_CXX=$SELECTED_CXX (`which $SELECTED_CXX`) REAL_COMPILER_VER=$REAL_COMPILER_VER"
+      $SELECTED_CC -v
+      $SELECTED_CXX -v
+      ccache --version
+      ccache -p
+      ccache --zero-stats
+      df -Th
+      if [[ "$OS_NAME" == "Linux" ]]; then
+        cat /proc/cpuinfo
+      fi
+    displayName: '*** System and compiler info'
+
+  - script: |
+      echo SELECTED_CC=$SELECTED_CC SELECTED_CXX=$SELECTED_CXX REAL_COMPILER_VER=$REAL_COMPILER_VER imageName=$(imageName) OS_NAME=$OS_NAME
+      df -Th
+
+      make -j2 CC="ccache $SELECTED_CC" CXX="ccache $SELECTED_CXX" $MORE_OPTIONS || exit 1
+      file ./lzbench
+      ccache --show-stats
+
+      df -Th
+      BUILD_TIME=$SECONDS
+      echo --- Build took $BUILD_TIME seconds. Packages updated in $UPDATE_TIME seconds.
+
+      echo '##vso[task.setvariable variable=BUILD_TIME]'$BUILD_TIME
+
+    displayName: '*** Build'
+
+  - script: |
+      $QEMU_INTERPRETER ./lzbench
+      $QEMU_INTERPRETER ./lzbench -eall ./lzbench
+
+      RUN_TIME=$SECONDS
+      echo --- Total time $(($RUN_TIME + $UPDATE_TIME + $BUILD_TIME)) seconds. Run time $RUN_TIME seconds. Build took $BUILD_TIME seconds. Packages updated in $UPDATE_TIME seconds.
+      df -Th
+      rm -rf *
+      df -Th
+
+    displayName: '*** Run'

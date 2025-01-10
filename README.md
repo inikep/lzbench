@@ -9,10 +9,8 @@ The disadvantage is that it requires source code of each compressor (therefore S
 
 |Status   |
 |---------|
-| [![Build Status][travisMasterBadge]][travisLink] [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
+| [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
 
-[travisMasterBadge]: https://travis-ci.org/inikep/lzbench.svg?branch=master "Continuous Integration test suite"
-[travisLink]: https://travis-ci.org/inikep/lzbench
 [AppveyorMasterBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/master?svg=true "Visual test suite"
 [AppveyorLink]: https://ci.appveyor.com/project/inikep/lzbench
 
@@ -53,12 +51,14 @@ Compilation
 -------------------------
 For Linux/MacOS/MinGW (Windows):
 ```
-make
+git submodule update --init
+make -j$(nproc)
 ```
 
 For 32-bit compilation:
 ```
-make BUILD_ARCH=32-bit
+git submodule update --init
+make BUILD_ARCH=32-bit -j$(nproc)
 
 ```
 
@@ -93,7 +93,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [glza 0.8](https://encode.su/threads/2427-GLZA)
  - [libdeflate v1.6](https://github.com/ebiggers/libdeflate)
  - [lizard v1.0 (formerly lz5)](https://github.com/inikep/lizard)
- - [lz4/lz4hc v1.9.3](https://github.com/lz4/lz4)
+ - [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4)
  - [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html)
  - [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse)
  - [lzg 1.0.10](https://liblzg.bitsnbites.eu/)
@@ -109,7 +109,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [quicklz 1.5.0](http://www.quicklz.com)
  - [shrinker 0.1](https://code.google.com/p/data-shrinker) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
  - [slz 1.2.0](http://www.libslz.org/) - only a compressor, uses zlib for decompression
- - [snappy 2020-07-11 (4dd277f)](https://github.com/google/snappy)
+ - [snappy 1.1.10](https://github.com/google/snappy)
  - [tornado 0.6a](http://freearc.org)
  - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
  - [wflz 2015-09-16](https://github.com/ShaneWF/wflz) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
@@ -119,7 +119,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) - WARNING: fails to decompress properly on ARM
  - [zlib 1.2.11](http://zlib.net)
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
- - [zstd 1.5.5](https://github.com/facebook/zstd)
+ - [zstd 1.5.6](https://github.com/facebook/zstd)
  - [nvcomp 1.2.3](https://github.com/NVIDIA/nvcomp) - If CUDA is available.
 
 
