@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common_defs.h"
+#include "xpack/common/common_defs.h"
 #include "unaligned.h"
 #include "xpack_constants.h"
 

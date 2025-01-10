@@ -5,7 +5,7 @@
 #ifndef LIB_X86_CPU_FEATURES_H
 #define LIB_X86_CPU_FEATURES_H
 
-#include "common_defs.h"
+#include "xpack/common/common_defs.h"
 
 #if defined(__x86_64__) && COMPILER_SUPPORTS_TARGET_FUNCTION_ATTRIBUTE
 #  define X86_CPU_FEATURES_ENABLED 1

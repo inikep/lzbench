@@ -1,0 +1,12 @@
+task:
+  freebsd_instance:
+    matrix:
+      - image_family: freebsd-13-3
+      - image_family: freebsd-14-0
+  install_script: pkg install -y cmake
+  script:
+    - cmake -B build -DLIBDEFLATE_BUILD_TESTS=1
+    - cmake --build build
+    - ctest --test-dir build
+    # Direct compilation without official build system
+    - cc -O2 -Wall -Werror lib/*.c lib/*/*.c programs/gzip.c programs/prog_util.c programs/tgetopt.c -o libdeflate-gzip

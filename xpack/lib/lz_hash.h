@@ -5,7 +5,7 @@
 #ifndef LIB_LZ_HASH_H
 #define LIB_LZ_HASH_H
 
-#include "common_defs.h"
+#include "xpack/common/common_defs.h"
 
 /*
  * The hash function: given a sequence prefix held in the low-order bits of a
