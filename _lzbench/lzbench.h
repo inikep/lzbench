@@ -9,7 +9,7 @@
 #include "compressors.h"
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "1.8"
+#define PROGVERSION "2.0"
 #define PAD_SIZE (16*1024)
 #define MIN_PAGE_SIZE 4096  // smallest page size we expect, if it's wrong the first algorithm might be a bit slower
 #define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second

@@ -280,6 +280,7 @@ jobs:
       make -j2 CC="ccache $SELECTED_CC" CXX="ccache $SELECTED_CXX" $MORE_OPTIONS || exit 1
       file ./lzbench
       ccache --show-stats
+      $QEMU_INTERPRETER ./lzbench
 
       df -Th
       BUILD_TIME=$SECONDS
@@ -290,7 +291,6 @@ jobs:
     displayName: '*** Build'
 
   - script: |
-      $QEMU_INTERPRETER ./lzbench
       $QEMU_INTERPRETER ./lzbench -eall ./lzbench
 
       RUN_TIME=$SECONDS
