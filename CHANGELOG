@@ -1,6 +1,7 @@
 v2.0
 - added kanzi v2.3 (thanks to @flanglet)
 - added tamp v1.3.1 (thanks to @BrianPugh)
+- updated lzma to 24.09
 - updated libdeflate to v1.23
 - updated zstd to 1.5.6
 - updated lz4 to 1.9.4 (thanks to @ChristianSchindler) and later to 1.10.0
