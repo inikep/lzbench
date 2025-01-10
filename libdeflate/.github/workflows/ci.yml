@@ -1,0 +1,290 @@
+name: CI
+on: [pull_request]
+
+jobs:
+  x86_64-build-and-test:
+    name: Build and test (x86_64, ${{ matrix.os }}, ${{ matrix.compiler }})
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-20.04]
+        compiler: [gcc, clang]
+    runs-on: ${{ matrix.os }}
+    env:
+      CC: ${{ matrix.compiler }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang llvm libz-dev valgrind
+    - run: sudo sysctl kernel.randomize_va_space=0 # https://bugs.launchpad.net/ubuntu/+source/llvm-toolchain-14/+bug/2048768
+    - run: scripts/run_tests.sh
+    - name: Direct compilation without official build system
+      run: $CC -O2 -Wall -Werror lib/*{,/*}.c programs/{gzip,prog_util,tgetopt}.c -o libdeflate-gzip
+
+  other-arch-build-and-test:
+    name: Build and test (${{ matrix.arch }}, ${{ matrix.distro }}, ${{ matrix.compiler }})
+    strategy:
+      matrix:
+        include:
+        - { arch: armv6, distro: bullseye, compiler: gcc }
+        - { arch: armv6, distro: bullseye, compiler: clang }
+        - { arch: armv7, distro: bullseye, compiler: gcc }
+        - { arch: armv7, distro: bullseye, compiler: clang }
+        - { arch: aarch64, distro: bullseye, compiler: gcc }
+        - { arch: aarch64, distro: bullseye, compiler: clang }
+        - { arch: s390x, distro: bullseye, compiler: gcc }
+        - { arch: s390x, distro: bullseye, compiler: clang }
+        - { arch: ppc64le, distro: bullseye, compiler: gcc }
+        - { arch: ppc64le, distro: bullseye, compiler: clang }
+        - { arch: riscv64, distro: ubuntu_latest, compiler: gcc }
+        - { arch: riscv64, distro: ubuntu_latest, compiler: clang }
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: uraimo/run-on-arch-action@v2.8.1
+        with:
+          arch: ${{ matrix.arch }}
+          distro: ${{ matrix.distro }}
+          githubToken: ${{ github.token }}
+          install: |
+            apt-get update
+            apt-get install -y build-essential cmake clang llvm libz-dev
+          run: |
+            tests=(regular)
+            if [ ${{matrix.compiler}} = clang ]; then
+                tests+=(ubsan)
+            fi
+            CC=${{matrix.compiler}} scripts/run_tests.sh "${tests[@]}"
+
+  macos-build-and-test:
+    name: Build and test (macOS)
+    runs-on: macos-latest
+    env:
+      CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
+    steps:
+    - uses: actions/checkout@v4
+    - run: cmake -B build -DLIBDEFLATE_BUILD_TESTS=1
+    - run: cmake --build build --verbose
+    - run: DESTDIR=build/install cmake --install build --verbose
+    - run: ctest --test-dir build
+    - name: Direct compilation without official build system
+      run: cc -O2 -Wall -Werror lib/*{,/*}.c programs/{gzip,prog_util,tgetopt}.c -o libdeflate-gzip
+
+  windows-msys2-build-and-test:
+    name: Build and test (Windows, MSYS2, ${{matrix.sys}})
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+        - { sys: mingw64, env: x86_64 }
+        - { sys: mingw32, env: i686 }
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
+    steps:
+    - uses: actions/checkout@v4
+    - uses: msys2/setup-msys2@v2
+      with:
+        msystem: ${{matrix.sys}}
+        update: true
+        install: >
+          make
+          mingw-w64-${{matrix.env}}-cc
+          mingw-w64-${{matrix.env}}-cmake
+          mingw-w64-${{matrix.env}}-ninja
+          mingw-w64-${{matrix.env}}-zlib
+    # Note: as per the CMake documentation, DESTDIR is unsupported on Windows.
+    - run: cmake -B build -G Ninja -DLIBDEFLATE_BUILD_TESTS=1 -DCMAKE_INSTALL_PREFIX=build\install
+    - run: cmake --build build --verbose
+    - run: cmake --install build --verbose
+    - run: ctest --test-dir build
+    - name: Direct compilation without official build system
+      run: cc -O2 -Wall -Werror -municode lib/*{,/*}.c programs/{gzip,prog_util,tgetopt}.c -o libdeflate-gzip.exe
+
+  windows-visualstudio-build-and-test:
+    name: Build and test (Windows, ${{matrix.gen}}, ${{matrix.toolset}}, ${{matrix.vs}})
+    strategy:
+      matrix:
+        include:
+        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: v143,    vs: x64,   vcpkg: x64-windows}
+        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: ClangCL, vs: x64,   vcpkg: x64-windows}
+        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: v143,    vs: Win32, vcpkg: x86-windows}
+        - {os: windows-2022, gen: "Visual Studio 17 2022", toolset: ClangCL, vs: Win32, vcpkg: x86-windows}
+        - {os: windows-2019, gen: "Visual Studio 16 2019", toolset: v142,    vs: x64,   vcpkg: x64-windows}
+        - {os: windows-2019, gen: "Visual Studio 16 2019", toolset: v142,    vs: Win32, vcpkg: x86-windows}
+    runs-on: ${{matrix.os}}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: microsoft/setup-msbuild@v2
+    - run: vcpkg install zlib:${{matrix.vcpkg}}
+    - run: >
+        echo C:\vcpkg\packages\zlib_${{matrix.vcpkg}}\bin
+        | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+    # Note: as per the CMake documentation, DESTDIR is unsupported on Windows.
+    - run: >
+        cmake -B build -G "${{matrix.gen}}" -T ${{matrix.toolset}}
+        -A ${{matrix.vs}} -DLIBDEFLATE_BUILD_TESTS=1
+        -DCMAKE_C_FLAGS="/W4 /WX /DLIBDEFLATE_ENABLE_ASSERTIONS"
+        -DZLIB_LIBRARY=C:\vcpkg\packages\zlib_${{matrix.vcpkg}}\lib\zlib.lib
+        -DZLIB_INCLUDE_DIR=C:\vcpkg\packages\zlib_${{matrix.vcpkg}}\include
+        -DCMAKE_INSTALL_PREFIX=build\install
+    - run: cmake --build build --verbose --config Debug
+    - run: cmake --install build --verbose --config Debug
+    - run: ctest --test-dir build -C Debug
+
+  windows-visualstudio-build:
+    name: Build (Windows, Visual Studio ${{matrix.toolset}}, ${{matrix.platform}})
+    strategy:
+      matrix:
+        platform: [ARM64]
+        toolset: [v143, ClangCL]
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: microsoft/setup-msbuild@v2
+    # Note: as per the CMake documentation, DESTDIR is unsupported on Windows.
+    - run: >
+        cmake -B build -G "Visual Studio 17 2022" -T ${{matrix.toolset}}
+        -A ${{matrix.platform}} -DCMAKE_C_FLAGS="/W4 /WX"
+        -DCMAKE_INSTALL_PREFIX=build\install
+    - run: cmake --build build --verbose --config Release
+    - run: cmake --install build --verbose --config Release
+
+  run-clang-static-analyzer:
+    name: Run clang static analyzer
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-tools
+    - run: scan-build cmake -B build -DLIBDEFLATE_BUILD_TESTS=1
+    - run: scan-build cmake --build build --verbose
+
+  run-shellcheck:
+    name: Run shellcheck
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y shellcheck
+    - name: Run shellcheck
+      run: shellcheck scripts/*.sh
+
+  cross-compile-for-windows:
+    name: Cross compile for Windows
+    runs-on: ubuntu-latest
+    env:
+      CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-mingw-w64-i686 gcc-mingw-w64-x86-64 libz-mingw-w64-dev
+    # Unfortunately Ubuntu doesn't have {i686,x86_64}-w64-mingw32-cmake like
+    # some distros have, so we have to provide our own toolchain files here.
+    - name: 32-bit build
+      run: |
+        scripts/cmake-helper.sh -DLIBDEFLATE_BUILD_TESTS=1 \
+            -DCMAKE_TOOLCHAIN_FILE=scripts/toolchain-i686-w64-mingw32.cmake
+        cmake --build build --verbose
+        DESTDIR=build/install cmake --install build --verbose
+    - name: 64-bit build
+      run: |
+        scripts/cmake-helper.sh -DLIBDEFLATE_BUILD_TESTS=1 \
+            -DCMAKE_TOOLCHAIN_FILE=scripts/toolchain-x86_64-w64-mingw32.cmake
+        cmake --build build --verbose
+        DESTDIR=build/install cmake --install build --verbose
+
+  cross-compile-for-android:
+    name: Cross compile for ${{matrix.abi}} Android on ${{matrix.os}}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        abi: [armeabi-v7a, arm64-v8a, x86, x86_64]
+    runs-on: ${{matrix.os}}
+    env:
+      CFLAGS: -Werror -DLIBDEFLATE_ENABLE_ASSERTIONS
+    steps:
+    - uses: actions/checkout@v4
+    - run: |
+        scripts/cmake-helper.sh \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME"/build/cmake/android.toolchain.cmake \
+            -DANDROID_ABI=${{matrix.abi}} \
+            -DANDROID_PLATFORM=28 \
+            -DLIBDEFLATE_BUILD_TESTS=1
+        cmake --build build --verbose
+        DESTDIR=build/install cmake --install build --verbose
+
+  cpu-features-regression-tests:
+    name: Test building adler32.c and crc32.c with various flags
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-arm-linux-gnueabihf gcc-aarch64-linux-gnu
+    - name: Compile tests
+      run: |
+        cflags="-O0 -Wall -Werror"
+        for file in lib/adler32.c lib/crc32.c; do
+          echo "arm32, default options, file=$file"
+          arm-linux-gnueabihf-gcc -c $cflags $file
+          for arch in armv4 armv4t armv5t armv5te armv5tej armv6 armv6j armv6k \
+                      armv6z armv6kz armv6zk armv6t2; do
+            echo "arm32, -march=$arch, file=$file"
+            arm-linux-gnueabihf-gcc -c -march=$arch -mfpu=vfp -marm $cflags $file
+          done
+          for arch in armv7 armv7-a armv7ve armv7-r armv7-m armv7e-m; do
+            echo "arm32, -march=$arch, file=$file"
+            arm-linux-gnueabihf-gcc -c -march=$arch -mfpu=vfp $cflags $file
+          done
+          echo "arm64, -mcpu=emag"
+          aarch64-linux-gnu-gcc -c -mcpu=emag $cflags $file
+        done
+
+  fuzz-with-libFuzzer:
+    name: Fuzz with libFuzzer (${{matrix.target}} ${{matrix.sanitizer}})
+    strategy:
+      matrix:
+        include:
+        - target: deflate_compress
+          sanitizer:
+        - target: deflate_compress
+          sanitizer: --asan
+        - target: deflate_compress
+          sanitizer: --msan
+        - target: deflate_compress
+          sanitizer: --ubsan
+        - target: deflate_decompress
+          sanitizer:
+        - target: deflate_decompress
+          sanitizer: --asan
+        - target: deflate_decompress
+          sanitizer: --msan
+        - target: deflate_decompress
+          sanitizer: --ubsan
+        - target: zlib_decompress
+          sanitizer:
+        - target: gzip_decompress
+          sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang llvm
+    - name: Fuzz
+      run: |
+        sudo sysctl kernel.randomize_va_space=0 # https://bugs.launchpad.net/ubuntu/+source/llvm-toolchain-14/+bug/2048768
+        scripts/libFuzzer/fuzz.sh --time=120 ${{matrix.sanitizer}} \
+            ${{matrix.target}}

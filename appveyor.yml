@@ -8,6 +8,7 @@ environment:
   - PLATFORM: "mingw64"
     CC_COMPILER: "gcc"
     CXX_COMPILER: "g++"
+    MORE_OPTIONS: "DONT_BUILD_LIBDEFLATE=1"
   #- CC_COMPILER: "clang"
   #  CXX_COMPILER: "clang++"
   #  MORE_OPTIONS: "MOREFLAGS=--target=x86_64-w64-mingw32 DONT_BUILD_LZHAM=1"
