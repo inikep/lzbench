@@ -115,6 +115,7 @@ UCL_FILES += ucl/ucl_ptr.o ucl/ucl_str.o ucl/ucl_util.o
 ZLIB_FILES = zlib/adler32.o zlib/compress.o zlib/crc32.o zlib/deflate.o zlib/gzclose.o zlib/gzlib.o zlib/gzread.o
 ZLIB_FILES += zlib/gzwrite.o zlib/infback.o zlib/inffast.o zlib/inflate.o zlib/inftrees.o zlib/trees.o
 ZLIB_FILES += zlib/uncompr.o zlib/zutil.o
+ZLIB_CFLAGS += -DZ_HAVE_UNISTD_H
 
 LZMAT_FILES = lzmat/lzmat_dec.o lzmat/lzmat_enc.o
 
@@ -429,6 +430,10 @@ _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 lzbench: $(BZIP2_FILES) $(KANZI_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(TAMP_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
+
+$(ZLIB_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) $(ZLIB_CFLAGS) $< -c -o $@
 
 .c.o:
 	@$(MKDIR) $(dir $@)
