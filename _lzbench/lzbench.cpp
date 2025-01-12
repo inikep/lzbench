@@ -796,7 +796,7 @@ int main( int argc, char** argv)
     const char** inFileNames = (const char**) calloc(argc, sizeof(char*));
     unsigned ifnIdx = 0;
     bool join = false;
-    char* cpu_brand;
+    char* cpu_brand = NULL;
 #ifdef UTIL_HAS_CREATEFILELIST
     const char** extendedFileList = NULL;
     char* fileNamesBuf = NULL;
