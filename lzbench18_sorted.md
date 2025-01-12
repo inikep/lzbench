@@ -1,5 +1,5 @@
 The following results are obtained with `lzbench 1.8` with the `-t16,16 -eall` options using 1 core of Intel Core i7-8700K, Ubuntu 18.04.3 64-bit, and clang 9.0.1
-with ["silesia.tar"](https://drive.google.com/file/d/0BwX7dtyRLxThenZpYU9zLTZhR1k/view?usp=sharing) which contains tarred files from [Silesia compression corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
+with ["silesia.tar"](https://github.com/MiloszKrajewski/SilesiaCorpus) which contains zipped files from [Silesia compression corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
 The results are sorted by ratio. The results in **bold** show pareto frontier on compression ratio.
 
 | Compressor name         | Compress.  |Decompress. | Compr. size | Ratio |
