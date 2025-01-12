@@ -2,8 +2,9 @@ v2.0
 - added ppmd8 based on 7-zip 24.09 (thanks to @pps83)
 - added kanzi v2.3 (thanks to @flanglet)
 - added tamp v1.3.1 (thanks to @BrianPugh)
+- updated zlib to 1.3.1 (thanks to @tansy)
 - updated lzma to 24.09
-- updated libdeflate to v1.23
+- updated libdeflate to v1.23 (thanks to @tansy)
 - updated zstd to 1.5.6
 - updated lz4 to 1.9.4 (thanks to @ChristianSchindler) and later to 1.10.0
 
