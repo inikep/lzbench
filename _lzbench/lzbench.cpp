@@ -1,20 +1,11 @@
 /*
-(C) 2011-2017 by Przemyslaw Skibinski (inikep@gmail.com)
-
-    LICENSE
-
-    This program is free software; you can redistribute it and/or
-    modify it under the terms of the GNU General Public License as
-    published by the Free Software Foundation; either version 3 of
-    the License, or (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful, but
-    WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-    General Public License for more details at
-    Visit <http://www.gnu.org/copyleft/gpl.html>.
-
-*/
+ * Copyright (c) Przemyslaw Skibinski <inikep@gmail.com>
+ * All rights reserved.
+ *
+ * This source code is dual-licensed under the GPLv2 and GPLv3 licenses.
+ * For additional details, refer to the LICENSE file located in the root
+ * directory of this source tree.
+ */
 
 #include "lzbench.h"
 #include "util.h"
