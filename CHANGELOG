@@ -1,8 +1,22 @@
+v1.9
+- added cpuid to title screen (thanks to @tansy)
+- added support for CUDA and nvcomp (thanks to @fwyzard)
+- updated Snappy to 1.1.10 (thanks to @ChristianSchindler)
+- updated lzlib-1.13 (thanks to @tansy)
+- updated zstd to 1.5.0 (thanks to @data-man) and later to 1.5.5 (thanks to @jinfeihan57)
+- updated lz4 to 1.9.3 (thanks to @jinfeihan57)
+- updated fastlz to 0.5.0 (thanks to @jinfeihan57)
+- updated xz to 5.2.5 (thanks to @jinfeihan57)
+- updated snappy to 2020-07-11 (4dd277f) (thanks to @jinfeihan57)
+- updated libdeflate to v1.6 (thanks to @jinfeihan57) and later to v1.9 (thanks to @tansy)
+- updated Brotli to 1.0.9 (thanks to @data-man)
+- started to use Azure Pipelines for testing
+
 v1.8.1
 - fixed linking issues with glza (multiple definition of ###)
-- update BriefLZ to 1.3.0 (thanks to @jibsen)
-- update libslz to 1.2.0 (thanks to Willy Tarreau)
-- update zstd to 1.4.5 (thanks to @jinfeihan57)
+- updated BriefLZ to 1.3.0 (thanks to @jibsen)
+- updated libslz to 1.2.0 (thanks to Willy Tarreau)
+- updated zstd to 1.4.5 (thanks to @jinfeihan57)
 
 v1.8
 - fixed gcc-9 and clang-9 compilation issues
