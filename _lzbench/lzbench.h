@@ -1,3 +1,12 @@
+/*
+ * Copyright (c) Przemyslaw Skibinski <inikep@gmail.com>
+ * All rights reserved.
+ *
+ * This source code is dual-licensed under the GPLv2 and GPLv3 licenses.
+ * For additional details, refer to the LICENSE file located in the root
+ * directory of this source tree.
+ */
+
 #ifndef LZBENCH_H
 #define LZBENCH_H
 
