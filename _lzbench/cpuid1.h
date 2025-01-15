@@ -1,3 +1,12 @@
+/*
+ * Copyright (c) 2021 @tansy
+ * All rights reserved.
+ *
+ * This source code is licenced under the GPLv2 or (at your option) GPLv3.
+ * For additional details, refer to the LICENSE file located in the root
+ * directory of this source tree.
+ */
+
 #ifndef CPUID1_H
 #define CPUID1_H
 
@@ -9,17 +18,18 @@
 #include <cpuid.h>
 #include <stdint.h>
 
-enum cpuid_requests {
-  CPUID_GETVENDORSTRING,
-  CPUID_GETFEATURES,
-  CPUID_GETTLB,
-  CPUID_GETSERIAL,
+enum cpuid_requests
+{
+    CPUID_GETVENDORSTRING,
+    CPUID_GETFEATURES,
+    CPUID_GETTLB,
+    CPUID_GETSERIAL,
 
-  CPUID_EXTENDED = 0x80000000,
-  CPUID_FEATURES,
-  CPUID_BRANDSTRING,
-  CPUID_BRANDSTRINGMORE,
-  CPUID_BRANDSTRINGEND,
+    CPUID_EXTENDED = 0x80000000,
+    CPUID_FEATURES,
+    CPUID_BRANDSTRING,
+    CPUID_BRANDSTRINGMORE,
+    CPUID_BRANDSTRINGEND,
 };
 
 
