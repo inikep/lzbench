@@ -12,13 +12,13 @@ v1.9
 - updated Brotli to 1.0.9 (thanks to @data-man)
 - started to use Azure Pipelines for testing
 
-v1.8.1
+v1.8.1 (Sep 1, 2020)
 - fixed linking issues with glza (multiple definition of ###)
 - updated BriefLZ to 1.3.0 (thanks to @jibsen)
 - updated libslz to 1.2.0 (thanks to Willy Tarreau)
 - updated zstd to 1.4.5 (thanks to @jinfeihan57)
 
-v1.8
+v1.8 (Oct 24, 2019)
 - fixed gcc-9 and clang-9 compilation issues
 - default linking for Linux is dynamic and static for Windows (can be changed with `make BUILD_STATIC=0/1`)
 - added fast-lzma2 1.0.1
@@ -34,14 +34,14 @@ v1.8
 - xz updated to v5.2.4
 - zling updated to 2018-10-12
 
-v1.7.4
+v1.7.4 (Oct 23, 2019)
 - brieflz updated to 1.2.0 (thanks to @jibsen)
 - brotli updated to 2019-10-01 (c435f06675)
 - density updated to 0.14.2 (thanks to @morotti)
 - lz4 updated to v1.9.2
 - zstd updated to v1.4.3
 
-v1.7.3 (done by @data-man)
+v1.7.3 (Jan 5, 2018) [done by @data-man]
 - brotli updated to 2017-12-12
 - lz4 updated to v1.8.0
 - zstd updated to v1.3.3
@@ -50,12 +50,12 @@ v1.7.3 (done by @data-man)
 v1.7.2
 - zstd updated to v1.3.1
 
-v1.7.1
+v1.7.1 (Mar 19, 2017)
 - brotli updated to 2017-03-10
 - glza updated to v0.8
 - lzma updated to v16.04
 
-v1.7
+v1.7 (Mar 18, 2017)
 - added lizard v1.0 (formerly lz5)
 - libdeflate updated to v0.7
 - lzfse and lzvn updated to 2017-03-08
@@ -65,7 +65,7 @@ v1.7
 - zlib updated to v1.2.11
 - zstd updated to v1.1.4
 
-v1.6
+v1.6 (Feb 7, 2017)
 - zstd updated to v1.1.3
 - lz4 updated to v1.7.5
 - lz5 updated to v2.0
@@ -73,7 +73,7 @@ v1.6
 - fixed: check if input name is directory
 - fixed: median time (the "-p3" option, thanks to Alexey Tourbin)
 
-v1.5
+v1.5 (Nov 20, 2016)
 - added the "-r" option : operate recursively on directories
 - added the "-j" option : join files in memory but compress them independently (for many small files)
 - lz5 updated to v2.0 RC2
@@ -84,13 +84,13 @@ v1.5
 - improved PowerPC support
 - fixed -m option (thanks to Julian Kunkel)
 
-v1.4
+v1.4 (Sep 1, 2016)
 - zstd updated to v1.0.0
 - added libdeflate 2016-08-29 (thanks to Jørgen Ibsen)
 - added the "-m" (memory_limit) option; large files are processed in (memory_limit/4) blocks
 - cleaner CSV output and added the "original size" field
 
-v1.3
+v1.3 (Aug 16, 2016)
 - added slz 1.0.0 : slz_zlib, slz_gzip, slz_deflate (thanks to Willy Tarreau)
 - added glza 0.7.1 (thanks to Kennon Conrad)
 - zstd updated to v0.8.0 (thanks to Chip Turner)
@@ -106,14 +106,14 @@ v1.3
   -v = disable progress information
   -z = show (de)compression times instead of speed
 
-v1.2
+v1.2 (Jun 23, 2016)
 - added lzfse and lzvn 2016-06-19
 - added xpack 2016-06-02
 - added lzsse 2016-05-14
 - zstd updated to v0.7.1
 - brotli updated to v0.4.0
 
-v1.1
+v1.1 (Apr 16, 2016)
 - zstd updated to v0.6.0
 - brotli updated to 2016-03-22
 - libzling updated to 2016-04-10
@@ -121,19 +121,19 @@ v1.1
 - added support for multiple files
 - fixed issue with files bigger than 1706MB and compressors supporting only up to 2GB blocks (int32_t)
 
-v1.0
+v1.0 (Feb 18, 2016)
 - zstd updated to v0.5.1
 - lz5 updated to v1.4.1
 - brotli updated to 2016-02-04
 - libzling updated to 2016-01-05+bugfix
 
-v0.9.1
+v0.9.1 (Dec 3, 2015)
 - improved: more accurate timings at default min. time for compression (1.0s) and decompression (0.5s)
 - lz5 updated to r132
 - zstd updated to v0.4.1
 - gipfeli updated to 2015-11-30
 
-v0.9
+v0.9 (Nov 23, 2015)
 - improved: more accurate timings for small files
 - added: blosclz 2015-11-10
 - added: gipfeli 2015-11-01 with bugfixes from https://github.com/jibsen/gipfeli
@@ -147,7 +147,7 @@ v0.9
 - fixed: LZO available again as lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a or alias "lzo"
 - fixed: wfLZ, lzmat, shrinker compiled with -O2 because they crash with gcc 4.9+ and -O3 
 
-v0.8
+v0.8 (Nov 11, 2015)
 - the "-cX" option: sort results by column number X
 - the "-eX" option where X = compressors separated by '/' with parameters specified after ','
     Examples:
@@ -160,7 +160,7 @@ v0.8
 - added xz 5.2.2
 - zstd updated to v0.3.6
 
-v0.7.1 
+v0.7.1 (Nov 2, 2015)
 - tornado updated to version 0.6a
 - lz5/lz5hc updated to version r131b
 - a better error handling
