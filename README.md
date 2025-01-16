@@ -9,9 +9,11 @@ The disadvantage is that it requires source code of each compressor (therefore S
 
 |Status   |
 |---------|
-| [![Build status][AppveyorMasterBadge]][AppveyorLink]  |
+| [![Build Status][AzurePipelinesMasterBadge]][AzurePipelinesLink] [![Build status][AppveyorMasterBadge]][AppveyorLink] |
 
-[AppveyorMasterBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/master?svg=true "Visual test suite"
+[AzurePipelinesMasterBadge]: https://dev.azure.com/inikep/lzbench/_apis/build/status%2Finikep.lzbench?branchName=master "gcc and clang tests"
+[AzurePipelinesLink]: https://dev.azure.com/inikep/lzbench/_build/latest?definitionId=8&branchName=master
+[AppveyorMasterBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/master?svg=true "mingw tests"
 [AppveyorLink]: https://ci.appveyor.com/project/inikep/lzbench
 
 
@@ -65,11 +67,11 @@ The default linking for Linux is dynamic and static for Windows. This can be cha
 To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ4` to remove LZ4).
 You also have to remove corresponding `*.o` files (e.g. `lz4/lz4.o` and `lz4/lz4hc.o`).
 
-lzbench was tested with:
-- Ubuntu: gcc 4.8 (both 32-bit and 64-bit), 4.9, 5 (32-bit and 64-bit), 6 (32-bit and 64-bit), 7, 8, 9 and clang 3.5, 3.6, 3.8, 3.9, 4.0, 5.0, 6.0, 7, 8, 9
-- MacOS: Apple LLVM version 9.1.0
-- MinGW (Windows): gcc 5.3 (32-bit), gcc 6.2 (both 32-bit and 64-bit), gcc 9.1
-
+lzbench undergoes automated testing using Azure Pipelines and AppVeyor with the following compilers:
+- Ubuntu: gcc (versions 7.5 to 14.2) and clang (versions 6.0 to 19), gcc 14.2 (32-bit)
+- MacOS: Apple LLVM version 15.0.0
+- MinGW (Windows): gcc 5.3 (32-bit) and gcc 9.1 (64-bit)
+- Cross-compilation: gcc for ARM (32-bit and 64-bit) and PowerPC (32-bit and 64-bit)
 
 
 Supported compressors
