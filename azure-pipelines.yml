@@ -133,26 +133,18 @@ jobs:
 
 
       # gcc-7 and newer compilers
-      gcc-14 [Ubuntu 24.04 Noble]:
+      gcc-14 x86 64-bit [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-14
         SELECTED_CXX: g++-14
         PACKAGES: 'g++-14'
 
-      gcc-14 BUILD_ARCH=32-bit [Ubuntu 24.04 Noble]:
+      gcc-14 x86 32-bit [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-14
         SELECTED_CXX: g++-14
         PACKAGES: 'g++-14 g++-14-multilib gcc-multilib'
         MORE_OPTIONS: 'BUILD_ARCH=32-bit'
-
-      gcc-14 AArch64 [Ubuntu 24.04 Noble]:
-        imageName: 'ubuntu-24.04'
-        SELECTED_CC: aarch64-linux-gnu-gcc
-        SELECTED_CXX: aarch64-linux-gnu-g++
-        PACKAGES: 'qemu-system-arm qemu-user-static gcc-aarch64-linux-gnu g++-aarch64-linux-gnu'
-        MORE_OPTIONS: 'BUILD_STATIC=1'
-        QEMU_INTERPRETER: 'qemu-aarch64-static -L /usr/aarch64-linux-gnu'
 
       gcc-13 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -195,6 +187,38 @@ jobs:
         SELECTED_CC: gcc-7
         SELECTED_CXX: g++-7
         PACKAGES: 'g++-7'
+
+      gcc ARM 64-bit [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: aarch64-linux-gnu-gcc
+        SELECTED_CXX: aarch64-linux-gnu-g++
+        PACKAGES: 'qemu-system-arm qemu-user-static gcc-aarch64-linux-gnu g++-aarch64-linux-gnu'
+        MORE_OPTIONS: 'BUILD_STATIC=1'
+        QEMU_INTERPRETER: 'qemu-aarch64-static -L /usr/aarch64-linux-gnu'
+
+      gcc ARM 32-bit [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: arm-linux-gnueabi-gcc
+        SELECTED_CXX: arm-linux-gnueabi-g++
+        PACKAGES: 'qemu-system-arm qemu-user-static gcc-arm-linux-gnueabi g++-arm-linux-gnueabi'
+        MORE_OPTIONS: 'BUILD_STATIC=1'
+        QEMU_INTERPRETER: 'qemu-arm-static -L /usr/arm-linux-gnueabi'
+
+      gcc PowerPC 64-bit [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: powerpc64-linux-gnu-gcc
+        SELECTED_CXX: powerpc64-linux-gnu-g++
+        PACKAGES: 'qemu-system-ppc64 qemu-user-static gcc-powerpc64-linux-gnu g++-powerpc64-linux-gnu'
+        MORE_OPTIONS: 'BUILD_STATIC=1 DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1 DONT_BUILD_ZLING=1'
+        QEMU_INTERPRETER: 'qemu-ppc64-static -L /usr/powerpc64-linux-gnu'
+
+      gcc PowerPC 32-bit [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: powerpc-linux-gnu-gcc
+        SELECTED_CXX: powerpc-linux-gnu-g++
+        PACKAGES: 'qemu-system-ppc qemu-user-static gcc-powerpc-linux-gnu g++-powerpc-linux-gnu'
+        MORE_OPTIONS: 'BUILD_STATIC=1 DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1 DONT_BUILD_ZLING=1'
+        QEMU_INTERPRETER: 'qemu-ppc-static -L /usr/powerpc-linux-gnu'
 
 
   steps:
@@ -278,8 +302,10 @@ jobs:
       df -Th
 
       make -j2 CC="ccache $SELECTED_CC" CXX="ccache $SELECTED_CXX" $MORE_OPTIONS || exit 1
-      file ./lzbench
       ccache --show-stats
+      echo -------------------------------------
+      file ./lzbench
+      $QEMU_INTERPRETER ./lzbench
 
       df -Th
       BUILD_TIME=$SECONDS
@@ -290,8 +316,7 @@ jobs:
     displayName: '*** Build'
 
   - script: |
-      $QEMU_INTERPRETER ./lzbench
-      $QEMU_INTERPRETER ./lzbench -eall ./lzbench
+      $QEMU_INTERPRETER ./lzbench -eall ./lzbench || exit 1
 
       RUN_TIME=$SECONDS
       echo --- Total time $(($RUN_TIME + $UPDATE_TIME + $BUILD_TIME)) seconds. Run time $RUN_TIME seconds. Build took $BUILD_TIME seconds. Packages updated in $UPDATE_TIME seconds.
