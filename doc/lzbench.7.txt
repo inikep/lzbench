@@ -1,5 +1,5 @@
 
-                                    lzbench
+                                lzbench manual
 
 NAME
 
@@ -15,15 +15,15 @@ SYNOPSIS
 OPTIONS
 
    -b#
-          set block/chunk size to # KB (default = MIN(filesize,1747626
-          KB))
+          set block/chunk size to # KB {default = MIN(filesize,1747626 KB)}
    -c#
           sort results by column # (1=algname, 2=ctime, 3=dtime,
           4=comprsize)
    -e#
           #=compressors separated by '/' with parameters specified after
-          ',' (deflt=fast) -iX,Y set min. number of compression and
-          decompression iterations (default = 1, 1)
+          ',' {fast}
+   -iX,Y
+          set min. number of compression and decompression iterations {1, 1}
    -j
           join files in memory but compress them independently (for many
           small files)
@@ -33,19 +33,17 @@ OPTIONS
           read block/chunk size from random blocks (to estimate for large
           files)
    -m#
-          set memory limit to # MB (default = no limit)
+          set memory limit to # MB {no limit}
    -o#
-          output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV
-          (default = 2)
+          output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV {2}
    -p#
-          print time for all iterations: 1=fastest 2=average 3=median
-          (default = 1)
+          print time for all iterations: 1=fastest 2=average 3=median {1}
    -r
           operate recursively on directories
    -s#
-          use only compressors with compression speed over # MB (default =
-          0 MB) -tX,Y set min. time in seconds for compression and
-          decompression (default = 1, 2)
+          use only compressors with compression speed over # MB {0 MB}
+   -tX,Y
+          set min. time in seconds for compression and decompression {1, 2}
    -v
           disable progress information
    -x
@@ -55,9 +53,9 @@ OPTIONS
 
 EXAMPLES
 
-   lzbench -ezstd filename = selects all levels of zstdotli,2,5/zstd
-          filename = selects levels 2 & 5 of brotli and zstd
+   lzbench -ezstd filename = selects all levels of zstd
+   lzbench -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd
    lzbench -t3 -u5 fname = 3 sec compression and 5 sec decompression loops
-   lzbench -t0 -u0 -i3 -j5 -ezstd fname = 3 compression and 5 decompression iter.
+   lzbench -t0 -u0 -i3 -j5 -ezstd fname = 3 compression and 5 decompression iter
    lzbench -t0u0i3j5 -ezstd fname = the same as above with aggregated parameters
 
