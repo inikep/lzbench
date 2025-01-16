@@ -1,4 +1,4 @@
-v1.9 (Jan 15, 2025)
+v1.9 (Jan 17, 2025)
 - added cpuid to title screen (thanks to @tansy)
 - added support for CUDA and nvcomp (thanks to @fwyzard)
 - updated Snappy to 1.1.10 (thanks to @ChristianSchindler)
