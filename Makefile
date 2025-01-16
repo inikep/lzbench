@@ -69,9 +69,6 @@ else
 
 	ifeq ($(BUILD_STATIC),1)
 		LDFLAGS	+= -lrt -static
-		ifeq (1, $(shell [ "$(COMPILER)" = "gcc" ] && [ "$(shell uname -m)" != "aarch64" ] && expr $(GCC_VERSION) \>= 80000 ))
-		  LDFLAGS += -lmvec
-		endif
 	endif
 endif
 
