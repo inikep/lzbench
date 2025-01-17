@@ -325,3 +325,50 @@ jobs:
       df -Th
 
     displayName: '*** Run'
+
+
+- job:
+  pool:
+    vmImage: 'windows-latest'
+
+  strategy:
+    matrix:
+      mingw32-gcc x86 32-bit [Windows]:
+        toolchain: 'mingw32'
+        arch: '32-bit'
+        SELECTED_CC: gcc
+        SELECTED_CXX: g++
+        MORE_OPTIONS: 'DONT_BUILD_GLZA=1 DONT_BUILD_LZHAM=1'
+        ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/14.2.0-rt_v12-rev1/i686-14.2.0-release-posix-dwarf-ucrt-rt_v12-rev1.7z
+      mingw64-gcc x86 64-bit [Windows]:
+        toolchain: 'mingw64'
+        arch: '64-bit'
+        SELECTED_CC: gcc
+        SELECTED_CXX: g++
+        MORE_OPTIONS: 'DONT_BUILD_LZHAM=1'
+        ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/14.2.0-rt_v12-rev1/x86_64-14.2.0-release-posix-seh-ucrt-rt_v12-rev1.7z
+
+  steps:
+  - powershell: |
+      Invoke-WebRequest -Uri '$(ARCHIVE)' -OutFile '$(Build.ArtifactStagingDirectory)\mingw.7z'
+    displayName: 'Download MinGW'
+
+  - task: ExtractFiles@1
+    inputs:
+      archiveFilePatterns: '$(Build.ArtifactStagingDirectory)\mingw.7z'
+      destinationFolder: '$(Build.SourcesDirectory)\mingw'
+
+  - script: |
+      echo Building with $(toolchain) for $(arch) architecture
+      set PATH=$(Build.SourcesDirectory)\mingw\$(toolchain)\bin;%PATH%
+      where $(SELECTED_CC)
+      $(SELECTED_CXX) --version
+      mingw32-make -j2 CC=$(SELECTED_CC) CXX=$(SELECTED_CXX) $(MORE_OPTIONS) || exit 1
+      file lzbench.exe
+      lzbench.exe
+    displayName: 'Build with $(toolchain)'
+
+  - script: |
+      echo Running a build for $(toolchain) for $(arch) architecture
+      lzbench.exe -eall lzbench.exe || exit 1
+    displayName: 'Run for $(arch) architecture'

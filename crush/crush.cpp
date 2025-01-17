@@ -7,7 +7,9 @@
 #define _CRT_DISABLE_PERFCRIT_LOCKS
 #else
 #define _FILE_OFFSET_BITS 64
+#ifndef __MINGW32__
 #define _ftelli64 ftello64
+#endif
 #endif
 #include <stdio.h>
 #include <stdint.h>
