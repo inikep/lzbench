@@ -1711,16 +1711,20 @@ int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t o
     if (!zstd_params || !zstd_params->cctx) return 0;
 
 #if 1
-    zstd_params->zparams = ZSTD_getParams(level, insize, 0);
     ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_compressionLevel, level);
-    zstd_params->zparams.fParams.contentSizeFlag = 1;
+    ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_contentSizeFlag, 1);
 
-    if (windowLog && zstd_params->zparams.cParams.windowLog > windowLog) {
-        zstd_params->zparams.cParams.windowLog = windowLog;
-        zstd_params->zparams.cParams.chainLog = windowLog + ((zstd_params->zparams.cParams.strategy == ZSTD_btlazy2) || (zstd_params->zparams.cParams.strategy == ZSTD_btopt) || (zstd_params->zparams.cParams.strategy == ZSTD_btultra));
+    if (windowLog) {
+        size_t currentWindowLog = ZSTD_getParams(level, insize, 0).cParams.windowLog;
+        if (currentWindowLog > windowLog) {
+            ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_windowLog, windowLog);
+            int strategy = ZSTD_getParams(level, insize, 0).cParams.strategy;
+            int chainLog = windowLog + ((strategy == ZSTD_btlazy2) || (strategy == ZSTD_btopt) || (strategy == ZSTD_btultra));
+            ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_chainLog, chainLog);
+        }
     }
-    res = ZSTD_compress_advanced(zstd_params->cctx, outbuf, outsize, inbuf, insize, NULL, 0, zstd_params->zparams);
-//    res = ZSTD_compressCCtx(zstd_params->cctx, outbuf, outsize, inbuf, insize, level);
+
+    res = ZSTD_compress2(zstd_params->cctx, outbuf, outsize, inbuf, insize);
 #else
     if (!zstd_params->cdict) return 0;
     res = ZSTD_compress_usingCDict(zstd_params->cctx, outbuf, outsize, inbuf, insize, zstd_params->cdict);
