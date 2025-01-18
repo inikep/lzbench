@@ -23,19 +23,9 @@ COMPILER = $(shell $(CC) -v 2>&1 | grep -q "clang version" && echo clang || echo
 GCC_VERSION = $(shell echo | $(CC) -dM -E - | grep __VERSION__  | sed -e 's:\#define __VERSION__ "\([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*version \([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 
-# glza doesn't work with gcc < 4.9 and clang < 3.6 (missing stdatomic.h)
-ifeq (1,$(filter 1,$(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \< 40900) $(shell [ "$(COMPILER)" = "clang" ] && expr $(CLANG_VERSION) \< 30600)))
-    DONT_BUILD_GLZA ?= 1
-endif
-
 # LZSSE requires compiler with __SSE4_1__ support and 64-bit CPU
 ifneq ($(shell echo|$(CC) -dM -E - -march=native|egrep -c '__(SSE4_1|x86_64)__'), 2)
     DONT_BUILD_LZSSE ?= 1
-endif
-
-# zling requires c++14
-ifeq (1,$(filter 1,$(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \< 60000) $(shell [ "$(COMPILER)" = "clang" ] && expr $(CLANG_VERSION) \< 60000)))
-  DONT_BUILD_ZLING ?= 1
 endif
 
 # detect Windows
@@ -56,12 +46,13 @@ else
 	endif
 
 	# detect MacOS
-	ifeq ($(shell uname -s),Darwin)
+	detected_OS := $(shell uname -s)
+	ifeq ($(detected_OS), Darwin)
 		DONT_BUILD_LZHAM ?= 1
 		DONT_BUILD_CSC ?= 1
 	endif
 
-	ifneq ($(shell uname -s),Darwin)
+	ifneq ($(detected_OS), Darwin)
 		LDFLAGS += -lrt
 	endif
 
@@ -74,7 +65,6 @@ endif
 
 
 DEFINES     += $(addprefix -I$(SOURCE_PATH),. brotli/include libcsc libdeflate xpack/common xz xz/api xz/check xz/common xz/lz xz/lzma xz/rangecoder zstd/lib zstd/lib/common)
-DEFINES     += -DHAVE_CONFIG_H -DFL2_SINGLETHREAD
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 
 # don't use "-ffast-math" for clang < 10.0
@@ -94,8 +84,11 @@ endif
 
 CFLAGS = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES)
 CFLAGS_O2 = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
+CXXFLAGS = $(CFLAGS)
 LDFLAGS += $(MOREFLAGS)
-
+ifeq ($(detected_OS), Darwin)
+    CXXFLAGS += -std=c++14
+endif
 
 LZO_FILES = lzo/lzo1.o lzo/lzo1a.o lzo/lzo1a_99.o lzo/lzo1b_1.o lzo/lzo1b_2.o lzo/lzo1b_3.o lzo/lzo1b_4.o lzo/lzo1b_5.o
 LZO_FILES += lzo/lzo1b_6.o lzo/lzo1b_7.o lzo/lzo1b_8.o lzo/lzo1b_9.o lzo/lzo1b_99.o lzo/lzo1b_9x.o lzo/lzo1b_cc.o
@@ -115,7 +108,6 @@ UCL_FILES += ucl/ucl_ptr.o ucl/ucl_str.o ucl/ucl_util.o
 ZLIB_FILES = zlib/adler32.o zlib/compress.o zlib/crc32.o zlib/deflate.o zlib/gzclose.o zlib/gzlib.o zlib/gzread.o
 ZLIB_FILES += zlib/gzwrite.o zlib/infback.o zlib/inffast.o zlib/inflate.o zlib/inftrees.o zlib/trees.o
 ZLIB_FILES += zlib/uncompr.o zlib/zutil.o
-ZLIB_CFLAGS += -DZ_HAVE_UNISTD_H
 
 LZMAT_FILES = lzmat/lzmat_dec.o lzmat/lzmat_enc.o
 
@@ -340,15 +332,11 @@ else
     MISC_FILES += yappy/yappy.o
 endif
 
-detected_OS := $(shell uname)
 
 ifeq "$(DONT_BUILD_ZLING)" "1"
     DEFINES += -DBENCH_REMOVE_ZLING
 else
     ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
-ifeq ($(detected_OS), Darwin)
-    CFLAGS += -std=c++14
-endif
 endif
 
 ifeq "$(BENCH_HAS_NAKAMICHI)" "1"
@@ -365,7 +353,7 @@ ifneq "$(LIBCUDART)" ""
     CUDA_COMPILER = nvcc
     CUDA_CC = $(CUDA_BASE)/bin/nvcc --compiler-bindir $(CXX)
     CUDA_ARCH = 50 60 70 80
-    CUDA_CFLAGS = -x cu -std=c++14 -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
+    CUDA_CXXFLAGS = -x cu -std=c++14 -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
 else
     $(info CUDA Toolkit not found at $(CUDA_BASE), CUDA support will be disabled.)
     $(info Run "make CUDA_BASE=..." to use a different path.)
@@ -376,9 +364,8 @@ endif
 ifeq "$(DONT_BUILD_BSC)" "1"
     DEFINES += -DBENCH_REMOVE_BSC
 else
-    CFLAGS += -DLIBBSC_SORT_TRANSFORM_SUPPORT
+    BSC_CXXFLAGS = -DLIBBSC_SORT_TRANSFORM_SUPPORT
     BSC_FILES  = libbsc/libbsc/adler32/adler32.o
-    BSC_FILES += libbsc/libbsc/bwt/libsais/libsais.o
     BSC_FILES += libbsc/libbsc/bwt/bwt.o
     BSC_FILES += libbsc/libbsc/coder/coder.o
     BSC_FILES += libbsc/libbsc/coder/qlfc/qlfc.o
@@ -389,6 +376,7 @@ else
     BSC_FILES += libbsc/libbsc/lzp/lzp.o
     BSC_FILES += libbsc/libbsc/platform/platform.o
     BSC_FILES += libbsc/libbsc/st/st.o
+    MISC_FILES += libbsc/libbsc/bwt/libsais/libsais.o
 endif
 
 ifneq "$(LIBCUDART)" ""
@@ -402,7 +390,7 @@ ifneq "$(DONT_BUILD_NVCOMP)" "1"
 endif
 
 ifneq "$(DONT_BUILD_BSC)" "1"
-    CFLAGS += -DLIBBSC_CUDA_SUPPORT
+    BSC_CXXFLAGS += -DLIBBSC_CUDA_SUPPORT
     BSC_FILES += libbsc/libbsc/st/st_cu.o
 endif
 endif
@@ -422,15 +410,15 @@ pithy/pithy.o: pithy/pithy.cpp
 
 _lzbench/compressors.o: %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CFLAGS) -std=c++11 $< -c -o $@
+	$(CXX) $(CXXFLAGS) -std=c++11 $< -c -o $@
 
 snappy/snappy-sinksource.o snappy/snappy-stubs-internal.o snappy/snappy.o: %.o : %.cc
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CFLAGS) -std=c++11 $< -c -o $@
+	$(CXX) $(CXXFLAGS) -std=c++11 $< -c -o $@
 
 lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o: %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CFLAGS) -std=c++0x -msse4.1 $< -c -o $@
+	$(CXX) $(CXXFLAGS) -std=c++0x -msse4.1 $< -c -o $@
 
 nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c
 	@$(MKDIR) $(dir $@)
@@ -438,15 +426,15 @@ nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c
 
 $(NVCOMP_CU_OBJ): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CFLAGS) $(CFLAGS) -c $< -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -c $< -o $@
 
 $(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 libbsc/libbsc/st/st_cu.o: libbsc/libbsc/st/st.cu
 	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CFLAGS) $(CFLAGS) -c $< -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -c $< -o $@
 
 # disable the implicit rule for making a binary out of a single object file
 %: %.o
@@ -458,9 +446,21 @@ lzbench: $(BSC_FILES) $(BZIP2_FILES) $(KANZI_FILES) $(DENSITY_FILES) $(FASTLZMA2
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
+$(XZ_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -DHAVE_CONFIG_H $< -c -o $@
+
+$(FASTLZMA2_OBJ): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -DFL2_SINGLETHREAD -DNO_XXHASH $< -c -o $@
+
 $(ZLIB_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $(ZLIB_CFLAGS) $< -c -o $@
+	$(CC) $(CFLAGS) -DZ_HAVE_UNISTD_H $< -c -o $@
+
+$(BSC_FILES): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CXXFLAGS) $(BSC_CXXFLAGS) $< -c -o $@
 
 .c.o:
 	@$(MKDIR) $(dir $@)
@@ -468,11 +468,11 @@ $(ZLIB_FILES): %.o : %.c
 
 .cc.o:
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CFLAGS) $< -c -o $@
+	$(CXX) $(CXXFLAGS) $< -c -o $@
 
 .cpp.o:
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CFLAGS) $< -c -o $@
+	$(CXX) $(CXXFLAGS) $< -c -o $@
 
 clean:
 	rm -rf lzbench lzbench.exe
