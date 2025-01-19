@@ -1,0 +1,1385 @@
+\input texinfo @c -*-texinfo-*-
+@c %**start of header
+@setfilename lzlib.info
+@documentencoding ISO-8859-15
+@settitle Lzlib Manual
+@finalout
+@c %**end of header
+
+@set UPDATED 9 January 2025
+@set VERSION 1.15
+
+@dircategory Compression
+@direntry
+* Lzlib: (lzlib).               Compression library for the lzip format
+@end direntry
+
+
+@ifnothtml
+@titlepage
+@title Lzlib
+@subtitle Compression library for the lzip format
+@subtitle for Lzlib version @value{VERSION}, @value{UPDATED}
+@author by Antonio Diaz Diaz
+
+@page
+@vskip 0pt plus 1filll
+@end titlepage
+
+@contents
+@end ifnothtml
+
+@ifnottex
+@node Top
+@top
+
+This manual is for Lzlib (version @value{VERSION}, @value{UPDATED}).
+
+@menu
+* Introduction::             Purpose and features of lzlib
+* Library version::          Checking library version
+* Buffering::                Sizes of lzlib's buffers
+* Parameter limits::         Min / max values for some parameters
+* Compression functions::    Descriptions of the compression functions
+* Decompression functions::  Descriptions of the decompression functions
+* Error codes::              Meaning of codes returned by functions
+* Error messages::           Error messages corresponding to error codes
+* Invoking minilzip::        Command-line interface of the test program
+* File format::              Detailed format of the compressed file
+* Examples::                 A small tutorial with examples
+* Problems::                 Reporting bugs
+* Concept index::            Index of concepts
+@end menu
+
+@sp 1
+Copyright @copyright{} 2009-2025 Antonio Diaz Diaz.
+
+This manual is free documentation: you have unlimited permission to copy,
+distribute, and modify it.
+@end ifnottex
+
+
+@node Introduction
+@chapter Introduction
+@cindex introduction
+
+@uref{http://www.nongnu.org/lzip/lzlib.html,,Lzlib}
+is a data compression library providing in-memory LZMA compression and
+decompression functions, including integrity checking of the decompressed
+data. The compressed data format used by the library is the
+@uref{http://www.nongnu.org/lzip/lzip.html,,lzip} format.
+Lzlib is written in C and is distributed under a 2-clause BSD license.
+
+The functions and variables forming the interface of the compression library
+are declared in the file @file{lzlib.h}. Usage examples of the library are
+given in the files @file{bbexample.c}, @file{ffexample.c}, and
+@file{minilzip.c} from the source distribution.
+
+As @file{lzlib.h} can be used in C and C++ programs, it must not impose a
+choice of system headers on the program by including one of them. Therefore
+it is the responsibility of the program using lzlib to include before
+@file{lzlib.h} some header that declares the type @samp{uint8_t}. There are
+at least four such headers in C and C++: @file{stdint.h}, @file{cstdint},
+@file{inttypes.h}, and @file{cinttypes}.
+
+All the library functions are thread safe. The library does not install any
+signal handler. The decoder checks the consistency of the compressed data,
+so the library should never crash even in case of corrupted input.
+
+Compression/decompression is done by repeatedly calling a couple of
+read/write functions until all the data have been processed by the library.
+This interface is safer and less error prone than the traditional zlib
+interface.
+
+Compression/decompression is done when the read function is called. This
+means the value returned by the position functions is not updated until a
+read call, even if a lot of data are written. If you want the data to be
+compressed in advance, just call the read function with a @var{size} equal
+to 0.
+
+If all the data to be compressed are written in advance, lzlib automatically
+adjusts the header of the compressed data to use the largest dictionary size
+that does not exceed neither the data size nor the limit given to
+@samp{LZ_compress_open}. This feature reduces the amount of memory needed for
+decompression and allows minilzip to produce identical compressed output as
+lzip.
+
+Lzlib correctly decompresses a data stream which is the concatenation of
+two or more compressed data streams. The result is the concatenation of the
+corresponding decompressed data streams. Integrity testing of concatenated
+compressed data streams is also supported.
+
+Lzlib is able to compress and decompress streams of unlimited size by
+automatically creating multimember output. The members so created are large,
+about @w{2 PiB} each.
+
+In spite of its name (Lempel-Ziv-Markov chain-Algorithm), LZMA is not a
+concrete algorithm; it is more like "any algorithm using the LZMA coding
+scheme". For example, the option @option{-0} of lzip uses the scheme in
+almost the simplest way possible; issuing the longest match it can find, or
+a literal byte if it can't find a match. Inversely, a more elaborate way of
+finding coding sequences of minimum size than the one currently used by lzip
+could be developed, and the resulting sequence could also be coded using the
+LZMA coding scheme.
+
+Lzlib currently implements two variants of the LZMA algorithm: fast (used by
+option @option{-0} of minilzip) and normal (used by all other compression levels).
+
+The high compression of LZMA comes from combining two basic, well-proven
+compression ideas: sliding dictionaries (LZ77) and Markov models (the thing
+used by every compression algorithm that uses a range encoder or similar
+order-0 entropy coder as its last stage) with segregation of contexts
+according to what the bits are used for.
+
+The ideas embodied in lzlib are due to (at least) the following people:
+Abraham Lempel and Jacob Ziv (for the LZ algorithm), Andrei Markov (for the
+definition of Markov chains), G.N.N. Martin (for the definition of range
+encoding), Igor Pavlov (for putting all the above together in LZMA), and
+Julian Seward (for bzip2's CLI).
+
+LANGUAGE NOTE: Uncompressed = not compressed = plain data; it may never have
+been compressed. Decompressed is used to refer to data which have undergone
+the process of decompression.
+
+
+@node Library version
+@chapter Library version
+@cindex library version
+
+One goal of lzlib is to keep perfect backward compatibility with older
+versions of itself down to 1.0. Any application working with an older lzlib
+should work with a newer lzlib. Installing a newer lzlib should not break
+anything. This chapter describes the constants and functions that the
+application can use to discover the version of the library being used. All
+of them are declared in @file{lzlib.h}.
+
+@defvr Constant LZ_API_VERSION
+This constant is defined in @file{lzlib.h} and works as a version test
+macro. The application should check at compile time that LZ_API_VERSION is
+greater than or equal to the version required by the application:
+
+@example
+#if !defined LZ_API_VERSION || LZ_API_VERSION < 1012
+#error "lzlib 1.12 or newer needed."
+#endif
+@end example
+
+Before version 1.8, lzlib didn't define LZ_API_VERSION.@*
+LZ_API_VERSION was first defined in lzlib 1.8 to 1.@*
+Since lzlib 1.12, LZ_API_VERSION is defined as (major * 1000 + minor).
+@end defvr
+
+NOTE: Version test macros are the library's way of announcing functionality
+to the application. They should not be confused with feature test macros,
+which allow the application to announce to the library its desire to have
+certain symbols and prototypes exposed.
+
+@deftypefun int LZ_api_version ( void )
+If LZ_API_VERSION >= 1012, this function is declared in @file{lzlib.h} (else
+it doesn't exist). It returns the LZ_API_VERSION of the library object code
+being used. The application should check at run time that the value
+returned by @code{LZ_api_version} is greater than or equal to the version
+required by the application. An application may be dynamically linked at run
+time with a different version of lzlib than the one it was compiled for, and
+this should not break the application as long as the library used provides
+the functionality required by the application.
+
+@example
+#if defined LZ_API_VERSION && LZ_API_VERSION >= 1012
+  if( LZ_api_version() < 1012 )
+    show_error( "lzlib 1.12 or newer needed." );
+#endif
+@end example
+@end deftypefun
+
+@deftypevr Constant {const char *} LZ_version_string
+This string constant is defined in the header file @file{lzlib.h} and
+represents the version of the library being used at compile time.
+@end deftypevr
+
+@deftypefun {const char *} LZ_version ( void )
+This function returns a string representing the version of the library being
+used at run time.
+@end deftypefun
+
+
+@node Buffering
+@chapter Buffering
+@cindex buffering
+
+Lzlib internal functions need access to a memory chunk at least as large
+as the dictionary size (sliding window). For efficiency reasons, the
+input buffer for compression is twice or sixteen times as large as the
+dictionary size.
+
+Finally, for safety reasons, lzlib uses two more internal buffers.
+
+These are the four buffers used by lzlib, and their guaranteed minimum sizes:
+
+@itemize @bullet
+@item Input compression buffer. Written to by the function
+@samp{LZ_compress_write}. For the normal variant of LZMA, its size is two
+times the dictionary size set with the function @samp{LZ_compress_open} or
+@w{64 KiB}, whichever is larger. For the fast variant, its size is @w{1 MiB}.
+
+@item Output compression buffer. Read from by the function
+@samp{LZ_compress_read}. Its size is @w{64 KiB}.
+
+@item Input decompression buffer. Written to by the function
+@samp{LZ_decompress_write}. Its size is @w{64 KiB}.
+
+@item Output decompression buffer. Read from by the function
+@samp{LZ_decompress_read}. Its size is the dictionary size set in the header
+of the member currently being decompressed or @w{64 KiB}, whichever is larger.
+@end itemize
+
+
+@node Parameter limits
+@chapter Parameter limits
+@cindex parameter limits
+
+These functions provide minimum and maximum values for some parameters.
+Current values are shown in square brackets.
+
+@deftypefun int LZ_min_dictionary_bits ( void )
+Returns the base 2 logarithm of the smallest valid dictionary size [12].
+@end deftypefun
+
+@deftypefun int LZ_min_dictionary_size ( void )
+Returns the smallest valid dictionary size [4 KiB].
+@end deftypefun
+
+@deftypefun int LZ_max_dictionary_bits ( void )
+Returns the base 2 logarithm of the largest valid dictionary size [29].
+@end deftypefun
+
+@deftypefun int LZ_max_dictionary_size ( void )
+Returns the largest valid dictionary size [512 MiB].
+@end deftypefun
+
+@deftypefun int LZ_min_match_len_limit ( void )
+Returns the smallest valid match length limit [5].
+@end deftypefun
+
+@deftypefun int LZ_max_match_len_limit ( void )
+Returns the largest valid match length limit [273].
+@end deftypefun
+
+
+@node Compression functions
+@chapter Compression functions
+@cindex compression functions
+
+These are the functions used to compress data. In case of error, all of
+them return -1 or 0, for signed and unsigned return values respectively,
+except @samp{LZ_compress_open} whose return value must be checked by
+calling @samp{LZ_compress_errno} before using it.
+
+
+@deftypefun {LZ_Encoder *} LZ_compress_open ( const int @var{dictionary_size}, const int @var{match_len_limit}, const unsigned long long @var{member_size} )
+Initializes the internal stream state for compression and returns a
+pointer that can only be used as the @var{encoder} argument for the
+other LZ_compress functions, or a null pointer if the encoder could not
+be allocated.
+
+The returned pointer must be checked by calling @samp{LZ_compress_errno}
+before using it. If @samp{LZ_compress_errno} does not return @samp{LZ_ok},
+the returned pointer must not be used and should be freed with
+@samp{LZ_compress_close} to avoid memory leaks.
+
+@var{dictionary_size} sets the dictionary size to be used, in bytes.
+Valid values range from @w{4 KiB} to @w{512 MiB}. Note that dictionary
+sizes are quantized. If the size specified does not match one of the
+valid sizes, it is rounded upwards by adding up to
+@w{(@var{dictionary_size} / 8)} to it.
+
+@var{match_len_limit} sets the match length limit in bytes. Valid values
+range from 5 to 273. Larger values usually give better compression ratios
+but longer compression times.
+
+If @var{dictionary_size} is 65535 and @var{match_len_limit} is 16, the fast
+variant of LZMA is chosen, which produces identical compressed output as
+@w{@samp{lzip -0}}. (The dictionary size used is rounded upwards to
+@w{64 KiB}).
+
+@anchor{member_size}
+@var{member_size} sets the member size limit in bytes. Valid values range
+from @w{4 KiB} to @w{2 PiB}. A small member size may degrade compression
+ratio, so use it only when needed. To produce a single-member data stream,
+give @var{member_size} a value larger than the amount of data to be
+produced. Values larger than @w{2 PiB} are reduced to @w{2 PiB} to prevent
+the uncompressed size of the member from overflowing.
+@end deftypefun
+
+
+@deftypefun int LZ_compress_close ( LZ_Encoder * const @var{encoder} )
+Frees all dynamically allocated data structures for this stream. This
+function discards any unprocessed input and does not flush any pending
+output. After a call to @samp{LZ_compress_close}, @var{encoder} can no
+longer be used as an argument to any LZ_compress function.
+It is safe to call @samp{LZ_compress_close} with a null argument.
+@end deftypefun
+
+
+@deftypefun int LZ_compress_finish ( LZ_Encoder * const @var{encoder} )
+Use this function to tell @samp{lzlib} that all the data for this member
+have already been written (with the function @samp{LZ_compress_write}).
+It is safe to call @samp{LZ_compress_finish} as many times as needed.
+After all the compressed data have been read with @samp{LZ_compress_read}
+and @samp{LZ_compress_member_finished} returns 1, a new member can be
+started with @samp{LZ_compress_restart_member}.
+@end deftypefun
+
+
+@deftypefun int LZ_compress_restart_member ( LZ_Encoder * const @var{encoder}, const unsigned long long @var{member_size} )
+Use this function to start a new member in a multimember data stream. Call
+this function only after @samp{LZ_compress_member_finished} indicates that
+the current member has been fully read (with the function
+@samp{LZ_compress_read}). @xref{member_size}, for a description of
+@var{member_size}.
+@end deftypefun
+
+
+@anchor{sync_flush}
+@deftypefun int LZ_compress_sync_flush ( LZ_Encoder * const @var{encoder} )
+Use this function to make available to @samp{LZ_compress_read} all the data
+already written with the function @samp{LZ_compress_write}. First call
+@samp{LZ_compress_sync_flush}. Then call @samp{LZ_compress_read} until it
+returns 0.
+
+This function writes at least one LZMA marker @samp{3} ('Sync Flush' marker)
+to the compressed output. Note that the sync flush marker is not allowed in
+lzip files; it is a device for interactive communication between
+applications using lzlib, but is useless and wasteful in a file, and is
+excluded from the media type @samp{application/lzip}. The LZMA marker
+@samp{2} ('End Of Stream' marker) is the only marker allowed in lzip files.
+@xref{File format}.
+
+Repeated use of @samp{LZ_compress_sync_flush} may degrade compression
+ratio, so use it only when needed. If the interval between calls to
+@samp{LZ_compress_sync_flush} is large (comparable to dictionary size),
+creating a multimember data stream with @samp{LZ_compress_restart_member}
+may be an alternative.
+
+Combining multimember stream creation with flushing may be tricky. If there
+are more bytes available than those needed to complete @var{member_size},
+@samp{LZ_compress_restart_member} needs to be called when
+@samp{LZ_compress_member_finished} returns 1, followed by a new call to
+@samp{LZ_compress_sync_flush}.
+@end deftypefun
+
+
+@deftypefun int LZ_compress_read ( LZ_Encoder * const @var{encoder}, uint8_t * const @var{buffer}, const int @var{size} )
+Reads up to @var{size} bytes from the stream pointed to by @var{encoder},
+storing the results in @var{buffer}. If @w{LZ_API_VERSION >= 1012},
+@var{buffer} may be a null pointer, in which case the bytes read are
+discarded.
+
+Returns the number of bytes actually read. This might be less than
+@var{size}; for example, if there aren't that many bytes left in the stream
+or if more bytes have to be yet written with the function
+@samp{LZ_compress_write}. Note that reading less than @var{size} bytes is
+not an error.
+@end deftypefun
+
+
+@deftypefun int LZ_compress_write ( LZ_Encoder * const @var{encoder}, uint8_t * const @var{buffer}, const int @var{size} )
+Writes up to @var{size} bytes from @var{buffer} to the stream pointed to by
+@var{encoder}. Returns the number of bytes actually written. This might be
+less than @var{size}. Note that writing less than @var{size} bytes is not an
+error.
+@end deftypefun
+
+
+@deftypefun int LZ_compress_write_size ( LZ_Encoder * const @var{encoder} )
+Returns the maximum number of bytes that can be immediately written through
+@samp{LZ_compress_write}. For efficiency reasons, once the input buffer is
+full and @samp{LZ_compress_write_size} returns 0, almost all the buffer must
+be compressed before a size greater than 0 is returned again. (This is done
+to minimize the amount of data that must be copied to the beginning of the
+buffer before new data can be accepted).
+
+It is guaranteed that an immediate call to @samp{LZ_compress_write} will
+accept a @var{size} up to the returned number of bytes.
+@end deftypefun
+
+
+@deftypefun {LZ_Errno} LZ_compress_errno ( LZ_Encoder * const @var{encoder} )
+Returns the current error code for @var{encoder}. @xref{Error codes}.
+It is safe to call @samp{LZ_compress_errno} with a null argument, in which
+case it returns @samp{LZ_bad_argument}.
+@end deftypefun
+
+
+@deftypefun int LZ_compress_finished ( LZ_Encoder * const @var{encoder} )
+Returns 1 if all the data have been read and @samp{LZ_compress_close}
+can be safely called. Otherwise it returns 0. @samp{LZ_compress_finished}
+implies @samp{LZ_compress_member_finished}.
+@end deftypefun
+
+
+@deftypefun int LZ_compress_member_finished ( LZ_Encoder * const @var{encoder} )
+Returns 1 if the current member, in a multimember data stream, has been
+fully read and @samp{LZ_compress_restart_member} can be safely called.
+Otherwise it returns 0.
+@end deftypefun
+
+
+@deftypefun {unsigned long long} LZ_compress_data_position ( LZ_Encoder * const @var{encoder} )
+Returns the number of input bytes already compressed in the current member.
+@end deftypefun
+
+
+@deftypefun {unsigned long long} LZ_compress_member_position ( LZ_Encoder * const @var{encoder} )
+Returns the number of compressed bytes already produced, but perhaps not
+yet read, in the current member.
+@end deftypefun
+
+
+@deftypefun {unsigned long long} LZ_compress_total_in_size ( LZ_Encoder * const @var{encoder} )
+Returns the total number of input bytes already compressed.
+@end deftypefun
+
+
+@deftypefun {unsigned long long} LZ_compress_total_out_size ( LZ_Encoder * const @var{encoder} )
+Returns the total number of compressed bytes already produced, but
+perhaps not yet read.
+@end deftypefun
+
+
+@node Decompression functions
+@chapter Decompression functions
+@cindex decompression functions
+
+These are the functions used to decompress data. In case of error, all of
+them return -1 or 0, for signed and unsigned return values respectively,
+except @samp{LZ_decompress_open} whose return value must be checked by
+calling @samp{LZ_decompress_errno} before using it.
+
+
+@deftypefun {LZ_Decoder *} LZ_decompress_open ( void )
+Initializes the internal stream state for decompression and returns a
+pointer that can only be used as the @var{decoder} argument for the other
+LZ_decompress functions, or a null pointer if the decoder could not be
+allocated.
+
+The returned pointer must be checked by calling @samp{LZ_decompress_errno}
+before using it. If @samp{LZ_decompress_errno} does not return @samp{LZ_ok},
+the returned pointer must not be used and should be freed with
+@samp{LZ_decompress_close} to avoid memory leaks.
+@end deftypefun
+
+
+@deftypefun int LZ_decompress_close ( LZ_Decoder * const @var{decoder} )
+Frees all dynamically allocated data structures for this stream. This
+function discards any unprocessed input and does not flush any pending
+output. After a call to @samp{LZ_decompress_close}, @var{decoder} can no
+longer be used as an argument to any LZ_decompress function.
+It is safe to call @samp{LZ_decompress_close} with a null argument.
+@end deftypefun
+
+
+@deftypefun int LZ_decompress_finish ( LZ_Decoder * const @var{decoder} )
+Use this function to tell @samp{lzlib} that all the data for this stream
+have already been written (with the function @samp{LZ_decompress_write}).
+It is safe to call @samp{LZ_decompress_finish} as many times as needed.
+It is not required to call @samp{LZ_decompress_finish} if the input stream
+only contains whole members, but not calling it prevents lzlib from
+detecting a truncated member.
+@end deftypefun
+
+
+@deftypefun int LZ_decompress_reset ( LZ_Decoder * const @var{decoder} )
+Resets the internal state of @var{decoder} as it was just after opening
+it with the function @samp{LZ_decompress_open}. Data stored in the
+internal buffers are discarded. Position counters are set to 0.
+@end deftypefun
+
+
+@deftypefun int LZ_decompress_sync_to_member ( LZ_Decoder * const @var{decoder} )
+Resets the error state of @var{decoder} and enters a search state that lasts
+until a new member header (or the end of the stream) is found. After a
+successful call to @samp{LZ_decompress_sync_to_member}, data written with
+@samp{LZ_decompress_write} is consumed and @samp{LZ_decompress_read} returns
+0 until a header is found.
+
+This function is useful to discard any data preceding the first member, or
+to discard the rest of the current member, for example in case of a data
+error. If the decoder is already at the beginning of a member, this function
+does nothing.
+@end deftypefun
+
+
+@deftypefun int LZ_decompress_read ( LZ_Decoder * const @var{decoder}, uint8_t * const @var{buffer}, const int @var{size} )
+Reads up to @var{size} bytes from the stream pointed to by @var{decoder},
+storing the results in @var{buffer}. If @w{LZ_API_VERSION >= 1012},
+@var{buffer} may be a null pointer, in which case the bytes read are
+discarded.
+
+Returns the number of bytes actually read. This might be less than
+@var{size}; for example, if there aren't that many bytes left in the stream
+or if more bytes have to be yet written with the function
+@samp{LZ_decompress_write}. Note that reading less than @var{size} bytes is
+not an error.
+
+@samp{LZ_decompress_read} returns at least once per member so that
+@samp{LZ_decompress_member_finished} can be called (and trailer data
+retrieved) for each member, even for empty members. Therefore,
+@samp{LZ_decompress_read} returning 0 does not mean that the end of the
+stream has been reached. The increase in the value returned by
+@samp{LZ_decompress_total_in_size} can be used to tell the end of the stream
+from an empty member.
+
+In case of decompression error caused by corrupt or truncated data,
+@samp{LZ_decompress_read} does not signal the error immediately to the
+application, but waits until all the bytes decoded have been read. This
+allows tools like
+@uref{http://www.nongnu.org/lzip/manual/tarlz_manual.html,,tarlz} to
+recover as much data as possible from each damaged member.
+@ifnothtml
+@xref{Top,tarlz manual,,tarlz}.
+@end ifnothtml
+@end deftypefun
+
+
+@deftypefun int LZ_decompress_write ( LZ_Decoder * const @var{decoder}, uint8_t * const @var{buffer}, const int @var{size} )
+Writes up to @var{size} bytes from @var{buffer} to the stream pointed to by
+@var{decoder}. Returns the number of bytes actually written. This might be
+less than @var{size}. Note that writing less than @var{size} bytes is not an
+error.
+@end deftypefun
+
+
+@deftypefun int LZ_decompress_write_size ( LZ_Decoder * const @var{decoder} )
+Returns the maximum number of bytes that can be immediately written through
+@samp{LZ_decompress_write}. This number varies smoothly; each compressed
+byte consumed may be overwritten immediately, increasing by 1 the value
+returned.
+
+It is guaranteed that an immediate call to @samp{LZ_decompress_write} will
+accept a @var{size} up to the returned number of bytes.
+@end deftypefun
+
+
+@deftypefun {LZ_Errno} LZ_decompress_errno ( LZ_Decoder * const @var{decoder} )
+Returns the current error code for @var{decoder}. @xref{Error codes}.
+It is safe to call @samp{LZ_decompress_errno} with a null argument, in which
+case it returns @samp{LZ_bad_argument}.
+@end deftypefun
+
+
+@deftypefun int LZ_decompress_finished ( LZ_Decoder * const @var{decoder} )
+Returns 1 if all the data have been read and @samp{LZ_decompress_close}
+can be safely called. Otherwise it returns 0. @samp{LZ_decompress_finished}
+does not imply @samp{LZ_decompress_member_finished}.
+@end deftypefun
+
+
+@deftypefun int LZ_decompress_member_finished ( LZ_Decoder * const @var{decoder} )
+Returns 1 if the previous call to @samp{LZ_decompress_read} finished reading
+the current member, indicating that final values for the member are available
+through @samp{LZ_decompress_data_crc}, @samp{LZ_decompress_data_position},
+and @samp{LZ_decompress_member_position}. Otherwise it returns 0.
+@end deftypefun
+
+
+@deftypefun int LZ_decompress_member_version ( LZ_Decoder * const @var{decoder} )
+Returns the version of the current member, read from the member header.
+@end deftypefun
+
+
+@deftypefun int LZ_decompress_dictionary_size ( LZ_Decoder * const @var{decoder} )
+Returns the dictionary size of the current member, read from the member header.
+@end deftypefun
+
+
+@deftypefun {unsigned} LZ_decompress_data_crc ( LZ_Decoder * const @var{decoder} )
+Returns the 32 bit Cyclic Redundancy Check of the data decompressed from
+the current member. The value returned is valid only when
+@samp{LZ_decompress_member_finished} returns 1.
+@end deftypefun
+
+
+@deftypefun {unsigned long long} LZ_decompress_data_position ( LZ_Decoder * const @var{decoder} )
+Returns the number of decompressed bytes already produced, but perhaps
+not yet read, in the current member.
+@end deftypefun
+
+
+@deftypefun {unsigned long long} LZ_decompress_member_position ( LZ_Decoder * const @var{decoder} )
+Returns the number of input bytes already decompressed in the current member.
+@end deftypefun
+
+
+@deftypefun {unsigned long long} LZ_decompress_total_in_size ( LZ_Decoder * const @var{decoder} )
+Returns the total number of input bytes already decompressed.
+@end deftypefun
+
+
+@deftypefun {unsigned long long} LZ_decompress_total_out_size ( LZ_Decoder * const @var{decoder} )
+Returns the total number of decompressed bytes already produced, but
+perhaps not yet read.
+@end deftypefun
+
+
+@node Error codes
+@chapter Error codes
+@cindex error codes
+
+Most library functions return -1 to indicate that they have failed. But
+this return value only tells you that an error has occurred. To find out
+what kind of error it was, you need to check the error code by calling
+@samp{LZ_(de)compress_errno}.
+
+Library functions don't change the value returned by
+@samp{LZ_(de)compress_errno} when they succeed; thus, the value returned
+by @samp{LZ_(de)compress_errno} after a successful call is not
+necessarily LZ_ok, and you should not use @samp{LZ_(de)compress_errno}
+to determine whether a call failed. If the call failed, then you can
+examine @samp{LZ_(de)compress_errno}.
+
+The error codes are defined in the header file @file{lzlib.h}.
+@samp{LZ_Errno} is an enum type:
+
+@deftypevr Constant {LZ_Errno} LZ_ok
+The value of this constant is 0 and is used to indicate that there is no error.
+@end deftypevr
+
+@deftypevr Constant {LZ_Errno} LZ_bad_argument
+At least one of the arguments passed to the library function was invalid.
+@end deftypevr
+
+@deftypevr Constant {LZ_Errno} LZ_mem_error
+No memory available. The system cannot allocate more virtual memory because
+its capacity is full.
+@end deftypevr
+
+@deftypevr Constant {LZ_Errno} LZ_sequence_error
+A library function was called in the wrong order. For example
+@samp{LZ_compress_restart_member} was called before
+@samp{LZ_compress_member_finished} indicated that the current member is
+finished.
+@end deftypevr
+
+@deftypevr Constant {LZ_Errno} LZ_header_error
+An invalid member header (one with the wrong magic bytes) was read. If this
+happens at the end of the data stream it may indicate trailing data.
+@end deftypevr
+
+@deftypevr Constant {LZ_Errno} LZ_unexpected_eof
+The end of the data stream was reached in the middle of a member.
+@end deftypevr
+
+@deftypevr Constant {LZ_Errno} LZ_data_error
+The data stream is corrupt. If @samp{LZ_decompress_member_position} is 6 or
+less, it indicates either a format version not supported, an invalid
+dictionary size, a nonzero first LZMA byte, a corrupt header in a multimember
+data stream, or trailing data too similar to a valid lzip header.
+Lziprecover can be used to repair some of these errors and to remove
+conflicting trailing data from a file.
+@end deftypevr
+
+@deftypevr Constant {LZ_Errno} LZ_library_error
+A bug was detected in the library. Please, report it. @xref{Problems}.
+@end deftypevr
+
+
+@node Error messages
+@chapter Error messages
+@cindex error messages
+
+@deftypefun {const char *} LZ_strerror ( const LZ_Errno @var{lz_errno} )
+Returns the error message corresponding to the error code @var{lz_errno}.
+The messages are fairly short; there are no multi-line messages or embedded
+newlines. This function makes it easy for your program to report informative
+error messages about the failure of a library call.
+
+The value of @var{lz_errno} normally comes from a call to
+@samp{LZ_(de)compress_errno}.
+@end deftypefun
+
+
+@node Invoking minilzip
+@chapter Invoking minilzip
+@cindex invoking
+@cindex options
+
+Minilzip is a test program for the compression library lzlib. Minilzip is
+not intended to be installed because lzip has more features, but minilzip is
+well tested and you can use it as your main compressor if so you wish.
+@ifnothtml
+@xref{Top,lzip,,lzip}.
+@end ifnothtml
+
+@uref{http://www.nongnu.org/lzip/lzip.html,,Lzip}
+is a lossless data compressor with a user interface similar to the one
+of gzip or bzip2. Lzip uses a simplified form of LZMA (Lempel-Ziv-Markov
+chain-Algorithm) designed to achieve complete interoperability between
+implementations. The maximum dictionary size is 512 MiB so that any lzip
+file can be decompressed on 32-bit machines. Lzip provides accurate and
+robust 3-factor integrity checking. @w{@samp{lzip -0}} compresses about as fast as
+gzip, while @w{@samp{lzip -9}} compresses most files more than bzip2. Decompression
+speed is intermediate between gzip and bzip2. Lzip provides better data
+recovery capabilities than gzip and bzip2. Lzip has been designed, written,
+and tested with great care to replace gzip and bzip2 as general-purpose
+compressed format for Unix-like systems.
+
+@noindent
+The format for running minilzip is:
+
+@example
+minilzip [@var{options}] [@var{files}]
+@end example
+
+@noindent
+If no file names are specified, minilzip compresses (or decompresses) from
+standard input to standard output. A hyphen @samp{-} used as a @var{file}
+argument means standard input. It can be mixed with other @var{files} and is
+read just once, the first time it appears in the command line. Remember to
+prepend @file{./} to any file name beginning with a hyphen, or use @samp{--}.
+
+@noindent
+minilzip supports the following
+@uref{http://www.nongnu.org/lzip/manual/plzip_manual.html#Argument-syntax,,options}:
+@ifnothtml
+@xref{Argument syntax,,,plzip}.
+@end ifnothtml
+
+@table @code
+@item -h
+@itemx --help
+Print an informative help message describing the options and exit.
+
+@item -V
+@itemx --version
+Print the version number of minilzip on the standard output and exit.
+This version number should be included in all bug reports.
+
+@item -a
+@itemx --trailing-error
+Exit with error status 2 if any remaining input is detected after
+decompressing the last member. Such remaining input is usually trailing
+garbage that can be safely ignored.
+
+@item -b @var{bytes}
+@itemx --member-size=@var{bytes}
+When compressing, set the member size limit to @var{bytes}. If @var{bytes}
+is smaller than the compressed size, a multimember file is produced. It is
+advisable to keep members smaller than RAM size so that they can be repaired
+with lziprecover in case of corruption. A small member size may degrade
+compression ratio, so use it only when needed. Valid values range from
+@w{100 kB} to @w{2 PiB}. Defaults to @w{2 PiB}.
+
+@item -c
+@itemx --stdout
+Compress or decompress to standard output; keep input files unchanged. If
+compressing several files, each file is compressed independently. (The
+output consists of a sequence of independently compressed members). This
+option (or @option{-o}) is needed when reading from a named pipe (fifo) or
+from a device. Use it also to recover as much of the decompressed data as
+possible when decompressing a corrupt file. @option{-c} overrides @option{-o}
+and @option{-S}. @option{-c} has no effect when testing.
+
+@item -d
+@itemx --decompress
+Decompress the files specified. The integrity of the files specified is
+checked. If a file does not exist, can't be opened, or the destination file
+already exists and @option{--force} has not been specified, minilzip continues
+decompressing the rest of the files and exits with error status 1. If a file
+fails to decompress, or is a terminal, minilzip exits immediately with error
+status 2 without decompressing the rest of the files. A terminal is
+considered an uncompressed file, and therefore invalid. A multimember file
+with one or more empty members is accepted if redirected to standard input.
+
+@item -f
+@itemx --force
+Force overwrite of output files.
+
+@item -F
+@itemx --recompress
+When compressing, force re-compression of files whose name already has
+the @file{.lz} or @file{.tlz} suffix.
+
+@item -k
+@itemx --keep
+Keep (don't delete) input files during compression or decompression.
+
+@item -m @var{bytes}
+@itemx --match-length=@var{bytes}
+When compressing, set the match length limit in bytes. After a match this
+long is found, the search is finished. Valid values range from 5 to 273.
+Larger values usually give better compression ratios but longer compression
+times.
+
+@item -o @var{file}
+@itemx --output=@var{file}
+If @option{-c} has not been also specified, write the (de)compressed output
+to @var{file}; keep input files unchanged. If compressing several files,
+each file is compressed independently. (The output consists of a sequence of
+independently compressed members). This option (or @option{-c}) is needed
+when reading from a named pipe (fifo) or from a device. @w{@option{-o -}} is
+equivalent to @option{-c}. @option{-o} has no effect when testing.
+
+When compressing and splitting the output in volumes, @var{file} is used as
+a prefix, and several files named @file{@var{file}00001.lz},
+@file{@var{file}00002.lz}, etc, are created. In this case, only one input
+file is allowed.
+
+@item -q
+@itemx --quiet
+Quiet operation. Suppress all messages.
+
+@item -s @var{bytes}
+@itemx --dictionary-size=@var{bytes}
+When compressing, set the dictionary size limit in bytes. Minilzip uses for
+each file the largest dictionary size that does not exceed neither the file
+size nor this limit. Valid values range from @w{4 KiB} to @w{512 MiB}.
+Values 12 to 29 are interpreted as powers of two, meaning 2^12 to 2^29
+bytes. Dictionary sizes are quantized so that they can be coded in just one
+byte (@pxref{coded-dict-size}). If the size specified does not match one of
+the valid sizes, it is rounded upwards by adding up to @w{(@var{bytes} / 8)}
+to it.
+
+For maximum compression you should use a dictionary size limit as large
+as possible, but keep in mind that the decompression memory requirement
+is affected at compression time by the choice of dictionary size limit.
+The dictionary size used for decompression is the same dictionary size used
+for compression.
+
+@item -S @var{bytes}
+@itemx --volume-size=@var{bytes}
+When compressing, and @option{-c} has not been also specified, split the
+compressed output into several volume files with names
+@file{original_name00001.lz}, @file{original_name00002.lz}, etc, and set the
+volume size limit to @var{bytes}. Input files are kept unchanged. Each
+volume is a complete, maybe multimember, lzip file. A small volume size may
+degrade compression ratio, so use it only when needed. Valid values range
+from @w{100 kB} to @w{4 EiB}.
+
+@item -t
+@itemx --test
+Check integrity of the files specified, but don't decompress them. This
+really performs a trial decompression and throws away the result. Use it
+together with @option{-v} to see information about the files. If a file
+fails the test, does not exist, can't be opened, or is a terminal, minilzip
+continues testing the rest of the files. A final diagnostic is shown at
+verbosity level 1 or higher if any file fails the test when testing multiple
+files. A multimember file with one or more empty members is accepted if
+redirected to standard input.
+
+@item -v
+@itemx --verbose
+Verbose mode.@*
+When compressing, show the compression ratio and size for each file processed.@*
+When decompressing or testing, further -v's (up to 4) increase the verbosity
+level, showing status, compression ratio, dictionary size, and trailer
+contents (CRC, data size, member size).
+
+@item -0 .. -9
+Compression level. Set the compression parameters (dictionary size and
+match length limit) as shown in the table below. The default compression
+level is @option{-6}, equivalent to @w{@option{-s8MiB -m36}}. Note that
+@option{-9} can be much slower than @option{-0}. These options have no
+effect when decompressing or testing.
+
+The bidimensional parameter space of LZMA can't be mapped to a linear scale
+optimal for all files. If your files are large, very repetitive, etc, you
+may need to use the options @option{--dictionary-size} and
+@option{--match-length} directly to achieve optimal performance.
+
+If several compression levels or @option{-s} or @option{-m} options are
+given, the last setting is used. For example @w{@option{-9 -s64MiB}} is
+equivalent to @w{@option{-s64MiB -m273}}
+
+@multitable {Level} {Dictionary size (-s)} {Match length limit (-m)}
+@headitem Level @tab Dictionary size (-s) @tab Match length limit (-m)
+@item -0 @tab 64 KiB @tab  16 bytes
+@item -1 @tab  1 MiB @tab   5 bytes
+@item -2 @tab  1.5 MiB @tab   6 bytes
+@item -3 @tab  2 MiB @tab   8 bytes
+@item -4 @tab  3 MiB @tab  12 bytes
+@item -5 @tab  4 MiB @tab  20 bytes
+@item -6 @tab  8 MiB @tab  36 bytes
+@item -7 @tab 16 MiB @tab  68 bytes
+@item -8 @tab 24 MiB @tab 132 bytes
+@item -9 @tab 32 MiB @tab 273 bytes
+@end multitable
+
+@item --fast
+@itemx --best
+Aliases for GNU gzip compatibility.
+
+@item --loose-trailing
+When decompressing or testing, allow trailing data whose first bytes are
+so similar to the magic bytes of a lzip header that they can be confused
+with a corrupt header. Use this option if a file triggers a 'corrupt
+header' error and the cause is not indeed a corrupt header.
+
+@item --check-lib
+Compare the @uref{#Library-version,,version of lzlib} used to compile
+minilzip with the version actually being used at run time and exit. Report
+any differences found. Exit with error status 1 if differences are found. A
+mismatch may indicate that lzlib is not correctly installed or that a
+different version of lzlib has been installed after compiling the shared
+version of minilzip. Exit with error status 2 if LZ_API_VERSION and
+LZ_version_string don't match. @w{@samp{minilzip -v --check-lib}} shows the
+version of lzlib being used and the value of LZ_API_VERSION (if defined).
+@ifnothtml
+@xref{Library version}.
+@end ifnothtml
+
+@end table
+
+Numbers given as arguments to options may be expressed in decimal,
+hexadecimal, or octal (using the same syntax as integer constants in C++),
+and may be followed by a multiplier and an optional @samp{B} for "byte".
+
+Table of SI and binary prefixes (unit multipliers):
+
+@multitable {Prefix} {kilobyte   (10^3 = 1000)} {|} {Prefix} {kibibyte  (2^10 = 1024)}
+@headitem Prefix @tab Value           @tab | @tab Prefix @tab Value
+@item k @tab kilobyte   (10^3 = 1000) @tab | @tab Ki @tab kibibyte  (2^10 = 1024)
+@item M @tab megabyte   (10^6)        @tab | @tab Mi @tab mebibyte  (2^20)
+@item G @tab gigabyte   (10^9)        @tab | @tab Gi @tab gibibyte  (2^30)
+@item T @tab terabyte   (10^12)       @tab | @tab Ti @tab tebibyte  (2^40)
+@item P @tab petabyte   (10^15)       @tab | @tab Pi @tab pebibyte  (2^50)
+@item E @tab exabyte    (10^18)       @tab | @tab Ei @tab exbibyte  (2^60)
+@item Z @tab zettabyte  (10^21)       @tab | @tab Zi @tab zebibyte  (2^70)
+@item Y @tab yottabyte  (10^24)       @tab | @tab Yi @tab yobibyte  (2^80)
+@item R @tab ronnabyte  (10^27)       @tab | @tab Ri @tab robibyte  (2^90)
+@item Q @tab quettabyte (10^30)       @tab | @tab Qi @tab quebibyte (2^100)
+@end multitable
+
+@sp 1
+Exit status: 0 for a normal exit, 1 for environmental problems
+(file not found, invalid command-line options, I/O errors, etc), 2 to
+indicate a corrupt or invalid input file, 3 for an internal consistency
+error (e.g., bug) which caused minilzip to panic.
+
+
+@node File format
+@chapter File format
+@cindex file format
+
+Perfection is reached, not when there is no longer anything to add, but
+when there is no longer anything to take away.@*
+--- Antoine de Saint-Exupery
+
+In the diagram below, a box like this:
+
+@verbatim
++---+
+|   | <-- the vertical bars might be missing
++---+
+@end verbatim
+
+represents one byte; a box like this:
+
+@verbatim
++==============+
+|              |
++==============+
+@end verbatim
+
+represents a variable number of bytes.
+
+@noindent
+A lzip file consists of one or more independent "members" (compressed data
+sets). The members simply appear one after another in the file, with no
+additional information before, between, or after them. Each member can
+encode in compressed form up to @w{16 EiB - 1 byte} of uncompressed data.
+The size of a multimember file is unlimited. Empty members (data size = 0)
+are not allowed in multimember files.
+
+Each member has the following structure:
+
+@verbatim
++--+--+--+--+----+----+=============+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+| ID string | VN | DS | LZMA stream | CRC32 |   Data size   |  Member size  |
++--+--+--+--+----+----+=============+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+@end verbatim
+
+All multibyte values are stored in little endian order.
+
+@table @samp
+@item ID string (the "magic" bytes)
+A four byte string, identifying the lzip format, with the value "LZIP"
+(0x4C, 0x5A, 0x49, 0x50).
+
+@item VN (version number, 1 byte)
+Just in case something needs to be modified in the future. 1 for now.
+
+@anchor{coded-dict-size}
+@item DS (coded dictionary size, 1 byte)
+The dictionary size is calculated by taking a power of 2 (the base size)
+and subtracting from it a fraction between 0/16 and 7/16 of the base size.@*
+Bits 4-0 contain the base 2 logarithm of the base size (12 to 29).@*
+Bits 7-5 contain the numerator of the fraction (0 to 7) to subtract
+from the base size to obtain the dictionary size.@*
+Example: 0xD3 = 2^19 - 6 * 2^15 = 512 KiB - 6 * 32 KiB = 320 KiB@*
+Valid values for dictionary size range from 4 KiB to 512 MiB.
+
+@item LZMA stream
+The LZMA stream, terminated by an 'End Of Stream' marker. Uses default values
+for encoder properties.
+@ifnothtml
+@xref{Stream format,,,lzip},
+@end ifnothtml
+@ifhtml
+See
+@uref{http://www.nongnu.org/lzip/manual/lzip_manual.html#Stream-format,,Stream format}
+@end ifhtml
+for a complete description.@*
+Lzip only uses the LZMA marker @samp{2} ('End Of Stream' marker). Lzlib
+also uses the LZMA marker @samp{3} ('Sync Flush' marker). @xref{sync_flush}.
+
+@item CRC32 (4 bytes)
+Cyclic Redundancy Check (CRC) of the original uncompressed data.
+
+@item Data size (8 bytes)
+Size of the original uncompressed data.
+
+@item Member size (8 bytes)
+Total size of the member, including header and trailer. This field acts
+as a distributed index, improves the checking of stream integrity, and
+facilitates the safe recovery of undamaged members from multimember files.
+Lzip limits the member size to @w{2 PiB} to prevent the data size field from
+overflowing.
+
+@end table
+
+
+@node Examples
+@chapter A small tutorial with examples
+@cindex examples
+
+This chapter provides real code examples for the most common uses of the
+library. See these examples in context in the files @file{bbexample.c} and
+@file{ffexample.c} from the source distribution of lzlib.
+
+Note that the interface of lzlib is symmetrical. That is, the code for
+normal compression and decompression is identical except because one calls
+LZ_compress* functions while the other calls LZ_decompress* functions.
+
+@menu
+* Buffer compression::    Buffer-to-buffer single-member compression
+* Buffer decompression::  Buffer-to-buffer decompression
+* File compression::      File-to-file single-member compression
+* File decompression::    File-to-file decompression
+* File compression mm::   File-to-file multimember compression
+* Skipping data errors::  Decompression with automatic resynchronization
+@end menu
+
+
+@node Buffer compression
+@section Buffer compression
+@cindex buffer compression
+
+Buffer-to-buffer single-member compression
+@w{(@var{member_size} > total output)}.
+
+@verbatim
+/* Compress 'insize' bytes from 'inbuf' to 'outbuf'.
+   Return the size of the compressed data in '*outlenp'.
+   In case of error, or if 'outsize' is too small, return false and do not
+   modify '*outlenp'.
+*/
+bool bbcompress( const uint8_t * const inbuf, const int insize,
+                 const int dictionary_size, const int match_len_limit,
+                 uint8_t * const outbuf, const int outsize,
+                 int * const outlenp )
+  {
+  int inpos = 0, outpos = 0;
+  bool error = false;
+  LZ_Encoder * const encoder =
+    LZ_compress_open( dictionary_size, match_len_limit, INT64_MAX );
+  if( !encoder || LZ_compress_errno( encoder ) != LZ_ok )
+    { LZ_compress_close( encoder ); return false; }
+
+  while( true )
+    {
+    int ret = LZ_compress_write( encoder, inbuf + inpos, insize - inpos );
+    if( ret < 0 ) { error = true; break; }
+    inpos += ret;
+    if( inpos >= insize ) LZ_compress_finish( encoder );
+    ret = LZ_compress_read( encoder, outbuf + outpos, outsize - outpos );
+    if( ret < 0 ) { error = true; break; }
+    outpos += ret;
+    if( LZ_compress_finished( encoder ) == 1 ) break;
+    if( outpos >= outsize ) { error = true; break; }
+    }
+
+  if( LZ_compress_close( encoder ) < 0 ) error = true;
+  if( error ) return false;
+  *outlenp = outpos;
+  return true;
+  }
+@end verbatim
+
+
+@node Buffer decompression
+@section Buffer decompression
+@cindex buffer decompression
+
+Buffer-to-buffer decompression.
+
+@verbatim
+/* Decompress 'insize' bytes from 'inbuf' to 'outbuf'.
+   Return the size of the decompressed data in '*outlenp'.
+   In case of error, or if 'outsize' is too small, return false and do not
+   modify '*outlenp'.
+*/
+bool bbdecompress( const uint8_t * const inbuf, const int insize,
+                   uint8_t * const outbuf, const int outsize,
+                   int * const outlenp )
+  {
+  int inpos = 0, outpos = 0;
+  bool error = false;
+  LZ_Decoder * const decoder = LZ_decompress_open();
+  if( !decoder || LZ_decompress_errno( decoder ) != LZ_ok )
+    { LZ_decompress_close( decoder ); return false; }
+
+  while( true )
+    {
+    int ret = LZ_decompress_write( decoder, inbuf + inpos, insize - inpos );
+    if( ret < 0 ) { error = true; break; }
+    inpos += ret;
+    if( inpos >= insize ) LZ_decompress_finish( decoder );
+    ret = LZ_decompress_read( decoder, outbuf + outpos, outsize - outpos );
+    if( ret < 0 ) { error = true; break; }
+    outpos += ret;
+    if( LZ_decompress_finished( decoder ) == 1 ) break;
+    if( outpos >= outsize ) { error = true; break; }
+    }
+
+  if( LZ_decompress_close( decoder ) < 0 ) error = true;
+  if( error ) return false;
+  *outlenp = outpos;
+  return true;
+  }
+@end verbatim
+
+
+@node File compression
+@section File compression
+@cindex file compression
+
+File-to-file compression using LZ_compress_write_size.
+
+@verbatim
+int ffcompress( LZ_Encoder * const encoder,
+                FILE * const infile, FILE * const outfile )
+  {
+  enum { buffer_size = 16384 };
+  uint8_t buffer[buffer_size];
+  while( true )
+    {
+    int len, ret;
+    int size = min( buffer_size, LZ_compress_write_size( encoder ) );
+    if( size > 0 )
+      {
+      len = fread( buffer, 1, size, infile );
+      ret = LZ_compress_write( encoder, buffer, len );
+      if( ret < 0 || ferror( infile ) ) break;
+      if( feof( infile ) ) LZ_compress_finish( encoder );
+      }
+    ret = LZ_compress_read( encoder, buffer, buffer_size );
+    if( ret < 0 ) break;
+    len = fwrite( buffer, 1, ret, outfile );
+    if( len < ret ) break;
+    if( LZ_compress_finished( encoder ) == 1 ) return 0;
+    }
+  return 1;
+  }
+@end verbatim
+
+
+@node File decompression
+@section File decompression
+@cindex file decompression
+
+File-to-file decompression using LZ_decompress_write_size.
+
+@verbatim
+int ffdecompress( LZ_Decoder * const decoder,
+                  FILE * const infile, FILE * const outfile )
+  {
+  enum { buffer_size = 16384 };
+  uint8_t buffer[buffer_size];
+  while( true )
+    {
+    int len, ret;
+    int size = min( buffer_size, LZ_decompress_write_size( decoder ) );
+    if( size > 0 )
+      {
+      len = fread( buffer, 1, size, infile );
+      ret = LZ_decompress_write( decoder, buffer, len );
+      if( ret < 0 || ferror( infile ) ) break;
+      if( feof( infile ) ) LZ_decompress_finish( decoder );
+      }
+    ret = LZ_decompress_read( decoder, buffer, buffer_size );
+    if( ret < 0 ) break;
+    len = fwrite( buffer, 1, ret, outfile );
+    if( len < ret ) break;
+    if( LZ_decompress_finished( decoder ) == 1 ) return 0;
+    }
+  return 1;
+  }
+@end verbatim
+
+
+@node File compression mm
+@section File-to-file multimember compression
+@cindex multimember compression
+
+Example 1: Multimember compression with members of fixed size
+@w{(@var{member_size} < total output)}.
+
+@verbatim
+int ffmmcompress( FILE * const infile, FILE * const outfile )
+  {
+  enum { buffer_size = 16384, member_size = 4096 };
+  uint8_t buffer[buffer_size];
+  bool done = false;
+  LZ_Encoder * const encoder = LZ_compress_open( 65535, 16, member_size );
+  if( !encoder || LZ_compress_errno( encoder ) != LZ_ok  )
+    { fputs( "ffexample: Not enough memory.\n", stderr );
+      LZ_compress_close( encoder ); return 1; }
+  while( true )
+    {
+    int len, ret;
+    int size = min( buffer_size, LZ_compress_write_size( encoder ) );
+    if( size > 0 )
+      {
+      len = fread( buffer, 1, size, infile );
+      ret = LZ_compress_write( encoder, buffer, len );
+      if( ret < 0 || ferror( infile ) ) break;
+      if( feof( infile ) ) LZ_compress_finish( encoder );
+      }
+    ret = LZ_compress_read( encoder, buffer, buffer_size );
+    if( ret < 0 ) break;
+    len = fwrite( buffer, 1, ret, outfile );
+    if( len < ret ) break;
+    if( LZ_compress_member_finished( encoder ) == 1 )
+      {
+      if( LZ_compress_finished( encoder ) == 1 ) { done = true; break; }
+      if( LZ_compress_restart_member( encoder, member_size ) < 0 ) break;
+      }
+    }
+  if( LZ_compress_close( encoder ) < 0 ) done = false;
+  return done;
+  }
+@end verbatim
+
+@sp 1
+@noindent
+Example 2: Multimember compression (user-restarted members).
+(Call LZ_compress_open with @var{member_size} > largest member).
+
+@verbatim
+/* Compress 'infile' to 'outfile' as a multimember stream with one member
+   for each line of text terminated by a newline character or by EOF.
+   Return 0 if success, 1 if error.
+*/
+int fflfcompress( LZ_Encoder * const encoder,
+                  FILE * const infile, FILE * const outfile )
+  {
+  enum { buffer_size = 16384 };
+  uint8_t buffer[buffer_size];
+  while( true )
+    {
+    int len, ret;
+    int size = min( buffer_size, LZ_compress_write_size( encoder ) );
+    if( size > 0 )
+      {
+      for( len = 0; len < size; )
+        {
+        int ch = getc( infile );
+        if( ch == EOF || ( buffer[len++] = ch ) == '\n' ) break;
+        }
+      /* avoid writing an empty member to outfile */
+      if( len == 0 && LZ_compress_data_position( encoder ) == 0 ) return 0;
+      ret = LZ_compress_write( encoder, buffer, len );
+      if( ret < 0 || ferror( infile ) ) break;
+      if( feof( infile ) || buffer[len-1] == '\n' )
+        LZ_compress_finish( encoder );
+      }
+    ret = LZ_compress_read( encoder, buffer, buffer_size );
+    if( ret < 0 ) break;
+    len = fwrite( buffer, 1, ret, outfile );
+    if( len < ret ) break;
+    if( LZ_compress_member_finished( encoder ) == 1 )
+      {
+      if( feof( infile ) && LZ_compress_finished( encoder ) == 1 ) return 0;
+      if( LZ_compress_restart_member( encoder, INT64_MAX ) < 0 ) break;
+      }
+    }
+  return 1;
+  }
+@end verbatim
+
+
+@node Skipping data errors
+@section Skipping data errors
+@cindex skipping data errors
+
+@verbatim
+/* Decompress 'infile' to 'outfile' with automatic resynchronization to
+   next member in case of data error, including the automatic removal of
+   leading garbage.
+*/
+int ffrsdecompress( LZ_Decoder * const decoder,
+                    FILE * const infile, FILE * const outfile )
+  {
+  enum { buffer_size = 16384 };
+  uint8_t buffer[buffer_size];
+  while( true )
+    {
+    int len, ret;
+    int size = min( buffer_size, LZ_decompress_write_size( decoder ) );
+    if( size > 0 )
+      {
+      len = fread( buffer, 1, size, infile );
+      ret = LZ_decompress_write( decoder, buffer, len );
+      if( ret < 0 || ferror( infile ) ) break;
+      if( feof( infile ) ) LZ_decompress_finish( decoder );
+      }
+    ret = LZ_decompress_read( decoder, buffer, buffer_size );
+    if( ret < 0 )
+      {
+      if( LZ_decompress_errno( decoder ) == LZ_header_error ||
+          LZ_decompress_errno( decoder ) == LZ_data_error )
+        { LZ_decompress_sync_to_member( decoder ); continue; }
+      break;
+      }
+    len = fwrite( buffer, 1, ret, outfile );
+    if( len < ret ) break;
+    if( LZ_decompress_finished( decoder ) == 1 ) return 0;
+    }
+  return 1;
+  }
+@end verbatim
+
+
+@node Problems
+@chapter Reporting bugs
+@cindex bugs
+@cindex getting help
+
+There are probably bugs in lzlib. There are certainly errors and
+omissions in this manual. If you report them, they will get fixed. If
+you don't, no one will ever know about them and they will remain unfixed
+for all eternity, if not longer.
+
+If you find a bug in lzlib, please send electronic mail to
+@email{lzip-bug@@nongnu.org}. Include the version number, which you can
+find by running @w{@samp{minilzip --version}} and
+@w{@samp{minilzip -v --check-lib}}.
+
+
+@node Concept index
+@unnumbered Concept index
+
+@printindex cp
+
+@bye

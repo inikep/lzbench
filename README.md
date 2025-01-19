@@ -99,7 +99,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [lzg 1.0.10](https://liblzg.bitsnbites.eu/)
  - [lzham 1.0](https://github.com/richgel999/lzham_codec)
  lzjb 2010
- - [lzlib 1.13](http://www.nongnu.org/lzip)
+ - [lzlib 1.15](http://www.nongnu.org/lzip)
  - [lzma v24.09](http://7-zip.org)
  - [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat) - WARNING: it contains bugs (decompression error; returns 0); it can throw SEGFAULT compiled with gcc 4.9+ -O3
  - [lzo 2.10](http://www.oberhumer.com/opensource/lzo)

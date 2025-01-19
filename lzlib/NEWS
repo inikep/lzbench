@@ -1,0 +1,21 @@
+Changes in version 1.15:
+
+Lzlib now reports a nonzero first LZMA byte as a LZ_data_error.
+
+minilzip now exits with error status 2 if any empty member is found in a
+multimember file.
+
+LZ_Errno, LZ_Encoder, and LZ_Decoder are now declared in lzlib.h as typedef.
+
+The targets 'lib' and 'bin' have been added to Makefile.in. 'lib' is the new
+default and builds just the library. 'bin' builds both the library and
+minilzip.
+
+minilzip is no longer built by default.
+
+'install-bin' installs minilzip and its man page again.
+
+To improve portability, the linker option '--soname' is now used conditionally.
+(Reported by Michael Sullivan).
+
+The use of the target 'bin' has been documented in INSTALL.
