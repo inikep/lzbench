@@ -77,7 +77,7 @@ Supported compressors
 no longer maintained.  For information about the security of the various compressors,
 see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page.
 
- - [blosclz 2.0.0](https://github.com/Blosc/c-blosc2)
+ - [blosclz 2.5.1 (from c-blosc-1.21.6)](https://github.com/Blosc/c-blosc)
  - [brieflz 1.3.0](https://github.com/jibsen/brieflz)
  - [brotli 1.0.9](https://github.com/google/brotli)
  - [bsc 3.3.4](https://github.com/IlyaGrebnov/libbsc)

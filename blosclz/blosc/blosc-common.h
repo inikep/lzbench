@@ -3,7 +3,7 @@
 
   Author: Francesc Alted <francesc@blosc.org>
 
-  See LICENSES/BLOSC.txt for details about copyright and rights to use.
+  See LICENSE.txt for details about copyright and rights to use.
 **********************************************************************/
 
 #ifndef SHUFFLE_COMMON_H
@@ -12,9 +12,12 @@
 #include "blosc-export.h"
 #include <string.h>
 
+#ifdef __GNUC__
+#define BLOSC_GCC_VERSION (__GNUC__ * 100 + __GNUC_MINOR__)
+#endif  // __GNUC__
+
 /* Import standard integer type definitions */
 #if defined(_WIN32) && !defined(__MINGW32__)
-
   /* stdint.h only available in VS2010 (VC++ 16.0) and newer */
   #if defined(_MSC_VER) && _MSC_VER < 1600
     #include "win32/stdint-windows.h"
@@ -53,7 +56,7 @@
 #elif defined(__I86__) /* Digital Mars */
 #undef BLOSC_STRICT_ALIGN
 /* Seems like unaligned access in ARM (at least ARMv6) is pretty
-   expensive, so we are going to always enforce strict aligment in ARM.
+   expensive, so we are going to always enforce strict alignment in ARM.
    If anybody suggest that newer ARMs are better, we can revisit this. */
 /* #elif defined(__ARM_FEATURE_UNALIGNED) */  /* ARM, GNU C */
 /* #undef BLOSC_STRICT_ALIGN */
