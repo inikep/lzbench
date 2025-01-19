@@ -109,7 +109,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [ppmd8 24.09](https://github.com/pps83/libppmd)
  - [quicklz 1.5.0](http://www.quicklz.com)
  - [shrinker 0.1](https://code.google.com/p/data-shrinker) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
- - [slz 1.2.0](http://www.libslz.org/) - only a compressor, uses zlib for decompression
+ - [slz 1.2.1](http://www.libslz.org/) - only a compressor, uses zlib for decompression
  - [snappy 1.2.1](https://github.com/google/snappy)
  - [tamp 1.3.1](https://github.com/BrianPugh/tamp)
  - [tornado 0.6a](http://freearc.org)
