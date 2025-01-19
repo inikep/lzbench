@@ -25,7 +25,7 @@
 #ifndef _SLZ_H
 #define _SLZ_H
 
-#include <stdint.h>
+#include <inttypes.h>
 
 /* We have two macros UNALIGNED_LE_OK and UNALIGNED_FASTER. The latter indicates
  * that using unaligned data is faster than a simple shift. On x86 32-bit at
@@ -153,8 +153,10 @@ static inline long slz_encode(struct slz_stream *strm, void *out,
  * It returns the number of bytes emitted. The trailer consists in flushing the
  * possibly pending bits from the queue (up to 24 bits), rounding to the next
  * byte, then 4 bytes for the CRC when doing zlib/gzip, then another 4 bytes
- * for the input length for gzip. That may abount to 4+4+4 = 12 bytes, that the
- * caller must ensure are available before calling the function.
+ * for the input length for gzip. That may amount to 4+4+4 = 12 bytes, that the
+ * caller must ensure are available before calling the function. Note that if
+ * the initial header was never sent, it will be sent first as well (up to 10
+ * extra bytes).
  */
 static inline int slz_finish(struct slz_stream *strm, void *buf)
 {

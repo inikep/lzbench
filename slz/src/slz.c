@@ -22,7 +22,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 #include "slz.h"
@@ -358,9 +358,9 @@ static void copy_lit_huff(struct slz_stream *strm, const unsigned char *buf, uin
 	}
 
 	pos = 0;
-	while (pos < len) {
+	do {
 		send_huff(strm, buf[pos++]);
-	}
+	} while (pos < len);
 }
 
 /* format:
@@ -374,7 +374,13 @@ static void copy_lit_huff(struct slz_stream *strm, const unsigned char *buf, uin
 static inline uint32_t slz_hash(uint32_t a)
 {
 #if defined(__ARM_FEATURE_CRC32)
+#  if defined(__ARM_ARCH_ISA_A64)
+	// 64 bit mode
 	__asm__ volatile("crc32w %w0,%w0,%w1" : "+r"(a) : "r"(0));
+#  else
+	// 32 bit mode (e.g. armv7 compiler building for armv8
+	__asm__ volatile("crc32w %0,%0,%1" : "+r"(a) : "r"(0));
+#  endif
 	return a >> (32 - HASH_BITS);
 #else
 	return ((a << 19) + (a << 6) - a) >> (32 - HASH_BITS);
@@ -417,7 +423,7 @@ static inline long memmatch(const unsigned char *a, const unsigned char *b, long
 
 #if defined(__x86_64__) || defined(__i386__) || defined(__i486__) || defined(__i586__) || defined(__i686__)
 	/* x86 has bsf. We know that xor is non-null here */
-	__asm__("bsf %1,%0\n" : "=r"(xor) : "0" (xor));
+	asm("bsf %1,%0\n" : "=r"(xor) : "0" (xor));
 	return len + xor / 8;
 #else
 	if (sizeof(long) > 4 && !(xor & 0xffffffff)) {
@@ -466,7 +472,7 @@ static inline long memmatch(const unsigned char *a, const unsigned char *b, long
  * be applied to 64-bit aligned data exclusively, which makes it slightly
  * faster than the regular memset() since no alignment check is performed.
  */
-void reset_refs(union ref *refs, long count)
+static void reset_refs(union ref *refs, long count)
 {
 	/* avoid a shift/mask by casting to void* */
 	union ref *end = (void *)refs + count;
@@ -536,7 +542,7 @@ long slz_rfc1951_encode(struct slz_stream *strm, unsigned char *out, const unsig
 		word = *(uint32_t *)&in[pos];
 #endif
 		h = slz_hash(word);
-		__asm__ volatile ("" ::); // prevent gcc from trying to be smart with the prefetch
+		asm volatile ("" ::); // prevent gcc from trying to be smart with the prefetch
 
 		if (sizeof(long) >= 8) {
 			ent = refs[h].by64;
@@ -550,7 +556,7 @@ long slz_rfc1951_encode(struct slz_stream *strm, unsigned char *out, const unsig
 			refs[h].by32.word = word;
 		}
 
-#if FIND_OPTIMAL_MATCH
+#ifdef FIND_OPTIMAL_MATCH
 		/* Experimental code to see what could be saved with an ideal
 		 * longest match lookup algorithm. This one is very slow but
 		 * scans the whole window. In short, here are the savings :
@@ -572,6 +578,8 @@ long slz_rfc1951_encode(struct slz_stream *strm, unsigned char *out, const unsig
 		int max_lookup = 2; // 0 = no limit
 
 		for (scan = pos - 1; scan < pos && (unsigned long)(pos - scan - 1) < 32768; scan--) {
+			int len;
+
 			if (*(uint32_t *)(in + scan) != word)
 				continue;
 
@@ -870,7 +878,13 @@ static inline uint32_t crc32_char(uint32_t crc, uint8_t x)
 {
 #if defined(__ARM_FEATURE_CRC32)
 	crc = ~crc;
+#  if defined(__ARM_ARCH_ISA_A64)
+	// 64 bit mode
 	__asm__ volatile("crc32b %w0,%w0,%w1" : "+r"(crc) : "r"(x));
+#  else
+	// 32 bit mode (e.g. armv7 compiler building for armv8
+	__asm__ volatile("crc32b %0,%0,%1" : "+r"(crc) : "r"(x));
+#  endif
 	crc = ~crc;
 #else
 	crc = crc32_fast[0][(crc ^ x) & 0xff] ^ (crc >> 8);
@@ -881,7 +895,13 @@ static inline uint32_t crc32_char(uint32_t crc, uint8_t x)
 static inline uint32_t crc32_uint32(uint32_t data)
 {
 #if defined(__ARM_FEATURE_CRC32)
+#  if defined(__ARM_ARCH_ISA_A64)
+	// 64 bit mode
 	__asm__ volatile("crc32w %w0,%w0,%w1" : "+r"(data) : "r"(~0UL));
+#  else
+	// 32 bit mode (e.g. armv7 compiler building for armv8
+	__asm__ volatile("crc32w %0,%0,%1" : "+r"(data) : "r"(~0UL));
+#  endif
 	data = ~data;
 #else
 	data = crc32_fast[3][(data >>  0) & 0xff] ^
@@ -913,10 +933,19 @@ uint32_t slz_crc32_by4(uint32_t crc, const unsigned char *buf, int len)
 #ifdef UNALIGNED_LE_OK
 #if defined(__ARM_FEATURE_CRC32)
 		crc = ~crc;
+#  if defined(__ARM_ARCH_ISA_A64)
+	// 64 bit mode
 		__asm__ volatile("crc32w %w0,%w0,%w1" : "+r"(crc) : "r"(*(uint32_t*)(buf)));
 		__asm__ volatile("crc32w %w0,%w0,%w1" : "+r"(crc) : "r"(*(uint32_t*)(buf + 4)));
 		__asm__ volatile("crc32w %w0,%w0,%w1" : "+r"(crc) : "r"(*(uint32_t*)(buf + 8)));
 		__asm__ volatile("crc32w %w0,%w0,%w1" : "+r"(crc) : "r"(*(uint32_t*)(buf + 12)));
+#  else
+	// 32 bit mode (e.g. armv7 compiler building for armv8
+		__asm__ volatile("crc32w %0,%0,%1" : "+r"(crc) : "r"(*(uint32_t*)(buf)));
+		__asm__ volatile("crc32w %0,%0,%1" : "+r"(crc) : "r"(*(uint32_t*)(buf + 4)));
+		__asm__ volatile("crc32w %0,%0,%1" : "+r"(crc) : "r"(*(uint32_t*)(buf + 8)));
+		__asm__ volatile("crc32w %0,%0,%1" : "+r"(crc) : "r"(*(uint32_t*)(buf + 12)));
+#  endif
 		crc = ~crc;
 #else
 		crc ^= *(uint32_t *)buf;
@@ -969,7 +998,7 @@ uint32_t slz_crc32_by4(uint32_t crc, const unsigned char *buf, int len)
 	}
 
 	while (buf < end)
-		crc = crc32_fast[0][(crc ^ *buf++) & 0xff] ^ (crc >> 8);
+		crc = crc32_char(crc, *buf++);
 	return crc;
 }
 
@@ -1029,7 +1058,7 @@ int slz_rfc1952_init(struct slz_stream *strm, int level)
  * returns the number of bytes emitted. The trailer consists in flushing the
  * possibly pending bits from the queue (up to 24 bits), rounding to the next
  * byte, then 4 bytes for the CRC and another 4 bytes for the input length.
- * That may abount to 4+4+4 = 12 bytes, that the caller must ensure are
+ * That may amount to 4+4+4 = 12 bytes, that the caller must ensure are
  * available before calling the function. Note that if the initial header was
  * never sent, it will be sent first as well (10 extra bytes).
  */
@@ -1283,7 +1312,7 @@ int slz_rfc1950_init(struct slz_stream *strm, int level)
  * buffer <buf>. When it's done, the stream state is updated to SLZ_ST_END. It
  * returns the number of bytes emitted. The trailer consists in flushing the
  * possibly pending bits from the queue (up to 24 bits), rounding to the next
- * byte, then 4 bytes for the CRC. That may abount to 4+4 = 8 bytes, that the
+ * byte, then 4 bytes for the CRC. That may amount to 4+4 = 8 bytes, that the
  * caller must ensure are available before calling the function. Note that if
  * the initial header was never sent, it will be sent first as well (2 extra
  * bytes).
@@ -1319,6 +1348,8 @@ void slz_prepare_dist_table()
 __attribute__((constructor))
 static void __slz_initialize(void)
 {
+#if !defined(__ARM_FEATURE_CRC32)
 	__slz_make_crc_table();
+#endif
 	__slz_prepare_dist_table();
 }
