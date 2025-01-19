@@ -52,10 +52,6 @@ else
 		DONT_BUILD_CSC ?= 1
 	endif
 
-	ifneq ($(detected_OS), Darwin)
-		LDFLAGS += -lrt
-	endif
-
 	LDFLAGS	+= -pthread
 
 	ifeq ($(BUILD_STATIC),1)
@@ -64,7 +60,7 @@ else
 endif
 
 
-DEFINES     += $(addprefix -I$(SOURCE_PATH),. brotli/include libcsc libdeflate xpack/common xz xz/api xz/check xz/common xz/lz xz/lzma xz/rangecoder zstd/lib zstd/lib/common)
+DEFINES     += $(addprefix -I$(SOURCE_PATH),. brotli/include libcsc libdeflate xpack/common zstd/lib zstd/lib/common)
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 
 # don't use "-ffast-math" for clang < 10.0
@@ -216,9 +212,10 @@ BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depack.o brieflz/depacks.o
 
 LIBLZG_FILES = liblzg/decode.o liblzg/encode.o liblzg/checksum.o
 
-XZ_FILES = xz/lzma/lzma_decoder.o xz/lzma/lzma_encoder.o xz/lzma/lzma_encoder_optimum_fast.o xz/lzma/lzma_encoder_optimum_normal.o xz/lzma/fastpos_table.o
-XZ_FILES += xz/lzma/lzma_encoder_presets.o xz/lz/lz_decoder.o xz/lz/lz_encoder.o xz/lz/lz_encoder_mf.o xz/common/common.o xz/rangecoder/price_table.o
-XZ_FILES += xz/common/alone_encoder.o xz/common/alone_decoder.o xz/check/crc32_table.o xz/alone.o
+XZ_FILES = xz/src/liblzma/lzma/lzma_decoder.o xz/src/liblzma/lzma/lzma_encoder.o xz/src/liblzma/lzma/lzma_encoder_optimum_fast.o xz/src/liblzma/lzma/lzma_encoder_optimum_normal.o xz/src/liblzma/lzma/fastpos_table.o
+XZ_FILES += xz/src/liblzma/lzma/lzma_encoder_presets.o xz/src/liblzma/lz/lz_decoder.o xz/src/liblzma/lz/lz_encoder.o xz/src/liblzma/lz/lz_encoder_mf.o xz/src/liblzma/common/common.o xz/src/liblzma/rangecoder/price_table.o
+XZ_FILES += xz/src/liblzma/common/alone_encoder.o xz/src/liblzma/common/alone_decoder.o xz/src/liblzma/check/crc32_table.o _lzbench/xz_codec.o
+XZ_FLAGS = $(addprefix -I$(SOURCE_PATH),. xz/src xz/src/common xz/src/liblzma/api xz/src/liblzma/common xz/src/liblzma/lzma xz/src/liblzma/lz xz/src/liblzma/check xz/src/liblzma/rangecoder)
 
 GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o
 
@@ -452,7 +449,7 @@ lzbench: $(BSC_FILES) $(BZIP2_FILES) $(KANZI_FILES) $(DENSITY_FILES) $(FASTLZMA2
 
 $(XZ_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DHAVE_CONFIG_H $< -c -o $@
+	$(CC) $(CFLAGS) $(XZ_FLAGS) -DHAVE_CONFIG_H $< -c -o $@
 
 $(FASTLZMA2_OBJ): %.o : %.c
 	@$(MKDIR) $(dir $@)
