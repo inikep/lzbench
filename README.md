@@ -116,7 +116,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
  - [wflz 2015-09-16](https://github.com/ShaneWF/wflz) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
  - [xpack 2016-06-02](https://github.com/ebiggers/xpack)
- - [xz 5.2.4](https://tukaani.org/xz/)
+ - [xz 5.6.3](https://github.com/tukaani-project/xz)
  - [yalz77 2015-09-19](https://github.com/ivan-tkatchev/yalz77) - WARNING: A SEGFAULT was encountered with gcc 13.3.0 on the 32-bit ARM (arm-linux-gnueabi) target
  - [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) - WARNING: A SEGFAULT was encountered with gcc 13.3.0 on the 32-bit ARM (arm-linux-gnueabi)
  - [zlib 1.3.1](http://zlib.net)

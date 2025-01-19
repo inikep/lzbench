@@ -467,8 +467,11 @@ int64_t lzbench_ppmd_decompress(char* inbuf, size_t insize, char* outbuf, size_t
 
 
 #ifndef BENCH_REMOVE_XZ
+extern "C"
+{
 	int64_t lzbench_xz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
 	int64_t lzbench_xz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+}
 #else
 	#define lzbench_xz_compress NULL
 	#define lzbench_xz_decompress NULL
