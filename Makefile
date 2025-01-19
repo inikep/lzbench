@@ -216,7 +216,7 @@ XZ_FLAGS = $(addprefix -I$(SOURCE_PATH),. xz/src xz/src/common xz/src/liblzma/ap
 GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o
 
 MISC_FILES = crush/crush.o shrinker/shrinker.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
-MISC_FILES += lzlib/lzlib.o blosclz/blosclz.o blosclz/fastcopy.o slz/slz.o
+MISC_FILES += lzlib/lzlib.o blosclz/blosc/blosclz.o blosclz/blosc/fastcopy.o slz/slz.o
 
 LZBENCH_FILES = _lzbench/lzbench.o _lzbench/compressors.o _lzbench/csc_codec.o
 
