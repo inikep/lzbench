@@ -1846,7 +1846,7 @@ int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 #if !defined(BENCH_REMOVE_SLZ) && !defined(BENCH_REMOVE_ZLIB)
 extern "C"
 {
-	#include "slz/slz.h"
+	#include "slz/src/slz.h"
 }
 
 int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t param2, char*)
