@@ -1,5 +1,5 @@
 /* Lzlib - Compression library for the lzip format
-   Copyright (C) 2009-2022 Antonio Diaz Diaz.
+   Copyright (C) 2009-2025 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided
@@ -19,17 +19,17 @@
 
 enum { rd_min_available_bytes = 10 };
 
-struct Range_decoder
+typedef struct Range_decoder
   {
-  struct Circular_buffer cb;		/* input buffer */
+  Circular_buffer cb;			/* input buffer */
   unsigned long long member_position;
   uint32_t code;
   uint32_t range;
   bool at_stream_end;
   bool reload_pending;
-  };
+  } Range_decoder;
 
-static inline bool Rd_init( struct Range_decoder * const rdec )
+static inline bool Rd_init( Range_decoder * const rdec )
   {
   if( !Cb_init( &rdec->cb, 65536 + rd_min_available_bytes ) ) return false;
   rdec->member_position = 0;
@@ -40,25 +40,25 @@ static inline bool Rd_init( struct Range_decoder * const rdec )
   return true;
   }
 
-static inline void Rd_free( struct Range_decoder * const rdec )
+static inline void Rd_free( Range_decoder * const rdec )
   { Cb_free( &rdec->cb ); }
 
-static inline bool Rd_finished( const struct Range_decoder * const rdec )
+static inline bool Rd_finished( const Range_decoder * const rdec )
   { return rdec->at_stream_end && Cb_empty( &rdec->cb ); }
 
-static inline void Rd_finish( struct Range_decoder * const rdec )
+static inline void Rd_finish( Range_decoder * const rdec )
   { rdec->at_stream_end = true; }
 
-static inline bool Rd_enough_available_bytes( const struct Range_decoder * const rdec )
-  { return ( Cb_used_bytes( &rdec->cb ) >= rd_min_available_bytes ); }
+static inline bool Rd_enough_available_bytes( const Range_decoder * const rdec )
+  { return Cb_used_bytes( &rdec->cb ) >= rd_min_available_bytes; }
 
-static inline unsigned Rd_available_bytes( const struct Range_decoder * const rdec )
+static inline unsigned Rd_available_bytes( const Range_decoder * const rdec )
   { return Cb_used_bytes( &rdec->cb ); }
 
-static inline unsigned Rd_free_bytes( const struct Range_decoder * const rdec )
+static inline unsigned Rd_free_bytes( const Range_decoder * const rdec )
   { return rdec->at_stream_end ? 0 : Cb_free_bytes( &rdec->cb ); }
 
-static inline unsigned long long Rd_purge( struct Range_decoder * const rdec )
+static inline unsigned long long Rd_purge( Range_decoder * const rdec )
   {
   const unsigned long long size =
     rdec->member_position + Cb_used_bytes( &rdec->cb );
@@ -67,7 +67,7 @@ static inline unsigned long long Rd_purge( struct Range_decoder * const rdec )
   return size;
   }
 
-static inline void Rd_reset( struct Range_decoder * const rdec )
+static inline void Rd_reset( Range_decoder * const rdec )
   { Cb_reset( &rdec->cb );
     rdec->member_position = 0; rdec->at_stream_end = false; }
 
@@ -75,7 +75,7 @@ static inline void Rd_reset( struct Range_decoder * const rdec )
 /* Seek for a member header and update 'get'. Set '*skippedp' to the number
    of bytes skipped. Return true if a valid header is found.
 */
-static bool Rd_find_header( struct Range_decoder * const rdec,
+static bool Rd_find_header( Range_decoder * const rdec,
                             unsigned * const skippedp )
   {
   *skippedp = 0;
@@ -92,7 +92,7 @@ static bool Rd_find_header( struct Range_decoder * const rdec,
         header[i] = rdec->cb.buffer[get];
         if( ++get >= rdec->cb.buffer_size ) get = 0;
         }
-      if( Lh_verify( header ) ) return true;
+      if( Lh_check( header ) ) return true;
       }
     if( ++rdec->cb.get >= rdec->cb.buffer_size ) rdec->cb.get = 0;
     ++*skippedp;
@@ -101,14 +101,14 @@ static bool Rd_find_header( struct Range_decoder * const rdec,
   }
 
 
-static inline int Rd_write_data( struct Range_decoder * const rdec,
+static inline int Rd_write_data( Range_decoder * const rdec,
                                  const uint8_t * const inbuf, const int size )
   {
   if( rdec->at_stream_end || size <= 0 ) return 0;
   return Cb_write_data( &rdec->cb, inbuf, size );
   }
 
-static inline uint8_t Rd_get_byte( struct Range_decoder * const rdec )
+static inline uint8_t Rd_get_byte( Range_decoder * const rdec )
   {
   /* 0xFF avoids decoder error if member is truncated at EOS marker */
   if( Rd_finished( rdec ) ) return 0xFF;
@@ -116,7 +116,7 @@ static inline uint8_t Rd_get_byte( struct Range_decoder * const rdec )
   return Cb_get_byte( &rdec->cb );
   }
 
-static inline int Rd_read_data( struct Range_decoder * const rdec,
+static inline int Rd_read_data( Range_decoder * const rdec,
                                 uint8_t * const outbuf, const int size )
   {
   const int sz = Cb_read_data( &rdec->cb, outbuf, size );
@@ -124,7 +124,7 @@ static inline int Rd_read_data( struct Range_decoder * const rdec,
   return sz;
   }
 
-static inline bool Rd_unread_data( struct Range_decoder * const rdec,
+static inline bool Rd_unread_data( Range_decoder * const rdec,
                                    const unsigned size )
   {
   if( size > rdec->member_position || !Cb_unread_data( &rdec->cb, size ) )
@@ -133,27 +133,29 @@ static inline bool Rd_unread_data( struct Range_decoder * const rdec,
   return true;
   }
 
-static bool Rd_try_reload( struct Range_decoder * const rdec )
+static int Rd_try_reload( Range_decoder * const rdec )
   {
   if( rdec->reload_pending && Rd_available_bytes( rdec ) >= 5 )
     {
-    int i;
     rdec->reload_pending = false;
     rdec->code = 0;
-    for( i = 0; i < 5; ++i ) rdec->code = (rdec->code << 8) | Rd_get_byte( rdec );
     rdec->range = 0xFFFFFFFFU;
-    rdec->code &= rdec->range;	/* make sure that first byte is discarded */
+    /* check first byte of the LZMA stream without reading it */
+    if( rdec->cb.buffer[rdec->cb.get] != 0 ) return 2;
+    Rd_get_byte( rdec );	/* discard first byte of the LZMA stream */
+    int i; for( i = 0; i < 4; ++i )
+      rdec->code = (rdec->code << 8) | Rd_get_byte( rdec );
     }
   return !rdec->reload_pending;
   }
 
-static inline void Rd_normalize( struct Range_decoder * const rdec )
+static inline void Rd_normalize( Range_decoder * const rdec )
   {
   if( rdec->range <= 0x00FFFFFFU )
     { rdec->range <<= 8; rdec->code = (rdec->code << 8) | Rd_get_byte( rdec ); }
   }
 
-static inline unsigned Rd_decode( struct Range_decoder * const rdec,
+static inline unsigned Rd_decode( Range_decoder * const rdec,
                                   const int num_bits )
   {
   unsigned symbol = 0;
@@ -164,14 +166,14 @@ static inline unsigned Rd_decode( struct Range_decoder * const rdec,
     rdec->range >>= 1;
 /*    symbol <<= 1; */
 /*    if( rdec->code >= rdec->range ) { rdec->code -= rdec->range; symbol |= 1; } */
-    const bool bit = ( rdec->code >= rdec->range );
+    const bool bit = rdec->code >= rdec->range;
     symbol <<= 1; symbol += bit;
     rdec->code -= rdec->range & ( 0U - bit );
     }
   return symbol;
   }
 
-static inline unsigned Rd_decode_bit( struct Range_decoder * const rdec,
+static inline unsigned Rd_decode_bit( Range_decoder * const rdec,
                                       Bit_model * const probability )
   {
   Rd_normalize( rdec );
@@ -191,7 +193,7 @@ static inline unsigned Rd_decode_bit( struct Range_decoder * const rdec,
     }
   }
 
-static inline void Rd_decode_symbol_bit( struct Range_decoder * const rdec,
+static inline void Rd_decode_symbol_bit( Range_decoder * const rdec,
                          Bit_model * const probability, unsigned * symbol )
   {
   Rd_normalize( rdec );
@@ -211,7 +213,7 @@ static inline void Rd_decode_symbol_bit( struct Range_decoder * const rdec,
     }
   }
 
-static inline void Rd_decode_symbol_bit_reversed( struct Range_decoder * const rdec,
+static inline void Rd_decode_symbol_bit_reversed( Range_decoder * const rdec,
                          Bit_model * const probability, unsigned * model,
                          unsigned * symbol, const int i )
   {
@@ -233,7 +235,7 @@ static inline void Rd_decode_symbol_bit_reversed( struct Range_decoder * const r
     }
   }
 
-static inline unsigned Rd_decode_tree6( struct Range_decoder * const rdec,
+static inline unsigned Rd_decode_tree6( Range_decoder * const rdec,
                                         Bit_model bm[] )
   {
   unsigned symbol = 1;
@@ -246,7 +248,7 @@ static inline unsigned Rd_decode_tree6( struct Range_decoder * const rdec,
   return symbol & 0x3F;
   }
 
-static inline unsigned Rd_decode_tree8( struct Range_decoder * const rdec,
+static inline unsigned Rd_decode_tree8( Range_decoder * const rdec,
                                         Bit_model bm[] )
   {
   unsigned symbol = 1;
@@ -262,7 +264,7 @@ static inline unsigned Rd_decode_tree8( struct Range_decoder * const rdec,
   }
 
 static inline unsigned
-Rd_decode_tree_reversed( struct Range_decoder * const rdec,
+Rd_decode_tree_reversed( Range_decoder * const rdec,
                          Bit_model bm[], const int num_bits )
   {
   unsigned model = 1;
@@ -274,7 +276,7 @@ Rd_decode_tree_reversed( struct Range_decoder * const rdec,
   }
 
 static inline unsigned
-Rd_decode_tree_reversed4( struct Range_decoder * const rdec, Bit_model bm[] )
+Rd_decode_tree_reversed4( Range_decoder * const rdec, Bit_model bm[] )
   {
   unsigned model = 1;
   unsigned symbol = 0;
@@ -285,7 +287,7 @@ Rd_decode_tree_reversed4( struct Range_decoder * const rdec, Bit_model bm[] )
   return symbol;
   }
 
-static inline unsigned Rd_decode_matched( struct Range_decoder * const rdec,
+static inline unsigned Rd_decode_matched( Range_decoder * const rdec,
                                           Bit_model bm[], unsigned match_byte )
   {
   unsigned symbol = 1;
@@ -300,8 +302,8 @@ static inline unsigned Rd_decode_matched( struct Range_decoder * const rdec,
     }
   }
 
-static inline unsigned Rd_decode_len( struct Range_decoder * const rdec,
-                                      struct Len_model * const lm,
+static inline unsigned Rd_decode_len( Range_decoder * const rdec,
+                                      Len_model * const lm,
                                       const int pos_state )
   {
   Bit_model * bm;
@@ -327,15 +329,15 @@ len3:
 
 enum { lzd_min_free_bytes = max_match_len };
 
-struct LZ_decoder
+typedef struct LZ_decoder
   {
-  struct Circular_buffer cb;
+  Circular_buffer cb;
   unsigned long long partial_data_pos;
-  struct Range_decoder * rdec;
+  Range_decoder * rdec;
   unsigned dictionary_size;
   uint32_t crc;
+  bool check_trailer_pending;
   bool member_finished;
-  bool verify_trailer_pending;
   bool pos_wrapped;
   unsigned rep0;		/* rep[0-3] latest four distances */
   unsigned rep1;		/* used for efficient coding of */
@@ -354,25 +356,25 @@ struct LZ_decoder
   Bit_model bm_dis[modeled_distances-end_dis_model+1];
   Bit_model bm_align[dis_align_size];
 
-  struct Len_model match_len_model;
-  struct Len_model rep_len_model;
-  };
+  Len_model match_len_model;
+  Len_model rep_len_model;
+  } LZ_decoder;
 
-static inline bool LZd_enough_free_bytes( const struct LZ_decoder * const d )
+static inline bool LZd_enough_free_bytes( const LZ_decoder * const d )
   { return Cb_free_bytes( &d->cb ) >= lzd_min_free_bytes; }
 
-static inline uint8_t LZd_peek_prev( const struct LZ_decoder * const d )
+static inline uint8_t LZd_peek_prev( const LZ_decoder * const d )
   { return d->cb.buffer[((d->cb.put > 0) ? d->cb.put : d->cb.buffer_size)-1]; }
 
-static inline uint8_t LZd_peek( const struct LZ_decoder * const d,
+static inline uint8_t LZd_peek( const LZ_decoder * const d,
                                 const unsigned distance )
   {
-  const unsigned i = ( ( d->cb.put > distance ) ? 0 : d->cb.buffer_size ) +
+  const unsigned i = ( (d->cb.put > distance) ? 0 : d->cb.buffer_size ) +
                      d->cb.put - distance - 1;
   return d->cb.buffer[i];
   }
 
-static inline void LZd_put_byte( struct LZ_decoder * const d, const uint8_t b )
+static inline void LZd_put_byte( LZ_decoder * const d, const uint8_t b )
   {
   CRC32_update_byte( &d->crc, b );
   d->cb.buffer[d->cb.put] = b;
@@ -380,21 +382,21 @@ static inline void LZd_put_byte( struct LZ_decoder * const d, const uint8_t b )
     { d->partial_data_pos += d->cb.put; d->cb.put = 0; d->pos_wrapped = true; }
   }
 
-static inline void LZd_copy_block( struct LZ_decoder * const d,
+static inline void LZd_copy_block( LZ_decoder * const d,
                                    const unsigned distance, unsigned len )
   {
   unsigned lpos = d->cb.put, i = lpos - distance - 1;
   bool fast, fast2;
   if( lpos > distance )
     {
-    fast = ( len < d->cb.buffer_size - lpos );
-    fast2 = ( fast && len <= lpos - i );
+    fast = len < d->cb.buffer_size - lpos;
+    fast2 = fast && len <= lpos - i;
     }
   else
     {
     i += d->cb.buffer_size;
-    fast = ( len < d->cb.buffer_size - i );	/* (i == pos) may happen */
-    fast2 = ( fast && len <= i - lpos );
+    fast = len < d->cb.buffer_size - i;		/* (i == pos) may happen */
+    fast2 = fast && len <= i - lpos;
     }
   if( fast )					/* no wrap */
     {
@@ -413,8 +415,7 @@ static inline void LZd_copy_block( struct LZ_decoder * const d,
     }
   }
 
-static inline bool LZd_init( struct LZ_decoder * const d,
-                             struct Range_decoder * const rde,
+static inline bool LZd_init( LZ_decoder * const d, Range_decoder * const rde,
                              const unsigned dict_size )
   {
   if( !Cb_init( &d->cb, max( 65536, dict_size ) + lzd_min_free_bytes ) )
@@ -423,8 +424,8 @@ static inline bool LZd_init( struct LZ_decoder * const d,
   d->rdec = rde;
   d->dictionary_size = dict_size;
   d->crc = 0xFFFFFFFFU;
+  d->check_trailer_pending = false;
   d->member_finished = false;
-  d->verify_trailer_pending = false;
   d->pos_wrapped = false;
   /* prev_byte of first byte; also for LZd_peek( 0 ) on corrupt file */
   d->cb.buffer[d->cb.buffer_size-1] = 0;
@@ -449,15 +450,14 @@ static inline bool LZd_init( struct LZ_decoder * const d,
   return true;
   }
 
-static inline void LZd_free( struct LZ_decoder * const d )
-  { Cb_free( &d->cb ); }
+static inline void LZd_free( LZ_decoder * const d ) { Cb_free( &d->cb ); }
 
-static inline bool LZd_member_finished( const struct LZ_decoder * const d )
-  { return ( d->member_finished && Cb_empty( &d->cb ) ); }
+static inline bool LZd_member_finished( const LZ_decoder * const d )
+  { return d->member_finished && Cb_empty( &d->cb ); }
 
-static inline unsigned LZd_crc( const struct LZ_decoder * const d )
+static inline unsigned LZd_crc( const LZ_decoder * const d )
   { return d->crc ^ 0xFFFFFFFFU; }
 
 static inline unsigned long long
-LZd_data_position( const struct LZ_decoder * const d )
+LZd_data_position( const LZ_decoder * const d )
   { return d->partial_data_pos + d->cb.put; }

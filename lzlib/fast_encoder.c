@@ -1,5 +1,5 @@
 /* Lzlib - Compression library for the lzip format
-   Copyright (C) 2009-2022 Antonio Diaz Diaz.
+   Copyright (C) 2009-2025 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided
@@ -17,7 +17,7 @@
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-static int FLZe_longest_match_len( struct FLZ_encoder * const fe, int * const distance )
+static int FLZe_longest_match_len( FLZ_encoder * const fe, int * const distance )
   {
   enum { len_limit = 16 };
   int32_t * ptr0 = fe->eb.mb.pos_array + fe->eb.mb.cyclic_pos;
@@ -58,7 +58,7 @@ static int FLZe_longest_match_len( struct FLZ_encoder * const fe, int * const di
   }
 
 
-static bool FLZe_encode_member( struct FLZ_encoder * const fe )
+static bool FLZe_encode_member( FLZ_encoder * const fe )
   {
   int rep = 0, i;
   State * const state = &fe->eb.state;
@@ -142,22 +142,22 @@ static bool FLZe_encode_member( struct FLZ_encoder * const fe )
 
     if( match_byte == cur_byte )
       {
-      const int short_rep_price = price1( fe->eb.bm_match[*state][pos_state] ) +
-                                  price1( fe->eb.bm_rep[*state] ) +
-                                  price0( fe->eb.bm_rep0[*state] ) +
-                                  price0( fe->eb.bm_len[*state][pos_state] );
+      const int shortrep_price = price1( fe->eb.bm_match[*state][pos_state] ) +
+                                 price1( fe->eb.bm_rep[*state] ) +
+                                 price0( fe->eb.bm_rep0[*state] ) +
+                                 price0( fe->eb.bm_len[*state][pos_state] );
       int price = price0( fe->eb.bm_match[*state][pos_state] );
       if( St_is_char( *state ) )
         price += LZeb_price_literal( &fe->eb, prev_byte, cur_byte );
       else
         price += LZeb_price_matched( &fe->eb, prev_byte, cur_byte, match_byte );
-      if( short_rep_price < price )
+      if( shortrep_price < price )
         {
         Re_encode_bit( &fe->eb.renc, &fe->eb.bm_match[*state][pos_state], 1 );
         Re_encode_bit( &fe->eb.renc, &fe->eb.bm_rep[*state], 1 );
         Re_encode_bit( &fe->eb.renc, &fe->eb.bm_rep0[*state], 0 );
         Re_encode_bit( &fe->eb.renc, &fe->eb.bm_len[*state][pos_state], 0 );
-        *state = St_set_short_rep( *state );
+        *state = St_set_shortrep( *state );
         continue;
         }
       }

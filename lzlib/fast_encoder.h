@@ -1,5 +1,5 @@
 /* Lzlib - Compression library for the lzip format
-   Copyright (C) 2009-2022 Antonio Diaz Diaz.
+   Copyright (C) 2009-2025 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided
@@ -17,13 +17,13 @@
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-struct FLZ_encoder
+typedef struct FLZ_encoder
   {
-  struct LZ_encoder_base eb;
+  LZ_encoder_base eb;
   unsigned key4;			/* key made from latest 4 bytes */
-  };
+  } FLZ_encoder;
 
-static inline void FLZe_reset_key4( struct FLZ_encoder * const fe )
+static inline void FLZe_reset_key4( FLZ_encoder * const fe )
   {
   int i;
   fe->key4 = 0;
@@ -31,9 +31,9 @@ static inline void FLZe_reset_key4( struct FLZ_encoder * const fe )
     fe->key4 = ( fe->key4 << 4 ) ^ fe->eb.mb.buffer[i];
   }
 
-static inline bool FLZe_update_and_move( struct FLZ_encoder * const fe, int n )
+static inline bool FLZe_update_and_move( FLZ_encoder * const fe, int n )
   {
-  struct Matchfinder_base * const mb = &fe->eb.mb;
+  Matchfinder_base * const mb = &fe->eb.mb;
   while( --n >= 0 )
     {
     if( Mb_available_bytes( mb ) >= 4 )
@@ -48,7 +48,7 @@ static inline bool FLZe_update_and_move( struct FLZ_encoder * const fe, int n )
   return true;
   }
 
-static inline bool FLZe_init( struct FLZ_encoder * const fe,
+static inline bool FLZe_init( FLZ_encoder * const fe,
                               const unsigned long long member_size )
   {
   enum { before_size = 0,
@@ -65,6 +65,6 @@ static inline bool FLZe_init( struct FLZ_encoder * const fe,
                     member_size );
   }
 
-static inline void FLZe_reset( struct FLZ_encoder * const fe,
+static inline void FLZe_reset( FLZ_encoder * const fe,
                                const unsigned long long member_size )
   { LZeb_reset( &fe->eb, member_size ); }

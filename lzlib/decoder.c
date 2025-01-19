@@ -1,5 +1,5 @@
 /* Lzlib - Compression library for the lzip format
-   Copyright (C) 2009-2022 Antonio Diaz Diaz.
+   Copyright (C) 2009-2025 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided
@@ -17,12 +17,12 @@
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-static int LZd_try_verify_trailer( struct LZ_decoder * const d )
+static int LZd_try_check_trailer( LZ_decoder * const d )
   {
   Lzip_trailer trailer;
   if( Rd_available_bytes( d->rdec ) < Lt_size )
     { if( !d->rdec->at_stream_end ) return 0; else return 2; }
-  d->verify_trailer_pending = false;
+  d->check_trailer_pending = false;
   d->member_finished = true;
 
   if( Rd_read_data( d->rdec, trailer, Lt_size ) == Lt_size &&
@@ -35,23 +35,24 @@ static int LZd_try_verify_trailer( struct LZ_decoder * const d )
 
 /* Return value: 0 = OK, 1 = decoder error, 2 = unexpected EOF,
                  3 = trailer error, 4 = unknown marker found,
-                 5 = library error. */
-static int LZd_decode_member( struct LZ_decoder * const d )
+                 5 = nonzero first LZMA byte found, 6 = library error. */
+static int LZd_decode_member( LZ_decoder * const d )
   {
-  struct Range_decoder * const rdec = d->rdec;
+  Range_decoder * const rdec = d->rdec;
   State * const state = &d->state;
-  /* unsigned old_mpos = rdec->member_position; */
+  unsigned old_mpos = rdec->member_position;
 
   if( d->member_finished ) return 0;
-  if( !Rd_try_reload( rdec ) )
-    { if( !rdec->at_stream_end ) return 0; else return 2; }
-  if( d->verify_trailer_pending ) return LZd_try_verify_trailer( d );
+  const int tmp = Rd_try_reload( rdec );
+  if( tmp > 1 ) return 5;
+  if( !tmp ) { if( !rdec->at_stream_end ) return 0; else return 2; }
+  if( d->check_trailer_pending ) return LZd_try_check_trailer( d );
 
   while( !Rd_finished( rdec ) )
     {
-    /* const unsigned mpos = rdec->member_position;
-    if( mpos - old_mpos > rd_min_available_bytes ) return 5;
-    old_mpos = mpos; */
+    const unsigned mpos = rdec->member_position;
+    if( mpos - old_mpos > rd_min_available_bytes ) return 6;
+    old_mpos = mpos;
     if( !Rd_enough_available_bytes( rdec ) )	/* check unexpected EOF */
       { if( !rdec->at_stream_end ) return 0;
         if( Cb_empty( &rdec->cb ) ) break; }	/* decode until EOF */
@@ -74,7 +75,7 @@ static int LZd_decode_member( struct LZ_decoder * const d )
       if( Rd_decode_bit( rdec, &d->bm_rep0[*state] ) == 0 )	/* 3rd bit */
         {
         if( Rd_decode_bit( rdec, &d->bm_len[*state][pos_state] ) == 0 )	/* 4th bit */
-          { *state = St_set_short_rep( *state );
+          { *state = St_set_shortrep( *state );
             LZd_put_byte( d, LZd_peek( d, d->rep0 ) ); continue; }
         }
       else
@@ -116,19 +117,21 @@ static int LZd_decode_member( struct LZ_decoder * const d )
           if( distance == 0xFFFFFFFFU )		/* marker found */
             {
             Rd_normalize( rdec );
-            /* const unsigned mpos = rdec->member_position;
-            if( mpos - old_mpos > rd_min_available_bytes ) return 5;
-            old_mpos = mpos; */
+            const unsigned mpos = rdec->member_position;
+            if( mpos - old_mpos > rd_min_available_bytes ) return 6;
+            old_mpos = mpos;
             if( len == min_match_len )		/* End Of Stream marker */
               {
-              d->verify_trailer_pending = true;
-              return LZd_try_verify_trailer( d );
+              d->check_trailer_pending = true;
+              return LZd_try_check_trailer( d );
               }
             if( len == min_match_len + 1 )	/* Sync Flush marker */
               {
               rdec->reload_pending = true;
-              if( Rd_try_reload( rdec ) ) continue;
-              else { if( !rdec->at_stream_end ) return 0; else break; }
+              const int tmp = Rd_try_reload( rdec );
+              if( tmp > 1 ) return 5;
+              if( tmp ) continue;
+              if( !rdec->at_stream_end ) return 0; else break;
               }
             return 4;
             }

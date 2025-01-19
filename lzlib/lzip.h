@@ -1,5 +1,5 @@
 /* Lzlib - Compression library for the lzip format
-   Copyright (C) 2009-2022 Antonio Diaz Diaz.
+   Copyright (C) 2009-2025 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided
@@ -35,17 +35,13 @@ static inline State St_set_char( const State st )
   static const State next[states] = { 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 4, 5 };
   return next[st];
   }
-
 static inline State St_set_char_rep() { return 8; }
-
 static inline State St_set_match( const State st )
-  { return ( ( st < 7 ) ? 7 : 10 ); }
-
+  { return ( st < 7 ) ? 7 : 10; }
 static inline State St_set_rep( const State st )
-  { return ( ( st < 7 ) ? 8 : 11 ); }
-
-static inline State St_set_short_rep( const State st )
-  { return ( ( st < 7 ) ? 9 : 11 ); }
+  { return ( st < 7 ) ? 8 : 11; }
+static inline State St_set_shortrep( const State st )
+  { return ( st < 7 ) ? 9 : 11; }
 
 
 enum {
@@ -98,16 +94,16 @@ static inline void Bm_init( Bit_model * const probability )
 static inline void Bm_array_init( Bit_model bm[], const int size )
   { int i; for( i = 0; i < size; ++i ) Bm_init( &bm[i] ); }
 
-struct Len_model
+typedef struct Len_model
   {
   Bit_model choice1;
   Bit_model choice2;
   Bit_model bm_low[pos_states][len_low_symbols];
   Bit_model bm_mid[pos_states][len_mid_symbols];
   Bit_model bm_high[len_high_symbols];
-  };
+  } Len_model;
 
-static inline void Lm_init( struct Len_model * const lm )
+static inline void Lm_init( Len_model * const lm )
   {
   Bm_init( &lm->choice1 );
   Bm_init( &lm->choice2 );
@@ -182,8 +178,8 @@ static inline void CRC32_update_buf( uint32_t * const crc,
 
 
 static inline bool isvalid_ds( const unsigned dictionary_size )
-  { return ( dictionary_size >= min_dictionary_size &&
-             dictionary_size <= max_dictionary_size ); }
+  { return dictionary_size >= min_dictionary_size &&
+           dictionary_size <= max_dictionary_size; }
 
 
 static inline int real_bits( unsigned value )
@@ -196,43 +192,43 @@ static inline int real_bits( unsigned value )
 
 static const uint8_t lzip_magic[4] = { 0x4C, 0x5A, 0x49, 0x50 }; /* "LZIP" */
 
-typedef uint8_t Lzip_header[6];		/* 0-3 magic bytes */
+enum { Lh_size = 6 };
+typedef uint8_t Lzip_header[Lh_size];	/* 0-3 magic bytes */
 					/*   4 version */
 					/*   5 coded dictionary size */
-enum { Lh_size = 6 };
 
 static inline void Lh_set_magic( Lzip_header data )
   { memcpy( data, lzip_magic, 4 ); data[4] = 1; }
 
-static inline bool Lh_verify_magic( const Lzip_header data )
-  { return ( memcmp( data, lzip_magic, 4 ) == 0 ); }
+static inline bool Lh_check_magic( const Lzip_header data )
+  { return memcmp( data, lzip_magic, 4 ) == 0; }
 
 /* detect (truncated) header */
-static inline bool Lh_verify_prefix( const Lzip_header data, const int sz )
+static inline bool Lh_check_prefix( const Lzip_header data, const int sz )
   {
   int i; for( i = 0; i < sz && i < 4; ++i )
     if( data[i] != lzip_magic[i] ) return false;
-  return ( sz > 0 );
+  return sz > 0;
   }
 
 /* detect corrupt header */
-static inline bool Lh_verify_corrupt( const Lzip_header data )
+static inline bool Lh_check_corrupt( const Lzip_header data )
   {
   int matches = 0;
   int i; for( i = 0; i < 4; ++i )
     if( data[i] == lzip_magic[i] ) ++matches;
-  return ( matches > 1 && matches < 4 );
+  return matches > 1 && matches < 4;
   }
 
 static inline uint8_t Lh_version( const Lzip_header data )
   { return data[4]; }
 
-static inline bool Lh_verify_version( const Lzip_header data )
-  { return ( data[4] == 1 ); }
+static inline bool Lh_check_version( const Lzip_header data )
+  { return data[4] == 1; }
 
 static inline unsigned Lh_get_dictionary_size( const Lzip_header data )
   {
-  unsigned sz = ( 1 << ( data[5] & 0x1F ) );
+  unsigned sz = 1 << ( data[5] & 0x1F );
   if( sz > min_dictionary_size )
     sz -= ( sz / 16 ) * ( ( data[5] >> 5 ) & 7 );
   return sz;
@@ -249,23 +245,23 @@ static inline bool Lh_set_dictionary_size( Lzip_header data, const unsigned sz )
     unsigned i;
     for( i = 7; i >= 1; --i )
       if( base_size - ( i * fraction ) >= sz )
-        { data[5] |= ( i << 5 ); break; }
+        { data[5] |= i << 5; break; }
     }
   return true;
   }
 
-static inline bool Lh_verify( const Lzip_header data )
+static inline bool Lh_check( const Lzip_header data )
   {
-  return Lh_verify_magic( data ) && Lh_verify_version( data ) &&
+  return Lh_check_magic( data ) && Lh_check_version( data ) &&
          isvalid_ds( Lh_get_dictionary_size( data ) );
   }
 
 
-typedef uint8_t Lzip_trailer[20];
+enum { Lt_size = 20 };
+typedef uint8_t Lzip_trailer[Lt_size];
 			/*  0-3  CRC32 of the uncompressed data */
 			/*  4-11 size of the uncompressed data */
 			/* 12-19 member size including header and trailer */
-enum { Lt_size = 20 };
 
 static inline unsigned Lt_get_data_crc( const Lzip_trailer data )
   {

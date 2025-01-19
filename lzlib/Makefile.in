@@ -1,0 +1,210 @@
+
+DISTNAME = $(pkgname)-$(pkgversion)
+INSTALL = install
+INSTALL_PROGRAM = $(INSTALL) -m 755
+INSTALL_DIR = $(INSTALL) -d -m 755
+INSTALL_DATA = $(INSTALL) -m 644
+INSTALL_SO = $(INSTALL) -m 644
+LDCONFIG = /sbin/ldconfig
+SHELL = /bin/sh
+CAN_RUN_INSTALLINFO = $(SHELL) -c "install-info --version" > /dev/null 2>&1
+
+objs = carg_parser.o minilzip.o
+
+
+.PHONY : all install install-bin install-info install-man \
+         install-strip install-compress install-strip-compress \
+         install-bin-strip install-info-compress install-man-compress \
+         install-bin-compress install-bin-strip-compress \
+         install-lib install-lib-strip \
+         install-as-lzip \
+         uninstall uninstall-bin uninstall-lib uninstall-info uninstall-man \
+         doc info man check dist clean distclean
+
+all : lib
+
+lib : $(libname_static) $(libname_shared)
+
+lib$(libname).a : lzlib.o
+	$(AR) $(ARFLAGS) $@ $<
+
+lib$(libname).so.$(soversion) : lzlib_sh.o
+	$(CC) $(CFLAGS) $(LDFLAGS) -fpic -fPIC -shared -Wl,--soname=$@ -o $@ $< || \
+	$(CC) $(CFLAGS) $(LDFLAGS) -fpic -fPIC -shared -o $@ $<
+
+bin : $(progname_static) $(progname_shared)
+
+$(progname) : $(objs) lib$(libname).a
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(objs) lib$(libname).a
+
+$(progname)_shared : $(objs) lib$(libname).so.$(soversion)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(objs) lib$(libname).so.$(soversion)
+
+bbexample : bbexample.o lib$(libname).a
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ bbexample.o lib$(libname).a
+
+ffexample : ffexample.o lib$(libname).a
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ ffexample.o lib$(libname).a
+
+lzcheck : lzcheck.o lib$(libname).a
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ lzcheck.o lib$(libname).a
+
+minilzip.o : minilzip.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DPROGVERSION=\"$(pkgversion)\" -c -o $@ $<
+
+lzlib_sh.o : lzlib.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -fpic -fPIC -c -o $@ $<
+
+%.o : %.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+# prevent 'make' from trying to remake source files
+$(VPATH)/configure $(VPATH)/Makefile.in $(VPATH)/doc/$(pkgname).texi : ;
+MAKEFLAGS += -r
+.SUFFIXES :
+
+lzdeps = lzlib.h lzip.h cbuffer.c decoder.h decoder.c encoder_base.h \
+         encoder_base.c encoder.h encoder.c fast_encoder.h fast_encoder.c
+
+$(objs)       : Makefile
+carg_parser.o : carg_parser.h
+lzlib.o       : Makefile $(lzdeps)
+lzlib_sh.o    : Makefile $(lzdeps)
+minilzip.o    : carg_parser.h lzlib.h
+bbexample.o   : Makefile lzlib.h
+ffexample.o   : Makefile lzlib.h
+lzcheck.o     : Makefile lzlib.h
+
+doc : info man
+
+info : $(VPATH)/doc/$(pkgname).info
+
+$(VPATH)/doc/$(pkgname).info : $(VPATH)/doc/$(pkgname).texi
+	cd $(VPATH)/doc && $(MAKEINFO) $(pkgname).texi
+
+man : $(VPATH)/doc/$(progname).1
+
+$(VPATH)/doc/$(progname).1 : $(progname)
+	help2man -n 'reduces the size of files' -o $@ --info-page=$(pkgname) ./$(progname)
+
+Makefile : $(VPATH)/configure $(VPATH)/Makefile.in
+	./config.status
+
+check : $(progname) bbexample ffexample lzcheck
+	@$(VPATH)/testsuite/check.sh $(VPATH)/testsuite $(pkgversion)
+
+install : install-lib install-info
+install-strip : install-lib-strip install-info
+install-compress : install-lib install-info-compress
+install-strip-compress : install-lib-strip install-info-compress
+install-bin-compress : install-bin install-man-compress
+install-bin-strip-compress : install-bin-strip install-man-compress
+
+install-bin : bin install-man
+	if [ ! -d "$(DESTDIR)$(bindir)" ] ; then $(INSTALL_DIR) "$(DESTDIR)$(bindir)" ; fi
+	$(INSTALL_PROGRAM) ./$(progname_lzip) "$(DESTDIR)$(bindir)/$(progname)"
+
+install-bin-strip : bin
+	$(MAKE) INSTALL_PROGRAM='$(INSTALL_PROGRAM) -s' install-bin
+
+install-lib : lib
+	if [ ! -d "$(DESTDIR)$(includedir)" ] ; then $(INSTALL_DIR) "$(DESTDIR)$(includedir)" ; fi
+	if [ ! -d "$(DESTDIR)$(libdir)" ] ; then $(INSTALL_DIR) "$(DESTDIR)$(libdir)" ; fi
+	$(INSTALL_DATA) $(VPATH)/$(libname)lib.h "$(DESTDIR)$(includedir)/$(libname)lib.h"
+	if [ -n "$(libname_static)" ] ; then \
+	  $(INSTALL_DATA) ./lib$(libname).a "$(DESTDIR)$(libdir)/lib$(libname).a" ; \
+	fi
+	if [ -n "$(libname_shared)" ] ; then \
+	  if [ -e "$(DESTDIR)$(libdir)/lib$(libname).so.$(soversion)" ] ; then \
+	    run_ldconfig=no ; \
+	  else run_ldconfig=yes ; \
+	  fi ; \
+	  rm -f "$(DESTDIR)$(libdir)/lib$(libname).so" ; \
+	  rm -f "$(DESTDIR)$(libdir)/lib$(libname).so.$(soversion)" ; \
+	  $(INSTALL_SO) ./lib$(libname).so.$(soversion) "$(DESTDIR)$(libdir)/lib$(libname).so.$(pkgversion)" ; \
+	  cd "$(DESTDIR)$(libdir)" && ln -s lib$(libname).so.$(pkgversion) lib$(libname).so ; \
+	  cd "$(DESTDIR)$(libdir)" && ln -s lib$(libname).so.$(pkgversion) lib$(libname).so.$(soversion) ; \
+	  if [ "${disable_ldconfig}" != yes ] && [ $${run_ldconfig} = yes ] && \
+	     [ -x "$(LDCONFIG)" ] ; then "$(LDCONFIG)" -n "$(DESTDIR)$(libdir)" || true ; fi ; \
+	fi
+
+install-lib-strip : lib
+	$(MAKE) INSTALL_SO='$(INSTALL_SO) -s' install-lib
+
+install-info :
+	if [ ! -d "$(DESTDIR)$(infodir)" ] ; then $(INSTALL_DIR) "$(DESTDIR)$(infodir)" ; fi
+	-rm -f "$(DESTDIR)$(infodir)/$(pkgname).info"*
+	$(INSTALL_DATA) $(VPATH)/doc/$(pkgname).info "$(DESTDIR)$(infodir)/$(pkgname).info"
+	-if $(CAN_RUN_INSTALLINFO) ; then \
+	  install-info --info-dir="$(DESTDIR)$(infodir)" "$(DESTDIR)$(infodir)/$(pkgname).info" ; \
+	fi
+
+install-info-compress : install-info
+	lzip -v -9 "$(DESTDIR)$(infodir)/$(pkgname).info"
+
+install-man :
+	if [ ! -d "$(DESTDIR)$(mandir)/man1" ] ; then $(INSTALL_DIR) "$(DESTDIR)$(mandir)/man1" ; fi
+	-rm -f "$(DESTDIR)$(mandir)/man1/$(progname).1"*
+	$(INSTALL_DATA) $(VPATH)/doc/$(progname).1 "$(DESTDIR)$(mandir)/man1/$(progname).1"
+
+install-man-compress : install-man
+	lzip -v -9 "$(DESTDIR)$(mandir)/man1/$(progname).1"
+
+install-as-lzip : install-bin
+	-rm -f "$(DESTDIR)$(bindir)/lzip"
+	cd "$(DESTDIR)$(bindir)" && ln -s $(progname) lzip
+
+uninstall : uninstall-info uninstall-lib
+
+uninstall-bin :
+	-rm -f "$(DESTDIR)$(bindir)/$(progname)"
+
+uninstall-lib :
+	-rm -f "$(DESTDIR)$(includedir)/$(libname)lib.h"
+	-rm -f "$(DESTDIR)$(libdir)/lib$(libname).a"
+	-rm -f "$(DESTDIR)$(libdir)/lib$(libname).so"
+	-rm -f "$(DESTDIR)$(libdir)/lib$(libname).so.$(soversion)"
+
+uninstall-info :
+	-if $(CAN_RUN_INSTALLINFO) ; then \
+	  install-info --info-dir="$(DESTDIR)$(infodir)" --remove "$(DESTDIR)$(infodir)/$(pkgname).info" ; \
+	fi
+	-rm -f "$(DESTDIR)$(infodir)/$(pkgname).info"*
+
+uninstall-man :
+	-rm -f "$(DESTDIR)$(mandir)/man1/$(progname).1"*
+
+dist : doc
+	ln -sf $(VPATH) $(DISTNAME)
+	tar -Hustar --owner=root --group=root -cvf $(DISTNAME).tar \
+	  $(DISTNAME)/AUTHORS \
+	  $(DISTNAME)/COPYING \
+	  $(DISTNAME)/COPYING.GPL \
+	  $(DISTNAME)/ChangeLog \
+	  $(DISTNAME)/INSTALL \
+	  $(DISTNAME)/Makefile.in \
+	  $(DISTNAME)/NEWS \
+	  $(DISTNAME)/README \
+	  $(DISTNAME)/configure \
+	  $(DISTNAME)/doc/$(progname).1 \
+	  $(DISTNAME)/doc/$(pkgname).info \
+	  $(DISTNAME)/doc/$(pkgname).texi \
+	  $(DISTNAME)/*.h \
+	  $(DISTNAME)/*.c \
+	  $(DISTNAME)/testsuite/check.sh \
+	  $(DISTNAME)/testsuite/test.txt \
+	  $(DISTNAME)/testsuite/fox_lf \
+	  $(DISTNAME)/testsuite/fox.lz \
+	  $(DISTNAME)/testsuite/fox_*.lz \
+	  $(DISTNAME)/testsuite/test_sync.lz \
+	  $(DISTNAME)/testsuite/test.txt.lz
+	rm -f $(DISTNAME)
+	lzip -v -9 $(DISTNAME).tar
+
+clean :
+	-rm -f $(progname) $(objs) lzlib.o lib$(libname).a
+	-rm -f $(progname)_shared lzlib_sh.o lib$(libname).so*
+	-rm -f bbexample bbexample.o ffexample ffexample.o lzcheck lzcheck.o
+
+distclean : clean
+	-rm -f Makefile config.status *.tar *.tar.lz

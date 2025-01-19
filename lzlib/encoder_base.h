@@ -1,5 +1,5 @@
 /* Lzlib - Compression library for the lzip format
-   Copyright (C) 2009-2022 Antonio Diaz Diaz.
+   Copyright (C) 2009-2025 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided
@@ -142,7 +142,7 @@ static inline int price1( const Bit_model probability )
   { return get_price( bit_model_total - probability ); }
 
 static inline int price_bit( const Bit_model bm, const bool bit )
-  { return ( bit ? price1( bm ) : price0( bm ) ); }
+  { return bit ? price1( bm ) : price0( bm ); }
 
 
 static inline int price_symbol3( const Bit_model bm[], int symbol )
@@ -217,7 +217,7 @@ static inline int price_matched( const Bit_model bm[], unsigned symbol,
   }
 
 
-struct Matchfinder_base
+typedef struct Matchfinder_base
   {
   unsigned long long partial_data_pos;
   uint8_t * buffer;		/* input buffer */
@@ -238,52 +238,52 @@ struct Matchfinder_base
   int saved_dictionary_size;	/* dictionary_size restored by Mb_reset */
   bool at_stream_end;		/* stream_pos shows real end of file */
   bool sync_flush_pending;
-  };
+  } Matchfinder_base;
 
-static bool Mb_normalize_pos( struct Matchfinder_base * const mb );
+static bool Mb_normalize_pos( Matchfinder_base * const mb );
 
-static bool Mb_init( struct Matchfinder_base * const mb, const int before_size,
+static bool Mb_init( Matchfinder_base * const mb, const int before_size,
                      const int dict_size, const int after_size,
                      const int dict_factor, const int num_prev_positions23,
                      const int pos_array_factor );
 
-static inline void Mb_free( struct Matchfinder_base * const mb )
+static inline void Mb_free( Matchfinder_base * const mb )
   { free( mb->prev_positions ); free( mb->buffer ); }
 
-static inline uint8_t Mb_peek( const struct Matchfinder_base * const mb,
+static inline uint8_t Mb_peek( const Matchfinder_base * const mb,
                                const int distance )
   { return mb->buffer[mb->pos-distance]; }
 
-static inline int Mb_available_bytes( const struct Matchfinder_base * const mb )
+static inline int Mb_available_bytes( const Matchfinder_base * const mb )
   { return mb->stream_pos - mb->pos; }
 
 static inline unsigned long long
-Mb_data_position( const struct Matchfinder_base * const mb )
+Mb_data_position( const Matchfinder_base * const mb )
   { return mb->partial_data_pos + mb->pos; }
 
-static inline void Mb_finish( struct Matchfinder_base * const mb )
+static inline void Mb_finish( Matchfinder_base * const mb )
   { mb->at_stream_end = true; mb->sync_flush_pending = false; }
 
-static inline bool Mb_data_finished( const struct Matchfinder_base * const mb )
+static inline bool Mb_data_finished( const Matchfinder_base * const mb )
   { return mb->at_stream_end && mb->pos >= mb->stream_pos; }
 
-static inline bool Mb_flushing_or_end( const struct Matchfinder_base * const mb )
+static inline bool Mb_flushing_or_end( const Matchfinder_base * const mb )
   { return mb->at_stream_end || mb->sync_flush_pending; }
 
-static inline int Mb_free_bytes( const struct Matchfinder_base * const mb )
+static inline int Mb_free_bytes( const Matchfinder_base * const mb )
   { if( Mb_flushing_or_end( mb ) ) return 0;
     return mb->buffer_size - mb->stream_pos; }
 
 static inline bool
-Mb_enough_available_bytes( const struct Matchfinder_base * const mb )
-  { return ( mb->pos + mb->after_size <= mb->stream_pos ||
-             ( Mb_flushing_or_end( mb ) && mb->pos < mb->stream_pos ) ); }
+Mb_enough_available_bytes( const Matchfinder_base * const mb )
+  { return mb->pos + mb->after_size <= mb->stream_pos ||
+           ( Mb_flushing_or_end( mb ) && mb->pos < mb->stream_pos ); }
 
 static inline const uint8_t *
-Mb_ptr_to_current_pos( const struct Matchfinder_base * const mb )
+Mb_ptr_to_current_pos( const Matchfinder_base * const mb )
   { return mb->buffer + mb->pos; }
 
-static int Mb_write_data( struct Matchfinder_base * const mb,
+static int Mb_write_data( Matchfinder_base * const mb,
                           const uint8_t * const inbuf, const int size )
   {
   const int sz = min( mb->buffer_size - mb->stream_pos, size );
@@ -293,7 +293,7 @@ static int Mb_write_data( struct Matchfinder_base * const mb,
   return sz;
   }
 
-static inline int Mb_true_match_len( const struct Matchfinder_base * const mb,
+static inline int Mb_true_match_len( const Matchfinder_base * const mb,
                                      const int index, const int distance )
   {
   const uint8_t * const data = mb->buffer + mb->pos;
@@ -303,7 +303,7 @@ static inline int Mb_true_match_len( const struct Matchfinder_base * const mb,
   return i;
   }
 
-static inline bool Mb_move_pos( struct Matchfinder_base * const mb )
+static inline bool Mb_move_pos( Matchfinder_base * const mb )
   {
   if( ++mb->cyclic_pos > mb->dictionary_size ) mb->cyclic_pos = 0;
   if( ++mb->pos >= mb->pos_limit ) return Mb_normalize_pos( mb );
@@ -311,9 +311,9 @@ static inline bool Mb_move_pos( struct Matchfinder_base * const mb )
   }
 
 
-struct Range_encoder
+typedef struct Range_encoder
   {
-  struct Circular_buffer cb;
+  Circular_buffer cb;
   unsigned min_free_bytes;
   uint64_t low;
   unsigned long long partial_member_pos;
@@ -321,13 +321,13 @@ struct Range_encoder
   unsigned ff_count;
   uint8_t cache;
   Lzip_header header;
-  };
+  } Range_encoder;
 
-static inline void Re_shift_low( struct Range_encoder * const renc )
+static inline void Re_shift_low( Range_encoder * const renc )
   {
   if( renc->low >> 24 != 0xFF )
     {
-    const bool carry = ( renc->low > 0xFFFFFFFFU );
+    const bool carry = renc->low > 0xFFFFFFFFU;
     Cb_put_byte( &renc->cb, renc->cache + carry );
     for( ; renc->ff_count > 0; --renc->ff_count )
       Cb_put_byte( &renc->cb, 0xFF + carry );
@@ -337,10 +337,9 @@ static inline void Re_shift_low( struct Range_encoder * const renc )
   renc->low = ( renc->low & 0x00FFFFFFU ) << 8;
   }
 
-static inline void Re_reset( struct Range_encoder * const renc,
+static inline void Re_reset( Range_encoder * const renc,
                              const unsigned dictionary_size )
   {
-  int i;
   Cb_reset( &renc->cb );
   renc->low = 0;
   renc->partial_member_pos = 0;
@@ -348,11 +347,10 @@ static inline void Re_reset( struct Range_encoder * const renc,
   renc->ff_count = 0;
   renc->cache = 0;
   Lh_set_dictionary_size( renc->header, dictionary_size );
-  for( i = 0; i < Lh_size; ++i )
-    Cb_put_byte( &renc->cb, renc->header[i] );
+  int i; for( i = 0; i < Lh_size; ++i ) Cb_put_byte( &renc->cb, renc->header[i] );
   }
 
-static inline bool Re_init( struct Range_encoder * const renc,
+static inline bool Re_init( Range_encoder * const renc,
                             const unsigned dictionary_size,
                             const unsigned min_free_bytes )
   {
@@ -363,17 +361,17 @@ static inline bool Re_init( struct Range_encoder * const renc,
   return true;
   }
 
-static inline void Re_free( struct Range_encoder * const renc )
+static inline void Re_free( Range_encoder * const renc )
   { Cb_free( &renc->cb ); }
 
 static inline unsigned long long
-Re_member_position( const struct Range_encoder * const renc )
+Re_member_position( const Range_encoder * const renc )
   { return renc->partial_member_pos + Cb_used_bytes( &renc->cb ) + renc->ff_count; }
 
-static inline bool Re_enough_free_bytes( const struct Range_encoder * const renc )
+static inline bool Re_enough_free_bytes( const Range_encoder * const renc )
   { return Cb_free_bytes( &renc->cb ) >= renc->min_free_bytes + renc->ff_count; }
 
-static inline int Re_read_data( struct Range_encoder * const renc,
+static inline int Re_read_data( Range_encoder * const renc,
                                 uint8_t * const out_buffer, const int out_size )
   {
   const int size = Cb_read_data( &renc->cb, out_buffer, out_size );
@@ -381,7 +379,7 @@ static inline int Re_read_data( struct Range_encoder * const renc,
   return size;
   }
 
-static inline void Re_flush( struct Range_encoder * const renc )
+static inline void Re_flush( Range_encoder * const renc )
   {
   int i; for( i = 0; i < 5; ++i ) Re_shift_low( renc );
   renc->low = 0;
@@ -390,7 +388,7 @@ static inline void Re_flush( struct Range_encoder * const renc )
   renc->cache = 0;
   }
 
-static inline void Re_encode( struct Range_encoder * const renc,
+static inline void Re_encode( Range_encoder * const renc,
                               const int symbol, const int num_bits )
   {
   unsigned mask;
@@ -398,12 +396,11 @@ static inline void Re_encode( struct Range_encoder * const renc,
     {
     renc->range >>= 1;
     if( symbol & mask ) renc->low += renc->range;
-    if( renc->range <= 0x00FFFFFFU )
-      { renc->range <<= 8; Re_shift_low( renc ); }
+    if( renc->range <= 0x00FFFFFFU ) { renc->range <<= 8; Re_shift_low( renc ); }
     }
   }
 
-static inline void Re_encode_bit( struct Range_encoder * const renc,
+static inline void Re_encode_bit( Range_encoder * const renc,
                                   Bit_model * const probability, const bool bit )
   {
   const uint32_t bound = ( renc->range >> bit_model_total_bits ) * *probability;
@@ -421,7 +418,7 @@ static inline void Re_encode_bit( struct Range_encoder * const renc,
   if( renc->range <= 0x00FFFFFFU ) { renc->range <<= 8; Re_shift_low( renc ); }
   }
 
-static inline void Re_encode_tree3( struct Range_encoder * const renc,
+static inline void Re_encode_tree3( Range_encoder * const renc,
                                     Bit_model bm[], const int symbol )
   {
   bool bit = ( symbol >> 2 ) & 1;
@@ -432,7 +429,7 @@ static inline void Re_encode_tree3( struct Range_encoder * const renc,
   Re_encode_bit( renc, &bm[model], symbol & 1 );
   }
 
-static inline void Re_encode_tree6( struct Range_encoder * const renc,
+static inline void Re_encode_tree6( Range_encoder * const renc,
                                     Bit_model bm[], const unsigned symbol )
   {
   bool bit = ( symbol >> 5 ) & 1;
@@ -449,7 +446,7 @@ static inline void Re_encode_tree6( struct Range_encoder * const renc,
   Re_encode_bit( renc, &bm[model], symbol & 1 );
   }
 
-static inline void Re_encode_tree8( struct Range_encoder * const renc,
+static inline void Re_encode_tree8( Range_encoder * const renc,
                                     Bit_model bm[], const int symbol )
   {
   int model = 1;
@@ -462,7 +459,7 @@ static inline void Re_encode_tree8( struct Range_encoder * const renc,
     }
   }
 
-static inline void Re_encode_tree_reversed( struct Range_encoder * const renc,
+static inline void Re_encode_tree_reversed( Range_encoder * const renc,
                      Bit_model bm[], int symbol, const int num_bits )
   {
   int model = 1;
@@ -476,7 +473,7 @@ static inline void Re_encode_tree_reversed( struct Range_encoder * const renc,
     }
   }
 
-static inline void Re_encode_matched( struct Range_encoder * const renc,
+static inline void Re_encode_matched( Range_encoder * const renc,
                                       Bit_model bm[], unsigned symbol,
                                       unsigned match_byte )
   {
@@ -492,17 +489,17 @@ static inline void Re_encode_matched( struct Range_encoder * const renc,
     }
   }
 
-static inline void Re_encode_len( struct Range_encoder * const renc,
-                                  struct Len_model * const lm,
+static inline void Re_encode_len( Range_encoder * const renc,
+                                  Len_model * const lm,
                                   int symbol, const int pos_state )
   {
-  bool bit = ( ( symbol -= min_match_len ) >= len_low_symbols );
+  bool bit = ( symbol -= min_match_len ) >= len_low_symbols;
   Re_encode_bit( renc, &lm->choice1, bit );
   if( !bit )
     Re_encode_tree3( renc, lm->bm_low[pos_state], symbol );
   else
     {
-    bit = ( ( symbol -= len_low_symbols ) >= len_mid_symbols );
+    bit = ( symbol -= len_low_symbols ) >= len_mid_symbols;
     Re_encode_bit( renc, &lm->choice2, bit );
     if( !bit )
       Re_encode_tree3( renc, lm->bm_mid[pos_state], symbol );
@@ -515,9 +512,9 @@ static inline void Re_encode_len( struct Range_encoder * const renc,
 enum { max_marker_size = 16,
        num_rep_distances = 4 };		/* must be 4 */
 
-struct LZ_encoder_base
+typedef struct LZ_encoder_base
   {
-  struct Matchfinder_base mb;
+  Matchfinder_base mb;
   unsigned long long member_size_limit;
   uint32_t crc;
 
@@ -531,18 +528,18 @@ struct LZ_encoder_base
   Bit_model bm_dis_slot[len_states][1<<dis_slot_bits];
   Bit_model bm_dis[modeled_distances-end_dis_model+1];
   Bit_model bm_align[dis_align_size];
-  struct Len_model match_len_model;
-  struct Len_model rep_len_model;
-  struct Range_encoder renc;
+  Len_model match_len_model;
+  Len_model rep_len_model;
+  Range_encoder renc;
   int reps[num_rep_distances];
   State state;
   bool member_finished;
-  };
+  } LZ_encoder_base;
 
-static void LZeb_reset( struct LZ_encoder_base * const eb,
+static void LZeb_reset( LZ_encoder_base * const eb,
                         const unsigned long long member_size );
 
-static inline bool LZeb_init( struct LZ_encoder_base * const eb,
+static inline bool LZeb_init( LZ_encoder_base * const eb,
                               const int before_size, const int dict_size,
                               const int after_size, const int dict_factor,
                               const int num_prev_positions23,
@@ -558,34 +555,34 @@ static inline bool LZeb_init( struct LZ_encoder_base * const eb,
   return true;
   }
 
-static inline bool LZeb_member_finished( const struct LZ_encoder_base * const eb )
-  { return ( eb->member_finished && Cb_empty( &eb->renc.cb ) ); }
+static inline bool LZeb_member_finished( const LZ_encoder_base * const eb )
+  { return eb->member_finished && Cb_empty( &eb->renc.cb ); }
 
-static inline void LZeb_free( struct LZ_encoder_base * const eb )
+static inline void LZeb_free( LZ_encoder_base * const eb )
   { Re_free( &eb->renc ); Mb_free( &eb->mb ); }
 
-static inline unsigned LZeb_crc( const struct LZ_encoder_base * const eb )
+static inline unsigned LZeb_crc( const LZ_encoder_base * const eb )
   { return eb->crc ^ 0xFFFFFFFFU; }
 
-static inline int LZeb_price_literal( const struct LZ_encoder_base * const eb,
+static inline int LZeb_price_literal( const LZ_encoder_base * const eb,
                             const uint8_t prev_byte, const uint8_t symbol )
   { return price_symbol8( eb->bm_literal[get_lit_state(prev_byte)], symbol ); }
 
-static inline int LZeb_price_matched( const struct LZ_encoder_base * const eb,
+static inline int LZeb_price_matched( const LZ_encoder_base * const eb,
   const uint8_t prev_byte, const uint8_t symbol, const uint8_t match_byte )
   { return price_matched( eb->bm_literal[get_lit_state(prev_byte)], symbol,
                           match_byte ); }
 
-static inline void LZeb_encode_literal( struct LZ_encoder_base * const eb,
+static inline void LZeb_encode_literal( LZ_encoder_base * const eb,
                             const uint8_t prev_byte, const uint8_t symbol )
   { Re_encode_tree8( &eb->renc, eb->bm_literal[get_lit_state(prev_byte)], symbol ); }
 
-static inline void LZeb_encode_matched( struct LZ_encoder_base * const eb,
+static inline void LZeb_encode_matched( LZ_encoder_base * const eb,
   const uint8_t prev_byte, const uint8_t symbol, const uint8_t match_byte )
   { Re_encode_matched( &eb->renc, eb->bm_literal[get_lit_state(prev_byte)],
                        symbol, match_byte ); }
 
-static inline void LZeb_encode_pair( struct LZ_encoder_base * const eb,
+static inline void LZeb_encode_pair( LZ_encoder_base * const eb,
                                      const unsigned dis, const int len,
                                      const int pos_state )
   {

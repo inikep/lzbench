@@ -1,0 +1,92 @@
+Requirements
+------------
+You will need a C99 compiler. (gcc 3.3.6 or newer is recommended).
+I use gcc 6.1.0 and 3.3.6, but the code should compile with any standards
+compliant compiler.
+Gcc is available at http://gcc.gnu.org
+Lzip is available at http://www.nongnu.org/lzip/lzip.html
+
+The operating system must allow signal handlers read access to objects with
+static storage duration so that the cleanup handler for Control-C can delete
+the partial output file. (This requirement is for minilzip only).
+
+
+Procedure
+---------
+1. Unpack the archive if you have not done so already:
+
+	tar -xf lzlib[version].tar.lz
+or
+	lzip -cd lzlib[version].tar.lz | tar -xf -
+
+This creates the directory ./lzlib[version] containing the source code
+extracted from the archive.
+
+2. Change to lzlib directory and run configure.
+   (Try 'configure --help' for usage instructions).
+
+	cd lzlib[version]
+	./configure
+
+   If you choose a C standard, enable the POSIX features explicitly:
+
+	./configure CFLAGS+='--std=c99 -D_XOPEN_SOURCE=500'
+
+   If you are compiling on MinGW, use:
+
+	./configure CFLAGS+='-D __USE_MINGW_ANSI_STDIO'
+
+3. Run make
+
+	make
+
+to build the library, or
+
+	make bin
+
+to build also minilzip.
+
+4. Optionally, type 'make check' to run the tests that come with lzlib.
+
+5. Type 'make install' to install the library and any data files and
+   documentation. You need root privileges to install into a prefix owned
+   by root. (You may need to run ldconfig also).
+
+   Or type 'make install-compress', which additionally compresses the
+   info manual after installation.
+   (Installing compressed docs may become the default in the future).
+
+   You can install only the library or the info manual by typing
+   'make install-lib' or 'make install-info' respectively.
+
+   'make install-bin' installs the program minilzip and its man page. It
+   installs a shared minilzip if the shared library has been configured.
+   Else it installs a static minilzip.
+   'make install-bin-compress' additionally compresses the man page after
+   installation.
+
+   'make install-as-lzip' runs 'make install-bin' and then links minilzip to
+   the name 'lzip'.
+
+
+Another way
+-----------
+You can also compile lzlib into a separate directory.
+To do this, you must use a version of 'make' that supports the variable
+'VPATH', such as GNU 'make'. 'cd' to the directory where you want the
+object files and executables to go and run the 'configure' script.
+'configure' automatically checks for the source code in '.', in '..', and
+in the directory that 'configure' is in.
+
+'configure' recognizes the option '--srcdir=DIR' to control where to look
+for the source code. Usually 'configure' can determine that directory
+automatically.
+
+After running 'configure', you can run 'make' and 'make install' as
+explained above.
+
+
+Copyright (C) 2009-2025 Antonio Diaz Diaz.
+
+This file is free documentation: you have unlimited permission to copy,
+distribute, and modify it.
