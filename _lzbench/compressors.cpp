@@ -326,6 +326,25 @@ int64_t lzbench_lz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 
+#ifndef BENCH_REMOVE_LZAV
+#include "lzav/lzav.h"
+
+int64_t lzbench_lzav_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+	if (level == 1)
+		return lzav_compress_default(inbuf, outbuf, insize, outsize);
+	return lzav_compress_hi(inbuf, outbuf, insize, outsize);
+}
+
+int64_t lzbench_lzav_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+	return lzav_decompress(inbuf, outbuf, insize, outsize);
+}
+
+#endif
+
+
+
 #ifndef BENCH_REMOVE_LZF
 extern "C"
 {
