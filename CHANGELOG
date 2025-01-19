@@ -3,6 +3,7 @@ v2.0
 - added ppmd8 based on 7-zip 24.09 (thanks to @pps83)
 - added kanzi v2.3 (thanks to @flanglet)
 - added tamp v1.3.1 (thanks to @BrianPugh)
+- updated snappy to 1.2.1
 - updated brotli to 1.1.0
 - updated blosclz to 2.5.1 (from c-blosc-1.21.6)
 - updated lzlib to 1.15
