@@ -24,7 +24,7 @@ jobs:
 
   strategy:
     matrix:
-      macOS 14:
+      clang [macOS 14]:
         imageName: 'macOS-14'
         SELECTED_CC: clang
         SELECTED_CXX: clang++
