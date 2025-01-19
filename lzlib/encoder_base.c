@@ -1,5 +1,5 @@
 /* Lzlib - Compression library for the lzip format
-   Copyright (C) 2009-2022 Antonio Diaz Diaz.
+   Copyright (C) 2009-2025 Antonio Diaz Diaz.
 
    This library is free software. Redistribution and use in source and
    binary forms, with or without modification, are permitted provided
@@ -17,7 +17,7 @@
    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 */
 
-static bool Mb_normalize_pos( struct Matchfinder_base * const mb )
+static bool Mb_normalize_pos( Matchfinder_base * const mb )
   {
   if( mb->pos > mb->stream_pos )
     { mb->pos = mb->stream_pos; return false; }
@@ -40,7 +40,7 @@ static bool Mb_normalize_pos( struct Matchfinder_base * const mb )
   }
 
 
-static bool Mb_init( struct Matchfinder_base * const mb, const int before_size,
+static bool Mb_init( Matchfinder_base * const mb, const int before_size,
                      const int dict_size, const int after_size,
                      const int dict_factor, const int num_prev_positions23,
                      const int pos_array_factor )
@@ -83,7 +83,7 @@ static bool Mb_init( struct Matchfinder_base * const mb, const int before_size,
   }
 
 
-static void Mb_adjust_array( struct Matchfinder_base * const mb )
+static void Mb_adjust_array( Matchfinder_base * const mb )
   {
   int size = 1 << max( 16, real_bits( mb->dictionary_size - 1 ) - 2 );
   if( mb->dictionary_size > 1 << 26 ) size >>= 1;	/* 64 MiB */
@@ -94,7 +94,7 @@ static void Mb_adjust_array( struct Matchfinder_base * const mb )
   }
 
 
-static void Mb_adjust_dictionary_size( struct Matchfinder_base * const mb )
+static void Mb_adjust_dictionary_size( Matchfinder_base * const mb )
   {
   if( mb->stream_pos < mb->dictionary_size )
     {
@@ -105,7 +105,7 @@ static void Mb_adjust_dictionary_size( struct Matchfinder_base * const mb )
   }
 
 
-static void Mb_reset( struct Matchfinder_base * const mb )
+static void Mb_reset( Matchfinder_base * const mb )
   {
   int i;
   if( mb->stream_pos > mb->pos )
@@ -124,11 +124,10 @@ static void Mb_reset( struct Matchfinder_base * const mb )
 
 
 /* End Of Stream marker => (dis == 0xFFFFFFFFU, len == min_match_len) */
-static void LZeb_try_full_flush( struct LZ_encoder_base * const eb )
+static void LZeb_try_full_flush( LZ_encoder_base * const eb )
   {
-  if( eb->member_finished ||
-      Cb_free_bytes( &eb->renc.cb ) < max_marker_size + eb->renc.ff_count + Lt_size )
-    return;
+  if( eb->member_finished || Cb_free_bytes( &eb->renc.cb ) <
+      max_marker_size + eb->renc.ff_count + Lt_size ) return;
   eb->member_finished = true;
   const int pos_state = Mb_data_position( &eb->mb ) & pos_state_mask;
   const State state = eb->state;
@@ -140,14 +139,12 @@ static void LZeb_try_full_flush( struct LZ_encoder_base * const eb )
   Lt_set_data_crc( trailer, LZeb_crc( eb ) );
   Lt_set_data_size( trailer, Mb_data_position( &eb->mb ) );
   Lt_set_member_size( trailer, Re_member_position( &eb->renc ) + Lt_size );
-  int i;
-  for( i = 0; i < Lt_size; ++i )
-    Cb_put_byte( &eb->renc.cb, trailer[i] );
+  int i; for( i = 0; i < Lt_size; ++i ) Cb_put_byte( &eb->renc.cb, trailer[i] );
   }
 
 
 /* Sync Flush marker => (dis == 0xFFFFFFFFU, len == min_match_len + 1) */
-static void LZeb_try_sync_flush( struct LZ_encoder_base * const eb )
+static void LZeb_try_sync_flush( LZ_encoder_base * const eb )
   {
   const unsigned min_size = eb->renc.ff_count + max_marker_size;
   if( eb->member_finished ||
@@ -166,16 +163,14 @@ static void LZeb_try_sync_flush( struct LZ_encoder_base * const eb )
   }
 
 
-static void LZeb_reset( struct LZ_encoder_base * const eb,
+static void LZeb_reset( LZ_encoder_base * const eb,
                         const unsigned long long member_size )
   {
   const unsigned long long min_member_size = min_dictionary_size;
   const unsigned long long max_member_size = 0x0008000000000000ULL; /* 2 PiB */
-  int i;
   Mb_reset( &eb->mb );
-  eb->member_size_limit =
-    min( max( min_member_size, member_size ), max_member_size ) -
-    Lt_size - max_marker_size;
+  eb->member_size_limit = min( max( min_member_size, member_size ),
+                          max_member_size ) - Lt_size - max_marker_size;
   eb->crc = 0xFFFFFFFFU;
   Bm_array_init( eb->bm_literal[0], (1 << literal_context_bits) * 0x300 );
   Bm_array_init( eb->bm_match[0], states * pos_states );
@@ -190,7 +185,7 @@ static void LZeb_reset( struct LZ_encoder_base * const eb,
   Lm_init( &eb->match_len_model );
   Lm_init( &eb->rep_len_model );
   Re_reset( &eb->renc, eb->mb.dictionary_size );
-  for( i = 0; i < num_rep_distances; ++i ) eb->reps[i] = 0;
+  int i; for( i = 0; i < num_rep_distances; ++i ) eb->reps[i] = 0;
   eb->state = 0;
   eb->member_finished = false;
   }
