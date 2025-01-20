@@ -1,6 +1,7 @@
 # Directories
 _codelite/
 _visual/
+.vscode/
 
 # Archives
 *.zip
