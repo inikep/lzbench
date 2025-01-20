@@ -9,7 +9,12 @@ lzbench is an in-memory benchmarking tool for open-source compressors. It integr
 | [![Build Status][AzurePipelinesMasterBadge]][AzurePipelinesLink] |
 
 [AzurePipelinesMasterBadge]: https://dev.azure.com/inikep/lzbench/_apis/build/status%2Finikep.lzbench?branchName=master "gcc and clang tests"
-[AzurePipelinesLink]: https://dev.azure.com/inikep/lzbench/_build/latest?definitionId=10&branchName=master
+[AzurePipelinesLink]: https://dev.azure.com/inikep/lzbench/_build/latest?definitionId=12&branchName=master
+
+The list of changes in lzbench is available in the [CHANGELOG](CHANGELOG).
+
+Contributor information can be found in [CONTRIBUTING.md](CONTRIBUTING.md).
+
 
 Usage
 -------------------------
@@ -17,55 +22,31 @@ Usage
 ```
 usage: lzbench [options] input [input2] [input3]
 
-where [input] is a file or a directory and [options] are:
- -b#   set block/chunk size to # KB (default = MIN(filesize,1747626 KB))
- -c#   sort results by column # (1=algname, 2=ctime, 3=dtime, 4=comprsize)
- -e#   #=compressors separated by '/' with parameters specified after ',' (deflt=fast)
- -iX,Y set min. number of compression and decompression iterations (default = 1, 1)
- -j    join files in memory but compress them independently (for many small files)
- -l    list of available compressors and aliases
- -m#   set memory limit to # MB (default = no limit)
- -o#   output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV (default = 2)
- -p#   print time for all iterations: 1=fastest 2=average 3=median (default = 1)
- -r    operate recursively on directories
- -s#   use only compressors with compression speed over # MB (default = 0 MB)
- -tX,Y set min. time in seconds for compression and decompression (default = 1, 2)
- -v    disable progress information
- -x    disable real-time process priority
- -z    show (de)compression times instead of speed
-
-Example usage:
+For example:
   lzbench -ezstd filename = selects all levels of zstd
   lzbench -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd
   lzbench -t3 -u5 fname = 3 sec compression and 5 sec decompression loops
   lzbench -t0 -u0 -i3 -j5 -ezstd fname = 3 compression and 5 decompression iter.
   lzbench -t0u0i3j5 -ezstd fname = the same as above with aggregated parameters
+  lzbench -ezlib -j -r www/ = test zlib on all files in directory, recursively
 ```
 
+For complete list of options refer to [manual](doc/lzbench.7.txt) in [doc](doc/) directory which contains more detailed documentation.
 
-Compilation
+
+Building
 -------------------------
+To compile, you need a C and C++ compiler that is GNUC-compatible, such as GCC, LLVM/Clang, or ICC.
+It is recommended to use GCC 7.0+ or Clang 6.0+.
+
 For Linux/MacOS/MinGW (Windows):
 ```
 make -j$(nproc)
 ```
 
-For 32-bit compilation:
-```
-make BUILD_ARCH=32-bit -j$(nproc)
-
-```
-
 The default linking for Linux is dynamic and static for Windows. This can be changed with `make BUILD_STATIC=0/1`.
 
-To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ4` to remove LZ4).
-You also have to remove corresponding `*.o` files (e.g. `lz4/lz4.o` and `lz4/lz4hc.o`).
-
-lzbench undergoes automated testing using Azure Pipelines with the following compilers:
-- Ubuntu: gcc (versions 7.5 to 14.2) and clang (versions 6.0 to 19), gcc 14.2 (32-bit)
-- MacOS: Apple LLVM version 15.0.0
-- Windows: mingw32-gcc 14.2.0 (32-bit) and mingw64-gcc 14.2.0 (64-bit)
-- Cross-compilation: gcc for ARM (32-bit and 64-bit) and PowerPC (32-bit and 64-bit)
+For complete building instruction, with troubleshooting refer to [BUILD.md](BUILD.md).
 
 
 Supported compressors
@@ -81,8 +62,8 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [bzip2 1.0.8](http://www.bzip.org/downloads.html)
  - [crush 1.0](https://sourceforge.net/projects/crush/)
  - [csc 2016-10-13](https://github.com/fusiyuan2010/CSC) - WARNING: it can throw SEGFAULT compiled with Apple LLVM version 7.3.0 (clang-703.0.31)
- - [density 0.14.2](https://github.com/centaurean/density) - WARNING: it contains bugs (shortened decompressed output))
- - [fastlz 0.5.0](http://fastlz.org)
+ - [density 0.14.2](https://github.com/g1mv/density/tree/c_archive) - WARNING: it contains bugs (shortened decompressed output))
+ - [fastlz 0.5.0](https://github.com/ariya/FastLZ)
  - [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2)
  - [gipfeli 2016-07-13](https://github.com/google/gipfeli)
  - [glza 0.8](https://encode.su/threads/2427-GLZA)
@@ -93,7 +74,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [lzav 4.5](https://github.com/avaneev/lzav)
  - [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html)
  - [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse)
- - [lzg 1.0.10](https://liblzg.bitsnbites.eu/)
+ - [lzg 1.0.10](https://github.com/mbitsnbites/liblzg)
  - [lzham 1.0](https://github.com/richgel999/lzham_codec)
  lzjb 2010
  - [lzlib 1.15](http://www.nongnu.org/lzip)
@@ -102,6 +83,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [lzo 2.10](http://www.oberhumer.com/opensource/lzo)
  - [lzrw 15-Jul-1991](https://en.wikipedia.org/wiki/LZRW)
  - [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE)
+ - [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) - If CUDA is available.
  - [pithy 2011-12-24](https://github.com/johnezang/pithy) - WARNING: it contains bugs (decompression error; returns 0)
  - [ppmd8 24.09](https://github.com/pps83/libppmd)
  - [quicklz 1.5.0](http://www.quicklz.com)
@@ -114,32 +96,19 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [wflz 2015-09-16](https://github.com/ShaneWF/wflz) - WARNING: it can throw SEGFAULT compiled with gcc 4.9+ -O3
  - [xpack 2016-06-02](https://github.com/ebiggers/xpack)
  - [xz 5.6.3](https://github.com/tukaani-project/xz)
- - [yalz77 2015-09-19](https://github.com/ivan-tkatchev/yalz77) - WARNING: A SEGFAULT was encountered with gcc 13.3.0 on the 32-bit ARM (arm-linux-gnueabi) target
+ - [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) - WARNING: A SEGFAULT was encountered with gcc 13.3.0 on the 32-bit ARM (arm-linux-gnueabi) target
  - [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) - WARNING: A SEGFAULT was encountered with gcc 13.3.0 on the 32-bit ARM (arm-linux-gnueabi)
  - [zlib 1.3.1](http://zlib.net)
  - [zlib-ng 2.2.3](https://github.com/zlib-ng/zlib-ng)
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
  - [zstd 1.5.6](https://github.com/facebook/zstd)
- - [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) - If CUDA is available.
 
-
-CUDA support
--------------------------
-
-If CUDA is available, lzbench supports additional compressors:
-  - [cudaMemcpy](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__MEMORY.html#group__CUDART__MEMORY_1gc263dbe6574220cc776b45438fc351e8) - similar to the reference `memcpy` benchmark, using GPU memory
-  - [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) LZ4 GPU-only compressor
-
-The directory where the CUDA compiler and libraries are available can be passed to `make` via the `CUDA_BASE` variable, *e.g.*:
-```
-make CUDA_BASE=/usr/local/cuda
-```
 
 Benchmarks
 -------------------------
 
 The following results were obtained using `lzbench 1.9`, built with `gcc 14.2.0` and executed with the options `-eall -t16,16 -o1c4`.
-The tests were run on a single core of an AMD EPYC 9554 processor at 3.10 GHz, with the CPU governor set to `performance` and turbo
+The tests were run on a single thread of an AMD EPYC 9554 processor at 3.10 GHz, with the CPU governor set to `performance` and turbo
 boost disabled for stability. The operating system was `Ubuntu 24.04.1`, and the benchmark made use of
 [`silesia.tar`](https://github.com/DataCompression/corpus-collection/tree/main/Silesia-Corpus), which contains tarred files from the
 [Silesia compression corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
