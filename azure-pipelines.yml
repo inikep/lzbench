@@ -1,3 +1,11 @@
+pr:
+  branches:
+    include:
+    - '*'
+  paths:
+    exclude:
+    - doc
+
 jobs:
 - job:
   timeoutInMinutes: 240
