@@ -1,4 +1,5 @@
 v2.0
+- added zlib-ng 2.2.3 (thanks to @data-man)
 - added lizard 2.1
 - added LZAV 4.5 (thanks to @jibsen)
 - added libbsc v3.3.4 (thanks to @stefanrua)
