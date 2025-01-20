@@ -23,49 +23,33 @@ Usage
 ```
 usage: lzbench [options] input [input2] [input3]
 
-where [input] is a file or a directory and [options] are:
- -b#   set block/chunk size to # KB (default = MIN(filesize,1747626 KB))
- -c#   sort results by column # (1=algname, 2=ctime, 3=dtime, 4=comprsize)
- -e#   #=compressors separated by '/' with parameters specified after ',' (deflt=fast)
- -iX,Y set min. number of compression and decompression iterations (default = 1, 1)
- -j    join files in memory but compress them independently (for many small files)
- -l    list of available compressors and aliases
- -m#   set memory limit to # MB (default = no limit)
- -o#   output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV (default = 2)
- -p#   print time for all iterations: 1=fastest 2=average 3=median (default = 1)
- -r    operate recursively on directories
- -s#   use only compressors with compression speed over # MB (default = 0 MB)
- -tX,Y set min. time in seconds for compression and decompression (default = 1, 2)
- -v    disable progress information
- -x    disable real-time process priority
- -z    show (de)compression times instead of speed
-
-Example usage:
+For example:
   lzbench -ezstd filename = selects all levels of zstd
   lzbench -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd
   lzbench -t3 -u5 fname = 3 sec compression and 5 sec decompression loops
   lzbench -t0 -u0 -i3 -j5 -ezstd fname = 3 compression and 5 decompression iter.
   lzbench -t0u0i3j5 -ezstd fname = the same as above with aggregated parameters
+  lzbench -ezlib -j -r www/ = test zlib on all files in directory, recursively
 ```
 
+For complete list of options refer to [manual](doc/lzbench.7.txt) in [doc](doc/) directory where more detailed documentation can be found.
 
-Compilation
+Catalogue of changes can be found in [CHANGELOG](CHANGELOG).
+
+Installation
 -------------------------
+The program needs to be build. Compilation requires a C and C++ compiler, that is GNUC compatible, like GCC, LLVM/Clang, ICC.
+
 For Linux/MacOS/MinGW (Windows):
 ```
 make -j$(nproc)
 ```
 
-For 32-bit compilation:
-```
-make BUILD_ARCH=32-bit -j$(nproc)
-
-```
-
 The default linking for Linux is dynamic and static for Windows. This can be changed with `make BUILD_STATIC=0/1`.
 
-To remove one of compressors you can add `-DBENCH_REMOVE_XXX` to `DEFINES` in Makefile (e.g. `DEFINES += -DBENCH_REMOVE_LZ4` to remove LZ4).
-You also have to remove corresponding `*.o` files (e.g. `lz4/lz4.o` and `lz4/lz4hc.o`).
+For complete installation instruction, with troubleshooting refer to [INSTALL](INSTALL).
+
+#### Testing
 
 lzbench undergoes automated testing using Azure Pipelines and AppVeyor with the following compilers:
 - Ubuntu: gcc (versions 7.5 to 14.2) and clang (versions 6.0 to 19), gcc 14.2 (32-bit)

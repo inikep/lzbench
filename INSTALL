@@ -1,0 +1,75 @@
+Installation
+------------
+These are generic building and installation instructions.
+
+
+Requirements
+------------
+Compilation requires a C and C++ compiler, that is GNUC compatible,
+like GCC, LLVM/Clang, ICC.
+GCC is available at http://gcc.gnu.org.
+
+
+Procedure
+---------
+Download zip or tar ball from repository or release page.
+
+Unpack the archive:
+
+	unzip lzbench-master.zip
+or
+	tar -xzf lzbench-[version].tar.gz
+
+This creates the directory ./lzbench-[version] containing the source
+from the main archive.
+
+
+Compilation
+-----------
+Change to lzbench directory and run make.
+
+	make
+
+
+To order static or dynamic linking set BUILD_STATIC to 1, or 0 respectively:
+
+	make BUILD_STATIC=1
+
+For 32-bit compilation:
+
+	make BUILD_ARCH=32-bit
+
+With certain, old compilers, systems or combintion some compressor
+may cause issues. Most of it should be chosen automatically but in
+case of problems, particular compressors can be excluded from build setting
+DONT_BUILD_XXX to 1, where XXX is target compressor, for example:
+
+	make DONT_BUILD_GLZA=1
+
+
+Known issues
+------------
+With all issues refer to Makefile, they may be solved already.
+Examples of basic issues (these should be chosen automatically):
+
+LZSSE requires 64-bit CPU to compile and run.
+GLZA does not work with GCC < 4.9 and Clang < 3.6.
+ZLING requires C++14.
+Problematic codecs include TORNADO.
+Other to be wary on old or 32-bit systems: CSC, LZHAM, SNAPPY.
+
+Llvm/clang version <= 5 or so, does not like attribute((always_inline))
+functions. To solve it add to DEFINES in Makefile:
+	DEFINES += -D__extern_always_inline='extern __always_inline'
+
+Libdeflate may not compile with gas < 2.26 or so, with error like:
+	Assembler messages:
+	Error: no such instruction: 'vpxord %zmm5,%zmm5,%zmm5'
+If so, it requires binutils update to version 2.26+.
+
+------------------------
+Copyright (C) 2025 tansy
+
+This file is free documentation: you have unlimited permission to copy,
+distribute, and modify it.
+
