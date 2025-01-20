@@ -118,6 +118,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [yalz77 2015-09-19](https://github.com/ivan-tkatchev/yalz77) - WARNING: A SEGFAULT was encountered with gcc 13.3.0 on the 32-bit ARM (arm-linux-gnueabi) target
  - [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) - WARNING: A SEGFAULT was encountered with gcc 13.3.0 on the 32-bit ARM (arm-linux-gnueabi)
  - [zlib 1.2.11](http://zlib.net)
+ - [zlib-ng 2.2.3](https://github.com/zlib-ng/zlib-ng)
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
  - [zstd 1.5.5](https://github.com/facebook/zstd)
  - [nvcomp 1.2.3](https://github.com/NVIDIA/nvcomp) - If CUDA is available.

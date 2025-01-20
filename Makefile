@@ -73,7 +73,7 @@ else
 endif
 
 
-DEFINES     += $(addprefix -I$(SOURCE_PATH),. brotli/include libcsc libdeflate xpack/common xz xz/api xz/check xz/common xz/lz xz/lzma xz/rangecoder zstd/lib zstd/lib/common)
+DEFINES     += $(addprefix -I$(SOURCE_PATH),. brotli/include libcsc libdeflate xpack/common xz xz/api xz/check xz/common xz/lz xz/lzma xz/rangecoder zstd/lib zstd/lib/common zlib-ng)
 DEFINES     += -DHAVE_CONFIG_H -DFL2_SINGLETHREAD
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 
@@ -115,6 +115,23 @@ UCL_FILES += ucl/ucl_ptr.o ucl/ucl_str.o ucl/ucl_util.o
 ZLIB_FILES = zlib/adler32.o zlib/compress.o zlib/crc32.o zlib/deflate.o zlib/gzclose.o zlib/gzlib.o zlib/gzread.o
 ZLIB_FILES += zlib/gzwrite.o zlib/infback.o zlib/inffast.o zlib/inflate.o zlib/inftrees.o zlib/trees.o
 ZLIB_FILES += zlib/uncompr.o zlib/zutil.o
+
+ifeq "$(DONT_BUILD_ZLIB_NG)" "1"
+    DEFINES += -DBENCH_REMOVE_ZLIB_NG
+else
+    ZLIB_NG_FILES = zlib-ng/adler32.o zlib-ng/crc32.o zlib-ng/deflate_medium.o zlib-ng/deflate_stored.o zlib-ng/inftrees.o zlib-ng/uncompr.o
+    ZLIB_NG_FILES += zlib-ng/compress.o zlib-ng/deflate.o zlib-ng/deflate_quick.o zlib-ng/functable.o zlib-ng/insert_string.o zlib-ng/zutil.o
+    ZLIB_NG_FILES += zlib-ng/cpu_features.o zlib-ng/deflate_fast.o zlib-ng/deflate_rle.o zlib-ng/infback.o zlib-ng/insert_string_roll.o
+    ZLIB_NG_FILES += zlib-ng/crc32_braid_comb.o zlib-ng/deflate_huff.o zlib-ng/deflate_slow.o zlib-ng/inflate.o zlib-ng/trees.o
+
+    ZLIB_NG_FILES += zlib-ng/arch/generic/adler32_c.o zlib-ng/arch/generic/chunkset_c.o zlib-ng/arch/generic/crc32_braid_c.o zlib-ng/arch/generic/slide_hash_c.o
+    ZLIB_NG_FILES += zlib-ng/arch/generic/adler32_fold_c.o zlib-ng/arch/generic/compare256_c.o zlib-ng/arch/generic/crc32_fold_c.o
+
+#    ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_avx2.o zlib-ng/arch/x86/adler32_ssse3.o zlib-ng/arch/x86/chunkset_ssse3.o zlib-ng/arch/x86/crc32_vpclmulqdq.o
+#    ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_avx512.o zlib-ng/arch/x86/chunkset_avx2.o zlib-ng/arch/x86/compare256_avx2.o zlib-ng/arch/x86/slide_hash_avx2.o
+#    ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_avx512_vnni.o zlib-ng/arch/x86/chunkset_avx512.o zlib-ng/arch/x86/compare256_sse2.o zlib-ng/arch/x86/slide_hash_sse2.o
+#    ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_sse42.o zlib-ng/arch/x86/chunkset_sse2.o zlib-ng/arch/x86/crc32_pclmulqdq.o zlib-ng/arch/x86/x86_features.o
+endif
 
 LZMAT_FILES = lzmat/lzmat_dec.o lzmat/lzmat_enc.o
 
@@ -359,7 +376,7 @@ $(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
-lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES)
+lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -376,4 +393,4 @@ lzbench: $(BZIP2_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_F
 	$(CXX) $(CFLAGS) $< -c -o $@
 
 clean:
-	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o lzham/*.o lzmat/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/lib/*.o libdeflate/lib/x86/*.o libdeflate/lib/arm/*.o nakamichi/*.o nvcomp/*.o
+	rm -rf lzbench lzbench.exe *.o _lzbench/*.o bzip2/*.o fast-lzma2/*.o slz/*.o zstd/lib/*.o zstd/lib/*.a zstd/lib/common/*.o zstd/lib/compress/*.o zstd/lib/decompress/*.o zstd/lib/dictBuilder/*.o lzsse/lzsse2/*.o lzsse/lzsse4/*.o lzsse/lzsse8/*.o lzfse/*.o xpack/lib/*.o blosclz/*.o gipfeli/*.o xz/*.o xz/common/*.o xz/check/*.o xz/lzma/*.o xz/lz/*.o xz/rangecoder/*.o liblzg/*.o lzlib/*.o brieflz/*.o brotli/common/*.o brotli/enc/*.o brotli/dec/*.o libcsc/*.o wflz/*.o lzjb/*.o lzma/*.o density/buffers/*.o density/algorithms/*.o density/algorithms/cheetah/core/*.o density/algorithms/*.o density/algorithms/lion/forms/*.o density/algorithms/lion/core/*.o density/algorithms/chameleon/core/*.o density/*.o density/structure/*.o pithy/*.o glza/*.o libzling/*.o yappy/*.o shrinker/*.o fastlz/*.o ucl/*.o zlib/*.o zlib-ng/*.o zlib-ng/arch/generic/*.o zlib-ng/arch/x86/*.o lzham/*.o lzmat/*.o lz4/*.o crush/*.o lzf/*.o lzrw/*.o lzo/*.o snappy/*.o quicklz/*.o tornado/*.o libdeflate/lib/*.o libdeflate/lib/x86/*.o libdeflate/lib/arm/*.o nakamichi/*.o nvcomp/*.o
