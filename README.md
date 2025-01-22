@@ -12,10 +12,9 @@ The disadvantage is that it requires source code of each compressor (therefore S
 | [![Build Status][AzurePipelinesMasterBadge]][AzurePipelinesLink] [![Build status][AppveyorMasterBadge]][AppveyorLink] |
 
 [AzurePipelinesMasterBadge]: https://dev.azure.com/inikep/lzbench/_apis/build/status%2Finikep.lzbench?branchName=master "gcc and clang tests"
-[AzurePipelinesLink]: https://dev.azure.com/inikep/lzbench/_build/latest?definitionId=8&branchName=master
+[AzurePipelinesLink]: https://dev.azure.com/inikep/lzbench/_build/latest?definitionId=10&branchName=master
 [AppveyorMasterBadge]: https://ci.appveyor.com/api/projects/status/u7kjj8ino4gww40v/branch/master?svg=true "mingw tests"
 [AppveyorLink]: https://ci.appveyor.com/project/inikep/lzbench
-
 
 Usage
 -------------------------
