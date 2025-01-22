@@ -60,7 +60,7 @@ else
 endif
 
 
-DEFINES     += $(addprefix -I$(SOURCE_PATH),. brotli/include libcsc libdeflate xpack/common zstd/lib zstd/lib/common)
+DEFINES     += $(addprefix -I$(SOURCE_PATH),. brotli/include libcsc libdeflate xpack/common)
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 
 # don't use "-ffast-math" for clang < 10.0
@@ -85,6 +85,9 @@ LDFLAGS += $(MOREFLAGS)
 ifeq ($(detected_OS), Darwin)
     CXXFLAGS += -std=c++14
 endif
+
+MISC_FILES = crush/crush.o shrinker/shrinker.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
+MISC_FILES += lzlib/lzlib.o blosclz/blosc/blosclz.o blosclz/blosc/fastcopy.o slz/src/slz.o
 
 LZO_FILES = lzo/lzo1.o lzo/lzo1a.o lzo/lzo1a_99.o lzo/lzo1b_1.o lzo/lzo1b_2.o lzo/lzo1b_3.o lzo/lzo1b_4.o lzo/lzo1b_5.o
 LZO_FILES += lzo/lzo1b_6.o lzo/lzo1b_7.o lzo/lzo1b_8.o lzo/lzo1b_9.o lzo/lzo1b_99.o lzo/lzo1b_9x.o lzo/lzo1b_cc.o
@@ -154,12 +157,12 @@ else
 	ZSTD_FILES += zstd/lib/decompress/zstd_decompress.o
 	ZSTD_FILES += zstd/lib/decompress/huf_decompress.o
 	ZSTD_FILES += zstd/lib/decompress/zstd_ddict.o
-	ZSTD_FILES += zstd/lib/decompress/huf_decompress_amd64.S
 	ZSTD_FILES += zstd/lib/decompress/zstd_decompress_block.o
 	ZSTD_FILES += zstd/lib/dictBuilder/cover.o
 	ZSTD_FILES += zstd/lib/dictBuilder/divsufsort.o
 	ZSTD_FILES += zstd/lib/dictBuilder/fastcover.o
 	ZSTD_FILES += zstd/lib/dictBuilder/zdict.o
+	MISC_FILES += zstd/lib/decompress/huf_decompress_amd64.S
 endif
 
 ifeq "$(DONT_BUILD_KANZI)" "1"
@@ -219,9 +222,6 @@ XZ_FILES += xz/src/liblzma/common/alone_encoder.o xz/src/liblzma/common/alone_de
 XZ_FLAGS = $(addprefix -I$(SOURCE_PATH),. xz/src xz/src/common xz/src/liblzma/api xz/src/liblzma/common xz/src/liblzma/lzma xz/src/liblzma/lz xz/src/liblzma/check xz/src/liblzma/rangecoder)
 
 GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o
-
-MISC_FILES = crush/crush.o shrinker/shrinker.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
-MISC_FILES += lzlib/lzlib.o blosclz/blosc/blosclz.o blosclz/blosc/fastcopy.o slz/src/slz.o
 
 LZBENCH_FILES = _lzbench/lzbench.o _lzbench/compressors.o _lzbench/csc_codec.o
 
@@ -459,6 +459,10 @@ $(FASTLZMA2_OBJ): %.o : %.c
 $(ZLIB_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -DZ_HAVE_UNISTD_H $< -c -o $@
+
+$(ZSTD_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Izstd/lib -Izstd/lib/common $< -c -o $@
 
 $(BSC_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
