@@ -116,6 +116,10 @@ LZMA_FILES = lzma/CpuArch.o lzma/LzFind.o lzma/LzFindOpt.o lzma/LzFindMt.o lzma/
 
 LZ4_FILES = lz4/lib/lz4.o lz4/lib/lz4hc.o
 
+LIZARD_FILES = lizard/lizard_compress.o lizard/lizard_decompress.o
+LIZARD_FILES += lizard/entropy/huf_compress.o lizard/entropy/huf_decompress.o lizard/entropy/entropy_common.o
+LIZARD_FILES += lizard/entropy/fse_compress.o lizard/entropy/fse_decompress.o lizard/entropy/hist.o
+
 LZF_FILES = lzf/lzf_c_ultra.o lzf/lzf_c_very.o lzf/lzf_d.o
 
 LZFSE_FILES = lzfse/lzfse_decode.o lzfse/lzfse_decode_base.o lzfse/lzfse_encode.o lzfse/lzfse_encode_base.o lzfse/lzfse_fse.o lzfse/lzvn_decode.o lzfse/lzvn_decode_base.o lzfse/lzvn_encode_base.o
@@ -444,9 +448,13 @@ libbsc/libbsc/bwt/libcubwt/libcubwt.o: libbsc/libbsc/bwt/libcubwt/libcubwt.cu
 
 _lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
 
-lzbench: $(BSC_FILES) $(BZIP2_FILES) $(KANZI_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIBDEFLATE_FILES) $(TAMP_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
+lzbench: $(BSC_FILES) $(BZIP2_FILES) $(KANZI_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(TAMP_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
+
+$(LIZARD_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 $(XZ_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)

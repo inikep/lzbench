@@ -91,7 +91,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [glza 0.8](https://encode.su/threads/2427-GLZA)
  - [kanzi 2.3](https://github.com/flanglet/kanzi-cpp)
  - [libdeflate v1.23](https://github.com/ebiggers/libdeflate)
- - [lizard v1.0 (formerly lz5)](https://github.com/inikep/lizard)
+ - [lizard v2.1](https://github.com/inikep/lizard)
  - [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4)
  - [lzav 4.5](https://github.com/avaneev/lzav)
  - [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html)
