@@ -1395,12 +1395,12 @@ int64_t lzbench_ppmd_compress(char* inbuf, size_t insize, char* outbuf, size_t o
         }
     };
 
-    const int modelOrder = level < 1 ? 1 : (level > 16 ? 16 : (int)level);
-    const int memMb = 16;
-    const int restoreMethod = 0;
-    unsigned short wPPMd = (modelOrder - 1) +
-        ((memMb - 1) << 4) +
-        (restoreMethod << 12);
+    level = (level == 0) ? 1 : ((level < 9) ? level : 9); // valid range for level is [1..9]
+    const int modelOrder = 3 + level;
+    const int memMb = 1 << (level - 1);
+    const int restoreMethod = level < 7 ? PPMD8_RESTORE_METHOD_RESTART : PPMD8_RESTORE_METHOD_CUT_OFF;
+    unsigned short wPPMd = (modelOrder - 1) + ((memMb - 1) << 4) + (restoreMethod << 12);
+
     CharWriter cw;
     cw.streamOut.Write = &CharWriter::write;
     cw.ptr = outbuf;
