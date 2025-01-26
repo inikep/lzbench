@@ -1825,12 +1825,13 @@ char* lzbench_yappy_init(size_t insize, size_t level, size_t)
 
 int64_t lzbench_yappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
-	return YappyCompress((uint8_t*)inbuf, (uint8_t*)outbuf, insize, level) - (uint8_t*)outbuf; 
+	int yappy_level = (level <= 1) ? 0 : 1 << (level - 2);
+	return YappyCompress((uint8_t*)inbuf, (uint8_t*)outbuf, insize, yappy_level) - (uint8_t*)outbuf;
 }
 
 int64_t lzbench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
-	return YappyUnCompress((uint8_t*)inbuf, (uint8_t*)inbuf+insize, (uint8_t*)outbuf) - (uint8_t*)outbuf; 
+	return YappyUnCompress((uint8_t*)inbuf, (uint8_t*)inbuf+insize, (uint8_t*)outbuf) - (uint8_t*)outbuf;
 }
 
 #endif
