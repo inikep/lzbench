@@ -2127,6 +2127,15 @@ int64_t lzbench_nakamichi_decompress(char *inbuf, size_t insize, char *outbuf, s
 #ifdef BENCH_HAS_CUDA
 #include <cuda_runtime.h>
 
+#define CUDA_CHECK(cond)                    \
+  do {                                      \
+    int err = cond;                         \
+    if (err != nvcompSuccess) {             \
+      std::cerr << "Failure" << std::endl;  \
+      return 0;                             \
+    }                                       \
+  } while (false)
+
 char* lzbench_cuda_init(size_t insize, size_t, size_t)
 {
     char* workmem;
@@ -2152,173 +2161,208 @@ int64_t lzbench_cuda_return_0(char *inbuf, size_t insize, char *outbuf, size_t o
 }
 
 #ifdef BENCH_HAS_NVCOMP
-#include "nvcomp/lz4.h"
+#include "nvcomp/include/nvcomp/lz4.h"
 
 typedef struct {
-  size_t buffer_size;
-  size_t compressed_max_size;
-  size_t* compressed_size;
   cudaStream_t stream;
-  char* uncompressed_d;
-  char* buffer_d;
-  char* compressed_d;
+  size_t max_out_bytes;
+  size_t batch_size;
+
+  char* device_input_data;
+  void ** device_uncompressed_ptrs;
+  size_t* device_uncompressed_bytes;
+
+  char* device_output_data;
+  void** device_compressed_ptrs;
+  size_t *device_compressed_bytes;
+
+  char* device_temp_ptr;
+  size_t device_temp_bytes;
+
+  void ** host_compressed_ptrs;
+  size_t* host_compressed_bytes;
+
+  void ** host_uncompressed_ptrs;
+  size_t* host_uncompressed_bytes;
   nvcompLZ4FormatOpts opts;
 } nvcomp_params_s;
 
 // allocate the host and device memory buffers for the nvcom LZ4 compression and decompression
 // the chunk size is configured by the compression level, 0 to 5 inclusive, corresponding to a chunk size from 32 kB to 1 MB
-char* lzbench_nvcomp_init(size_t insize, size_t level, size_t)
+char* lzbench_nvcomp_init(size_t in_bytes, size_t level, size_t)
 {
   // allocate the host memory for the algorithm options
-  nvcomp_params_s* nvcomp_params = (nvcomp_params_s*) malloc(sizeof(nvcomp_params_s));
-  if (!nvcomp_params) return NULL;
-
-  // set the chunk size based on the compression level
-  nvcomp_params->opts.chunk_size = 1 << (15 + level);
-
-  int status = 0;
+  nvcomp_params_s* params = (nvcomp_params_s*) malloc(sizeof(nvcomp_params_s));
+  if (!params) return NULL;
 
   // create a CUDA stream to run the compression/decompression
-  status = cudaStreamCreate(&nvcomp_params->stream);
-  assert(status == cudaSuccess);
+  int status = 0;
+  CUDA_CHECK(cudaStreamCreate(&params->stream));
+
+  // set the chunk size based on the compression level
+  params->opts.chunk_size = 1 << (15 + level);
+  params->batch_size = (in_bytes + params->opts.chunk_size - 1) / params->opts.chunk_size;
 
   // allocate device memory for the data to be compressed
-  status = cudaMalloc(&nvcomp_params->uncompressed_d, insize);
-  assert(status == cudaSuccess);
+  CUDA_CHECK(cudaMalloc(&params->device_input_data, in_bytes));
+
+  // Setup an array of chunk sizes
+  CUDA_CHECK(cudaMallocHost((void**)&params->host_uncompressed_bytes, sizeof(size_t)*params->batch_size));
+  for (size_t i = 0; i < params->batch_size; ++i) {
+    if (i + 1 < params->batch_size) {
+      params->host_uncompressed_bytes[i] = params->opts.chunk_size;
+    } else {
+      // last chunk may be smaller
+      params->host_uncompressed_bytes[i] = in_bytes - (params->opts.chunk_size*i);
+    }
+  }
+
+  // Setup an array of pointers to the start of each chunk
+  CUDA_CHECK(cudaMallocHost((void**)&params->host_uncompressed_ptrs, sizeof(size_t)*params->batch_size));
+  for (size_t ix_chunk = 0; ix_chunk < params->batch_size; ++ix_chunk) {
+    params->host_uncompressed_ptrs[ix_chunk] = params->device_input_data + params->opts.chunk_size*ix_chunk;
+  }
+
+  CUDA_CHECK(cudaMalloc((void**)&params->device_uncompressed_bytes, sizeof(size_t) * params->batch_size));
+  CUDA_CHECK(cudaMalloc((void**)&params->device_uncompressed_ptrs, sizeof(size_t) * params->batch_size));
+
+  CUDA_CHECK(cudaMemcpyAsync(params->device_uncompressed_bytes, params->host_uncompressed_bytes, sizeof(size_t) * params->batch_size, cudaMemcpyHostToDevice, params->stream));
+  CUDA_CHECK(cudaMemcpyAsync(params->device_uncompressed_ptrs, params->host_uncompressed_ptrs, sizeof(size_t) * params->batch_size, cudaMemcpyHostToDevice, params->stream));
 
   // determine the size of the temporary buffer
-  // note that the data type and the data to be compressed are not actually used
-  status = nvcompLZ4CompressGetTempSize(nvcomp_params->uncompressed_d, insize, NVCOMP_TYPE_CHAR, &nvcomp_params->opts, &nvcomp_params->buffer_size);
-  assert(status == nvcompSuccess);
+  CUDA_CHECK(nvcompBatchedLZ4CompressGetTempSize(params->batch_size, params->opts.chunk_size, nvcompBatchedLZ4DefaultOpts, &params->device_temp_bytes));
 
   // allocate device memory for the temporary buffer
-  status = cudaMalloc(&nvcomp_params->buffer_d, nvcomp_params->buffer_size);
-  assert(status == cudaSuccess);
+  CUDA_CHECK(cudaMalloc(&params->device_temp_ptr, params->device_temp_bytes));
 
-  // determine the size of the output buffer
-  // note that the data type and the data to be compressed are not actually used
-  status = nvcompLZ4CompressGetOutputSize(nvcomp_params->uncompressed_d, insize, NVCOMP_TYPE_CHAR, &nvcomp_params->opts, nvcomp_params->buffer_d, nvcomp_params->buffer_size, &nvcomp_params->compressed_max_size, 0);
-  assert(status == nvcompSuccess);
+  // get the maxmimum output size for each chunk
+  CUDA_CHECK(nvcompBatchedLZ4CompressGetMaxOutputChunkSize(params->opts.chunk_size, nvcompBatchedLZ4DefaultOpts, &params->max_out_bytes));
 
-  // allocate device memory for the compressed data
-  status = cudaMalloc(&nvcomp_params->compressed_d, nvcomp_params->compressed_max_size);
-  assert(status == cudaSuccess);
+  // allocate device memory for the data to be compressed
+  CUDA_CHECK(cudaMalloc(&params->device_output_data, params->batch_size * params->max_out_bytes));
 
-  // allocate pinned host memory for storing the compressed size from the device
-  status = cudaMallocHost(&nvcomp_params->compressed_size, sizeof(size_t));
-  assert(status == cudaSuccess);
+  // Next, allocate output space on the device
+  CUDA_CHECK(cudaMallocHost((void**)&params->host_compressed_bytes, sizeof(size_t) * params->batch_size));
+  CUDA_CHECK(cudaMallocHost((void**)&params->host_compressed_ptrs, sizeof(size_t) * params->batch_size));
+  for(size_t ix_chunk = 0; ix_chunk < params->batch_size; ++ix_chunk) {
+    params->host_compressed_ptrs[ix_chunk] = params->device_output_data + params->max_out_bytes*ix_chunk;
+  }
 
-  return (char*) nvcomp_params;
+  CUDA_CHECK(cudaMalloc((void**)&params->device_compressed_ptrs, sizeof(size_t) * params->batch_size));
+  CUDA_CHECK(cudaMemcpyAsync(
+      params->device_compressed_ptrs, params->host_compressed_ptrs,
+      sizeof(size_t) * params->batch_size, cudaMemcpyHostToDevice, params->stream));
+
+  // allocate space for compressed chunk sizes to be written to
+  CUDA_CHECK(cudaMalloc((void**)&params->device_compressed_bytes, sizeof(size_t) * params->batch_size));
+
+  return (char*) params;
 }
 
-void lzbench_nvcomp_deinit(char* params)
+void lzbench_nvcomp_deinit(char* nvcomp_params)
 {
-  nvcomp_params_s* nvcomp_params = (nvcomp_params_s*) params;
+  nvcomp_params_s* params = (nvcomp_params_s*) nvcomp_params;
+  if (!params) return;
 
   // free all the device memory
-  cudaFree(nvcomp_params->compressed_d);
-  cudaFree(nvcomp_params->buffer_d);
-  cudaFree(nvcomp_params->uncompressed_d);
+  cudaFree(params->device_input_data);
+  cudaFree(params->device_uncompressed_ptrs);
+  cudaFree(params->device_uncompressed_bytes);
+  cudaFree(params->device_output_data);
+  cudaFree(params->device_compressed_ptrs);
+  cudaFree(params->device_compressed_bytes);
+  cudaFree(params->device_temp_ptr);
+  cudaFreeHost(params->host_compressed_ptrs);
+  cudaFreeHost(params->host_compressed_bytes);
+  cudaFreeHost(params->host_uncompressed_ptrs);
+  cudaFreeHost(params->host_uncompressed_bytes);
 
   // release the CUDA stream
-  cudaStreamDestroy(nvcomp_params->stream);
+  cudaStreamDestroy(params->stream);
 
   // free the host memory for the algorithm options
-  free(nvcomp_params);
+  free(params);
 }
 
-int64_t lzbench_nvcomp_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* params)
+int64_t lzbench_nvcomp_compress(char *inbuf, size_t in_bytes, char *outbuf, size_t outsize, size_t level, size_t, char* nvcomp_params)
 {
-  nvcomp_params_s* nvcomp_params = (nvcomp_params_s*) params;
+  nvcomp_params_s* params = (nvcomp_params_s*) nvcomp_params;
   int status = 0;
 
   // copy the uncompressed data to the device
-  status = cudaMemcpyAsync(nvcomp_params->uncompressed_d, inbuf, insize, cudaMemcpyHostToDevice, nvcomp_params->stream);
-  assert(status == cudaSuccess);
+  CUDA_CHECK(cudaMemcpyAsync(params->device_input_data, inbuf, in_bytes, cudaMemcpyHostToDevice, params->stream));
 
-  // compress the data on the device
-  * nvcomp_params->compressed_size = nvcomp_params->compressed_max_size;
-  status = nvcompLZ4CompressAsync(
-      nvcomp_params->uncompressed_d,
-      insize,
-      NVCOMP_TYPE_CHAR,
-      &nvcomp_params->opts,
-      nvcomp_params->buffer_d,
-      nvcomp_params->buffer_size,
-      nvcomp_params->compressed_d,
-      nvcomp_params->compressed_size,
-      nvcomp_params->stream);
-  assert(status == nvcompSuccess);
+#if 0
+  fprintf(stderr, "COMPRESS device_uncompressed_ptrs=%p device_uncompressed_bytes=%p\n", params->device_uncompressed_ptrs, params->device_uncompressed_bytes);
+  fprintf(stderr, "COMPRESS chunk_size=%ld batch_size=%ld\n", params->opts.chunk_size, params->batch_size);
+  fprintf(stderr, "COMPRESS device_temp_ptr=%p device_temp_bytes=%ld\n", params->device_temp_ptr, params->device_temp_bytes);
+  fprintf(stderr, "COMPRESS device_compressed_ptrs=%p device_compressed_bytes=%p\n", params->device_compressed_ptrs, params->device_compressed_bytes);
+#endif
+
+  // call the API to compress the data
+  CUDA_CHECK(nvcompBatchedLZ4CompressAsync(
+      params->device_uncompressed_ptrs,
+      params->device_uncompressed_bytes,
+      params->opts.chunk_size, // The maximum chunk size
+      params->batch_size,
+      params->device_temp_ptr,
+      params->device_temp_bytes,
+      params->device_compressed_ptrs,
+      params->device_compressed_bytes,
+      nvcompBatchedLZ4DefaultOpts,
+      params->stream));
 
   // limit the data to be copied back to the size available on the host
-  size_t size = std::min(nvcomp_params->compressed_max_size, outsize);
+  size_t out_bytes = std::min(outsize, params->batch_size * params->max_out_bytes);
 
   // copy the compressed data back to the host
-  status = cudaMemcpyAsync(outbuf, nvcomp_params->compressed_d, size, cudaMemcpyDeviceToHost, nvcomp_params->stream);
-  assert(status == cudaSuccess);
+  CUDA_CHECK(cudaMemcpyAsync(outbuf, params->device_output_data, out_bytes, cudaMemcpyDeviceToHost, params->stream));
+  CUDA_CHECK(cudaMemcpyAsync(params->host_compressed_bytes, params->device_compressed_bytes, sizeof(size_t) * params->batch_size, cudaMemcpyDeviceToHost, params->stream));
 
-  // ensure that all operations and copies are complete, and that nvcomp_params->compressed_size is available
-  status = cudaStreamSynchronize(nvcomp_params->stream);
-  assert(status == cudaSuccess);
+  // ensure that all operations and copies are complete, and that params->device_compressed_bytes is available
+  CUDA_CHECK(cudaStreamSynchronize(params->stream));
 
-  return *nvcomp_params->compressed_size;
+  size_t total_out_bytes = 0;
+  for (size_t i = 0; i < params->batch_size; ++i) {
+    //fprintf(stderr, "COMPRESS host_compressed_bytes[%ld]=%ld\n", i, params->host_compressed_bytes[i]);
+    total_out_bytes += params->host_compressed_bytes[i];
+  }
+
+  return total_out_bytes;
 }
 
-int64_t lzbench_nvcomp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* params)
+int64_t lzbench_nvcomp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* nvcomp_params)
 {
-  nvcomp_params_s* nvcomp_params = (nvcomp_params_s*) params;
+  nvcomp_params_s* params = (nvcomp_params_s*) nvcomp_params;
   int status = 0;
+  size_t uncompressed_size = outsize;
 
-  // check that the device buffer is large enough for the compressed data
-  assert(insize <= nvcomp_params->compressed_max_size);
+  // make sure that original data is cleared from device
+  size_t in_bytes = std::min(insize, params->batch_size * params->max_out_bytes);
+  CUDA_CHECK(cudaMemsetAsync(params->device_input_data, 0, uncompressed_size));
+  CUDA_CHECK(cudaMemsetAsync(params->device_output_data, 0, in_bytes));
 
   // copy the compressed data to the device
-  status = cudaMemcpyAsync(nvcomp_params->compressed_d, inbuf, insize, cudaMemcpyHostToDevice, nvcomp_params->stream);
-  assert(status == cudaSuccess);
-
-  // extract the metadata
-  void* metadata_ptr;
-  status = nvcompDecompressGetMetadata(nvcomp_params->compressed_d, insize, &metadata_ptr, nvcomp_params->stream);
-  assert(status == cudaSuccess);
-
-  // get the temporary buffer size
-  size_t buffer_size;
-  status = nvcompDecompressGetTempSize(metadata_ptr, &buffer_size);
-  assert(status == cudaSuccess);
-
-  // check that the temporary buffer is large enough for the decompression
-  assert(buffer_size <= nvcomp_params->buffer_size);
-
-  // get the uncompressed size
-  size_t uncompressed_size;
-  status = nvcompDecompressGetOutputSize(metadata_ptr, &uncompressed_size);
-  assert(status == cudaSuccess);
-
-  // check that the uncompressed buffer is large enough for the uncompressed data
-  assert(uncompressed_size == outsize);
+  CUDA_CHECK(cudaMemcpyAsync(params->device_output_data, inbuf, in_bytes, cudaMemcpyHostToDevice, params->stream));
 
   // decompression the data on the device
-  status = nvcompDecompressAsync(
-      nvcomp_params->compressed_d,
-      insize,
-      nvcomp_params->buffer_d,
-      nvcomp_params->buffer_size,
-      metadata_ptr,
-      nvcomp_params->uncompressed_d,
-      uncompressed_size,
-      nvcomp_params->stream);
-  assert(status == cudaSuccess);
+  CUDA_CHECK(nvcompBatchedLZ4DecompressAsync(
+      params->device_compressed_ptrs,
+      params->device_compressed_bytes,
+      params->device_uncompressed_bytes,
+      nullptr,
+      params->batch_size,
+      params->device_temp_ptr,
+      params->device_temp_bytes,
+      params->device_uncompressed_ptrs,
+      nullptr,
+      params->stream));
 
   // copy the uncompressed data back to the host
-  status = cudaMemcpyAsync(outbuf, nvcomp_params->uncompressed_d, uncompressed_size, cudaMemcpyDeviceToHost, nvcomp_params->stream);
-  assert(status == cudaSuccess);
+  CUDA_CHECK(cudaMemcpyAsync(outbuf, params->device_input_data, uncompressed_size, cudaMemcpyDeviceToHost, params->stream));
 
   // ensure that all operations and copies are complete
-  status = cudaStreamSynchronize(nvcomp_params->stream);
-  assert(status == cudaSuccess);
-
-  // destroy the metadata
-  nvcompDecompressDestroyMetadata(metadata_ptr);
+  CUDA_CHECK(cudaStreamSynchronize(params->stream));
 
   return uncompressed_size;
 }

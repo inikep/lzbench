@@ -1,111 +1,175 @@
-# What is nvcomp?
-nvcomp is a CUDA library that features generic compression interfaces to enable developers to use high-performance GPU compressors in their applications.
+# What is nvCOMP?
 
-nvcomp 1.2 includes Cascaded and LZ4 compression methods. Cascaded compression methods demonstrate high performance with up to 500GB/s throughput and a high compression ratio of up to 80x on numerical data from analytical workloads. LZ4 methods feature up to 60 GB/s decompression throughput and good compression ratios for arbitrary byte streams.
+nvCOMP is a CUDA library that features generic compression interfaces to enable developers to use high-performance GPU compressors and decompressors in their applications.
 
-Below are performance vs. compression ratio scatter plots for a few numerical columns from TPC-H and Fanny Mae’s Mortgage datasets for Cascaded compression (R1D1B1), and string columns from TPC-H for LZ4 compression. For the TPC-H dataset we used SF10 lineitem table, and the following columns: column 0 (L_ORDERKEY) as 8B integers, and columns 8, 9, 13, 14, 15 as byte streams. From the Mortgage dataset we used 2009 Q2 performance table: column 0 (LOAN_ID) as 8B integers and column 10 (CURRENT_LOAN_DELINQUENCY_STATUS) as 4B integers. The numbers were collected on a Tesla V100 PCIe card (with ECC on). Note that you can tune the Cascaded format settings (e.g. the number of RLE layers) for even better compression ratio for some of these datasets.  We also provide a fast auto-selector that can be used to quickly determine the best Cascaded format settings to use for your dataset (details are in the [Cascaded Selector Guide](doc/selector-quickstart.md)).
+## Version 2.2 Release
 
-![Cascaded compression performance](/doc/cascaded-perf.png)
+This minor release of nvCOMP introduces a new high-level interface and 2 extremely fast entropy-only compressors: ANS and gdeflate::ENTROPY_ONLY (see performance charts below).
 
-![LZ4 performance](/doc/LZ4-perf.png)
+The redesigned [**high-level**](doc/highlevel_cpp_quickstart.md) interface in nvCOMP 2.2 enhances user experience by storing metadata in the compressed buffer. It can also manage the required scratch space for the user. Finally, unlike the low-level API, the high level interface automatically splits the data into independent chunks for parallel processing. This enables the easiest way to ramp up and use nvCOMP in applications, maintaining similar level of performance as the low-level interface. In nvCOMP 2.2 all compressors are available through both low-level and high-level APIs.
 
-The library is designed to be modular with ability to add new implementations without changing the high-level user interface. We’re working on additional schemes, and also on a “how to” guide for developers to add their own custom algorithms. Stay tuned for updates!
+## nvCOMP Compression algorithms
 
-Below you can find instructions on how to build the library, reproduce our benchmarking results, a guide on how to integrate into your application and a detailed description of the compression methods. Enjoy!
+- Cascaded: Novel high-throughput compressor ideal for analytical or structured/tabular data.
+- LZ4: General-purpose no-entropy byte-level compressor well-suited for a wide range of datasets.
+- Snappy: Similar to LZ4, this byte-level compressor is a popular existing format used for tabular data.
+- GDeflate: Proprietary compressor with entropy encoding and LZ77, high compression ratios on arbitrary data.
+- Bitcomp: Proprietary compressor designed for floating point data in Scientific Computing applications.
+- ANS: Proprietary entropy encoder based on asymmetric numeral systems (ANS).
 
-# Version 1.2 Release
+## Compression algorithm sample results
 
-This version of nvcomp adds the
-[Cascaded Selector](/dec/selector-quickstart) set of interfaces,
-for automating the process of configuring Cascaded compression as well as other
-improvements.
-Full details in [CHANGELOG.md](CHANGELOG.md).
+Compression ratio and performance plots for each of the compression methods available in nvCOMP are now provided. Each column shows results for a single column from an analytical dataset derived from [Fannie Mae’s Single-Family Loan Performance Data](http://www.fanniemae.com/portal/funding-the-market/data/loan-performance-data.html). The presented results are from the 2009Q2 dataset. Instructions for generating the column files used here are provided in the benchmark section below. The numbers were collected on a NVIDIA A100 40GB GPU (with ECC on). 
+
+<center><strong>CompressionRatios</strong></center>
+
+![compression ratio](/doc/CompressionRatios.svg)
+
+<center><strong>CompressionThroughput</strong></center>
+
+![compression performance](/doc/CompressionThroughput.svg)
+
+<center><strong>DecompressionThroughput</strong></center>
+
+![decompression performance](/doc/DecompressionThroughput.svg)
 
 ## Known issues
+* Cascaded, GDeflate and Bitcomp decompressors can only operate on valid input data (data that was compressed using the same compressor). Other decompressors can sometimes detect errors in the compressed stream. However, there are no implicit checksums implemented for any of the compressors. For full verification of the stream, it's recommended to run checksum separately.  
+* Cascaded and Bitcomp batched decompression C APIs cannot currently accept nullptr for actual_decompressed_bytes or device_statuses values.
+* The Bitcomp low-level batched decompression function is not fully asynchronous.
 
-* Cascaded compression requires a large amount of temporary workspace to
-operate. Current workaround is to compress/decompress large datasets in pieces,
-re-using temporary workspace for each piece.
+## Requirements
+To build / use nvCOMP, the following are required:
+* Compiler with full C++ 14 support (e.g. GCC 5, Clang 3.4, MSVC 2019)
+* [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) 10.2 or higher
+  * If the CUDA Toolkit is version 10.2, [CUB version 1.8](https://github.com/thrust/cub/tree/1.8.0) is also required
+* [CMake](https://cmake.org/) 3.18 or higher
+* GNU make on Linux, or Microsoft Visual C++ 2019 on Windows
+* Pascal (sm60) or higher GPU architecture is required. 
+  * Volta (sm70)+ GPU architecture is recommended for best results. GDeflate requires Volta+.
 
-# Building the library
-NVComp uses CMake for building. Generally, it is best to do an out of source build:
+# Getting Started
+Below you can find instructions on how to build the library, reproduce our benchmarking results, a guide on how to integrate into your application and a detailed description of the compression methods. Enjoy!
+
+## Building the library, optionally with nvCOMP extensions
+To begin, you can download the [nvCOMP source code](https://github.com/NVIDIA/nvcomp.git) or use `git clone` to download it to a subdirectory of the current directory by running:
 ```
-mkdir build/
+git clone https://github.com/NVIDIA/nvcomp.git
+```
+
+Create a directory named "build" inside the directory to which nvCOMP was downloaded and make that the current directory, e.g. from the command line after cloning with git:
+```
+cd nvcomp
+mkdir build
 cd build
-cmake ..
-make
 ```
 
-If you're building using CUDA 10 or less, you will need to specify a path to
-[CUB](https://github.com/thrust/cub) on your system, of at least version
-1.9.10.
+To use the nvCOMP extensions, first, download nvCOMP extensions from the [nvCOMP Developer Page](https://developer.nvidia.com/nvcomp), into a directory that is not inside the nvCOMP source directory.
+There are three available extensions.
+1. Bitcomp
+2. GDeflate
+3. ANS
 
+To build on Linux with GNU make:
 ```
-cmake -DCUB_DIR=<path to cub repository>
+cmake -DNVCOMP_EXTS_ROOT=/path/to/nvcomp_exts/${CUDA_VERSION} ..
+make -j
 ```
 
-# Running benchmarks
-GPU requirement:
-* It's recommended to run on Volta architecture or higher (the library was not tested on Pascal and below, but may work)
+To build on Windows with Microsoft Visual C++ 2019:
+```
+cmake -DNVCOMP_EXTS_ROOT=C:/path/to/nvcomp_exts/${CUDA_VERSION} -G "Visual Studio 16 2019" -A x64 -Tcuda=${CUDA_VERSION} ..
+```
+Then open the Visual Studio solution file nvcomp.sln in VS2019, and select "Build Solution" from the Build menu.
+
+For either platform, optionally specify `-DBUILD_BENCHMARKS=ON` or `-DBUILD_EXAMPLES=ON` or `-DBUILD_TESTS=ON` on the cmake command line to include any combination of benchmarks, examples, or tests.  To omit the nvCOMP extensions, omit `-DNVCOMP_EXTS_ROOT=<path to exts>` from the `cmake` command line.  When building using CUDA 10.2, you will need to specify a path to [CUB] on your system by adding a `-DCUB_DIR=<path to cub repository>` argument.  To specify where to install the built nvCOMP libraries, specify `-DCMAKE_INSTALL_PREFIX=<path to install to>`
+
+After the library is built, it can then be installed on Linux via:
+```
+make install
+```
+or on Windows by right-clicking the "INSTALL" project in Visual Studio and selecting "Build".  This will copy the `libnvcomp.so` or `nvcomp.lib` file into `<path to install to>/lib/libnvcomp.so` and the header files into `<path to install to>/include/`, with the path specified by `CMAKE_INSTALL_PREFIX` as above.
+
+## How to use the library in your code
+
+* [High-level Quick Start Guide](doc/highlevel_cpp_quickstart.md)
+* [Low-level Quick Start Guide](doc/lowlevel_c_quickstart.md)
+
+
+## Further information about some of our compression algorithms
+
+* [Algorithms overview](doc/algorithms_overview.md)
+
+## Running benchmarks
+
+By default the benchmarks are not built. To build them, pass `-DBUILD_BENCHMARKS=ON` to cmake as described above.  This will result in the benchmarks being placed inside of the `bin/` directory.
 
 To obtain TPC-H data:
 - Clone and compile https://github.com/electrum/tpch-dbgen
 - Run `./dbgen -s <scale factor>`, then grab `lineitem.tbl`
 
 To obtain Mortgage data:
-- Download [16 Years](http://rapidsai-data.s3-website.us-east-2.amazonaws.com/notebook-mortgage-data/mortgage_2000-2015.tgz) archive from https://rapidsai.github.io/demos/datasets/mortgage-data
-- Unpack and copy `mortgage/perf/Perforamnce_2009Q2.txt`
+- Download any of the archives from https://docs.rapids.ai/datasets/mortgage-data
+- Unpack and grab `perf/Perforamnce_<year><quarter>.txt`, e.g. `Perforamnce_2000Q4.txt`
 
 Convert CSV files to binary files:
 - `benchmarks/text_to_binary.py` is provided to read a `.csv` or text file and output a chosen column of data into a binary file
 - For example, run `python benchmarks/text_to_binary.py lineitem.tbl <column number> <datatype> column_data.bin '|'` to generate the binary dataset `column_data.bin` for TPC-H lineitem column `<column number>` using `<datatype>` as the type
 - *Note*: make sure that the delimiter is set correctly, default is `,`
 
-Run tests:
-- Run `./bin/benchmark_cascaded` or `./bin/benchmark_lz4` with `-f column_data.bin <options>` to measure throughput.
+Run benchmarks:
+- Various benchmarks are provided in the benchmarks/ folder. For example, here we demonstrate execution of the low-level and high level benchmarks for lz4.
+Other formats can be executed similarly.
 
-Below are some reference benchmark results on a Tesla V100 for TPC-H.
-
-Example of compressing and decompressing TPC-H SF10 lineitem column 0 (L_ORDERKEY) using Cascaded with RLE + Delta + Bit-packing (input stream is treated as 8-byte integers):
+Below are some example benchmark results on a A100 for the Mortgage 2009Q2 column 0:
 
 ```
-$ ./bin/benchmark_cascaded -f /tmp/lineitem-col0-long.bin -t long -r 1 -d 1 -b 1 -m
+./bin/benchmark_hlif lz4 -f /data/nvcomp/benchmark/mortgage-2009Q2-col0-long.bin
 ----------
-uncompressed (B): 479888416
-compression memory (input+output+temp) (B): 2400694079
-compression temp space (B): 1200972879
-compression output space (B): 719832784
-comp_size: 15000160, compressed ratio: 31.99
-compression throughput (GB/s): 184.06
-decompression memory (input+output+temp) (B): 930155136
-decompression temp space (B): 435266560
-decompression throughput (GB/s): 228.53
+uncompressed (B): 329055928
+comp_size: 8582564, compressed ratio: 38.34
+compression throughput (GB/s): 90.48
+decompression throughput (GB/s): 312.81
 ```
 
-Example of compressing and decompressing TPC-H SF10 lineitem column 15 (L_COMMENT) using LZ4:
-
 ```
-$ ./bin/benchmark_lz4 -f lineitem-col15-string.bin -m
+./bin/benchmark_lz4_chunked -f /data/nvcomp/benchmark/mortgage-2009Q2-col0-long.bin
 ----------
-uncompressed (B): 2579400236
-compression memory (input+output+temp) (B): 7761407820
-compression temp space (B): 2591870472
-compression output space (B): 2590137112
-comp_size: 1033546459, compressed ratio: 2.50
-compression throughput (GB/s): 3.00
-decompression memory (input+output+temp) (B): 3613891311
-decompression temp space (B): 944616
-decompression throughput (GB/s): 27.48
+uncompressed (B): 329055928
+comp_size: 8461988, compressed ratio: 38.89
+compression throughput (GB/s): 95.87
+decompression throughput (GB/s): 320.70
 ```
 
-*Note*: Your TPC-H performance results may not precisely match the output above, since the TPC-H data generator produces random data - you need to use the same seed to have byte-matching input files.
+## Running examples
 
-# How to use the library in your code
+By default the examples are not built. To build the CPU compression examples, pass `-DBUILD_EXAMPLES=ON` to cmake as described above.  This will result in the examples being placed inside of the `bin/` directory.
 
-* [C++ Quick Start Guide](doc/cpp_quickstart.md)
-* [Batched Compression/Decompression Guide](doc/batched-quickstart.md)
-* [Cascaded Format Selector Guide](doc/selector-quickstart.md)
+These examples require some external dependencies namely:
+- [zlib](https://github.com/madler/zlib) for the GDeflate CPU compression example (`zlib1g-dev` on debian based systems)
+- [LZ4](https://github.com/lz4/lz4) for the LZ4 CPU compression example (`liblz4-dev` on debian based systems)
+- [GPU Direct Storage](https://developer.nvidia.com/blog/gpudirect-storage/) for the corresponding example
 
-# Further information about our compression algorithms
+Run examples:
+- Run `./bin/gdeflate_cpu_compression` or `./bin/lz4_cpu_compression` with `-f </path/to/datafile>` to compress the data on the CPU and decompress on the GPU.
 
-* [Algorithms overview](doc/algorithms_overview.md)
+Below are the CPU compression example results on a RTX A6000 for the Mortgage 2000Q4 column 12:
+```
+$ ./bin/gdeflate_cpu_compression -f /Data/mortgage/mortgage-2009Q2-col12-string.bin 
+----------
+files: 1
+uncompressed (B): 164527964
+chunks: 2511
+comp_size: 1785796, compressed ratio: 92.13
+decompression validated :)
+decompression throughput (GB/s): 152.88
+
+$ ./bin/lz4_cpu_compression -f /Data/mortgage/mortgage-2009Q2-col12-string.bin 
+----------
+files: 1
+uncompressed (B): 164527964
+chunks: 2511
+comp_size: 2018066, compressed ratio: 81.53
+decompression validated :)
+decompression throughput (GB/s): 160.35
+```

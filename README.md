@@ -122,7 +122,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
  - [zlib 1.3.1](http://zlib.net)
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
  - [zstd 1.5.6](https://github.com/facebook/zstd)
- - [nvcomp 1.2.3](https://github.com/NVIDIA/nvcomp) - If CUDA is available.
+ - [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) - If CUDA is available.
 
 
 CUDA support
@@ -130,7 +130,7 @@ CUDA support
 
 If CUDA is available, lzbench supports additional compressors:
   - [cudaMemcpy](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__MEMORY.html#group__CUDART__MEMORY_1gc263dbe6574220cc776b45438fc351e8) - similar to the reference `memcpy` benchmark, using GPU memory
-  - [nvcomp 1.2.2](https://github.com/NVIDIA/nvcomp) LZ4 GPU-only compressor
+  - [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) LZ4 GPU-only compressor
 
 The directory where the CUDA compiler and libraries are available can be passed to `make` via the `CUDA_BASE` variable, *e.g.*:
 ```

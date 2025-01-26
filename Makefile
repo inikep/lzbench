@@ -380,9 +380,9 @@ endif
 ifneq "$(LIBCUDART)" ""
 ifneq "$(DONT_BUILD_NVCOMP)" "1"
     DEFINES += -DBENCH_HAS_NVCOMP
-    NVCOMP_CPP_SRC = $(wildcard nvcomp/*.cpp)
+    NVCOMP_CPP_SRC = $(wildcard nvcomp/src/*.cpp nvcomp/src/lowlevel/*.cpp)
     NVCOMP_CPP_OBJ = $(NVCOMP_CPP_SRC:%=%.o)
-    NVCOMP_CU_SRC  = $(wildcard nvcomp/*.cu)
+    NVCOMP_CU_SRC  = $(wildcard nvcomp/src/*.cu nvcomp/src/lowlevel/*.cu)
     NVCOMP_CU_OBJ  = $(NVCOMP_CU_SRC:%=%.o)
     NVCOMP_FILES   = $(NVCOMP_CU_OBJ) $(NVCOMP_CPP_OBJ)
 endif
@@ -424,11 +424,11 @@ nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c
 
 $(NVCOMP_CU_OBJ): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -c $< -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -Invcomp/include -Invcomp/src -Invcomp/src/lowlevel -c $< -o $@
 
 $(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -Invcomp/include -Invcomp/src -Invcomp/src/lowlevel -c $< -o $@
 
 libbsc/libbsc/st/st_cu.o: libbsc/libbsc/st/st.cu
 	@$(MKDIR) $(dir $@)

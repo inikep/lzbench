@@ -4,6 +4,7 @@ v2.0
 - added ppmd8 based on 7-zip 24.09 (thanks to @pps83)
 - added kanzi v2.3 (thanks to @flanglet)
 - added tamp v1.3.1 (thanks to @BrianPugh)
+- updated nvcomp to 2.2.0 (the last open source version)
 - updated slz to 1.2.1
 - updated snappy to 1.2.1
 - updated brotli to 1.1.0
