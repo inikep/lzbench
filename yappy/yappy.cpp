@@ -85,10 +85,10 @@ void YappyFillTables() {
 
 /*  for (uint32_t i = 32; i < 256; i++)
   {
-	  uint32_t info = infos[i];
+      uint32_t info = infos[i];
       uint32_t length = info & 0x00ff;
       uint32_t offset = (info & 0xff00);
-	  printf("i=%d len=%d off=%d\n", i, length, offset);
+      printf("i=%d len=%d off=%d\n", i, length, offset);
   }*/
 }
 
@@ -116,12 +116,13 @@ void inline Link(size_t *hashes, size_t *nodes, size_t i, const ui8 *data) {
 }
 
 
-ui8 *YappyCompress(const ui8 *data, ui8 *to, size_t len, int level=10) {
+ui8 *YappyCompress(const ui8 *data, ui8 *to, size_t len, int level=5) {
 
   size_t hashes[4096];
   size_t nodes[4096];
   ui8 end = 0xff;
   ui8 *optr = &end;
+  int level2n_remap = (1<<lv)/4;
 
   for (size_t i = 0; i < 4096; ++i) {
       hashes[i] = size_t(-1);
@@ -139,7 +140,7 @@ ui8 *YappyCompress(const ui8 *data, ui8 *to, size_t len, int level=10) {
 
       while(1) {
           size_t newPtr = nodes[ptr & 4095];
-          if (newPtr >= ptr || i - newPtr >= 4095 || tries > level) {
+          if (newPtr >= ptr || i - newPtr >= 4095 || tries > level2n_remap) {
               break;
           }
           ptr = newPtr;
