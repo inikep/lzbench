@@ -1,11 +1,8 @@
 Introduction
 -------------------------
 
-lzbench is an in-memory benchmark of open-source LZ77/LZSS/LZMA compressors. It joins all compressors into a single exe.
-At the beginning an input file is read to memory.
-Then all compressors are used to compress and decompress the file and decompressed file is verified.
-This approach has a big advantage of using the same compiler with the same optimizations for all compressors.
-The disadvantage is that it requires source code of each compressor (therefore Slug or lzturbo are not included).
+lzbench is an in-memory benchmarking tool for open-source compressors. It integrates all compressors into a single executable. Initially, an input file is loaded into memory, after which each compressor is used to compress and decompress the file, ensuring the decompressed output matches the original. This method provides the advantage of compiling all compressors with the same compiler and optimizations. However, it requires access to the source code of each compressor, meaning e.g. Slug and lzturbo are not included.
+
 
 |Status   |
 |---------|
