@@ -260,6 +260,24 @@ else
 	TAMP_FILES += tamp/common.o tamp/compressor.o tamp/decompressor.o
 endif
 
+ifeq "$(DONT_BUILD_BSC)" "1"
+    DEFINES += -DBENCH_REMOVE_BSC
+else
+    BSC_CXXFLAGS = -DLIBBSC_SORT_TRANSFORM_SUPPORT
+    BSC_FILES  = libbsc/libbsc/adler32/adler32.o
+    BSC_FILES += libbsc/libbsc/bwt/bwt.o
+    BSC_FILES += libbsc/libbsc/coder/coder.o
+    BSC_FILES += libbsc/libbsc/coder/qlfc/qlfc.o
+    BSC_FILES += libbsc/libbsc/coder/qlfc/qlfc_model.o
+    BSC_FILES += libbsc/libbsc/filters/detectors.o
+    BSC_FILES += libbsc/libbsc/filters/preprocessing.o
+    BSC_FILES += libbsc/libbsc/libbsc/libbsc.o
+    BSC_FILES += libbsc/libbsc/lzp/lzp.o
+    BSC_FILES += libbsc/libbsc/platform/platform.o
+    BSC_FILES += libbsc/libbsc/st/st.o
+    MISC_FILES += libbsc/libbsc/bwt/libsais/libsais.o
+endif
+
 ifeq "$(DONT_BUILD_BZIP2)" "1"
     DEFINES += -DBENCH_REMOVE_BZIP2
 else
@@ -366,39 +384,19 @@ endif
 CUDA_BASE ?= /usr/local/cuda
 LIBCUDART=$(wildcard $(CUDA_BASE)/lib64/libcudart.so)
 
-ifneq "$(LIBCUDART)" ""
+ifeq "$(LIBCUDART)" ""
+    $(info CUDA Toolkit not found at $(CUDA_BASE), CUDA support will be disabled.)
+    $(info Run "make CUDA_BASE=..." to use a different path.)
+    CUDA_BASE =
+    LIBCUDART =
+else
     DEFINES += -DBENCH_HAS_CUDA -I$(CUDA_BASE)/include
     LDFLAGS += -L$(CUDA_BASE)/lib64 -lcudart -Wl,-rpath=$(CUDA_BASE)/lib64
     CUDA_COMPILER = nvcc
     CUDA_CC = $(CUDA_BASE)/bin/nvcc --compiler-bindir $(CXX)
     CUDA_ARCH = 50 60 70 80
     CUDA_CXXFLAGS = -x cu -std=c++14 -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
-else
-    $(info CUDA Toolkit not found at $(CUDA_BASE), CUDA support will be disabled.)
-    $(info Run "make CUDA_BASE=..." to use a different path.)
-    CUDA_BASE =
-    LIBCUDART =
-endif
 
-ifeq "$(DONT_BUILD_BSC)" "1"
-    DEFINES += -DBENCH_REMOVE_BSC
-else
-    BSC_CXXFLAGS = -DLIBBSC_SORT_TRANSFORM_SUPPORT
-    BSC_FILES  = libbsc/libbsc/adler32/adler32.o
-    BSC_FILES += libbsc/libbsc/bwt/bwt.o
-    BSC_FILES += libbsc/libbsc/coder/coder.o
-    BSC_FILES += libbsc/libbsc/coder/qlfc/qlfc.o
-    BSC_FILES += libbsc/libbsc/coder/qlfc/qlfc_model.o
-    BSC_FILES += libbsc/libbsc/filters/detectors.o
-    BSC_FILES += libbsc/libbsc/filters/preprocessing.o
-    BSC_FILES += libbsc/libbsc/libbsc/libbsc.o
-    BSC_FILES += libbsc/libbsc/lzp/lzp.o
-    BSC_FILES += libbsc/libbsc/platform/platform.o
-    BSC_FILES += libbsc/libbsc/st/st.o
-    MISC_FILES += libbsc/libbsc/bwt/libsais/libsais.o
-endif
-
-ifneq "$(LIBCUDART)" ""
 ifneq "$(DONT_BUILD_NVCOMP)" "1"
     DEFINES += -DBENCH_HAS_NVCOMP
     NVCOMP_CPP_SRC = $(wildcard nvcomp/src/*.cpp nvcomp/src/lowlevel/*.cpp)
@@ -412,7 +410,8 @@ ifneq "$(DONT_BUILD_BSC)" "1"
     BSC_CXXFLAGS += -DLIBBSC_CUDA_SUPPORT
     MISC_FILES += libbsc/libbsc/st/st_cu.o libbsc/libbsc/bwt/libcubwt/libcubwt.o
 endif
-endif
+endif # ifneq "$(LIBCUDART)"
+
 
 all: lzbench
 
