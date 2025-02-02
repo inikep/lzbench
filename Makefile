@@ -55,7 +55,7 @@ else
 	LDFLAGS	+= -pthread
 
 	ifeq ($(BUILD_STATIC),1)
-		LDFLAGS	+= -lrt -static
+		LDFLAGS	+= -static -static-libstdc++
 	endif
 endif
 
@@ -78,8 +78,8 @@ else
 	OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
 endif
 
-CFLAGS = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES)
-CFLAGS_O2 = $(MOREFLAGS) $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES)
+CFLAGS = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS)
+CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES) $(MOREFLAGS)
 CXXFLAGS = $(CFLAGS)
 LDFLAGS += $(MOREFLAGS)
 ifeq ($(detected_OS), Darwin)

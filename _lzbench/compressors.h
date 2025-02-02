@@ -61,8 +61,13 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 	int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
 	int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
     char* lzbench_bsc_cuda_init(size_t insize, size_t level, size_t);
-	int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
-	int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+	#ifdef LIBBSC_CUDA_SUPPORT
+		int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+		int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+	#else
+		#define lzbench_bsc_cuda_compress NULL
+		#define lzbench_bsc_cuda_decompress NULL
+	#endif
 #else
 	#define lzbench_bsc_init NULL
 	#define lzbench_bsc_compress NULL

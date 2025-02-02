@@ -141,6 +141,7 @@ char *lzbench_bsc_cuda_init(size_t insize, size_t level, size_t)
     return 0;
 }
 
+#ifdef LIBBSC_CUDA_SUPPORT
 int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
     int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING | LIBBSC_FEATURE_CUDA;
@@ -163,6 +164,7 @@ int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, si
     bsc_decompress((unsigned char *)inbuf, insize_bsc, (unsigned char *)outbuf, outsize_bsc, features);
     return outsize;
 }
+#endif // LIBBSC_CUDA_SUPPORT
 
 #endif // BENCH_HAS_BSC
 

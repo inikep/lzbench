@@ -153,7 +153,6 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "memcpy",     "",            0,   0,    0,       0, lzbench_return_0,            lzbench_memcpy,                NULL,                    NULL },
     { "blosclz",    "2.5.1",       1,   9,    0, 64*1024, lzbench_blosclz_compress,    lzbench_blosclz_decompress,    NULL,                    NULL },
     { "brieflz",    "1.3.0",       1,   9,    0,       0, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
-    { "kanzi",      "2.3",         0,   9,    0,       0, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
     { "brotli",     "1.1.0",       0,  11,    0,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli22",   "1.1.0",       0,  11,   22,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli24",   "1.1.0",       0,  11,   24,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
@@ -167,6 +166,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "fastlzma2",   "1.0.1",      1,  10,    0,       0, lzbench_fastlzma2_compress,  lzbench_fastlzma2_decompress,  NULL,                    NULL },
     { "gipfeli",    "2016-07-13",  0,   0,    0,       0, lzbench_gipfeli_compress,    lzbench_gipfeli_decompress,    NULL,                    NULL },
     { "glza",       "0.8",         0,   0,    0,       0, lzbench_glza_compress,       lzbench_glza_decompress,       NULL,                    NULL },
+    { "kanzi",      "2.3",         1,   9,    0,       0, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
     { "libdeflate", "1.23",        1,  12,    0,       0, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
     { "lz4",        "1.10.0",      0,   0,    0,       0, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
     { "lz4fast",    "1.10.0",      1,  99,    0,       0, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
@@ -199,6 +199,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "lzsse8",     "2019-04-18",  0,  17,    0,       0, lzbench_lzsse8_compress,     lzbench_lzsse8_decompress,     lzbench_lzsse8_init,     lzbench_lzsse8_deinit },
     { "lzsse8fast", "2019-04-18",  0,   0,    0,       0, lzbench_lzsse8fast_compress, lzbench_lzsse8_decompress,     lzbench_lzsse8fast_init, lzbench_lzsse8fast_deinit },
     { "lzvn",       "2017-03-08",  0,   0,    0,       0, lzbench_lzvn_compress,       lzbench_lzvn_decompress,       lzbench_lzvn_init,       lzbench_lzvn_deinit },
+    { "nakamichi",  "okamigan",    0,   0,    0,       0, lzbench_nakamichi_compress,  lzbench_nakamichi_decompress,  NULL,                    NULL },
     { "pithy",      "2011-12-24",  0,   9,    0,       0, lzbench_pithy_compress,      lzbench_pithy_decompress,      NULL,                    NULL }, // decompression error (returns 0)
     { "ppmd8",      "24.09",       1,   9,    0,       0, lzbench_ppmd_compress,       lzbench_ppmd_decompress,       NULL,                    NULL },
     { "quicklz",    "1.5.0",       1,   3,    0,       0, lzbench_quicklz_compress,    lzbench_quicklz_decompress,    NULL,                    NULL },
@@ -227,46 +228,43 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "zstdLDM",    "1.5.6",       1,  22,    0,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstd22LDM",  "1.5.6",      16,  22,   22,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstd24LDM",  "1.5.6",      16,  22,   24,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
-    { "nakamichi",  "okamigan",    0,   0,    0,       0, lzbench_nakamichi_compress,  lzbench_nakamichi_decompress,  NULL,                    NULL },
     { "cudaMemcpy", "",            0,   0,    0,       0, lzbench_cuda_return_0,       lzbench_cuda_memcpy,           lzbench_cuda_init,       lzbench_cuda_deinit },
     { "nvcomp_lz4", "2.2.0",       0,   7,    0,       0, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },
 };
 
 
 
-#define LZBENCH_ALIASES_COUNT 13
+#define LZBENCH_ALIASES_COUNT 16
 
 static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
-    { "fast", "density/fastlz/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzf/lzfse/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
+    { "fast", "density/fastlz/kanzi,1,2,3,4/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
               "lzrw,1,3,4,5/lzsse4fast/lzsse8fast/lzvn/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/zstd,1,2,3,4,5" }, // default alias
-#if !defined(__arm__) && !defined(__aarch64__)
-    { "all",  "blosclz,1,3,6,9/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc,1,3,6/bsc_cuda,5,7,8/bzip2,1,5,9/" \
-              "crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/fastlzma2,1,3,5,8,10/gipfeli/libdeflate,1,3,6,9,12/lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4/lz4fast,3,17/lz4hc,1,4,9,12/lzav/" \
-              "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5,9/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
-              "lzrw,1,3,4,5/lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/pithy,0,3,6,9/ppmd8,4/quicklz,1,2,3/slz_gzip/snappy/tornado,1,2,3,4,5,6,7,10,13,16/" \
-              "ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/xpack,1,6,9/xz,0,3,6,9/yalz77,1,4,8,12/yappy,1,10,100/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,22/" \
-              "shrinker/wflz/lzmat" }, // these can SEGFAULT
-#else
-    { "all",  "blosclz,1,3,6,9/brieflz,1,3,6,8/brotli,0,2,5,8/bsc,1,3,6/bsc_cuda,5,7,8/bzip2,1,5,9/" \
-              "crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/gipfeli/libdeflate,1,3,6,9,12/lizard,10,12,15,20,22,25,30,32,35,40,42,45/lz4/lz4fast,3,17/lz4hc,1,4,9/lzav/" \
-              "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,5/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
-              "lzrw,1,3,4,5/lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/pithy,0,3,6,9/quicklz,1,2,3/slz_gzip/snappy/tornado,1,2,3,4,5,6,7,10,13,16/" \
-              "ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/xpack,1,6,9/xz,0,3,6,9/zlib,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,22/" \
-              "shrinker/wflz/lzmat" }, // these can SEGFAULT
-#endif
-    { "opt",  "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/lzham,0,1,2,3,4/lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/" \
-              "tornado,5,6,7,8,9,10,11,12,13,14,15,16/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
-    { "lzo1",  "lzo1,1,99" },
-    { "lzo1a", "lzo1a,1,99" },
-    { "lzo1b", "lzo1b,1,2,3,4,5,6,7,8,9,99,999" },
-    { "lzo1c", "lzo1c,1,2,3,4,5,6,7,8,9,99,999" },
-    { "lzo1f", "lzo1f,1,999" },
-    { "lzo1x", "lzo1x,1,11,12,15,999" },
-    { "lzo1y", "lzo1y,1,999" },
-    { "lzo",   "lzo1/lzo1a/lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a" },
-    { "ucl",   "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },
-    { "cuda",  "cudaMemcpy/nvcomp_lz4,0,1,3,5/bsc_cuda,5,6,7,8" },
+    { "all",  "blosclz,1,3,6,9/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc,1,3,6/bzip2,1,5,9/" \
+              "crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
+              "lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4/lz4fast,3,17/lz4hc,1,4,9,12/lzav/" \
+              "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,6,9/" \
+              "lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
+              "lzrw,1,3,4,5/lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/pithy,0,3,6,9/ppmd8,4/" \
+              "quicklz,1,2,3/slz_gzip/snappy/tornado,1,2,3,4,5,6,7,10,13,16/" \
+              "ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/xpack,1,6,9/xz,0,3,6,9/" \
+              "zlib,1,6,9/zlib-ng,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,22/" },
+    { "opt",  "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/fastlzma2,1,2,3,4,5,6,7,8,9,10/kanzi,5,6,7,8,9/lzham,0,1,2,3,4/" \
+              "lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/" \
+              "tornado,6,7,8,9,10,11,12,13,14,15,16/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
+    { "disabled", "nakamichi/tamp" },
+    { "slow",   "glza" },
+    { "unsafe", "gipfeli/lzmat/shrinker/wflz/yalz77,1,4,8,12/yappy,1,5,9" }, // these can SEGFAULT
+    { "lzo1",   "lzo1,1,99" },
+    { "lzo1a",  "lzo1a,1,99" },
+    { "lzo1b",  "lzo1b,1,2,3,4,5,6,7,8,9,99,999" },
+    { "lzo1c",  "lzo1c,1,2,3,4,5,6,7,8,9,99,999" },
+    { "lzo1f",  "lzo1f,1,999" },
+    { "lzo1x",  "lzo1x,1,11,12,15,999" },
+    { "lzo1y",  "lzo1y,1,999" },
+    { "lzo",    "lzo1/lzo1a/lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a" },
+    { "ucl",    "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },
+    { "cuda",   "cudaMemcpy/nvcomp_lz4,0,1,3,5/bsc_cuda,5,6,7,8" },
 };
 
 #endif
