@@ -6,7 +6,7 @@ These are generic building and installation instructions.
 Requirements
 ------------
 To compile, you need a C and C++ compiler that is GNUC-compatible, such as GCC, LLVM/Clang, or ICC.
-It is recommended to use GCC 7.0+ or Clang 6.0+. You can find GCC at http://gcc.gnu.org.
+It is recommended to use GCC 7.1+ or Clang 6.0+. You can find GCC at http://gcc.gnu.org.
 
 
 Testing
