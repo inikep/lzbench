@@ -21,7 +21,7 @@ When adding a new codec, please follow these steps:
 - Add a new codec to `README.md` with a proper link to the upstream repository.
 - Add a new entry in `CHANGELOG`
 - Add the new codec to `_lzbench/lzbench.h` and increase `LZBENCH_COMPRESSOR_COUNT`.
-- Add declarations of compression and decompression functions in `_lzbench/compressors.h`, e.g.:
+- Add declarations of compression and decompression functions in `_lzbench/codecs.h`, e.g.:
 
 ```
 #ifndef BENCH_REMOVE_XXXX
@@ -33,7 +33,7 @@ int64_t lzbench_xxxx_decompress(char* inbuf, size_t insize, char* outbuf, size_t
 #endif // BENCH_REMOVE_XXXX
 ```
 
-- Add definitions of compression and decompression functions in `_lzbench/compressors.cpp`, e.g.:
+- Add definitions of compression and decompression functions in `_lzbench/lz_codecs.cpp`, `_lzbench/symmetric_codecs.cpp` (BWT, PPM-based), or `_lzbench/misc_codecs.cpp`, e.g.:
 
 ```
 #ifndef BENCH_REMOVE_XXXX

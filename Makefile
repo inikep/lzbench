@@ -244,7 +244,7 @@ XZ_FLAGS = $(addprefix -I$(SOURCE_PATH),. xz/src xz/src/common xz/src/liblzma/ap
 
 GIPFELI_FILES = gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o
 
-LZBENCH_FILES = _lzbench/lzbench.o _lzbench/compressors.o _lzbench/csc_codec.o
+LZBENCH_FILES = _lzbench/lzbench.o _lzbench/lz_codecs.o _lzbench/buggy_codecs.o _lzbench/symmetric_codecs.o _lzbench/misc_codecs.o
 
 ifeq "$(DONT_BUILD_LIBDEFLATE)" "1"
     DEFINES += -DBENCH_REMOVE_LIBDEFLATE
@@ -407,7 +407,7 @@ ifneq "$(DONT_BUILD_NVCOMP)" "1"
 endif
 
 ifneq "$(DONT_BUILD_BSC)" "1"
-    BSC_CXXFLAGS += -DLIBBSC_CUDA_SUPPORT
+    DEFINES += -DLIBBSC_CUDA_SUPPORT
     MISC_FILES += libbsc/libbsc/st/st_cu.o libbsc/libbsc/bwt/libcubwt/libcubwt.o
 endif
 endif # ifneq "$(LIBCUDART)"
@@ -426,7 +426,7 @@ pithy/pithy.o: pithy/pithy.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) $< -c -o $@
 
-_lzbench/compressors.o: %.o : %.cpp
+_lzbench/lz_codecs.o: %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -std=c++11 $< -c -o $@
 

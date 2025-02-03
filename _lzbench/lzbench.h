@@ -15,7 +15,7 @@
 
 #include <vector>
 #include <string>
-#include "compressors.h"
+#include "codecs.h"
 #include "lizard/lizard_compress.h"    // LIZARD_MAX_CLEVEL
 
 #define PROGNAME "lzbench"
@@ -238,33 +238,33 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 
 static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
-    { "fast", "density/fastlz/kanzi,1,2,3,4/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
-              "lzrw,1,3,4,5/lzsse4fast/lzsse8fast/lzvn/pithy,0,3,6,9/quicklz,1,2/shrinker/snappy/tornado,1,2,3/zstd,1,2,3,4,5" }, // default alias
+    { "fast", "fastlz/kanzi,1,2,3,4/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzjb/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
+              "lzsse4fast/lzsse8fast/lzvn/pithy,0,3,6,9/quicklz,1,2/snappy/tornado,1,2,3/zstd,1,2,3,4,5" }, // default alias
     { "all",  "blosclz,1,3,6,9/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc,1,3,6/bzip2,1,5,9/" \
-              "crush,0,1,2/csc,1,3,5/density,1,2,3/fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
-              "lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4/lz4fast,3,17/lz4hc,1,4,9,12/lzav/" \
+              "crush,0,1,2/fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
+              "lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzav/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzjb/lzlib,0,3,6,9/lzma,0,2,4,6,9/" \
               "lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
-              "lzrw,1,3,4,5/lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/pithy,0,3,6,9/ppmd8,4/" \
+              "lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/ppmd8,4/" \
               "quicklz,1,2,3/slz_gzip/snappy/tornado,1,2,3,4,5,6,7,10,13,16/" \
               "ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/xpack,1,6,9/xz,0,3,6,9/" \
-              "zlib,1,6,9/zlib-ng,1,6,9/zling,0,1,2,3,4/zstd,1,2,5,8,11,15,18,22/" },
+              "zlib,1,6,9/zlib-ng,1,6,9/zling,0,1,2,3,4/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22" },
     { "opt",  "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/fastlzma2,1,2,3,4,5,6,7,8,9,10/kanzi,5,6,7,8,9/lzham,0,1,2,3,4/" \
               "lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/" \
               "tornado,6,7,8,9,10,11,12,13,14,15,16/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
-    { "disabled", "nakamichi/tamp" },
-    { "slow",   "glza" },
-    { "unsafe", "gipfeli/lzmat/shrinker/wflz/yalz77,1,4,8,12/yappy,1,5,9" }, // these can SEGFAULT
-    { "lzo1",   "lzo1,1,99" },
-    { "lzo1a",  "lzo1a,1,99" },
-    { "lzo1b",  "lzo1b,1,2,3,4,5,6,7,8,9,99,999" },
-    { "lzo1c",  "lzo1c,1,2,3,4,5,6,7,8,9,99,999" },
-    { "lzo1f",  "lzo1f,1,999" },
-    { "lzo1x",  "lzo1x,1,11,12,15,999" },
-    { "lzo1y",  "lzo1y,1,999" },
-    { "lzo",    "lzo1/lzo1a/lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a" },
-    { "ucl",    "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },
-    { "cuda",   "cudaMemcpy/nvcomp_lz4,0,1,3,5/bsc_cuda,5,6,7,8" },
+    { "cuda",     "cudaMemcpy/nvcomp_lz4,0,1,3,5/bsc_cuda,5,6,7,8" },
+    { "symmetric","bsc/bzip2/ppmd8" },
+    { "misc",     "glza/nakamichi/tamp" },
+    { "buggy",    "csc/density/gipfeli/lzmat/lzrw/pithy/shrinker/wflz/yalz77/yappy" }, // these can SEGFAULT
+    { "lzo1",     "lzo1,1,99" },
+    { "lzo1a",    "lzo1a,1,99" },
+    { "lzo1b",    "lzo1b,1,2,3,4,5,6,7,8,9,99,999" },
+    { "lzo1c",    "lzo1c,1,2,3,4,5,6,7,8,9,99,999" },
+    { "lzo1f",    "lzo1f,1,999" },
+    { "lzo1x",    "lzo1x,1,11,12,15,999" },
+    { "lzo1y",    "lzo1y,1,999" },
+    { "lzo",      "lzo1/lzo1a/lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a" },
+    { "ucl",      "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },
 };
 
 #endif

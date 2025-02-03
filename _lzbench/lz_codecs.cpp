@@ -5,19 +5,16 @@
  * This source code is dual-licensed under the GPLv2 and GPLv3 licenses.
  * For additional details, refer to the LICENSE file located in the root
  * directory of this source tree.
+ *
+ * lz_codecs.cpp: LZ-based codecs that offer fast decompression speeds
  */
 
-#include "compressors.h"
-#include <stdio.h>
+#include "codecs.h"
+
 #include <stdint.h>
 #include <string.h> // memcpy
+#include <algorithm> // std::max
 
-#ifndef MAX
-    #define MAX(a,b) ((a)>(b))?(a):(b)
-#endif
-#ifndef MIN
-	#define MIN(a,b) ((a)<(b)?(a):(b))
-#endif
 
 
 int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* )
@@ -46,6 +43,7 @@ int64_t lzbench_blosclz_decompress(char *inbuf, size_t insize, char *outbuf, siz
 }
 
 #endif // BENCH_REMOVE_BLOSCLZ
+
 
 
 #ifndef BENCH_REMOVE_BRIEFLZ
@@ -101,91 +99,60 @@ int64_t lzbench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 
-#ifndef BENCH_REMOVE_BSC
-#include "libbsc/libbsc/libbsc.h"
+#ifndef BENCH_REMOVE_CRUSH
+#include "crush/crush.hpp"
 
-char *lzbench_bsc_init(size_t insize, size_t level, size_t)
+int64_t lzbench_crush_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
-    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING;
-    bsc_init(features);
-    return 0;
+	return crush::compress(level, (uint8_t*)inbuf, insize, (uint8_t*)outbuf);
 }
 
-int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_crush_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
-    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING;
-    int lzpHashSize = 15;         // -H
-    int lzpMinLen = 128;          // -M
-    int blockSorter = level == 2 ? 1 : (int)level; // -m, note: 2 doesn't exist, default to 1
-    int coder = 1;                // -e
-
-    int res = bsc_compress((unsigned char *)inbuf, (unsigned char *)outbuf, (int)insize, lzpHashSize, lzpMinLen, blockSorter, coder, features);
-    return res;
+	return crush::decompress((uint8_t*)inbuf, (uint8_t*)outbuf, outsize);
 }
 
-int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING;
-    int insize_bsc;
-    int outsize_bsc;
+#endif // BENCH_REMOVE_CRUSH
 
-    bsc_block_info((unsigned char *)inbuf, LIBBSC_HEADER_SIZE, &insize_bsc, &outsize_bsc, features);
-    bsc_decompress((unsigned char *)inbuf, insize_bsc, (unsigned char *)outbuf, outsize_bsc, features);
-    return outsize;
+
+
+#ifndef BENCH_REMOVE_FASTLZ
+extern "C"
+{
+	#include "fastlz/fastlz.h"
 }
 
-char *lzbench_bsc_cuda_init(size_t insize, size_t level, size_t)
+int64_t lzbench_fastlz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
-    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING | LIBBSC_FEATURE_CUDA;
-    bsc_init(features);
-    return 0;
+	return fastlz_compress_level(level, inbuf, insize, outbuf);
 }
 
-#ifdef LIBBSC_CUDA_SUPPORT
-int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
-    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING | LIBBSC_FEATURE_CUDA;
-    int lzpHashSize = 15;
-    int lzpMinLen = 128;
-    int blockSorter = (int)level;
-    int coder = 1;
-
-    int res = bsc_compress((unsigned char *)inbuf, (unsigned char *)outbuf, (int)insize, lzpHashSize, lzpMinLen, blockSorter, coder, features);
-    return res;
+	return fastlz_decompress(inbuf, insize, outbuf, outsize);
 }
 
-int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+#endif
+
+
+
+#ifndef BENCH_REMOVE_FASTLZMA2
+#include "fast-lzma2/fast-lzma2.h"
+
+int64_t lzbench_fastlzma2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char* workmem)
 {
-    int features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING | LIBBSC_FEATURE_CUDA;
-    int insize_bsc;
-    int outsize_bsc;
-
-    bsc_block_info((unsigned char *)inbuf, LIBBSC_HEADER_SIZE, &insize_bsc, &outsize_bsc, features);
-    bsc_decompress((unsigned char *)inbuf, insize_bsc, (unsigned char *)outbuf, outsize_bsc, features);
-    return outsize;
-}
-#endif // LIBBSC_CUDA_SUPPORT
-
-#endif // BENCH_HAS_BSC
-
-
-
-#ifndef BENCH_REMOVE_BZIP2
-#include "bzip2/bzlib.h"
-
-int64_t lzbench_bzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
-{
-   unsigned int a_outsize = outsize;
-   return BZ2_bzBuffToBuffCompress((char *)outbuf, &a_outsize, (char *)inbuf, (unsigned int)insize, level, 0, 0)==BZ_OK?a_outsize:-1;
+    size_t ret = FL2_compress(outbuf, outsize, inbuf, insize, level);
+    if (FL2_isError(ret)) return 0;
+    return ret;
 }
 
-int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
 {
-   unsigned int a_outsize = outsize;
-   return BZ2_bzBuffToBuffDecompress((char *)outbuf, &a_outsize, (char *)inbuf, (unsigned int)insize, 0, 0)==BZ_OK?a_outsize:-1;
+    size_t ret = FL2_decompress(outbuf, outsize, inbuf, insize);
+    if (FL2_isError(ret)) return 0;
+    return ret;
 }
-
-#endif // BENCH_REMOVE_BZIP2
+#endif // BENCH_REMOVE_FASTLZMA2
 
 
 
@@ -277,159 +244,6 @@ int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_
   return outsize;//cis.getRead();
 }
 #endif // BENCH_REMOVE_KANZI
-
-
-
-#ifndef BENCH_REMOVE_CRUSH
-#include "crush/crush.hpp"
-
-int64_t lzbench_crush_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-	return crush::compress(level, (uint8_t*)inbuf, insize, (uint8_t*)outbuf);
-}
-
-int64_t lzbench_crush_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	return crush::decompress((uint8_t*)inbuf, (uint8_t*)outbuf, outsize);
-}
-
-#endif // BENCH_REMOVE_CRUSH
-
-
-
-
-#ifndef BENCH_REMOVE_DENSITY
-extern "C"
-{
-	#include "density/density_api.h"
-}
-
-char* lzbench_density_init(size_t insize, size_t level, size_t)
-{
-    return (char*) malloc(MAX(density_compress_safe_size(insize), density_decompress_safe_size(insize)));
-}
-
-void lzbench_density_deinit(char* workmem)
-{
-    free(workmem);
-}
-
-int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-	density_processing_result result = density_compress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, density_compress_safe_size(outsize), (DENSITY_ALGORITHM)level);
-	if (result.state) 
-		return 0;
-		
-	return result.bytesWritten;
-}
-
-int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	density_processing_result result = density_decompress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, density_decompress_safe_size(outsize));
-	if (result.state) 
-		return 0;
-		
-	return result.bytesWritten;
-}
-
-#endif // BENCH_REMOVE_DENSITY
-
-
-
-#ifndef BENCH_REMOVE_FASTLZ
-extern "C"
-{
-	#include "fastlz/fastlz.h"
-}
-
-int64_t lzbench_fastlz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-	return fastlz_compress_level(level, inbuf, insize, outbuf);
-}
-
-int64_t lzbench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	return fastlz_decompress(inbuf, insize, outbuf, outsize);
-}
-
-#endif
-
-
-
-#ifndef BENCH_REMOVE_FASTLZMA2
-#include "fast-lzma2/fast-lzma2.h"
-
-int64_t lzbench_fastlzma2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char* workmem)
-{
-    size_t ret = FL2_compress(outbuf, outsize, inbuf, insize, level);
-    if (FL2_isError(ret)) return 0;
-    return ret;
-}
-
-int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
-{
-    size_t ret = FL2_decompress(outbuf, outsize, inbuf, insize);
-    if (FL2_isError(ret)) return 0;
-    return ret;
-}
-#endif // BENCH_REMOVE_FASTLZMA2
-
-
-
-#ifndef BENCH_REMOVE_GIPFELI
-#include "gipfeli/gipfeli.h"
-
-int64_t lzbench_gipfeli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-    int64_t res;
-    util::compression::Compressor *gipfeli = util::compression::NewGipfeliCompressor();
-    if (gipfeli)
-    {
-        util::compression::UncheckedByteArraySink sink((char*)outbuf);
-        util::compression::ByteArraySource src((const char*)inbuf, insize);
-        res = gipfeli->CompressStream(&src, &sink); 
-        delete gipfeli; 
-    }
-    else res=0;
-    return res;
-}
-
-int64_t lzbench_gipfeli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-    int64_t res = 0;
-    util::compression::Compressor *gipfeli = util::compression::NewGipfeliCompressor();
-    if (gipfeli)
-    {
-        util::compression::UncheckedByteArraySink sink((char*)outbuf);
-        util::compression::ByteArraySource src((const char*)inbuf, insize);
-        if (gipfeli->UncompressStream(&src, &sink))
-            res = outsize;
-        delete gipfeli;
-    }
-    return res;
-}
-
-#endif
-
-
-
-#ifndef BENCH_REMOVE_GLZA
-#include "glza/GLZAcomp.h"
-#include "glza/GLZAdecode.h"
-
-int64_t lzbench_glza_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	if (GLZAcomp(insize, (uint8_t *)inbuf, &outsize, (uint8_t *)outbuf, (FILE *)0, NULL) == 0) return(0);
-	return outsize;
-}
-
-int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	if (GLZAdecode(insize, (uint8_t *)inbuf, &outsize, (uint8_t *)outbuf, (FILE *)0) == 0) return(0);
-	return outsize;
-}
-
-#endif
 
 
 
@@ -554,7 +368,7 @@ extern "C"
 
 char* lzbench_lzfse_init(size_t insize, size_t level, size_t)
 {
-    return (char*) malloc(MAX(lzfse_encode_scratch_size(), lzfse_decode_scratch_size()));
+    return (char*) malloc(std::max(lzfse_encode_scratch_size(), lzfse_decode_scratch_size()));
 }
 
 void lzbench_lzfse_deinit(char* workmem)
@@ -584,7 +398,7 @@ extern "C"
 
 char* lzbench_lzvn_init(size_t insize, size_t level, size_t)
 {
-    return (char*) malloc(MAX(lzvn_encode_scratch_size(), lzvn_decode_scratch_size()));
+    return (char*) malloc(std::max(lzvn_encode_scratch_size(), lzvn_decode_scratch_size()));
 }
 
 void lzbench_lzvn_deinit(char* workmem)
@@ -852,30 +666,6 @@ int64_t lzbench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 }
 
 #endif
-
-
-
-#ifndef BENCH_REMOVE_LZMAT
-#include "lzmat/lzmat.h"
-
-int64_t lzbench_lzmat_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-	uint32_t complen = outsize;
-	if (lzmat_encode((uint8_t*)outbuf, &complen, (uint8_t*)inbuf, insize) != 0)
-		return 0;
-	return complen;
-}
-
-int64_t lzbench_lzmat_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	uint32_t decomplen = outsize;
-	if (lzmat_decode((uint8_t*)outbuf, &decomplen, (uint8_t*)inbuf, insize) != 0)
-		return 0;
-	return decomplen;
-}
-
-#endif
-
 
 
 
@@ -1171,66 +961,6 @@ int64_t lzbench_lzo2a_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 
-
-
-#ifndef BENCH_REMOVE_LZRW
-extern "C"
-{
-	#include "lzrw/lzrw.h"
-}
-
-char* lzbench_lzrw_init(size_t, size_t, size_t)
-{
-    return (char*) malloc(lzrw2_req_mem());
-}
-
-void lzbench_lzrw_deinit(char* workmem)
-{
-    free(workmem);
-}
-
-int64_t lzbench_lzrw_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
-{
-    if (!workmem)
-        return 0;
-        
-	uint32_t complen = 0;
-	switch (level)
-	{
-		default:
-		case 1: lzrw1_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &complen); break;
-		case 2: lzrw1a_compress(COMPRESS_ACTION_COMPRESS, (uint8_t*)workmem, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, &complen); break;
-		case 3: lzrw2_compress(COMPRESS_ACTION_COMPRESS, (uint8_t*)workmem, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, &complen); break;
-		case 4: lzrw3_compress(COMPRESS_ACTION_COMPRESS, (uint8_t*)workmem, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, &complen); break;
-		case 5: lzrw3a_compress(COMPRESS_ACTION_COMPRESS, (uint8_t*)workmem, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, &complen); break;
-	}
-
-	return complen;
-}
-
-int64_t lzbench_lzrw_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
-{
-    if (!workmem)
-        return 0;
-    
-	uint32_t decomplen = 0;
-	switch (level)
-	{
-		default:
-		case 1: lzrw1_decompress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &decomplen); break;
-		case 2: lzrw1a_compress(COMPRESS_ACTION_DECOMPRESS, (uint8_t*)workmem, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, &decomplen); break;
-		case 3: lzrw2_compress(COMPRESS_ACTION_DECOMPRESS, (uint8_t*)workmem, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, &decomplen); break;
-		case 4: lzrw3_compress(COMPRESS_ACTION_DECOMPRESS, (uint8_t*)workmem, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, &decomplen); break;
-		case 5: lzrw3a_compress(COMPRESS_ACTION_DECOMPRESS, (uint8_t*)workmem, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, &decomplen); break;
-	}
-
-	return decomplen;
-}
-
-#endif
-
-
-
 #ifndef BENCH_REMOVE_LZSSE
 #include "lzsse/lzsse2/lzsse2.h"
 
@@ -1349,157 +1079,14 @@ int64_t lzbench_lzsse8fast_compress(char *inbuf, size_t insize, char *outbuf, si
 
 
 
-#ifndef BENCH_REMOVE_PITHY
-#include "pithy/pithy.h"
-
-int64_t lzbench_pithy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-	return pithy_Compress(inbuf, insize, outbuf, outsize, level);
-}
-
-int64_t lzbench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	size_t res = pithy_Decompress(inbuf, insize, outbuf, outsize);
-//	printf("insize=%lld outsize=%lld res=%lld\n", insize, outsize, res);
-	if (res)
-		return outsize;
-	return 0;
-}
-
-#endif
-
-#ifndef BENCH_REMOVE_PPMD
-#include "lzma/Ppmd8.h"
-
-int64_t lzbench_ppmd_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, size_t level, size_t, char*)
-{
-    struct CharWriter
-    {
-        IByteOut streamOut;
-        char* ptr;
-
-        static void* pmalloc(ISzAllocPtr ip, size_t size)
-        {
-            (void)ip;
-            return malloc(size);
-        }
-
-        static void pfree(ISzAllocPtr ip, void* addr)
-        {
-            (void)ip;
-            free(addr);
-        }
-
-        static void write(const IByteOut* p, Byte b)
-        {
-            CharWriter* cw = (CharWriter*)p;
-            *cw->ptr++ = (char)b;
-        }
-    };
-
-    level = (level == 0) ? 1 : ((level < 9) ? level : 9); // valid range for level is [1..9]
-    const int modelOrder = 3 + level;
-    const int memMb = 1 << (level - 1);
-    const int restoreMethod = level < 7 ? PPMD8_RESTORE_METHOD_RESTART : PPMD8_RESTORE_METHOD_CUT_OFF;
-    unsigned short wPPMd = (modelOrder - 1) + ((memMb - 1) << 4) + (restoreMethod << 12);
-
-    CharWriter cw;
-    cw.streamOut.Write = &CharWriter::write;
-    cw.ptr = outbuf;
-    CPpmd8 ppmd;
-    ppmd.Stream.Out = &cw.streamOut;
-    ISzAlloc ialloc = { CharWriter::pmalloc, CharWriter::pfree };
-
-    Ppmd8_Construct(&ppmd);
-    Ppmd8_Alloc(&ppmd, memMb << 20, &ialloc);
-    Ppmd8_Init_RangeEnc(&ppmd);
-    Ppmd8_Init(&ppmd, modelOrder, restoreMethod);
-
-    ppmd.Stream.Out->Write(&cw.streamOut, wPPMd & 0xff);
-    ppmd.Stream.Out->Write(&cw.streamOut, wPPMd >> 8);
-
-    for (size_t i = 0; i < insize; ++i)
-        Ppmd8_EncodeSymbol(&ppmd, (unsigned char)inbuf[i]);
-    Ppmd8_EncodeSymbol(&ppmd, -1); /* EndMark */
-    Ppmd8_Flush_RangeEnc(&ppmd);
-    Ppmd8_Free(&ppmd, &ialloc);
-    return cw.ptr - outbuf;
-}
-
-int64_t lzbench_ppmd_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, size_t, size_t, char*)
-{
-    struct CharReader
-    {
-        IByteIn streamIn;
-        const char* ptr;
-        const char* end;
-
-        static void* pmalloc(ISzAllocPtr ip, size_t size)
-        {
-            (void)ip;
-            return malloc(size);
-        }
-
-        static void pfree(ISzAllocPtr ip, void* addr)
-        {
-            (void)ip;
-            free(addr);
-        }
-
-        static Byte read(const IByteIn* p)
-        {
-            CharReader* cr = (CharReader*)p;
-            if (cr->ptr >= cr->end)
-                return 0;
-            return *cr->ptr++;
-        }
-    };
-
-    CharReader cr;
-    cr.streamIn.Read = &CharReader::read;
-    cr.ptr = inbuf;
-    cr.end = inbuf + insize;
-
-    unsigned short wPPMd = CharReader::read(&cr.streamIn) | ((unsigned short)(CharReader::read(&cr.streamIn)) << 8);
-
-    const int modelOrder = (wPPMd & 0xf) + 1;
-    const int memMb = ((wPPMd >> 4) & 0xff) + 1;
-    const int restoreMethod = wPPMd >> 12;
-
-    CPpmd8 ppmd;
-    ppmd.Stream.In = &cr.streamIn;
-    ISzAlloc ialloc = { CharReader::pmalloc, CharReader::pfree };
-
-    Ppmd8_Construct(&ppmd);
-    Ppmd8_Alloc(&ppmd, memMb << 20, &ialloc);
-    Ppmd8_Init_RangeDec(&ppmd);
-    Ppmd8_Init(&ppmd, modelOrder, restoreMethod);
-
-    size_t sz = 0;
-    for (;;)
-    {
-        int c = Ppmd8_DecodeSymbol(&ppmd);
-        if (cr.ptr > cr.end || c < 0)
-            break;
-        outbuf[sz++] = (char)(unsigned)c;
-    }
-    int ret = Ppmd8_RangeDec_IsFinishedOK(&ppmd) && cr.ptr >= cr.end ? 0 : -1;
-    Ppmd8_Free(&ppmd, &ialloc);
-    return ret == 0 ? (int64_t)sz : (int64_t)0;
-}
-
-#endif
-
-
 #ifndef BENCH_REMOVE_QUICKLZ
 #include "quicklz/quicklz151b7.h"
 #include "quicklz/quicklz.h"
-#define MAX(a,b) ((a)>(b))?(a):(b) 
 
 int64_t lzbench_quicklz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t , char*)
 {
     int64_t res;
-    qlz150_state_compress* state = (qlz150_state_compress*) calloc(1, MAX(qlz_get_setting_3(1),MAX(qlz_get_setting_1(1), qlz_get_setting_2(1))));
+    qlz150_state_compress* state = (qlz150_state_compress*) calloc(1, std::max(qlz_get_setting_3(1),std::max(qlz_get_setting_1(1), qlz_get_setting_2(1))));
     if (!state)
         return 0;
 
@@ -1520,7 +1107,7 @@ int64_t lzbench_quicklz_compress(char *inbuf, size_t insize, char *outbuf, size_
 int64_t lzbench_quicklz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t , char*)
 {
     int64_t res;
-    qlz150_state_compress* dstate = (qlz150_state_compress*) calloc(1, MAX(qlz_get_setting_3(2),MAX(qlz_get_setting_1(2), qlz_get_setting_2(2))));
+    qlz150_state_compress* dstate = (qlz150_state_compress*) calloc(1, std::max(qlz_get_setting_3(2),std::max(qlz_get_setting_1(2), qlz_get_setting_2(2))));
     if (!dstate)
         return 0;
         
@@ -1541,22 +1128,6 @@ int64_t lzbench_quicklz_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 
 
-#ifndef BENCH_REMOVE_SHRINKER
-#include "shrinker/shrinker.h"
-
-int64_t lzbench_shrinker_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	return shrinker_compress(inbuf, outbuf, insize); 
-}
-
-int64_t lzbench_shrinker_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	return shrinker_decompress(inbuf, outbuf, outsize); 
-}
-
-#endif
-
-
 #ifndef BENCH_REMOVE_SNAPPY
 #include "snappy/snappy.h"
 
@@ -1572,72 +1143,6 @@ int64_t lzbench_snappy_decompress(char *inbuf, size_t insize, char *outbuf, size
 	return outsize;
 }
 
-#endif
-
-
-
-#ifndef BENCH_REMOVE_TAMP
-#include "tamp/compressor.h"
-#include "tamp/decompressor.h"
-
-char* lzbench_tamp_init(size_t, size_t level, size_t)
-{
-    return (char*) malloc(1 << level);
-}
-
-void lzbench_tamp_deinit(char* workmem)
-{
-    free(workmem);
-}
-
-int64_t lzbench_tamp_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
-{
-    int64_t compressed_size = 0;
-    TampConf conf = {
-       /* Describes the size of the decompression buffer in bits.
-       A 10-bit window represents a 1024-byte buffer.
-       Must be in range [8, 15], representing [256, 32678] byte windows. */
-       .window = (uint16_t)level,
-       .literal = 8,
-       .use_custom_dictionary = false
-    };
-    TampCompressor compressor;
-    tamp_compressor_init(&compressor, &conf, (unsigned char *)workmem);
-
-    tamp_compressor_compress_and_flush(
-            &compressor,
-            (unsigned char*) outbuf,
-            outsize,
-            (size_t *)&compressed_size,
-            (unsigned char *)inbuf,
-            insize,
-            NULL,
-            false
-    );
-    return compressed_size;
-}
-
-int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
-{
-    int64_t decompressed_size = 0;
-    TampConf conf;
-    TampDecompressor decompressor;
-    size_t compressed_consumed_size;
-
-    tamp_decompressor_init(&decompressor, NULL, (unsigned char *)workmem);
-
-    tamp_decompressor_decompress(
-        &decompressor,
-        (unsigned char *)outbuf,
-        outsize,
-        (size_t *)&decompressed_size,
-        (unsigned char *)inbuf,
-        insize,
-        NULL
-    );
-
-    return decompressed_size;
-}
 #endif
 
 
@@ -1720,43 +1225,6 @@ int64_t lzbench_ucl_nrv2e_decompress(char *inbuf, size_t insize, char *outbuf, s
 
 
 
-#ifndef BENCH_REMOVE_WFLZ
-#include "wflz/wfLZ.h"
-
-char* lzbench_wflz_init(size_t, size_t, size_t)
-{
-    return (char*) malloc(wfLZ_GetWorkMemSize());
-}
-
-void lzbench_wflz_deinit(char* workmem)
-{
-    free(workmem);
-}
-
-int64_t lzbench_wflz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
-{
-    int64_t res;
-    if (!workmem)
-        return 0;
-
-    if (level == 0) 
-		res = wfLZ_CompressFast((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, (uint8_t*)workmem, 0);
-    else
-        res = wfLZ_Compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, (uint8_t*)workmem, 0);
-    
-    return res;
-}
-
-int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-    wfLZ_Decompress((const uint8_t*)inbuf, (uint8_t*)outbuf);
-    return outsize;
-}
-
-#endif
-
-
-
 #ifndef BENCH_REMOVE_XPACK
 #include "xpack/lib/libxpack.h" 
 
@@ -1807,57 +1275,6 @@ int64_t lzbench_xpack_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 
-#ifndef BENCH_REMOVE_YALZ77
-#include "yalz77/lz77.h"
-
-int64_t lzbench_yalz77_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-  lz77::compress_t compress(level, lz77::DEFAULT_BLOCKSIZE);
-  std::string compressed = compress.feed((unsigned char*)inbuf, (unsigned char*)inbuf+insize);
-  if (compressed.size() > outsize) return 0;
-  memcpy(outbuf, compressed.c_str(), compressed.size());
-  return compressed.size();
-}
-
-int64_t lzbench_yalz77_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-  lz77::decompress_t decompress;
-  std::string temp;
-  decompress.feed((unsigned char*)inbuf, (unsigned char*)inbuf+insize, temp);
-  const std::string& decompressed = decompress.result();
-  if (decompressed.size() > outsize) return 0;
-  memcpy(outbuf, decompressed.c_str(), decompressed.size());
-  return decompressed.size();
-}
-
-#endif
-
-
-
-#ifndef BENCH_REMOVE_YAPPY
-#include "yappy/yappy.hpp"
-
-char* lzbench_yappy_init(size_t insize, size_t level, size_t)
-{
-	YappyFillTables();
-    return NULL;
-}
-
-int64_t lzbench_yappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-	int yappy_level = (level <= 1) ? 0 : 1 << (level - 2);
-	return YappyCompress((uint8_t*)inbuf, (uint8_t*)outbuf, insize, yappy_level) - (uint8_t*)outbuf;
-}
-
-int64_t lzbench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	return YappyUnCompress((uint8_t*)inbuf, (uint8_t*)inbuf+insize, (uint8_t*)outbuf) - (uint8_t*)outbuf;
-}
-
-#endif
-
-
-
 #ifndef BENCH_REMOVE_ZLIB
 #include "zlib/zlib.h"
 
@@ -1880,6 +1297,8 @@ int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 }
 
 #endif
+
+
 
 #ifndef BENCH_REMOVE_ZLIB_NG
 
@@ -1909,6 +1328,7 @@ int64_t lzbench_zlib_ng_decompress(char *inbuf, size_t insize, char *outbuf, siz
 #endif
 
 
+
 #if !defined(BENCH_REMOVE_SLZ) && !defined(BENCH_REMOVE_ZLIB)
 extern "C"
 {
@@ -1931,7 +1351,7 @@ int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
 		slz_init(&strm, !!level, SLZ_FMT_DEFLATE);
 
 	do {
-		blk = MIN(insize, window);
+		blk = std::min(insize, window);
 
 		len = slz_encode(&strm, outbuf, inbuf, blk, insize > blk);
 		outlen += len;
@@ -2153,266 +1573,3 @@ int64_t lzbench_zstd_LDM_compress(char *inbuf, size_t insize, char *outbuf, size
     return lzbench_zstd_compress(inbuf, insize, outbuf, outsize, level, windowLog, (char*) zstd_params);
 }
 #endif
-
-
-#ifdef BENCH_HAS_NAKAMICHI
-#include "nakamichi/nakamichi.h"
-
-int64_t lzbench_nakamichi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-	return NakaCompress(outbuf, inbuf, insize);
-}
-
-int64_t lzbench_nakamichi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	return NakaDecompress(outbuf, inbuf, insize);
-}
-
-#endif
-
-#ifdef BENCH_HAS_CUDA
-#include <cuda_runtime.h>
-
-#define CUDA_CHECK(cond)                    \
-  do {                                      \
-    int err = cond;                         \
-    if (err != nvcompSuccess) {             \
-      std::cerr << "Failure" << std::endl;  \
-      return 0;                             \
-    }                                       \
-  } while (false)
-
-char* lzbench_cuda_init(size_t insize, size_t, size_t)
-{
-    char* workmem;
-    cudaMalloc(& workmem, insize);
-    return workmem;
-}
-
-void lzbench_cuda_deinit(char* workmem)
-{
-    cudaFree(workmem);
-}
-
-int64_t lzbench_cuda_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* workmem)
-{
-    cudaMemcpy(workmem, inbuf, insize, cudaMemcpyHostToDevice);
-    cudaMemcpy(outbuf, workmem, insize, cudaMemcpyDeviceToHost);
-    return insize;
-}
-
-int64_t lzbench_cuda_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* )
-{
-    return 0;
-}
-
-#ifdef BENCH_HAS_NVCOMP
-#include "nvcomp/include/nvcomp/lz4.h"
-
-typedef struct {
-  cudaStream_t stream;
-  size_t max_out_bytes;
-  size_t batch_size;
-
-  char* device_input_data;
-  void ** device_uncompressed_ptrs;
-  size_t* device_uncompressed_bytes;
-
-  char* device_output_data;
-  void** device_compressed_ptrs;
-  size_t *device_compressed_bytes;
-
-  char* device_temp_ptr;
-  size_t device_temp_bytes;
-
-  void ** host_compressed_ptrs;
-  size_t* host_compressed_bytes;
-
-  void ** host_uncompressed_ptrs;
-  size_t* host_uncompressed_bytes;
-  nvcompLZ4FormatOpts opts;
-} nvcomp_params_s;
-
-// allocate the host and device memory buffers for the nvcom LZ4 compression and decompression
-// the chunk size is configured by the compression level, 0 to 5 inclusive, corresponding to a chunk size from 32 kB to 1 MB
-char* lzbench_nvcomp_init(size_t in_bytes, size_t level, size_t)
-{
-  // allocate the host memory for the algorithm options
-  nvcomp_params_s* params = (nvcomp_params_s*) malloc(sizeof(nvcomp_params_s));
-  if (!params) return NULL;
-
-  // create a CUDA stream to run the compression/decompression
-  int status = 0;
-  CUDA_CHECK(cudaStreamCreate(&params->stream));
-
-  // set the chunk size based on the compression level
-  params->opts.chunk_size = 1 << (15 + level);
-  params->batch_size = (in_bytes + params->opts.chunk_size - 1) / params->opts.chunk_size;
-
-  // allocate device memory for the data to be compressed
-  CUDA_CHECK(cudaMalloc(&params->device_input_data, in_bytes));
-
-  // Setup an array of chunk sizes
-  CUDA_CHECK(cudaMallocHost((void**)&params->host_uncompressed_bytes, sizeof(size_t)*params->batch_size));
-  for (size_t i = 0; i < params->batch_size; ++i) {
-    if (i + 1 < params->batch_size) {
-      params->host_uncompressed_bytes[i] = params->opts.chunk_size;
-    } else {
-      // last chunk may be smaller
-      params->host_uncompressed_bytes[i] = in_bytes - (params->opts.chunk_size*i);
-    }
-  }
-
-  // Setup an array of pointers to the start of each chunk
-  CUDA_CHECK(cudaMallocHost((void**)&params->host_uncompressed_ptrs, sizeof(size_t)*params->batch_size));
-  for (size_t ix_chunk = 0; ix_chunk < params->batch_size; ++ix_chunk) {
-    params->host_uncompressed_ptrs[ix_chunk] = params->device_input_data + params->opts.chunk_size*ix_chunk;
-  }
-
-  CUDA_CHECK(cudaMalloc((void**)&params->device_uncompressed_bytes, sizeof(size_t) * params->batch_size));
-  CUDA_CHECK(cudaMalloc((void**)&params->device_uncompressed_ptrs, sizeof(size_t) * params->batch_size));
-
-  CUDA_CHECK(cudaMemcpyAsync(params->device_uncompressed_bytes, params->host_uncompressed_bytes, sizeof(size_t) * params->batch_size, cudaMemcpyHostToDevice, params->stream));
-  CUDA_CHECK(cudaMemcpyAsync(params->device_uncompressed_ptrs, params->host_uncompressed_ptrs, sizeof(size_t) * params->batch_size, cudaMemcpyHostToDevice, params->stream));
-
-  // determine the size of the temporary buffer
-  CUDA_CHECK(nvcompBatchedLZ4CompressGetTempSize(params->batch_size, params->opts.chunk_size, nvcompBatchedLZ4DefaultOpts, &params->device_temp_bytes));
-
-  // allocate device memory for the temporary buffer
-  CUDA_CHECK(cudaMalloc(&params->device_temp_ptr, params->device_temp_bytes));
-
-  // get the maxmimum output size for each chunk
-  CUDA_CHECK(nvcompBatchedLZ4CompressGetMaxOutputChunkSize(params->opts.chunk_size, nvcompBatchedLZ4DefaultOpts, &params->max_out_bytes));
-
-  // allocate device memory for the data to be compressed
-  CUDA_CHECK(cudaMalloc(&params->device_output_data, params->batch_size * params->max_out_bytes));
-
-  // Next, allocate output space on the device
-  CUDA_CHECK(cudaMallocHost((void**)&params->host_compressed_bytes, sizeof(size_t) * params->batch_size));
-  CUDA_CHECK(cudaMallocHost((void**)&params->host_compressed_ptrs, sizeof(size_t) * params->batch_size));
-  for(size_t ix_chunk = 0; ix_chunk < params->batch_size; ++ix_chunk) {
-    params->host_compressed_ptrs[ix_chunk] = params->device_output_data + params->max_out_bytes*ix_chunk;
-  }
-
-  CUDA_CHECK(cudaMalloc((void**)&params->device_compressed_ptrs, sizeof(size_t) * params->batch_size));
-  CUDA_CHECK(cudaMemcpyAsync(
-      params->device_compressed_ptrs, params->host_compressed_ptrs,
-      sizeof(size_t) * params->batch_size, cudaMemcpyHostToDevice, params->stream));
-
-  // allocate space for compressed chunk sizes to be written to
-  CUDA_CHECK(cudaMalloc((void**)&params->device_compressed_bytes, sizeof(size_t) * params->batch_size));
-
-  return (char*) params;
-}
-
-void lzbench_nvcomp_deinit(char* nvcomp_params)
-{
-  nvcomp_params_s* params = (nvcomp_params_s*) nvcomp_params;
-  if (!params) return;
-
-  // free all the device memory
-  cudaFree(params->device_input_data);
-  cudaFree(params->device_uncompressed_ptrs);
-  cudaFree(params->device_uncompressed_bytes);
-  cudaFree(params->device_output_data);
-  cudaFree(params->device_compressed_ptrs);
-  cudaFree(params->device_compressed_bytes);
-  cudaFree(params->device_temp_ptr);
-  cudaFreeHost(params->host_compressed_ptrs);
-  cudaFreeHost(params->host_compressed_bytes);
-  cudaFreeHost(params->host_uncompressed_ptrs);
-  cudaFreeHost(params->host_uncompressed_bytes);
-
-  // release the CUDA stream
-  cudaStreamDestroy(params->stream);
-
-  // free the host memory for the algorithm options
-  free(params);
-}
-
-int64_t lzbench_nvcomp_compress(char *inbuf, size_t in_bytes, char *outbuf, size_t outsize, size_t level, size_t, char* nvcomp_params)
-{
-  nvcomp_params_s* params = (nvcomp_params_s*) nvcomp_params;
-  int status = 0;
-
-  // copy the uncompressed data to the device
-  CUDA_CHECK(cudaMemcpyAsync(params->device_input_data, inbuf, in_bytes, cudaMemcpyHostToDevice, params->stream));
-
-#if 0
-  fprintf(stderr, "COMPRESS device_uncompressed_ptrs=%p device_uncompressed_bytes=%p\n", params->device_uncompressed_ptrs, params->device_uncompressed_bytes);
-  fprintf(stderr, "COMPRESS chunk_size=%ld batch_size=%ld\n", params->opts.chunk_size, params->batch_size);
-  fprintf(stderr, "COMPRESS device_temp_ptr=%p device_temp_bytes=%ld\n", params->device_temp_ptr, params->device_temp_bytes);
-  fprintf(stderr, "COMPRESS device_compressed_ptrs=%p device_compressed_bytes=%p\n", params->device_compressed_ptrs, params->device_compressed_bytes);
-#endif
-
-  // call the API to compress the data
-  CUDA_CHECK(nvcompBatchedLZ4CompressAsync(
-      params->device_uncompressed_ptrs,
-      params->device_uncompressed_bytes,
-      params->opts.chunk_size, // The maximum chunk size
-      params->batch_size,
-      params->device_temp_ptr,
-      params->device_temp_bytes,
-      params->device_compressed_ptrs,
-      params->device_compressed_bytes,
-      nvcompBatchedLZ4DefaultOpts,
-      params->stream));
-
-  // limit the data to be copied back to the size available on the host
-  size_t out_bytes = std::min(outsize, params->batch_size * params->max_out_bytes);
-
-  // copy the compressed data back to the host
-  CUDA_CHECK(cudaMemcpyAsync(outbuf, params->device_output_data, out_bytes, cudaMemcpyDeviceToHost, params->stream));
-  CUDA_CHECK(cudaMemcpyAsync(params->host_compressed_bytes, params->device_compressed_bytes, sizeof(size_t) * params->batch_size, cudaMemcpyDeviceToHost, params->stream));
-
-  // ensure that all operations and copies are complete, and that params->device_compressed_bytes is available
-  CUDA_CHECK(cudaStreamSynchronize(params->stream));
-
-  size_t total_out_bytes = 0;
-  for (size_t i = 0; i < params->batch_size; ++i) {
-    //fprintf(stderr, "COMPRESS host_compressed_bytes[%ld]=%ld\n", i, params->host_compressed_bytes[i]);
-    total_out_bytes += params->host_compressed_bytes[i];
-  }
-
-  return total_out_bytes;
-}
-
-int64_t lzbench_nvcomp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* nvcomp_params)
-{
-  nvcomp_params_s* params = (nvcomp_params_s*) nvcomp_params;
-  int status = 0;
-  size_t uncompressed_size = outsize;
-
-  // make sure that original data is cleared from device
-  size_t in_bytes = std::min(insize, params->batch_size * params->max_out_bytes);
-  CUDA_CHECK(cudaMemsetAsync(params->device_input_data, 0, uncompressed_size));
-  CUDA_CHECK(cudaMemsetAsync(params->device_output_data, 0, in_bytes));
-
-  // copy the compressed data to the device
-  CUDA_CHECK(cudaMemcpyAsync(params->device_output_data, inbuf, in_bytes, cudaMemcpyHostToDevice, params->stream));
-
-  // decompression the data on the device
-  CUDA_CHECK(nvcompBatchedLZ4DecompressAsync(
-      params->device_compressed_ptrs,
-      params->device_compressed_bytes,
-      params->device_uncompressed_bytes,
-      nullptr,
-      params->batch_size,
-      params->device_temp_ptr,
-      params->device_temp_bytes,
-      params->device_uncompressed_ptrs,
-      nullptr,
-      params->stream));
-
-  // copy the uncompressed data back to the host
-  CUDA_CHECK(cudaMemcpyAsync(outbuf, params->device_input_data, uncompressed_size, cudaMemcpyDeviceToHost, params->stream));
-
-  // ensure that all operations and copies are complete
-  CUDA_CHECK(cudaStreamSynchronize(params->stream));
-
-  return uncompressed_size;
-}
-
-#endif  // BENCH_HAS_NVCOMP
-
-#endif  // BENCH_HAS_CUDA
