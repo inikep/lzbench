@@ -86,7 +86,12 @@ ifeq ($(detected_OS), Darwin)
     CXXFLAGS += -std=c++14
 endif
 
-MISC_FILES = crush/crush.o shrinker/shrinker.o fastlz/fastlz.o pithy/pithy.o lzjb/lzjb2010.o wflz/wfLZ.o
+BUGGY_FILES = lzmat/lzmat_dec.o lzmat/lzmat_enc.o shrinker/shrinker.o wflz/wfLZ.o
+BUGGY_FILES += lzrw/lzrw1-a.o lzrw/lzrw1.o lzrw/lzrw2.o lzrw/lzrw3.o lzrw/lzrw3-a.o
+
+BUGGY_CXX_FILES = pithy/pithy.o
+
+MISC_FILES = crush/crush.o fastlz/fastlz.o lzjb/lzjb2010.o
 MISC_FILES += lzlib/lzlib.o blosclz/blosc/blosclz.o blosclz/blosc/fastcopy.o slz/src/slz.o
 
 LZO_FILES = lzo/lzo1.o lzo/lzo1a.o lzo/lzo1a_99.o lzo/lzo1b_1.o lzo/lzo1b_2.o lzo/lzo1b_3.o lzo/lzo1b_4.o lzo/lzo1b_5.o
@@ -124,10 +129,6 @@ else
 #    ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_avx512_vnni.o zlib-ng/arch/x86/chunkset_avx512.o zlib-ng/arch/x86/compare256_sse2.o zlib-ng/arch/x86/slide_hash_sse2.o
 #    ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_sse42.o zlib-ng/arch/x86/chunkset_sse2.o zlib-ng/arch/x86/crc32_pclmulqdq.o zlib-ng/arch/x86/x86_features.o
 endif
-
-LZMAT_FILES = lzmat/lzmat_dec.o lzmat/lzmat_enc.o
-
-LZRW_FILES = lzrw/lzrw1-a.o lzrw/lzrw1.o lzrw/lzrw2.o lzrw/lzrw3.o lzrw/lzrw3-a.o
 
 LZMA_FILES = lzma/CpuArch.o lzma/LzFind.o lzma/LzFindOpt.o lzma/LzFindMt.o lzma/LzmaDec.o lzma/LzmaEnc.o lzma/Threads.o
 
@@ -417,68 +418,46 @@ all: lzbench
 
 MKDIR = mkdir -p
 
-# FIX for SEGFAULT on GCC 4.9+
-wflz/wfLZ.o shrinker/shrinker.o lzmat/lzmat_dec.o lzmat/lzmat_enc.o lzrw/lzrw1-a.o lzrw/lzrw1.o: %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS_O2) $< -c -o $@
-
-pithy/pithy.o: pithy/pithy.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CFLAGS_O2) $< -c -o $@
-
-_lzbench/lz_codecs.o: %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -std=c++11 $< -c -o $@
-
-snappy/snappy-sinksource.o snappy/snappy-stubs-internal.o snappy/snappy.o: %.o : %.cc
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -std=c++11 $< -c -o $@
-
-lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o: %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -std=c++0x -msse4.1 $< -c -o $@
-
-nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -mavx $< -c -o $@
-
-$(NVCOMP_CU_OBJ): %.cu.o: %.cu
-	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -Invcomp/include -Invcomp/src -Invcomp/src/lowlevel -c $< -o $@
-
-$(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Invcomp/include -Invcomp/src -Invcomp/src/lowlevel -c $< -o $@
-
-libbsc/libbsc/st/st_cu.o: libbsc/libbsc/st/st.cu
-	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) $(BSC_CXXFLAGS) -c $< -o $@
-
-libbsc/libbsc/bwt/libcubwt/libcubwt.o: libbsc/libbsc/bwt/libcubwt/libcubwt.cu
-	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) $(BSC_CXXFLAGS) -c $< -o $@
 
 # disable the implicit rule for making a binary out of a single object file
 %: %.o
 
+.c.o:
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) $< -std=gnu99 -c -o $@
 
-_lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
+.cc.o:
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) $< -c -o $@
 
-lzbench: $(BSC_FILES) $(BZIP2_FILES) $(KANZI_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(LZRW_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZMAT_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(TAMP_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
-	$(CXX) $^ -o $@ $(LDFLAGS)
-	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
+.cpp.o:
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) $< -c -o $@
+
+# FIX for SEGFAULT on GCC 4.9+
+$(BUGGY_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS_O2) $< -c -o $@
+
+$(BUGGY_CXX_FILES): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CFLAGS_O2) $< -c -o $@
 
 $(LIZARD_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS_O2) $< -c -o $@
 
-$(XZ_FILES): %.o : %.c
+$(LZSSE_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $(XZ_FLAGS) -DHAVE_CONFIG_H $< -c -o $@
+	$(CXX) $(CXXFLAGS) -std=c++0x -msse4.1 $< -c -o $@
 
 $(FASTLZMA2_OBJ): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -DFL2_SINGLETHREAD -DNO_XXHASH $< -c -o $@
+
+$(XZ_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) $(XZ_FLAGS) -DHAVE_CONFIG_H $< -c -o $@
 
 $(ZLIB_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
@@ -492,21 +471,35 @@ $(ZSTD_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Izstd/lib -Izstd/lib/common $< -c -o $@
 
+$(NVCOMP_CU_OBJ): %.cu.o: %.cu
+	@$(MKDIR) $(dir $@)
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -Invcomp/include -Invcomp/src -Invcomp/src/lowlevel -c $< -o $@
+
+$(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) -Invcomp/include -Invcomp/src -Invcomp/src/lowlevel -c $< -o $@
+
 $(BSC_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CXXFLAGS) $(BSC_CXXFLAGS) $< -c -o $@
 
-.c.o:
+libbsc/libbsc/st/st_cu.o: libbsc/libbsc/st/st.cu
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $< -std=gnu99 -c -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) $(BSC_CXXFLAGS) -c $< -o $@
 
-.cc.o:
+libbsc/libbsc/bwt/libcubwt/libcubwt.o: libbsc/libbsc/bwt/libcubwt/libcubwt.cu
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) $< -c -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) $(BSC_CXXFLAGS) -c $< -o $@
 
-.cpp.o:
+nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) $< -c -o $@
+	$(CC) $(CFLAGS) -mavx $< -c -o $@
+
+_lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
+
+lzbench: $(BUGGY_FILES) $(BUGGY_CXX_FILES) $(BSC_FILES) $(BZIP2_FILES) $(KANZI_FILES) $(DENSITY_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(GLZA_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(GIPFELI_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(CSC_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(TAMP_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
+	$(CXX) $^ -o $@ $(LDFLAGS)
+	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
 clean:
 	rm -rf lzbench lzbench.exe
