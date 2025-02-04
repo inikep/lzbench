@@ -745,9 +745,9 @@ void usage(lzbench_params_t* params)
     fprintf(stdout, "\nExample usage:\n");
     fprintf(stdout, "  " PROGNAME " -ezstd filename = selects all levels of zstd\n");
     fprintf(stdout, "  " PROGNAME " -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd\n");
-    fprintf(stdout, "  " PROGNAME " -t3 -u5 fname = 3 sec compression and 5 sec decompression loops\n");
-    fprintf(stdout, "  " PROGNAME " -t0 -u0 -i3 -j5 -ezstd fname = 3 compression and 5 decompression iter.\n");
-    fprintf(stdout, "  " PROGNAME " -t0u0i3j5 -ezstd fname = the same as above with aggregated parameters\n");
+    fprintf(stdout, "  " PROGNAME " -t3,5 -elz4/zstd fname = 3 sec compression and 5 sec decompression loops\n");
+    fprintf(stdout, "  " PROGNAME " -t0,0 -i3,5 -ezstd fname = 3 compression and 5 decompression iter.\n");
+    fprintf(stdout, "  " PROGNAME " -t0,0i3,5 -ezstd fname = the same as above with aggregated parameters\n");
 }
 
 void show_version()
@@ -912,12 +912,7 @@ int main( int argc, char** argv)
             show_version();
             goto _clean;
         case 'l':
-            printf("\nAvailable compressors for -e option:\n");
-            printf("all - alias for all available compressors\n");
-            printf("fast - alias for compressors with compression speed over 100 MB/s (default)\n");
-            printf("opt - compressors with optimal parsing (slow compression, fast decompression)\n");
-            printf("lzo / ucl - aliases for all levels of given compressors\n");
-            printf("cuda - alias for all CUDA-based compressors\n");
+            printf("Available compressors for -e option:\n");
             for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
             {
                 if (comp_desc[i].compress)
@@ -928,6 +923,14 @@ int main( int argc, char** argv)
                         printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
                 }
             }
+
+            printf("\nAvailable aliases for -e option:\n");
+            for (int i=0; i<LZBENCH_ALIASES_COUNT; i++)
+            {
+                if (alias_desc[i].description)
+                    printf("%s: %s\n%s = %s\n\n", alias_desc[i].name, alias_desc[i].description, alias_desc[i].name, alias_desc[i].params);
+            }
+
             return 0;
         default:
             fprintf(stderr, "unknown option: %s\n", argv[1]);
