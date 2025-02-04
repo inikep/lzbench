@@ -12,6 +12,7 @@
 #include "codecs.h"
 
 #include <stdint.h>
+#include <stdio.h> // printf
 #include <string.h> // memcpy
 #include <algorithm> // std::max
 
@@ -390,7 +391,7 @@ int64_t lzbench_lzfse_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 
-#ifndef BENCH_REMOVE_LZVN
+#ifndef BENCH_REMOVE_LZFSE
 extern "C"
 {
 	#include "lzfse/lzvn.h"
@@ -478,23 +479,6 @@ int64_t lzbench_lzham_decompress(char *inbuf, size_t insize, char *outbuf, size_
     
 	lzham_decompress_memory(&decomp_params, (uint8_t*)outbuf, &outsize, (const lzham_uint8 *)inbuf, insize, &comp_adler32);
 	return outsize;
-}
-
-#endif
-
-
-
-#ifndef BENCH_REMOVE_LZJB
-#include "lzjb/lzjb2010.h"
-
-int64_t lzbench_lzjb_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
-{
-	return lzjb_compress2010((uint8_t*)inbuf, (uint8_t*)outbuf, insize, outsize, 0); 
-}
-
-int64_t lzbench_lzjb_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
-{
-	return lzjb_decompress2010((uint8_t*)inbuf, (uint8_t*)outbuf, insize, outsize, 0);
 }
 
 #endif

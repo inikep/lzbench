@@ -33,6 +33,23 @@ int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 
+#ifndef BENCH_REMOVE_LZJB
+#include "lzjb/lzjb2010.h"
+
+int64_t lzbench_lzjb_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+	return lzjb_compress2010((uint8_t*)inbuf, (uint8_t*)outbuf, insize, outsize, 0);
+}
+
+int64_t lzbench_lzjb_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+{
+	return lzjb_decompress2010((uint8_t*)inbuf, (uint8_t*)outbuf, insize, outsize, 0);
+}
+
+#endif
+
+
+
 #ifdef BENCH_HAS_NAKAMICHI
 #include "nakamichi/nakamichi.h"
 
