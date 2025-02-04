@@ -1,3 +1,21 @@
+# Multi-threaded build:
+#	make -j$(nproc)
+#
+# To order static or dynamic linking set `BUILD_STATIC` to 1, or 0 respectively:
+#	make BUILD_STATIC=1
+#
+# For 32-bit compilation:
+#	make BUILD_ARCH=32-bit
+#
+# For non-default compiler:
+#	make CC=gcc-14 CXX=g++-14
+#
+# For an optimized but non-portable build, use:
+#	make MOREFLAGS="-march=native"
+# or
+#	make USER_CFLAGS="-march=native" USER_CXXFLAGS="-march=native"
+
+
 # direct GNU Make to search the directories relative to the
 # parent directory of this file
 SOURCE_PATH=$(dir $(lastword $(MAKEFILE_LIST)))
@@ -7,9 +25,6 @@ vpath %.cc $(SOURCE_PATH)
 vpath %.cpp $(SOURCE_PATH)
 vpath _lzbench/lzbench.h $(SOURCE_PATH)
 vpath wflz/wfLZ.h $(SOURCE_PATH)
-
-#BUILD_ARCH = 32-bit
-#BUILD_STATIC = 1
 
 ifeq ($(BUILD_ARCH),32-bit)
 	CODE_FLAGS += -m32
@@ -78,10 +93,10 @@ else
 	OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
 endif
 
-CFLAGS = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS)
-CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES) $(MOREFLAGS)
-CXXFLAGS = $(CFLAGS)
-LDFLAGS += $(MOREFLAGS)
+CXXFLAGS  = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS) $(USER_CXXFLAGS)
+CFLAGS    = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS) $(USER_CFLAGS)
+CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES) $(MOREFLAGS) $(USER_CFLAGS)
+LDFLAGS  += $(MOREFLAGS) $(USER_LDFLAGS)
 ifeq ($(detected_OS), Darwin)
     CXXFLAGS += -std=c++14
 endif

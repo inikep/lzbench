@@ -63,6 +63,9 @@ For non-default compiler:
 For an optimized but non-portable build, use:
 
 	make MOREFLAGS="-march=native"
+or
+
+	make USER_CFLAGS="-march=native" USER_CXXFLAGS="-march=native"
 
 
 With certain, old compilers, systems or combintion some compressor
