@@ -68,7 +68,12 @@ or
 	make USER_CFLAGS="-march=native" USER_CXXFLAGS="-march=native"
 
 
-With certain, old compilers, systems or combintion some compressor
+USER_CFLAGS, USER_CXXFLAGS and USER_LDFLAGS variables allow user to add
+or replace existing values of corresponding variables without completely
+replacing them.
+
+
+With certain, old compilers, systems or combination some compressor
 may cause issues. Most of it should be chosen automatically but in
 case of problems, particular compressors can be excluded from build setting
 `DONT_BUILD_XXX` to 1, where `XXX` is target compressor, for example:
