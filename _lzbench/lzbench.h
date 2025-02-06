@@ -25,6 +25,7 @@
 #define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second
 #define GET_COMPRESS_BOUND(insize) (insize + insize/6 + PAD_SIZE)  // for pithy
 #define LZBENCH_PRINT(level, fmt, ...) if (params->verbose >= level) printf(fmt, __VA_ARGS__)
+#define LZBENCH_STDERR(level, fmt, ...) if (params->verbose >= level) { fprintf(stderr, fmt, __VA_ARGS__); fflush(stderr); }
 
 #define MAX(a,b) ((a)>(b))?(a):(b)
 #ifndef MIN
