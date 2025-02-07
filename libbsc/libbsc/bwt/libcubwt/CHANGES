@@ -1,3 +1,6 @@
+Changes in 1.6.1 (January 24, 2025)
+- Support for Blackwell architecture.
+
 Changes in 1.6.0 (January 24, 2024)
 - Inverse Burrows-Wheeler transform.
 

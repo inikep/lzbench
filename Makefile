@@ -404,14 +404,21 @@ endif
 ifeq "$(DONT_BUILD_BSC)" "1"
     DEFINES += -DBENCH_REMOVE_BSC
 else
-    BSC_CXXFLAGS = -DLIBBSC_SORT_TRANSFORM_SUPPORT
-    BSC_FILES  = libbsc/libbsc/adler32/adler32.o libbsc/libbsc/bwt/bwt.o
-    BSC_FILES += libbsc/libbsc/coder/coder.o libbsc/libbsc/coder/qlfc/qlfc.o
-    BSC_FILES += libbsc/libbsc/coder/qlfc/qlfc_model.o libbsc/libbsc/filters/detectors.o
-    BSC_FILES += libbsc/libbsc/filters/preprocessing.o libbsc/libbsc/libbsc/libbsc.o
-    BSC_FILES += libbsc/libbsc/lzp/lzp.o libbsc/libbsc/platform/platform.o
-    BSC_FILES += libbsc/libbsc/st/st.o
-    MISC_FILES += libbsc/libbsc/bwt/libsais/libsais.o
+    BSC_FLAGS = -DLIBBSC_SORT_TRANSFORM_SUPPORT -DLIBBSC_ALLOW_UNALIGNED_ACCESS
+
+    BSC_C_FILES = libbsc/libbsc/bwt/libsais/libsais.o
+
+    BSC_CXX_FILES  = libbsc/libbsc/adler32/adler32.o 
+    BSC_CXX_FILES += libbsc/libbsc/bwt/bwt.o
+    BSC_CXX_FILES += libbsc/libbsc/coder/coder.o
+    BSC_CXX_FILES += libbsc/libbsc/coder/qlfc/qlfc.o
+    BSC_CXX_FILES += libbsc/libbsc/coder/qlfc/qlfc_model.o
+    BSC_CXX_FILES += libbsc/libbsc/filters/detectors.o
+    BSC_CXX_FILES += libbsc/libbsc/filters/preprocessing.o
+    BSC_CXX_FILES += libbsc/libbsc/libbsc/libbsc.o
+    BSC_CXX_FILES += libbsc/libbsc/lzp/lzp.o
+    BSC_CXX_FILES += libbsc/libbsc/platform/platform.o
+    BSC_CXX_FILES += libbsc/libbsc/st/st.o
 endif
 
 
@@ -544,7 +551,7 @@ else
     LDFLAGS += -L$(CUDA_BASE)/lib64 -lcudart -Wl,-rpath=$(CUDA_BASE)/lib64
     CUDA_COMPILER = nvcc
     CUDA_CC = $(CUDA_BASE)/bin/nvcc --compiler-bindir $(CXX)
-    CUDA_ARCH = 50 60 70 80
+    CUDA_ARCH = 50 52 60 61 70 75 80 86 89
     CUDA_CXXFLAGS = -x cu -std=c++14 -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
 
 ifneq "$(DONT_BUILD_NVCOMP)" "1"
@@ -557,8 +564,8 @@ ifneq "$(DONT_BUILD_NVCOMP)" "1"
 endif
 
 ifneq "$(DONT_BUILD_BSC)" "1"
-    DEFINES += -DLIBBSC_CUDA_SUPPORT
-    MISC_FILES += libbsc/libbsc/st/st_cu.o libbsc/libbsc/bwt/libcubwt/libcubwt.o
+    BSC_FLAGS += -DLIBBSC_CUDA_SUPPORT
+    BSC_CUDA_FILES = libbsc/libbsc/bwt/libcubwt/libcubwt.cu.o libbsc/libbsc/st/st.cu.o
 endif
 endif # ifneq "$(LIBCUDART)"
 
@@ -566,7 +573,7 @@ endif # ifneq "$(LIBCUDART)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(BSC_FILES) $(BZIP2_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
+lzbench: $(BUGGY_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -636,17 +643,17 @@ $(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -Invcomp/include -Invcomp/src -Invcomp/src/lowlevel -c $< -o $@
 
-$(BSC_FILES): %.o : %.cpp
+$(BSC_C_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CXXFLAGS) $(BSC_CXXFLAGS) $< -c -o $@
+	$(CC) $(CFLAGS) $(BSC_FLAGS) $< -c -o $@
 
-libbsc/libbsc/st/st_cu.o: libbsc/libbsc/st/st.cu
+$(BSC_CXX_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) $(BSC_CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) $(BSC_FLAGS) $< -c -o $@
 
-libbsc/libbsc/bwt/libcubwt/libcubwt.o: libbsc/libbsc/bwt/libcubwt/libcubwt.cu
+$(BSC_CUDA_FILES): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) $(BSC_CXXFLAGS) -c $< -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) $(BSC_FLAGS) -c $< -o $@
 
 nakamichi/Nakamichi_Okamigan.o: nakamichi/Nakamichi_Okamigan.c
 	@$(MKDIR) $(dir $@)

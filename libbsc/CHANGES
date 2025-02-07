@@ -1,5 +1,8 @@
+Changes in 3.3.5 (February 6, 2025)
+- Support for Blackwell GPU architecture.
+
 Changes in 3.3.4 (January, 24 2024)
-- Implemented GPU acceleration of reverse Burrows–Wheeler transform.
+- Implemented GPU acceleration of reverse Burrows-Wheeler transform.
 
 Changes in 3.3.3 (November, 26 2023)
 - Fixed out-of-bound memory access issue for large inputs.
