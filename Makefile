@@ -86,8 +86,8 @@ else
 endif
 
 ifeq ($(BUILD_TYPE),debug)
-	OPT_FLAGS_O2 = $(OPT_FLAGS) -g
-	OPT_FLAGS_O3 = $(OPT_FLAGS) -g
+	OPT_FLAGS_O2 = $(OPT_FLAGS) -Og
+	OPT_FLAGS_O3 = $(OPT_FLAGS) -Og
 else
 	OPT_FLAGS_O2 = $(OPT_FLAGS) -O2 -DNDEBUG
 	OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
