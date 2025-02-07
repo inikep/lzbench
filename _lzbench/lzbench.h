@@ -88,6 +88,7 @@
 #endif
 #endif
 
+int g_exit_result = 0;
 
 typedef struct string_table
 {
