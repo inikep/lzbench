@@ -15,7 +15,7 @@ lzbench undergoes automated testing using Azure Pipelines with the following com
 - Ubuntu: gcc (versions 7.5 to 14.2) and clang (versions 6.0 to 19), gcc 14.2 (32-bit)
 - MacOS: Apple LLVM version 15.0.0
 - Windows: mingw32-gcc 14.2.0 (32-bit) and mingw64-gcc 14.2.0 (64-bit)
-- Cross-compilation: gcc for ARM (32-bit and 64-bit) and PowerPC (32-bit and 64-bit)
+- Cross-compilation: gcc for ARM (32-bit and 64-bit) and PowerPC (64-bit Little-endian)
 
 
 Get the source code
@@ -91,8 +91,10 @@ The directory where the CUDA compiler and libraries are available can be passed 
 Compilation for various CPU architectures
 -----------------------------------------
 - `x86_64` (`amd64`) is our main configuration as is well tested
-- `x86` (32-bit) works fine with all codecs except LZSSE in our tests
-- `ppc/ppc64` (PowerPC 32-bit and 64-bit) works fine with additional `DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1 DONT_BUILD_ZLING=1` parameters
+- `x86` (32-bit) works fine with all default codecs except LZSSE in our tests
+- `arm/aarch64` works fine with all default codecs except LZSSE for `arm` (32-bit) in our tests
+- `ppc64le` (PowerPC 64-bit Little-endian) works fine with all default codecs
+- `ppc/ppc64` (PowerPC 32-bit and 64-bit Big-endian) - a lot compressors fail because of Big-endian architecture
 - `riscv32/riscv64` - we have reports it works fine with `DONT_BUILD_TORNADO=1`
 - `mips/mips64` - waiting for reports
 - `loongarch64` - we have reports it works fine

@@ -220,21 +220,13 @@ jobs:
         MORE_OPTIONS: 'BUILD_STATIC=1'
         QEMU_INTERPRETER: 'qemu-arm-static -L /usr/arm-linux-gnueabi'
 
-      gcc PowerPC 64-bit [Ubuntu 24.04 Noble]:
+      gcc PowerPC 64-bit Little-endian (powerpc64le) [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
-        SELECTED_CC: powerpc64-linux-gnu-gcc
-        SELECTED_CXX: powerpc64-linux-gnu-g++
-        PACKAGES: 'qemu-system-ppc64 qemu-user-static gcc-powerpc64-linux-gnu g++-powerpc64-linux-gnu'
-        MORE_OPTIONS: 'BUILD_STATIC=1 DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1 DONT_BUILD_ZLING=1'
-        QEMU_INTERPRETER: 'qemu-ppc64-static -L /usr/powerpc64-linux-gnu'
-
-      gcc PowerPC 32-bit [Ubuntu 24.04 Noble]:
-        imageName: 'ubuntu-24.04'
-        SELECTED_CC: powerpc-linux-gnu-gcc
-        SELECTED_CXX: powerpc-linux-gnu-g++
-        PACKAGES: 'qemu-system-ppc qemu-user-static gcc-powerpc-linux-gnu g++-powerpc-linux-gnu'
-        MORE_OPTIONS: 'BUILD_STATIC=1 DONT_BUILD_YAPPY=1 DONT_BUILD_DENSITY=1 DONT_BUILD_ZLING=1'
-        QEMU_INTERPRETER: 'qemu-ppc-static -L /usr/powerpc-linux-gnu'
+        SELECTED_CC: powerpc64le-linux-gnu-gcc
+        SELECTED_CXX: powerpc64le-linux-gnu-g++
+        PACKAGES: 'qemu-system-ppc64le qemu-user-static gcc-powerpc64le-linux-gnu g++-powerpc64le-linux-gnu'
+        MORE_OPTIONS: 'BUILD_STATIC=1'
+        QEMU_INTERPRETER: 'qemu-ppc64le-static -L /usr/powerpc64le-linux-gnu'
 
 
   steps:
