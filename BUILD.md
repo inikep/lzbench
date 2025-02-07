@@ -117,6 +117,10 @@ With all issues refer to `Makefile`, as they may already be suppressed.
 ### MacOS
 - `Apple clang` works fine with `DONT_BUILD_LZHAM=1 DONT_BUILD_CSC=1`, which should be added automatically
 
+### Linux
+- Linking error: undefined reference to `clock_*` suite of functions
+require linking with librt manually by adding `-lrt` to linked libraries or LDFLAGS.
+
 
 ------------------------
 Copyright (C) 2025 tansy
