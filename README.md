@@ -96,8 +96,8 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
 
  - [csc 2016-10-13](https://github.com/fusiyuan2010/CSC): May cause a segmentation fault when compiled with Apple LLVM version 7.3.0 (clang-703.0.31).
  - [density 0.14.2](https://github.com/g1mv/density/tree/c_archive): Contains bugs leading to shortened decompressed output.
- - [gipfeli 2016-07-13](https://github.com/google/gipfeli): Contains bugs causing decompression errors and returning 0.
- - [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat): Contains decompression bugs (returns 0) and may cause a segmentation fault when compiled with GCC 4.9+ using -O3 optimization.
+ - [gipfeli 2016-07-13](https://github.com/google/gipfeli): Contains bugs causing decompression file mismatch when compiled with GCC 14.2 using -O3.
+ - [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat): Contains decompression bugs and may cause a segmentation fault when compiled with GCC 4.9+ using -O3 optimization.
  - [lzrw 15-Jul-1991](https://en.wikipedia.org/wiki/LZRW): May trigger a segmentation fault when compiled with GCC 4.9+ using -O3.
  - [pithy 2011-12-24](https://github.com/johnezang/pithy): Contains decompression bugs (returns 0).
  - [shrinker 0.1](https://code.google.com/p/data-shrinker): May cause a segmentation fault when compiled with GCC 4.9+ using -O3.

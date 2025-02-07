@@ -270,11 +270,13 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
         if (outpart > outsize) outpart = outsize;
 
         clen = compress((char*)inbuf, part, (char*)outbuf, outpart, param1, param2, workmem);
-        LZBENCH_PRINT(9, "ENC part=%d clen=%d in=%d\n", (int)part, (int)clen, (int)(inbuf-start));
 
         if (clen <= 0 || clen == part)
         {
-            if (part > outsize) return 0;
+            if (part > outsize) {
+                LZBENCH_PRINT(0, "ERROR: compressed size is too big (in_bytes=%lu out_bytes=%ld)\n", (uint64_t)(inbuf+part-start), (int64_t)sum+clen);
+                return 0;
+            }
             memcpy(outbuf, inbuf, part);
             clen = part;
         }
@@ -284,6 +286,8 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
         outsize -= clen;
         compr_sizes[i] = clen;
         sum += clen;
+
+        LZBENCH_PRINT(9, "ENC part=%lu clen=%ld in=%lu out=%lu\n", (uint64_t)part, clen, (uint64_t)(inbuf-start), (uint64_t)sum);
     }
     return sum;
 }
@@ -308,7 +312,7 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>&
         {
             dlen = decompress((char*)inbuf, part, (char*)outbuf, chunk_sizes[i], param1, param2, workmem);
         }
-        LZBENCH_PRINT(9, "DEC part=%d dlen=%d out=%d\n", (int)part, (int)dlen, (int)(outbuf - outstart));
+        LZBENCH_PRINT(9, "DEC part=%lu dlen=%ld out=%lu\n", (uint64_t)part, dlen, (uint64_t)(outbuf - outstart));
         if (dlen <= 0) return dlen;
 
         inbuf += part;
@@ -424,7 +428,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
         if (insize != decomplen)
         {
             decomp_error = true;
-            LZBENCH_PRINT(5, "ERROR: inlen[%d] != outlen[%d]\n", (int32_t)insize, (int32_t)decomplen);
+            LZBENCH_PRINT(0, "ERROR in %s: decompressed size mismatch in_bytes[%ld] != out_bytes[%ld]\n", desc->name, (int64_t)insize, (int64_t)decomplen);
         }
 
         if (memcmp(inbuf, decomp, insize) != 0)
@@ -432,7 +436,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
             decomp_error = true;
 
             size_t cmn = common(inbuf, decomp);
-            LZBENCH_PRINT(5, "ERROR in %s: common=%d/%d\n", desc->name, (int32_t)cmn, (int32_t)insize);
+            LZBENCH_PRINT(0, "ERROR in %s: decompressed bytes common=%ld/%ld\n", desc->name, (int64_t)cmn, (int64_t)insize);
 
             if (params->verbose >= 10)
             {
@@ -443,7 +447,7 @@ void lzbench_test(lzbench_params_t *params, std::vector<size_t> &file_sizes, con
                 err_size -= cmn*chunk_size;
                 printf("ERROR: fwrite %d-%d to %s\n", (int32_t)(cmn*chunk_size), (int32_t)(cmn*chunk_size+err_size), text);
                 FILE *f = fopen(text, "wb");
-                if (f) fwrite(inbuf+cmn*chunk_size, 1, err_size, f), fclose(f);
+                if (f) fwrite(decomp+cmn*chunk_size, 1, err_size, f), fclose(f);
                 exit(1);
             }
         }
