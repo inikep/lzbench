@@ -165,7 +165,8 @@ int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, s
 #include "kanzi-cpp/src/io/CompressedInputStream.hpp"
 #include "kanzi-cpp/src/io/CompressedOutputStream.hpp"
 
-int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)                                                                                                           {
+int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
+{
   std::string entropy;
   std::string transform;
   kanzi::uint szBlock;
@@ -227,7 +228,7 @@ int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t 
 
   ostreambuf<char> buf(outbuf, outsize);
   std::iostream os(&buf);
-  int cores = std::max(int(std::thread::hardware_concurrency()) / 2, 1); // Defaults to half the cores
+  int cores = 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
   kanzi::CompressedOutputStream cos(os, entropy, transform, szBlock, false, std::min(cores, 64));
   cos.write(inbuf, insize);
   cos.close();
@@ -238,7 +239,7 @@ int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_
 {
   istreambuf<char> buf(inbuf, insize);
   std::iostream is(&buf);
-  int cores = std::max(int(std::thread::hardware_concurrency()) / 2, 1); // Defaults to half the cores
+  int cores = 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
   kanzi::CompressedInputStream cis(is, std::min(cores, 64));
   cis.read(outbuf, outsize);
   cis.close();
