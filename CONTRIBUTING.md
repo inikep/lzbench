@@ -42,6 +42,7 @@ int64_t lzbench_xxxx_compress(char* inbuf, size_t insize, char* outbuf, size_t o
 int64_t lzbench_xxxx_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, size_t, size_t, char*) { }
 #endif
 ```
+- If a codec supports multi-threading, it should be disabled since all codecs are currently tested using a single thread. The only exception is GLZA, which is very slow and not tested with the default codecs.
 
 - Update `Makefile`:
 
