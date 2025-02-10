@@ -57,5 +57,5 @@ EXAMPLES
    lzbench -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd
    lzbench -t3,5 fname = 3 sec compression and 5 sec decompression loops
    lzbench -t0,0 -i3,5 -ezstd fname = 3 compression and 5 decompression iter.
-   lzbench -t0,0i3,5 -ezstd fname = the same as above with aggregated parameters
+   lzbench -j -r dirname = recursively select and join files in given directory
 

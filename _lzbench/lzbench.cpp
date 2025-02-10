@@ -776,7 +776,7 @@ void usage(lzbench_params_t* params)
     fprintf(stdout, "  " PROGNAME " -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd\n");
     fprintf(stdout, "  " PROGNAME " -t3,5 -elz4/zstd fname = 3 sec compression and 5 sec decompression loops\n");
     fprintf(stdout, "  " PROGNAME " -t0,0 -i3,5 -ezstd fname = 3 compression and 5 decompression iter.\n");
-    fprintf(stdout, "  " PROGNAME " -t0,0i3,5 -ezstd fname = the same as above with aggregated parameters\n");
+    fprintf(stdout, "  " PROGNAME " -j -r dirname = recursively select and join files in given directory\n");
 }
 
 void show_version()
