@@ -42,6 +42,7 @@ int64_t lzbench_xxxx_compress(char* inbuf, size_t insize, char* outbuf, size_t o
 int64_t lzbench_xxxx_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, size_t, size_t, char*) { }
 #endif
 ```
+- - If codec uses threads, set it to 1.
 
 - Update `Makefile`:
 
