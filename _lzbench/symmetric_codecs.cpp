@@ -22,7 +22,7 @@ char *lzbench_bsc_init(size_t insize, size_t level, size_t)
     return 0;
 }
 
-int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t level, char*)
 {
     int features = LIBBSC_DEFAULT_FEATURES;
     int lzpHashSize = LIBBSC_DEFAULT_LZPHASHSIZE;
@@ -58,7 +58,7 @@ int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 #ifdef BENCH_HAS_CUDA
 
-int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t level, char*)
 {
     int features = LIBBSC_DEFAULT_FEATURES | LIBBSC_FEATURE_CUDA;
     int lzpHashSize = LIBBSC_DEFAULT_LZPHASHSIZE;
