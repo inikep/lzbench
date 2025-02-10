@@ -18,7 +18,7 @@ CFLAGS += -O3 -fomit-frame-pointer -fstrict-aliasing -ffast-math
 CFLAGS += -mavx2
 
 # Comment out CFLAGS line below to disable OpenMP optimizations
-CFLAGS += -fopenmp -DLIBBSC_OPENMP_SUPPORT
+CFLAGS += -fopenmp -DLIBBSC_OPENMP_SUPPORT -DLIBSAIS_OPENMP
 
 # Comment out CFLAGS line below to enable debug output
 CFLAGS += -DNDEBUG

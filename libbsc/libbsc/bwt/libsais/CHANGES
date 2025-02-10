@@ -1,3 +1,37 @@
+Changes in 2.8.7 (January 16, 2025)
+- Restore the input array after suffix array construction (libsais64 & libsais16x64).
+
+Changes in 2.8.6 (November 18, 2024)
+- Fixed out-of-bound memory access issue for large inputs.
+
+Changes in 2.8.5 (July 31, 2024)
+- Miscellaneous changes to reduce compiler warnings about implicit functions.
+
+Changes in 2.8.4 (June 13, 2024)
+- Additional OpenMP acceleration (libsais16 & libsais16x64).
+
+Changes in 2.8.3 (June 11, 2024)
+- Implemented suffix array construction of a long 16-bit array (libsais16x64).
+
+Changes in 2.8.2 (May 27, 2024)
+- Implemented suffix array construction of a long 64-bit array (libsais64).
+
+Changes in 2.8.1 (April 5, 2024)
+- Fixed out-of-bound memory access issue for large inputs (libsais64).
+
+Changes in 2.8.0 (March 3, 2024)
+- Implemented permuted longest common prefix array (PLCP) construction of an integer array.
+- Fixed compilation error when compiling the library with OpenMP enabled.
+
+Changes in 2.7.5 (February 26, 2024)
+- Improved performance of suffix array and burrows wheeler transform construction on degenerate inputs.
+
+Changes in 2.7.4 (February 23, 2024)
+- Resolved strict aliasing violation resulted in invalid code generation by Intel compiler.
+
+Changes in 2.7.3 (April 21, 2023)
+- CMake script for library build and integration with other projects.
+
 Changes in 2.7.2 (April 18, 2023)
 - Fixed out-of-bound memory access issue for large inputs (libsais64).
 

@@ -3,7 +3,7 @@
 This file is a part of libcubwt, a library for CUDA accelerated
 burrows wheeler transform construction and inversion.
 
-   Copyright (c) 2022-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2022-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -53,13 +53,13 @@ Please see the file LICENSE for full copyright and license details.
 
 #if CUDA_DEVICE_ARCH == 750
     #define CUDA_SM_THREADS                 (1024)
-#elif CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 890
+#elif CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 890 || CUDA_DEVICE_ARCH == 1010 || CUDA_DEVICE_ARCH == 1200
     #define CUDA_SM_THREADS                 (1536)
 #else
     #define CUDA_SM_THREADS                 (2048)
 #endif
 
-#if CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 890
+#if CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 890 || CUDA_DEVICE_ARCH == 1010 || CUDA_DEVICE_ARCH == 1200
     #define CUDA_BLOCK_THREADS              (768)
 #else
     #define CUDA_BLOCK_THREADS              (512)
@@ -220,6 +220,15 @@ static __device__ __forceinline__ uint32_t libcubwt_match_any_sync(const uint32_
     }
 
     return peers_mask;
+}
+
+static __device__ __forceinline__ uint32_t libcubwt_get_lanemask_lt()
+{
+    uint32_t mask;
+
+    asm("mov.u32 %0, %%lanemask_lt;" : "=r"(mask));
+
+    return mask;
 }
 
 static __device__ __forceinline__ uint32_t  libcubwt_xxhash32_b32(uint32_t data, uint32_t seed)
@@ -2262,7 +2271,7 @@ int64_t libcubwt_allocate_device_storage(void ** device_storage, int64_t max_len
             {
                 storage->device_L2_cache_bits = 0; while (cuda_device_L2_cache_size >>= 1) { storage->device_L2_cache_bits += 1; };
 
-                storage->cuda_block_threads = (cuda_device_capability == 860 || cuda_device_capability == 870 || cuda_device_capability == 890) ? 768u : 512u;
+                storage->cuda_block_threads = (cuda_device_capability == 860 || cuda_device_capability == 870 || cuda_device_capability == 890 || cuda_device_capability == 1010 || cuda_device_capability == 1200) ? 768u : 512u;
             }
         }
                
@@ -2271,7 +2280,6 @@ int64_t libcubwt_allocate_device_storage(void ** device_storage, int64_t max_len
             int64_t num_descriptors = ((max_reduced_length / (storage->cuda_block_threads * 4)) + 1024) & (-1024);
 
             {
-                cub::DoubleBuffer<uint8_t> uint8_db;
                 cub::DoubleBuffer<uint32_t> uint32_db;
                 cub::DoubleBuffer<uint64_t> uint64_db;
 
@@ -2669,7 +2677,7 @@ static void libcubwt_compute_LF_mapping(const uint8_t * RESTRICT device_L, const
             uint32_t byte = thread_bytes[0]; if (primary_index == thread_index) { byte = 256; }
 
             uint32_t peers_mask     = libcubwt_match_any_sync<9>((uint32_t)-1, byte);
-            uint32_t peers_offset   = __popc(peers_mask & cub::LaneMaskLt());
+            uint32_t peers_offset   = __popc(peers_mask & libcubwt_get_lanemask_lt());
             uint32_t warp_offset    = (byte < 256 ? warp_histogram[byte] : 0);
 
             device_LF[thread_index] = warp_offset + peers_offset;
@@ -2699,7 +2707,7 @@ static void libcubwt_compute_LF_mapping(const uint8_t * RESTRICT device_L, const
             uint32_t byte = thread_bytes[0];
 
             uint32_t peers_mask     = libcubwt_match_any_sync<8>((uint32_t)-1, byte);
-            uint32_t peers_offset   = __popc(peers_mask & cub::LaneMaskLt());
+            uint32_t peers_offset   = __popc(peers_mask & libcubwt_get_lanemask_lt());
             uint32_t warp_offset    = warp_histogram[byte];
 
             device_LF[thread_index] = warp_offset + peers_offset;

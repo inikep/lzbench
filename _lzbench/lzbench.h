@@ -158,8 +158,8 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "brotli",     "1.1.0",       0,  11,    0,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli22",   "1.1.0",       0,  11,   22,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli24",   "1.1.0",       0,  11,   24,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
-    { "bsc",        "3.3.4",       1,   6,    0,       0, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc_cuda",   "3.3.4",       5,   8,    0,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_cuda_init,   NULL },
+    { "bsc",        "3.3.5",       0,   6,    0,       0, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
+    { "bsc_cuda",   "3.3.5",       0,   8,    0,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
     { "bzip2",      "1.0.8",       1,   9,    0,       0, lzbench_bzip2_compress,      lzbench_bzip2_decompress,      NULL,                    NULL },
     { "crush",      "1.0",         0,   2,    0,       0, lzbench_crush_compress,      lzbench_crush_decompress,      NULL,                    NULL },
     { "csc",        "2016-10-13",  1,   5,    0,       0, lzbench_csc_compress,        lzbench_csc_decompress,        NULL,                    NULL },
@@ -244,7 +244,7 @@ static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
               "fastlz/kanzi,1,2,3,4/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
               "lzsse4fast/lzsse8fast/lzvn/quicklz,1,2/snappy/tornado,1,2,3/zstd,1,2,3,4,5" }, // default alias
     { "ALL",  "Represents all major supported compressors.",
-              "blosclz,1,3,6,9/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc,1,3,6/bzip2,1,5,9/" \
+              "blosclz,1,3,6,9/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc,1,4,5/bzip2,1,5,9/" \
               "crush,0,1,2/fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
               "lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzav/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzlib,0,3,6,9/lzma,0,2,4,6,9/" \
@@ -258,7 +258,7 @@ static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
               "lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/" \
               "tornado,6,7,8,9,10,11,12,13,14,15,16/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
     { "CUDA",     "Represents all CUDA-based compressors.",
-                  "cudaMemcpy/nvcomp_lz4,0,1,3,5/bsc_cuda,5,6,7,8" },
+                  "cudaMemcpy/nvcomp_lz4,0,1,3,5/bsc_cuda,1,2,6,7,8" },
     { "SYMMETRIC","Includes compressors with similar compression and decompression speeds.",
                   "bsc/bzip2/ppmd8" },
     { "MISC",     "Covers miscellaneous compressors.",

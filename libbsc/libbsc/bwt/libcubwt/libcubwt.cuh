@@ -3,7 +3,7 @@
 This file is a part of libcubwt, a library for CUDA accelerated
 burrows wheeler transform construction and inversion.
 
-   Copyright (c) 2022-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2022-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -26,8 +26,8 @@ Please see the file LICENSE for full copyright and license details.
 
 #define LIBCUBWT_VERSION_MAJOR          1
 #define LIBCUBWT_VERSION_MINOR          6
-#define LIBCUBWT_VERSION_PATCH          0
-#define LIBCUBWT_VERSION_STRING	        "1.6.0"
+#define LIBCUBWT_VERSION_PATCH          1
+#define LIBCUBWT_VERSION_STRING	        "1.6.1"
 
 #define LIBCUBWT_NO_ERROR               0
 #define LIBCUBWT_BAD_PARAMETER          -1

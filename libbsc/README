@@ -10,7 +10,7 @@ block-sorting data compression algorithms.
 libbsc is a library based on bsc, it uses the same algorithms
 as bsc and enables you to compress memory blocks.
 
-Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+Copyright (c) 2009-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
 
 See file AUTHORS for a full list of contributors.
 
@@ -21,7 +21,7 @@ See the bsc and libbsc web site:
 Software License:
 -----------------
 
-Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+Copyright (c) 2009-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
