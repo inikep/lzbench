@@ -229,9 +229,9 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
     }
 
     if (desc->first_level == 0 && desc->last_level==0)
-        format(col1_algname, "%s %s", desc->name, desc->version);
+        format(col1_algname, "%s", desc->name_version);
     else
-        format(col1_algname, "%s %s -%d", desc->name, desc->version, level);
+        format(col1_algname, "%s -%d", desc->name_version, level);
 
     params->results.push_back(string_table_t(col1_algname, (comp_error)?0:best_ctime, (decomp_error)?0:best_dtime, outsize, insize, params->in_filename));
     if (params->show_speed)
@@ -947,9 +947,9 @@ int main( int argc, char** argv)
                 if (comp_desc[i].compress)
                 {
                     if (comp_desc[i].first_level < comp_desc[i].last_level)
-                        printf("%s %s [%d-%d]\n", comp_desc[i].name, comp_desc[i].version, comp_desc[i].first_level, comp_desc[i].last_level);
+                        printf("%s = %s [%d-%d]\n", comp_desc[i].name, comp_desc[i].name_version, comp_desc[i].first_level, comp_desc[i].last_level);
                     else
-                        printf("%s %s\n", comp_desc[i].name, comp_desc[i].version);
+                        printf("%s = %s\n", comp_desc[i].name, comp_desc[i].name_version);
                 }
             }
 
