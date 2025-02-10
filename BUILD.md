@@ -68,9 +68,14 @@ or
 	make USER_CFLAGS="-march=native" USER_CXXFLAGS="-march=native"
 
 
-With certain, old compilers, systems or combintion some compressor
-may cause issues. Most of it should be chosen automatically but in
-case of problems, particular compressors can be excluded from build setting
+USER_CFLAGS, USER_CXXFLAGS and USER_LDFLAGS variables allow user to add
+or replace existing values of corresponding variables without completely
+replacing them.
+
+
+With certain compilers, systems or combination some compressors may
+cause issues. Most of them should be resolved automatically but in case
+of problems, particular compressor can be excluded from build by setting
 `DONT_BUILD_XXX` to 1, where `XXX` is target compressor, for example:
 
 	make DONT_BUILD_GLZA=1
