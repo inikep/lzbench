@@ -108,7 +108,7 @@ see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page
 Benchmarks
 -------------------------
 
-The following results were obtained using `lzbench 2.0`, built with `gcc 14.2.0` and executed with the options `-eALL -t8,8 -o1c4`.
+The following results were obtained using `lzbench 2.0.1`, built with `gcc 14.2.0` and executed with the options `-eALL -t8,8 -o1c4`.
 The tests were run on a single thread of an AMD EPYC 9554 processor at 3.10 GHz, with the CPU governor set to `performance` and turbo
 boost disabled for stability. The operating system was `Ubuntu 24.04.1`, and the benchmark made use of
 [`silesia.tar`](https://github.com/DataCompression/corpus-collection/tree/main/Silesia-Corpus), which contains tarred files from the
@@ -132,9 +132,9 @@ The results sorted by ratio are available [here](doc/lzbench20_sorted.md).
 | brotli 1.1.0 -5         |  37.1 MB/s |   451 MB/s |    59555446 | 28.10 |
 | brotli 1.1.0 -8         |  12.3 MB/s |   477 MB/s |    57148304 | 26.96 |
 | brotli 1.1.0 -11        |  0.58 MB/s |   389 MB/s |    50407795 | 23.78 |
-| bsc 3.3.4 -1            |  16.2 MB/s |  23.7 MB/s |    49142288 | 23.19 |
-| bsc 3.3.4 -3            |  30.5 MB/s |  15.4 MB/s |    53478534 | 25.23 |
-| bsc 3.3.4 -6            |  27.6 MB/s |  12.3 MB/s |    49142326 | 23.19 |
+| bsc 3.3.5 -m0 -e1       |  16.6 MB/s |  24.1 MB/s |    49143366 | 23.19 |
+| bsc 3.3.5 -m4 -e1       |  31.2 MB/s |  14.3 MB/s |    50626974 | 23.89 |
+| bsc 3.3.5 -m5 -e1       |  28.8 MB/s |  13.3 MB/s |    49522504 | 23.37 |
 | bzip2 1.0.8 -1          |  14.8 MB/s |  46.6 MB/s |    60484813 | 28.54 |
 | bzip2 1.0.8 -5          |  14.0 MB/s |  40.0 MB/s |    55724395 | 26.29 |
 | bzip2 1.0.8 -9          |  13.1 MB/s |  37.5 MB/s |    54572811 | 25.75 |
@@ -148,14 +148,14 @@ The results sorted by ratio are available [here](doc/lzbench20_sorted.md).
 | fastlzma2 1.0.1 -5      |  7.31 MB/s |  87.6 MB/s |    51209567 | 24.16 |
 | fastlzma2 1.0.1 -8      |  4.46 MB/s |  89.7 MB/s |    49126736 | 23.18 |
 | fastlzma2 1.0.1 -10     |  3.31 MB/s |  90.2 MB/s |    48666061 | 22.96 |
-| kanzi 2.3 -2            |  1267 MB/s |  2156 MB/s |    68264304 | 32.21 |
-| kanzi 2.3 -3            |  1005 MB/s |  2069 MB/s |    64963864 | 30.65 |
-| kanzi 2.3 -4            |   802 MB/s |  1705 MB/s |    60767201 | 28.67 |
-| kanzi 2.3 -5            |   418 MB/s |   805 MB/s |    54050463 | 25.50 |
-| kanzi 2.3 -6            |   203 MB/s |   414 MB/s |    49517568 | 23.36 |
-| kanzi 2.3 -7            |  85.3 MB/s |   123 MB/s |    47308205 | 22.32 |
-| kanzi 2.3 -8            |  31.3 MB/s |  28.7 MB/s |    43247149 | 20.40 |
-| kanzi 2.3 -9            |  13.3 MB/s |  12.4 MB/s |    41807652 | 19.73 |
+| kanzi 2.3 -2            |   155 MB/s |   432 MB/s |    68264304 | 32.21 |
+| kanzi 2.3 -3            |   106 MB/s |   321 MB/s |    64963864 | 30.65 |
+| kanzi 2.3 -4            |  53.7 MB/s |   152 MB/s |    60767201 | 28.67 |
+| kanzi 2.3 -5            |  21.0 MB/s |  50.3 MB/s |    54050463 | 25.50 |
+| kanzi 2.3 -6            |  15.8 MB/s |  29.6 MB/s |    49517568 | 23.36 |
+| kanzi 2.3 -7            |  10.2 MB/s |  15.2 MB/s |    47308205 | 22.32 |
+| kanzi 2.3 -8            |  3.45 MB/s |  3.29 MB/s |    43247149 | 20.40 |
+| kanzi 2.3 -9            |  2.44 MB/s |  2.35 MB/s |    41807652 | 19.73 |
 | libdeflate 1.23 -1      |   207 MB/s |   860 MB/s |    73502791 | 34.68 |
 | libdeflate 1.23 -3      |   136 MB/s |   895 MB/s |    70170816 | 33.11 |
 | libdeflate 1.23 -6      |  84.3 MB/s |   912 MB/s |    67510615 | 31.85 |

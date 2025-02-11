@@ -1,5 +1,8 @@
-v2.x.y (XXX XX, 2025)
-- updated libbsc to v3.3.5
+v2.0.1 (Feb 11, 2025)
+- updated libbsc to v3.3.5 (thanks to @IlyaGrebnov)
+- fixed: set kanzi to use a single thread instead of half of available threads in lzbench v2.0
+- fixed: Piping through tee doesn't work (issue #138)
+- improvement: Return exit code > 0 to shell in case of failure of one of codecs
 
 v2.0 (Feb 06, 2025)
 - added zlib-ng 2.2.3 (thanks to @data-man)

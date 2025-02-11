@@ -101,7 +101,8 @@ Compilation for various CPU architectures
 - `ppc64le` (PowerPC 64-bit Little-endian) works fine with all default codecs
 - `ppc/ppc64` (PowerPC 32-bit and 64-bit Big-endian) - a lot compressors fail because of Big-endian architecture
 - `riscv32/riscv64` - we have reports it works fine with `DONT_BUILD_TORNADO=1`
-- `mips/mips64` - waiting for reports
+- `mipsel/mips64el` - waiting for reports
+- `mips/mips64` - a lot compressors will fail because of Big-endian architecture
 - `loongarch64` - we have reports it works fine
 
 

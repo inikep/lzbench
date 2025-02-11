@@ -1,4 +1,4 @@
-The following results were obtained using `lzbench 2.0`, built with `gcc 14.2.0` and executed with the options `-eALL -t8,8 -o1c4`.
+The following results were obtained using `lzbench 2.0.1`, built with `gcc 14.2.0` and executed with the options `-eALL -t8,8 -o1c4`.
 The tests were run on a single thread of an AMD EPYC 9554 processor at 3.10 GHz, with the CPU governor set to `performance` and turbo
 boost disabled for stability. The operating system was `Ubuntu 24.04.1`, and the benchmark made use of
 [`silesia.tar`](https://github.com/DataCompression/corpus-collection/tree/main/Silesia-Corpus), which contains tarred files from the
@@ -6,29 +6,29 @@ boost disabled for stability. The operating system was `Ubuntu 24.04.1`, and the
 
 | Compressor name         | Compression| Decompress.| Compr. size | Ratio |
 | ---------------         | -----------| -----------| ----------- | ----- |
-| kanzi 2.3 -9            |  13.3 MB/s |  12.4 MB/s |    41807652 | 19.73 |
-| kanzi 2.3 -8            |  31.3 MB/s |  28.7 MB/s |    43247149 | 20.40 |
-| kanzi 2.3 -7            |  85.3 MB/s |   123 MB/s |    47308205 | 22.32 |
+| kanzi 2.3 -9            |  2.44 MB/s |  2.35 MB/s |    41807652 | 19.73 |
+| kanzi 2.3 -8            |  3.45 MB/s |  3.29 MB/s |    43247149 | 20.40 |
+| kanzi 2.3 -7            |  10.2 MB/s |  15.2 MB/s |    47308205 | 22.32 |
 | lzlib 1.15 -9           |  1.81 MB/s |  72.5 MB/s |    48296889 | 22.79 |
 | fastlzma2 1.0.1 -10     |  3.31 MB/s |  90.2 MB/s |    48666061 | 22.96 |
 | lzma 24.09 -9           |  4.01 MB/s |  93.0 MB/s |    48674973 | 22.97 |
 | xz 5.6.3 -9             |  2.57 MB/s |   123 MB/s |    48745306 | 23.00 |
 | fastlzma2 1.0.1 -8      |  4.46 MB/s |  89.7 MB/s |    49126736 | 23.18 |
-| bsc 3.3.4 -1            |  16.2 MB/s |  23.7 MB/s |    49142288 | 23.19 |
-| bsc 3.3.4 -6            |  27.6 MB/s |  12.3 MB/s |    49142326 | 23.19 |
+| bsc 3.3.5 -m0 -e1       |  16.6 MB/s |  24.1 MB/s |    49143366 | 23.19 |
 | xz 5.6.3 -6             |  2.97 MB/s |   127 MB/s |    49195929 | 23.21 |
-| kanzi 2.3 -6            |   203 MB/s |   414 MB/s |    49517568 | 23.36 |
+| kanzi 2.3 -6            |  15.8 MB/s |  29.6 MB/s |    49517568 | 23.36 |
+| bsc 3.3.5 -m5 -e1       |  28.8 MB/s |  13.3 MB/s |    49522504 | 23.37 |
 | lzma 24.09 -6           |  4.86 MB/s |  91.5 MB/s |    49544915 | 23.38 |
 | lzlib 1.15 -6           |  2.91 MB/s |  72.0 MB/s |    49777495 | 23.49 |
 | brotli 1.1.0 -11        |  0.58 MB/s |   389 MB/s |    50407795 | 23.78 |
+| bsc 3.3.5 -m4 -e1       |  31.2 MB/s |  14.3 MB/s |    50626974 | 23.89 |
 | fastlzma2 1.0.1 -5      |  7.31 MB/s |  87.6 MB/s |    51209567 | 24.16 |
 | ppmd8 24.09 -4          |  13.2 MB/s |  12.0 MB/s |    51241932 | 24.18 |
 | zstd 1.5.6 -22          |  2.08 MB/s |  1073 MB/s |    52333880 | 24.69 |
 | tornado 0.6a -16        |  2.32 MB/s |   255 MB/s |    53257046 | 25.13 |
 | zstd 1.5.6 -18          |  3.79 MB/s |  1169 MB/s |    53329873 | 25.16 |
-| bsc 3.3.4 -3            |  30.5 MB/s |  15.4 MB/s |    53478534 | 25.23 |
 | fastlzma2 1.0.1 -3      |  12.1 MB/s |  81.4 MB/s |    54023833 | 25.49 |
-| kanzi 2.3 -5            |   418 MB/s |   805 MB/s |    54050463 | 25.50 |
+| kanzi 2.3 -5            |  21.0 MB/s |  50.3 MB/s |    54050463 | 25.50 |
 | bzip2 1.0.8 -9          |  13.1 MB/s |  37.5 MB/s |    54572811 | 25.75 |
 | lzham 1.0 -d26 -1       |  3.08 MB/s |   309 MB/s |    54740589 | 25.83 |
 | tornado 0.6a -13        |  5.42 MB/s |   243 MB/s |    55614072 | 26.24 |
@@ -49,7 +49,7 @@ boost disabled for stability. The operating system was `Ubuntu 24.04.1`, and the
 | lzma 24.09 -0           |  31.0 MB/s |  74.1 MB/s |    60509826 | 28.55 |
 | zling 2018-10-12 -4     |  47.9 MB/s |   187 MB/s |    60626768 | 28.60 |
 | lizard 2.1 -49          |  2.06 MB/s |  1325 MB/s |    60679215 | 28.63 |
-| kanzi 2.3 -4            |   802 MB/s |  1705 MB/s |    60767201 | 28.67 |
+| kanzi 2.3 -4            |  53.7 MB/s |   152 MB/s |    60767201 | 28.67 |
 | zling 2018-10-12 -3     |  56.6 MB/s |   186 MB/s |    60999828 | 28.78 |
 | xpack 2016-06-02 -9     |  16.2 MB/s |   929 MB/s |    61240928 | 28.89 |
 | zling 2018-10-12 -2     |  63.1 MB/s |   184 MB/s |    61503093 | 29.02 |
@@ -65,7 +65,7 @@ boost disabled for stability. The operating system was `Ubuntu 24.04.1`, and the
 | tornado 0.6a -5         |  70.9 MB/s |   232 MB/s |    64129604 | 30.26 |
 | brieflz 1.3.0 -8        |  2.84 MB/s |   419 MB/s |    64531718 | 30.45 |
 | libdeflate 1.23 -12     |  5.14 MB/s |   919 MB/s |    64678723 | 30.52 |
-| kanzi 2.3 -3            |  1005 MB/s |  2069 MB/s |    64963864 | 30.65 |
+| kanzi 2.3 -3            |   106 MB/s |   321 MB/s |    64963864 | 30.65 |
 | crush 1.0 -1            |  6.95 MB/s |   407 MB/s |    66494412 | 31.37 |
 | lizard 2.1 -45          |  21.6 MB/s |  1350 MB/s |    66676653 | 31.46 |
 | libdeflate 1.23 -9      |  28.5 MB/s |   904 MB/s |    66715751 | 31.48 |
@@ -76,7 +76,7 @@ boost disabled for stability. The operating system was `Ubuntu 24.04.1`, and the
 | zlib 1.3.1 -9           |  10.3 MB/s |   348 MB/s |    67644548 | 31.92 |
 | brotli 1.1.0 -2         |   140 MB/s |   413 MB/s |    68069489 | 32.12 |
 | zlib 1.3.1 -6           |  25.3 MB/s |   344 MB/s |    68228431 | 32.19 |
-| kanzi 2.3 -2            |  1267 MB/s |  2156 MB/s |    68264304 | 32.21 |
+| kanzi 2.3 -2            |   155 MB/s |   432 MB/s |    68264304 | 32.21 |
 | lizard 2.1 -29          |  2.10 MB/s |  1819 MB/s |    68694227 | 32.41 |
 | zlib-ng 2.2.3 -6        |  62.1 MB/s |   509 MB/s |    68861129 | 32.49 |
 | zstd 1.5.6 -2           |   344 MB/s |  1246 MB/s |    69503444 | 32.79 |
