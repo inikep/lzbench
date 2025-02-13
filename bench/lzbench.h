@@ -149,7 +149,7 @@ typedef struct
 
 
 
-#define LZBENCH_COMPRESSOR_COUNT 94
+#define LZBENCH_COMPRESSOR_COUNT 95
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
@@ -176,6 +176,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "bsc_cuda7",  "bsc 3.3.5 -G -m7 -e0",  0,   0,    7,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
     { "bsc_cuda8",  "bsc 3.3.5 -G -m8 -e0",  0,   0,    8,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
     { "bzip2",      "bzip2 1.0.8",           1,   9,    0,       0, lzbench_bzip2_compress,      lzbench_bzip2_decompress,      NULL,                    NULL },
+    { "bzip3",      "bzip3 1.5.1",           1,  10,    0,       0, lzbench_bzip3_compress,      lzbench_bzip3_decompress,      NULL,                    NULL },
     { "crush",      "crush 1.0",             0,   2,    0,       0, lzbench_crush_compress,      lzbench_crush_decompress,      NULL,                    NULL },
     { "csc",        "csc 2016-10-13",        1,   5,    0,       0, lzbench_csc_compress,        lzbench_csc_decompress,        NULL,                    NULL },
     { "density",    "density 0.14.2",        1,   3,    0,       0, lzbench_density_compress,    lzbench_density_decompress,    lzbench_density_init,    lzbench_density_deinit },
@@ -259,7 +260,7 @@ static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
               "fastlz/kanzi,1,2,3,4/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
               "lzsse4fast/lzsse8fast/lzvn/quicklz,1,2/snappy/tornado,1,2,3/zstd,1,2,3,4,5" }, // default alias
     { "ALL",  "Represents all major supported compressors.",
-              "blosclz,1,3,6,9/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc1/bsc4/bsc5/bzip2,1,5,9/" \
+              "blosclz,1,3,6,9/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,5/" \
               "crush,0,1,2/fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
               "lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzav/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzlib,0,3,6,9/lzma,0,2,4,6,9/" \
@@ -275,7 +276,7 @@ static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
     { "CUDA",     "Represents all CUDA-based compressors.",
                   "cudaMemcpy/nvcomp_lz4/bsc_cuda" },
     { "SYMMETRIC","Includes compressors with similar compression and decompression speeds.",
-                  "bsc/bzip2/ppmd8" },
+                  "bsc/bzip2/bzip3/ppmd8" },
     { "MISC",     "Covers miscellaneous compressors.",
                   "glza/lzjb/nakamichi/tamp" },
     { "BUGGY",    "Lists potentially unstable codecs that may cause segmentation faults.",

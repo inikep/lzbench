@@ -1,3 +1,7 @@
+v2.x.y
+- added bzip3 1.5.1
+- fixed: lzma 24.09 was using 2 threads for level 5 and higher (a bug introduced in v2.0)
+
 v2.0.1 (Feb 11, 2025)
 - updated libbsc to v3.3.5 (thanks to @IlyaGrebnov)
 - fixed: set kanzi to use a single thread instead of half of available threads in lzbench v2.0

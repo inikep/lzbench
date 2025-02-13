@@ -86,6 +86,15 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 #endif // BENCH_REMOVE_BZIP2
 
 
+#ifndef BENCH_REMOVE_BZIP3
+	int64_t lzbench_bzip3_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
+	int64_t lzbench_bzip3_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);
+#else
+	#define lzbench_bzip3_compress NULL
+	#define lzbench_bzip3_decompress NULL
+#endif // BENCH_REMOVE_BZIP3
+
+
 #ifndef BENCH_REMOVE_CRUSH
 	int64_t lzbench_crush_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*);
 	int64_t lzbench_crush_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*);

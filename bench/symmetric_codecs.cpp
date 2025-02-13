@@ -116,6 +116,28 @@ int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #endif // BENCH_REMOVE_BZIP2
 
 
+#ifndef BENCH_REMOVE_BZIP3
+#include "bwt/bzip3/include/libbz3.h"
+
+int64_t lzbench_bzip3_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
+{
+   size_t real_outsize = outsize;
+   uint32_t block_size = 1 << (19 + level); // level 1 = 1 MB, level 3 = 4 MB, level 9 = 256 MB, level 10 = 511 MB
+   int bzerr = bz3_compress(block_size > (511 << 20) ? (511 << 20) : block_size, (uint8_t*)inbuf, (uint8_t*)outbuf, insize, &real_outsize);
+   if (bzerr != BZ3_OK) return bzerr;
+   return real_outsize;
+}
+
+int64_t lzbench_bzip3_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+{
+    size_t real_outsize = outsize;
+    int bzerr = bz3_decompress((uint8_t*)inbuf, (uint8_t*)outbuf, insize, &real_outsize);
+    if (bzerr != BZ3_OK) return bzerr;
+    return real_outsize;
+}
+
+#endif // BENCH_REMOVE_BZIP3
+
 
 #ifndef BENCH_REMOVE_PPMD
 #include "misc/7-zip/Ppmd8.h"
