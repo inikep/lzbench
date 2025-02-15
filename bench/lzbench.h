@@ -17,6 +17,13 @@
 #include <string>
 #include "codecs.h"
 #include "lz/lizard/lizard_compress.h"    // LIZARD_MAX_CLEVEL
+#include <atomic>
+#include <mutex>
+#include <condition_variable>
+#include <vector>
+#include <queue>
+#include <thread>
+#include <functional>
 
 #define PROGNAME "lzbench"
 #define PROGVERSION "2.0.2"
@@ -95,7 +102,9 @@ typedef struct string_table
     std::string col1_algname;
     uint64_t col2_ctime, col3_dtime, col4_comprsize, col5_origsize;
     std::string col6_filename;
-    string_table(std::string c1, uint64_t c2, uint64_t c3, uint64_t c4, uint64_t c5, std::string filename) : col1_algname(c1), col2_ctime(c2), col3_dtime(c3), col4_comprsize(c4), col5_origsize(c5), col6_filename(filename) {}
+    int usedCompThreads, usedDecompThreads;
+    string_table(std::string c1, uint64_t c2, uint64_t c3, uint64_t c4, uint64_t c5, std::string filename, int compThreads, int decompThreads) :
+        col1_algname(c1), col2_ctime(c2), col3_dtime(c3), col4_comprsize(c4), col5_origsize(c5), col6_filename(filename), usedCompThreads(compThreads), usedDecompThreads(decompThreads) {}
 } string_table_t;
 
 enum textformat_e { MARKDOWN=1, TEXT, TEXT_FULL, CSV, TURBOBENCH, MARKDOWN2 };
@@ -103,7 +112,7 @@ enum timetype_e { FASTEST=1, AVERAGE, MEDIAN };
 
 typedef struct
 {
-    int show_speed, compress_only;
+    int show_speed, compress_only, threads;
     timetype_e timetype;
     textformat_e textformat;
     size_t chunk_size;
@@ -145,6 +154,46 @@ typedef struct
     const char* description;
     const char* params;
 } alias_desc_t;
+
+
+struct CompressionTask {
+    bool isCompression;
+    size_t chunkNo;
+    uint8_t* input;
+    size_t inputSize;
+    uint8_t* output;
+    size_t maxOutputSize;
+    compress_func codec_function;
+    const codec_options_t* codec_options;
+    std::vector<char*> *workmems;
+};
+
+
+class ThreadPool {
+public:
+    ThreadPool(size_t numThreads, size_t numBlocks);
+    ~ThreadPool();
+
+    void enqueue(CompressionTask task);
+    void waitForCompletion();
+    void clear();
+
+    std::vector<size_t> chunkSizes;  // Stores original chunk sizes
+    std::vector<size_t> compSizes;   // Stores compressed sizes
+    std::vector<size_t> comptasksDone;
+    std::vector<size_t> decomptasksDone;
+    size_t numThreads;
+
+private:
+    std::vector<std::thread> workers;
+    std::queue<CompressionTask> tasks;
+    std::mutex queueMutex;
+    std::condition_variable condition;
+    std::atomic<bool> stop;
+    std::atomic<size_t> activeTasks;
+
+    void workerThread(int threadNo);
+};
 
 
 static const compressor_desc_t comp_desc[] =
