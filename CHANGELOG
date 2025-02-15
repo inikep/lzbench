@@ -1,10 +1,16 @@
-v2.x.y
+v2.1
+- Added the -T parameter, which enables multi-threaded compression using an external thread
+  pool implemented in lzbench. The input data is split into N blocks (with block size specified
+  by the -b option) and each block is compressed independently using T threads. Since the blocks
+  are processed independently, this may slightly reduce the compression ratio. This option also
+  significantly increases memory usage, as each compressor instance is allocated T times.
 - added bzip3 1.5.1
 - updated zstd to 1.5.7 (thanks to @tansy)
-- updated lzav 4.15 (thanks to @avaneev)
+- updated lzav 4.22 (thanks to @avaneev)
 - fixed: lzma 24.09 was using 2 threads for level 5 and higher (a bug introduced in v2.0)
 - removed max_block_size parameter and blosclz, shrinker, xpack codecs
 - removed pithy, Nakamichi Okamigan
+- improvement: report compiler version (thanks to @danfe)
 - improvement: reorganization of lzbench directories
 - improvement: changed interface of compression and decompression functions (thanks to @tansy)
 
