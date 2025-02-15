@@ -86,8 +86,8 @@ else
 endif
 
 ifeq ($(BUILD_TYPE),debug)
-	OPT_FLAGS_O2 = $(OPT_FLAGS) -Og
-	OPT_FLAGS_O3 = $(OPT_FLAGS) -Og
+	OPT_FLAGS_O2 = $(OPT_FLAGS) -O0 -g
+	OPT_FLAGS_O3 = $(OPT_FLAGS) -O0 -g
 else
 	OPT_FLAGS_O2 = $(OPT_FLAGS) -O2 -DNDEBUG
 	OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
@@ -104,7 +104,13 @@ endif
 
 LZ_CODECS     = bench/lz_codecs.o
 BUGGY_CODECS  = bench/buggy_codecs.o
-LZBENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) bench/lzbench.o  bench/symmetric_codecs.o bench/misc_codecs.o
+LZBENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) bench/lzbench.o bench/symmetric_codecs.o bench/misc_codecs.o
+
+ifneq "$(DISABLE_THREADING)" "1"
+    LZBENCH_FILES += bench/threadpool.o
+else
+    DEFINES += -DDISABLE_THREADING
+endif
 
 
 ifeq "$(DONT_BUILD_BRIEFLZ)" "1"
@@ -559,7 +565,7 @@ lzbench: $(BUGGY_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
-bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h
+bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h
 
 # disable the implicit rule for making a binary out of a single object file
 %: %.o
