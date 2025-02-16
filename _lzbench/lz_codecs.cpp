@@ -619,6 +619,7 @@ int64_t lzbench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 	
 	LzmaEncProps_Init(&props);
 	props.level = level;
+	props.numThreads = 1;
 	LzmaEncProps_Normalize(&props);
   /*
   p->level = 5;
@@ -641,7 +642,7 @@ int64_t lzbench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 	SizeT out_len = outsize;
 	SizeT src_len = insize - LZMA_PROPS_SIZE;
 	ELzmaStatus status;
-	
+
 //	SRes LzmaDecode(Byte *dest, SizeT *destLen, const Byte *src, SizeT *srcLen, const Byte *propData, unsigned propSize, ELzmaFinishMode finishMode, ELzmaStatus *status, ISzAlloc *alloc)
 	res = LzmaDecode((uint8_t*)outbuf, &out_len, (uint8_t*)inbuf+LZMA_PROPS_SIZE, &src_len, (uint8_t*)inbuf, LZMA_PROPS_SIZE, LZMA_FINISH_END, &status, &g_Alloc);
 	if (res != SZ_OK) return 0;
