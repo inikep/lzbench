@@ -305,7 +305,7 @@ int64_t lzbench_shrinker_decompress(char *inbuf, size_t insize, char *outbuf, si
 
 
 #ifndef BENCH_REMOVE_WFLZ
-#include "wflz/wfLZ.h"
+#include "lz/wflz/wfLZ.h"
 
 char* lzbench_wflz_init(size_t, size_t, size_t)
 {
@@ -366,7 +366,7 @@ int64_t lzbench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 #ifndef BENCH_REMOVE_YALZ77
-#include "yalz77/lz77.h"
+#include "lz/yalz77/lz77.h"
 
 int64_t lzbench_yalz77_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {

@@ -75,7 +75,7 @@ else
 endif
 
 
-DEFINES     += $(addprefix -I$(SOURCE_PATH),.  xpack/common)
+DEFINES     += -I.
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 
 # don't use "-ffast-math" for clang < 10.0
@@ -320,17 +320,17 @@ endif
 ifeq "$(DONT_BUILD_XPACK)" "1"
 	DEFINES += -DBENCH_REMOVE_XPACK
 else
-	XPACK_FILES = xpack/lib/x86_cpu_features.o xpack/lib/xpack_common.o xpack/lib/xpack_compress.o xpack/lib/xpack_decompress.o
+	XPACK_FILES = lz/xpack/lib/x86_cpu_features.o lz/xpack/lib/xpack_common.o lz/xpack/lib/xpack_compress.o lz/xpack/lib/xpack_decompress.o
 endif
 
 
 ifeq "$(DONT_BUILD_XZ)" "1"
 	DEFINES += -DBENCH_REMOVE_XZ
 else
-    XZ_FILES = xz/src/liblzma/lzma/lzma_decoder.o xz/src/liblzma/lzma/lzma_encoder.o xz/src/liblzma/lzma/lzma_encoder_optimum_fast.o xz/src/liblzma/lzma/lzma_encoder_optimum_normal.o xz/src/liblzma/lzma/fastpos_table.o
-    XZ_FILES += xz/src/liblzma/lzma/lzma_encoder_presets.o xz/src/liblzma/lz/lz_decoder.o xz/src/liblzma/lz/lz_encoder.o xz/src/liblzma/lz/lz_encoder_mf.o xz/src/liblzma/common/common.o xz/src/liblzma/rangecoder/price_table.o
-    XZ_FILES += xz/src/liblzma/common/alone_encoder.o xz/src/liblzma/common/alone_decoder.o xz/src/liblzma/check/crc32_table.o _lzbench/xz_codec.o
-    XZ_FLAGS = $(addprefix -I$(SOURCE_PATH),. xz/src xz/src/common xz/src/liblzma/api xz/src/liblzma/common xz/src/liblzma/lzma xz/src/liblzma/lz xz/src/liblzma/check xz/src/liblzma/rangecoder)
+    XZ_FILES = lz/xz/src/liblzma/lzma/lzma_decoder.o lz/xz/src/liblzma/lzma/lzma_encoder.o lz/xz/src/liblzma/lzma/lzma_encoder_optimum_fast.o lz/xz/src/liblzma/lzma/lzma_encoder_optimum_normal.o lz/xz/src/liblzma/lzma/fastpos_table.o
+    XZ_FILES += lz/xz/src/liblzma/lzma/lzma_encoder_presets.o lz/xz/src/liblzma/lz/lz_decoder.o lz/xz/src/liblzma/lz/lz_encoder.o lz/xz/src/liblzma/lz/lz_encoder_mf.o lz/xz/src/liblzma/common/common.o lz/xz/src/liblzma/rangecoder/price_table.o
+    XZ_FILES += lz/xz/src/liblzma/common/alone_encoder.o lz/xz/src/liblzma/common/alone_decoder.o lz/xz/src/liblzma/check/crc32_table.o
+    XZ_FLAGS = $(addprefix -I$(SOURCE_PATH),. lz/xz/src lz/xz/src/common lz/xz/src/liblzma/api lz/xz/src/liblzma/common lz/xz/src/liblzma/lzma lz/xz/src/liblzma/lz lz/xz/src/liblzma/check lz/xz/src/liblzma/rangecoder)
 endif
 
 
@@ -533,7 +533,7 @@ endif
 ifeq "$(DONT_BUILD_WFLZ)" "1"
     DEFINES += -DBENCH_REMOVE_WFLZ
 else
-    BUGGY_FILES += wflz/wfLZ.o
+    BUGGY_FILES += lz/wflz/wfLZ.o
 endif
 
 
@@ -644,6 +644,10 @@ $(LZO_FILES): %.o : %.c
 	$(CC) $(CFLAGS) -Ilz $< -c -o $@
 
 $(UCL_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz $< -c -o $@
+
+$(XPACK_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Ilz $< -c -o $@
 
