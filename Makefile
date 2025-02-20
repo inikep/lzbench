@@ -196,16 +196,16 @@ endif
 ifeq "$(DONT_BUILD_LIZARD)" "1"
 	DEFINES += -DBENCH_REMOVE_LIZARD
 else
-    LIZARD_FILES = lizard/lizard_compress.o lizard/lizard_decompress.o
-    LIZARD_FILES += lizard/entropy/huf_compress.o lizard/entropy/huf_decompress.o lizard/entropy/entropy_common.o
-    LIZARD_FILES += lizard/entropy/fse_compress.o lizard/entropy/fse_decompress.o lizard/entropy/hist.o
+    LIZARD_FILES = lz/lizard/lizard_compress.o lz/lizard/lizard_decompress.o
+    LIZARD_FILES += lz/lizard/entropy/huf_compress.o lz/lizard/entropy/huf_decompress.o lz/lizard/entropy/entropy_common.o
+    LIZARD_FILES += lz/lizard/entropy/fse_compress.o lz/lizard/entropy/fse_decompress.o lz/lizard/entropy/hist.o
 endif
 
 
 ifeq "$(DONT_BUILD_LZ4)" "1"
 	DEFINES += -DBENCH_REMOVE_LZ4
 else
-    LZ4_FILES = lz4/lib/lz4.o lz4/lib/lz4hc.o
+    LZ4_FILES = lz/lz4/lib/lz4.o lz/lz4/lib/lz4hc.o
 endif
 
 
@@ -363,7 +363,7 @@ endif
 ifeq "$(DONT_BUILD_ZLING)" "1"
     DEFINES += -DBENCH_REMOVE_ZLING
 else
-    ZLING_FILES = libzling/libzling.o libzling/libzling_huffman.o libzling/libzling_lz.o libzling/libzling_utils.o
+    ZLING_FILES = lz/libzling/libzling.o lz/libzling/libzling_huffman.o lz/libzling/libzling_lz.o lz/libzling/libzling_utils.o
 endif
 
 

@@ -16,7 +16,7 @@
 #include <vector>
 #include <string>
 #include "codecs.h"
-#include "lizard/lizard_compress.h"    // LIZARD_MAX_CLEVEL
+#include "lz/lizard/lizard_compress.h"    // LIZARD_MAX_CLEVEL
 
 #define PROGNAME "lzbench"
 #define PROGVERSION "2.0.2"

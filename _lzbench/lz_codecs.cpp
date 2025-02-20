@@ -276,8 +276,8 @@ int64_t lzbench_libdeflate_decompress(char *inbuf, size_t insize, char *outbuf, 
 
 
 #ifndef BENCH_REMOVE_LIZARD
-#include "lizard/lizard_compress.h"
-#include "lizard/lizard_decompress.h"
+#include "lz/lizard/lizard_compress.h"
+#include "lz/lizard/lizard_decompress.h"
 
 int64_t lzbench_lizard_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
@@ -294,8 +294,8 @@ int64_t lzbench_lizard_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 #ifndef BENCH_REMOVE_LZ4
-#include "lz4/lib/lz4.h"
-#include "lz4/lib/lz4hc.h"
+#include "lz/lz4/lib/lz4.h"
+#include "lz/lz4/lib/lz4hc.h"
 
 int64_t lzbench_lz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
@@ -322,7 +322,7 @@ int64_t lzbench_lz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 #ifndef BENCH_REMOVE_LZAV
-#include "lzav/lzav.h"
+#include "lz/lzav/lzav.h"
 
 int64_t lzbench_lzav_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
@@ -1385,7 +1385,7 @@ int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 #ifndef BENCH_REMOVE_ZLING
-#include "libzling/libzling.h"
+#include "lz/libzling/libzling.h"
 
 namespace baidu {
 namespace zling {
