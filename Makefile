@@ -282,14 +282,14 @@ endif
 ifeq "$(DONT_BUILD_QUICKLZ)" "1"
 	DEFINES += -DBENCH_REMOVE_QUICKLZ
 else
-    QUICKLZ_FILES = quicklz/quicklz151b7.o quicklz/quicklz1.o quicklz/quicklz2.o quicklz/quicklz3.o
+    QUICKLZ_FILES = lz/quicklz/quicklz151b7.o lz/quicklz/quicklz1.o lz/quicklz/quicklz2.o lz/quicklz/quicklz3.o
 endif
 
 
 ifeq "$(DONT_BUILD_SLZ)" "1"
 	DEFINES += -DBENCH_REMOVE_SLZ
 else
-	MISC_FILES += slz/src/slz.o
+	MISC_FILES += lz/slz/src/slz.o
 endif
 
 
@@ -519,14 +519,14 @@ endif
 ifeq "$(DONT_BUILD_PITHY)" "1"
     DEFINES += -DBENCH_REMOVE_PITHY
 else
-    BUGGY_CXX_FILES += pithy/pithy.o
+    BUGGY_CXX_FILES += lz/pithy/pithy.o
 endif
 
 
 ifeq "$(DONT_BUILD_SHRINKER)" "1"
     DEFINES += -DBENCH_REMOVE_SHRINKER
 else
-    BUGGY_FILES += shrinker/shrinker.o
+    BUGGY_FILES += lz/shrinker/shrinker.o
 endif
 
 

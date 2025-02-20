@@ -267,7 +267,7 @@ int64_t lzbench_lzrw_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 #ifndef BENCH_REMOVE_PITHY
-#include "pithy/pithy.h"
+#include "lz/pithy/pithy.h"
 
 int64_t lzbench_pithy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
@@ -288,7 +288,7 @@ int64_t lzbench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 #ifndef BENCH_REMOVE_SHRINKER
-#include "shrinker/shrinker.h"
+#include "lz/shrinker/shrinker.h"
 
 int64_t lzbench_shrinker_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
