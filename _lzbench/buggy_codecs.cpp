@@ -342,7 +342,7 @@ int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 #ifndef BENCH_REMOVE_YAPPY
-#include "yappy/yappy.hpp"
+#include "lz/yappy/yappy.hpp"
 
 char* lzbench_yappy_init(size_t insize, size_t level, size_t)
 {

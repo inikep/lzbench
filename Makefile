@@ -337,27 +337,27 @@ endif
 ifeq "$(DONT_BUILD_ZLIB)" "1"
     DEFINES += -DBENCH_REMOVE_ZLIB
 else
-    ZLIB_FILES = zlib/adler32.o zlib/compress.o zlib/crc32.o zlib/deflate.o zlib/gzclose.o zlib/gzlib.o zlib/gzread.o
-    ZLIB_FILES += zlib/gzwrite.o zlib/infback.o zlib/inffast.o zlib/inflate.o zlib/inftrees.o zlib/trees.o
-    ZLIB_FILES += zlib/uncompr.o zlib/zutil.o
+    ZLIB_FILES  = lz/zlib/adler32.o lz/zlib/compress.o lz/zlib/crc32.o lz/zlib/deflate.o lz/zlib/gzclose.o
+    ZLIB_FILES += lz/zlib/gzlib.o lz/zlib/gzread.o lz/zlib/gzwrite.o lz/zlib/infback.o lz/zlib/inffast.o
+    ZLIB_FILES += lz/zlib/inflate.o lz/zlib/inftrees.o lz/zlib/trees.o lz/zlib/uncompr.o lz/zlib/zutil.o
 endif
 
 
 ifeq "$(DONT_BUILD_ZLIB_NG)" "1"
     DEFINES += -DBENCH_REMOVE_ZLIB_NG
 else
-    ZLIB_NG_FILES = zlib-ng/adler32.o zlib-ng/crc32.o zlib-ng/deflate_medium.o zlib-ng/deflate_stored.o zlib-ng/inftrees.o zlib-ng/uncompr.o
-    ZLIB_NG_FILES += zlib-ng/compress.o zlib-ng/deflate.o zlib-ng/deflate_quick.o zlib-ng/functable.o zlib-ng/insert_string.o zlib-ng/zutil.o
-    ZLIB_NG_FILES += zlib-ng/cpu_features.o zlib-ng/deflate_fast.o zlib-ng/deflate_rle.o zlib-ng/infback.o zlib-ng/insert_string_roll.o
-    ZLIB_NG_FILES += zlib-ng/crc32_braid_comb.o zlib-ng/deflate_huff.o zlib-ng/deflate_slow.o zlib-ng/inflate.o zlib-ng/trees.o
+    ZLIB_NG_FILES  = lz/zlib-ng/adler32.o lz/zlib-ng/crc32.o lz/zlib-ng/deflate_medium.o lz/zlib-ng/deflate_stored.o lz/zlib-ng/inftrees.o lz/zlib-ng/uncompr.o
+    ZLIB_NG_FILES += lz/zlib-ng/compress.o lz/zlib-ng/deflate.o lz/zlib-ng/deflate_quick.o lz/zlib-ng/functable.o lz/zlib-ng/insert_string.o lz/zlib-ng/zutil.o
+    ZLIB_NG_FILES += lz/zlib-ng/cpu_features.o lz/zlib-ng/deflate_fast.o lz/zlib-ng/deflate_rle.o lz/zlib-ng/infback.o lz/zlib-ng/insert_string_roll.o
+    ZLIB_NG_FILES += lz/zlib-ng/crc32_braid_comb.o lz/zlib-ng/deflate_huff.o lz/zlib-ng/deflate_slow.o lz/zlib-ng/inflate.o lz/zlib-ng/trees.o
 
-    ZLIB_NG_FILES += zlib-ng/arch/generic/adler32_c.o zlib-ng/arch/generic/chunkset_c.o zlib-ng/arch/generic/crc32_braid_c.o zlib-ng/arch/generic/slide_hash_c.o
-    ZLIB_NG_FILES += zlib-ng/arch/generic/adler32_fold_c.o zlib-ng/arch/generic/compare256_c.o zlib-ng/arch/generic/crc32_fold_c.o
+    ZLIB_NG_FILES += lz/zlib-ng/arch/generic/adler32_c.o lz/zlib-ng/arch/generic/chunkset_c.o lz/zlib-ng/arch/generic/crc32_braid_c.o lz/zlib-ng/arch/generic/slide_hash_c.o
+    ZLIB_NG_FILES += lz/zlib-ng/arch/generic/adler32_fold_c.o lz/zlib-ng/arch/generic/compare256_c.o lz/zlib-ng/arch/generic/crc32_fold_c.o
 
-#    ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_avx2.o zlib-ng/arch/x86/adler32_ssse3.o zlib-ng/arch/x86/chunkset_ssse3.o zlib-ng/arch/x86/crc32_vpclmulqdq.o
-#    ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_avx512.o zlib-ng/arch/x86/chunkset_avx2.o zlib-ng/arch/x86/compare256_avx2.o zlib-ng/arch/x86/slide_hash_avx2.o
-#    ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_avx512_vnni.o zlib-ng/arch/x86/chunkset_avx512.o zlib-ng/arch/x86/compare256_sse2.o zlib-ng/arch/x86/slide_hash_sse2.o
-#    ZLIB_NG_FILES += zlib-ng/arch/x86/adler32_sse42.o zlib-ng/arch/x86/chunkset_sse2.o zlib-ng/arch/x86/crc32_pclmulqdq.o zlib-ng/arch/x86/x86_features.o
+#    ZLIB_NG_FILES += lz/zlib-ng/arch/x86/adler32_avx2.o lz/zlib-ng/arch/x86/adler32_ssse3.o lz/zlib-ng/arch/x86/chunkset_ssse3.o lz/zlib-ng/arch/x86/crc32_vpclmulqdq.o
+#    ZLIB_NG_FILES += lz/zlib-ng/arch/x86/adler32_avx512.o lz/zlib-ng/arch/x86/chunkset_avx2.o lz/zlib-ng/arch/x86/compare256_avx2.o lz/zlib-ng/arch/x86/slide_hash_avx2.o
+#    ZLIB_NG_FILES += lz/zlib-ng/arch/x86/adler32_avx512_vnni.o lz/zlib-ng/arch/x86/chunkset_avx512.o lz/zlib-ng/arch/x86/compare256_sse2.o lz/zlib-ng/arch/x86/slide_hash_sse2.o
+#    ZLIB_NG_FILES += lz/zlib-ng/arch/x86/adler32_sse42.o lz/zlib-ng/arch/x86/chunkset_sse2.o lz/zlib-ng/arch/x86/crc32_pclmulqdq.o lz/zlib-ng/arch/x86/x86_features.o
 endif
 
 
@@ -371,36 +371,36 @@ endif
 ifeq "$(DONT_BUILD_ZSTD)" "1"
     DEFINES += -DBENCH_REMOVE_ZSTD
 else
-	ZSTD_FILES = zstd/lib/common/zstd_common.o
-	ZSTD_FILES += zstd/lib/common/fse_decompress.o
-	ZSTD_FILES += zstd/lib/common/xxhash.o
-	ZSTD_FILES += zstd/lib/common/error_private.o
-	ZSTD_FILES += zstd/lib/common/entropy_common.o
-	ZSTD_FILES += zstd/lib/common/pool.o
-	ZSTD_FILES += zstd/lib/common/debug.o
-	ZSTD_FILES += zstd/lib/common/threading.o
-	ZSTD_FILES += zstd/lib/compress/zstd_compress.o
-	ZSTD_FILES += zstd/lib/compress/zstd_compress_literals.o
-	ZSTD_FILES += zstd/lib/compress/zstd_compress_sequences.o
-	ZSTD_FILES += zstd/lib/compress/zstd_compress_superblock.o
-	ZSTD_FILES += zstd/lib/compress/zstdmt_compress.o
-	ZSTD_FILES += zstd/lib/compress/zstd_double_fast.o
-	ZSTD_FILES += zstd/lib/compress/zstd_fast.o
-	ZSTD_FILES += zstd/lib/compress/zstd_lazy.o
-	ZSTD_FILES += zstd/lib/compress/zstd_ldm.o
-	ZSTD_FILES += zstd/lib/compress/zstd_opt.o
-	ZSTD_FILES += zstd/lib/compress/fse_compress.o
-	ZSTD_FILES += zstd/lib/compress/huf_compress.o
-	ZSTD_FILES += zstd/lib/compress/hist.o
-	ZSTD_FILES += zstd/lib/decompress/zstd_decompress.o
-	ZSTD_FILES += zstd/lib/decompress/huf_decompress.o
-	ZSTD_FILES += zstd/lib/decompress/zstd_ddict.o
-	ZSTD_FILES += zstd/lib/decompress/zstd_decompress_block.o
-	ZSTD_FILES += zstd/lib/dictBuilder/cover.o
-	ZSTD_FILES += zstd/lib/dictBuilder/divsufsort.o
-	ZSTD_FILES += zstd/lib/dictBuilder/fastcover.o
-	ZSTD_FILES += zstd/lib/dictBuilder/zdict.o
-	MISC_FILES += zstd/lib/decompress/huf_decompress_amd64.S
+	ZSTD_FILES  = lz/zstd/lib/common/zstd_common.o
+	ZSTD_FILES += lz/zstd/lib/common/fse_decompress.o
+	ZSTD_FILES += lz/zstd/lib/common/xxhash.o
+	ZSTD_FILES += lz/zstd/lib/common/error_private.o
+	ZSTD_FILES += lz/zstd/lib/common/entropy_common.o
+	ZSTD_FILES += lz/zstd/lib/common/pool.o
+	ZSTD_FILES += lz/zstd/lib/common/debug.o
+	ZSTD_FILES += lz/zstd/lib/common/threading.o
+	ZSTD_FILES += lz/zstd/lib/compress/zstd_compress.o
+	ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_literals.o
+	ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_sequences.o
+	ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_superblock.o
+	ZSTD_FILES += lz/zstd/lib/compress/zstdmt_compress.o
+	ZSTD_FILES += lz/zstd/lib/compress/zstd_double_fast.o
+	ZSTD_FILES += lz/zstd/lib/compress/zstd_fast.o
+	ZSTD_FILES += lz/zstd/lib/compress/zstd_lazy.o
+	ZSTD_FILES += lz/zstd/lib/compress/zstd_ldm.o
+	ZSTD_FILES += lz/zstd/lib/compress/zstd_opt.o
+	ZSTD_FILES += lz/zstd/lib/compress/fse_compress.o
+	ZSTD_FILES += lz/zstd/lib/compress/huf_compress.o
+	ZSTD_FILES += lz/zstd/lib/compress/hist.o
+	ZSTD_FILES += lz/zstd/lib/decompress/zstd_decompress.o
+	ZSTD_FILES += lz/zstd/lib/decompress/huf_decompress.o
+	ZSTD_FILES += lz/zstd/lib/decompress/zstd_ddict.o
+	ZSTD_FILES += lz/zstd/lib/decompress/zstd_decompress_block.o
+	ZSTD_FILES += lz/zstd/lib/dictBuilder/cover.o
+	ZSTD_FILES += lz/zstd/lib/dictBuilder/divsufsort.o
+	ZSTD_FILES += lz/zstd/lib/dictBuilder/fastcover.o
+	ZSTD_FILES += lz/zstd/lib/dictBuilder/zdict.o
+	MISC_FILES += lz/zstd/lib/decompress/huf_decompress_amd64.S
 endif
 
 
@@ -540,7 +540,7 @@ endif
 ifeq "$(DONT_BUILD_YAPPY)" "1"
     DEFINES += -DBENCH_REMOVE_YAPPY
 else
-    BUGGY_CXX_FILES += yappy/yappy.o
+    BUGGY_CXX_FILES += lz/yappy/yappy.o
 endif
 
 
@@ -669,11 +669,7 @@ $(ZLIB_FILES): %.o : %.c
 
 $(ZLIB_NG_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Izlib-ng $< -c -o $@
-
-$(ZSTD_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Izstd/lib -Izstd/lib/common $< -c -o $@
+	$(CC) $(CFLAGS) -Ilz/zlib-ng $< -c -o $@
 
 $(NVCOMP_CU_OBJ): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
