@@ -389,6 +389,7 @@ else
 	ZSTD_FILES += lz/zstd/lib/compress/zstd_lazy.o
 	ZSTD_FILES += lz/zstd/lib/compress/zstd_ldm.o
 	ZSTD_FILES += lz/zstd/lib/compress/zstd_opt.o
+	ZSTD_FILES += lz/zstd/lib/compress/zstd_preSplit.o
 	ZSTD_FILES += lz/zstd/lib/compress/fse_compress.o
 	ZSTD_FILES += lz/zstd/lib/compress/huf_compress.o
 	ZSTD_FILES += lz/zstd/lib/compress/hist.o

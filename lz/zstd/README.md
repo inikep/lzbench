@@ -29,10 +29,10 @@ a list of known ports and bindings is provided on [Zstandard homepage](https://f
 ## Benchmarks
 
 For reference, several fast compression algorithms were tested and compared
-on a desktop running Ubuntu 20.04 (`Linux 5.11.0-41-generic`),
-with a Core i7-9700K CPU @ 4.9GHz,
+on a desktop featuring a Core i7-9700K CPU @ 4.9GHz
+and running Ubuntu 24.04 (`Linux 6.8.0-53-generic`),
 using [lzbench], an open-source in-memory benchmark by @inikep
-compiled with [gcc] 9.3.0,
+compiled with [gcc] 14.2.0,
 on the [Silesia compression corpus].
 
 [lzbench]: https://github.com/inikep/lzbench
@@ -41,24 +41,23 @@ on the [Silesia compression corpus].
 
 | Compressor name         | Ratio | Compression| Decompress.|
 | ---------------         | ------| -----------| ---------- |
-| **zstd 1.5.1 -1**       | 2.887 |   530 MB/s |  1700 MB/s |
-| [zlib] 1.2.11 -1        | 2.743 |    95 MB/s |   400 MB/s |
-| brotli 1.0.9 -0         | 2.702 |   395 MB/s |   450 MB/s |
-| **zstd 1.5.1 --fast=1** | 2.437 |   600 MB/s |  2150 MB/s |
-| **zstd 1.5.1 --fast=3** | 2.239 |   670 MB/s |  2250 MB/s |
-| quicklz 1.5.0 -1        | 2.238 |   540 MB/s |   760 MB/s |
-| **zstd 1.5.1 --fast=4** | 2.148 |   710 MB/s |  2300 MB/s |
-| lzo1x 2.10 -1           | 2.106 |   660 MB/s |   845 MB/s |
-| [lz4] 1.9.3             | 2.101 |   740 MB/s |  4500 MB/s |
-| lzf 3.6 -1              | 2.077 |   410 MB/s |   830 MB/s |
-| snappy 1.1.9            | 2.073 |   550 MB/s |  1750 MB/s |
+| **zstd 1.5.7 -1**       | 2.896 |   510 MB/s |  1550 MB/s |
+| [zlib] 1.3.1 -1         | 2.743 |   105 MB/s |   390 MB/s |
+| brotli 1.1.0 -0         | 2.702 |   400 MB/s |   425 MB/s |
+| **zstd 1.5.7 --fast=1** | 2.439 |   545 MB/s |  1850 MB/s |
+| **zstd 1.5.7 --fast=3** | 2.241 |   635 MB/s |  1980 MB/s |
+| quicklz 1.5.0 -1        | 2.238 |   520 MB/s |   750 MB/s |
+| lzo1x 2.10 -1           | 2.106 |   650 MB/s |   780 MB/s |
+| [lz4] 1.10.0            | 2.101 |   675 MB/s |  3850 MB/s |
+| snappy 1.2.1            | 2.089 |   520 MB/s |  1500 MB/s |
+| lzf 3.6 -1              | 2.077 |   410 MB/s |   820 MB/s |
 
 [zlib]: https://www.zlib.net/
 [lz4]: https://lz4.github.io/lz4/
 
 The negative compression levels, specified with `--fast=#`,
 offer faster compression and decompression speed
-at the cost of compression ratio (compared to level 1).
+at the cost of compression ratio.
 
 Zstd can also offer stronger compression ratios at the cost of compression speed.
 Speed vs Compression trade-off is configurable by small increments.
@@ -184,6 +183,17 @@ You can build and install zstd [vcpkg](https://github.com/Microsoft/vcpkg/) depe
 
 The zstd port in vcpkg is kept up to date by Microsoft team members and community contributors.
 If the version is out of date, please [create an issue or pull request](https://github.com/Microsoft/vcpkg) on the vcpkg repository.
+
+### Conan
+
+You can install pre-built binaries for zstd or build it from source using [Conan](https://conan.io/). Use the following command:
+
+```bash
+conan install --requires="zstd/[*]" --build=missing
+```
+
+The zstd Conan recipe is kept up to date by Conan maintainers and community contributors.
+If the version is out of date, please [create an issue or pull request](https://github.com/conan-io/conan-center-index) on the ConanCenterIndex repository.
 
 ### Visual Studio (Windows)
 

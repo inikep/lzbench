@@ -89,7 +89,7 @@ Supported compressors
  - [zlib 1.3.1](http://zlib.net)
  - [zlib-ng 2.2.3](https://github.com/zlib-ng/zlib-ng)
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
- - [zstd 1.5.6](https://github.com/facebook/zstd)
+ - [zstd 1.5.7](https://github.com/facebook/zstd)
 
 **Warning**: The compressors listed below have security issues and/or are
 no longer maintained. For information about the security of the various compressors,
