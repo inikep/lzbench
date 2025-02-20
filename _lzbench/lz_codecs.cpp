@@ -158,12 +158,12 @@ int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, s
 
 
 #ifndef BENCH_REMOVE_KANZI
-#include "kanzi-cpp/src/types.hpp"
-#include "kanzi-cpp/src/util.hpp"
-#include "kanzi-cpp/src/InputStream.hpp"
-#include "kanzi-cpp/src/OutputStream.hpp"
-#include "kanzi-cpp/src/io/CompressedInputStream.hpp"
-#include "kanzi-cpp/src/io/CompressedOutputStream.hpp"
+#include "misc/kanzi-cpp/src/types.hpp"
+#include "misc/kanzi-cpp/src/util.hpp"
+#include "misc/kanzi-cpp/src/InputStream.hpp"
+#include "misc/kanzi-cpp/src/OutputStream.hpp"
+#include "misc/kanzi-cpp/src/io/CompressedInputStream.hpp"
+#include "misc/kanzi-cpp/src/io/CompressedOutputStream.hpp"
 
 int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
 {

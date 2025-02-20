@@ -14,8 +14,8 @@
 
 
 #ifndef BENCH_REMOVE_GLZA
-#include "glza/GLZAcomp.h"
-#include "glza/GLZAdecode.h"
+#include "misc/glza/GLZAcomp.h"
+#include "misc/glza/GLZAdecode.h"
 
 int64_t lzbench_glza_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
 {
@@ -51,7 +51,7 @@ int64_t lzbench_lzjb_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 #ifdef BENCH_HAS_NAKAMICHI
-#include "nakamichi/nakamichi.h"
+#include "misc/nakamichi/nakamichi.h"
 
 int64_t lzbench_nakamichi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {

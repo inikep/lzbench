@@ -158,26 +158,26 @@ endif
 ifeq "$(DONT_BUILD_KANZI)" "1"
     DEFINES += -DBENCH_REMOVE_KANZI
 else
-    KANZI_FILES = kanzi-cpp/src/io/CompressedOutputStream.o kanzi-cpp/src/io/CompressedInputStream.o
-    KANZI_FILES += kanzi-cpp/src/entropy/EntropyUtils.o kanzi-cpp/src/entropy/ExpGolombEncoder.o
-    KANZI_FILES += kanzi-cpp/src/entropy/FPAQEncoder.o kanzi-cpp/src/entropy/ANSRangeEncoder.o
-    KANZI_FILES += kanzi-cpp/src/entropy/ANSRangeDecoder.o kanzi-cpp/src/entropy/BinaryEntropyDecoder.o
-    KANZI_FILES += kanzi-cpp/src/entropy/BinaryEntropyEncoder.o kanzi-cpp/src/entropy/ExpGolombDecoder.o
-    KANZI_FILES += kanzi-cpp/src/entropy/HuffmanEncoder.o kanzi-cpp/src/entropy/FPAQDecoder.o
-    KANZI_FILES += kanzi-cpp/src/entropy/TPAQPredictor.o kanzi-cpp/src/entropy/CMPredictor.o
-    KANZI_FILES += kanzi-cpp/src/entropy/HuffmanCommon.o kanzi-cpp/src/entropy/RangeDecoder.o
-    KANZI_FILES += kanzi-cpp/src/entropy/RangeEncoder.o kanzi-cpp/src/entropy/BinaryEntropyEncoder.o
-    KANZI_FILES += kanzi-cpp/src/entropy/HuffmanDecoder.o kanzi-cpp/src/entropy/BinaryEntropyDecoder.o
-    KANZI_FILES += kanzi-cpp/src/bitstream/DefaultInputBitStream.o kanzi-cpp/src/bitstream/DebugOutputBitStream.o
-    KANZI_FILES += kanzi-cpp/src/bitstream/DebugInputBitStream.o kanzi-cpp/src/bitstream/DefaultOutputBitStream.o
-    KANZI_FILES += kanzi-cpp/src/Event.o kanzi-cpp/src/Global.o kanzi-cpp/src/transform/AliasCodec.o
-    KANZI_FILES += kanzi-cpp/src/transform/BWT.o kanzi-cpp/src/transform/RLT.o kanzi-cpp/src/transform/TextCodec.o
-    KANZI_FILES += kanzi-cpp/src/transform/EXECodec.o kanzi-cpp/src/transform/SBRT.o
-    KANZI_FILES += kanzi-cpp/src/transform/ROLZCodec.o kanzi-cpp/src/transform/LZCodec.o
-    KANZI_FILES += kanzi-cpp/src/transform/SRT.o kanzi-cpp/src/transform/DivSufSort.o
-    KANZI_FILES += kanzi-cpp/src/transform/BWTBlockCodec.o kanzi-cpp/src/transform/BWTS.o
-    KANZI_FILES += kanzi-cpp/src/transform/UTFCodec.o kanzi-cpp/src/transform/ZRLT.o
-    KANZI_FILES += kanzi-cpp/src/transform/FSDCodec.o
+    KANZI_FILES = misc/kanzi-cpp/src/io/CompressedOutputStream.o misc/kanzi-cpp/src/io/CompressedInputStream.o
+    KANZI_FILES += misc/kanzi-cpp/src/entropy/EntropyUtils.o misc/kanzi-cpp/src/entropy/ExpGolombEncoder.o
+    KANZI_FILES += misc/kanzi-cpp/src/entropy/FPAQEncoder.o misc/kanzi-cpp/src/entropy/ANSRangeEncoder.o
+    KANZI_FILES += misc/kanzi-cpp/src/entropy/ANSRangeDecoder.o misc/kanzi-cpp/src/entropy/BinaryEntropyDecoder.o
+    KANZI_FILES += misc/kanzi-cpp/src/entropy/BinaryEntropyEncoder.o misc/kanzi-cpp/src/entropy/ExpGolombDecoder.o
+    KANZI_FILES += misc/kanzi-cpp/src/entropy/HuffmanEncoder.o misc/kanzi-cpp/src/entropy/FPAQDecoder.o
+    KANZI_FILES += misc/kanzi-cpp/src/entropy/TPAQPredictor.o misc/kanzi-cpp/src/entropy/CMPredictor.o
+    KANZI_FILES += misc/kanzi-cpp/src/entropy/HuffmanCommon.o misc/kanzi-cpp/src/entropy/RangeDecoder.o
+    KANZI_FILES += misc/kanzi-cpp/src/entropy/RangeEncoder.o misc/kanzi-cpp/src/entropy/BinaryEntropyEncoder.o
+    KANZI_FILES += misc/kanzi-cpp/src/entropy/HuffmanDecoder.o misc/kanzi-cpp/src/entropy/BinaryEntropyDecoder.o
+    KANZI_FILES += misc/kanzi-cpp/src/bitstream/DefaultInputBitStream.o misc/kanzi-cpp/src/bitstream/DebugOutputBitStream.o
+    KANZI_FILES += misc/kanzi-cpp/src/bitstream/DebugInputBitStream.o misc/kanzi-cpp/src/bitstream/DefaultOutputBitStream.o
+    KANZI_FILES += misc/kanzi-cpp/src/Event.o misc/kanzi-cpp/src/Global.o misc/kanzi-cpp/src/transform/AliasCodec.o
+    KANZI_FILES += misc/kanzi-cpp/src/transform/BWT.o misc/kanzi-cpp/src/transform/RLT.o misc/kanzi-cpp/src/transform/TextCodec.o
+    KANZI_FILES += misc/kanzi-cpp/src/transform/EXECodec.o misc/kanzi-cpp/src/transform/SBRT.o
+    KANZI_FILES += misc/kanzi-cpp/src/transform/ROLZCodec.o misc/kanzi-cpp/src/transform/LZCodec.o
+    KANZI_FILES += misc/kanzi-cpp/src/transform/SRT.o misc/kanzi-cpp/src/transform/DivSufSort.o
+    KANZI_FILES += misc/kanzi-cpp/src/transform/BWTBlockCodec.o misc/kanzi-cpp/src/transform/BWTS.o
+    KANZI_FILES += misc/kanzi-cpp/src/transform/UTFCodec.o misc/kanzi-cpp/src/transform/ZRLT.o
+    KANZI_FILES += misc/kanzi-cpp/src/transform/FSDCodec.o
 endif
 
 
@@ -443,7 +443,8 @@ endif
 ifeq "$(DONT_BUILD_GLZA)" "1"
     DEFINES += -DBENCH_REMOVE_GLZA
 else
-    MISC_FILES += glza/GLZAcomp.o glza/GLZAformat.o glza/GLZAcompress.o glza/GLZAencode.o glza/GLZAdecode.o glza/GLZAmodel.o
+    MISC_FILES += misc/glza/GLZAcomp.o misc/glza/GLZAformat.o misc/glza/GLZAcompress.o
+    MISC_FILES += misc/glza/GLZAencode.o misc/glza/GLZAdecode.o misc/glza/GLZAmodel.o
 endif
 
 
@@ -456,7 +457,7 @@ endif
 
 ifeq "$(BENCH_HAS_NAKAMICHI)" "1"
     DEFINES += -DBENCH_HAS_NAKAMICHI
-    MISC_FILES += nakamichi/Nakamichi_Okamigan.o
+    MISC_FILES += misc/nakamichi/Nakamichi_Okamigan.o
 endif
 
 
