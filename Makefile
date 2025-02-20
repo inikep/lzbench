@@ -75,7 +75,7 @@ else
 endif
 
 
-DEFINES     += $(addprefix -I$(SOURCE_PATH),. brotli/include libcsc libdeflate xpack/common)
+DEFINES     += $(addprefix -I$(SOURCE_PATH),.  libcsc libdeflate xpack/common)
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 
 # don't use "-ffast-math" for clang < 10.0
@@ -102,34 +102,35 @@ ifeq ($(detected_OS), Darwin)
 endif
 
 
+LZ_CODECS = _lzbench/lz_codecs.o
 
-LZBENCH_FILES = _lzbench/lzbench.o _lzbench/lz_codecs.o _lzbench/buggy_codecs.o _lzbench/symmetric_codecs.o _lzbench/misc_codecs.o
+LZBENCH_FILES = $(LZ_CODECS) _lzbench/lzbench.o _lzbench/buggy_codecs.o _lzbench/symmetric_codecs.o _lzbench/misc_codecs.o
 
 
 ifeq "$(DONT_BUILD_BLOSCLZ)" "1"
 	DEFINES += -DBENCH_REMOVE_BLOSCLZ
 else
-    MISC_FILES += blosclz/blosc/blosclz.o blosclz/blosc/fastcopy.o
+    MISC_FILES += lz/blosclz/blosc/blosclz.o lz/blosclz/blosc/fastcopy.o
 endif
 
 
 ifeq "$(DONT_BUILD_BRIEFLZ)" "1"
 	DEFINES += -DBENCH_REMOVE_BRIEFLZ
 else
-    BRIEFLZ_FILES = brieflz/brieflz.o brieflz/depack.o brieflz/depacks.o
+    BRIEFLZ_FILES = lz/brieflz/brieflz.o lz/brieflz/depack.o lz/brieflz/depacks.o
 endif
 
 
 ifeq "$(DONT_BUILD_BROTLI)" "1"
 	DEFINES += -DBENCH_REMOVE_BROTLI
 else
-    BROTLI_FILES = brotli/common/constants.o brotli/common/context.o brotli/common/dictionary.o brotli/common/platform.o brotli/common/transform.o
-    BROTLI_FILES += brotli/dec/bit_reader.o brotli/dec/decode.o brotli/dec/huffman.o brotli/dec/state.o
-    BROTLI_FILES += brotli/enc/backward_references.o brotli/enc/block_splitter.o brotli/enc/brotli_bit_stream.o brotli/enc/encode.o brotli/enc/encoder_dict.o
-    BROTLI_FILES += brotli/enc/entropy_encode.o brotli/enc/fast_log.o brotli/enc/histogram.o brotli/enc/command.o brotli/enc/literal_cost.o brotli/enc/memory.o
-    BROTLI_FILES += brotli/enc/metablock.o brotli/enc/static_dict.o brotli/enc/utf8_util.o brotli/enc/compress_fragment.o brotli/enc/compress_fragment_two_pass.o
-    BROTLI_FILES += brotli/enc/cluster.o brotli/enc/bit_cost.o brotli/enc/backward_references_hq.o brotli/enc/dictionary_hash.o brotli/common/shared_dictionary.o
-    BROTLI_FILES += brotli/enc/compound_dictionary.o
+    BROTLI_FILES = lz/brotli/common/constants.o lz/brotli/common/context.o lz/brotli/common/dictionary.o lz/brotli/common/platform.o lz/brotli/common/transform.o
+    BROTLI_FILES += lz/brotli/dec/bit_reader.o lz/brotli/dec/decode.o lz/brotli/dec/huffman.o lz/brotli/dec/state.o
+    BROTLI_FILES += lz/brotli/enc/backward_references.o lz/brotli/enc/block_splitter.o lz/brotli/enc/brotli_bit_stream.o lz/brotli/enc/encode.o lz/brotli/enc/encoder_dict.o
+    BROTLI_FILES += lz/brotli/enc/entropy_encode.o lz/brotli/enc/fast_log.o lz/brotli/enc/histogram.o lz/brotli/enc/command.o lz/brotli/enc/literal_cost.o lz/brotli/enc/memory.o
+    BROTLI_FILES += lz/brotli/enc/metablock.o lz/brotli/enc/static_dict.o lz/brotli/enc/utf8_util.o lz/brotli/enc/compress_fragment.o lz/brotli/enc/compress_fragment_two_pass.o
+    BROTLI_FILES += lz/brotli/enc/cluster.o lz/brotli/enc/bit_cost.o lz/brotli/enc/backward_references_hq.o lz/brotli/enc/dictionary_hash.o lz/brotli/common/shared_dictionary.o
+    BROTLI_FILES += lz/brotli/enc/compound_dictionary.o
 endif
 
 
@@ -613,6 +614,14 @@ $(BUGGY_CXX_FILES): %.o : %.cpp
 $(LIZARD_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS_O2) $< -c -o $@
+
+$(LZ_CODECS): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) -Ilz/brotli/include $< -c -o $@
+
+$(BROTLI_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz/brotli/include $< -c -o $@
 
 $(LZSSE_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)

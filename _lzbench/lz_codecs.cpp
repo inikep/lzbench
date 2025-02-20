@@ -31,7 +31,7 @@ int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsiz
 
 
 #ifndef BENCH_REMOVE_BLOSCLZ
-#include "blosclz/blosc/blosclz.h"
+#include "lz/blosclz/blosc/blosclz.h"
 
 int64_t lzbench_blosclz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
@@ -48,7 +48,7 @@ int64_t lzbench_blosclz_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 
 #ifndef BENCH_REMOVE_BRIEFLZ
-#include "brieflz/brieflz.h"
+#include "lz/brieflz/brieflz.h"
 
 char* lzbench_brieflz_init(size_t insize, size_t level, size_t)
 {
