@@ -153,7 +153,9 @@ typedef struct
 
 static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 {
-    { "memcpy",     "memcpy",                0,   0,    0,       0, lzbench_return_0,            lzbench_memcpy,                NULL,                    NULL },
+    //                                      last_level,     max_block_size,
+    // name,        name_version,  first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func
+    { "memcpy",     "memcpy",                0,   0,    0,       0, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
     { "blosclz",    "blosclz 2.5.1",         1,   9,    0, 64*1024, lzbench_blosclz_compress,    lzbench_blosclz_decompress,    NULL,                    NULL },
     { "brieflz",    "brieflz 1.3.0",         1,   9,    0,       0, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
     { "brotli22",   "brotli 1.1.0 -d22",     0,  11,   22,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
@@ -246,7 +248,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "zstd22LDM",  "zstd 1.5.7 --long -d22", 16,  22,   22,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstd24LDM",  "zstd 1.5.7 --long -d24", 16,  22,   24,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstdLDM",    "zstd 1.5.7 --long",       1,  22,    0,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
-    { "cudaMemcpy", "cudaMemcpy",              0,   0,    0,       0, lzbench_cuda_return_0,       lzbench_cuda_memcpy,           lzbench_cuda_init,       lzbench_cuda_deinit },
+    { "cudaMemcpy", "cudaMemcpy",              0,   0,    0,       0, lzbench_cuda_memcpy,         lzbench_cuda_memcpy,           lzbench_cuda_init,       lzbench_cuda_deinit },
     { "nvcomp_lz4", "nvcomp_lz4 2.2.0",        0,   7,    0,       0, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },
 };
 
@@ -257,30 +259,28 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
 static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
 {
     { "FAST", "Refers to compressors capable of achieving compression speeds exceeding 100 MB/s (default alias).",
-              "fastlz/kanzi,1,2,3,4/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
-              "lzsse4fast/lzsse8fast/lzvn/quicklz,1,2/snappy/tornado,1,2,3/zstd,1,2,3,4,5" }, // default alias
+              "memcpy/fastlz/kanzi,1,2,3/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
+              "lzsse4fast/lzsse8fast/lzvn/quicklz,1,2/snappy/zstd,1,2,3,4,5" }, // default alias
     { "ALL",  "Represents all major supported compressors.",
-              "blosclz,1,3,6,9/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,5/" \
-              "crush,0,1,2/fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
+              "memcpy/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,5/" \
+              "fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
               "lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzav/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzlib,0,3,6,9/lzma,0,2,4,6,9/" \
               "lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
-              "lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/ppmd8,4/" \
-              "quicklz,1,2,3/slz_gzip/snappy/tornado,1,2,3,4,5,6,7,10,13,16/" \
-              "ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/xpack,1,6,9/xz,0,3,6,9/" \
-              "zlib,1,6,9/zlib-ng,1,6,9/zling,0,1,2,3,4/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22" },
+              "lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/ppmd8,4/quicklz,1,2,3/" \
+              "slz_gzip/snappy/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/xpack,1,6,9/xz,0,3,6,9/" \
+              "zlib,1,6,9/zlib-ng,1,6,9/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22" },
     { "OPT",  "Includes compressors that use optimal parsing (slow compression, fast decompression).",
-              "brotli,6,7,8,9,10,11/csc,1,2,3,4,5/fastlzma2,1,2,3,4,5,6,7,8,9,10/kanzi,5,6,7,8,9/lzham,0,1,2,3,4/" \
-              "lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/" \
-              "tornado,6,7,8,9,10,11,12,13,14,15,16/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
+              "memcpy/brotli,6,7,8,9,10,11/fastlzma2,1,2,3,4,5,6,7,8,9,10/kanzi,5,6,7,8,9/lzham,0,1,2,3,4/" \
+              "lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
     { "CUDA",     "Represents all CUDA-based compressors.",
-                  "cudaMemcpy/nvcomp_lz4/bsc_cuda" },
+                  "memcpy/cudaMemcpy/nvcomp_lz4/bsc_cuda" },
     { "SYMMETRIC","Includes compressors with similar compression and decompression speeds.",
-                  "bsc/bzip2/bzip3/ppmd8" },
+                  "memcpy/bsc/bzip2/bzip3/ppmd8" },
     { "MISC",     "Covers miscellaneous compressors.",
-                  "glza/lzjb/nakamichi/tamp" },
+                  "memcpy/blosclz/crush/glza/lzjb/nakamichi/tamp/tornado/zling" },
     { "BUGGY",    "Lists potentially unstable codecs that may cause segmentation faults.",
-                  "csc/density/gipfeli/lzmat/lzrw/pithy/shrinker/wflz/yalz77/yappy" }, // these can SEGFAULT
+                  "memcpy/csc/density/gipfeli/lzmat/lzrw/pithy/shrinker/wflz/yalz77/yappy" }, // these can SEGFAULT
     { "UCL",      "Refers to all UCL compressor variants.",
                   "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },
     { "LZO",      "Represents all LZO compressor variants.",

@@ -288,14 +288,10 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
 
         clen = compress((char*)inbuf, part, (char*)outbuf, outpart, param1, param2, workmem);
 
-        if (clen <= 0 || clen == part)
+        if (clen <= 0)
         {
-            if (part > outsize) {
-                LZBENCH_PRINT(0, "ERROR: compressed size is too big (in_bytes=%lu out_bytes=%ld)\n", (uint64_t)(inbuf+part-start), (int64_t)sum+clen);
-                return 0;
-            }
-            memcpy(outbuf, inbuf, part);
-            clen = part;
+            LZBENCH_PRINT(0, "ERROR: compressed size is too big (in_bytes=%lu out_bytes=%ld)\n", (uint64_t)(inbuf+part-start), (int64_t)sum+clen);
+            return 0;
         }
 
         inbuf += part;
@@ -319,13 +315,7 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>&
     for (int i=0; i<cscount; i++)
     {
         part = compr_sizes[i];
-        if (part == chunk_sizes[i]) // uncompressed
-        {
-            memcpy(outbuf, inbuf, part);
-            dlen = part;
-        } else {
-            dlen = decompress((char*)inbuf, part, (char*)outbuf, chunk_sizes[i], param1, param2, workmem);
-        }
+        dlen = decompress((char*)inbuf, part, (char*)outbuf, chunk_sizes[i], param1, param2, workmem);
 
         if (dlen <= 0) {
             LZBENCH_PRINT(9, "DEC part=%lu dlen=%ld out=%lu\n", (uint64_t)part, dlen, (uint64_t)(outbuf - outstart));
@@ -529,7 +519,7 @@ void lzbench_test_with_params(lzbench_params_t *params, std::vector<size_t> &fil
             int j=1;
             do {
                 bool found = false;
-                for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
+                for (int i=0; i<LZBENCH_COMPRESSOR_COUNT; i++)
                 {
                     if (istrcmp(comp_desc[i].name, cparams[0].c_str()) == 0)
                     {
@@ -703,21 +693,8 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
         }
 
         insize = fread(inbuf, 1, insize, in);
-
-        if (i == 0)
-        {
-            print_header(params);
-
-            lzbench_params_t params_memcpy;
-            memcpy(&params_memcpy, params, sizeof(lzbench_params_t));
-            params_memcpy.cmintime = params_memcpy.dmintime = 0;
-            params_memcpy.c_iters = params_memcpy.d_iters = 0;
-            params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
-            file_sizes.push_back(insize);
-            lzbench_test(&params_memcpy, file_sizes, &comp_desc[0], 0, inbuf, insize, compbuf, insize, decomp, rate, 0);
-            file_sizes.clear();
-        }
-
+        if (i == 0) print_header(params);
+        
         if (params->mem_limit && real_insize > params->mem_limit)
         {
             int i;
@@ -944,7 +921,7 @@ int main( int argc, char** argv)
             goto _clean;
         case 'l':
             printf("Available compressors for -e option:\n");
-            for (int i=1; i<LZBENCH_COMPRESSOR_COUNT; i++)
+            for (int i=0; i<LZBENCH_COMPRESSOR_COUNT; i++)
             {
                 if (comp_desc[i].compress)
                 {

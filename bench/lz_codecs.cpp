@@ -24,10 +24,6 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
     return insize;
 }
 
-int64_t lzbench_return_0(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* )
-{
-    return 0;
-}
 
 
 #ifndef BENCH_REMOVE_BLOSCLZ
