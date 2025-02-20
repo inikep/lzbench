@@ -343,7 +343,7 @@ int64_t lzbench_lzav_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 #ifndef BENCH_REMOVE_LZF
 extern "C"
 {
-	#include "lzf/lzf.h"
+	#include "lz/lzf/lzf.h"
 }
 
 int64_t lzbench_lzf_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
@@ -365,7 +365,7 @@ int64_t lzbench_lzf_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 #ifndef BENCH_REMOVE_LZFSE
 extern "C"
 {
-	#include "lzfse/lzfse.h"
+	#include "lz/lzfse/lzfse.h"
 }
 
 char* lzbench_lzfse_init(size_t insize, size_t level, size_t)
@@ -395,7 +395,7 @@ int64_t lzbench_lzfse_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #ifndef BENCH_REMOVE_LZFSE
 extern "C"
 {
-	#include "lzfse/lzvn.h"
+	#include "lz/lzfse/lzvn.h"
 }
 
 char* lzbench_lzvn_init(size_t insize, size_t level, size_t)
@@ -445,7 +445,7 @@ int64_t lzbench_lzg_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 #ifndef BENCH_REMOVE_LZHAM
-#include "lzham/lzham.h"
+#include "lz/lzham/lzham.h"
 #include <memory.h>
 
 int64_t lzbench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dict_size_log, char*)

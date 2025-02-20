@@ -34,7 +34,7 @@ int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 #ifndef BENCH_REMOVE_LZJB
-#include "lzjb/lzjb2010.h"
+#include "lz/lzjb/lzjb2010.h"
 
 int64_t lzbench_lzjb_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {

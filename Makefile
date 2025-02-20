@@ -212,14 +212,15 @@ endif
 ifeq "$(DONT_BUILD_LZF)" "1"
 	DEFINES += -DBENCH_REMOVE_LZF
 else
-    LZF_FILES = lzf/lzf_c_ultra.o lzf/lzf_c_very.o lzf/lzf_d.o
+    LZF_FILES = lz/lzf/lzf_c_ultra.o lz/lzf/lzf_c_very.o lz/lzf/lzf_d.o
 endif
 
 
 ifeq "$(DONT_BUILD_LZFSE)" "1"
 	DEFINES += -DBENCH_REMOVE_LZFSE
 else
-    LZFSE_FILES = lzfse/lzfse_decode.o lzfse/lzfse_decode_base.o lzfse/lzfse_encode.o lzfse/lzfse_encode_base.o lzfse/lzfse_fse.o lzfse/lzvn_decode.o lzfse/lzvn_decode_base.o lzfse/lzvn_encode_base.o
+    LZFSE_FILES  = lz/lzfse/lzfse_decode.o lz/lzfse/lzfse_decode_base.o lz/lzfse/lzfse_encode.o lz/lzfse/lzfse_encode_base.o
+    LZFSE_FILES += lz/lzfse/lzfse_fse.o lz/lzfse/lzvn_decode.o lz/lzfse/lzvn_decode_base.o lz/lzfse/lzvn_encode_base.o
 endif
 
 
@@ -233,10 +234,10 @@ endif
 ifeq "$(DONT_BUILD_LZHAM)" "1"
     DEFINES += -DBENCH_REMOVE_LZHAM
 else
-    LZHAM_FILES = lzham/lzham_assert.o lzham/lzham_checksum.o lzham/lzham_huffman_codes.o lzham/lzham_lzbase.o
-    LZHAM_FILES += lzham/lzham_lzcomp.o lzham/lzham_lzcomp_internal.o lzham/lzham_lzdecomp.o lzham/lzham_lzdecompbase.o
-    LZHAM_FILES += lzham/lzham_match_accel.o lzham/lzham_mem.o lzham/lzham_platform.o lzham/lzham_lzcomp_state.o
-    LZHAM_FILES += lzham/lzham_prefix_coding.o lzham/lzham_symbol_codec.o lzham/lzham_timer.o lzham/lzham_vector.o lzham/lzham_lib.o
+    LZHAM_FILES  = lz/lzham/lzham_assert.o lz/lzham/lzham_checksum.o lz/lzham/lzham_huffman_codes.o lz/lzham/lzham_lzbase.o
+    LZHAM_FILES += lz/lzham/lzham_lzcomp.o lz/lzham/lzham_lzcomp_internal.o lz/lzham/lzham_lzdecomp.o lz/lzham/lzham_lzdecompbase.o
+    LZHAM_FILES += lz/lzham/lzham_match_accel.o lz/lzham/lzham_mem.o lz/lzham/lzham_platform.o lz/lzham/lzham_lzcomp_state.o
+    LZHAM_FILES += lz/lzham/lzham_prefix_coding.o lz/lzham/lzham_symbol_codec.o lz/lzham/lzham_timer.o lz/lzham/lzham_vector.o lz/lzham/lzham_lib.o
 endif
 
 
@@ -454,7 +455,7 @@ endif
 ifeq "$(DONT_BUILD_LZJB)" "1"
 	DEFINES += -DBENCH_REMOVE_LZJB
 else
-	MISC_FILES += lzjb/lzjb2010.o
+	MISC_FILES += lz/lzjb/lzjb2010.o
 endif
 
 
