@@ -23,7 +23,7 @@ vpath
 vpath %.c $(SOURCE_PATH)
 vpath %.cc $(SOURCE_PATH)
 vpath %.cpp $(SOURCE_PATH)
-vpath _lzbench/lzbench.h $(SOURCE_PATH)
+vpath bench/lzbench.h $(SOURCE_PATH)
 vpath wflz/wfLZ.h $(SOURCE_PATH)
 
 ifeq ($(BUILD_ARCH),32-bit)
@@ -102,9 +102,9 @@ ifeq ($(detected_OS), Darwin)
 endif
 
 
-LZ_CODECS     = _lzbench/lz_codecs.o
-BUGGY_CODECS  = _lzbench/buggy_codecs.o
-LZBENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) _lzbench/lzbench.o  _lzbench/symmetric_codecs.o _lzbench/misc_codecs.o
+LZ_CODECS     = bench/lz_codecs.o
+BUGGY_CODECS  = bench/buggy_codecs.o
+LZBENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) bench/lzbench.o  bench/symmetric_codecs.o bench/misc_codecs.o
 
 
 ifeq "$(DONT_BUILD_BLOSCLZ)" "1"
@@ -585,7 +585,7 @@ lzbench: $(BUGGY_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
-_lzbench/lzbench.o: _lzbench/lzbench.cpp _lzbench/lzbench.h
+bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h
 
 # disable the implicit rule for making a binary out of a single object file
 %: %.o

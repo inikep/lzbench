@@ -15,6 +15,6 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See the GNU General Public License for more details at
 Visit <http://www.gnu.org/copyleft/gpl.html>.
 
-This license applies exclusively to the files within the "_lzbench"
-directory. Individual compressors, codecs, or plugins are governed by
-their respective licenses.
+This license applies exclusively to the files within the "bench" and
+"doc" directories. Individual compressors, codecs, or plugins are
+governed by their respective licenses.

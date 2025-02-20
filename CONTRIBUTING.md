@@ -10,7 +10,7 @@ When updating an existing codec, please follow these steps:
 
 - Update the codec files (e.g., `brotli/*`).
 - Update `Makefile` if there are new source files that need to be built.
-- Update the codec version in `_lzbench/lzbench.h` and `README.md`.
+- Update the codec version in `bench/lzbench.h` and `README.md`.
 - Add a new entry in `CHANGELOG`
 - Refer to example commit: [update brotli to 1.1.0](https://github.com/inikep/lzbench/commit/f46161a8).
 
@@ -20,8 +20,8 @@ When adding a new codec, please follow these steps:
 - Create a new directory with the codec files (e.g., `xxxx`).
 - Add a new codec to `README.md` with a proper link to the upstream repository.
 - Add a new entry in `CHANGELOG`
-- Add the new codec to `_lzbench/lzbench.h` and increase `LZBENCH_COMPRESSOR_COUNT`.
-- Add declarations of compression and decompression functions in `_lzbench/codecs.h`, e.g.:
+- Add the new codec to `bench/lzbench.h` and increase `LZBENCH_COMPRESSOR_COUNT`.
+- Add declarations of compression and decompression functions in `bench/codecs.h`, e.g.:
 
 ```
 #ifndef BENCH_REMOVE_XXXX
@@ -33,7 +33,7 @@ int64_t lzbench_xxxx_decompress(char* inbuf, size_t insize, char* outbuf, size_t
 #endif // BENCH_REMOVE_XXXX
 ```
 
-- Add definitions of compression and decompression functions in `_lzbench/lz_codecs.cpp`, `_lzbench/symmetric_codecs.cpp` (BWT, PPM-based), or `_lzbench/misc_codecs.cpp`, e.g.:
+- Add definitions of compression and decompression functions in `bench/lz_codecs.cpp`, `bench/symmetric_codecs.cpp` (BWT, PPM-based), or `bench/misc_codecs.cpp`, e.g.:
 
 ```
 #ifndef BENCH_REMOVE_XXXX
