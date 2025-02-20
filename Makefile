@@ -296,7 +296,7 @@ endif
 ifeq "$(DONT_BUILD_SNAPPY)" "1"
 	DEFINES += -DBENCH_REMOVE_SNAPPY
 else
-	SNAPPY_FILES = snappy/snappy-sinksource.o snappy/snappy-stubs-internal.o snappy/snappy.o
+	SNAPPY_FILES = lz/snappy/snappy-sinksource.o lz/snappy/snappy-stubs-internal.o lz/snappy/snappy.o
 endif
 
 
@@ -304,16 +304,16 @@ ifeq "$(DONT_BUILD_TORNADO)" "1"
     DEFINES += "-DBENCH_REMOVE_TORNADO"
     LZMA_FILES += misc/7-zip/Alloc.o
 else
-    MISC_FILES += tornado/tor_test.o
+    MISC_FILES += lz/tornado/tor_test.o
 endif
 
 
 ifeq "$(DONT_BUILD_UCL)" "1"
 	DEFINES += -DBENCH_REMOVE_UCL
 else
-    UCL_FILES = ucl/alloc.o ucl/n2b_99.o ucl/n2b_d.o ucl/n2b_ds.o ucl/n2b_to.o ucl/n2d_99.o ucl/n2d_d.o ucl/n2d_ds.o
-    UCL_FILES += ucl/n2d_to.o ucl/n2e_99.o ucl/n2e_d.o ucl/n2e_ds.o ucl/n2e_to.o ucl/ucl_crc.o ucl/ucl_init.o
-    UCL_FILES += ucl/ucl_ptr.o ucl/ucl_str.o ucl/ucl_util.o
+    UCL_FILES = lz/ucl/alloc.o lz/ucl/n2b_99.o lz/ucl/n2b_d.o lz/ucl/n2b_ds.o lz/ucl/n2b_to.o lz/ucl/n2d_99.o lz/ucl/n2d_d.o lz/ucl/n2d_ds.o
+    UCL_FILES += lz/ucl/n2d_to.o lz/ucl/n2e_99.o lz/ucl/n2e_d.o lz/ucl/n2e_ds.o lz/ucl/n2e_to.o lz/ucl/ucl_crc.o lz/ucl/ucl_init.o
+    UCL_FILES += lz/ucl/ucl_ptr.o lz/ucl/ucl_str.o lz/ucl/ucl_util.o
 endif
 
 
@@ -468,7 +468,7 @@ endif
 ifeq "$(DONT_BUILD_TAMP)" "1"
 	DEFINES += -DBENCH_REMOVE_TAMP
 else
-	MISC_FILES += tamp/common.o tamp/compressor.o tamp/decompressor.o
+	MISC_FILES += lz/tamp/common.o lz/tamp/compressor.o lz/tamp/decompressor.o
 endif
 
 
@@ -640,6 +640,10 @@ $(LIBDEFLATE_FILES): %.o : %.c
 	$(CC) $(CFLAGS) -Ilz/libdeflate $< -c -o $@
 
 $(LZO_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz $< -c -o $@
+
+$(UCL_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Ilz $< -c -o $@
 

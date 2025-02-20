@@ -68,8 +68,8 @@ int64_t lzbench_nakamichi_decompress(char *inbuf, size_t insize, char *outbuf, s
 
 
 #ifndef BENCH_REMOVE_TAMP
-#include "tamp/compressor.h"
-#include "tamp/decompressor.h"
+#include "lz/tamp/compressor.h"
+#include "lz/tamp/decompressor.h"
 
 char* lzbench_tamp_init(size_t, size_t level, size_t)
 {
