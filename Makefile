@@ -137,21 +137,21 @@ endif
 ifeq "$(DONT_BUILD_CRUSH)" "1"
 	DEFINES += -DBENCH_REMOVE_CRUSH
 else
-    MISC_FILES += crush/crush.o
+    MISC_FILES += lz/crush/crush.o
 endif
 
 
 ifeq "$(DONT_BUILD_FASTLZ)" "1"
 	DEFINES += -DBENCH_REMOVE_FASTLZ
 else
-    MISC_FILES += fastlz/fastlz.o
+    MISC_FILES += lz/fastlz/fastlz.o
 endif
 
 
 ifeq "$(DONT_BUILD_FASTLZMA2)" "1"
 	DEFINES += -DBENCH_REMOVE_FASTLZMA2
 else
-	FASTLZMA2_SRC = $(wildcard fast-lzma2/*.c)
+	FASTLZMA2_SRC = $(wildcard lz/fast-lzma2/*.c)
 	FASTLZMA2_OBJ = $(FASTLZMA2_SRC:.c=.o)
 endif
 
@@ -482,12 +482,12 @@ endif
 ifeq "$(DONT_BUILD_DENSITY)" "1"
     DEFINES += -DBENCH_REMOVE_DENSITY
 else
-    BUGGY_FILES += density/globals.o density/buffers/buffer.o
-    BUGGY_FILES += density/algorithms/cheetah/core/cheetah_decode.o density/algorithms/cheetah/core/cheetah_encode.o
-    BUGGY_FILES += density/algorithms/lion/forms/lion_form_model.o density/algorithms/lion/core/lion_decode.o
-    BUGGY_FILES += density/algorithms/lion/core/lion_encode.o density/algorithms/dictionaries.o
-    BUGGY_FILES += density/algorithms/chameleon/core/chameleon_decode.o density/algorithms/chameleon/core/chameleon_encode.o
-    BUGGY_FILES += density/algorithms/algorithms.o density/structure/header.o
+    BUGGY_FILES += lz/density/globals.o lz/density/buffers/buffer.o
+    BUGGY_FILES += lz/density/algorithms/cheetah/core/cheetah_decode.o lz/density/algorithms/cheetah/core/cheetah_encode.o
+    BUGGY_FILES += lz/density/algorithms/lion/forms/lion_form_model.o lz/density/algorithms/lion/core/lion_decode.o
+    BUGGY_FILES += lz/density/algorithms/lion/core/lion_encode.o lz/density/algorithms/dictionaries.o
+    BUGGY_FILES += lz/density/algorithms/chameleon/core/chameleon_decode.o lz/density/algorithms/chameleon/core/chameleon_encode.o
+    BUGGY_FILES += lz/density/algorithms/algorithms.o lz/density/structure/header.o
 endif
 
 

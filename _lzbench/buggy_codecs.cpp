@@ -113,7 +113,7 @@ int64_t lzbench_csc_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 #ifndef BENCH_REMOVE_DENSITY
 extern "C"
 {
-	#include "density/density_api.h"
+	#include "lz/density/density_api.h"
 }
 
 char* lzbench_density_init(size_t insize, size_t level, size_t)

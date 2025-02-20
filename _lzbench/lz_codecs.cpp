@@ -101,7 +101,7 @@ int64_t lzbench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 #ifndef BENCH_REMOVE_CRUSH
-#include "crush/crush.hpp"
+#include "lz/crush/crush.hpp"
 
 int64_t lzbench_crush_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
@@ -120,7 +120,7 @@ int64_t lzbench_crush_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #ifndef BENCH_REMOVE_FASTLZ
 extern "C"
 {
-	#include "fastlz/fastlz.h"
+	#include "lz/fastlz/fastlz.h"
 }
 
 int64_t lzbench_fastlz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
@@ -138,7 +138,7 @@ int64_t lzbench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 #ifndef BENCH_REMOVE_FASTLZMA2
-#include "fast-lzma2/fast-lzma2.h"
+#include "lz/fast-lzma2/fast-lzma2.h"
 
 int64_t lzbench_fastlzma2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char* workmem)
 {
