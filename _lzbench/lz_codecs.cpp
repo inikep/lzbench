@@ -487,7 +487,7 @@ int64_t lzbench_lzham_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 #ifndef BENCH_REMOVE_LZLIB
-#include "lzlib/lzlib.h"
+#include "lz/lzlib/lzlib.h"
 
 int64_t lzbench_lzlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
@@ -656,15 +656,15 @@ int64_t lzbench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 #ifndef BENCH_REMOVE_LZO
-#include "lzo/lzo1.h"
-#include "lzo/lzo1a.h"
-#include "lzo/lzo1b.h"
-#include "lzo/lzo1c.h"
-#include "lzo/lzo1f.h"
-#include "lzo/lzo1x.h"
-#include "lzo/lzo1y.h"
-#include "lzo/lzo1z.h"
-#include "lzo/lzo2a.h"
+#include "lz/lzo/lzo1.h"
+#include "lz/lzo/lzo1a.h"
+#include "lz/lzo/lzo1b.h"
+#include "lz/lzo/lzo1c.h"
+#include "lz/lzo/lzo1f.h"
+#include "lz/lzo/lzo1x.h"
+#include "lz/lzo/lzo1y.h"
+#include "lz/lzo/lzo1z.h"
+#include "lz/lzo/lzo2a.h"
 
 char* lzbench_lzo_init(size_t, size_t, size_t)
 {

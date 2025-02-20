@@ -244,7 +244,7 @@ endif
 ifeq "$(DONT_BUILD_LZLIB)" "1"
 	DEFINES += -DBENCH_REMOVE_LZLIB
 else
-	MISC_FILES += lzlib/lzlib.o
+	MISC_FILES += lz/lzlib/lzlib.o
 endif
 
 
@@ -259,23 +259,23 @@ endif
 ifeq "$(DONT_BUILD_LZO)" "1"
     DEFINES += -DBENCH_REMOVE_LZO
 else
-    LZO_FILES = lzo/lzo1.o lzo/lzo1a.o lzo/lzo1a_99.o lzo/lzo1b_1.o lzo/lzo1b_2.o lzo/lzo1b_3.o lzo/lzo1b_4.o lzo/lzo1b_5.o
-    LZO_FILES += lzo/lzo1b_6.o lzo/lzo1b_7.o lzo/lzo1b_8.o lzo/lzo1b_9.o lzo/lzo1b_99.o lzo/lzo1b_9x.o lzo/lzo1b_cc.o
-    LZO_FILES += lzo/lzo1b_d1.o lzo/lzo1b_d2.o lzo/lzo1b_rr.o lzo/lzo1b_xx.o lzo/lzo1c_1.o lzo/lzo1c_2.o lzo/lzo1c_3.o
-    LZO_FILES += lzo/lzo1c_4.o lzo/lzo1c_5.o lzo/lzo1c_6.o lzo/lzo1c_7.o lzo/lzo1c_8.o lzo/lzo1c_9.o lzo/lzo1c_99.o
-    LZO_FILES += lzo/lzo1c_9x.o lzo/lzo1c_cc.o lzo/lzo1c_d1.o lzo/lzo1c_d2.o lzo/lzo1c_rr.o lzo/lzo1c_xx.o lzo/lzo1f_1.o
-    LZO_FILES += lzo/lzo1f_9x.o lzo/lzo1f_d1.o lzo/lzo1f_d2.o lzo/lzo1x_1.o lzo/lzo1x_1k.o lzo/lzo1x_1l.o lzo/lzo1x_1o.o
-    LZO_FILES += lzo/lzo1x_9x.o lzo/lzo1x_d1.o lzo/lzo1x_d2.o lzo/lzo1x_d3.o lzo/lzo1x_o.o lzo/lzo1y_1.o lzo/lzo1y_9x.o
-    LZO_FILES += lzo/lzo1y_d1.o lzo/lzo1y_d2.o lzo/lzo1y_d3.o lzo/lzo1y_o.o lzo/lzo1z_9x.o lzo/lzo1z_d1.o lzo/lzo1z_d2.o
-    LZO_FILES += lzo/lzo1z_d3.o lzo/lzo1_99.o lzo/lzo2a_9x.o lzo/lzo2a_d1.o lzo/lzo2a_d2.o lzo/lzo_crc.o lzo/lzo_init.o
-    LZO_FILES += lzo/lzo_ptr.o lzo/lzo_str.o lzo/lzo_util.o
+    LZO_FILES = lz/lzo/lzo1.o lz/lzo/lzo1a.o lz/lzo/lzo1a_99.o lz/lzo/lzo1b_1.o lz/lzo/lzo1b_2.o lz/lzo/lzo1b_3.o lz/lzo/lzo1b_4.o lz/lzo/lzo1b_5.o
+    LZO_FILES += lz/lzo/lzo1b_6.o lz/lzo/lzo1b_7.o lz/lzo/lzo1b_8.o lz/lzo/lzo1b_9.o lz/lzo/lzo1b_99.o lz/lzo/lzo1b_9x.o lz/lzo/lzo1b_cc.o
+    LZO_FILES += lz/lzo/lzo1b_d1.o lz/lzo/lzo1b_d2.o lz/lzo/lzo1b_rr.o lz/lzo/lzo1b_xx.o lz/lzo/lzo1c_1.o lz/lzo/lzo1c_2.o lz/lzo/lzo1c_3.o
+    LZO_FILES += lz/lzo/lzo1c_4.o lz/lzo/lzo1c_5.o lz/lzo/lzo1c_6.o lz/lzo/lzo1c_7.o lz/lzo/lzo1c_8.o lz/lzo/lzo1c_9.o lz/lzo/lzo1c_99.o
+    LZO_FILES += lz/lzo/lzo1c_9x.o lz/lzo/lzo1c_cc.o lz/lzo/lzo1c_d1.o lz/lzo/lzo1c_d2.o lz/lzo/lzo1c_rr.o lz/lzo/lzo1c_xx.o lz/lzo/lzo1f_1.o
+    LZO_FILES += lz/lzo/lzo1f_9x.o lz/lzo/lzo1f_d1.o lz/lzo/lzo1f_d2.o lz/lzo/lzo1x_1.o lz/lzo/lzo1x_1k.o lz/lzo/lzo1x_1l.o lz/lzo/lzo1x_1o.o
+    LZO_FILES += lz/lzo/lzo1x_9x.o lz/lzo/lzo1x_d1.o lz/lzo/lzo1x_d2.o lz/lzo/lzo1x_d3.o lz/lzo/lzo1x_o.o lz/lzo/lzo1y_1.o lz/lzo/lzo1y_9x.o
+    LZO_FILES += lz/lzo/lzo1y_d1.o lz/lzo/lzo1y_d2.o lz/lzo/lzo1y_d3.o lz/lzo/lzo1y_o.o lz/lzo/lzo1z_9x.o lz/lzo/lzo1z_d1.o lz/lzo/lzo1z_d2.o
+    LZO_FILES += lz/lzo/lzo1z_d3.o lz/lzo/lzo1_99.o lz/lzo/lzo2a_9x.o lz/lzo/lzo2a_d1.o lz/lzo/lzo2a_d2.o lz/lzo/lzo_crc.o lz/lzo/lzo_init.o
+    LZO_FILES += lz/lzo/lzo_ptr.o lz/lzo/lzo_str.o lz/lzo/lzo_util.o
 endif
 
 
 ifeq "$(DONT_BUILD_LZSSE)" "1"
     DEFINES += -DBENCH_REMOVE_LZSSE
 else
-    LZSSE_FILES = lzsse/lzsse2/lzsse2.o lzsse/lzsse4/lzsse4.o lzsse/lzsse8/lzsse8.o
+    LZSSE_FILES = lz/lzsse/lzsse2/lzsse2.o lz/lzsse/lzsse4/lzsse4.o lz/lzsse/lzsse8/lzsse8.o
 endif
 
 
@@ -505,14 +505,14 @@ endif
 ifeq "$(DONT_BUILD_LZMAT)" "1"
     DEFINES += -DBENCH_REMOVE_LZMAT
 else
-    BUGGY_FILES += lzmat/lzmat_dec.o lzmat/lzmat_enc.o
+    BUGGY_FILES += lz/lzmat/lzmat_dec.o lz/lzmat/lzmat_enc.o
 endif
 
 
 ifeq "$(DONT_BUILD_LZRW)" "1"
     DEFINES += -DBENCH_REMOVE_LZRW
 else
-    BUGGY_FILES += lzrw/lzrw1-a.o lzrw/lzrw1.o lzrw/lzrw2.o lzrw/lzrw3.o lzrw/lzrw3-a.o
+    BUGGY_FILES += lz/lzrw/lzrw1-a.o lz/lzrw/lzrw1.o lz/lzrw/lzrw2.o lz/lzrw/lzrw3.o lz/lzrw/lzrw3-a.o
 endif
 
 
@@ -625,7 +625,7 @@ $(LIZARD_FILES): %.o : %.c
 
 $(LZ_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz/brotli/include $< -c -o $@
+	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include $< -c -o $@
 
 $(BUGGY_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
@@ -638,6 +638,10 @@ $(BROTLI_FILES): %.o : %.c
 $(LIBDEFLATE_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Ilz/libdeflate $< -c -o $@
+
+$(LZO_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz $< -c -o $@
 
 $(LZSSE_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)

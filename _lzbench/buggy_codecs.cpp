@@ -186,7 +186,7 @@ int64_t lzbench_gipfeli_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 
 #ifndef BENCH_REMOVE_LZMAT
-#include "lzmat/lzmat.h"
+#include "lz/lzmat/lzmat.h"
 
 int64_t lzbench_lzmat_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
@@ -211,7 +211,7 @@ int64_t lzbench_lzmat_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #ifndef BENCH_REMOVE_LZRW
 extern "C"
 {
-	#include "lzrw/lzrw.h"
+	#include "lz/lzrw/lzrw.h"
 }
 
 char* lzbench_lzrw_init(size_t, size_t, size_t)
