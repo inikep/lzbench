@@ -121,7 +121,7 @@ struct less_using_3rd_column { inline bool operator() (const string_table_t& str
 struct less_using_4th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col4_comprsize < struct2.col4_comprsize); } };
 struct less_using_5th_column { inline bool operator() (const string_table_t& struct1, const string_table_t& struct2) {  return (struct1.col5_origsize < struct2.col5_origsize); } };
 
-typedef int64_t (*compress_func)(char *in, size_t insize, char *out, size_t outsize, size_t, size_t, char*);
+typedef int64_t (*compress_func)(char *in, size_t insize, char *out, size_t outsize, codec_options_t *codec_options);
 typedef char* (*init_func)(size_t insize, size_t, size_t);
 typedef void (*deinit_func)(char* workmem);
 
@@ -189,7 +189,7 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "kanzi",      "kanzi 2.3",             1,   9,    0,       0, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
     { "libdeflate", "libdeflate 1.23",       1,  12,    0,       0, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
     { "lz4",        "lz4 1.10.0",            0,   0,    0,       0, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
-    { "lz4fast",    "lz4fast 1.10.0",        1,  99,    0,       0, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
+    { "lz4fast",    "lz4 1.10.0 --fast",     1,  99,    0,       0, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
     { "lz4hc",      "lz4hc 1.10.0",          1,  12,    0,       0, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },
     { "lizard",     "lizard 2.1",  LIZARD_MIN_CLEVEL, LIZARD_MAX_CLEVEL, 0, 0, lzbench_lizard_compress,      lzbench_lizard_decompress,        NULL,                    NULL },
     { "lzav",       "lzav 4.5",              1,   2,    0,       0, lzbench_lzav_compress,       lzbench_lzav_decompress,        NULL,                    NULL },

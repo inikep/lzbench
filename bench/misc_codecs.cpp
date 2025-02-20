@@ -17,13 +17,13 @@
 #include "misc/glza/GLZAcomp.h"
 #include "misc/glza/GLZAdecode.h"
 
-int64_t lzbench_glza_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_glza_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	if (GLZAcomp(insize, (uint8_t *)inbuf, &outsize, (uint8_t *)outbuf, (FILE *)0, NULL) == 0) return(0);
 	return outsize;
 }
 
-int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	if (GLZAdecode(insize, (uint8_t *)inbuf, &outsize, (uint8_t *)outbuf, (FILE *)0) == 0) return(0);
 	return outsize;
@@ -36,12 +36,12 @@ int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 #ifndef BENCH_REMOVE_LZJB
 #include "lz/lzjb/lzjb2010.h"
 
-int64_t lzbench_lzjb_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_lzjb_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	return lzjb_compress2010((uint8_t*)inbuf, (uint8_t*)outbuf, insize, outsize, 0);
 }
 
-int64_t lzbench_lzjb_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_lzjb_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	return lzjb_decompress2010((uint8_t*)inbuf, (uint8_t*)outbuf, insize, outsize, 0);
 }
@@ -53,12 +53,12 @@ int64_t lzbench_lzjb_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 #ifdef BENCH_HAS_NAKAMICHI
 #include "misc/nakamichi/nakamichi.h"
 
-int64_t lzbench_nakamichi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_nakamichi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	return NakaCompress(outbuf, inbuf, insize);
 }
 
-int64_t lzbench_nakamichi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_nakamichi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	return NakaDecompress(outbuf, inbuf, insize);
 }
@@ -81,19 +81,19 @@ void lzbench_tamp_deinit(char* workmem)
     free(workmem);
 }
 
-int64_t lzbench_tamp_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+int64_t lzbench_tamp_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     int64_t compressed_size = 0;
     TampConf conf = {
        /* Describes the size of the decompression buffer in bits.
        A 10-bit window represents a 1024-byte buffer.
        Must be in range [8, 15], representing [256, 32678] byte windows. */
-       .window = (uint16_t)level,
+       .window = (uint16_t)codec_options->level,
        .literal = 8,
        .use_custom_dictionary = false
     };
     TampCompressor compressor;
-    tamp_compressor_init(&compressor, &conf, (unsigned char *)workmem);
+    tamp_compressor_init(&compressor, &conf, (unsigned char *)codec_options->work_mem);
 
     tamp_compressor_compress_and_flush(
             &compressor,
@@ -108,14 +108,14 @@ int64_t lzbench_tamp_compress(char *inbuf, size_t insize, char *outbuf, size_t o
     return compressed_size;
 }
 
-int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* workmem)
+int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     int64_t decompressed_size = 0;
     TampConf conf;
     TampDecompressor decompressor;
     size_t compressed_consumed_size;
 
-    tamp_decompressor_init(&decompressor, NULL, (unsigned char *)workmem);
+    tamp_decompressor_init(&decompressor, NULL, (unsigned char *)codec_options->work_mem);
 
     tamp_decompressor_decompress(
         &decompressor,
@@ -160,7 +160,7 @@ void lzbench_cuda_deinit(char* workmem)
     cudaFree(workmem);
 }
 
-int64_t lzbench_cuda_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t , size_t, char* workmem)
+int64_t lzbench_cuda_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     cudaMemcpy(workmem, inbuf, insize, cudaMemcpyHostToDevice);
     cudaMemcpy(outbuf, workmem, insize, cudaMemcpyDeviceToHost);
@@ -291,7 +291,7 @@ void lzbench_nvcomp_deinit(char* nvcomp_params)
   free(params);
 }
 
-int64_t lzbench_nvcomp_compress(char *inbuf, size_t in_bytes, char *outbuf, size_t outsize, size_t level, size_t, char* nvcomp_params)
+int64_t lzbench_nvcomp_compress(char *inbuf, size_t in_bytes, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
   nvcomp_params_s* params = (nvcomp_params_s*) nvcomp_params;
   int status = 0;
@@ -338,7 +338,7 @@ int64_t lzbench_nvcomp_compress(char *inbuf, size_t in_bytes, char *outbuf, size
   return total_out_bytes;
 }
 
-int64_t lzbench_nvcomp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char* nvcomp_params)
+int64_t lzbench_nvcomp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
   nvcomp_params_s* params = (nvcomp_params_s*) nvcomp_params;
   int status = 0;

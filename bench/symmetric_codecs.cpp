@@ -22,7 +22,7 @@ char *lzbench_bsc_init(size_t insize, size_t level, size_t)
     return 0;
 }
 
-int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t level, char*)
+int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     int features = LIBBSC_DEFAULT_FEATURES;
     int lzpHashSize = LIBBSC_DEFAULT_LZPHASHSIZE;
@@ -30,6 +30,7 @@ int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
     int blockSorter = LIBBSC_DEFAULT_BLOCKSORTER;
     int coder = LIBBSC_DEFAULT_CODER;
 
+    int level = codec_options->additional_param;
     blockSorter = level < 3 ? 1 : (int)level;
 
     coder = level == 0 ? LIBBSC_CODER_QLFC_ADAPTIVE :
@@ -44,7 +45,7 @@ int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
     return res;
 }
 
-int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     int features = LIBBSC_DEFAULT_FEATURES;
     int insize_bsc;
@@ -58,7 +59,7 @@ int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 #ifdef BENCH_HAS_CUDA
 
-int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t level, char*)
+int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     int features = LIBBSC_DEFAULT_FEATURES | LIBBSC_FEATURE_CUDA;
     int lzpHashSize = LIBBSC_DEFAULT_LZPHASHSIZE;
@@ -66,6 +67,7 @@ int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size
     int blockSorter = LIBBSC_DEFAULT_BLOCKSORTER;
     int coder = LIBBSC_DEFAULT_CODER;
 
+    int level = codec_options->additional_param;
     blockSorter = level < 3 ? 1 : (int)level;
 
     coder = level == 0 ? LIBBSC_CODER_QLFC_ADAPTIVE :
@@ -80,7 +82,7 @@ int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size
     return res;
 }
 
-int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     int features = LIBBSC_DEFAULT_FEATURES | LIBBSC_FEATURE_CUDA;
     int insize_bsc;
@@ -101,13 +103,13 @@ int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, si
 #ifndef BENCH_REMOVE_BZIP2
 #include "bwt/bzip2/bzlib.h"
 
-int64_t lzbench_bzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
+int64_t lzbench_bzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
    unsigned int a_outsize = outsize;
-   return BZ2_bzBuffToBuffCompress((char *)outbuf, &a_outsize, (char *)inbuf, (unsigned int)insize, level, 0, 0)==BZ_OK?a_outsize:-1;
+   return BZ2_bzBuffToBuffCompress((char *)outbuf, &a_outsize, (char *)inbuf, (unsigned int)insize, codec_options->level, 0, 0)==BZ_OK?a_outsize:-1;
 }
 
-int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
    unsigned int a_outsize = outsize;
    return BZ2_bzBuffToBuffDecompress((char *)outbuf, &a_outsize, (char *)inbuf, (unsigned int)insize, 0, 0)==BZ_OK?a_outsize:-1;
@@ -119,16 +121,16 @@ int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #ifndef BENCH_REMOVE_BZIP3
 #include "bwt/bzip3/include/libbz3.h"
 
-int64_t lzbench_bzip3_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
+int64_t lzbench_bzip3_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
    size_t real_outsize = outsize;
-   uint32_t block_size = 1 << (19 + level); // level 1 = 1 MB, level 3 = 4 MB, level 9 = 256 MB, level 10 = 511 MB
+   uint32_t block_size = 1 << (19 + codec_options->level); // level 1 = 1 MB, level 3 = 4 MB, level 9 = 256 MB, level 10 = 511 MB
    int bzerr = bz3_compress(block_size > (511 << 20) ? (511 << 20) : block_size, (uint8_t*)inbuf, (uint8_t*)outbuf, insize, &real_outsize);
    if (bzerr != BZ3_OK) return bzerr;
    return real_outsize;
 }
 
-int64_t lzbench_bzip3_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_bzip3_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     size_t real_outsize = outsize;
     int bzerr = bz3_decompress((uint8_t*)inbuf, (uint8_t*)outbuf, insize, &real_outsize);
@@ -142,7 +144,7 @@ int64_t lzbench_bzip3_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #ifndef BENCH_REMOVE_PPMD
 #include "misc/7-zip/Ppmd8.h"
 
-int64_t lzbench_ppmd_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_ppmd_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t *codec_options)
 {
     struct CharWriter
     {
@@ -168,6 +170,7 @@ int64_t lzbench_ppmd_compress(char* inbuf, size_t insize, char* outbuf, size_t o
         }
     };
 
+    int level = codec_options->level;
     level = (level == 0) ? 1 : ((level < 9) ? level : 9); // valid range for level is [1..9]
     const int modelOrder = 3 + level;
     const int memMb = 1 << (level - 1);
@@ -197,7 +200,7 @@ int64_t lzbench_ppmd_compress(char* inbuf, size_t insize, char* outbuf, size_t o
     return cw.ptr - outbuf;
 }
 
-int64_t lzbench_ppmd_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_ppmd_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t *codec_options)
 {
     struct CharReader
     {

@@ -52,16 +52,18 @@ size_t stdio_write(void *p, const void *buf, size_t size)
     return size;
 }
 
-int64_t lzbench_csc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t dict_size, char*)
+int64_t lzbench_csc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	MemSeqStream isss, osss;
 	CSCProps p;
+	int dict_size = codec_options->additional_param;
+
 	if (!dict_size) dict_size = 1<<26;
 
 	if (insize < dict_size)
 		dict_size = insize;
 
-	CSCEncProps_Init(&p, dict_size, level);
+	CSCEncProps_Init(&p, dict_size, codec_options->level);
 	CSCEnc_WriteProperties(&p, (uint8_t*)outbuf, 0);
 
     isss.is.Read = stdio_read;
@@ -84,7 +86,7 @@ int64_t lzbench_csc_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
 }
 
 
-int64_t lzbench_csc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_csc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	MemSeqStream isss, osss;
 	CSCProps p;
@@ -126,16 +128,16 @@ void lzbench_density_deinit(char* workmem)
     free(workmem);
 }
 
-int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-	density_processing_result result = density_compress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, density_compress_safe_size(outsize), (DENSITY_ALGORITHM)level);
+	density_processing_result result = density_compress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, density_compress_safe_size(outsize), (DENSITY_ALGORITHM)codec_options->level);
 	if (result.state)
 		return 0;
 
 	return result.bytesWritten;
 }
 
-int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	density_processing_result result = density_decompress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, density_decompress_safe_size(outsize));
 	if (result.state)
@@ -151,7 +153,7 @@ int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, siz
 #ifndef BENCH_REMOVE_GIPFELI
 #include "lz/gipfeli/gipfeli.h"
 
-int64_t lzbench_gipfeli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_gipfeli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     int64_t res;
     util::compression::Compressor *gipfeli = util::compression::NewGipfeliCompressor();
@@ -166,7 +168,7 @@ int64_t lzbench_gipfeli_compress(char *inbuf, size_t insize, char *outbuf, size_
     return res;
 }
 
-int64_t lzbench_gipfeli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_gipfeli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     int64_t res = 0;
     util::compression::Compressor *gipfeli = util::compression::NewGipfeliCompressor();
@@ -188,7 +190,7 @@ int64_t lzbench_gipfeli_decompress(char *inbuf, size_t insize, char *outbuf, siz
 #ifndef BENCH_REMOVE_LZMAT
 #include "lz/lzmat/lzmat.h"
 
-int64_t lzbench_lzmat_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_lzmat_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	uint32_t complen = outsize;
 	if (lzmat_encode((uint8_t*)outbuf, &complen, (uint8_t*)inbuf, insize) != 0)
@@ -196,7 +198,7 @@ int64_t lzbench_lzmat_compress(char *inbuf, size_t insize, char *outbuf, size_t 
 	return complen;
 }
 
-int64_t lzbench_lzmat_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_lzmat_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	uint32_t decomplen = outsize;
 	if (lzmat_decode((uint8_t*)outbuf, &decomplen, (uint8_t*)inbuf, insize) != 0)
@@ -224,13 +226,14 @@ void lzbench_lzrw_deinit(char* workmem)
     free(workmem);
 }
 
-int64_t lzbench_lzrw_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+int64_t lzbench_lzrw_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
+    char* workmem = codec_options->work_mem;
     if (!workmem)
         return 0;
 
 	uint32_t complen = 0;
-	switch (level)
+	switch (codec_options->level)
 	{
 		default:
 		case 1: lzrw1_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &complen); break;
@@ -243,13 +246,14 @@ int64_t lzbench_lzrw_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 	return complen;
 }
 
-int64_t lzbench_lzrw_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+int64_t lzbench_lzrw_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
+    char* workmem = codec_options->work_mem;
     if (!workmem)
         return 0;
 
 	uint32_t decomplen = 0;
-	switch (level)
+	switch (codec_options->level)
 	{
 		default:
 		case 1: lzrw1_decompress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &decomplen); break;
@@ -269,12 +273,12 @@ int64_t lzbench_lzrw_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 #ifndef BENCH_REMOVE_PITHY
 #include "lz/pithy/pithy.h"
 
-int64_t lzbench_pithy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_pithy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-	return pithy_Compress(inbuf, insize, outbuf, outsize, level);
+	return pithy_Compress(inbuf, insize, outbuf, outsize, codec_options->level);
 }
 
-int64_t lzbench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	size_t res = pithy_Decompress(inbuf, insize, outbuf, outsize);
 //	printf("insize=%lld outsize=%lld res=%lld\n", insize, outsize, res);
@@ -290,12 +294,12 @@ int64_t lzbench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #ifndef BENCH_REMOVE_SHRINKER
 #include "lz/shrinker/shrinker.h"
 
-int64_t lzbench_shrinker_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_shrinker_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	return shrinker_compress(inbuf, outbuf, insize);
 }
 
-int64_t lzbench_shrinker_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_shrinker_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	return shrinker_decompress(inbuf, outbuf, outsize);
 }
@@ -317,13 +321,14 @@ void lzbench_wflz_deinit(char* workmem)
     free(workmem);
 }
 
-int64_t lzbench_wflz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char* workmem)
+int64_t lzbench_wflz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
+    char* workmem = codec_options->work_mem;
     int64_t res;
     if (!workmem)
         return 0;
 
-    if (level == 0)
+    if (codec_options->level == 0)
 		res = wfLZ_CompressFast((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, (uint8_t*)workmem, 0);
     else
         res = wfLZ_Compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, (uint8_t*)workmem, 0);
@@ -331,7 +336,7 @@ int64_t lzbench_wflz_compress(char *inbuf, size_t insize, char *outbuf, size_t o
     return res;
 }
 
-int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     wfLZ_Decompress((const uint8_t*)inbuf, (uint8_t*)outbuf);
     return outsize;
@@ -350,13 +355,13 @@ char* lzbench_yappy_init(size_t insize, size_t level, size_t)
     return NULL;
 }
 
-int64_t lzbench_yappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_yappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-	int yappy_level = (level <= 1) ? 0 : 1 << (level - 2);
+	int yappy_level = (codec_options->level <= 1) ? 0 : 1 << (codec_options->level - 2);
 	return YappyCompress((uint8_t*)inbuf, (uint8_t*)outbuf, insize, yappy_level) - (uint8_t*)outbuf;
 }
 
-int64_t lzbench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
 	return YappyUnCompress((uint8_t*)inbuf, (uint8_t*)inbuf+insize, (uint8_t*)outbuf) - (uint8_t*)outbuf;
 }
@@ -368,16 +373,16 @@ int64_t lzbench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #ifndef BENCH_REMOVE_YALZ77
 #include "lz/yalz77/lz77.h"
 
-int64_t lzbench_yalz77_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
+int64_t lzbench_yalz77_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-  lz77::compress_t compress(level, lz77::DEFAULT_BLOCKSIZE);
+  lz77::compress_t compress(codec_options->level, lz77::DEFAULT_BLOCKSIZE);
   std::string compressed = compress.feed((unsigned char*)inbuf, (unsigned char*)inbuf+insize);
   if (compressed.size() > outsize) return 0;
   memcpy(outbuf, compressed.c_str(), compressed.size());
   return compressed.size();
 }
 
-int64_t lzbench_yalz77_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t, size_t, char*)
+int64_t lzbench_yalz77_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
   lz77::decompress_t decompress;
   std::string temp;
