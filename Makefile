@@ -75,7 +75,7 @@ else
 endif
 
 
-DEFINES     += $(addprefix -I$(SOURCE_PATH),.  libcsc libdeflate xpack/common)
+DEFINES     += $(addprefix -I$(SOURCE_PATH),.  xpack/common)
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 
 # don't use "-ffast-math" for clang < 10.0
@@ -102,9 +102,9 @@ ifeq ($(detected_OS), Darwin)
 endif
 
 
-LZ_CODECS = _lzbench/lz_codecs.o
-
-LZBENCH_FILES = $(LZ_CODECS) _lzbench/lzbench.o _lzbench/buggy_codecs.o _lzbench/symmetric_codecs.o _lzbench/misc_codecs.o
+LZ_CODECS     = _lzbench/lz_codecs.o
+BUGGY_CODECS  = _lzbench/buggy_codecs.o
+LZBENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) _lzbench/lzbench.o  _lzbench/symmetric_codecs.o _lzbench/misc_codecs.o
 
 
 ifeq "$(DONT_BUILD_BLOSCLZ)" "1"
@@ -185,9 +185,11 @@ endif
 ifeq "$(DONT_BUILD_LIBDEFLATE)" "1"
     DEFINES += -DBENCH_REMOVE_LIBDEFLATE
 else
-    LIBDEFLATE_FILES = libdeflate/lib/adler32.o libdeflate/lib/crc32.o libdeflate/lib/deflate_compress.o libdeflate/lib/deflate_decompress.o
-    LIBDEFLATE_FILES += libdeflate/lib/gzip_compress.o libdeflate/lib/gzip_decompress.o libdeflate/lib/utils.o libdeflate/lib/zlib_compress.o libdeflate/lib/zlib_decompress.o
-    LIBDEFLATE_FILES += libdeflate/lib/x86/cpu_features.o libdeflate/lib/arm/cpu_features.o
+    LIBDEFLATE_FILES  = lz/libdeflate/lib/adler32.o lz/libdeflate/lib/crc32.o lz/libdeflate/lib/deflate_compress.o
+    LIBDEFLATE_FILES += lz/libdeflate/lib/deflate_decompress.o lz/libdeflate/lib/gzip_compress.o
+    LIBDEFLATE_FILES += lz/libdeflate/lib/gzip_decompress.o lz/libdeflate/lib/utils.o lz/libdeflate/lib/zlib_compress.o
+    LIBDEFLATE_FILES += lz/libdeflate/lib/zlib_decompress.o lz/libdeflate/lib/x86/cpu_features.o
+    LIBDEFLATE_FILES += lz/libdeflate/lib/arm/cpu_features.o
 endif
 
 
@@ -224,7 +226,7 @@ endif
 ifeq "$(DONT_BUILD_LZG)" "1"
 	DEFINES += -DBENCH_REMOVE_LZG
 else
-    LIBLZG_FILES = liblzg/decode.o liblzg/encode.o liblzg/checksum.o
+    LIBLZG_FILES = lz/liblzg/decode.o lz/liblzg/encode.o lz/liblzg/checksum.o
 endif
 
 
@@ -474,8 +476,9 @@ endif
 ifeq "$(DONT_BUILD_CSC)" "1"
     DEFINES += -DBENCH_REMOVE_CSC
 else
-	BUGGY_CXX_FILES += libcsc/csc_analyzer.o libcsc/csc_coder.o libcsc/csc_dec.o libcsc/csc_enc.o libcsc/csc_encoder_main.o libcsc/csc_filters.o
-	BUGGY_CXX_FILES += libcsc/csc_lz.o libcsc/csc_memio.o libcsc/csc_mf.o libcsc/csc_model.o libcsc/csc_profiler.o libcsc/csc_default_alloc.o
+	CSC_FILES += lz/libcsc/csc_analyzer.o lz/libcsc/csc_coder.o lz/libcsc/csc_dec.o lz/libcsc/csc_enc.o
+    CSC_FILES += lz/libcsc/csc_encoder_main.o lz/libcsc/csc_filters.o lz/libcsc/csc_lz.o lz/libcsc/csc_memio.o
+	CSC_FILES += lz/libcsc/csc_mf.o lz/libcsc/csc_model.o lz/libcsc/csc_profiler.o lz/libcsc/csc_default_alloc.o
 endif
 
 
@@ -494,7 +497,7 @@ endif
 ifeq "$(DONT_BUILD_GIPFELI)" "1"
     DEFINES += -DBENCH_REMOVE_GIPFELI
 else
-    BUGGY_CC_FILES += gipfeli/decompress.o gipfeli/entropy.o gipfeli/entropy_code_builder.o gipfeli/gipfeli-internal.o gipfeli/lz77.o
+    BUGGY_CC_FILES += lz/gipfeli/decompress.o lz/gipfeli/entropy.o lz/gipfeli/entropy_code_builder.o lz/gipfeli/gipfeli-internal.o lz/gipfeli/lz77.o
 endif
 
 
@@ -577,7 +580,7 @@ endif # ifneq "$(LIBCUDART)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
+lzbench: $(BUGGY_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XPACK_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -611,6 +614,10 @@ $(BUGGY_CXX_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) $< -c -o $@
 
+$(CSC_FILES): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CFLAGS_O2) -Ilz/libcsc $< -c -o $@
+
 $(LIZARD_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS_O2) $< -c -o $@
@@ -619,9 +626,17 @@ $(LZ_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -Ilz/brotli/include $< -c -o $@
 
+$(BUGGY_CODECS): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) -Ilz/libcsc $< -c -o $@
+
 $(BROTLI_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Ilz/brotli/include $< -c -o $@
+
+$(LIBDEFLATE_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz/libdeflate $< -c -o $@
 
 $(LZSSE_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)

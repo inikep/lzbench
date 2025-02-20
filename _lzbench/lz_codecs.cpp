@@ -250,7 +250,7 @@ int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 #ifndef BENCH_REMOVE_LIBDEFLATE
-#include "libdeflate/libdeflate.h"
+#include "lz/libdeflate/libdeflate.h"
 int64_t lzbench_libdeflate_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
     struct libdeflate_compressor *compressor = libdeflate_alloc_compressor(level);
@@ -423,7 +423,7 @@ int64_t lzbench_lzvn_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 #ifndef BENCH_REMOVE_LZG
-#include "liblzg/lzg.h"
+#include "lz/liblzg/lzg.h"
 
 int64_t lzbench_lzg_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {

@@ -15,8 +15,8 @@
 
 // has to be compiled separated because of collisions with LZMA's 7zTypes.h
 #ifndef BENCH_REMOVE_CSC
-#include "libcsc/csc_enc.h"
-#include "libcsc/csc_dec.h"
+#include "lz/libcsc/csc_enc.h"
+#include "lz/libcsc/csc_dec.h"
 #include <string.h> // memcpy
 
 struct MemSeqStream
@@ -149,7 +149,7 @@ int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 
 #ifndef BENCH_REMOVE_GIPFELI
-#include "gipfeli/gipfeli.h"
+#include "lz/gipfeli/gipfeli.h"
 
 int64_t lzbench_gipfeli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t, char*)
 {
