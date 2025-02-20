@@ -247,7 +247,8 @@ endif
 ifeq "$(DONT_BUILD_LZMA)" "1"
     DEFINES += -DBENCH_REMOVE_LZMA
 else
-    LZMA_FILES = lzma/CpuArch.o lzma/LzFind.o lzma/LzFindOpt.o lzma/LzFindMt.o lzma/LzmaDec.o lzma/LzmaEnc.o lzma/Threads.o
+    LZMA_FILES  = misc/7-zip/CpuArch.o misc/7-zip/LzFind.o misc/7-zip/LzFindOpt.o misc/7-zip/LzFindMt.o
+    LZMA_FILES += misc/7-zip/LzmaDec.o misc/7-zip/LzmaEnc.o misc/7-zip/Threads.o
 endif
 
 
@@ -297,7 +298,7 @@ endif
 
 ifeq "$(DONT_BUILD_TORNADO)" "1"
     DEFINES += "-DBENCH_REMOVE_TORNADO"
-    LZMA_FILES += lzma/Alloc.o
+    LZMA_FILES += misc/7-zip/Alloc.o
 else
     MISC_FILES += tornado/tor_test.o
 endif
@@ -433,7 +434,7 @@ endif
 ifeq "$(DONT_BUILD_PPMD)" "1"
     DEFINES += -DBENCH_REMOVE_PPMD
 else
-    PPMD_FILES += lzma/Ppmd8.o lzma/Ppmd8Dec.o lzma/Ppmd8Enc.o
+    PPMD_FILES += misc/7-zip/Ppmd8.o misc/7-zip/Ppmd8Dec.o misc/7-zip/Ppmd8Enc.o
 endif
 
 

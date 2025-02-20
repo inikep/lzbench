@@ -600,9 +600,9 @@ int64_t lzbench_lzlib_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #ifndef BENCH_REMOVE_LZMA
 
 #include <string.h>
-#include "lzma/Alloc.h"
-#include "lzma/LzmaDec.h"
-#include "lzma/LzmaEnc.h"
+#include "misc/7-zip/Alloc.h"
+#include "misc/7-zip/LzmaDec.h"
+#include "misc/7-zip/LzmaEnc.h"
 
 #ifndef BENCH_REMOVE_TORNADO
 static void *SzAlloc(ISzAllocPtr p, size_t size) { (void)p; return MyAlloc(size); }

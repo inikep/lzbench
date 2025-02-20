@@ -118,7 +118,7 @@ int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 #ifndef BENCH_REMOVE_PPMD
-#include "lzma/Ppmd8.h"
+#include "misc/7-zip/Ppmd8.h"
 
 int64_t lzbench_ppmd_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, size_t level, size_t, char*)
 {
