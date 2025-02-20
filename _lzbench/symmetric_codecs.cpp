@@ -13,7 +13,7 @@
 
 
 #ifndef BENCH_REMOVE_BSC
-#include "libbsc/libbsc/libbsc.h"
+#include "bwt/libbsc/libbsc/libbsc.h"
 
 char *lzbench_bsc_init(size_t insize, size_t level, size_t)
 {
@@ -99,7 +99,7 @@ int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, si
 
 
 #ifndef BENCH_REMOVE_BZIP2
-#include "bzip2/bzlib.h"
+#include "bwt/bzip2/bzlib.h"
 
 int64_t lzbench_bzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, size_t level, size_t windowLog, char*)
 {

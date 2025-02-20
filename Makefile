@@ -406,26 +406,27 @@ ifeq "$(DONT_BUILD_BSC)" "1"
 else
     BSC_FLAGS = -DLIBBSC_SORT_TRANSFORM_SUPPORT -DLIBBSC_ALLOW_UNALIGNED_ACCESS
 
-    BSC_C_FILES = libbsc/libbsc/bwt/libsais/libsais.o
+    BSC_C_FILES = bwt/libbsc/libbsc/bwt/libsais/libsais.o
 
-    BSC_CXX_FILES  = libbsc/libbsc/adler32/adler32.o 
-    BSC_CXX_FILES += libbsc/libbsc/bwt/bwt.o
-    BSC_CXX_FILES += libbsc/libbsc/coder/coder.o
-    BSC_CXX_FILES += libbsc/libbsc/coder/qlfc/qlfc.o
-    BSC_CXX_FILES += libbsc/libbsc/coder/qlfc/qlfc_model.o
-    BSC_CXX_FILES += libbsc/libbsc/filters/detectors.o
-    BSC_CXX_FILES += libbsc/libbsc/filters/preprocessing.o
-    BSC_CXX_FILES += libbsc/libbsc/libbsc/libbsc.o
-    BSC_CXX_FILES += libbsc/libbsc/lzp/lzp.o
-    BSC_CXX_FILES += libbsc/libbsc/platform/platform.o
-    BSC_CXX_FILES += libbsc/libbsc/st/st.o
+    BSC_CXX_FILES  = bwt/libbsc/libbsc/adler32/adler32.o
+    BSC_CXX_FILES += bwt/libbsc/libbsc/bwt/bwt.o
+    BSC_CXX_FILES += bwt/libbsc/libbsc/coder/coder.o
+    BSC_CXX_FILES += bwt/libbsc/libbsc/coder/qlfc/qlfc.o
+    BSC_CXX_FILES += bwt/libbsc/libbsc/coder/qlfc/qlfc_model.o
+    BSC_CXX_FILES += bwt/libbsc/libbsc/filters/detectors.o
+    BSC_CXX_FILES += bwt/libbsc/libbsc/filters/preprocessing.o
+    BSC_CXX_FILES += bwt/libbsc/libbsc/libbsc/libbsc.o
+    BSC_CXX_FILES += bwt/libbsc/libbsc/lzp/lzp.o
+    BSC_CXX_FILES += bwt/libbsc/libbsc/platform/platform.o
+    BSC_CXX_FILES += bwt/libbsc/libbsc/st/st.o
 endif
 
 
 ifeq "$(DONT_BUILD_BZIP2)" "1"
     DEFINES += -DBENCH_REMOVE_BZIP2
 else
-    BZIP2_FILES += bzip2/blocksort.o bzip2/huffman.o bzip2/crctable.o bzip2/randtable.o bzip2/compress.o bzip2/decompress.o bzip2/bzlib.o
+    BZIP2_FILES += bwt/bzip2/blocksort.o bwt/bzip2/huffman.o bwt/bzip2/crctable.o bwt/bzip2/randtable.o
+    BZIP2_FILES += bwt/bzip2/compress.o bwt/bzip2/decompress.o bwt/bzip2/bzlib.o
 endif
 
 
@@ -556,16 +557,16 @@ else
 
 ifneq "$(DONT_BUILD_NVCOMP)" "1"
     DEFINES += -DBENCH_HAS_NVCOMP
-    NVCOMP_CPP_SRC = $(wildcard nvcomp/src/*.cpp nvcomp/src/lowlevel/*.cpp)
+    NVCOMP_CPP_SRC = $(wildcard misc/nvcomp/src/*.cpp misc/nvcomp/src/lowlevel/*.cpp)
     NVCOMP_CPP_OBJ = $(NVCOMP_CPP_SRC:%=%.o)
-    NVCOMP_CU_SRC  = $(wildcard nvcomp/src/*.cu nvcomp/src/lowlevel/*.cu)
+    NVCOMP_CU_SRC  = $(wildcard misc/nvcomp/src/*.cu misc/nvcomp/src/lowlevel/*.cu)
     NVCOMP_CU_OBJ  = $(NVCOMP_CU_SRC:%=%.o)
     NVCOMP_FILES   = $(NVCOMP_CU_OBJ) $(NVCOMP_CPP_OBJ)
 endif
 
 ifneq "$(DONT_BUILD_BSC)" "1"
     BSC_FLAGS += -DLIBBSC_CUDA_SUPPORT
-    BSC_CUDA_FILES = libbsc/libbsc/bwt/libcubwt/libcubwt.cu.o libbsc/libbsc/st/st.cu.o
+    BSC_CUDA_FILES = bwt/libbsc/libbsc/bwt/libcubwt/libcubwt.cu.o bwt/libbsc/libbsc/st/st.cu.o
 endif
 endif # ifneq "$(LIBCUDART)"
 
@@ -637,11 +638,11 @@ $(ZSTD_FILES): %.o : %.c
 
 $(NVCOMP_CU_OBJ): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -Invcomp/include -Invcomp/src -Invcomp/src/lowlevel -c $< -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -Imisc/nvcomp/include -Imisc/nvcomp/src -Imisc/nvcomp/src/lowlevel -c $< -o $@
 
 $(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Invcomp/include -Invcomp/src -Invcomp/src/lowlevel -c $< -o $@
+	$(CXX) $(CXXFLAGS) -Imisc/nvcomp/include -Imisc/nvcomp/src -Imisc/nvcomp/src/lowlevel -c $< -o $@
 
 $(BSC_C_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)

@@ -173,7 +173,7 @@ int64_t lzbench_cuda_return_0(char *inbuf, size_t insize, char *outbuf, size_t o
 }
 
 #ifdef BENCH_HAS_NVCOMP
-#include "nvcomp/include/nvcomp/lz4.h"
+#include "misc/nvcomp/include/nvcomp/lz4.h"
 
 typedef struct {
   cudaStream_t stream;
