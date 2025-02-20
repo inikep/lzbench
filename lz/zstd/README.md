@@ -30,9 +30,9 @@ a list of known ports and bindings is provided on [Zstandard homepage](https://f
 
 For reference, several fast compression algorithms were tested and compared
 on a desktop featuring a Core i7-9700K CPU @ 4.9GHz
-and running Ubuntu 24.04 (`Linux 6.8.0-53-generic`),
+and running Ubuntu 20.04 (`Linux ubu20 5.15.0-101-generic`),
 using [lzbench], an open-source in-memory benchmark by @inikep
-compiled with [gcc] 14.2.0,
+compiled with [gcc] 9.4.0,
 on the [Silesia compression corpus].
 
 [lzbench]: https://github.com/inikep/lzbench
@@ -41,16 +41,16 @@ on the [Silesia compression corpus].
 
 | Compressor name         | Ratio | Compression| Decompress.|
 | ---------------         | ------| -----------| ---------- |
-| **zstd 1.5.7 -1**       | 2.896 |   510 MB/s |  1550 MB/s |
-| [zlib] 1.3.1 -1         | 2.743 |   105 MB/s |   390 MB/s |
-| brotli 1.1.0 -0         | 2.702 |   400 MB/s |   425 MB/s |
-| **zstd 1.5.7 --fast=1** | 2.439 |   545 MB/s |  1850 MB/s |
-| **zstd 1.5.7 --fast=3** | 2.241 |   635 MB/s |  1980 MB/s |
-| quicklz 1.5.0 -1        | 2.238 |   520 MB/s |   750 MB/s |
-| lzo1x 2.10 -1           | 2.106 |   650 MB/s |   780 MB/s |
-| [lz4] 1.10.0            | 2.101 |   675 MB/s |  3850 MB/s |
-| snappy 1.2.1            | 2.089 |   520 MB/s |  1500 MB/s |
-| lzf 3.6 -1              | 2.077 |   410 MB/s |   820 MB/s |
+| **zstd 1.5.6 -1**       | 2.887 |   510 MB/s |  1580 MB/s |
+| [zlib] 1.2.11 -1        | 2.743 |    95 MB/s |   400 MB/s |
+| brotli 1.0.9 -0         | 2.702 |   395 MB/s |   430 MB/s |
+| **zstd 1.5.6 --fast=1** | 2.437 |   545 MB/s |  1890 MB/s |
+| **zstd 1.5.6 --fast=3** | 2.239 |   650 MB/s |  2000 MB/s |
+| quicklz 1.5.0 -1        | 2.238 |   525 MB/s |   750 MB/s |
+| lzo1x 2.10 -1           | 2.106 |   650 MB/s |   825 MB/s |
+| [lz4] 1.9.4             | 2.101 |   700 MB/s |  4000 MB/s |
+| lzf 3.6 -1              | 2.077 |   420 MB/s |   830 MB/s |
+| snappy 1.1.9            | 2.073 |   530 MB/s |  1660 MB/s |
 
 [zlib]: https://www.zlib.net/
 [lz4]: https://lz4.github.io/lz4/
