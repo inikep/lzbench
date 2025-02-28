@@ -611,19 +611,7 @@ int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned if
     LZBENCH_PRINT(5, "totalsize=%lu comprsize=%lu inpos=%lu\n", (uint64_t)totalsize, (uint64_t)comprsize, (uint64_t)inpos);
     totalsize = inpos;
 
-    {
-        std::vector<size_t> single_file;
-        lzbench_params_t params_memcpy;
-
-        print_header(params);
-        memcpy(&params_memcpy, params, sizeof(lzbench_params_t));
-        params_memcpy.cmintime = params_memcpy.dmintime = 0;
-        params_memcpy.c_iters = params_memcpy.d_iters = 0;
-        params_memcpy.cloop_time = params_memcpy.dloop_time = DEFAULT_LOOP_TIME;
-        single_file.push_back(totalsize);
-        lzbench_test(&params_memcpy, file_sizes, &comp_desc[0], 0, inbuf, totalsize, compbuf, totalsize, decomp, rate, 0);
-    }
-
+    print_header(params);
     lzbench_test_with_params(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, totalsize, compbuf, comprsize, decomp, rate);
 
 _clean:
@@ -682,7 +670,6 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
             return 3;
         }
 
-
         if (params->random_read){
           unsigned long long pos = 0;
           if (params->chunk_size < real_insize){
@@ -696,6 +683,7 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
         }
 
         insize = fread(inbuf, 1, insize, in);
+
         if (i == 0) print_header(params);
         
         if (params->mem_limit && real_insize > params->mem_limit)
