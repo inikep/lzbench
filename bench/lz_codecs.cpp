@@ -208,8 +208,7 @@ int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t 
 
     ostreambuf<char> buf(outbuf, outsize);
     std::iostream os(&buf);
-    int cores = 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
-    kanzi::CompressedOutputStream cos(os, entropy, transform, szBlock, false, std::min(cores, 64));
+    kanzi::CompressedOutputStream cos(os, entropy, transform, szBlock, false, codec_options->internal_threads);
     cos.write(inbuf, insize);
     cos.close();
     return cos.getWritten();
@@ -219,8 +218,7 @@ int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_
 {
     istreambuf<char> buf(inbuf, insize);
     std::iostream is(&buf);
-    int cores = 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
-    kanzi::CompressedInputStream cis(is, std::min(cores, 64));
+    kanzi::CompressedInputStream cis(is, codec_options->internal_threads);
     cis.read(outbuf, outsize);
     cis.close();
     return outsize;//cis.getRead();

@@ -78,7 +78,7 @@ void print_header(lzbench_params_t *params)
         case TURBOBENCH:
             printf("  Compressed  Ratio   Cspeed   Dspeed         Compressor name Filename\n"); break;
         case TEXT:
-            printf("Compressor name  C,D Threads Compress. Decompress. Compr. size  Ratio Filename\n"); break;
+            printf("Compressor name    C,D Threads  Compress. Decompress. Compr. size  Ratio Filename\n"); break;
         case TEXT_FULL:
             printf("Compressor name         Compress. Decompress.  Orig. size  Compr. size  Ratio Filename\n"); break;
         case MARKDOWN:
@@ -109,7 +109,14 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
         case TEXT:
         case TEXT_FULL:
             printf("%-23s", row.col1_algname.c_str());
-            printf("%2d,%2d", row.usedCompThreads, row.usedDecompThreads);
+            if (row.usedCompThreads && row.usedDecompThreads) {
+                printf("E=%2d,%2d ", row.usedCompThreads, row.usedDecompThreads);
+                if (params->internal_threads > 1)
+                    printf("I=%2d,%2d ", params->internal_threads, params->internal_threads);
+            } else {
+                printf("I=%2d,%2d ", params->internal_threads, params->internal_threads);
+            }
+
             if (cspeed) {
                 if (cspeed < 10) printf("%6.2f MB/s", cspeed);
                 else if (cspeed < 100) printf("%6.1f MB/s", cspeed);
@@ -275,6 +282,7 @@ void *alloc_and_touch(size_t size, bool must_zero) {
     return buf;
 }
 
+
 ThreadPool::ThreadPool(size_t numThreads, size_t numBlocks)
     : chunkSizes(numBlocks), compSizes(numBlocks), comptasksDone(numThreads), decomptasksDone(numThreads), numThreads(numThreads), stop(false), activeTasks(0) {
     
@@ -350,6 +358,7 @@ void ThreadPool::workerThread(int threadNo) {
     }
 }
 
+
 inline int64_t lzbench_compress_mt(ThreadPool& pool, lzbench_params_t *params, std::vector<size_t>& chunk_sizes, compress_func compress, std::vector<size_t> &compr_sizes, uint8_t *inbuf, uint8_t *outbuf, size_t outsize, codec_options_t *codec_options, std::vector<char*> &workmems)
 {
     int64_t clen;
@@ -371,7 +380,7 @@ inline int64_t lzbench_compress_mt(ThreadPool& pool, lzbench_params_t *params, s
         outbuf += outpart;
         outsize -= outpart;
 
-        LZBENCH_PRINT(9, "ENC part=%lu clen=%ld in=%lu out=%lu\n", (uint64_t)part, clen, (uint64_t)(inbuf-start), (uint64_t)sum);
+        LZBENCH_PRINT(9, "ENCMT part=%lu clen=%ld in=%lu out=%lu\n", (uint64_t)part, clen, (uint64_t)(inbuf-start), (uint64_t)sum);
     }
 
     pool.waitForCompletion();  // Wait for all compression tasks to finish
@@ -385,7 +394,7 @@ inline int64_t lzbench_compress_mt(ThreadPool& pool, lzbench_params_t *params, s
             return 0;
         }
         sum += clen;
-        LZBENCH_PRINT(9, "ENC part=%lu clen=%ld in=%lu out=%lu\n", (uint64_t)part, clen, (uint64_t)(inbuf-start), (uint64_t)sum);
+        LZBENCH_PRINT(9, "ENCMT part=%lu clen=%ld in=%lu out=%lu\n", (uint64_t)part, clen, (uint64_t)(inbuf-start), (uint64_t)sum);
     }
 
     return sum;
@@ -407,7 +416,7 @@ inline int64_t lzbench_decompress_mt(ThreadPool& pool, lzbench_params_t *params,
 
         inbuf += GET_COMPRESS_BOUND(dlen);
         outbuf += dlen;
-        LZBENCH_PRINT(9, "DEC part=%lu dlen=%ld out=%lu\n", (uint64_t)part, dlen, (uint64_t)(outbuf - outstart));
+        LZBENCH_PRINT(9, "DECMT part=%lu dlen=%ld out=%lu\n", (uint64_t)part, dlen, (uint64_t)(outbuf - outstart));
     }
 
     pool.waitForCompletion();  // Wait for all compression tasks to finish
@@ -420,7 +429,7 @@ inline int64_t lzbench_decompress_mt(ThreadPool& pool, lzbench_params_t *params,
             return dlen;
         }
         sum += dlen;
-        LZBENCH_PRINT(9, "DEC part=%lu dlen=%ld out=%lu\n", (uint64_t)part, dlen, (uint64_t)(outbuf - outstart));
+        LZBENCH_PRINT(9, "DECMT part=%lu dlen=%ld out=%lu\n", (uint64_t)part, dlen, (uint64_t)(outbuf - outstart));
     }
 
     return sum;
@@ -507,8 +516,9 @@ void lzbench_process_single_codec(lzbench_params_t *params, size_t max_chunk_siz
     std::vector<size_t> compr_sizes;
     bool comp_error = false, decomp_error = false;
     int param2 = desc->additional_param;
-    int numThreads = params->threads > 0 ? params->threads : 1;
-    size_t compThreadsUsed = (numThreads <= 1), decompThreadsUsed = (numThreads <= 1);
+    int numThreads = params->external_threads > 0 ? params->external_threads : 1;
+    params->internal_threads = params->internal_threads > 0 ? params->internal_threads : 1;
+    size_t compThreadsUsed = 0, decompThreadsUsed = 0;
     std::vector<char*> workmems(numThreads, nullptr);
 
     LZBENCH_PRINT(5, "*** trying %s insize=%lu comprsize=%lu chunk_size=%lu\n", desc->name, (uint64_t)insize, (uint64_t)comprsize, (uint64_t)max_chunk_size);
@@ -523,7 +533,7 @@ void lzbench_process_single_codec(lzbench_params_t *params, size_t max_chunk_siz
         }
     }
 
-    codec_options_t codec_options { param1, param2, workmems[0] };
+    codec_options_t codec_options { param1, param2, workmems[0], params->internal_threads };
     ThreadPool pool(numThreads, chunk_sizes.size());
 
     if (params->cspeed > 0)
@@ -1030,7 +1040,7 @@ int main( int argc, char** argv)
     params->cmintime = 10*DEFAULT_LOOP_TIME/1000000; // 1 sec
     params->dmintime = 20*DEFAULT_LOOP_TIME/1000000; // 2 sec
     params->cloop_time = params->dloop_time = DEFAULT_LOOP_TIME;
-    params->threads = 0;
+    params->external_threads = params->internal_threads = 0;
 
 
     while ((argc>1) && (argv[1][0]=='-')) {
@@ -1042,8 +1052,11 @@ int main( int argc, char** argv)
         while ((*numPtr >='0') && (*numPtr <='9')) { number *= 10;  number += *numPtr - '0'; numPtr++; }
         switch (argument[0])
         {
-        case 'T':
-            params->threads = number;
+        case 'I':
+            params->internal_threads = number;
+            break;
+        case 'E':
+            params->external_threads = number;
             break;
         case 'b':
             params->chunk_size = number << 10;
