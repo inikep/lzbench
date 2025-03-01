@@ -51,11 +51,11 @@ extern "C" {
 #include <sys/types.h>  /* stat, utime */
 #include <sys/stat.h>   /* stat */
 #if defined(_MSC_VER)
-	#include <sys/utime.h>   /* utime */
-	#include <io.h>          /* _chmod */
+    #include <sys/utime.h>  /* utime */
+    #include <io.h>         /* _chmod */
 #else
-	#include <unistd.h>     /* chown, stat */
-	#include <utime.h>      /* utime */
+    #include <unistd.h>     /* chown, stat */
+    #include <utime.h>      /* utime */
 #endif
 #include <time.h>       /* time */
 #include <errno.h>
@@ -116,22 +116,22 @@ extern "C" {
 *****************************************************************/
 #if  !defined (__VMS) && (defined (__cplusplus) || (defined (__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L) /* C99 */) )
 # include <stdint.h>
-  typedef  uint8_t BYTE;
-  typedef uint16_t U16;
-  typedef  int16_t S16;
-  typedef uint32_t U32;
-  typedef  int32_t S32;
-  typedef uint64_t U64;
-  typedef  int64_t S64;
+    typedef  uint8_t BYTE;
+    typedef uint16_t U16;
+    typedef  int16_t S16;
+    typedef uint32_t U32;
+    typedef  int32_t S32;
+    typedef uint64_t U64;
+    typedef  int64_t S64;
 #else
-  typedef unsigned char       BYTE;
-  typedef unsigned short      U16;
-  typedef   signed short      S16;
-  typedef unsigned int        U32;
-  typedef   signed int        S32;
-  typedef unsigned long long  U64;
-  typedef   signed long long  S64;
-#endif 
+    typedef unsigned char       BYTE;
+    typedef unsigned short      U16;
+    typedef   signed short      S16;
+    typedef unsigned int        U32;
+    typedef   signed int        S32;
+    typedef unsigned long long  U64;
+    typedef   signed long long  S64;
+#endif
 
 
 /*-****************************************
@@ -176,8 +176,8 @@ UTIL_STATIC void UTIL_waitForNextTick(UTIL_time_t ticksPerSecond)
 *  File functions
 ******************************************/
 #if defined(_MSC_VER)
-	#define chmod _chmod
-	typedef struct _stat64 stat_t;
+    #define chmod _chmod
+    typedef struct _stat64 stat_t;
 #else
     typedef struct stat stat_t;
 #endif
@@ -188,9 +188,9 @@ UTIL_STATIC int UTIL_setFileStat(const char *filename, stat_t *statbuf)
     int res = 0;
     struct utimbuf timebuf;
 
-	timebuf.actime = time(NULL);
-	timebuf.modtime = statbuf->st_mtime;
-	res += utime(filename, &timebuf);  /* set access and modification times */
+    timebuf.actime = time(NULL);
+    timebuf.modtime = statbuf->st_mtime;
+    res += utime(filename, &timebuf);  /* set access and modification times */
 
 #if !defined(_WIN32)
     res += chown(filename, statbuf->st_uid, statbuf->st_gid);  /* Copy ownership */

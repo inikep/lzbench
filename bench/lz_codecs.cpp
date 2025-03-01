@@ -165,82 +165,82 @@ int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, s
 int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
   std::string entropy;
-  std::string transform;
-  kanzi::uint szBlock;
+    std::string transform;
+    kanzi::uint szBlock;
 
-  switch (codec_options->level) {
-     case 0:
-         transform = "NONE";
-         entropy = "NONE";
-         szBlock = 4 * 1024 * 1024;
-         break;
-     case 1:
-         transform = "PACK+LZ";
-         entropy = "NONE";
-         szBlock = 4 * 1024 * 1024;
-         break;
-     case 2:
-         transform = "PACK+LZ";
-         entropy = "HUFFMAN";
-         szBlock = 4 * 1024 * 1024;
-         break;
-     case 3:
-         transform = "TEXT+UTF+PACK+MM+LZX";
-         entropy = "HUFFMAN";
-         szBlock = 4 * 1024 * 1024;
-         break;
-     case 4:
-         transform = "TEXT+UTF+EXE+PACK+MM+ROLZ";
-         entropy = "NONE";
-         szBlock = 4 * 1024 * 1024;
-         break;
-     case 5:
-         transform = "TEXT+UTF+BWT+RANK+ZRLT";
-         entropy = "ANS0";
-         szBlock = 4 * 1024 * 1024;
-         break;
-     case 6:
-         transform = "TEXT+UTF+BWT+SRT+ZRLT";
-         entropy = "FPAQ";
-         szBlock = 8 * 1024 * 1024;
-         break;
-     case 7:
-         transform = "LZP+TEXT+UTF+BWT+LZP";
-         entropy = "CM";
-         szBlock = 16 * 1024 * 1024;
-         break;
-     case 8:
-         transform = "EXE+RLT+TEXT+UTF";
-         entropy = "TPAQ";
-         szBlock = 16 * 1024 * 1024;
-         break;
-     case 9:
-         transform = "EXE+RLT+TEXT+UTF";
-         entropy = "TPAQX";
-         szBlock = 32 * 1024 * 1024;
-         break;
-     default:
-         return -1;
-  }
+    switch (codec_options->level) {
+    case 0:
+        transform = "NONE";
+        entropy = "NONE";
+        szBlock = 4 * 1024 * 1024;
+        break;
+    case 1:
+        transform = "PACK+LZ";
+        entropy = "NONE";
+        szBlock = 4 * 1024 * 1024;
+        break;
+    case 2:
+        transform = "PACK+LZ";
+        entropy = "HUFFMAN";
+        szBlock = 4 * 1024 * 1024;
+        break;
+    case 3:
+        transform = "TEXT+UTF+PACK+MM+LZX";
+        entropy = "HUFFMAN";
+        szBlock = 4 * 1024 * 1024;
+        break;
+    case 4:
+        transform = "TEXT+UTF+EXE+PACK+MM+ROLZ";
+        entropy = "NONE";
+        szBlock = 4 * 1024 * 1024;
+        break;
+    case 5:
+        transform = "TEXT+UTF+BWT+RANK+ZRLT";
+        entropy = "ANS0";
+        szBlock = 4 * 1024 * 1024;
+        break;
+    case 6:
+        transform = "TEXT+UTF+BWT+SRT+ZRLT";
+        entropy = "FPAQ";
+        szBlock = 8 * 1024 * 1024;
+        break;
+    case 7:
+        transform = "LZP+TEXT+UTF+BWT+LZP";
+        entropy = "CM";
+        szBlock = 16 * 1024 * 1024;
+        break;
+    case 8:
+        transform = "EXE+RLT+TEXT+UTF";
+        entropy = "TPAQ";
+        szBlock = 16 * 1024 * 1024;
+        break;
+    case 9:
+        transform = "EXE+RLT+TEXT+UTF";
+        entropy = "TPAQX";
+        szBlock = 32 * 1024 * 1024;
+        break;
+    default:
+        return -1;
+    }
 
-  ostreambuf<char> buf(outbuf, outsize);
-  std::iostream os(&buf);
-  int cores = 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
-  kanzi::CompressedOutputStream cos(os, entropy, transform, szBlock, false, std::min(cores, 64));
-  cos.write(inbuf, insize);
-  cos.close();
-  return cos.getWritten();
+    ostreambuf<char> buf(outbuf, outsize);
+    std::iostream os(&buf);
+    int cores = 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
+    kanzi::CompressedOutputStream cos(os, entropy, transform, szBlock, false, std::min(cores, 64));
+    cos.write(inbuf, insize);
+    cos.close();
+    return cos.getWritten();
 }
 
 int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-  istreambuf<char> buf(inbuf, insize);
-  std::iostream is(&buf);
-  int cores = 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
-  kanzi::CompressedInputStream cis(is, std::min(cores, 64));
-  cis.read(outbuf, outsize);
-  cis.close();
-  return outsize;//cis.getRead();
+    istreambuf<char> buf(inbuf, insize);
+    std::iostream is(&buf);
+    int cores = 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
+    kanzi::CompressedInputStream cis(is, std::min(cores, 64));
+    cis.read(outbuf, outsize);
+    cis.close();
+    return outsize;//cis.getRead();
 }
 #endif // BENCH_REMOVE_KANZI
 
@@ -477,7 +477,7 @@ int64_t lzbench_lzham_decompress(char *inbuf, size_t insize, char *outbuf, size_
     memset(&decomp_params, 0, sizeof(decomp_params));
     decomp_params.m_struct_size = sizeof(decomp_params);
     decomp_params.m_dict_size_log2 = dict_size_log?dict_size_log:26;
-    
+
     lzham_decompress_memory(&decomp_params, (uint8_t*)outbuf, &outsize, (const lzham_uint8 *)inbuf, insize, &comp_adler32);
     return outsize;
 }
@@ -507,8 +507,8 @@ int64_t lzbench_lzlib_compress(char *inbuf, size_t insize, char *outbuf, size_t 
     { 1 << 23,  36 },		/* -6 */
     { 1 << 24,  68 },		/* -7 */
     { 3 << 23, 132 },		/* -8 */
-    { 1 << 25, 273 } };		/* -9 */ 
-    
+    { 1 << 25, 273 } };		/* -9 */
+
   struct LZ_Encoder * encoder;
   const int match_len_limit = option_mapping[codec_options->level].match_len_limit;
   const unsigned long long member_size = 0x7FFFFFFFFFFFFFFFULL;	/* INT64_MAX */
@@ -518,8 +518,8 @@ int64_t lzbench_lzlib_compress(char *inbuf, size_t insize, char *outbuf, size_t 
   int dict_size = option_mapping[codec_options->level].dictionary_size;
   uint8_t *buf = (uint8_t*)inbuf;
   uint8_t *obuf = (uint8_t*)outbuf;
-  
-  
+
+
   if( dict_size > insize ) dict_size = insize;		/* saves memory */
   if( dict_size < LZ_min_dictionary_size() )
     dict_size = LZ_min_dictionary_size();
@@ -545,13 +545,13 @@ int64_t lzbench_lzlib_compress(char *inbuf, size_t insize, char *outbuf, size_t 
     new_pos += rd;
     if( LZ_compress_finished( encoder ) == 1 ) break;
     }
-    
+
   if( LZ_compress_close( encoder ) < 0 ) error = true;
   if (error) return 0;
 
   return new_pos;
 }
- 
+
 
 int64_t lzbench_lzlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
@@ -562,8 +562,8 @@ int64_t lzbench_lzlib_decompress(char *inbuf, size_t insize, char *outbuf, size_
   int written = 0;
   bool error = false;
   uint8_t *data = (uint8_t*)inbuf;
-  
-  
+
+
   if( !decoder || LZ_decompress_errno( decoder ) != LZ_ok )
     { LZ_decompress_close( decoder ); return 0; }
 
@@ -616,7 +616,7 @@ int64_t lzbench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t o
     int res;
     size_t headerSize = LZMA_PROPS_SIZE;
     SizeT out_len = outsize - LZMA_PROPS_SIZE;
-    
+
     LzmaEncProps_Init(&props);
     props.level = codec_options->level;
     props.numThreads = 1;
@@ -628,10 +628,10 @@ int64_t lzbench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t o
   p->lc = p->lp = p->pb = p->algo = p->fb = p->btMode = p->numHashBytes = p->numThreads = -1;
   p->writeEndMark = 0;
   */
-  
+
       res = LzmaEncode((uint8_t*)outbuf+LZMA_PROPS_SIZE, &out_len, (uint8_t*)inbuf, insize, &props, (uint8_t*)outbuf, &headerSize, 0/*int writeEndMark*/, NULL, &g_Alloc, &g_Alloc);
     if (res != SZ_OK) return 0;
-    
+
 //	printf("out_len=%u LZMA_PROPS_SIZE=%d headerSize=%d\n", (int)(out_len + LZMA_PROPS_SIZE), LZMA_PROPS_SIZE, (int)headerSize);
     return LZMA_PROPS_SIZE + out_len;
 }
@@ -647,7 +647,7 @@ int64_t lzbench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     res = LzmaDecode((uint8_t*)outbuf, &out_len, (uint8_t*)inbuf+LZMA_PROPS_SIZE, &src_len, (uint8_t*)inbuf, LZMA_PROPS_SIZE, LZMA_FINISH_END, &status, &g_Alloc);
     if (res != SZ_OK) return 0;
 
-//	printf("out_len=%u\n", (int)(out_len + LZMA_PROPS_SIZE));	
+//	printf("out_len=%u\n", (int)(out_len + LZMA_PROPS_SIZE));
     return out_len;
 }
 
@@ -689,7 +689,7 @@ int64_t lzbench_lzo1_compress(char *inbuf, size_t insize, char *outbuf, size_t o
         res = lzo1_99_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)codec_options->work_mem);
     else
         res = lzo1_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)codec_options->work_mem);
-    
+
     if (res != LZO_E_OK) return 0;
 
     return lzo_complen;
@@ -754,7 +754,7 @@ int64_t lzbench_lzo1b_compress(char *inbuf, size_t insize, char *outbuf, size_t 
         case 99: res = lzo1b_99_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem); break;
         case 999: res = lzo1b_999_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem); break;
     }
-    
+
     if (res != LZO_E_OK) return 0;
 
     return lzo_complen;
@@ -792,7 +792,7 @@ int64_t lzbench_lzo1c_compress(char *inbuf, size_t insize, char *outbuf, size_t 
         case 99: res = lzo1c_99_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem); break;
         case 999: res = lzo1c_999_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem); break;
     }
-    
+
     if (res != LZO_E_OK) return 0;
 
     return lzo_complen;
@@ -819,7 +819,7 @@ int64_t lzbench_lzo1f_compress(char *inbuf, size_t insize, char *outbuf, size_t 
         res = lzo1f_999_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
     else
         res = lzo1f_1_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
-    
+
     if (res != LZO_E_OK) return 0;
 
     return lzo_complen;
@@ -851,7 +851,7 @@ int64_t lzbench_lzo1x_compress(char *inbuf, size_t insize, char *outbuf, size_t 
         case 15: res = lzo1x_1_15_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem); break;
         case 999: res = lzo1x_999_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem); break;
     }
-    
+
     if (res != LZO_E_OK) return 0;
 
     return lzo_complen;
@@ -878,7 +878,7 @@ int64_t lzbench_lzo1y_compress(char *inbuf, size_t insize, char *outbuf, size_t 
         res = lzo1y_999_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
     else
         res = lzo1y_1_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
-    
+
     if (res != LZO_E_OK) return 0;
 
     return lzo_complen;
@@ -902,7 +902,7 @@ int64_t lzbench_lzo1z_compress(char *inbuf, size_t insize, char *outbuf, size_t 
         return 0;
 
     res = lzo1z_999_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
-    
+
     if (res != LZO_E_OK) return 0;
 
     return lzo_complen;
@@ -927,7 +927,7 @@ int64_t lzbench_lzo2a_compress(char *inbuf, size_t insize, char *outbuf, size_t 
         return 0;
 
     res = lzo2a_999_compress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, &lzo_complen, (void*)workmem);
-    
+
     if (res != LZO_E_OK) return 0;
 
     return lzo_complen;
@@ -1075,7 +1075,7 @@ int64_t lzbench_quicklz_compress(char *inbuf, size_t insize, char *outbuf, size_
     if (!state)
         return 0;
 
-    
+
     switch (codec_options->level)
     {
         default:
@@ -1084,7 +1084,7 @@ int64_t lzbench_quicklz_compress(char *inbuf, size_t insize, char *outbuf, size_
         case 3:	res = qlz_compress_3(inbuf, outbuf, insize, (qlz150_state_compress*)state); break;
         case 4:	res = qlz_compress(inbuf, outbuf, insize, (qlz_state_compress*)state); break;
     }
-    
+
     free(state);
     return res;
 }
@@ -1095,7 +1095,7 @@ int64_t lzbench_quicklz_decompress(char *inbuf, size_t insize, char *outbuf, siz
     qlz150_state_compress* dstate = (qlz150_state_compress*) calloc(1, std::max(qlz_get_setting_3(2),std::max(qlz_get_setting_1(2), qlz_get_setting_2(2))));
     if (!dstate)
         return 0;
-        
+
     switch (codec_options->level)
     {
         default:
@@ -1137,12 +1137,12 @@ int64_t lzbench_snappy_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 int64_t lzbench_tornado_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    return tor_compress(codec_options->level, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize); 
+    return tor_compress(codec_options->level, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
 }
 
 int64_t lzbench_tornado_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    return tor_decompress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize); 
+    return tor_decompress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
 }
 
 #endif
@@ -1223,7 +1223,7 @@ char* lzbench_xpack_init(size_t insize, size_t level, size_t)
     xpack_params_s* xpack_params = (xpack_params_s*) malloc(sizeof(xpack_params_s));
     if (!xpack_params) return NULL;
     xpack_params->xpackc = xpack_alloc_compressor(insize, level);
-    xpack_params->xpackd = xpack_alloc_decompressor(); 
+    xpack_params->xpackd = xpack_alloc_decompressor();
 
     return (char*) xpack_params;
 }
@@ -1275,7 +1275,7 @@ int64_t lzbench_zlib_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     uLongf zdecomplen = outsize;
-    int err = uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize); 
+    int err = uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize);
     if (err != Z_OK)
         return 0;
     return outsize;
@@ -1510,7 +1510,7 @@ int64_t lzbench_zling_decompress(char *inbuf, size_t insize, char *outbuf, size_
     baidu::zling::Decode(&inputter, &outputter);
 
     return outputter.GetOutputSize();
-} 
+}
 
 #endif
 
