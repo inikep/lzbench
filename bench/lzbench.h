@@ -148,10 +148,7 @@ typedef struct
 } alias_desc_t;
 
 
-
-#define LZBENCH_COMPRESSOR_COUNT 95
-
-static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
+static const compressor_desc_t comp_desc[] =
 {
      //                                       last_level,     max_block_size,
      // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func
@@ -252,11 +249,10 @@ static const compressor_desc_t comp_desc[LZBENCH_COMPRESSOR_COUNT] =
     { "zstd_fast",  "zstd 1.5.7 --fast",      -5,  -1,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
 };
 
+const long int LZBENCH_COMPRESSOR_COUNT = sizeof(comp_desc)/sizeof(comp_desc[0]);
 
 
-#define LZBENCH_ALIASES_COUNT 18
-
-static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
+static const alias_desc_t alias_desc[] =
 {
     { "FAST", "Refers to compressors capable of achieving compression speeds exceeding 100 MB/s (default alias).",
               "memcpy/fastlz/kanzi,1,2,3/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
@@ -297,5 +293,7 @@ static const alias_desc_t alias_desc[LZBENCH_ALIASES_COUNT] =
     { "lzo1x",    nullptr, "lzo1x,1,11,12,15,999" },
     { "lzo1y",    nullptr, "lzo1y,1,999" },
 };
+
+const long int LZBENCH_ALIASES_COUNT = sizeof(alias_desc)/sizeof(alias_desc[0]);
 
 #endif
