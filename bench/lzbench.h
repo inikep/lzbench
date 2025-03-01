@@ -113,7 +113,7 @@ enum timetype_e { FASTEST=1, AVERAGE, MEDIAN };
 
 typedef struct
 {
-    int show_speed, compress_only, threads;
+    int show_speed, compress_only, external_threads, internal_threads;
     timetype_e timetype;
     textformat_e textformat;
     size_t chunk_size;

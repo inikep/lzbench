@@ -78,7 +78,7 @@ void print_header(lzbench_params_t *params)
         case TURBOBENCH:
             printf("  Compressed  Ratio   Cspeed   Dspeed         Compressor name Filename\n"); break;
         case TEXT:
-            printf("Compressor name  C,D Threads Compress. Decompress. Compr. size  Ratio Filename\n"); break;
+            printf("Compressor name    C,D Threads  Compress. Decompress. Compr. size  Ratio Filename\n"); break;
         case TEXT_FULL:
             printf("Compressor name         Compress. Decompress.  Orig. size  Compr. size  Ratio Filename\n"); break;
         case MARKDOWN:
@@ -109,7 +109,14 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
         case TEXT:
         case TEXT_FULL:
             printf("%-23s", row.col1_algname.c_str());
-            printf("%2d,%2d", row.usedCompThreads, row.usedDecompThreads);
+            if (row.usedCompThreads && row.usedDecompThreads) {
+                printf("E=%2d,%2d ", row.usedCompThreads, row.usedDecompThreads);
+                if (params->internal_threads > 1)
+                    printf("I=%2d,%2d ", params->internal_threads, params->internal_threads);
+            } else {
+                printf("I=%2d,%2d ", params->internal_threads, params->internal_threads);
+            }
+
             if (cspeed) {
                 if (cspeed < 10) printf("%6.2f MB/s", cspeed);
                 else if (cspeed < 100) printf("%6.1f MB/s", cspeed);
@@ -499,8 +506,9 @@ void lzbench_single_codec(lzbench_params_t *params, std::vector<size_t> &file_si
     bool comp_error = false, decomp_error = false;
     int param2 = desc->additional_param;
     size_t chunk_size = (params->chunk_size > insize) ? insize : params->chunk_size;
-    int numThreads = params->threads > 0 ? params->threads : 1;
-    size_t compThreadsUsed = (numThreads <= 1), decompThreadsUsed = (numThreads <= 1);
+    int numThreads = params->external_threads > 0 ? params->external_threads : 1;
+    params->internal_threads = params->internal_threads > 0 ? params->internal_threads : 1;
+    size_t compThreadsUsed = 0, decompThreadsUsed = 0;
     std::vector<char*> workmems(numThreads, nullptr);
 
     LZBENCH_PRINT(5, "*** trying %s insize=%lu comprsize=%lu chunk_size=%lu\n", desc->name, (uint64_t)insize, (uint64_t)comprsize, (uint64_t)chunk_size);
@@ -527,7 +535,7 @@ void lzbench_single_codec(lzbench_params_t *params, std::vector<size_t> &file_si
 
     LZBENCH_PRINT(5, "%s chunk_sizes=%d\n", desc->name, (int)chunk_sizes.size());
 
-    codec_options_t codec_options { param1, param2, workmems[0] };
+    codec_options_t codec_options { param1, param2, workmems[0], params->internal_threads };
     ThreadPool pool(numThreads, chunk_sizes.size());
 
     if (params->cspeed > 0)
@@ -1007,7 +1015,7 @@ int main( int argc, char** argv)
     params->cmintime = 10*DEFAULT_LOOP_TIME/1000000; // 1 sec
     params->dmintime = 20*DEFAULT_LOOP_TIME/1000000; // 2 sec
     params->cloop_time = params->dloop_time = DEFAULT_LOOP_TIME;
-    params->threads = 0;
+    params->external_threads = params->internal_threads = 0;
 
 
     while ((argc>1) && (argv[1][0]=='-')) {
@@ -1019,8 +1027,11 @@ int main( int argc, char** argv)
         while ((*numPtr >='0') && (*numPtr <='9')) { number *= 10;  number += *numPtr - '0'; numPtr++; }
         switch (argument[0])
         {
-        case 'T':
-            params->threads = number;
+        case 'I':
+            params->internal_threads = number;
+            break;
+        case 'E':
+            params->external_threads = number;
             break;
         case 'b':
             params->chunk_size = number << 10;
