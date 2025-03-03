@@ -349,6 +349,7 @@ void lzbench_process_single_codec(lzbench_params_t *params, std::vector<size_t> 
     LZBENCH_PRINT(5, "*** trying %s insize=%lu comprsize=%lu chunk_size=%lu\n", desc->name, (uint64_t)insize, (uint64_t)comprsize, (uint64_t)chunk_size);
 
     if (desc->max_block_size != 0 && chunk_size > desc->max_block_size) chunk_size = desc->max_block_size;
+    params->chunk_size = chunk_size;
     if (!desc->compress || !desc->decompress) return;
     if (desc->init) workmem = desc->init(chunk_size, param1, param2);
 
