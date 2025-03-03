@@ -26,9 +26,9 @@ For example:
   lzbench -ezstd filename = selects all levels of zstd
   lzbench -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd
   lzbench -t3,5 fname = 3 sec compression and 5 sec decompression loops
-  lzbench -t0,0 -i3,5 -ezstd fname = 3 compression and 5 decompression iter.
-  lzbench -t0,0i3,5 -ezstd fname = the same as above with aggregated parameters
-  lzbench -ezlib -j -r www/ = test zlib on all files in directory, recursively
+  lzbench -t0,0 -i3,5 fname = 3 compression and 5 decompression iterations
+  lzbench -o1c4 fname = output markdown format and sort by 4th column
+  lzbench -ezlib -j -r dirname/ = test zlib on all files in directory, recursively
 ```
 
 For complete list of options refer to [manual](doc/lzbench.7.txt) in [doc](doc/) directory which contains more detailed documentation.

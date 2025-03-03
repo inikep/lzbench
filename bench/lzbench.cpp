@@ -733,23 +733,24 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
 
 void usage(lzbench_params_t* params)
 {
-    fprintf(stdout, "usage: " PROGNAME " [options] input [input2] [input3]\n\nwhere [input] is a file or a directory and [options] are:\n");
-    fprintf(stdout, "  -b#   set block/chunk size to # KB (default = MIN(filesize,%lu KB))\n", (uint64_t)(params->chunk_size>>10));
+    fprintf(stdout, "lzbench - in-memory benchmark of open-source compressors\n\n");
+    fprintf(stdout, "usage: " PROGNAME " [options] [input]\n\nwhere [input] is a file/s or a directory and [options] are:\n");
+    fprintf(stdout, "  -b#   set block/chunk size to # KB {default: filesize} (max 1.7GB)\n", (uint64_t)(params->chunk_size>>10));
     fprintf(stdout, "  -c#   sort results by column # (1=algname, 2=ctime, 3=dtime, 4=comprsize)\n");
-    fprintf(stdout, "  -e#   #=compressors separated by '/' with parameters specified after ',' (deflt=fast)\n");
+    fprintf(stdout, "  -e#   #=compressors separated by '/' with parameters specified after ',' {fast}\n");
     fprintf(stdout, "  -h    display this help and exit\n");
-    fprintf(stdout, "  -iX,Y set min. number of compression and decompression iterations (default = %d, %d)\n", params->c_iters, params->d_iters);
+    fprintf(stdout, "  -iX,Y set min. number of compression and decompression iterations {%d, %d}\n", params->c_iters, params->d_iters);
     fprintf(stdout, "  -j    join files in memory but compress them independently (for many small files)\n");
     fprintf(stdout, "  -l    list of available compressors and aliases\n");
     fprintf(stdout, "  -R    read block/chunk size from random blocks (to estimate for large files)\n");
-    fprintf(stdout, "  -m#   set memory limit to # MB (default = no limit)\n");
-    fprintf(stdout, "  -o#   output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV (default = %d)\n", params->textformat);
-    fprintf(stdout, "  -p#   print time for all iterations: 1=fastest 2=average 3=median (default = %d)\n", params->timetype);
+    fprintf(stdout, "  -m#   set memory limit to # MB {no limit}\n");
+    fprintf(stdout, "  -o#   output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV {%d}\n", params->textformat);
+    fprintf(stdout, "  -p#   print time for all iterations: 1=fastest 2=average 3=median {%d}\n", params->timetype);
 #ifdef UTIL_HAS_CREATEFILELIST
     fprintf(stdout, "  -r    operate recursively on directories\n");
 #endif
-    fprintf(stdout, "  -s#   use only compressors with compression speed over # MB (default = %d MB)\n", params->cspeed);
-    fprintf(stdout, "  -tX,Y set min. time in seconds for compression and decompression (default = %.0f, %.0f)\n", params->cmintime/1000.0, params->dmintime/1000.0);
+    fprintf(stdout, "  -s#   use only compressors with compression speed over # MB {%d MB}\n", params->cspeed);
+    fprintf(stdout, "  -tX,Y set min. time in seconds for compression and decompression {%.0f, %.0f}\n", params->cmintime/1000.0, params->dmintime/1000.0);
     fprintf(stdout, "  -v    disable progress information\n");
     fprintf(stdout, "  -V    output version information and exit\n");
     fprintf(stdout, "  -x    disable real-time process priority\n");
@@ -757,9 +758,10 @@ void usage(lzbench_params_t* params)
     fprintf(stdout, "\nExample usage:\n");
     fprintf(stdout, "  " PROGNAME " -ezstd filename = selects all levels of zstd\n");
     fprintf(stdout, "  " PROGNAME " -ebrotli,2,5/zstd filename = selects levels 2 & 5 of brotli and zstd\n");
-    fprintf(stdout, "  " PROGNAME " -t3,5 -elz4/zstd fname = 3 sec compression and 5 sec decompression loops\n");
-    fprintf(stdout, "  " PROGNAME " -t0,0 -i3,5 -ezstd fname = 3 compression and 5 decompression iter.\n");
-    fprintf(stdout, "  " PROGNAME " -j -r dirname = recursively select and join files in given directory\n");
+    fprintf(stdout, "  " PROGNAME " -t3,5 fname = 3 sec compression and 5 sec decompression loops\n");
+    fprintf(stdout, "  " PROGNAME " -t0,0 -i3,5 fname = 3 compression and 5 decompression iterations\n");
+    fprintf(stdout, "  " PROGNAME " -o1c4 fname = output markdown format and sort by 4th column\n");
+    fprintf(stdout, "  " PROGNAME " -j -r dirname/ = recursively select and join files in given directory\n");
 }
 
 void show_version()
