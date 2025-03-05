@@ -52,6 +52,10 @@ To order static or dynamic linking set `BUILD_STATIC` to 1, or 0 respectively:
 
 	make BUILD_STATIC=1
 
+To include debugging information:
+
+	make BUILD_TYPE=debug
+
 For 32-bit compilation:
 
 	make BUILD_ARCH=32-bit
