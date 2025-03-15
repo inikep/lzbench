@@ -20,10 +20,10 @@
 
 #define PROGNAME "lzbench"
 #define PROGVERSION "2.0.2"
-#define PAD_SIZE (16*1024)
+#define PAD_SIZE (1024)
 #define MIN_PAGE_SIZE 4096  // smallest page size we expect, if it's wrong the first algorithm might be a bit slower
 #define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second
-#define GET_COMPRESS_BOUND(insize) (insize + insize/6 + PAD_SIZE)  // for pithy
+#define GET_COMPRESS_BOUND(insize) (insize + insize/16 + PAD_SIZE)
 #define LZBENCH_PRINT(level, fmt, ...) if (params->verbose >= level) printf(fmt, __VA_ARGS__)
 #define LZBENCH_STDERR(level, fmt, ...) if (params->verbose >= level) { fprintf(stderr, fmt, __VA_ARGS__); fflush(stderr); }
 

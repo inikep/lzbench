@@ -290,7 +290,8 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
 
         if (clen <= 0)
         {
-            LZBENCH_PRINT(0, "ERROR: compression error %zu -> %ld/%zu (in_bytes=%lu out_bytes=%ld)\n", part, clen, outpart, (uint64_t)(inbuf+part-start), (int64_t)sum+clen);
+            LZBENCH_PRINT(9, "ERROR: part=%lu clen=%ld in=%lu out=%lu\n", (uint64_t)part, clen, (uint64_t)(inbuf-start), (uint64_t)sum);
+            LZBENCH_PRINT(0, "ERROR: compression error in=%zu out=%ld/%zu (in_bytes=%lu out_bytes=%ld)\n", part, clen, outpart, (uint64_t)(inbuf+part-start), (int64_t)sum+clen);
             return 0;
         }
 
@@ -563,7 +564,7 @@ void lzbench_process_mem_blocks(lzbench_params_t *params, std::vector<size_t> &f
     uint8_t *compbuf, *decomp;
     size_t comprsize;
 
-    comprsize = GET_COMPRESS_BOUND(insize);
+    comprsize = GET_COMPRESS_BOUND(insize) + file_sizes.size() * PAD_SIZE;
     compbuf = (uint8_t*)alloc_and_touch(comprsize, false);
     decomp = (uint8_t*)alloc_and_touch(insize + PAD_SIZE, true);
 
@@ -743,7 +744,7 @@ void usage(lzbench_params_t* params)
 {
     fprintf(stdout, "lzbench - in-memory benchmark of open-source compressors\n\n");
     fprintf(stdout, "usage: " PROGNAME " [options] [input]\n\nwhere [input] is a file/s or a directory and [options] are:\n");
-    fprintf(stdout, "  -b#   set block/chunk size to # KB {default: filesize} (max 1.7GB)\n", (uint64_t)(params->chunk_size>>10));
+    fprintf(stdout, "  -b#   set block/chunk size to # KB {default: filesize} (max %ld KB)\n", (uint64_t)(params->chunk_size>>10));
     fprintf(stdout, "  -c#   sort results by column # (1=algname, 2=ctime, 3=dtime, 4=comprsize)\n");
     fprintf(stdout, "  -e#   #=compressors separated by '/' with parameters specified after ',' {fast}\n");
     fprintf(stdout, "  -h    display this help and exit\n");

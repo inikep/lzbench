@@ -106,7 +106,7 @@ int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, si
 int64_t lzbench_bzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
    unsigned int a_outsize = outsize;
-   return BZ2_bzBuffToBuffCompress((char *)outbuf, &a_outsize, (char *)inbuf, (unsigned int)insize, codec_options->level, 0, 0)==BZ_OK?a_outsize:-1;
+   return BZ2_bzBuffToBuffCompress((char *)outbuf, &a_outsize, (char *)inbuf, (unsigned int)insize, codec_options->level, 0, 0)==BZ_OK ? (int64_t)a_outsize : -1;
 }
 
 int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
