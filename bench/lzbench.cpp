@@ -290,7 +290,7 @@ inline int64_t lzbench_compress(lzbench_params_t *params, std::vector<size_t>& c
 
         if (clen <= 0)
         {
-            LZBENCH_PRINT(0, "ERROR: compressed size is too big (in_bytes=%lu out_bytes=%ld)\n", (uint64_t)(inbuf+part-start), (int64_t)sum+clen);
+            LZBENCH_PRINT(0, "ERROR: compression error %zu -> %ld/%zu (in_bytes=%lu out_bytes=%ld)\n", part, clen, outpart, (uint64_t)(inbuf+part-start), (int64_t)sum+clen);
             return 0;
         }
 
@@ -315,6 +315,14 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>&
     for (int i=0; i<cscount; i++)
     {
         part = compr_sizes[i];
+
+#ifndef NDEBUG
+        if (params->verbose >= 10) {
+            FILE *f = fopen("last_to_decomp", "wb");
+            if (f) fwrite(inbuf, 1, part, f), fclose(f);
+        }
+#endif
+
         dlen = decompress((char*)inbuf, part, (char*)outbuf, chunk_sizes[i], codec_options);
 
         if (dlen <= 0) {
