@@ -380,7 +380,7 @@ inline int64_t lzbench_compress_mt(ThreadPool& pool, lzbench_params_t *params, s
         outbuf += outpart;
         outsize -= outpart;
 
-        LZBENCH_PRINT(9, "ENCMT part=%lu clen=%ld in=%lu out=%lu\n", (uint64_t)part, clen, (uint64_t)(inbuf-start), (uint64_t)sum);
+        LZBENCH_PRINT(9, "ENCMT part=%lu in=%lu/%zu\n", (uint64_t)part, (uint64_t)(inbuf-start), outpart);
     }
 
     pool.waitForCompletion();  // Wait for all compression tasks to finish
@@ -388,13 +388,15 @@ inline int64_t lzbench_compress_mt(ThreadPool& pool, lzbench_params_t *params, s
     for (int i=0; i<cscount; i++)
     {
         clen = compr_sizes[i] = pool.compSizes[i];
+
         if (clen <= 0)
         {
-            LZBENCH_PRINT(0, "ERROR: compressed size is too big (in_bytes=%lu out_bytes=%ld)\n", (uint64_t)(inbuf+part-start), (int64_t)sum+clen);
+            LZBENCH_PRINT(9, "ERROR: part=%lu clen=%ld in=%lu out=%lu\n", (uint64_t)part, clen, (uint64_t)(inbuf-start), (uint64_t)sum);
+            LZBENCH_PRINT(0, "ERROR: compression error in=%zu out=%ld/%zu (in_bytes=%lu out_bytes=%ld)\n", part, clen, GET_COMPRESS_BOUND(part), (uint64_t)(inbuf+part-start), (int64_t)sum+clen);
             return 0;
         }
         sum += clen;
-        LZBENCH_PRINT(9, "ENCMT part=%lu clen=%ld in=%lu out=%lu\n", (uint64_t)part, clen, (uint64_t)(inbuf-start), (uint64_t)sum);
+        LZBENCH_PRINT(9, "ENCMT part=%lu clen=%ld out=%lu\n", (uint64_t)chunk_sizes[i], clen, (uint64_t)sum);
     }
 
     return sum;
