@@ -132,7 +132,7 @@ typedef struct
     int first_level;
     int last_level;
     int additional_param;
-    int max_block_size;
+    int unused;
     compress_func compress;
     compress_func decompress;
     init_func init;
@@ -150,7 +150,7 @@ typedef struct
 
 static const compressor_desc_t comp_desc[] =
 {
-     //                                       last_level,     max_block_size,
+     //                                       last_level,       unused,
      // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func
     { "memcpy",     "memcpy",                  0,   0,    0,       0, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
     { "brieflz",    "brieflz 1.3.0",           1,   9,    0,       0, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },

@@ -3,7 +3,9 @@ v2.x.y
 - updated zstd to 1.5.7 (thanks to @tansy)
 - updated lzav 4.15 (thanks to @avaneev)
 - fixed: lzma 24.09 was using 2 threads for level 5 and higher (a bug introduced in v2.0)
-- removed: blosclz, shrinker, xpack, 
+- removed max_block_size parameter and blosclz, shrinker, xpack codecs
+- improvement: reorganization of lzbench directories
+- improvement: changed interface of compression and decompression functions (thanks to @tansy)
 
 v2.0.1 (Feb 11, 2025)
 - updated libbsc to v3.3.5 (thanks to @IlyaGrebnov)
