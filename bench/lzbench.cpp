@@ -553,18 +553,6 @@ void lzbench_process_mem_blocks(lzbench_params_t *params, std::vector<size_t> &f
     uint8_t *compbuf, *decomp;
     size_t comprsize;
     std::vector<size_t> chunk_sizes;
-
-    comprsize = GET_COMPRESS_BOUND(insize) + file_sizes.size() * PAD_SIZE;
-    compbuf = (uint8_t*)alloc_and_touch(comprsize, false);
-    decomp = (uint8_t*)alloc_and_touch(insize + PAD_SIZE, true);
-
-    if (!compbuf || !decomp)
-    {
-        printf("Not enough memory, please use -m option!\n");
-        g_exit_result=3;
-        return;
-    }
-
     size_t chunk_size = (params->chunk_size > insize) ? insize : params->chunk_size;
 
     for (int i=0; i<file_sizes.size(); i++) {
@@ -575,6 +563,19 @@ void lzbench_process_mem_blocks(lzbench_params_t *params, std::vector<size_t> &f
             tmpsize -= MIN(tmpsize, chunk_size);
         }
     }
+
+    comprsize = GET_COMPRESS_BOUND(insize) + chunk_sizes.size() * PAD_SIZE;
+    compbuf = (uint8_t*)alloc_and_touch(comprsize, false);
+    decomp = (uint8_t*)alloc_and_touch(insize + PAD_SIZE, true);
+
+    if (!compbuf || !decomp)
+    {
+        printf("Not enough memory, please use -m option!\n");
+        g_exit_result=3;
+        return;
+    }
+
+    LZBENCH_PRINT(5, "file_sizes=%d chunk_sizes=%d\n", (int)file_sizes.size(), (int)chunk_sizes.size());
 
     lzbench_process_codec_list(params, chunk_size, chunk_sizes, namesWithParams, inbuf, insize, compbuf, comprsize, decomp, rate);
 
