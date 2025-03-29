@@ -153,7 +153,6 @@ static const compressor_desc_t comp_desc[] =
      //                                       last_level,     max_block_size,
      // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func
     { "memcpy",     "memcpy",                  0,   0,    0,       0, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
-    { "blosclz",    "blosclz 2.5.1",           1,   9,    0, 64*1024, lzbench_blosclz_compress,    lzbench_blosclz_decompress,    NULL,                    NULL },
     { "brieflz",    "brieflz 1.3.0",           1,   9,    0,       0, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
     { "brotli",     "brotli 1.1.0",            0,  11,    0,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli22",   "brotli 1.1.0 -d22",       0,  11,   22,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
@@ -272,7 +271,7 @@ static const alias_desc_t alias_desc[] =
     { "SYMMETRIC","Includes compressors with similar compression and decompression speeds.",
                   "memcpy/bsc/bzip2/bzip3/ppmd8" },
     { "MISC",     "Covers miscellaneous compressors.",
-                  "memcpy/blosclz/crush/glza/lzjb/nakamichi/tamp/tornado/zling" },
+                  "memcpy/crush/glza/lzjb/nakamichi/tamp/tornado/zling" },
     { "BUGGY",    "Lists potentially unstable codecs that may cause segmentation faults.",
                   "memcpy/csc/density/gipfeli/lzmat/lzrw/pithy/wflz/yalz77/yappy" }, // these can SEGFAULT
     { "UCL",      "Refers to all UCL compressor variants.",

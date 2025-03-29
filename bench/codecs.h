@@ -26,16 +26,6 @@ typedef struct
 int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
 
 
-
-#ifndef BENCH_REMOVE_BLOSCLZ
-    int64_t lzbench_blosclz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-    int64_t lzbench_blosclz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-#else
-    #define lzbench_blosclz_compress NULL
-    #define lzbench_blosclz_decompress NULL
-#endif
-
-
 #ifndef BENCH_REMOVE_BRIEFLZ
     char* lzbench_brieflz_init(size_t insize, size_t level, size_t);
     void lzbench_brieflz_deinit(char* workmem);
@@ -48,6 +38,7 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
     #define lzbench_brieflz_decompress NULL
 #endif
 
+
 #ifndef BENCH_REMOVE_KANZI
     int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
@@ -55,6 +46,7 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
     #define lzbench_kanzi_compress NULL
     #define lzbench_kanzi_decompress NULL
 #endif // BENCH_REMOVE_KANZI
+
 
 #ifndef BENCH_REMOVE_BROTLI
     int64_t lzbench_brotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);

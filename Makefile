@@ -107,13 +107,6 @@ BUGGY_CODECS  = bench/buggy_codecs.o
 LZBENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) bench/lzbench.o  bench/symmetric_codecs.o bench/misc_codecs.o
 
 
-ifeq "$(DONT_BUILD_BLOSCLZ)" "1"
-	DEFINES += -DBENCH_REMOVE_BLOSCLZ
-else
-    MISC_FILES += lz/blosclz/blosc/blosclz.o lz/blosclz/blosc/fastcopy.o
-endif
-
-
 ifeq "$(DONT_BUILD_BRIEFLZ)" "1"
 	DEFINES += -DBENCH_REMOVE_BRIEFLZ
 else

@@ -26,23 +26,6 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
 
 
 
-#ifndef BENCH_REMOVE_BLOSCLZ
-#include "lz/blosclz/blosc/blosclz.h"
-
-int64_t lzbench_blosclz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    return blosclz_compress(codec_options->level, inbuf, insize, outbuf, outsize, 1);
-}
-
-int64_t lzbench_blosclz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    return blosclz_decompress(inbuf, insize, outbuf, outsize);
-}
-
-#endif // BENCH_REMOVE_BLOSCLZ
-
-
-
 #ifndef BENCH_REMOVE_BRIEFLZ
 #include "lz/brieflz/brieflz.h"
 

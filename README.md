@@ -52,7 +52,6 @@ For complete building instruction, with troubleshooting refer to [BUILD.md](BUIL
 Supported compressors
 -------------------------
 
- - [blosclz 2.5.1 (from c-blosc-1.21.6)](https://github.com/Blosc/c-blosc)
  - [brieflz 1.3.0](https://github.com/jibsen/brieflz)
  - [brotli 1.1.0](https://github.com/google/brotli)
  - [bsc 3.3.5](https://github.com/IlyaGrebnov/libbsc)
@@ -118,10 +117,6 @@ The results sorted by ratio are available [here](doc/lzbench20_sorted.md).
 | Compressor name         | Compression| Decompress.| Compr. size | Ratio |
 | ---------------         | -----------| -----------| ----------- | ----- |
 | memcpy                  | 16332 MB/s | 16362 MB/s |   211947520 |100.00 |
-| blosclz 2.5.1 -1        |  1287 MB/s |  3996 MB/s |   161171654 | 76.04 |
-| blosclz 2.5.1 -3        |   342 MB/s |  1374 MB/s |   112499167 | 53.08 |
-| blosclz 2.5.1 -6        |   342 MB/s |  1374 MB/s |   112499167 | 53.08 |
-| blosclz 2.5.1 -9        |   305 MB/s |  1280 MB/s |   106433690 | 50.22 |
 | brieflz 1.3.0 -1        |   199 MB/s |   354 MB/s |    81138803 | 38.28 |
 | brieflz 1.3.0 -3        |   132 MB/s |   364 MB/s |    75550736 | 35.65 |
 | brieflz 1.3.0 -6        |  21.0 MB/s |   395 MB/s |    67208420 | 31.71 |
