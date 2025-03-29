@@ -484,19 +484,6 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
 #endif
 
 
-#ifndef BENCH_REMOVE_XPACK
-    char* lzbench_xpack_init(size_t insize, size_t level, size_t);
-    void lzbench_xpack_deinit(char* workmem);
-    int64_t lzbench_xpack_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-    int64_t lzbench_xpack_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-#else
-    #define lzbench_xpack_init NULL
-    #define lzbench_xpack_deinit NULL
-    #define lzbench_xpack_compress NULL
-    #define lzbench_xpack_decompress NULL
-#endif
-
-
 #ifndef BENCH_REMOVE_XZ
 extern "C"
 {

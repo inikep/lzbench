@@ -1210,56 +1210,6 @@ int64_t lzbench_ucl_nrv2e_decompress(char *inbuf, size_t insize, char *outbuf, s
 
 
 
-#ifndef BENCH_REMOVE_XPACK
-#include "lz/xpack/lib/libxpack.h"
-
-typedef struct {
-    struct xpack_compressor *xpackc;
-    struct xpack_decompressor *xpackd;
-} xpack_params_s;
-
-char* lzbench_xpack_init(size_t insize, size_t level, size_t)
-{
-    xpack_params_s* xpack_params = (xpack_params_s*) malloc(sizeof(xpack_params_s));
-    if (!xpack_params) return NULL;
-    xpack_params->xpackc = xpack_alloc_compressor(insize, level);
-    xpack_params->xpackd = xpack_alloc_decompressor();
-
-    return (char*) xpack_params;
-}
-
-void lzbench_xpack_deinit(char* workmem)
-{
-    xpack_params_s* xpack_params = (xpack_params_s*) workmem;
-    if (!xpack_params) return;
-    if (xpack_params->xpackc) xpack_free_compressor(xpack_params->xpackc);
-    if (xpack_params->xpackd) xpack_free_decompressor(xpack_params->xpackd);
-    free(workmem);
-}
-
-int64_t lzbench_xpack_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    xpack_params_s* xpack_params = (xpack_params_s*) codec_options->work_mem;
-    if (!xpack_params || !xpack_params->xpackc) return 0;
-
-    return xpack_compress(xpack_params->xpackc, inbuf, insize, outbuf, outsize);
-}
-
-int64_t lzbench_xpack_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    xpack_params_s* xpack_params = (xpack_params_s*) codec_options->work_mem;
-    if (!xpack_params || !xpack_params->xpackd) return 0;
-
-    size_t res = xpack_decompress(xpack_params->xpackd, inbuf, insize, outbuf, outsize, NULL);
-    if (res != 0) return 0;
-
-    return outsize;
-}
-
-#endif
-
-
-
 #ifndef BENCH_REMOVE_ZLIB
 #include "zlib/zlib.h"
 

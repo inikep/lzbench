@@ -84,7 +84,6 @@ Supported compressors
  - [tamp 1.3.1](https://github.com/BrianPugh/tamp)
  - [tornado 0.6a](http://freearc.org)
  - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
- - [xpack 2016-06-02](https://github.com/ebiggers/xpack)
  - [xz 5.6.3](https://github.com/tukaani-project/xz)
  - [zlib 1.3.1](http://zlib.net)
  - [zlib-ng 2.2.3](https://github.com/zlib-ng/zlib-ng)
@@ -272,9 +271,6 @@ The results sorted by ratio are available [here](doc/lzbench20_sorted.md).
 | ucl_nrv2e 1.03 -1       |  49.0 MB/s |   297 MB/s |    81195560 | 38.31 |
 | ucl_nrv2e 1.03 -6       |  18.1 MB/s |   342 MB/s |    73302012 | 34.58 |
 | ucl_nrv2e 1.03 -9       |  2.06 MB/s |   372 MB/s |    69645134 | 32.86 |
-| xpack 2016-06-02 -1     |   159 MB/s |   746 MB/s |    71090065 | 33.54 |
-| xpack 2016-06-02 -6     |  44.6 MB/s |   905 MB/s |    62213845 | 29.35 |
-| xpack 2016-06-02 -9     |  16.2 MB/s |   929 MB/s |    61240928 | 28.89 |
 | xz 5.6.3 -0             |  23.6 MB/s |  98.2 MB/s |    62579435 | 29.53 |
 | xz 5.6.3 -3             |  7.52 MB/s |   122 MB/s |    55745125 | 26.30 |
 | xz 5.6.3 -6             |  2.97 MB/s |   127 MB/s |    49195929 | 23.21 |
