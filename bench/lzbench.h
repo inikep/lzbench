@@ -152,7 +152,7 @@ static const compressor_desc_t comp_desc[] =
 {
      //                                       last_level,     max_block_size,
      // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func
-    {  "memcpy",    "memcpy",                  0,   0,    0,       0, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
+    { "memcpy",     "memcpy",                  0,   0,    0,       0, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
     { "blosclz",    "blosclz 2.5.1",           1,   9,    0, 64*1024, lzbench_blosclz_compress,    lzbench_blosclz_decompress,    NULL,                    NULL },
     { "brieflz",    "brieflz 1.3.0",           1,   9,    0,       0, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
     { "brotli",     "brotli 1.1.0",            0,  11,    0,       0, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
