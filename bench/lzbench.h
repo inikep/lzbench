@@ -222,7 +222,6 @@ static const compressor_desc_t comp_desc[] =
     { "pithy",      "pithy 2011-12-24",        0,   9,    0,       0, lzbench_pithy_compress,      lzbench_pithy_decompress,      NULL,                    NULL }, // decompression error (returns 0)
     { "ppmd8",      "ppmd8 24.09",             1,   9,    0,       0, lzbench_ppmd_compress,       lzbench_ppmd_decompress,       NULL,                    NULL },
     { "quicklz",    "quicklz 1.5.0",           1,   3,    0,       0, lzbench_quicklz_compress,    lzbench_quicklz_decompress,    NULL,                    NULL },
-    { "shrinker",   "shrinker 0.1",            0,   0,    0, 128<<20, lzbench_shrinker_compress,   lzbench_shrinker_decompress,   NULL,                    NULL },
     { "slz_deflate","slz_deflate 1.2.1",       1,   3,    2,       0, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
     { "slz_gzip",   "slz_gzip 1.2.1",          1,   3,    1,       0, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
     { "slz_zlib",   "slz_zlib 1.2.1",          1,   3,    0,       0, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
@@ -276,7 +275,7 @@ static const alias_desc_t alias_desc[] =
     { "MISC",     "Covers miscellaneous compressors.",
                   "memcpy/blosclz/crush/glza/lzjb/nakamichi/tamp/tornado/zling" },
     { "BUGGY",    "Lists potentially unstable codecs that may cause segmentation faults.",
-                  "memcpy/csc/density/gipfeli/lzmat/lzrw/pithy/shrinker/wflz/yalz77/yappy" }, // these can SEGFAULT
+                  "memcpy/csc/density/gipfeli/lzmat/lzrw/pithy/wflz/yalz77/yappy" }, // these can SEGFAULT
     { "UCL",      "Refers to all UCL compressor variants.",
                   "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },
     { "LZO",      "Represents all LZO compressor variants.",

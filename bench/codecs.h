@@ -427,15 +427,6 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
 #endif
 
 
-#ifndef BENCH_REMOVE_SHRINKER
-    int64_t lzbench_shrinker_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-    int64_t lzbench_shrinker_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-#else
-    #define lzbench_shrinker_compress NULL
-    #define lzbench_shrinker_decompress NULL
-#endif
-
-
 #ifndef BENCH_REMOVE_SLZ
     int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);

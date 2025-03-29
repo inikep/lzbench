@@ -531,13 +531,6 @@ else
 endif
 
 
-ifeq "$(DONT_BUILD_SHRINKER)" "1"
-    DEFINES += -DBENCH_REMOVE_SHRINKER
-else
-    BUGGY_FILES += lz/shrinker/shrinker.o
-endif
-
-
 ifeq "$(DONT_BUILD_WFLZ)" "1"
     DEFINES += -DBENCH_REMOVE_WFLZ
 else

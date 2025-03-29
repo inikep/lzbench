@@ -291,23 +291,6 @@ int64_t lzbench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 
-#ifndef BENCH_REMOVE_SHRINKER
-#include "lz/shrinker/shrinker.h"
-
-int64_t lzbench_shrinker_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    return shrinker_compress(inbuf, outbuf, insize);
-}
-
-int64_t lzbench_shrinker_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    return shrinker_decompress(inbuf, outbuf, outsize);
-}
-
-#endif
-
-
-
 #ifndef BENCH_REMOVE_WFLZ
 #include "lz/wflz/wfLZ.h"
 
