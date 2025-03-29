@@ -341,7 +341,7 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, std::vector<size_t>&
 }
 
 
-void lzbench_process_single_codec(lzbench_params_t *params, std::vector<size_t> &file_sizes, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate, int param1)
+void lzbench_process_single_codec(lzbench_params_t *params, size_t max_chunk_size, std::vector<size_t> &chunk_sizes, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate, int param1)
 {
     float speed;
     int i, total_c_iters, total_d_iters;
@@ -349,22 +349,21 @@ void lzbench_process_single_codec(lzbench_params_t *params, std::vector<size_t> 
     int64_t complen=0, decomplen;
     uint64_t nanosec, total_nanosec;
     std::vector<uint64_t> ctime, dtime;
-    std::vector<size_t> compr_sizes, chunk_sizes;
+    std::vector<size_t> compr_sizes;
     bool comp_error = false, decomp_error = false;
     char* workmem = NULL;
     int param2 = desc->additional_param;
-    size_t chunk_size = (params->chunk_size > insize) ? insize : params->chunk_size;
 
-    LZBENCH_PRINT(5, "*** trying %s insize=%lu comprsize=%lu chunk_size=%lu\n", desc->name, (uint64_t)insize, (uint64_t)comprsize, (uint64_t)chunk_size);
+    LZBENCH_PRINT(5, "*** trying %s insize=%lu comprsize=%lu chunk_size=%lu\n", desc->name, (uint64_t)insize, (uint64_t)comprsize, (uint64_t)max_chunk_size);
 
     if (!desc->compress || !desc->decompress) return;
-    if (desc->init) workmem = desc->init(chunk_size, param1, param2);
+    if (desc->init) workmem = desc->init(max_chunk_size, param1, param2);
 
     codec_options_t codec_options { param1, param2, workmem };
 
     if (params->cspeed > 0)
     {
-        size_t part = MIN(100*1024, chunk_size);
+        size_t part = MIN(100*1024, max_chunk_size);
         GetTime(start_ticks);
         int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, GET_COMPRESS_BOUND(part), &codec_options);
         GetTime(end_ticks);
@@ -373,15 +372,6 @@ void lzbench_process_single_codec(lzbench_params_t *params, std::vector<size_t> 
         {
             part = (part / nanosec); // speed in MB/s
             if (part < params->cspeed) { LZBENCH_PRINT(7, "%s (100K) slower than %lu MB/s nanosec=%lu\n", desc->name, (uint64_t)part, (uint64_t)nanosec); goto done; }
-        }
-    }
-
-    for (int i=0; i<file_sizes.size(); i++) {
-        size_t tmpsize = file_sizes[i];
-        while (tmpsize > 0)
-        {
-            chunk_sizes.push_back(MIN(tmpsize, chunk_size));
-            tmpsize -= MIN(tmpsize, chunk_size);
         }
     }
 
@@ -466,12 +456,12 @@ void lzbench_process_single_codec(lzbench_params_t *params, std::vector<size_t> 
             {
                 char text[256];
                 snprintf(text, sizeof(text), "%s_failed", desc->name);
-                cmn /= chunk_size;
-                size_t err_size = MIN(insize, (cmn+1)*chunk_size);
-                err_size -= cmn*chunk_size;
-                printf("ERROR: fwrite %lu-%lu to %s\n", (uint64_t)(cmn*chunk_size), (uint64_t)(cmn*chunk_size+err_size), text);
+                cmn /= max_chunk_size;
+                size_t err_size = MIN(insize, (cmn+1)*max_chunk_size);
+                err_size -= cmn*max_chunk_size;
+                printf("ERROR: fwrite %lu-%lu to %s\n", (uint64_t)(cmn*max_chunk_size), (uint64_t)(cmn*max_chunk_size+err_size), text);
                 FILE *f = fopen(text, "wb");
-                if (f) fwrite(decomp+cmn*chunk_size, 1, err_size, f), fclose(f);
+                if (f) fwrite(decomp+cmn*max_chunk_size, 1, err_size, f), fclose(f);
                 exit(1);
             }
         }
@@ -499,7 +489,7 @@ done:
 }
 
 
-void lzbench_process_codec_list(lzbench_params_t *params, std::vector<size_t> &file_sizes, const char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
+void lzbench_process_codec_list(lzbench_params_t *params, size_t max_chunk_size, std::vector<size_t> &chunk_sizes, const char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
 {
     std::vector<std::string> cnames, cparams;
 
@@ -518,7 +508,7 @@ void lzbench_process_codec_list(lzbench_params_t *params, std::vector<size_t> &f
         {
             if (istrcmp(cnames[k].c_str(), alias_desc[i].name)==0)
             {
-                lzbench_process_codec_list(params, file_sizes, alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, rate);
+                lzbench_process_codec_list(params, max_chunk_size, chunk_sizes, alias_desc[i].params, inbuf, insize, compbuf, comprsize, decomp, rate);
                 goto next_k;
             }
         }
@@ -539,10 +529,10 @@ void lzbench_process_codec_list(lzbench_params_t *params, std::vector<size_t> &f
                         if (j >= cparams.size())
                         {
                             for (int level=comp_desc[i].first_level; level<=comp_desc[i].last_level; level++)
-                                lzbench_process_single_codec(params, file_sizes, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, rate, level);
+                                lzbench_process_single_codec(params, max_chunk_size, chunk_sizes, &comp_desc[i], level, inbuf, insize, compbuf, comprsize, decomp, rate, level);
                         }
                         else
-                            lzbench_process_single_codec(params, file_sizes, &comp_desc[i], atoi(cparams[j].c_str()), inbuf, insize, compbuf, comprsize, decomp, rate, atoi(cparams[j].c_str()));
+                            lzbench_process_single_codec(params, max_chunk_size, chunk_sizes, &comp_desc[i], atoi(cparams[j].c_str()), inbuf, insize, compbuf, comprsize, decomp, rate, atoi(cparams[j].c_str()));
                         break;
                     }
                 }
@@ -562,6 +552,7 @@ void lzbench_process_mem_blocks(lzbench_params_t *params, std::vector<size_t> &f
 {
     uint8_t *compbuf, *decomp;
     size_t comprsize;
+    std::vector<size_t> chunk_sizes;
 
     comprsize = GET_COMPRESS_BOUND(insize) + file_sizes.size() * PAD_SIZE;
     compbuf = (uint8_t*)alloc_and_touch(comprsize, false);
@@ -574,7 +565,18 @@ void lzbench_process_mem_blocks(lzbench_params_t *params, std::vector<size_t> &f
         return;
     }
 
-    lzbench_process_codec_list(params, file_sizes, namesWithParams, inbuf, insize, compbuf, comprsize, decomp, rate);
+    size_t chunk_size = (params->chunk_size > insize) ? insize : params->chunk_size;
+
+    for (int i=0; i<file_sizes.size(); i++) {
+        size_t tmpsize = file_sizes[i];
+        while (tmpsize > 0)
+        {
+            chunk_sizes.push_back(MIN(tmpsize, chunk_size));
+            tmpsize -= MIN(tmpsize, chunk_size);
+        }
+    }
+
+    lzbench_process_codec_list(params, chunk_size, chunk_sizes, namesWithParams, inbuf, insize, compbuf, comprsize, decomp, rate);
 
     free(compbuf);
     free(decomp);
