@@ -753,16 +753,17 @@ void usage(lzbench_params_t* params)
     fprintf(stdout, "  -iX,Y set min. number of compression and decompression iterations {%d, %d}\n", params->c_iters, params->d_iters);
     fprintf(stdout, "  -j    join files in memory but compress them independently (for many small files)\n");
     fprintf(stdout, "  -l    list of available compressors and aliases\n");
-    fprintf(stdout, "  -R    read block/chunk size from random blocks (to estimate for large files)\n");
     fprintf(stdout, "  -m#   set memory limit to # MB {no limit}\n");
     fprintf(stdout, "  -o#   output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV {%d}\n", params->textformat);
     fprintf(stdout, "  -p#   print time for all iterations: 1=fastest 2=average 3=median {%d}\n", params->timetype);
+    fprintf(stdout, "  -q    suppress progress information (-qq supresses more)\n");
+    fprintf(stdout, "  -R    read block/chunk size from random blocks (to estimate for large files)\n");
 #ifdef UTIL_HAS_CREATEFILELIST
     fprintf(stdout, "  -r    operate recursively on directories\n");
 #endif
     fprintf(stdout, "  -s#   use only compressors with compression speed over # MB {%d MB}\n", params->cspeed);
     fprintf(stdout, "  -tX,Y set min. time in seconds for compression and decompression {%.0f, %.0f}\n", params->cmintime/1000.0, params->dmintime/1000.0);
-    fprintf(stdout, "  -v    disable progress information\n");
+    fprintf(stdout, "  -v    be verbose (-vv gives more)\n");
     fprintf(stdout, "  -V    output version information and exit\n");
     fprintf(stdout, "  -x    disable real-time process priority\n");
     fprintf(stdout, "  -z    show (de)compression times instead of speed\n");
@@ -892,6 +893,9 @@ int main( int argc, char** argv)
         case 'p':
             params->timetype = (timetype_e)number;
             break;
+        case 'q':
+            if (params->verbose > 0) params->verbose--;
+            break;
 #ifdef UTIL_HAS_CREATEFILELIST
         case 'r':
             recursive = 1;
@@ -921,7 +925,10 @@ int main( int argc, char** argv)
             params->dloop_time = (params->dmintime)?DEFAULT_LOOP_TIME:0;
             break;
         case 'v':
-            params->verbose = number;
+            if (number > 0)
+                params->verbose = number;
+            else
+                params->verbose++;
             break;
         case 'x':
             real_time = 0;
