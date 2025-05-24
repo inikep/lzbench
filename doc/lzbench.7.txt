@@ -29,14 +29,16 @@ OPTIONS
           join files in memory but compress them independently (for many small files)
    -l
           list of available compressors and aliases
-   -R
-          read block/chunk size from random blocks (to estimate for large files)
    -m#
           set memory limit to # MB {no limit}
    -o#
           output text format 1=Markdown, 2=text, 3=text+origSize, 4=CSV {2}
    -p#
           print time for all iterations: 1=fastest 2=average 3=median {1}
+   -q
+          suppress progress information (-qq supresses more)
+   -R
+          read block/chunk size from random blocks (to estimate for large files)
    -r
           operate recursively on directories
    -s#
@@ -44,7 +46,7 @@ OPTIONS
    -tX,Y
           set min. time in seconds for compression and decompression {1, 2}
    -v
-          disable progress information
+          be verbose (-vv gives more)
    -V
           output version information and exit
    -x
