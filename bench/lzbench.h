@@ -91,6 +91,9 @@
 
 int g_exit_result = 0;
 
+typedef unsigned long long uint64;
+typedef long long          int64;
+
 typedef struct string_table
 {
     std::string col1_algname;
