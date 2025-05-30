@@ -786,6 +786,23 @@ void show_version()
             "There is NO WARRANTY, to the extent permitted by law.\n" );
 }
 
+#define xstr(s) str(s)
+#define str(s) #s
+
+static const char *get_compiler_information(void)
+{
+#if defined __clang__
+    return "Clang " xstr(__clang_major__) "." xstr(__clang_minor__) "." xstr(__clang_patchlevel__);
+#elif defined __GNUC__
+    //return "gcc " __VERSION__;
+    return "GCC " xstr(__GNUC__) "." xstr(__GNUC_MINOR__) "." xstr(__GNUC_PATCHLEVEL__);
+#elif defined _MSC_VER
+    return "MSVC " xstr(_MSC_VER);
+#else
+    return "unknown compiler";
+#endif
+}
+
 char* cpu_brand_string(void)
 {
     uint32_t mx[4], i, a, b, c, d;
@@ -826,6 +843,7 @@ int main( int argc, char** argv)
     unsigned ifnIdx = 0;
     bool join = false;
     char* cpu_brand = NULL;
+    const char* compiler_info = NULL;
 #ifdef UTIL_HAS_CREATEFILELIST
     const char** extendedFileList = NULL;
     char* fileNamesBuf = NULL;
@@ -981,7 +999,8 @@ int main( int argc, char** argv)
     }
 
     cpu_brand = cpu_brand_string();
-    LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " (%d-bit " PROGOS ")  %s\n\n", (uint32_t)(8 * sizeof(uint8_t*)), cpu_brand ? cpu_brand : "");
+    compiler_info = get_compiler_information();
+    LZBENCH_PRINT(2, PROGNAME " " PROGVERSION " | %s | %d-bit " PROGOS " | %s\n\n", compiler_info, (uint32_t)(8 * sizeof(uint8_t*)), cpu_brand ? cpu_brand : "");
     LZBENCH_PRINT(5, "params: chunk_size=%llu c_iters=%d d_iters=%d cspeed=%d cmintime=%d dmintime=%d encoder_list=%s\n", (uint64)params->chunk_size, params->c_iters, params->d_iters, params->cspeed, params->cmintime, params->dmintime, encoder_list);
 
     if (ifnIdx < 1)  { usage(params); goto _clean; }
