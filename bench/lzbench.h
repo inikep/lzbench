@@ -16,7 +16,6 @@
 #include <vector>
 #include <string>
 #include "codecs.h"
-#include "lz/lizard/lizard_compress.h"    // LIZARD_MAX_CLEVEL
 
 #define PROGNAME "lzbench"
 #define PROGVERSION "2.0.2"
@@ -184,7 +183,7 @@ static const compressor_desc_t comp_desc[] =
     { "glza",       "glza 0.8",                0,   0,    0,       0, lzbench_glza_compress,       lzbench_glza_decompress,       NULL,                    NULL },
     { "kanzi",      "kanzi 2.3",               1,   9,    0,       0, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
     { "libdeflate", "libdeflate 1.23",         1,  12,    0,       0, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
-    { "lizard",     "lizard 2.1",  LIZARD_MIN_CLEVEL, LIZARD_MAX_CLEVEL, 0, 0, lzbench_lizard_compress,      lzbench_lizard_decompress,        NULL,                    NULL },
+    { "lizard",     "lizard 2.1",             10,  49,    0,       0, lzbench_lizard_compress,      lzbench_lizard_decompress,        NULL,                    NULL },
     { "lz4",        "lz4 1.10.0",              0,   0,    0,       0, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
     { "lz4fast",    "lz4 1.10.0 --fast",       1,  99,    0,       0, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
     { "lz4hc",      "lz4hc 1.10.0",            1,  12,    0,       0, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },
