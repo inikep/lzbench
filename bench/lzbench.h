@@ -256,7 +256,7 @@ static const alias_desc_t alias_desc[] =
 {
     { "FAST", "Refers to compressors capable of achieving compression speeds exceeding 100 MB/s (default alias).",
               "memcpy/fastlz/kanzi,1,2,3/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
-              "lzsse4fast/lzsse8fast/lzvn/quicklz,1,2/snappy/zstd,1,2,3,4,5" }, // default alias
+              "lzsse4fast/lzsse8,1/lzvn/quicklz,1,2/snappy/zstd,1,2,3,4,5" }, // default alias
     { "ALL",  "Represents all major supported compressors.",
               "memcpy/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,5/" \
               "fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
@@ -276,7 +276,7 @@ static const alias_desc_t alias_desc[] =
     { "MISC",     "Covers miscellaneous compressors.",
                   "memcpy/crush/glza/lzjb/nakamichi/tamp/tornado/zling" },
     { "BUGGY",    "Lists potentially unstable codecs that may cause segmentation faults.",
-                  "memcpy/csc/density/gipfeli/lzmat/lzrw/pithy/wflz/yalz77/yappy" }, // these can SEGFAULT
+                  "memcpy/csc/density/gipfeli/lzmat/lzrw/lzsse8fast/pithy/wflz/yalz77/yappy" }, // these can SEGFAULT
     { "UCL",      "Refers to all UCL compressor variants.",
                   "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },
     { "LZO",      "Represents all LZO compressor variants.",
