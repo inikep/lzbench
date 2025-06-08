@@ -10,15 +10,14 @@
 #include "lzbench.h"
 #include "util.h"
 #include "cpuid1.h"
+#include "threadpool.h"
+
 #include <numeric>
 #include <algorithm> // sort
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include <chrono>
-#include <queue>
-#include <condition_variable>
 #include <thread> // this_thread::yield
 
 
@@ -278,80 +277,6 @@ void *alloc_and_touch(size_t size, bool must_zero) {
     return buf;
 }
 
-ThreadPool::ThreadPool(size_t numThreads, size_t numBlocks)
-    : chunkSizes(numBlocks), compSizes(numBlocks), comptasksDone(numThreads), decomptasksDone(numThreads), numThreads(numThreads), stop(false), activeTasks(0) {
-    
-    //printf("ThreadPool::ThreadPool numThreads=%zu numBlocks=%zu\n", numThreads, numBlocks);
-    for (size_t i = 0; i < numThreads; ++i) {
-        workers.emplace_back(&ThreadPool::workerThread, this, i);
-    }
-}
-
-ThreadPool::~ThreadPool() {
-    stop = true;
-    condition.notify_all();
-    for (std::thread &worker : workers) {
-        worker.join();
-    }
-}
-
-// Add a new task to the queue
-void ThreadPool::enqueue(CompressionTask task) {
-    {
-        std::unique_lock<std::mutex> lock(queueMutex);
-        tasks.push(task);
-    }
-    activeTasks++;
-    condition.notify_one();
-}
-
-// Wait for all tasks to finish
-void ThreadPool::waitForCompletion() {
-    while (activeTasks > 0) {
-        std::this_thread::yield();
-    }
-}
-
-void ThreadPool::clear() {
-    comptasksDone.assign(numThreads, 0);
-    decomptasksDone.assign(numThreads, 0);
-}
-
-// Worker thread function
-void ThreadPool::workerThread(int threadNo) {
-    codec_options_t workerCodecOptions;
-    while (true) {
-        CompressionTask task;
-        {
-            std::unique_lock<std::mutex> lock(queueMutex);
-            condition.wait(lock, [this] { return !tasks.empty() || stop; });
-
-            if (stop && tasks.empty()) return;
-
-            task = tasks.front();
-            tasks.pop();
-        }
-
-        if (task.isCompression) {
-            //printf("COMP1 chunkNo=%zu threadNo=%d compress=%zu -maxOutputSize=%zu\n", task.chunkNo, threadNo, task.inputSize, task.maxOutputSize);
-            memcpy(&workerCodecOptions, task.codec_options, sizeof(codec_options_t));
-            workerCodecOptions.work_mem = (*task.workmems)[threadNo];
-            compSizes[task.chunkNo] = task.codec_function((char*)task.input, task.inputSize, (char*)task.output, task.maxOutputSize, &workerCodecOptions);
-            comptasksDone[threadNo]++;
-            //printf("COMP2 chunkNo=%zu threadNo=%d compress=%zu -> %zu\n", task.chunkNo, threadNo, task.inputSize, compSizes[task.chunkNo]);
-
-        } else {
-            //printf("DECOMP1 chunkNo=%zu threadNo=%d decompress=%zu maxOutputSize=%zu\n", task.chunkNo, threadNo, task.inputSize, task.maxOutputSize);
-            memcpy(&workerCodecOptions, task.codec_options, sizeof(codec_options_t));
-            workerCodecOptions.work_mem = (*task.workmems)[threadNo];
-            chunkSizes[task.chunkNo] = task.codec_function((char*)task.input, task.inputSize, (char*)task.output, task.maxOutputSize, &workerCodecOptions);
-            decomptasksDone[threadNo]++;
-            //printf("DECOMP2 chunkNo=%zu threadNo=%d decompress=%zu -> %zu\n", task.chunkNo, threadNo, task.inputSize, chunkSizes[task.chunkNo]);
-        }
-
-        activeTasks--;
-    }
-}
 
 inline int64_t lzbench_compress_mt(ThreadPool& pool, lzbench_params_t *params, const std::vector<size_t>& chunk_sizes, compress_func compress, std::vector<size_t> &compr_sizes, uint8_t *inbuf, uint8_t *outbuf, size_t outsize, codec_options_t *codec_options, std::vector<char*> &workmems)
 {

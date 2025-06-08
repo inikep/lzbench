@@ -17,13 +17,7 @@
 #include <string>
 #include "codecs.h"
 #include "lz/lizard/lizard_compress.h"    // LIZARD_MAX_CLEVEL
-#include <atomic>
-#include <mutex>
-#include <condition_variable>
-#include <vector>
-#include <queue>
-#include <thread>
-#include <functional>
+
 
 #define PROGNAME "lzbench"
 #define PROGVERSION "2.0.2"
@@ -154,46 +148,6 @@ typedef struct
     const char* description;
     const char* params;
 } alias_desc_t;
-
-
-struct CompressionTask {
-    bool isCompression;
-    size_t chunkNo;
-    uint8_t* input;
-    size_t inputSize;
-    uint8_t* output;
-    size_t maxOutputSize;
-    compress_func codec_function;
-    const codec_options_t* codec_options;
-    std::vector<char*> *workmems;
-};
-
-
-class ThreadPool {
-public:
-    ThreadPool(size_t numThreads, size_t numBlocks);
-    ~ThreadPool();
-
-    void enqueue(CompressionTask task);
-    void waitForCompletion();
-    void clear();
-
-    std::vector<size_t> chunkSizes;  // Stores original chunk sizes
-    std::vector<size_t> compSizes;   // Stores compressed sizes
-    std::vector<size_t> comptasksDone;
-    std::vector<size_t> decomptasksDone;
-    size_t numThreads;
-
-private:
-    std::vector<std::thread> workers;
-    std::queue<CompressionTask> tasks;
-    std::mutex queueMutex;
-    std::condition_variable condition;
-    std::atomic<bool> stop;
-    std::atomic<size_t> activeTasks;
-
-    void workerThread(int threadNo);
-};
 
 
 static const compressor_desc_t comp_desc[] =
