@@ -38,6 +38,14 @@ jobs:
         SELECTED_CXX: clang++
 
       # clang-6 and newer compilers
+      clang-20 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
+        UBUNTU_CODE_NAME: jammy
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-20 main'
+        SELECTED_CC: clang-20
+        SELECTED_CXX: clang++-20
+        PACKAGES: 'clang-20 llvm-20-dev'
+
       clang-19 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
         UBUNTU_CODE_NAME: jammy
@@ -94,61 +102,16 @@ jobs:
         SELECTED_CXX: clang++-13
         PACKAGES: 'clang-13 llvm-13-dev'
 
-      clang-12 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
-        UBUNTU_CODE_NAME: focal
+      clang-12 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
+        UBUNTU_CODE_NAME: jammy
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-12 main'
         SELECTED_CC: clang-12
         SELECTED_CXX: clang++-12
         PACKAGES: 'clang-12 llvm-12-dev'
 
-      clang-11 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
-        UBUNTU_CODE_NAME: focal
-        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-11 main'
-        SELECTED_CC: clang-11
-        SELECTED_CXX: clang++-11
-        PACKAGES: 'clang-11 llvm-11-dev'
 
-      clang-10 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
-        UBUNTU_CODE_NAME: focal
-        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-10 main'
-        SELECTED_CC: clang-10
-        SELECTED_CXX: clang++-10
-        PACKAGES: 'clang-10 llvm-10-dev'
-
-      clang-9 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
-        UBUNTU_CODE_NAME: focal
-        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-9 main'
-        SELECTED_CC: clang-9
-        SELECTED_CXX: clang++-9
-        PACKAGES: 'clang-9 llvm-9-dev'
-
-      clang-8 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
-        UBUNTU_CODE_NAME: focal
-        SELECTED_CC: clang-8
-        SELECTED_CXX: clang++-8
-        PACKAGES: 'clang-8 llvm-8-dev'
-
-      clang-7 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
-        UBUNTU_CODE_NAME: focal
-        SELECTED_CC: clang-7
-        SELECTED_CXX: clang++-7
-        PACKAGES: 'clang-7 llvm-7-dev'
-
-      clang-6 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
-        UBUNTU_CODE_NAME: focal
-        SELECTED_CC: clang-6.0
-        SELECTED_CXX: clang++-6.0
-        PACKAGES: 'clang-6.0 llvm-6.0-dev'
-
-
-      # gcc-7 and newer compilers
+      # gcc-9 and newer compilers
       gcc-14 x86 64-bit [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-14
@@ -174,35 +137,23 @@ jobs:
         SELECTED_CXX: g++-12
         PACKAGES: 'g++-12'
 
-      gcc-11 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
+      gcc-11 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
         SELECTED_CC: gcc-11
         SELECTED_CXX: g++-11
         PACKAGES: 'g++-11'
 
-      gcc-10 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
+      gcc-10 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
         SELECTED_CC: gcc-10
         SELECTED_CXX: g++-10
         PACKAGES: 'g++-10'
 
-      gcc-9 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
+      gcc-9 [Ubuntu 22.04 Jammy]:
+        imageName: 'ubuntu-22.04'
         SELECTED_CC: gcc-9
         SELECTED_CXX: g++-9
         PACKAGES: 'g++-9'
-
-      gcc-8 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
-        SELECTED_CC: gcc-8
-        SELECTED_CXX: g++-8
-        PACKAGES: 'g++-8'
-
-      gcc-7 [Ubuntu 20.04 Focal]:
-        imageName: 'ubuntu-20.04'
-        SELECTED_CC: gcc-7
-        SELECTED_CXX: g++-7
-        PACKAGES: 'g++-7'
 
       gcc ARM 64-bit [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
