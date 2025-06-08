@@ -23,7 +23,7 @@
 #define PAD_SIZE (1024)
 #define MIN_PAGE_SIZE 4096  // smallest page size we expect, if it's wrong the first algorithm might be a bit slower
 #define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second
-#define GET_COMPRESS_BOUND(insize) (insize + insize/16 + PAD_SIZE)
+#define GET_COMPRESS_BOUND(insize) (insize + insize/8 + PAD_SIZE) // for brieflz and ucl_nrv2b with "-b64"
 #define LZBENCH_PRINT(level, fmt, ...) if (params->verbose >= level) printf(fmt, __VA_ARGS__)
 #define LZBENCH_STDERR(level, fmt, ...) if (params->verbose >= level) { fprintf(stderr, fmt, __VA_ARGS__); fflush(stderr); }
 
@@ -54,7 +54,6 @@
     #define InitTimer(rate) if (!QueryPerformanceFrequency(&rate)) { printf("QueryPerformance not present"); };
     #define GetTime(now) QueryPerformanceCounter(&now);
     #define GetDiffTime(rate, start_ticks, end_ticks) (1000000000ULL*(end_ticks.QuadPart - start_ticks.QuadPart)/rate.QuadPart)
-    void uni_sleep(UINT milisec) { Sleep(milisec); };
     #ifndef fseeko
         #ifdef _fseeki64
             #define fseeko _fseeki64
@@ -70,7 +69,6 @@
     #include <time.h>
     #include <unistd.h>
     #include <sys/resource.h>
-    void uni_sleep(uint32_t milisec) { usleep(milisec * 1000); };
 #if defined(__APPLE__) || defined(__MACH__)
     #include <mach/mach_time.h>
     typedef mach_timebase_info_data_t bench_rate_t;
@@ -88,8 +86,6 @@
     #define PROGOS "Linux"
 #endif
 #endif
-
-int g_exit_result = 0;
 
 typedef unsigned long long uint64;
 typedef long long          int64;

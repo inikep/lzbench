@@ -16,6 +16,10 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <thread> // this_thread::yield
+
+
+int g_exit_result = 0; // global variable
 
 
 int istrcmp(const char *str1, const char *str2)
@@ -383,7 +387,7 @@ void lzbench_process_single_codec(lzbench_params_t *params, size_t max_chunk_siz
     do
     {
         i = 0;
-        uni_sleep(1); // give processor to other processes
+        std::this_thread::yield(); // give processor to other processes
         GetTime(loop_ticks);
         do
         {
@@ -423,7 +427,7 @@ void lzbench_process_single_codec(lzbench_params_t *params, size_t max_chunk_siz
     do
     {
         i = 0;
-        uni_sleep(1); // give processor to other processes
+        std::this_thread::yield(); // give processor to other processes
         GetTime(loop_ticks);
         do
         {
@@ -683,6 +687,8 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
         real_insize = ftello(in);
         rewind(in);
 
+        if (i == 0) print_header(params);
+
         if (params->mem_limit && real_insize > params->mem_limit)
             insize = params->mem_limit;
         else
@@ -709,8 +715,6 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
         }
 
         insize = fread(inbuf, 1, insize, in);
-
-        if (i == 0) print_header(params);
 
         if (params->mem_limit && real_insize > params->mem_limit)
         {
