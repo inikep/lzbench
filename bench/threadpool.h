@@ -34,6 +34,7 @@ struct CompressionTask {
 
 class ThreadPool {
 public:
+    ThreadPool() {};
     ThreadPool(size_t numThreads, size_t numBlocks);
     ~ThreadPool();
 
@@ -57,5 +58,9 @@ private:
 
     void workerThread(int threadNo);
 };
+
+#ifdef DISABLE_THREADING
+ThreadPool::~ThreadPool() {};
+#endif // #ifndef DISABLE_THREADING
 
 #endif // #ifndef LZBENCH_THREADPOOL_H
