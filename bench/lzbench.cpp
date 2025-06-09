@@ -612,6 +612,7 @@ for (size_t i = 0; i < numThreads; ++i) {
         if (pool.comptasksDone[i] > 0) compThreadsUsed++;
         if (pool.decomptasksDone[i] > 0) decompThreadsUsed++;
     }
+    pool.clear();
 #endif // #ifndef DISABLE_THREADING
     print_stats(params, desc, level, ctime, dtime, insize, complen, comp_error, decomp_error, compThreadsUsed, decompThreadsUsed);
 
@@ -624,7 +625,7 @@ done:
 }
 
 
-void lzbench_process_codec_list(lzbench_params_t *params, size_t max_chunk_size, std::vector<size_t> &chunk_sizes, const char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
+int lzbench_process_codec_list(lzbench_params_t *params, size_t max_chunk_size, std::vector<size_t> &chunk_sizes, const char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
 {
     std::vector<std::string> cnames, cparams;
     int numThreads = params->threads > 0 ? params->threads : 1;
@@ -634,7 +635,7 @@ void lzbench_process_codec_list(lzbench_params_t *params, size_t max_chunk_size,
     ThreadPool pool;
 #endif // #ifndef DISABLE_THREADING
 
-    if (!namesWithParams) return;
+    if (!namesWithParams) return numThreads;
 
     LZBENCH_PRINT(5, "*** lzbench_process_codec_list insize=%zu comprsize=%zu\n", insize, comprsize);
 
@@ -686,6 +687,7 @@ next_k:
         continue;
     }
 
+    return numThreads;
 }
 
 
@@ -716,9 +718,11 @@ void lzbench_process_mem_blocks(lzbench_params_t *params, std::vector<size_t> &f
         return;
     }
 
-    LZBENCH_PRINT(5, "file_sizes=%d chunk_sizes=%d\n", (int)file_sizes.size(), (int)chunk_sizes.size());
+    LZBENCH_PRINT(5, "file_sizes=%zu chunk_sizes=%zu\n", file_sizes.size(), chunk_sizes.size());
 
-    lzbench_process_codec_list(params, chunk_size, chunk_sizes, namesWithParams, inbuf, insize, compbuf, comprsize, decomp, rate);
+    int numThreads = lzbench_process_codec_list(params, chunk_size, chunk_sizes, namesWithParams, inbuf, insize, compbuf, comprsize, decomp, rate);
+
+    LZBENCH_PRINT(2, "- Tested %zu file(s) in %zu chunks using %d threads\n", file_sizes.size(), chunk_sizes.size(), numThreads);
 
     free(compbuf);
     free(decomp);
