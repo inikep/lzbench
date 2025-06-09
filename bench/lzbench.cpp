@@ -80,7 +80,11 @@ void print_header(lzbench_params_t *params)
         case TURBOBENCH:
             printf("  Compressed  Ratio   Cspeed   Dspeed         Compressor name Filename\n"); break;
         case TEXT:
-            printf("Compressor name  C,D Threads Compress. Decompress. Compr. size  Ratio Filename\n"); break;
+            if (params->threads > 0)
+                printf("Compressor name  C,D Threads Compress. Decompress. Compr. size  Ratio Filename\n");
+            else
+                printf("Compressor name         Compress. Decompress. Compr. size  Ratio Filename\n"); break;
+            break;
         case TEXT_FULL:
             printf("Compressor name         Compress. Decompress.  Orig. size  Compr. size  Ratio Filename\n"); break;
         case MARKDOWN:
@@ -111,7 +115,8 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
         case TEXT:
         case TEXT_FULL:
             printf("%-23s", row.col1_algname.c_str());
-            printf("%2d,%2d", row.usedCompThreads, row.usedDecompThreads);
+            if (params->threads > 0)
+                printf("%2d,%2d", row.usedCompThreads, row.usedDecompThreads);
             if (cspeed) {
                 if (cspeed < 10) printf("%6.2f MB/s", cspeed);
                 else if (cspeed < 100) printf("%6.1f MB/s", cspeed);
