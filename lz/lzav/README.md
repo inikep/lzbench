@@ -111,12 +111,13 @@ header is included in unrelated, mixed C/C++, compilation units.
 The tables below present performance ballpark numbers of LZAV algorithm
 (based on Silesia dataset).
 
-While LZ4 there seems to be compressing faster, LZAV comparably provides 14.2%
+While LZ4 there seems to be compressing faster, LZAV comparably provides 14.8%
 memory storage cost savings. This is a significant benefit in database and
 file system use cases since compression is only about 35% slower while CPUs
-rarely run at their maximum capacity anyway, and disk I/O times are reduced
-due to a better compression. In general, LZAV holds a very strong position in
-this class of data compression algorithms, if one considers all factors:
+rarely run at their maximum capacity anyway (considering cached data writes
+are deferred in background threads), and disk I/O times are reduced due to a
+better compression. In general, LZAV holds a very strong position in this
+class of data compression algorithms, if one considers all factors:
 compression and decompression speeds, compression ratio, and not less
 important - code maintainability: LZAV is maximally portable and has a rather
 small independent codebase.
@@ -126,11 +127,12 @@ Depending on the data being compressed, LZAV can achieve 800 MB/s compression
 and 5000 MB/s decompression speeds. Incompressible data decompresses at 10000
 MB/s rate, which is not far from the "memcpy". There are cases like the
 [enwik9 dataset](https://mattmahoney.net/dc/textdata.html) where LZAV
-provides 21.2% higher memory storage savings compared to LZ4. However, on
+provides 21.7% higher memory storage savings compared to LZ4. However, on
 small data (below 50 KB), compression ratio difference between LZAV and LZ4
-diminishes, and LZ4 may have some advantage.
+diminishes, and LZ4 may have some advantage (due to smaller minimal
+back-reference length).
 
-LZAV algorithm's geomean performance on a variety of datasets is 530 +/- 150
+LZAV algorithm's geomean performance on a variety of datasets is 550 +/- 150
 MB/s compression and 3800 +/- 1300 MB/s decompression speeds, on 4+ GHz 64-bit
 processors released since 2019. Note that the algorithm exhibits adaptive
 qualities, and its actual performance depends on the data being compressed.
@@ -152,11 +154,11 @@ Silesia compression corpus
 
 |Compressor      |Compression    |Decompression  |Ratio %        |
 |----            |----           |----           |----           |
-|**LZAV 4.18**   |600 MB/s       |3810 MB/s      |40.83          |
+|**LZAV 4.22**   |618 MB/s       |3820 MB/s      |40.57          |
 |LZ4 1.9.4       |700 MB/s       |4570 MB/s      |47.60          |
 |Snappy 1.1.10   |495 MB/s       |3230 MB/s      |48.22          |
 |LZF 3.6         |395 MB/s       |800 MB/s       |48.15          |
-|**LZAV 4.18 HI**|129 MB/s       |3770 MB/s      |35.58          |
+|**LZAV 4.22 HI**|133 MB/s       |3830 MB/s      |35.30          |
 |LZ4HC 1.9.4 -9  |40 MB/s        |4360 MB/s      |36.75          |
 
 ### LLVM clang 18.1.8 x86-64, AlmaLinux 9.3, Xeon E-2386G (RocketLake), 5.1 GHz
@@ -165,11 +167,11 @@ Silesia compression corpus
 
 |Compressor      |Compression    |Decompression  |Ratio %        |
 |----            |----           |----           |----           |
-|**LZAV 4.18**   |590 MB/s       |3620 MB/s      |40.83          |
+|**LZAV 4.22**   |600 MB/s       |3550 MB/s      |40.57          |
 |LZ4 1.9.4       |848 MB/s       |4980 MB/s      |47.60          |
 |Snappy 1.1.10   |690 MB/s       |3360 MB/s      |48.22          |
 |LZF 3.6         |455 MB/s       |1000 MB/s      |48.15          |
-|**LZAV 4.18 HI**|112 MB/s       |3500 MB/s      |35.58          |
+|**LZAV 4.22 HI**|117 MB/s       |3530 MB/s      |35.30          |
 |LZ4HC 1.9.4 -9  |43 MB/s        |4920 MB/s      |36.75          |
 
 ### LLVM clang-cl 18.1.8 x86-64, Windows 10, Ryzen 3700X (Zen2), 4.2 GHz
@@ -178,11 +180,11 @@ Silesia compression corpus
 
 |Compressor      |Compression    |Decompression  |Ratio %        |
 |----            |----           |----           |----           |
-|**LZAV 4.18**   |502 MB/s       |3120 MB/s      |40.83          |
+|**LZAV 4.22**   |520 MB/s       |3060 MB/s      |40.57          |
 |LZ4 1.9.4       |675 MB/s       |4560 MB/s      |47.60          |
 |Snappy 1.1.10   |415 MB/s       |2440 MB/s      |48.22          |
 |LZF 3.6         |310 MB/s       |700 MB/s       |48.15          |
-|**LZAV 4.18 HI**|114 MB/s       |3040 MB/s      |35.58          |
+|**LZAV 4.22 HI**|116 MB/s       |3090 MB/s      |35.30          |
 |LZ4HC 1.9.4 -9  |36 MB/s        |4430 MB/s      |36.75          |
 
 P.S. Popular Zstd's benchmark was not included here, because it is not a pure
