@@ -543,14 +543,6 @@ extern "C"
 #endif
 
 
-#ifdef BENCH_HAS_NAKAMICHI
-    int64_t lzbench_nakamichi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-    int64_t lzbench_nakamichi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-#else
-    #define lzbench_nakamichi_compress NULL
-    #define lzbench_nakamichi_decompress NULL
-#endif
-
 #ifdef BENCH_HAS_CUDA
     char* lzbench_cuda_init(size_t insize, size_t, size_t);
     void lzbench_cuda_deinit(char* workmem);

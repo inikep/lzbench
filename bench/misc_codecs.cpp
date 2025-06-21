@@ -50,23 +50,6 @@ int64_t lzbench_lzjb_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 
-#ifdef BENCH_HAS_NAKAMICHI
-#include "misc/nakamichi/nakamichi.h"
-
-int64_t lzbench_nakamichi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    return NakaCompress(outbuf, inbuf, insize);
-}
-
-int64_t lzbench_nakamichi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    return NakaDecompress(outbuf, inbuf, insize);
-}
-
-#endif
-
-
-
 #ifndef BENCH_REMOVE_TAMP
 #include "lz/tamp/compressor.h"
 #include "lz/tamp/decompressor.h"
