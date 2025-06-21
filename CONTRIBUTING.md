@@ -3,7 +3,7 @@
 Thank you for considering contributing to lzbench! Please follow the guidelines below to ensure a smooth and efficient contribution process.
 
 ## 1. Passing Tests
-All contributions should pass (green tick) all Azure Pipeline tests for [lzbench pipeline](https://dev.azure.com/inikep/lzbench/_build?definitionId=15&_a=summary), which will be triggered automatically.
+All contributions should pass (green tick) all Azure Pipeline tests for [lzbench pipeline](https://dev.azure.com/inikep/lzbench/_build?definitionId=17&_a=summary), which will be triggered automatically.
 
 ## 2. Updating Existing Codecs
 When updating an existing codec, please follow these steps:
