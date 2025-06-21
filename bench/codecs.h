@@ -392,15 +392,6 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
 #endif
 
 
-#ifndef BENCH_REMOVE_PITHY
-    int64_t lzbench_pithy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-    int64_t lzbench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-#else
-    #define lzbench_pithy_compress NULL
-    #define lzbench_pithy_decompress NULL
-#endif
-
-
 #ifndef BENCH_REMOVE_PPMD
     int64_t lzbench_ppmd_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_ppmd_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t *codec_options);

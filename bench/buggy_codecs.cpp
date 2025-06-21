@@ -270,27 +270,6 @@ int64_t lzbench_lzrw_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 
-#ifndef BENCH_REMOVE_PITHY
-#include "lz/pithy/pithy.h"
-
-int64_t lzbench_pithy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    return pithy_Compress(inbuf, insize, outbuf, outsize, codec_options->level);
-}
-
-int64_t lzbench_pithy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    size_t res = pithy_Decompress(inbuf, insize, outbuf, outsize);
-    //printf("insize=%lld outsize=%lld res=%lld\n", insize, outsize, res);
-    if (res)
-        return outsize;
-    return 0;
-}
-
-#endif
-
-
-
 #ifndef BENCH_REMOVE_WFLZ
 #include "lz/wflz/wfLZ.h"
 

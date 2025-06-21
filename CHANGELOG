@@ -4,6 +4,7 @@ v2.x.y
 - updated lzav 4.15 (thanks to @avaneev)
 - fixed: lzma 24.09 was using 2 threads for level 5 and higher (a bug introduced in v2.0)
 - removed max_block_size parameter and blosclz, shrinker, xpack codecs
+- removed pithy
 - improvement: reorganization of lzbench directories
 - improvement: changed interface of compression and decompression functions (thanks to @tansy)
 

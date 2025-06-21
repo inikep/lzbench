@@ -510,13 +510,6 @@ else
 endif
 
 
-ifeq "$(DONT_BUILD_PITHY)" "1"
-    DEFINES += -DBENCH_REMOVE_PITHY
-else
-    BUGGY_CXX_FILES += lz/pithy/pithy.o
-endif
-
-
 ifeq "$(DONT_BUILD_WFLZ)" "1"
     DEFINES += -DBENCH_REMOVE_WFLZ
 else
