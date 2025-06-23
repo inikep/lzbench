@@ -43,6 +43,14 @@ OPTIONS
           operate recursively on directories
    -s#
           use only compressors with compression speed over # MB {0 MB}
+   -T#
+          use # threads (works with -b to split input into blocks)
+          The -T parameter enables multi-threaded compression using an external
+          thread pool implemented in lzbench. The input data is split into N blocks
+          (with block size specified by the -b option) and each block is compressed
+          independently using T threads. Since the blocks are processed independently,
+          this may slightly reduce the compression ratio. This option also significantly
+          increases memory usage, as each compressor instance is allocated T times.
    -tX,Y
           set min. time in seconds for compression and decompression {1, 2}
    -v

@@ -610,7 +610,7 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
 
 stats:
 #ifndef DISABLE_THREADING
-for (size_t i = 0; i < numThreads; ++i) {
+    for (size_t i = 0; i < numThreads; ++i) {
         //fprintf(stdout, "T%zu=%zu/%zu ", i, pool.comptasksDone[i], pool.decomptasksDone[i]);
         if (pool.comptasksDone[i] > 0) compThreadsUsed++;
         if (pool.decomptasksDone[i] > 0) decompThreadsUsed++;
@@ -911,6 +911,7 @@ void usage(lzbench_params_t* params)
     fprintf(stdout, "  -r    operate recursively on directories\n");
 #endif
     fprintf(stdout, "  -s#   use only compressors with compression speed over # MB {%d MB}\n", params->cspeed);
+    fprintf(stdout, "  -T#   use # threads (works with -b to split input into blocks)\n");
     fprintf(stdout, "  -tX,Y set min. time in seconds for compression and decompression {%.0f, %.0f}\n", params->cmintime/1000.0, params->dmintime/1000.0);
     fprintf(stdout, "  -v    be verbose (-vv gives more)\n");
     fprintf(stdout, "  -V    output version information and exit\n");
