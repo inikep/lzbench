@@ -262,6 +262,12 @@ static const alias_desc_t alias_desc[] =
               "lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/ppmd8,4/quicklz,1,2,3/" \
               "slz_gzip/snappy/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
               "zlib,1,6,9/zlib-ng,1,6,9/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22" },
+    { "POPULAR", "Includes commonly used compressors.",
+              "memcpy/brotli,0,2,5,8,11/bzip2,1,5,9/bzip3,5/kanzi,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
+              "lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzlib,0,3,6,9/lzma,0,2,4,6,9/ppmd8,4/snappy/" \
+              "xz,1,3,5,7,9/zlib,1,6,9/zlib-ng,1,6,9/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22" },
+    { "MAINSTREAM", "Represents mainstream compressors.",
+              "memcpy/lz4fast,17,9,5/lz4/lz4hc,1,3,9/zstd_fast,-5,-3,-1/zstd,1,3,7,12,17,22/zlib,1,6,9/lzma,0,4,9/bzip2,1,9/ppmd8,4" },
     { "OPT",  "Includes compressors that use optimal parsing (slow compression, fast decompression).",
               "memcpy/brotli,6,7,8,9,10,11/fastlzma2,1,2,3,4,5,6,7,8,9,10/kanzi,5,6,7,8,9/lzham,0,1,2,3,4/" \
               "lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
