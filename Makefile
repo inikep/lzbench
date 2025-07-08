@@ -47,6 +47,7 @@ endif
 ifneq (,$(filter Windows%,$(OS)))
 	ifeq ($(COMPILER),clang)
 		DONT_BUILD_GLZA ?= 1
+		DONT_BUILD_ZPAQ ?= 1
 	endif
 	BUILD_STATIC ?= 1
 	ifeq ($(BUILD_STATIC),1)
@@ -465,6 +466,11 @@ else
 	MISC_FILES += lz/tamp/common.o lz/tamp/compressor.o lz/tamp/decompressor.o
 endif
 
+ifeq "$(DONT_BUILD_ZPAQ)" "1"
+    DEFINES += -DBENCH_REMOVE_ZPAQ
+else
+    MISC_FILES += misc/zpaq/libzpaq.o
+endif 
 
 
 # Buggy codecs
@@ -646,6 +652,10 @@ $(ZLIB_FILES): %.o : %.c
 $(ZLIB_NG_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Ilz/zlib-ng $< -c -o $@
+
+$(ZPAQ_FILES): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) -I misc/zpaq $< -c -o $@
 
 
 

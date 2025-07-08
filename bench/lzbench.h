@@ -236,6 +236,8 @@ static const compressor_desc_t comp_desc[] =
     { "zlib",       "zlib 1.3.1",              1,   9,    0,       0, lzbench_zlib_compress,       lzbench_zlib_decompress,       NULL,                    NULL },
     { "zlib-ng",    "zlib-ng 2.2.3",           1,   9,    0,       0, lzbench_zlib_ng_compress,    lzbench_zlib_ng_decompress,    NULL,                    NULL },
     { "zling",      "zling 2018-10-12",        0,   4,    0,       0, lzbench_zling_compress,      lzbench_zling_decompress,      NULL,                    NULL },
+    { "zpaq",       "zpaq 7.15",               1,   5,    0,       0, lzbench_zpaq_compress,       lzbench_zpaq_decompress,       NULL,                    NULL },
+    { "zstd_fast",  "zstd 1.5.7 --fast",      -5,   5,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
     { "zstd",       "zstd 1.5.7",              1,  22,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
     { "zstd22",     "zstd 1.5.7 -d22",        16,  22,   22,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
     { "zstd22LDM",  "zstd 1.5.7 --long -d22", 16,  22,   22,       0, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
@@ -276,7 +278,7 @@ static const alias_desc_t alias_desc[] =
     { "SYMMETRIC","Includes compressors with similar compression and decompression speeds.",
                   "memcpy/bsc/bzip2/bzip3/ppmd8" },
     { "MISC",     "Covers miscellaneous compressors.",
-                  "memcpy/crush/lzjb/tamp/tornado/zling" },
+                  "memcpy/crush/lzjb/tamp/tornado/zling/zpaq" },
     { "BUGGY",    "Lists potentially unstable codecs that may cause segmentation faults.",
                   "memcpy/csc/density/gipfeli/lzmat/lzrw/lzsse8fast/wflz/yalz77/yappy" }, // these can SEGFAULT
     { "UCL",      "Refers to all UCL compressor variants.",
