@@ -65,7 +65,11 @@ else
 	ifeq ($(detected_OS), Darwin)
 		DONT_BUILD_LZHAM ?= 1
 		DONT_BUILD_CSC ?= 1
-	endif
+	    DEFINES += -Dunix
+    endif
+    ifeq ($(detected_OS), Linux)
+        DEFINES += -Dunix
+    endif
 
 	LDFLAGS	+= -pthread
 
@@ -466,14 +470,20 @@ else
 endif
 
 
+ifeq "$(DONT_BUILD_ZPAQ)" "1"
+    DEFINES += -DBENCH_REMOVE_ZPAQ
+else
+    MISC_FILES += misc/zpaq/libzpaq.o
+endif
+
 
 # Buggy codecs
 ifeq "$(DONT_BUILD_CSC)" "1"
     DEFINES += -DBENCH_REMOVE_CSC
 else
-	CSC_FILES += lz/libcsc/csc_analyzer.o lz/libcsc/csc_coder.o lz/libcsc/csc_dec.o lz/libcsc/csc_enc.o
+    CSC_FILES += lz/libcsc/csc_analyzer.o lz/libcsc/csc_coder.o lz/libcsc/csc_dec.o lz/libcsc/csc_enc.o
     CSC_FILES += lz/libcsc/csc_encoder_main.o lz/libcsc/csc_filters.o lz/libcsc/csc_lz.o lz/libcsc/csc_memio.o
-	CSC_FILES += lz/libcsc/csc_mf.o lz/libcsc/csc_model.o lz/libcsc/csc_profiler.o lz/libcsc/csc_default_alloc.o
+    CSC_FILES += lz/libcsc/csc_mf.o lz/libcsc/csc_model.o lz/libcsc/csc_profiler.o lz/libcsc/csc_default_alloc.o
 endif
 
 
@@ -646,6 +656,10 @@ $(ZLIB_FILES): %.o : %.c
 $(ZLIB_NG_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Ilz/zlib-ng $< -c -o $@
+
+$(ZPAQ_FILES): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) -I misc/zpaq $< -c -o $@
 
 
 
