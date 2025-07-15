@@ -47,7 +47,6 @@ endif
 ifneq (,$(filter Windows%,$(OS)))
 	ifeq ($(COMPILER),clang)
 		DONT_BUILD_GLZA ?= 1
-		DONT_BUILD_ZPAQ ?= 1
 	endif
 	BUILD_STATIC ?= 1
 	ifeq ($(BUILD_STATIC),1)
@@ -66,7 +65,11 @@ else
 	ifeq ($(detected_OS), Darwin)
 		DONT_BUILD_LZHAM ?= 1
 		DONT_BUILD_CSC ?= 1
-	endif
+	    DEFINES += -Dunix
+    endif
+    ifeq ($(detected_OS), Linux)
+        DEFINES += -Dunix
+    endif
 
 	LDFLAGS	+= -pthread
 
