@@ -525,6 +525,14 @@ extern "C"
     #define lzbench_zling_decompress NULL
 #endif
 
+#ifndef BENCH_REMOVE_ZPAQ
+    int64_t lzbench_zpaq_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_zpaq_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_zpaq_compress NULL
+    #define lzbench_zpaq_decompress NULL
+#endif
+
 
 #ifndef BENCH_REMOVE_ZSTD
     char* lzbench_zstd_init(size_t insize, size_t level, size_t);
