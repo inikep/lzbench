@@ -1,4 +1,4 @@
-v2.1
+v2.1 (Jul 17, 2025)
 - Added the -T parameter, which enables multi-threaded compression using an external thread
   pool implemented in lzbench. The input data is split into N blocks (with block size specified
   by the -b option) and each block is compressed independently using T threads. Since the blocks
