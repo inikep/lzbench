@@ -80,7 +80,7 @@ void print_header(lzbench_params_t *params)
         case TURBOBENCH:
             printf("  Compressed  Ratio   Cspeed   Dspeed         Compressor name Filename\n"); break;
         case TEXT:
-            if (params->threads > 0)
+            if (params->cthreads > 0)
                 printf("Compressor name  C,D Threads Compress. Decompress. Compr. size  Ratio Filename\n");
             else
                 printf("Compressor name         Compress. Decompress. Compr. size  Ratio Filename\n"); break;
@@ -115,7 +115,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
         case TEXT:
         case TEXT_FULL:
             printf("%-23s", row.col1_algname.c_str());
-            if (params->threads > 0)
+            if (params->cthreads > 0)
                 printf("%2d,%2d", row.usedCompThreads, row.usedDecompThreads);
             if (cspeed) {
                 if (cspeed < 10) printf("%6.2f MB/s", cspeed);
@@ -631,7 +631,7 @@ done:
 int lzbench_process_codec_list(lzbench_params_t *params, size_t max_chunk_size, std::vector<size_t> &chunk_sizes, const char *namesWithParams, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate)
 {
     std::vector<std::string> cnames, cparams;
-    int numThreads = params->threads > 0 ? params->threads : 1;
+    int numThreads = params->cthreads > 0 ? params->cthreads : 1;
 #ifndef DISABLE_THREADING
     ThreadPool pool(numThreads, chunk_sizes.size());
 #else
@@ -1016,7 +1016,7 @@ int main( int argc, char** argv)
     params->cmintime = 10*DEFAULT_LOOP_TIME/1000000; // 1 sec
     params->dmintime = 20*DEFAULT_LOOP_TIME/1000000; // 2 sec
     params->cloop_time = params->dloop_time = DEFAULT_LOOP_TIME;
-    params->threads = 0;
+    params->cthreads = params->dthreads = 0;
 
 
     while ((argc>1) && (argv[1][0]=='-')) {
@@ -1091,7 +1091,14 @@ int main( int argc, char** argv)
             break;
 #ifndef DISABLE_THREADING
             case 'T':
-            params->threads = number;
+            params->cthreads = number;
+            if (*numPtr == ',')
+            {
+                numPtr++;
+                number = 0;
+                while ((*numPtr >='0') && (*numPtr <='9')) { number *= 10;  number += *numPtr - '0'; numPtr++; }
+                params->dthreads = number;
+            }
             break;
 #endif // #ifndef DISABLE_THREADING
         case 'u':
