@@ -59,8 +59,4 @@ private:
     void workerThread(int threadNo);
 };
 
-#ifdef DISABLE_THREADING
-ThreadPool::~ThreadPool() {};
-#endif // #ifndef DISABLE_THREADING
-
 #endif // #ifndef LZBENCH_THREADPOOL_H

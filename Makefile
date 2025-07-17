@@ -104,13 +104,7 @@ endif
 
 LZ_CODECS     = bench/lz_codecs.o
 BUGGY_CODECS  = bench/buggy_codecs.o
-LZBENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) bench/lzbench.o bench/symmetric_codecs.o bench/misc_codecs.o
-
-ifneq "$(DISABLE_THREADING)" "1"
-    LZBENCH_FILES += bench/threadpool.o
-else
-    DEFINES += -DDISABLE_THREADING
-endif
+LZBENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) bench/lzbench.o bench/symmetric_codecs.o bench/misc_codecs.o bench/threadpool.o
 
 
 ifeq "$(DONT_BUILD_BRIEFLZ)" "1"
