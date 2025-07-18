@@ -861,6 +861,13 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
 
         insize = fread(inbuf, 1, insize, in);
 
+        size_t sv_chunk_size = params->chunk_size;
+        if (params->threads > 1)
+        {
+            size_t chunk_size = (size_t)(insize + params->threads - 1) / params->threads;
+            if (chunk_size < params->chunk_size)
+                params->chunk_size = chunk_size;
+        }
         if (params->mem_limit && real_insize > params->mem_limit)
         {
             int i;
@@ -882,6 +889,7 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
             lzbench_process_mem_blocks(params, file_sizes, encoder_list?encoder_list:alias_desc[0].params, inbuf, insize, rate);
             file_sizes.clear();
         }
+        params->chunk_size = sv_chunk_size;
 
         fclose(in);
         free(inbuf);
