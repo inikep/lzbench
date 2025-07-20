@@ -140,13 +140,8 @@ int bsc_coder_compress_serial(const unsigned char * input, unsigned char * outpu
             result = inputSize; memcpy(output + outputPtr, input + inputStart, inputSize);
         }
 
-#if defined(LIBBSC_ALLOW_UNALIGNED_ACCESS)
-        *(int *)(output + 1 + 8 * blockId + 0) = inputSize;
-        *(int *)(output + 1 + 8 * blockId + 4) = result;
-#else
         memcpy(output + 1 + 8 * blockId + 0, &inputSize, sizeof(int));
         memcpy(output + 1 + 8 * blockId + 4, &result, sizeof(int));
-#endif
 
         outputPtr += result;
     }
@@ -193,8 +188,8 @@ int bsc_coder_compress_parallel(const unsigned char * input, unsigned char * out
                     compressionResult[blockId] = bsc_coder_encode_block(input + blockStart, buffer + blockStart, blockSize, blockSize, coder);
                     if (compressionResult[blockId] < LIBBSC_NO_ERROR) compressionResult[blockId] = blockSize;
 
-                    *(int *)(output + 1 + 8 * blockId + 0) = blockSize;
-                    *(int *)(output + 1 + 8 * blockId + 4) = compressionResult[blockId];
+                    memcpy(output + 1 + 8 * blockId + 0, &blockSize, sizeof(int));
+                    memcpy(output + 1 + 8 * blockId + 4, &compressionResult[blockId], sizeof(int));
                 }
 
                 #pragma omp single
@@ -292,13 +287,21 @@ int bsc_coder_decompress(const unsigned char * input, unsigned char * output, in
         #pragma omp parallel for schedule(dynamic)
         for (int blockId = 0; blockId < nBlocks; ++blockId)
         {
-            int inputPtr  = 0; for (int p = 0; p < blockId; ++p) inputPtr  += *(int *)(input + 1 + 8 * p + 4);
-            int outputPtr = 0; for (int p = 0; p < blockId; ++p) outputPtr += *(int *)(input + 1 + 8 * p + 0);
+            int inputPtr  = 0; int inputSize;
+            int outputPtr = 0; int outputSize;
 
             inputPtr += 1 + 8 * nBlocks;
 
-            int inputSize  = *(int *)(input + 1 + 8 * blockId + 4);
-            int outputSize = *(int *)(input + 1 + 8 * blockId + 0);
+            for (int p = 0; p < blockId; ++p)
+            {
+                memcpy(&inputSize , input + 1 + 8 * p + 4, sizeof(int));
+                memcpy(&outputSize, input + 1 + 8 * p + 0, sizeof(int));
+
+                inputPtr += inputSize; outputPtr += outputSize;
+            }
+
+            memcpy(&inputSize , input + 1 + 8 * blockId + 4, sizeof(int));
+            memcpy(&outputSize, input + 1 + 8 * blockId + 0, sizeof(int));
 
             if (inputSize != outputSize)
             {
@@ -317,13 +320,21 @@ int bsc_coder_decompress(const unsigned char * input, unsigned char * output, in
     {
         for (int blockId = 0; blockId < nBlocks; ++blockId)
         {
-            int inputPtr  = 0; for (int p = 0; p < blockId; ++p) inputPtr  += *(int *)(input + 1 + 8 * p + 4);
-            int outputPtr = 0; for (int p = 0; p < blockId; ++p) outputPtr += *(int *)(input + 1 + 8 * p + 0);
+            int inputPtr  = 0; int inputSize;
+            int outputPtr = 0; int outputSize;
 
             inputPtr += 1 + 8 * nBlocks;
 
-            int inputSize  = *(int *)(input + 1 + 8 * blockId + 4);
-            int outputSize = *(int *)(input + 1 + 8 * blockId + 0);
+            for (int p = 0; p < blockId; ++p)
+            {
+                memcpy(&inputSize , input + 1 + 8 * p + 4, sizeof(int));
+                memcpy(&outputSize, input + 1 + 8 * p + 0, sizeof(int));
+
+                inputPtr += inputSize; outputPtr += outputSize;
+            }
+
+            memcpy(&inputSize , input + 1 + 8 * blockId + 4, sizeof(int));
+            memcpy(&outputSize, input + 1 + 8 * blockId + 0, sizeof(int));
 
             if (inputSize != outputSize)
             {

@@ -47,6 +47,7 @@ See also the bsc and libbsc web site:
 
 #if defined(LIBBSC_DYNAMIC_CPU_DISPATCH)
     unsigned char * bsc_qlfc_transform(const unsigned char * RESTRICT input, unsigned char * RESTRICT buffer, int n, unsigned char * RESTRICT MTFTable);
+    unsigned char * bsc_qlfc_transform_avx512(const unsigned char * RESTRICT input, unsigned char * RESTRICT buffer, int n, unsigned char * RESTRICT MTFTable);
     unsigned char * bsc_qlfc_transform_avx2(const unsigned char * RESTRICT input, unsigned char * RESTRICT buffer, int n, unsigned char * RESTRICT MTFTable);
     unsigned char * bsc_qlfc_transform_avx(const unsigned char * RESTRICT input, unsigned char * RESTRICT buffer, int n, unsigned char * RESTRICT MTFTable);
     unsigned char * bsc_qlfc_transform_sse2(const unsigned char * RESTRICT input, unsigned char * RESTRICT buffer, int n, unsigned char * RESTRICT MTFTable);
@@ -102,8 +103,9 @@ See also the bsc and libbsc web site:
 
         unsigned char * bsc_qlfc_transform(const unsigned char * input, unsigned char * buffer, int n, unsigned char * MTFTable)
         {
-            if (bsc_get_cpu_features() >= LIBBSC_CPU_FEATURE_AVX2) { return bsc_qlfc_transform_avx2(input, buffer, n, MTFTable); }
-            if (bsc_get_cpu_features() >= LIBBSC_CPU_FEATURE_AVX)  { return bsc_qlfc_transform_avx (input, buffer, n, MTFTable); }
+            if (bsc_get_cpu_features() >= LIBBSC_CPU_FEATURE_AVX512BW) { return bsc_qlfc_transform_avx512(input, buffer, n, MTFTable); }
+            if (bsc_get_cpu_features() >= LIBBSC_CPU_FEATURE_AVX2)     { return bsc_qlfc_transform_avx2  (input, buffer, n, MTFTable); }
+            if (bsc_get_cpu_features() >= LIBBSC_CPU_FEATURE_AVX)      { return bsc_qlfc_transform_avx   (input, buffer, n, MTFTable); }
 
             return bsc_qlfc_transform_sse2(input, buffer, n, MTFTable);
         }
@@ -133,7 +135,10 @@ See also the bsc and libbsc web site:
         }
     #endif
 
-    #if LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_AVX2
+    #if LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_AVX512BW
+        #define QLFC_TRANSFORM_FUNCTION_NAME       bsc_qlfc_transform_avx512
+        #define QLFC_TRANSFORM_SCAN_FUNCTION_NAME  bsc_qlfc_transform_scan_avx512
+    #elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_AVX2
         #define QLFC_TRANSFORM_FUNCTION_NAME       bsc_qlfc_transform_avx2
         #define QLFC_TRANSFORM_SCAN_FUNCTION_NAME  bsc_qlfc_transform_scan_avx2
         #define QLFC_ADAPTIVE_ENCODE_FUNCTION_NAME bsc_qlfc_adaptive_encode_avx2
@@ -172,25 +177,25 @@ See also the bsc and libbsc web site:
 
 #if defined(QLFC_TRANSFORM_FUNCTION_NAME)
 
-#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
+#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2 || LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
 
 INLINE ptrdiff_t QLFC_TRANSFORM_SCAN_FUNCTION_NAME (const unsigned char * RESTRICT input, ptrdiff_t i, unsigned char currentChar)
 {
-#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_AVX2
-    __m256i v = _mm256_set1_epi8(currentChar);
-
-    while (i >= 32)
-    {
-        i -= 32; int m = _mm256_movemask_epi8(_mm256_cmpeq_epi8(_mm256_loadu_si256((const __m256i *)(input + i)), v));
-        if (m != (int)0xffffffff) { return i + bsc_bit_scan_reverse(((unsigned int)(~m))); }
-    }
-#elif LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
+#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
     __m128i v = _mm_set1_epi8(currentChar);
 
     while (i >= 16)
     {
-        i -= 16; int m = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_loadu_si128((const __m128i *)(input + i)), v));
-        if (m != 0xffff) { return i + bsc_bit_scan_reverse((unsigned int)(m ^ 0xffff)); }
+        i -= 16; int m = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_loadu_si128((const __m128i *)(input + i)), v)) ^ 0xffff;
+        if (m != 0) { return i + bsc_bit_scan_reverse((unsigned int)(m)); }
+    }
+#elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
+    unsigned long long v = currentChar; v |= (v << 8); v |= (v << 16); v |= (v << 32);
+
+    while (i >= 8)
+    {
+        i -= 8; unsigned long long m = (*(const unsigned long long *)(input + i)) ^ v;
+        if (m != 0) { return i + (bsc_bit_scan_reverse64(m) / 8); }
     }
 #endif
 
@@ -217,78 +222,83 @@ unsigned char * QLFC_TRANSFORM_FUNCTION_NAME (const unsigned char * RESTRICT inp
         buffer[--j] = rank1 + 128; if (flags[currentChar1] == 0) { flags[currentChar1] = 1; buffer[j] = nSymbols++; }
         buffer[--j] = rank2 + 128; if (flags[currentChar2] == 0) { flags[currentChar2] = 1; buffer[j] = nSymbols++; }
 
-        for (int t = 0 * 32; t < 1 * 32; ++t) { ranks[t] -= (rank1 > ranks[t] ? (signed char)-1 : (signed char)0) + (rank2 > ranks[t] ? (signed char)-1 : (signed char)0); }
-        for (int t = 1 * 32; t < 2 * 32; ++t) { ranks[t] -= (rank1 > ranks[t] ? (signed char)-1 : (signed char)0) + (rank2 > ranks[t] ? (signed char)-1 : (signed char)0); }
-        for (int t = 2 * 32; t < 3 * 32; ++t) { ranks[t] -= (rank1 > ranks[t] ? (signed char)-1 : (signed char)0) + (rank2 > ranks[t] ? (signed char)-1 : (signed char)0); }
-        for (int t = 3 * 32; t < 4 * 32; ++t) { ranks[t] -= (rank1 > ranks[t] ? (signed char)-1 : (signed char)0) + (rank2 > ranks[t] ? (signed char)-1 : (signed char)0); }
-        for (int t = 4 * 32; t < 5 * 32; ++t) { ranks[t] -= (rank1 > ranks[t] ? (signed char)-1 : (signed char)0) + (rank2 > ranks[t] ? (signed char)-1 : (signed char)0); }
-        for (int t = 5 * 32; t < 6 * 32; ++t) { ranks[t] -= (rank1 > ranks[t] ? (signed char)-1 : (signed char)0) + (rank2 > ranks[t] ? (signed char)-1 : (signed char)0); }
-        for (int t = 6 * 32; t < 7 * 32; ++t) { ranks[t] -= (rank1 > ranks[t] ? (signed char)-1 : (signed char)0) + (rank2 > ranks[t] ? (signed char)-1 : (signed char)0); }
-        for (int t = 7 * 32; t < 8 * 32; ++t) { ranks[t] -= (rank1 > ranks[t] ? (signed char)-1 : (signed char)0) + (rank2 > ranks[t] ? (signed char)-1 : (signed char)0); }
-        
-        ranks[currentChar1] = -127; ranks[currentChar2] = -128;
-    }
+#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_AVX512BW
+        __m512i r1 = _mm512_set1_epi8(rank1), r2 = _mm512_set1_epi8(rank2), x, y;
 
-    if (i >= 0)
-    {
-        unsigned char currentChar = input[0]; signed char rank = ranks[currentChar];
+        x = _mm512_load_si512((const void *)(ranks + 64 * 0)); y = _mm512_load_si512((const void *)(ranks + 64 * 1));
+        x = _mm512_sub_epi8(_mm512_sub_epi8(x, _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r1, x))), _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r2, x)));
+        y = _mm512_sub_epi8(_mm512_sub_epi8(y, _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r1, y))), _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r2, y)));
+        _mm512_store_si512((void *)(ranks + 64 * 0), x); _mm512_store_si512((void *)(ranks + 64 * 1), y);
 
-        buffer[--j] = rank + 128; if (flags[currentChar] == 0) { flags[currentChar] = 1; buffer[j] = nSymbols++; }
+        x = _mm512_load_si512((const void *)(ranks + 64 * 2)); y = _mm512_load_si512((const void *)(ranks + 64 * 3));
+        x = _mm512_sub_epi8(_mm512_sub_epi8(x, _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r1, x))), _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r2, x)));
+        y = _mm512_sub_epi8(_mm512_sub_epi8(y, _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r1, y))), _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r2, y)));
+        _mm512_store_si512((void *)(ranks + 64 * 2), x); _mm512_store_si512((void *)(ranks + 64 * 3), y);
+#elif LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_AVX2
+        __m256i r1 = _mm256_set1_epi8(rank1), r2 = _mm256_set1_epi8(rank2), x, y;
 
-        for (int t = 0 * 32; t < 1 * 32; ++t) { ranks[t] -= (ranks[t] < rank ? -1 : 0); }
-        for (int t = 1 * 32; t < 2 * 32; ++t) { ranks[t] -= (ranks[t] < rank ? -1 : 0); }
-        for (int t = 2 * 32; t < 3 * 32; ++t) { ranks[t] -= (ranks[t] < rank ? -1 : 0); }
-        for (int t = 3 * 32; t < 4 * 32; ++t) { ranks[t] -= (ranks[t] < rank ? -1 : 0); }
-        for (int t = 4 * 32; t < 5 * 32; ++t) { ranks[t] -= (ranks[t] < rank ? -1 : 0); }
-        for (int t = 5 * 32; t < 6 * 32; ++t) { ranks[t] -= (ranks[t] < rank ? -1 : 0); }
-        for (int t = 6 * 32; t < 7 * 32; ++t) { ranks[t] -= (ranks[t] < rank ? -1 : 0); }
-        for (int t = 7 * 32; t < 8 * 32; ++t) { ranks[t] -= (ranks[t] < rank ? -1 : 0); }
-        ranks[currentChar] = -128;
-    }
+        x = _mm256_load_si256((__m256i *)(ranks + 32 * 0)); y = _mm256_load_si256((__m256i *)(ranks + 32 * 1));
+        x = _mm256_sub_epi8(_mm256_sub_epi8(x, _mm256_cmpgt_epi8(r1, x)), _mm256_cmpgt_epi8(r2, x));
+        y = _mm256_sub_epi8(_mm256_sub_epi8(y, _mm256_cmpgt_epi8(r1, y)), _mm256_cmpgt_epi8(r2, y));
+        _mm256_store_si256((__m256i *)(ranks + 32 * 0), x); _mm256_store_si256((__m256i *)(ranks + 32 * 1), y);
 
-    buffer[n - 1] = 1;
+        x = _mm256_load_si256((__m256i *)(ranks + 32 * 2)); y = _mm256_load_si256((__m256i *)(ranks + 32 * 3));
+        x = _mm256_sub_epi8(_mm256_sub_epi8(x, _mm256_cmpgt_epi8(r1, x)), _mm256_cmpgt_epi8(r2, x));
+        y = _mm256_sub_epi8(_mm256_sub_epi8(y, _mm256_cmpgt_epi8(r1, y)), _mm256_cmpgt_epi8(r2, y));
+        _mm256_store_si256((__m256i *)(ranks + 32 * 2), x); _mm256_store_si256((__m256i *)(ranks + 32 * 3), y);
 
-    for (ptrdiff_t i = 0; i < ALPHABET_SIZE; ++i) { MTFTable[ranks[i] + 128] = (unsigned char)i; }
-    for (ptrdiff_t i = 1; i < ALPHABET_SIZE; ++i) { if (flags[MTFTable[i]] == 0) { MTFTable[i] = MTFTable[i - 1]; break; } }
+        x = _mm256_load_si256((__m256i *)(ranks + 32 * 4)); y = _mm256_load_si256((__m256i *)(ranks + 32 * 5));
+        x = _mm256_sub_epi8(_mm256_sub_epi8(x, _mm256_cmpgt_epi8(r1, x)), _mm256_cmpgt_epi8(r2, x));
+        y = _mm256_sub_epi8(_mm256_sub_epi8(y, _mm256_cmpgt_epi8(r1, y)), _mm256_cmpgt_epi8(r2, y));
+        _mm256_store_si256((__m256i *)(ranks + 32 * 4), x); _mm256_store_si256((__m256i *)(ranks + 32 * 5), y);
 
-    return buffer + j;
-}
+        x = _mm256_load_si256((__m256i *)(ranks + 32 * 6)); y = _mm256_load_si256((__m256i *)(ranks + 32 * 7));
+        x = _mm256_sub_epi8(_mm256_sub_epi8(x, _mm256_cmpgt_epi8(r1, x)), _mm256_cmpgt_epi8(r2, x));
+        y = _mm256_sub_epi8(_mm256_sub_epi8(y, _mm256_cmpgt_epi8(r1, y)), _mm256_cmpgt_epi8(r2, y));
+        _mm256_store_si256((__m256i *)(ranks + 32 * 6), x); _mm256_store_si256((__m256i *)(ranks + 32 * 7), y);
+#elif LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
+        __m128i r1 = _mm_set1_epi8(rank1), r2 = _mm_set1_epi8(rank2), x, y;
 
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 0)); y = _mm_load_si128((__m128i *)(ranks + 16 * 1));
+        x = _mm_sub_epi8(_mm_sub_epi8(x, _mm_cmpgt_epi8(r1, x)), _mm_cmpgt_epi8(r2, x));
+        y = _mm_sub_epi8(_mm_sub_epi8(y, _mm_cmpgt_epi8(r1, y)), _mm_cmpgt_epi8(r2, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 0), x); _mm_store_si128((__m128i *)(ranks + 16 * 1), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 2)); y = _mm_load_si128((__m128i *)(ranks + 16 * 3));
+        x = _mm_sub_epi8(_mm_sub_epi8(x, _mm_cmpgt_epi8(r1, x)), _mm_cmpgt_epi8(r2, x));
+        y = _mm_sub_epi8(_mm_sub_epi8(y, _mm_cmpgt_epi8(r1, y)), _mm_cmpgt_epi8(r2, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 2), x); _mm_store_si128((__m128i *)(ranks + 16 * 3), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 4)); y = _mm_load_si128((__m128i *)(ranks + 16 * 5));
+        x = _mm_sub_epi8(_mm_sub_epi8(x, _mm_cmpgt_epi8(r1, x)), _mm_cmpgt_epi8(r2, x));
+        y = _mm_sub_epi8(_mm_sub_epi8(y, _mm_cmpgt_epi8(r1, y)), _mm_cmpgt_epi8(r2, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 4), x); _mm_store_si128((__m128i *)(ranks + 16 * 5), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 6)); y = _mm_load_si128((__m128i *)(ranks + 16 * 7));
+        x = _mm_sub_epi8(_mm_sub_epi8(x, _mm_cmpgt_epi8(r1, x)), _mm_cmpgt_epi8(r2, x));
+        y = _mm_sub_epi8(_mm_sub_epi8(y, _mm_cmpgt_epi8(r1, y)), _mm_cmpgt_epi8(r2, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 6), x); _mm_store_si128((__m128i *)(ranks + 16 * 7), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 8)); y = _mm_load_si128((__m128i *)(ranks + 16 * 9));
+        x = _mm_sub_epi8(_mm_sub_epi8(x, _mm_cmpgt_epi8(r1, x)), _mm_cmpgt_epi8(r2, x));
+        y = _mm_sub_epi8(_mm_sub_epi8(y, _mm_cmpgt_epi8(r1, y)), _mm_cmpgt_epi8(r2, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 8), x); _mm_store_si128((__m128i *)(ranks + 16 * 9), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 10)); y = _mm_load_si128((__m128i *)(ranks + 16 * 11));
+        x = _mm_sub_epi8(_mm_sub_epi8(x, _mm_cmpgt_epi8(r1, x)), _mm_cmpgt_epi8(r2, x));
+        y = _mm_sub_epi8(_mm_sub_epi8(y, _mm_cmpgt_epi8(r1, y)), _mm_cmpgt_epi8(r2, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 10), x); _mm_store_si128((__m128i *)(ranks + 16 * 11), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 12)); y = _mm_load_si128((__m128i *)(ranks + 16 * 13));
+        x = _mm_sub_epi8(_mm_sub_epi8(x, _mm_cmpgt_epi8(r1, x)), _mm_cmpgt_epi8(r2, x));
+        y = _mm_sub_epi8(_mm_sub_epi8(y, _mm_cmpgt_epi8(r1, y)), _mm_cmpgt_epi8(r2, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 12), x); _mm_store_si128((__m128i *)(ranks + 16 * 13), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 14)); y = _mm_load_si128((__m128i *)(ranks + 16 * 15));
+        x = _mm_sub_epi8(_mm_sub_epi8(x, _mm_cmpgt_epi8(r1, x)), _mm_cmpgt_epi8(r2, x));
+        y = _mm_sub_epi8(_mm_sub_epi8(y, _mm_cmpgt_epi8(r1, y)), _mm_cmpgt_epi8(r2, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 14), x); _mm_store_si128((__m128i *)(ranks + 16 * 15), y);
 #elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
-
-INLINE ptrdiff_t QLFC_TRANSFORM_SCAN_FUNCTION_NAME (const unsigned char * RESTRICT input, ptrdiff_t i, unsigned long long currentChar)
-{
-    unsigned long long v = currentChar; v |= (v << 8); v |= (v << 16); v |= (v << 32);
-
-    while (i >= 8)
-    {
-        i -= 8; unsigned long long m = (*(unsigned long long const *)(input + i)) ^ v;
-        if (m != 0) { return i + (bsc_bit_scan_reverse64(m) / 8); }
-    }
-
-    do {} while ((--i >= 0) && (input[i] == currentChar)); return i;
-}
-
-unsigned char * QLFC_TRANSFORM_FUNCTION_NAME (const unsigned char * RESTRICT input, unsigned char * RESTRICT buffer, int n, unsigned char * RESTRICT MTFTable)
-{
-    signed char ALIGNED(64) ranks[ALPHABET_SIZE];
-    signed char ALIGNED(64) flags[ALPHABET_SIZE];
-
-    for (ptrdiff_t i = 0; i < ALPHABET_SIZE; ++i) { ranks[i] = (signed char)(i - 128); }
-    for (ptrdiff_t i = 0; i < ALPHABET_SIZE; ++i) { flags[i] = 0; }
-
-    ptrdiff_t i = (ptrdiff_t)n - 1, j = n; signed char nSymbols = 0;
-
-    for (; i >= 0;)
-    {
-        unsigned char currentChar1 = input[i]; i = QLFC_TRANSFORM_SCAN_FUNCTION_NAME(input, i, currentChar1); if (i < 0) { i = 0; break; }
-        unsigned char currentChar2 = input[i]; i = QLFC_TRANSFORM_SCAN_FUNCTION_NAME(input, i, currentChar2);
-
-        signed char rank1 = ranks[currentChar1], rank2 = ranks[currentChar2]; rank2 += rank1 > rank2;
-
-        buffer[--j] = rank1 + 128; if (flags[currentChar1] == 0) { flags[currentChar1] = 1; buffer[j] = nSymbols++; }
-        buffer[--j] = rank2 + 128; if (flags[currentChar2] == 0) { flags[currentChar2] = 1; buffer[j] = nSymbols++; }
-
         int8x16_t r1 = vdupq_n_s8(rank1), r2 = vdupq_n_s8(rank2), x, y;
 
         x = vld1q_s8((int8_t const *)(ranks + 16 * 0)); y = vld1q_s8((int8_t const *)(ranks + 16 * 1));
@@ -330,6 +340,9 @@ unsigned char * QLFC_TRANSFORM_FUNCTION_NAME (const unsigned char * RESTRICT inp
         x = vsubq_s8(vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r1, x))), vreinterpretq_s8_u8(vcgtq_s8(r2, x)));
         y = vsubq_s8(vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r1, y))), vreinterpretq_s8_u8(vcgtq_s8(r2, y)));
         vst1q_s8((int8_t *)(ranks + 16 * 14), x); vst1q_s8((int8_t *)(ranks + 16 * 15), y);
+#else
+        for (int t = 0; t < 256; ++t) { ranks[t] -= (rank1 > ranks[t] ? (signed char)-1 : (signed char)0) + (rank2 > ranks[t] ? (signed char)-1 : (signed char)0); }
+#endif
 
         ranks[currentChar1] = -127; ranks[currentChar2] = -128;
     }
@@ -340,47 +353,105 @@ unsigned char * QLFC_TRANSFORM_FUNCTION_NAME (const unsigned char * RESTRICT inp
 
         buffer[--j] = rank + 128; if (flags[currentChar] == 0) { flags[currentChar] = 1; buffer[j] = nSymbols++; }
 
+#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_AVX512BW
+        __m512i r = _mm512_set1_epi8(rank), x, y;
+
+        x = _mm512_load_si512((const void *)(ranks + 64 * 0)); y = _mm512_load_si512((const void *)(ranks + 64 * 1));
+        x = _mm512_sub_epi8(x, _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r, x))); y = _mm512_sub_epi8(y, _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r, y)));
+        _mm512_store_si512((void *)(ranks + 64 * 0), x); _mm512_store_si512((void *)(ranks + 64 * 1), y);
+
+        x = _mm512_load_si512((const void *)(ranks + 64 * 2)); y = _mm512_load_si512((const void *)(ranks + 64 * 3));
+        x = _mm512_sub_epi8(x, _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r, x))); y = _mm512_sub_epi8(y, _mm512_movm_epi8(_mm512_cmpgt_epi8_mask(r, y)));
+        _mm512_store_si512((void *)(ranks + 64 * 2), x); _mm512_store_si512((void *)(ranks + 64 * 3), y);
+#elif LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_AVX2
+        __m256i r = _mm256_set1_epi8(rank), x, y;
+
+        x = _mm256_load_si256((__m256i *)(ranks + 32 * 0)); y = _mm256_load_si256((__m256i *)(ranks + 32 * 1));
+        x = _mm256_sub_epi8(x, _mm256_cmpgt_epi8(r, x)); y = _mm256_sub_epi8(y, _mm256_cmpgt_epi8(r, y));
+        _mm256_store_si256((__m256i *)(ranks + 32 * 0), x); _mm256_store_si256((__m256i *)(ranks + 32 * 1), y);
+
+        x = _mm256_load_si256((__m256i *)(ranks + 32 * 2)); y = _mm256_load_si256((__m256i *)(ranks + 32 * 3));
+        x = _mm256_sub_epi8(x, _mm256_cmpgt_epi8(r, x)); y = _mm256_sub_epi8(y, _mm256_cmpgt_epi8(r, y));
+        _mm256_store_si256((__m256i *)(ranks + 32 * 2), x); _mm256_store_si256((__m256i *)(ranks + 32 * 3), y);
+
+        x = _mm256_load_si256((__m256i *)(ranks + 32 * 4)); y = _mm256_load_si256((__m256i *)(ranks + 32 * 5));
+        x = _mm256_sub_epi8(x, _mm256_cmpgt_epi8(r, x)); y = _mm256_sub_epi8(y, _mm256_cmpgt_epi8(r, y));
+        _mm256_store_si256((__m256i *)(ranks + 32 * 4), x); _mm256_store_si256((__m256i *)(ranks + 32 * 5), y);
+
+        x = _mm256_load_si256((__m256i *)(ranks + 32 * 6)); y = _mm256_load_si256((__m256i *)(ranks + 32 * 7));
+        x = _mm256_sub_epi8(x, _mm256_cmpgt_epi8(r, x)); y = _mm256_sub_epi8(y, _mm256_cmpgt_epi8(r, y));
+        _mm256_store_si256((__m256i *)(ranks + 32 * 6), x); _mm256_store_si256((__m256i *)(ranks + 32 * 7), y);
+#elif LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
+        __m128i r = _mm_set1_epi8(rank), x, y;
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 0)); y = _mm_load_si128((__m128i *)(ranks + 16 * 1));
+        x = _mm_sub_epi8(x, _mm_cmpgt_epi8(r, x)); y = _mm_sub_epi8(y, _mm_cmpgt_epi8(r, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 0), x); _mm_store_si128((__m128i *)(ranks + 16 * 1), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 2)); y = _mm_load_si128((__m128i *)(ranks + 16 * 3));
+        x = _mm_sub_epi8(x, _mm_cmpgt_epi8(r, x)); y = _mm_sub_epi8(y, _mm_cmpgt_epi8(r, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 2), x); _mm_store_si128((__m128i *)(ranks + 16 * 3), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 4)); y = _mm_load_si128((__m128i *)(ranks + 16 * 5));
+        x = _mm_sub_epi8(x, _mm_cmpgt_epi8(r, x)); y = _mm_sub_epi8(y, _mm_cmpgt_epi8(r, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 4), x); _mm_store_si128((__m128i *)(ranks + 16 * 5), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 6)); y = _mm_load_si128((__m128i *)(ranks + 16 * 7));
+        x = _mm_sub_epi8(x, _mm_cmpgt_epi8(r, x)); y = _mm_sub_epi8(y, _mm_cmpgt_epi8(r, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 6), x); _mm_store_si128((__m128i *)(ranks + 16 * 7), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 8)); y = _mm_load_si128((__m128i *)(ranks + 16 * 9));
+        x = _mm_sub_epi8(x, _mm_cmpgt_epi8(r, x)); y = _mm_sub_epi8(y, _mm_cmpgt_epi8(r, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 8), x); _mm_store_si128((__m128i *)(ranks + 16 * 9), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 10)); y = _mm_load_si128((__m128i *)(ranks + 16 * 11));
+        x = _mm_sub_epi8(x, _mm_cmpgt_epi8(r, x)); y = _mm_sub_epi8(y, _mm_cmpgt_epi8(r, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 10), x); _mm_store_si128((__m128i *)(ranks + 16 * 11), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 12)); y = _mm_load_si128((__m128i *)(ranks + 16 * 13));
+        x = _mm_sub_epi8(x, _mm_cmpgt_epi8(r, x)); y = _mm_sub_epi8(y, _mm_cmpgt_epi8(r, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 12), x); _mm_store_si128((__m128i *)(ranks + 16 * 13), y);
+
+        x = _mm_load_si128((__m128i *)(ranks + 16 * 14)); y = _mm_load_si128((__m128i *)(ranks + 16 * 15));
+        x = _mm_sub_epi8(x, _mm_cmpgt_epi8(r, x)); y = _mm_sub_epi8(y, _mm_cmpgt_epi8(r, y));
+        _mm_store_si128((__m128i *)(ranks + 16 * 14), x); _mm_store_si128((__m128i *)(ranks + 16 * 15), y);
+#elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
         int8x16_t r = vdupq_n_s8(rank), x, y;
 
         x = vld1q_s8((int8_t const *)(ranks + 16 * 0)); y = vld1q_s8((int8_t const *)(ranks + 16 * 1));
-        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x)));
-        y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
+        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x))); y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
         vst1q_s8((int8_t *)(ranks + 16 * 0), x); vst1q_s8((int8_t *)(ranks + 16 * 1), y);
 
         x = vld1q_s8((int8_t const *)(ranks + 16 * 2)); y = vld1q_s8((int8_t const *)(ranks + 16 * 3));
-        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x)));
-        y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
+        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x))); y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
         vst1q_s8((int8_t *)(ranks + 16 * 2), x); vst1q_s8((int8_t *)(ranks + 16 * 3), y);
 
         x = vld1q_s8((int8_t const *)(ranks + 16 * 4)); y = vld1q_s8((int8_t const *)(ranks + 16 * 5));
-        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x)));
-        y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
+        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x))); y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
         vst1q_s8((int8_t *)(ranks + 16 * 4), x); vst1q_s8((int8_t *)(ranks + 16 * 5), y);
 
         x = vld1q_s8((int8_t const *)(ranks + 16 * 6)); y = vld1q_s8((int8_t const *)(ranks + 16 * 7));
-        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x)));
-        y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
+        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x))); y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
         vst1q_s8((int8_t *)(ranks + 16 * 6), x); vst1q_s8((int8_t *)(ranks + 16 * 7), y);
        
         x = vld1q_s8((int8_t const *)(ranks + 16 * 8)); y = vld1q_s8((int8_t const *)(ranks + 16 * 9));
-        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x)));
-        y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
+        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x))); y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
         vst1q_s8((int8_t *)(ranks + 16 * 8), x); vst1q_s8((int8_t *)(ranks + 16 * 9), y);
 
         x = vld1q_s8((int8_t const *)(ranks + 16 * 10)); y = vld1q_s8((int8_t const *)(ranks + 16 * 11));
-        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x)));
-        y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
+        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x))); y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
         vst1q_s8((int8_t *)(ranks + 16 * 10), x); vst1q_s8((int8_t *)(ranks + 16 * 11), y);
 
         x = vld1q_s8((int8_t const *)(ranks + 16 * 12)); y = vld1q_s8((int8_t const *)(ranks + 16 * 13));
-        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x)));
-        y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
+        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x))); y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
         vst1q_s8((int8_t *)(ranks + 16 * 12), x); vst1q_s8((int8_t *)(ranks + 16 * 13), y);
 
         x = vld1q_s8((int8_t const *)(ranks + 16 * 14)); y = vld1q_s8((int8_t const *)(ranks + 16 * 15));
-        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x)));
-        y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
+        x = vsubq_s8(x, vreinterpretq_s8_u8(vcgtq_s8(r, x))); y = vsubq_s8(y, vreinterpretq_s8_u8(vcgtq_s8(r, y)));
         vst1q_s8((int8_t *)(ranks + 16 * 14), x); vst1q_s8((int8_t *)(ranks + 16 * 15), y);
+#else
+        for (int t = 0; t < 256; ++t) { ranks[t] -= (ranks[t] < rank ? -1 : 0); }
+#endif
 
         ranks[currentChar] = -128;
     }
@@ -538,32 +609,28 @@ int QLFC_ADAPTIVE_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
         {
             const unsigned char * inputStart = input++;
 
-            if (rankArray >= rankArrayEnd - 16)
-            {
-                while ((input < inputEnd) && (*input == currentChar)) { input++; }
-            }
-            else
+            if (rankArray < rankArrayEnd - 16)
             {
 #if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
                 __m128i v = _mm_set1_epi8(currentChar);
 
                 while (true)
                 {
-                   int m = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_loadu_si128((const __m128i *)input), v));
-                   if (m != 0xffff)
-                   {
-                      input += bsc_bit_scan_forward((unsigned int)(~m));
-                      break;
-                   }
+                    int m = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_loadu_si128((const __m128i *)input), v)) ^ 0xffff;
+                    if (m != 0)
+                    {
+                        input += bsc_bit_scan_forward((unsigned int)(m));
+                        break;
+                    }
 
-                   input += 16;
+                    input += 16;
                 }
 #elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
                 unsigned long long v = currentChar; v |= (v << 8); v |= (v << 16); v |= (v << 32);
 
                 while (true)
                 {
-                    unsigned long long m = (*(unsigned long long const *)input) ^ v;
+                    unsigned long long m = (*(const unsigned long long *)input) ^ v;
                     if (m != 0)
                     {
                         input += bsc_bit_scan_forward64(m) / 8;
@@ -575,6 +642,10 @@ int QLFC_ADAPTIVE_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
 #else
                 while (*input == currentChar) { input++; }
 #endif
+            }
+            else
+            {
+                while ((input < inputEnd) && (*input == currentChar)) { input++; }
             }
 
             runSize = (int)(input - inputStart);
@@ -904,32 +975,28 @@ int QLFC_STATIC_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned char
         {
             const unsigned char * inputStart = input++;
 
-            if (rankArray >= rankArrayEnd - 16)
-            {
-                while ((input < inputEnd) && (*input == currentChar)) { input++; }
-            }
-            else
+            if (rankArray < rankArrayEnd - 16)
             {
 #if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
                 __m128i v = _mm_set1_epi8(currentChar);
 
                 while (true)
                 {
-                   int m = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_loadu_si128((const __m128i *)input), v));
-                   if (m != 0xffff)
-                   {
-                      input += bsc_bit_scan_forward((unsigned int)(~m));
-                      break;
-                   }
+                    int m = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_loadu_si128((const __m128i *)input), v)) ^ 0xffff;
+                    if (m != 0)
+                    {
+                        input += bsc_bit_scan_forward((unsigned int)(m));
+                        break;
+                    }
 
-                   input += 16;
+                    input += 16;
                 }
 #elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
                 unsigned long long v = currentChar; v |= (v << 8); v |= (v << 16); v |= (v << 32);
 
                 while (true)
                 {
-                    unsigned long long m = (*(unsigned long long const *)input) ^ v;
+                    unsigned long long m = (*(const unsigned long long *)input) ^ v;
                     if (m != 0)
                     {
                         input += bsc_bit_scan_forward64(m) / 8;
@@ -941,6 +1008,10 @@ int QLFC_STATIC_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned char
 #else
                 while (*input == currentChar) { input++; }
 #endif
+            }
+            else
+            {
+                while ((input < inputEnd) && (*input == currentChar)) { input++; }
             }
 
             runSize = (int)(input - inputStart);
@@ -1207,21 +1278,21 @@ int QLFC_FAST_ENCODE_FUNCTION_NAME (const unsigned char * RESTRICT input, unsign
 
                 while (true)
                 {
-                   int m = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_loadu_si128((const __m128i *)input), v));
-                   if (m != 0xffff)
-                   {
-                      input += bsc_bit_scan_forward((unsigned int)(~m));
-                      break;
-                   }
+                    int m = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_loadu_si128((const __m128i *)input), v)) ^ 0xffff;
+                    if (m != 0)
+                    {
+                        input += bsc_bit_scan_forward((unsigned int)(m));
+                        break;
+                    }
 
-                   input += 16;
+                    input += 16;
                 }
 #elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
                 unsigned long long v = currentChar; v |= (v << 8); v |= (v << 16); v |= (v << 32);
 
                 while (true)
                 {
-                    unsigned long long m = (*(unsigned long long const *)input) ^ v;
+                    unsigned long long m = (*(const unsigned long long *)input) ^ v;
                     if (m != 0)
                     {
                         input += bsc_bit_scan_forward64(m) / 8;
@@ -1584,7 +1655,6 @@ int QLFC_ADAPTIVE_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
         staticPredictor = & model->Run.StaticModel;
         mixer           = & model->mixerOfRun[currentChar];
 
-        int runSize = 1;
         if (coder.DecodeBit(mixer->Mixup(*charPredictor, *statePredictor, *staticPredictor)))
         {
             ProbabilityCounter::UpdateBit1(*statePredictor,  M_RUN_TS_TH1, M_RUN_TS_AR1);
@@ -1597,7 +1667,7 @@ int QLFC_ADAPTIVE_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
             staticPredictor = & model->Run.Exponent.StaticModel[0];
             mixer           = & model->mixerOfRunExponent[history < 1 ? 1 : history][1];
 
-            int bitRunSize = 1;
+            int runSize = 1, bitRunSize = 1;
             while (true)
             {
                 if (coder.DecodeBit(mixer->Mixup(*charPredictor, *statePredictor, *staticPredictor)))
@@ -1645,6 +1715,11 @@ int QLFC_ADAPTIVE_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
                 }
             }
 
+            contextRank0 = ((contextRank0 << 1) | (rank == 0   ? 1    : 0)) & 0x7;
+            contextRank4 = ((contextRank4 << 2) | (rank < 3    ? rank : 3)) & 0xff;
+            contextRun   = ((contextRun   << 1) | (runSize < 3 ? 1    : 0)) & 0xf;
+
+            for (; runSize > 0; --runSize) output[i++] = currentChar;
         }
         else
         {
@@ -1653,13 +1728,13 @@ int QLFC_ADAPTIVE_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
             ProbabilityCounter::UpdateBit0(*charPredictor,   M_RUN_TC_TH0, M_RUN_TC_AR0);
             ProbabilityCounter::UpdateBit0(*staticPredictor, M_RUN_TP_TH0, M_RUN_TP_AR0);
             mixer->UpdateBit0(M_RUN_TM_LR0, M_RUN_TM_LR1, M_RUN_TM_LR2, M_RUN_TM_TH0, M_RUN_TM_AR0);
+
+            contextRank0 = ((contextRank0 << 1) | (rank == 0   ? 1    : 0)) & 0x7;
+            contextRank4 = ((contextRank4 << 2) | (rank < 3    ? rank : 3)) & 0xff;
+            contextRun   = ((contextRun   << 1) | (                     1)) & 0xf;
+
+            output[i++] = currentChar;
         }
-
-        contextRank0 = ((contextRank0 << 1) | (rank == 0   ? 1    : 0)) & 0x7;
-        contextRank4 = ((contextRank4 << 2) | (rank < 3    ? rank : 3)) & 0xff;
-        contextRun   = ((contextRun   << 1) | (runSize < 3 ? 1    : 0)) & 0xf;
-
-        for (; runSize > 0; --runSize) output[i++] = currentChar;
     }
 
     return n;
@@ -1861,7 +1936,6 @@ int QLFC_STATIC_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char
         charPredictor   = & model->Run.CharModel[currentChar];
         staticPredictor = & model->Run.StaticModel;
 
-        int runSize = 1;
         if (coder.DecodeBit((*charPredictor * F_RUN_TM_LR0 + *statePredictor * F_RUN_TM_LR1 + *staticPredictor * F_RUN_TM_LR2) >> 5))
         {
             ProbabilityCounter::UpdateBit1(*statePredictor,  F_RUN_TS_TH1, F_RUN_TS_AR1);
@@ -1872,7 +1946,7 @@ int QLFC_STATIC_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char
             charPredictor   = & model->Run.Exponent.CharModel[currentChar][0];
             staticPredictor = & model->Run.Exponent.StaticModel[0];
 
-            int bitRunSize = 1;
+            int runSize = 1, bitRunSize = 1;
             while (true)
             {
                 if (coder.DecodeBit((*charPredictor * F_RUN_EM_LR0 + *statePredictor * F_RUN_EM_LR1 + *staticPredictor * F_RUN_EM_LR2) >> 5))
@@ -1907,6 +1981,12 @@ int QLFC_STATIC_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char
                 
                 runSize += runSize + b; int ctx = context + context + b; context++; if (bitRunSize <= 5) { context = ctx; }
             }
+
+            contextRank0 = ((contextRank0 << 1) | (rank == 0   ? 1    : 0)) & 0x7;
+            contextRank4 = ((contextRank4 << 2) | (rank < 3    ? rank : 3)) & 0xff;
+            contextRun   = ((contextRun   << 1) | (runSize < 3 ? 1    : 0)) & 0xf;
+        
+            for (; runSize > 0; --runSize) output[i++] = currentChar;
         }
         else
         {
@@ -1914,13 +1994,13 @@ int QLFC_STATIC_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char
             ProbabilityCounter::UpdateBit0(*statePredictor,  F_RUN_TS_TH0, F_RUN_TS_AR0);
             ProbabilityCounter::UpdateBit0(*charPredictor,   F_RUN_TC_TH0, F_RUN_TC_AR0);
             ProbabilityCounter::UpdateBit0(*staticPredictor, F_RUN_TP_TH0, F_RUN_TP_AR0);
-        }
 
-        contextRank0 = ((contextRank0 << 1) | (rank == 0   ? 1    : 0)) & 0x7;
-        contextRank4 = ((contextRank4 << 2) | (rank < 3    ? rank : 3)) & 0xff;
-        contextRun   = ((contextRun   << 1) | (runSize < 3 ? 1    : 0)) & 0xf;
-        
-        for (; runSize > 0; --runSize) output[i++] = currentChar;
+            contextRank0 = ((contextRank0 << 1) | (rank == 0   ? 1    : 0)) & 0x7;
+            contextRank4 = ((contextRank4 << 2) | (rank < 3    ? rank : 3)) & 0xff;
+            contextRun   = ((contextRun   << 1) | (                     1)) & 0xf;
+
+            output[i++] = currentChar;
+        }
     }
 
     return n;

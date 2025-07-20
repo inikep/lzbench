@@ -1,3 +1,17 @@
+Changes in 2.10.1 (May 11, 2025)
+- No functional changes, slightly improved performance.
+
+Changes in 2.10.0 (April 12, 2025)
+- Improved performance, with noticeable gains on ARM architecture.
+- Fixed compiler warnings and addressed undefined behavior.
+
+Changes in 2.9.1 (March 19, 2025)
+- No functional changes, resolved compiler warnings & undefined behavior.
+
+Changes in 2.9.0 (March 16, 2025)
+- Support for generalized suffix array (GSA) construction.
+- Support for longest common prefix array (LCP) construction for generalized suffix array (GSA).
+
 Changes in 2.8.7 (January 16, 2025)
 - Restore the input array after suffix array construction (libsais64 & libsais16x64).
 

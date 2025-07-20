@@ -50,7 +50,7 @@ static INLINE int bsc_lzp_num_blocks(int n)
     return 8;
 }
 
-#if defined(LIBBSC_ALLOW_UNALIGNED_ACCESS) && (defined(__x86_64__) || defined(__aarch64__))
+#if !defined(LIBBSC_NO_UNALIGNED_ACCESS) && (defined(LIBBSC_x86_64) || defined(LIBBSC_AArch64))
 
 template<class T> int bsc_lzp_encode_small(const unsigned char * RESTRICT input, const unsigned char * inputEnd, unsigned char * RESTRICT output, unsigned char * outputEnd, int * RESTRICT lookup, int mask)
 {
@@ -459,13 +459,17 @@ int bsc_lzp_encode_generic(const unsigned char * RESTRICT input, const unsigned 
             if (value > 0)
             {
                 const unsigned char * RESTRICT reference = inputStart + value;
-#if defined(LIBBSC_ALLOW_UNALIGNED_ACCESS)
+#ifndef LIBBSC_NO_UNALIGNED_ACCESS
                 if ((*(unsigned int *)(input + minLen - 4) == *(unsigned int *)(reference + minLen - 4)) && (*(unsigned int *)(input) == *(unsigned int *)(reference)))
 #else
                 if ((memcmp(input + minLen - 4, reference + minLen - 4, sizeof(unsigned int)) == 0) && (memcmp(input, reference, sizeof(unsigned int)) == 0))
 #endif
                 {
+#ifndef LIBBSC_NO_UNALIGNED_ACCESS
                     if ((heuristic > input) && (*(unsigned int *)heuristic != *(unsigned int *)(reference + (heuristic - input))))
+#else
+                    if ((heuristic > input) && (memcmp(heuristic, reference + (heuristic - input), sizeof(unsigned int)) != 0))
+#endif
                     {
                         goto LIBBSC_LZP_MATCH_NOT_FOUND;
                     }
@@ -473,7 +477,11 @@ int bsc_lzp_encode_generic(const unsigned char * RESTRICT input, const unsigned 
                     int len = 4;
                     for (; input + len < inputMinLenEnd; len += sizeof(unsigned int))
                     {
+#ifndef LIBBSC_NO_UNALIGNED_ACCESS
                         if (*(unsigned int *)(input + len) != *(unsigned int *)(reference + len)) break;
+#else
+                        if (memcmp(input + len, reference + len, sizeof(unsigned int)) != 0) break;
+#endif
                     }
 
                     if (len < minLen)
@@ -482,7 +490,7 @@ int bsc_lzp_encode_generic(const unsigned char * RESTRICT input, const unsigned 
                         goto LIBBSC_LZP_MATCH_NOT_FOUND;
                     }
 
-#if defined(LIBBSC_ALLOW_UNALIGNED_ACCESS)
+#ifndef LIBBSC_NO_UNALIGNED_ACCESS
                     len += sizeof(unsigned short) * (*(unsigned short *)(input + len) == *(unsigned short *)(reference + len));
                     len += sizeof(unsigned char ) * (*(unsigned char  *)(input + len) == *(unsigned char  *)(reference + len));
 #else
@@ -540,7 +548,7 @@ int bsc_lzp_encode_block(const unsigned char * input, const unsigned char * inpu
     int result = LIBBSC_NOT_ENOUGH_MEMORY;
     if (int * lookup = (int *)bsc_zero_malloc((int)(1 << hashSize) * sizeof(int)))
     {
-#if defined(LIBBSC_ALLOW_UNALIGNED_ACCESS) && (defined(__x86_64__) || defined(__aarch64__))
+#if !defined(LIBBSC_NO_UNALIGNED_ACCESS) && (defined(LIBBSC_x86_64) || defined(LIBBSC_AArch64))
         if (hashSize <= 17)
         {
             result = (minLen == 1 * (int)sizeof(unsigned int      ) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_small  <unsigned int      >(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1) : result;
@@ -575,7 +583,7 @@ int bsc_lzp_decode_block(const unsigned char * RESTRICT input, const unsigned ch
 
         for (int i = 0; i < 4; ++i) { *output++ = *input++; }
 
-#if defined(LIBBSC_ALLOW_UNALIGNED_ACCESS) && (defined(__x86_64__) || defined(__aarch64__))
+#if !defined(LIBBSC_NO_UNALIGNED_ACCESS) && (defined(LIBBSC_x86_64) || defined(LIBBSC_AArch64))
         if (hashSize <= 17)
         {
             unsigned int prev4 = *(unsigned int *)(output - 4);
@@ -700,13 +708,9 @@ int bsc_lzp_compress_serial(const unsigned char * input, unsigned char * output,
             if (outputPtr + inputSize >= n) return LIBBSC_NOT_COMPRESSIBLE;
             result = inputSize; memcpy(output + outputPtr, input + inputStart, inputSize);
         }
-#if defined(LIBBSC_ALLOW_UNALIGNED_ACCESS)
-        *(int *)(output + 1 + 8 * blockId + 0) = inputSize;
-        *(int *)(output + 1 + 8 * blockId + 4) = result;
-#else
+
         memcpy(output + 1 + 8 * blockId + 0, &inputSize, sizeof(int));
         memcpy(output + 1 + 8 * blockId + 4, &result, sizeof(int));
-#endif
 
         outputPtr += result;
     }
@@ -747,8 +751,8 @@ int bsc_lzp_compress_parallel(const unsigned char * input, unsigned char * outpu
                     compressionResult[blockId] = bsc_lzp_encode_block(input + blockStart, input + blockStart + blockSize, buffer + blockStart, buffer + blockStart + blockSize, hashSize, minLen);
                     if (compressionResult[blockId] < LIBBSC_NO_ERROR) compressionResult[blockId] = blockSize;
 
-                    *(int *)(output + 1 + 8 * blockId + 0) = blockSize;
-                    *(int *)(output + 1 + 8 * blockId + 4) = compressionResult[blockId];
+                    memcpy(output + 1 + 8 * blockId + 0, &blockSize, sizeof(int));
+                    memcpy(output + 1 + 8 * blockId + 4, &compressionResult[blockId], sizeof(int));
                 }
 
                 #pragma omp single
@@ -828,13 +832,21 @@ int bsc_lzp_decompress(const unsigned char * input, unsigned char * output, int 
         #pragma omp parallel for schedule(dynamic)
         for (int blockId = 0; blockId < nBlocks; ++blockId)
         {
-            int inputPtr = 0;  for (int p = 0; p < blockId; ++p) inputPtr  += *(int *)(input + 1 + 8 * p + 4);
-            int outputPtr = 0; for (int p = 0; p < blockId; ++p) outputPtr += *(int *)(input + 1 + 8 * p + 0);
+            int inputPtr  = 0; int inputSize;
+            int outputPtr = 0; int outputSize;
 
             inputPtr += 1 + 8 * nBlocks;
 
-            int inputSize  = *(int *)(input + 1 + 8 * blockId + 4);
-            int outputSize = *(int *)(input + 1 + 8 * blockId + 0);
+            for (int p = 0; p < blockId; ++p)
+            {
+                memcpy(&inputSize , input + 1 + 8 * p + 4, sizeof(int));
+                memcpy(&outputSize, input + 1 + 8 * p + 0, sizeof(int));
+
+                inputPtr += inputSize; outputPtr += outputSize;
+            }
+
+            memcpy(&inputSize , input + 1 + 8 * blockId + 4, sizeof(int));
+            memcpy(&outputSize, input + 1 + 8 * blockId + 0, sizeof(int));
 
             if (inputSize != outputSize)
             {
@@ -853,13 +865,21 @@ int bsc_lzp_decompress(const unsigned char * input, unsigned char * output, int 
     {
         for (int blockId = 0; blockId < nBlocks; ++blockId)
         {
-            int inputPtr = 0;  for (int p = 0; p < blockId; ++p) inputPtr  += *(int *)(input + 1 + 8 * p + 4);
-            int outputPtr = 0; for (int p = 0; p < blockId; ++p) outputPtr += *(int *)(input + 1 + 8 * p + 0);
+            int inputPtr  = 0; int inputSize;
+            int outputPtr = 0; int outputSize;
 
             inputPtr += 1 + 8 * nBlocks;
 
-            int inputSize  = *(int *)(input + 1 + 8 * blockId + 4);
-            int outputSize = *(int *)(input + 1 + 8 * blockId + 0);
+            for (int p = 0; p < blockId; ++p)
+            {
+                memcpy(&inputSize , input + 1 + 8 * p + 4, sizeof(int));
+                memcpy(&outputSize, input + 1 + 8 * p + 0, sizeof(int));
+
+                inputPtr += inputSize; outputPtr += outputSize;
+            }
+
+            memcpy(&inputSize , input + 1 + 8 * blockId + 4, sizeof(int));
+            memcpy(&outputSize, input + 1 + 8 * blockId + 0, sizeof(int));
 
             if (inputSize != outputSize)
             {

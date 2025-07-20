@@ -62,7 +62,7 @@ private:
 
     INLINE void OutputShort(unsigned short s)
     {
-#if defined(LIBBSC_ALLOW_UNALIGNED_ACCESS)
+#ifndef LIBBSC_NO_UNALIGNED_ACCESS
         *ari_output++ = s;
 #else
         memcpy(ari_output++, &s, sizeof(unsigned short));
@@ -71,12 +71,12 @@ private:
 
     INLINE unsigned short InputShort()
     {
-#if defined(LIBBSC_ALLOW_UNALIGNED_ACCESS)
+#ifndef LIBBSC_NO_UNALIGNED_ACCESS
         return *ari_input++;
 #else
-        unsigned short ret;
-        memcpy(&ret, ari_input++, sizeof(unsigned short));
-        return ret;
+        unsigned short s;
+        memcpy(&s, ari_input++, sizeof(unsigned short));
+        return s;
 #endif
     };
 

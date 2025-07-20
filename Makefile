@@ -402,8 +402,6 @@ endif
 ifeq "$(DONT_BUILD_BSC)" "1"
     DEFINES += -DBENCH_REMOVE_BSC
 else
-    BSC_FLAGS = -DLIBBSC_SORT_TRANSFORM_SUPPORT -DLIBBSC_ALLOW_UNALIGNED_ACCESS
-
     BSC_C_FILES = bwt/libbsc/libbsc/bwt/libsais/libsais.o
 
     BSC_CXX_FILES  = bwt/libbsc/libbsc/adler32/adler32.o

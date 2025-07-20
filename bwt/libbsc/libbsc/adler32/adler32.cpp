@@ -41,7 +41,7 @@ See also the bsc and libbsc web site:
 #include "../libbsc.h"
 
 #define BASE 65521UL
-#define NMAX 5536
+#define NMAX 5504
 
 #define DO1(buf, i) { sum1 += (buf)[i]; sum2 += sum1; }
 #define DO2(buf, i) DO1(buf, i); DO1(buf, i + 1);
@@ -52,6 +52,7 @@ See also the bsc and libbsc web site:
 
 #if defined(LIBBSC_DYNAMIC_CPU_DISPATCH)
     unsigned int bsc_adler32(const unsigned char * T, int n, int features);
+    unsigned int bsc_adler32_avx2(const unsigned char * T, int n, int features);
     unsigned int bsc_adler32_avx(const unsigned char * T, int n, int features);
     unsigned int bsc_adler32_ssse3(const unsigned char * T, int n, int features);
     unsigned int bsc_adler32_sse2(const unsigned char * T, int n, int features);
@@ -59,6 +60,7 @@ See also the bsc and libbsc web site:
     #if LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_SSE2
         unsigned int bsc_adler32(const unsigned char * T, int n, int features)
         {
+            if (bsc_get_cpu_features() >= LIBBSC_CPU_FEATURE_AVX2)  { return bsc_adler32_avx2 (T, n, features); }
             if (bsc_get_cpu_features() >= LIBBSC_CPU_FEATURE_AVX)   { return bsc_adler32_avx  (T, n, features); }
             if (bsc_get_cpu_features() >= LIBBSC_CPU_FEATURE_SSSE3) { return bsc_adler32_ssse3(T, n, features); }
 
@@ -66,7 +68,9 @@ See also the bsc and libbsc web site:
         }
     #endif
 
-    #if LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_AVX
+    #if LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_AVX2
+        #define ADLER32_FUNCTION_NAME       bsc_adler32_avx2
+    #elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_AVX
         #define ADLER32_FUNCTION_NAME       bsc_adler32_avx
     #elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_SSSE3
         #define ADLER32_FUNCTION_NAME       bsc_adler32_ssse3
@@ -89,7 +93,7 @@ unsigned int ADLER32_FUNCTION_NAME (const unsigned char * T, int n, int features
 
 #if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSSE3 || LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
 
-    while ((((uintptr_t)T & 15) != 0) && n > 0)
+    while ((((uintptr_t)T & 31) != 0) && n > 0)
     {
         DO1(T, 0); T += 1; n -= 1;
     }
@@ -98,20 +102,57 @@ unsigned int ADLER32_FUNCTION_NAME (const unsigned char * T, int n, int features
 
     while (n >= NMAX)
     {
-#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSSE3
+#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_AVX2
+        const __m256i tap1 = _mm256_setr_epi8(64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33);
+        const __m256i tap2 = _mm256_setr_epi8(32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1);
+        const __m256i zero = _mm256_setzero_si256();
+        const __m256i ones = _mm256_set1_epi16(1);
+
+        __m256i v_ps  = _mm256_set_epi32(0, 0, 0, 0, 0, 0, 0, sum1 * (NMAX / 64));
+        __m256i v_s2  = _mm256_setzero_si256();
+        __m256i v_s1  = _mm256_setzero_si256();
+
+        for (int i = 0; i < NMAX / 64; ++i)
+        {
+            const __m256i bytes1 = _mm256_load_si256((const __m256i *)(T));
+            const __m256i bytes2 = _mm256_load_si256((const __m256i *)(T + 32));
+
+            v_ps = _mm256_add_epi32(v_ps, v_s1);
+
+            v_s1 = _mm256_add_epi32(v_s1, _mm256_sad_epu8(bytes1, zero));
+            v_s2 = _mm256_add_epi32(v_s2, _mm256_madd_epi16(_mm256_maddubs_epi16(bytes1, tap1), ones));
+
+            v_s1 = _mm256_add_epi32(v_s1, _mm256_sad_epu8(bytes2, zero));
+            v_s2 = _mm256_add_epi32(v_s2, _mm256_madd_epi16(_mm256_maddubs_epi16(bytes2, tap2), ones));
+
+            T += 64;
+        }
+
+        v_s2 = _mm256_add_epi32(v_s2, _mm256_slli_epi32(v_ps, 6));
+
+        __m128i hv_s1 = _mm_add_epi32(_mm256_castsi256_si128(v_s1), _mm256_extracti128_si256(v_s1, 1));
+        hv_s1 = _mm_add_epi32(hv_s1, _mm_shuffle_epi32(hv_s1, _MM_SHUFFLE(2, 3, 0, 1)));
+        hv_s1 = _mm_add_epi32(hv_s1, _mm_shuffle_epi32(hv_s1, _MM_SHUFFLE(1, 0, 3, 2)));
+        sum1 += _mm_cvtsi128_si32(hv_s1);
+
+        __m128i hv_s2 = _mm_add_epi32(_mm256_castsi256_si128(v_s2), _mm256_extracti128_si256(v_s2, 1));
+        hv_s2 = _mm_add_epi32(hv_s2, _mm_shuffle_epi32(hv_s2, _MM_SHUFFLE(2, 3 ,0, 1)));
+        hv_s2 = _mm_add_epi32(hv_s2, _mm_shuffle_epi32(hv_s2, _MM_SHUFFLE(1, 0, 3, 2)));
+        sum2 += _mm_cvtsi128_si32(hv_s2);
+#elif LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSSE3
         const __m128i tap1 = _mm_setr_epi8(32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17);
         const __m128i tap2 = _mm_setr_epi8(16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1);
-        const __m128i zero = _mm_setr_epi8(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-        const __m128i ones = _mm_setr_epi16(1, 1, 1, 1, 1, 1, 1, 1);
+        const __m128i zero = _mm_setzero_si128();
+        const __m128i ones = _mm_set1_epi16(1);
 
         __m128i v_ps = _mm_set_epi32(0, 0, 0, sum1 * (NMAX / 32));
-        __m128i v_s2 = _mm_set_epi32(0, 0, 0, sum2);
-        __m128i v_s1 = _mm_set_epi32(0, 0, 0, 0);
+        __m128i v_s2 = _mm_setzero_si128();
+        __m128i v_s1 = _mm_setzero_si128();
 
         for (int i = 0; i < NMAX / 32; ++i)
         {
-            const __m128i bytes1 = _mm_load_si128((__m128i *)(T));
-            const __m128i bytes2 = _mm_load_si128((__m128i *)(T + 16));
+            const __m128i bytes1 = _mm_load_si128((const __m128i *)(T));
+            const __m128i bytes2 = _mm_load_si128((const __m128i *)(T + 16));
 
             v_ps = _mm_add_epi32(v_ps, v_s1);
             
@@ -132,12 +173,9 @@ unsigned int ADLER32_FUNCTION_NAME (const unsigned char * T, int n, int features
 
         v_s2 = _mm_add_epi32(v_s2, _mm_shuffle_epi32(v_s2, _MM_SHUFFLE(2, 3, 0, 1)));
         v_s2 = _mm_add_epi32(v_s2, _mm_shuffle_epi32(v_s2, _MM_SHUFFLE(1, 0, 3, 2)));
-        sum2 = _mm_cvtsi128_si32(v_s2);
+        sum2 += _mm_cvtsi128_si32(v_s2);
 #elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
-
-        unsigned int sum1_n = sum1 * (NMAX / 32);
-
-        uint32x4_t v_s2 = make_uint32x4(0, 0, 0, sum1_n);
+        uint32x4_t v_s2 = make_uint32x4(0, 0, 0, sum1 * (NMAX / 32));
         uint32x4_t v_s1 = make_uint32x4(0, 0, 0, 0);
         uint16x8_t v_column_sum_1 = vdupq_n_u16(0);
         uint16x8_t v_column_sum_2 = vdupq_n_u16(0);
@@ -177,7 +215,6 @@ unsigned int ADLER32_FUNCTION_NAME (const unsigned char * T, int n, int features
 
         sum1 += vget_lane_u32(v_s1s2, 0);
         sum2 += vget_lane_u32(v_s1s2, 1);
-
 #else
         for (int i = 0; i < NMAX / 16; ++i)
         {

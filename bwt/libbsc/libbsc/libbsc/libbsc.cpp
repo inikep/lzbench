@@ -51,7 +51,7 @@ int bsc_init_full(int features, void* (* malloc)(size_t size), void* (* zero_mal
     if (result == LIBBSC_NO_ERROR) result = bsc_coder_init(features);
     if (result == LIBBSC_NO_ERROR) result = bsc_bwt_init(features);
 
-#ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
+#ifndef LIBBSC_NO_SORT_TRANSFORM
 
     if (result == LIBBSC_NO_ERROR) result = bsc_st_init(features);
 
@@ -91,7 +91,7 @@ int bsc_compress_inplace(unsigned char * data, int n, int lzpHashSize, int lzpMi
     {
         case LIBBSC_BLOCKSORTER_BWT : mode = LIBBSC_BLOCKSORTER_BWT; break;
 
-#ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
+#ifndef LIBBSC_NO_SORT_TRANSFORM
 
         case LIBBSC_BLOCKSORTER_ST3 : mode = LIBBSC_BLOCKSORTER_ST3; break;
         case LIBBSC_BLOCKSORTER_ST4 : mode = LIBBSC_BLOCKSORTER_ST4; break;
@@ -159,7 +159,7 @@ int bsc_compress_inplace(unsigned char * data, int n, int lzpHashSize, int lzpMi
     {
         case LIBBSC_BLOCKSORTER_BWT : index = bsc_bwt_encode(data, lzSize, &num_indexes, indexes, features); break;
 
-#ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
+#ifndef LIBBSC_NO_SORT_TRANSFORM
 
         case LIBBSC_BLOCKSORTER_ST3 : index = bsc_st_encode(data, lzSize, 3, features); break;
         case LIBBSC_BLOCKSORTER_ST4 : index = bsc_st_encode(data, lzSize, 4, features); break;
@@ -226,7 +226,7 @@ int bsc_compress(const unsigned char * input, unsigned char * output, int n, int
     {
         case LIBBSC_BLOCKSORTER_BWT : mode = LIBBSC_BLOCKSORTER_BWT; break;
 
-#ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
+#ifndef LIBBSC_NO_SORT_TRANSFORM
 
         case LIBBSC_BLOCKSORTER_ST3 : mode = LIBBSC_BLOCKSORTER_ST3; break;
         case LIBBSC_BLOCKSORTER_ST4 : mode = LIBBSC_BLOCKSORTER_ST4; break;
@@ -286,7 +286,7 @@ int bsc_compress(const unsigned char * input, unsigned char * output, int n, int
     {
         case LIBBSC_BLOCKSORTER_BWT : index = bsc_bwt_encode(output, lzSize, &num_indexes, indexes, features); break;
 
-#ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
+#ifndef LIBBSC_NO_SORT_TRANSFORM
 
         case LIBBSC_BLOCKSORTER_ST3 : index = bsc_st_encode(output, lzSize, 3, features); break;
         case LIBBSC_BLOCKSORTER_ST4 : index = bsc_st_encode(output, lzSize, 4, features); break;
@@ -365,7 +365,7 @@ int bsc_block_info(const unsigned char * blockHeader, int headerSize, int * pBlo
     {
         case LIBBSC_BLOCKSORTER_BWT : test_mode = LIBBSC_BLOCKSORTER_BWT; break;
 
-#ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
+#ifndef LIBBSC_NO_SORT_TRANSFORM
 
         case LIBBSC_BLOCKSORTER_ST3 : test_mode = LIBBSC_BLOCKSORTER_ST3; break;
         case LIBBSC_BLOCKSORTER_ST4 : test_mode = LIBBSC_BLOCKSORTER_ST4; break;
@@ -482,7 +482,7 @@ int bsc_decompress_inplace(unsigned char * data, int inputSize, int outputSize, 
     {
         case LIBBSC_BLOCKSORTER_BWT : result = bsc_bwt_decode(data, lzSize, index, num_indexes, indexes, features); break;
 
-#ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
+#ifndef LIBBSC_NO_SORT_TRANSFORM
 
         case LIBBSC_BLOCKSORTER_ST3 : result = bsc_st_decode(data, lzSize, 3, index, features); break;
         case LIBBSC_BLOCKSORTER_ST4 : result = bsc_st_decode(data, lzSize, 4, index, features); break;
@@ -579,7 +579,7 @@ int bsc_decompress(const unsigned char * input, int inputSize, unsigned char * o
     {
         case LIBBSC_BLOCKSORTER_BWT : result = bsc_bwt_decode(output, lzSize, index, num_indexes, indexes, features); break;
 
-#ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
+#ifndef LIBBSC_NO_SORT_TRANSFORM
 
         case LIBBSC_BLOCKSORTER_ST3 : result = bsc_st_decode(output, lzSize, 3, index, features); break;
         case LIBBSC_BLOCKSORTER_ST4 : result = bsc_st_decode(output, lzSize, 4, index, features); break;

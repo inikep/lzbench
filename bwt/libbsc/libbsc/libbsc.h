@@ -35,8 +35,8 @@ See also the bsc and libbsc web site:
 
 #define LIBBSC_VERSION_MAJOR           3
 #define LIBBSC_VERSION_MINOR           3
-#define LIBBSC_VERSION_PATCH           5
-#define LIBBSC_VERSION_STRING          "3.3.5"
+#define LIBBSC_VERSION_PATCH           9
+#define LIBBSC_VERSION_STRING          "3.3.9"
 
 #define LIBBSC_NO_ERROR                0
 #define LIBBSC_BAD_PARAMETER          -1
@@ -53,7 +53,7 @@ See also the bsc and libbsc web site:
 #define LIBBSC_BLOCKSORTER_NONE        0
 #define LIBBSC_BLOCKSORTER_BWT         1
 
-#ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
+#ifndef LIBBSC_NO_SORT_TRANSFORM
 
   #define LIBBSC_BLOCKSORTER_ST3       3
   #define LIBBSC_BLOCKSORTER_ST4       4
@@ -83,6 +83,22 @@ See also the bsc and libbsc web site:
 
 #define LIBBSC_HEADER_SIZE             28
 
+#ifndef LIBBSC_API
+  #ifdef _WIN32
+    #ifdef LIBBSC_SHARED
+      #ifdef LIBBSC_EXPORTS
+        #define LIBBSC_API __declspec(dllexport)
+      #else
+        #define LIBBSC_API __declspec(dllimport)
+      #endif
+    #else
+      #define LIBBSC_API
+    #endif
+  #else
+    #define LIBBSC_API
+  #endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -92,7 +108,7 @@ extern "C" {
     * @param features - the set of additional features.
     * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
     */
-    int bsc_init(int features);
+    LIBBSC_API int bsc_init(int features);
 
     /**
     * You should call this function (or @ref bsc_init) before you call any of the other functions in libbsc.
@@ -102,7 +118,7 @@ extern "C" {
     * @param free - function used to free buffers
     * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
     */
-    int bsc_init_full(int features, void* (* malloc)(size_t size), void* (* zero_malloc)(size_t size), void (* free)(void* address));
+    LIBBSC_API int bsc_init_full(int features, void* (* malloc)(size_t size), void* (* zero_malloc)(size_t size), void (* free)(void* address));
 
     /**
     * Compress a memory block.
@@ -116,7 +132,7 @@ extern "C" {
     * @param features                           - the set of additional features.
     * @return the length of compressed memory block if no error occurred, error code otherwise.
     */
-    int bsc_compress(const unsigned char * input, unsigned char * output, int n, int lzpHashSize, int lzpMinLen, int blockSorter, int coder, int features);
+    LIBBSC_API int bsc_compress(const unsigned char * input, unsigned char * output, int n, int lzpHashSize, int lzpMinLen, int blockSorter, int coder, int features);
 
     /**
     * Store a memory block.
@@ -126,7 +142,7 @@ extern "C" {
     * @param features                           - the set of additional features.
     * @return the length of stored memory block if no error occurred, error code otherwise.
     */
-    int bsc_store(const unsigned char * input, unsigned char * output, int n, int features);
+    LIBBSC_API int bsc_store(const unsigned char * input, unsigned char * output, int n, int features);
 
     /**
     * Determinate the sizes of input and output memory blocks for bsc_decompress function.
@@ -137,7 +153,7 @@ extern "C" {
     * @param features                           - the set of additional features.
     * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
     */
-    int bsc_block_info(const unsigned char * blockHeader, int headerSize, int * pBlockSize, int * pDataSize, int features);
+    LIBBSC_API int bsc_block_info(const unsigned char * blockHeader, int headerSize, int * pBlockSize, int * pDataSize, int features);
 
     /**
     * Decompress a memory block.
@@ -149,7 +165,7 @@ extern "C" {
     * @param features                           - the set of additional features.
     * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
     */
-    int bsc_decompress(const unsigned char * input, int inputSize, unsigned char * output, int outputSize, int features);
+    LIBBSC_API int bsc_decompress(const unsigned char * input, int inputSize, unsigned char * output, int outputSize, int features);
 
 #ifdef __cplusplus
 }

@@ -37,7 +37,7 @@ See also the bsc and libbsc web site:
 extern "C" {
 #endif
 
-#if defined(LIBBSC_SORT_TRANSFORM_SUPPORT) && defined(LIBBSC_CUDA_SUPPORT)
+#if !defined(LIBBSC_NO_SORT_TRANSFORM) && defined(LIBBSC_CUDA_SUPPORT)
 
     /**
     * You should call this function before you call any of the other functions in st.
