@@ -30,7 +30,7 @@ See also the bsc and libbsc web site:
 
 --*/
 
-#if defined(LIBBSC_SORT_TRANSFORM_SUPPORT) && defined(LIBBSC_CUDA_SUPPORT)
+#if !defined(LIBBSC_NO_SORT_TRANSFORM) && defined(LIBBSC_CUDA_SUPPORT)
 
 #if defined(_MSC_VER)
   #pragma warning(disable : 4267)
@@ -222,7 +222,7 @@ int bsc_st567_encode_cuda(unsigned char * T, unsigned char * T_device, int n, in
 
                                 if (bsc_cuda_safe_call(__FILE__, __LINE__, status) == cudaSuccess)
                                 {
-                                    index = *(int *)(T + n);
+                                    memcpy(&index, T + n, sizeof(int));
                                 }
 
                                 return index;
@@ -309,7 +309,7 @@ int bsc_st8_encode_cuda(unsigned char * T, unsigned char * T_device, int n, int 
 
                                     if (bsc_cuda_safe_call(__FILE__, __LINE__, status) == cudaSuccess)
                                     {
-                                        index = *(int *)(T + ((n + sizeof(int) - 1) / sizeof(int)) * sizeof(int));
+                                        memcpy(&index, T + ((n + sizeof(int) - 1) / sizeof(int)) * sizeof(int), sizeof(int));
                                     }
 
                                     return index;

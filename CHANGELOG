@@ -1,3 +1,6 @@
+v2.x.y
+- updated libbsc to v3.3.9 (thanks to @IlyaGrebnov)
+
 v2.1 (Jul 17, 2025)
 - Added the -T parameter, which enables multi-threaded compression using an external thread
   pool implemented in lzbench. The input data is split into N blocks (with block size specified

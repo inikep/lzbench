@@ -37,7 +37,7 @@ See also the bsc and libbsc web site:
 extern "C" {
 #endif
 
-#ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
+#ifndef LIBBSC_NO_SORT_TRANSFORM
 
     /**
     * You should call this function before you call any of the other functions in st.

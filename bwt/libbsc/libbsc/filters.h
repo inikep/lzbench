@@ -36,6 +36,22 @@ See also the bsc and libbsc web site:
 #define LIBBSC_CONTEXTS_FOLLOWING    1
 #define LIBBSC_CONTEXTS_PRECEDING    2
 
+#ifndef LIBBSC_API
+  #ifdef _WIN32
+    #ifdef LIBBSC_SHARED
+      #ifdef LIBBSC_EXPORTS
+        #define LIBBSC_API __declspec(dllexport)
+      #else
+        #define LIBBSC_API __declspec(dllimport)
+      #endif
+    #else
+      #define LIBBSC_API
+    #endif
+  #else
+    #define LIBBSC_API
+  #endif
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -49,7 +65,7 @@ extern "C" {
     * @param features   - the set of additional features.
     * @return The number of segments if no error occurred, error code otherwise.
     */
-    int bsc_detect_segments(const unsigned char * input, int n, int * segments, int k, int features);
+    LIBBSC_API int bsc_detect_segments(const unsigned char * input, int n, int * segments, int k, int features);
 
     /**
     * Autodetects order of contexts for better compression of binary files.
@@ -58,7 +74,7 @@ extern "C" {
     * @param features   - the set of additional features.
     * @return The detected contexts order if no error occurred, error code otherwise.
     */
-    int bsc_detect_contextsorder(const unsigned char * input, int n, int features);
+    LIBBSC_API int bsc_detect_contextsorder(const unsigned char * input, int n, int features);
 
     /**
     * Reverses memory block to change order of contexts.
@@ -67,7 +83,7 @@ extern "C" {
     * @param features   - the set of additional features.
     * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
     */
-    int bsc_reverse_block(unsigned char * T, int n, int features);
+    LIBBSC_API int bsc_reverse_block(unsigned char * T, int n, int features);
 
     /**
     * Autodetects record size for better compression of multimedia files.
@@ -76,7 +92,7 @@ extern "C" {
     * @param features   - the set of additional features.
     * @return The size of record if no error occurred, error code otherwise.
     */
-    int bsc_detect_recordsize(const unsigned char * input, int n, int features);
+    LIBBSC_API int bsc_detect_recordsize(const unsigned char * input, int n, int features);
 
     /**
     * Reorders memory block for specific size of record (Forward transform).
@@ -86,7 +102,7 @@ extern "C" {
     * @param features   - the set of additional features.
     * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
     */
-    int bsc_reorder_forward(unsigned char * T, int n, int recordSize, int features);
+    LIBBSC_API int bsc_reorder_forward(unsigned char * T, int n, int recordSize, int features);
 
     /**
     * Reorders memory block for specific size of record (Reverse transform).
@@ -96,7 +112,7 @@ extern "C" {
     * @param features   - the set of additional features.
     * @return LIBBSC_NO_ERROR if no error occurred, error code otherwise.
     */
-    int bsc_reorder_reverse(unsigned char * T, int n, int recordSize, int features);
+    LIBBSC_API int bsc_reorder_reverse(unsigned char * T, int n, int recordSize, int features);
 
 #ifdef __cplusplus
 }

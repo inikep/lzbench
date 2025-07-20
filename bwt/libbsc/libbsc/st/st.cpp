@@ -30,7 +30,7 @@ See also the bsc and libbsc web site:
 
 --*/
 
-#ifdef LIBBSC_SORT_TRANSFORM_SUPPORT
+#ifndef LIBBSC_NO_SORT_TRANSFORM
 
 #include <stdlib.h>
 #include <memory.h>

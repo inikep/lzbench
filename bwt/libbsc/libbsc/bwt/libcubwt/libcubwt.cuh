@@ -26,8 +26,8 @@ Please see the file LICENSE for full copyright and license details.
 
 #define LIBCUBWT_VERSION_MAJOR          1
 #define LIBCUBWT_VERSION_MINOR          6
-#define LIBCUBWT_VERSION_PATCH          1
-#define LIBCUBWT_VERSION_STRING	        "1.6.1"
+#define LIBCUBWT_VERSION_PATCH          2
+#define LIBCUBWT_VERSION_STRING	        "1.6.2"
 
 #define LIBCUBWT_NO_ERROR               0
 #define LIBCUBWT_BAD_PARAMETER          -1

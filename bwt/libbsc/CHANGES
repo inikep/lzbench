@@ -1,3 +1,18 @@
+Changes in 3.3.9 (May 21, 2025)
+- Optimized QLFC transform for AVX512 instruction-set.
+- Optimized Adler-32 checksum for AVX2 instruction-set.
+
+Changes in 3.3.8 (May 12, 2025)
+- Updated libsais to v2.10.1.
+
+Changes in 3.3.7 (May 6, 2025)
+- Support for CUDA Toolkit 12.9 & CCCL 3.0.
+- Updated libsais to v2.10.0.
+- Updated libcubwt to v1.6.2.
+
+Changes in 3.3.6 (March 19, 2025)
+- No functional changes, resolved compiler warnings & undefined behavior.
+
 Changes in 3.3.5 (February 6, 2025)
 - Support for Blackwell GPU architecture.
 

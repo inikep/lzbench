@@ -54,7 +54,7 @@ Supported compressors
 
  - [brieflz 1.3.0](https://github.com/jibsen/brieflz)
  - [brotli 1.1.0](https://github.com/google/brotli)
- - [bsc 3.3.5](https://github.com/IlyaGrebnov/libbsc)
+ - [bsc 3.3.9](https://github.com/IlyaGrebnov/libbsc)
  - [bzip2 1.0.8](http://www.bzip.org/downloads.html)
  - [bzip3 1.5.1](https://github.com/kspalaiologos/bzip3)
  - [crush 1.0](https://sourceforge.net/projects/crush/)

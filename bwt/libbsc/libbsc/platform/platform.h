@@ -44,22 +44,22 @@ See also the bsc and libbsc web site:
 #define LIBBSC_CPU_FEATURE_SSE42     6
 #define LIBBSC_CPU_FEATURE_AVX       7
 #define LIBBSC_CPU_FEATURE_AVX2      8
-#define LIBBSC_CPU_FEATURE_AVX512F   9
+#define LIBBSC_CPU_FEATURE_AVX512CD  9
 #define LIBBSC_CPU_FEATURE_AVX512BW  10
 
-#if (defined(_M_AMD64) || defined(_M_X64) || defined(__amd64)) && !defined(__x86_64__)
-    #define __x86_64__ 1
+#if (defined(_M_AMD64) || defined(_M_X64) || defined(__amd64) || defined(__x86_64__)) && !defined(LIBBSC_x86_64)
+    #define LIBBSC_x86_64 1
 #endif
 
-#if defined(_M_ARM64) && !defined(__aarch64__)
-    #define __aarch64__ 1
+#if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(LIBBSC_AArch64)
+    #define LIBBSC_AArch64 1
 #endif
 
 #ifndef LIBBSC_CPU_FEATURE
     #if defined(__AVX512VL__) && defined(__AVX512BW__) && defined(__AVX512DQ__)
         #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX512BW
-    #elif defined(__AVX512F__) || defined(__AVX512__)
-        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX512F
+    #elif defined(__AVX512F__) && defined(__AVX512CD__)
+        #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX512CD
     #elif defined(__AVX2__)
         #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_AVX2
     #elif defined(__AVX__)
@@ -72,9 +72,9 @@ See also the bsc and libbsc web site:
         #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSSE3
     #elif defined(__SSE3__)
         #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSE3
-    #elif defined(__SSE2__) || defined(__x86_64__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+    #elif defined(__SSE2__) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2) || defined(LIBBSC_x86_64)
         #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_SSE2
-    #elif defined(__aarch64__)
+    #elif defined(LIBBSC_AArch64)
         #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_A64
     #else
         #define LIBBSC_CPU_FEATURE LIBBSC_CPU_FEATURE_NONE
@@ -156,7 +156,7 @@ See also the bsc and libbsc web site:
        return index;
     }
 
-    #if defined(__x86_64__) || defined(__aarch64__)
+    #if defined(_M_X64) || defined(_M_ARM64)
     static inline __forceinline unsigned long bsc_bit_scan_reverse64(unsigned long long x) 
     {
        unsigned long index;
@@ -165,7 +165,7 @@ See also the bsc and libbsc web site:
     }
     #endif
 
-    #if defined(__x86_64__) || defined(__aarch64__)
+    #if defined(_M_X64) || defined(_M_ARM64)
     static inline __forceinline unsigned long bsc_bit_scan_forward64(unsigned long long x) 
     {
        unsigned long index;
@@ -173,6 +173,22 @@ See also the bsc and libbsc web site:
        return index;
     }
     #endif
+#endif
+
+#ifndef LIBBSC_API
+  #ifdef _WIN32
+    #ifdef LIBBSC_SHARED
+      #ifdef LIBBSC_EXPORTS
+        #define LIBBSC_API __declspec(dllexport)
+      #else
+        #define LIBBSC_API __declspec(dllimport)
+      #endif
+    #else
+      #define LIBBSC_API
+    #endif
+  #else
+    #define LIBBSC_API
+  #endif
 #endif
 
 #ifdef __cplusplus
@@ -194,26 +210,26 @@ extern "C" {
     * @param size        - bytes to allocate.
     * @return a pointer to allocated space or NULL if there is insufficient memory available.
     */
-    void * bsc_malloc(size_t size);
+    LIBBSC_API void * bsc_malloc(size_t size);
 
     /**
     * Allocates memory blocks and initializes all its bits to zero.
     * @param size        - bytes to allocate.
     * @return a pointer to allocated space or NULL if there is insufficient memory available.
     */
-    void * bsc_zero_malloc(size_t size);
+    LIBBSC_API void * bsc_zero_malloc(size_t size);
 
     /**
     * Deallocates or frees a memory block.
     * @param address     - previously allocated memory block to be freed.
     */
-    void bsc_free(void * address);
+    LIBBSC_API void bsc_free(void * address);
 
     /**
     * Detects supported CPU features (Streaming SIMD Extensions).
     * @return highest supported CPU feature.
     */
-    int bsc_get_cpu_features(void);
+    LIBBSC_API int bsc_get_cpu_features(void);
 
 #ifdef __cplusplus
 }

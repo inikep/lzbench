@@ -37,6 +37,18 @@ Please see the file LICENSE for full copyright and license details.
 
 #include <utility>
 
+#include <thrust/iterator/transform_iterator.h>
+
+#if CCCL_MAJOR_VERSION >= 3
+    using libcubwt_sum_type = cuda::std::plus<>;
+    using libcubwt_max_type = cuda::maximum<>;
+    using libcubwt_min_type = cuda::minimum<>;
+#else
+    using libcubwt_sum_type = cub::Sum;
+    using libcubwt_max_type = cub::Max;
+    using libcubwt_min_type = cub::Min;
+#endif
+
 #if defined(__GNUC__) || defined(__clang__) || defined(__CUDACC__)
     #define RESTRICT __restrict__
 #elif defined(_MSC_VER) || defined(__INTEL_COMPILER)
@@ -53,13 +65,13 @@ Please see the file LICENSE for full copyright and license details.
 
 #if CUDA_DEVICE_ARCH == 750
     #define CUDA_SM_THREADS                 (1024)
-#elif CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 890 || CUDA_DEVICE_ARCH == 1010 || CUDA_DEVICE_ARCH == 1200
+#elif CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 890 || CUDA_DEVICE_ARCH == 1010 || CUDA_DEVICE_ARCH == 1200 || CUDA_DEVICE_ARCH == 1210
     #define CUDA_SM_THREADS                 (1536)
 #else
     #define CUDA_SM_THREADS                 (2048)
 #endif
 
-#if CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 890 || CUDA_DEVICE_ARCH == 1010 || CUDA_DEVICE_ARCH == 1200
+#if CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 890 || CUDA_DEVICE_ARCH == 1010 || CUDA_DEVICE_ARCH == 1200 || CUDA_DEVICE_ARCH == 1210
     #define CUDA_BLOCK_THREADS              (768)
 #else
     #define CUDA_BLOCK_THREADS              (512)
@@ -163,7 +175,7 @@ static __device__ __forceinline__ T libcubwt_warp_reduce_sum(T value)
     #pragma unroll
     for (uint32_t mask = CUDA_WARP_THREADS / 2; mask > 0; mask >>= 1)
     {
-        value = cub::Sum()(value, __shfl_xor_sync((uint32_t)-1, value, mask, CUDA_WARP_THREADS));
+        value = libcubwt_sum_type()(value, __shfl_xor_sync((uint32_t)-1, value, mask, CUDA_WARP_THREADS));
     }
 
     return value;
@@ -180,7 +192,7 @@ static __device__ __forceinline__ T libcubwt_warp_reduce_max(T value)
     #pragma unroll
     for (uint32_t mask = CUDA_WARP_THREADS / 2; mask > 0; mask >>= 1)
     {
-        value = cub::Max()(value, __shfl_xor_sync((uint32_t)-1, value, mask, CUDA_WARP_THREADS));
+        value = libcubwt_max_type()(value, __shfl_xor_sync((uint32_t)-1, value, mask, CUDA_WARP_THREADS));
     }
 
     return value;
@@ -857,8 +869,8 @@ static void libcubwt_rank_and_segment_suffixes_initiatory_kernel(
 
         __shared__ typename WarpScan::TempStorage warp_scan_storage[CUDA_WARP_THREADS];
 
-        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_suffix_rank[3]  , thread_inclusive_suffix_rank  , thread_exclusive_suffix_rank  , (uint32_t)0, cub::Max());
-        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_segment_index[3], thread_inclusive_segment_index, thread_exclusive_segment_index, (uint32_t)0, cub::Sum());
+        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_suffix_rank[3]  , thread_inclusive_suffix_rank  , thread_exclusive_suffix_rank  , (uint32_t)0, libcubwt_max_type{});
+        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_segment_index[3], thread_inclusive_segment_index, thread_exclusive_segment_index, (uint32_t)0, libcubwt_sum_type{});
 
         if ((threadIdx.x % CUDA_WARP_THREADS) == (CUDA_WARP_THREADS - 1))
         {
@@ -884,8 +896,8 @@ static void libcubwt_rank_and_segment_suffixes_initiatory_kernel(
 
                 uint2 warp_inclusive_state = warp_state[threadIdx.x];
 
-                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state.x, warp_inclusive_suffix_rank  , cub::Max());
-                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state.y, warp_inclusive_segment_index, cub::Sum());
+                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state.x, warp_inclusive_suffix_rank  , libcubwt_max_type{});
+                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state.y, warp_inclusive_segment_index, libcubwt_sum_type{});
             }
 
             {
@@ -923,14 +935,14 @@ static void libcubwt_rank_and_segment_suffixes_initiatory_kernel(
                         }
 
                         {
-                            block_exclusive_suffix_rank      = cub::Max()(block_exclusive_suffix_rank  , libcubwt_warp_reduce_max(block_descriptor.z));
-                            block_exclusive_segment_index    = cub::Sum()(block_exclusive_segment_index, libcubwt_warp_reduce_sum(block_descriptor.w));
+                            block_exclusive_suffix_rank      = libcubwt_max_type()(block_exclusive_suffix_rank  , libcubwt_warp_reduce_max(block_descriptor.z));
+                            block_exclusive_segment_index    = libcubwt_sum_type()(block_exclusive_segment_index, libcubwt_warp_reduce_sum(block_descriptor.w));
                         }
 
                     } while (full_aggregate_lane == -1);
 
-                    warp_inclusive_suffix_rank      = cub::Max()(warp_inclusive_suffix_rank  , block_exclusive_suffix_rank  );
-                    warp_inclusive_segment_index    = cub::Sum()(warp_inclusive_segment_index, block_exclusive_segment_index);
+                    warp_inclusive_suffix_rank      = libcubwt_max_type()(warp_inclusive_suffix_rank  , block_exclusive_suffix_rank  );
+                    warp_inclusive_segment_index    = libcubwt_sum_type()(warp_inclusive_segment_index, block_exclusive_segment_index);
                 }
 
                 if (threadIdx.x == ((CUDA_BLOCK_THREADS / CUDA_WARP_THREADS) - 1))
@@ -955,18 +967,18 @@ static void libcubwt_rank_and_segment_suffixes_initiatory_kernel(
     {
         uint2 warp_exclusive_state              = warp_state[threadIdx.x / CUDA_WARP_THREADS];
         
-        thread_exclusive_suffix_rank            = cub::Max()(thread_exclusive_suffix_rank  , warp_exclusive_state.x);
-        thread_exclusive_segment_index          = cub::Sum()(thread_exclusive_segment_index, warp_exclusive_state.y);
+        thread_exclusive_suffix_rank            = libcubwt_max_type()(thread_exclusive_suffix_rank  , warp_exclusive_state.x);
+        thread_exclusive_segment_index          = libcubwt_sum_type()(thread_exclusive_segment_index, warp_exclusive_state.y);
 
-        thread_suffix_rank[0]                   = cub::Max()(thread_suffix_rank[0], thread_exclusive_suffix_rank);
-        thread_suffix_rank[1]                   = cub::Max()(thread_suffix_rank[1], thread_exclusive_suffix_rank);
-        thread_suffix_rank[2]                   = cub::Max()(thread_suffix_rank[2], thread_exclusive_suffix_rank);
-        thread_suffix_rank[3]                   = cub::Max()(thread_suffix_rank[3], thread_exclusive_suffix_rank);
+        thread_suffix_rank[0]                   = libcubwt_max_type()(thread_suffix_rank[0], thread_exclusive_suffix_rank);
+        thread_suffix_rank[1]                   = libcubwt_max_type()(thread_suffix_rank[1], thread_exclusive_suffix_rank);
+        thread_suffix_rank[2]                   = libcubwt_max_type()(thread_suffix_rank[2], thread_exclusive_suffix_rank);
+        thread_suffix_rank[3]                   = libcubwt_max_type()(thread_suffix_rank[3], thread_exclusive_suffix_rank);
 
-        thread_segment_index[0]                 = cub::Sum()(thread_segment_index[0], thread_exclusive_segment_index);
-        thread_segment_index[1]                 = cub::Sum()(thread_segment_index[1], thread_exclusive_segment_index);
-        thread_segment_index[2]                 = cub::Sum()(thread_segment_index[2], thread_exclusive_segment_index);
-        thread_segment_index[3]                 = cub::Sum()(thread_segment_index[3], thread_exclusive_segment_index);
+        thread_segment_index[0]                 = libcubwt_sum_type()(thread_segment_index[0], thread_exclusive_segment_index);
+        thread_segment_index[1]                 = libcubwt_sum_type()(thread_segment_index[1], thread_exclusive_segment_index);
+        thread_segment_index[2]                 = libcubwt_sum_type()(thread_segment_index[2], thread_exclusive_segment_index);
+        thread_segment_index[3]                 = libcubwt_sum_type()(thread_segment_index[3], thread_exclusive_segment_index);
 
         const uint32_t thread_index             = blockIdx.x * CUDA_BLOCK_THREADS * 4 + threadIdx.x * 4;
 
@@ -1063,9 +1075,9 @@ static void libcubwt_rank_and_segment_suffixes_incremental_kernel(
 
         __shared__ typename WarpScan::TempStorage warp_scan_storage[CUDA_BLOCK_THREADS];
 
-        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_exclusive_suffix_old_rank, thread_inclusive_suffix_old_rank, thread_exclusive_suffix_old_rank, (uint32_t)0, cub::Max());
-        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_exclusive_suffix_new_rank, thread_inclusive_suffix_new_rank, thread_exclusive_suffix_new_rank, (uint32_t)0, cub::Max());
-        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_segment_index[3]         , thread_inclusive_segment_index  , thread_exclusive_segment_index  , (uint32_t)0, cub::Sum());
+        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_exclusive_suffix_old_rank, thread_inclusive_suffix_old_rank, thread_exclusive_suffix_old_rank, (uint32_t)0, libcubwt_max_type{});
+        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_exclusive_suffix_new_rank, thread_inclusive_suffix_new_rank, thread_exclusive_suffix_new_rank, (uint32_t)0, libcubwt_max_type{});
+        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_segment_index[3]         , thread_inclusive_segment_index  , thread_exclusive_segment_index  , (uint32_t)0, libcubwt_sum_type{});
 
         if ((threadIdx.x % CUDA_WARP_THREADS) == (CUDA_WARP_THREADS - 1))
         {
@@ -1092,9 +1104,9 @@ static void libcubwt_rank_and_segment_suffixes_incremental_kernel(
 
                 uint4 warp_inclusive_state = warp_state1[threadIdx.x];
 
-                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state.y, warp_inclusive_suffix_old_rank, cub::Max());
-                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state.z, warp_inclusive_suffix_new_rank, cub::Max());
-                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state.w, warp_inclusive_segment_index  , cub::Sum());
+                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state.y, warp_inclusive_suffix_old_rank, libcubwt_max_type{});
+                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state.z, warp_inclusive_suffix_new_rank, libcubwt_max_type{});
+                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state.w, warp_inclusive_segment_index  , libcubwt_sum_type{});
             }
 
             {
@@ -1132,14 +1144,14 @@ static void libcubwt_rank_and_segment_suffixes_incremental_kernel(
                         }
 
                         {
-                            block_exclusive_suffix_new_rank     = cub::Max()(block_exclusive_suffix_new_rank , libcubwt_warp_reduce_max(block_descriptor.z));
-                            block_exclusive_segment_index       = cub::Sum()(block_exclusive_segment_index   , libcubwt_warp_reduce_sum(block_descriptor.w));
+                            block_exclusive_suffix_new_rank     = libcubwt_max_type()(block_exclusive_suffix_new_rank , libcubwt_warp_reduce_max(block_descriptor.z));
+                            block_exclusive_segment_index       = libcubwt_sum_type()(block_exclusive_segment_index   , libcubwt_warp_reduce_sum(block_descriptor.w));
                         }
 
                     } while (full_aggregate_lane == -1);
 
-                    warp_inclusive_suffix_new_rank  = cub::Max()(warp_inclusive_suffix_new_rank, block_exclusive_suffix_new_rank);
-                    warp_inclusive_segment_index    = cub::Sum()(warp_inclusive_segment_index  , block_exclusive_segment_index  );
+                    warp_inclusive_suffix_new_rank  = libcubwt_max_type()(warp_inclusive_suffix_new_rank, block_exclusive_suffix_new_rank);
+                    warp_inclusive_segment_index    = libcubwt_sum_type()(warp_inclusive_segment_index  , block_exclusive_segment_index  );
                 }
 
                 if (threadIdx.x == ((CUDA_BLOCK_THREADS / CUDA_WARP_THREADS) - 1))
@@ -1150,7 +1162,7 @@ static void libcubwt_rank_and_segment_suffixes_incremental_kernel(
 
             {
                 uint32_t block_exclusive_suffix_old_rank    = __ldg((uint32_t *)(device_descriptors_copy + blockIdx.x - 1) + 2);
-                warp_inclusive_suffix_old_rank              = cub::Max()(warp_inclusive_suffix_old_rank, block_exclusive_suffix_old_rank);
+                warp_inclusive_suffix_old_rank              = libcubwt_max_type()(warp_inclusive_suffix_old_rank, block_exclusive_suffix_old_rank);
 
                 if (threadIdx.x == 0)
                 {
@@ -1170,9 +1182,9 @@ static void libcubwt_rank_and_segment_suffixes_incremental_kernel(
 
         uint4 warp_exclusive_state              = warp_state1[threadIdx.x / CUDA_WARP_THREADS];
         
-        thread_exclusive_suffix_old_rank        = cub::Max()(thread_exclusive_suffix_old_rank, warp_exclusive_state.y);
-        thread_exclusive_suffix_new_rank        = cub::Max()(thread_exclusive_suffix_new_rank, warp_exclusive_state.z);
-        thread_exclusive_segment_index          = cub::Sum()(thread_exclusive_segment_index  , warp_exclusive_state.w);
+        thread_exclusive_suffix_old_rank        = libcubwt_max_type()(thread_exclusive_suffix_old_rank, warp_exclusive_state.y);
+        thread_exclusive_suffix_new_rank        = libcubwt_max_type()(thread_exclusive_suffix_new_rank, warp_exclusive_state.z);
+        thread_exclusive_segment_index          = libcubwt_sum_type()(thread_exclusive_segment_index  , warp_exclusive_state.w);
 
         const uint32_t thread_index             = blockIdx.x * CUDA_BLOCK_THREADS * 4 + threadIdx.x * 4;
 
@@ -1186,10 +1198,10 @@ static void libcubwt_rank_and_segment_suffixes_incremental_kernel(
         thread_suffix_new_rank[2]               = (thread_new_heads.z != 0) ? (thread_index + 2) : thread_suffix_new_rank[1];
         thread_suffix_new_rank[3]               = (thread_new_heads.w != 0) ? (thread_index + 3) : thread_suffix_new_rank[2];
 
-        thread_segment_index[0]                 = cub::Sum()(thread_segment_index[0], thread_exclusive_segment_index);
-        thread_segment_index[1]                 = cub::Sum()(thread_segment_index[1], thread_exclusive_segment_index);
-        thread_segment_index[2]                 = cub::Sum()(thread_segment_index[2], thread_exclusive_segment_index);
-        thread_segment_index[3]                 = cub::Sum()(thread_segment_index[3], thread_exclusive_segment_index);
+        thread_segment_index[0]                 = libcubwt_sum_type()(thread_segment_index[0], thread_exclusive_segment_index);
+        thread_segment_index[1]                 = libcubwt_sum_type()(thread_segment_index[1], thread_exclusive_segment_index);
+        thread_segment_index[2]                 = libcubwt_sum_type()(thread_segment_index[2], thread_exclusive_segment_index);
+        thread_segment_index[3]                 = libcubwt_sum_type()(thread_segment_index[3], thread_exclusive_segment_index);
 
         if (thread_exclusive_segment_index != thread_segment_index[0]) { device_offsets_begin[thread_segment_index[0]] = thread_exclusive_suffix_new_rank; device_offsets_end[thread_segment_index[0]] = thread_index + 0; }
         if (thread_segment_index[0]        != thread_segment_index[1]) { device_offsets_begin[thread_segment_index[1]] = thread_suffix_new_rank[0];        device_offsets_end[thread_segment_index[1]] = thread_index + 1; }
@@ -1223,7 +1235,7 @@ static void libcubwt_rank_and_segment_suffixes_incremental_kernel(
 
             __shared__ typename WarpScan::TempStorage warp_scan_storage[CUDA_WARP_THREADS];
 
-            WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_suffix_index[3], thread_inclusive_suffix_index, thread_exclusive_suffix_index, (uint32_t)0, cub::Sum());
+            WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_suffix_index[3], thread_inclusive_suffix_index, thread_exclusive_suffix_index, (uint32_t)0, libcubwt_sum_type{});
 
             if ((threadIdx.x % CUDA_WARP_THREADS) == (CUDA_WARP_THREADS - 1))
             {
@@ -1246,7 +1258,7 @@ static void libcubwt_rank_and_segment_suffixes_incremental_kernel(
 
                     uint32_t warp_inclusive_state = warp_state2[threadIdx.x];
 
-                    WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state, warp_inclusive_suffix_index, cub::Sum());
+                    WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state, warp_inclusive_suffix_index, libcubwt_sum_type{});
                 }
 
                 {
@@ -1285,12 +1297,12 @@ static void libcubwt_rank_and_segment_suffixes_incremental_kernel(
                             }
 
                             {
-                                block_exclusive_suffix_index = cub::Sum()(block_exclusive_suffix_index, libcubwt_warp_reduce_sum(block_descriptor.y));
+                                block_exclusive_suffix_index = libcubwt_sum_type()(block_exclusive_suffix_index, libcubwt_warp_reduce_sum(block_descriptor.y));
                             }
 
                         } while (full_aggregate_lane == -1);
 
-                        warp_inclusive_suffix_index = cub::Sum()(warp_inclusive_suffix_index, block_exclusive_suffix_index);
+                        warp_inclusive_suffix_index = libcubwt_sum_type()(warp_inclusive_suffix_index, block_exclusive_suffix_index);
                     }
 
                     if (threadIdx.x == ((CUDA_BLOCK_THREADS / CUDA_WARP_THREADS) - 1))
@@ -1318,12 +1330,12 @@ static void libcubwt_rank_and_segment_suffixes_incremental_kernel(
                 uint32_t thread_suffix_new_rank[4];
 
                 uint32_t warp_exclusive_state           = warp_state2[threadIdx.x / CUDA_WARP_THREADS];
-                thread_exclusive_suffix_index           = cub::Sum()(thread_exclusive_suffix_index, warp_exclusive_state);
+                thread_exclusive_suffix_index           = libcubwt_sum_type()(thread_exclusive_suffix_index, warp_exclusive_state);
 
-                thread_suffix_index[0]                  = cub::Sum()(thread_suffix_index[0], thread_exclusive_suffix_index);
-                thread_suffix_index[1]                  = cub::Sum()(thread_suffix_index[1], thread_exclusive_suffix_index);
-                thread_suffix_index[2]                  = cub::Sum()(thread_suffix_index[2], thread_exclusive_suffix_index);
-                thread_suffix_index[3]                  = cub::Sum()(thread_suffix_index[3], thread_exclusive_suffix_index);
+                thread_suffix_index[0]                  = libcubwt_sum_type()(thread_suffix_index[0], thread_exclusive_suffix_index);
+                thread_suffix_index[1]                  = libcubwt_sum_type()(thread_suffix_index[1], thread_exclusive_suffix_index);
+                thread_suffix_index[2]                  = libcubwt_sum_type()(thread_suffix_index[2], thread_exclusive_suffix_index);
+                thread_suffix_index[3]                  = libcubwt_sum_type()(thread_suffix_index[3], thread_exclusive_suffix_index);
 
                 const uint32_t thread_index             = blockIdx.x * CUDA_BLOCK_THREADS * 4 + threadIdx.x * 4;
                 const uint4    indexes                  = __ldg((uint4 *)(device_SA + thread_index));
@@ -1503,7 +1515,7 @@ static void libcubwt_gather_unsorted_suffixes_kernel(
 
         __shared__ typename WarpScan::TempStorage warp_scan_storage[CUDA_WARP_THREADS];
 
-        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_suffix_index[3], thread_inclusive_suffix_index, thread_exclusive_suffix_index, (uint32_t)0, cub::Sum());
+        WarpScan(warp_scan_storage[threadIdx.x / CUDA_WARP_THREADS]).Scan(thread_suffix_index[3], thread_inclusive_suffix_index, thread_exclusive_suffix_index, (uint32_t)0, libcubwt_sum_type{});
 
         if ((threadIdx.x % CUDA_WARP_THREADS) == (CUDA_WARP_THREADS - 1))
         {
@@ -1526,7 +1538,7 @@ static void libcubwt_gather_unsorted_suffixes_kernel(
 
                 uint32_t warp_inclusive_state = warp_state[threadIdx.x];
 
-                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state, warp_inclusive_suffix_index, cub::Sum());
+                WarpScan(warp_scan_storage).InclusiveScan(warp_inclusive_state, warp_inclusive_suffix_index, libcubwt_sum_type{});
             }
 
             {
@@ -1563,12 +1575,12 @@ static void libcubwt_gather_unsorted_suffixes_kernel(
                         }
 
                         {
-                            block_exclusive_suffix_index = cub::Sum()(block_exclusive_suffix_index, libcubwt_warp_reduce_sum(block_descriptor.y));
+                            block_exclusive_suffix_index = libcubwt_sum_type()(block_exclusive_suffix_index, libcubwt_warp_reduce_sum(block_descriptor.y));
                         }
 
                     } while (full_aggregate_lane == -1);
 
-                    warp_inclusive_suffix_index = cub::Sum()(warp_inclusive_suffix_index, block_exclusive_suffix_index);
+                    warp_inclusive_suffix_index = libcubwt_sum_type()(warp_inclusive_suffix_index, block_exclusive_suffix_index);
                 }
 
                 if (threadIdx.x == ((CUDA_BLOCK_THREADS / CUDA_WARP_THREADS) - 1))
@@ -1595,12 +1607,12 @@ static void libcubwt_gather_unsorted_suffixes_kernel(
         {
             uint32_t warp_exclusive_state           = warp_state[threadIdx.x / CUDA_WARP_THREADS];
         
-            thread_exclusive_suffix_index           = cub::Sum()(thread_exclusive_suffix_index, warp_exclusive_state);
+            thread_exclusive_suffix_index           = libcubwt_sum_type()(thread_exclusive_suffix_index, warp_exclusive_state);
 
-            thread_suffix_index[0]                  = cub::Sum()(thread_suffix_index[0], thread_exclusive_suffix_index);
-            thread_suffix_index[1]                  = cub::Sum()(thread_suffix_index[1], thread_exclusive_suffix_index);
-            thread_suffix_index[2]                  = cub::Sum()(thread_suffix_index[2], thread_exclusive_suffix_index);
-            thread_suffix_index[3]                  = cub::Sum()(thread_suffix_index[3], thread_exclusive_suffix_index);
+            thread_suffix_index[0]                  = libcubwt_sum_type()(thread_suffix_index[0], thread_exclusive_suffix_index);
+            thread_suffix_index[1]                  = libcubwt_sum_type()(thread_suffix_index[1], thread_exclusive_suffix_index);
+            thread_suffix_index[2]                  = libcubwt_sum_type()(thread_suffix_index[2], thread_exclusive_suffix_index);
+            thread_suffix_index[3]                  = libcubwt_sum_type()(thread_suffix_index[3], thread_exclusive_suffix_index);
 
             const uint32_t thread_index             = blockIdx.x * CUDA_BLOCK_THREADS * 4 + threadIdx.x * 4;
             const uint4    indexes                  = __ldg((uint4 *)(device_SA + thread_index));
@@ -2271,7 +2283,7 @@ int64_t libcubwt_allocate_device_storage(void ** device_storage, int64_t max_len
             {
                 storage->device_L2_cache_bits = 0; while (cuda_device_L2_cache_size >>= 1) { storage->device_L2_cache_bits += 1; };
 
-                storage->cuda_block_threads = (cuda_device_capability == 860 || cuda_device_capability == 870 || cuda_device_capability == 890 || cuda_device_capability == 1010 || cuda_device_capability == 1200) ? 768u : 512u;
+                storage->cuda_block_threads = (cuda_device_capability == 860 || cuda_device_capability == 870 || cuda_device_capability == 890 || cuda_device_capability == 1010 || cuda_device_capability == 1200 || cuda_device_capability == 1210) ? 768u : 512u;
             }
         }
                
@@ -2975,8 +2987,8 @@ int64_t libcubwt_unbwt(void * device_storage, const uint8_t * T, uint8_t * U, in
         OffsetToPointerOperator<uint8_t, uint64_t> memcpy_from_operator { d_staging };
         OffsetToPointerOperator<uint8_t, uint32_t> memcpy_to_operator   { d_staging };
 
-        cub::TransformInputIterator<uint8_t *, OffsetToPointerOperator<uint8_t, uint64_t>, uint64_t *> memcpy_from_iterator (d_memcpy_from, memcpy_from_operator);
-        cub::TransformInputIterator<uint8_t *, OffsetToPointerOperator<uint8_t, uint32_t>, uint32_t *> memcpy_to_iterator   (d_memcpy_to  , memcpy_to_operator  );
+        thrust::transform_iterator<OffsetToPointerOperator<uint8_t, uint64_t>, uint64_t *> memcpy_from_iterator (d_memcpy_from, memcpy_from_operator);
+        thrust::transform_iterator<OffsetToPointerOperator<uint8_t, uint32_t>, uint32_t *> memcpy_to_iterator   (d_memcpy_to  , memcpy_to_operator  );
 
         device_batched_memcpy_temp_storage_size = 0;
 
@@ -3090,8 +3102,8 @@ int64_t libcubwt_unbwt(void * device_storage, const uint8_t * T, uint8_t * U, in
                     OffsetToPointerOperator<uint8_t, uint64_t> memcpy_from_operator { device_staging_area };
                     OffsetToPointerOperator<uint8_t, uint32_t> memcpy_to_operator   { device_L };
 
-                    cub::TransformInputIterator<uint8_t *, OffsetToPointerOperator<uint8_t, uint64_t>, uint64_t *> memcpy_from_iterator (device_batched_memcpy_from, memcpy_from_operator);
-                    cub::TransformInputIterator<uint8_t *, OffsetToPointerOperator<uint8_t, uint32_t>, uint32_t *> memcpy_to_iterator   (device_batched_memcpy_to  , memcpy_to_operator  );
+                    thrust::transform_iterator<OffsetToPointerOperator<uint8_t, uint64_t>, uint64_t *> memcpy_from_iterator (device_batched_memcpy_from, memcpy_from_operator);
+                    thrust::transform_iterator<OffsetToPointerOperator<uint8_t, uint32_t>, uint32_t *> memcpy_to_iterator   (device_batched_memcpy_to  , memcpy_to_operator  );
 
                     status = libcubwt_cuda_safe_call(__FILE__, __LINE__, cub::DeviceCopy::Batched(
                         device_batched_memcpy_temp_storage,

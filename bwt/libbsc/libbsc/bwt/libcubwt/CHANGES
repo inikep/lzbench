@@ -1,3 +1,6 @@
+Changes in 1.6.2 (May 5, 2025)
+- Support for CUDA Toolkit 12.9 & CCCL 3.0.
+
 Changes in 1.6.1 (January 24, 2025)
 - Support for Blackwell architecture.
 

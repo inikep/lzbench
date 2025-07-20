@@ -107,9 +107,9 @@ int bsc_get_cpu_features(void)
     if ((regs[1] & (1 << 16)) == 0)     { return g_cpu_features = LIBBSC_CPU_FEATURE_AVX2; }    // no AVX512F
     if ((regs[1] & (1 << 28)) == 0)     { return g_cpu_features = LIBBSC_CPU_FEATURE_AVX2; }    // no AVX512CD
     if ((bsc_xgetbv() & 0xE0) != 0xE0)  { return g_cpu_features = LIBBSC_CPU_FEATURE_AVX2; }    // AVX512 not enabled by OS
-    if ((regs[1] & (1 << 17)) == 0)     { return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512F; } // no AVX512DQ
-    if ((regs[1] & (1 << 31)) == 0)     { return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512F; } // no AVX512VL
-    if ((regs[1] & (1 << 30)) == 0)     { return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512F; } // no AVX512BW
+    if ((regs[1] & (1 << 17)) == 0)     { return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512CD; } // no AVX512DQ
+    if ((regs[1] & (1 << 31)) == 0)     { return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512CD; } // no AVX512VL
+    if ((regs[1] & (1 << 30)) == 0)     { return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512CD; } // no AVX512BW
     
     return g_cpu_features = LIBBSC_CPU_FEATURE_AVX512BW;
 }
