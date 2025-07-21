@@ -114,7 +114,62 @@ int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 }
 #endif
 
+#ifndef BENCH_REMOVE_ZPAQ
+#include "misc/zpaq/libzpaq.h"
 
+namespace libzpaq {
+void error(const char* msg) {
+    fprintf(stderr, "libzpaq error: %s\n", msg);
+    exit(1);
+}
+}
+
+// Minimal memory Reader for libzpaq
+class MemReader : public libzpaq::Reader {
+    const char* buf;
+    size_t size, pos;
+public:
+    MemReader(const char* b, size_t s) : buf(b), size(s), pos(0) {}
+    int get() override {
+        if (pos < size) return (unsigned char)buf[pos++];
+        return -1;
+    }
+};
+
+// Minimal memory Writer for libzpaq
+class MemWriter : public libzpaq::Writer {
+    char* buf;
+    size_t size, pos;
+public:
+    MemWriter(char* b, size_t s) : buf(b), size(s), pos(0) {}
+    void put(int c) override {
+        if (pos < size) buf[pos++] = (char)c;
+    }
+    size_t written() const { return pos; }
+};
+
+int64_t lzbench_zpaq_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    MemReader in(inbuf, insize);
+    MemWriter out(outbuf, outsize);
+
+    // Clamp level to 1-3 and convert to string
+    char method[2] = { (char)('0' + codec_options->level), 0 };
+    libzpaq::compress(&in, &out, method);
+
+    return (int64_t)out.written();
+}
+
+int64_t lzbench_zpaq_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    MemReader in(inbuf, insize);
+    MemWriter out(outbuf, outsize);
+
+    libzpaq::decompress(&in, &out);
+
+    return (int64_t)out.written();
+}
+#endif
 
 #ifdef BENCH_HAS_CUDA
 #include <cuda_runtime.h>
