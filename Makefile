@@ -27,9 +27,9 @@ vpath bench/lzbench.h $(SOURCE_PATH)
 vpath wflz/wfLZ.h $(SOURCE_PATH)
 
 ifeq ($(BUILD_ARCH),32-bit)
-	CODE_FLAGS += -m32
-	LDFLAGS += -m32
-	DONT_BUILD_LZSSE ?= 1
+    CODE_FLAGS += -m32
+    LDFLAGS += -m32
+    DONT_BUILD_LZSSE ?= 1
 endif
 
 CC?=gcc
@@ -45,37 +45,37 @@ endif
 
 # detect Windows
 ifneq (,$(filter Windows%,$(OS)))
-	ifeq ($(COMPILER),clang)
-		DONT_BUILD_GLZA ?= 1
-	endif
-	BUILD_STATIC ?= 1
-	ifeq ($(BUILD_STATIC),1)
-		LDFLAGS += -lshell32 -lole32 -loleaut32 -static
-	endif
+    ifeq ($(COMPILER),clang)
+        DONT_BUILD_GLZA ?= 1
+    endif
+    BUILD_STATIC ?= 1
+    ifeq ($(BUILD_STATIC),1)
+        LDFLAGS += -lshell32 -lole32 -loleaut32 -static
+    endif
 else
-	ifeq ($(shell uname -p),powerpc)
-		# density and yappy don't work with big-endian PowerPC
-		DONT_BUILD_DENSITY ?= 1
-		DONT_BUILD_YAPPY ?= 1
-		DONT_BUILD_ZLING ?= 1
-	endif
+    ifeq ($(shell uname -p),powerpc)
+        # density and yappy don't work with big-endian PowerPC
+        DONT_BUILD_DENSITY ?= 1
+        DONT_BUILD_YAPPY ?= 1
+        DONT_BUILD_ZLING ?= 1
+    endif
 
-	# detect MacOS
-	detected_OS := $(shell uname -s)
-	ifeq ($(detected_OS), Darwin)
-		DONT_BUILD_LZHAM ?= 1
-		DONT_BUILD_CSC ?= 1
-	    DEFINES += -Dunix
+    # detect MacOS
+    detected_OS := $(shell uname -s)
+    ifeq ($(detected_OS), Darwin)
+        DONT_BUILD_LZHAM ?= 1
+        DONT_BUILD_CSC ?= 1
+        DEFINES += -Dunix
     endif
     ifeq ($(detected_OS), Linux)
         DEFINES += -Dunix
     endif
 
-	LDFLAGS	+= -pthread
+    LDFLAGS	+= -pthread
 
-	ifeq ($(BUILD_STATIC),1)
-		LDFLAGS	+= -static -static-libstdc++
-	endif
+    ifeq ($(BUILD_STATIC),1)
+        LDFLAGS	+= -static -static-libstdc++
+    endif
 endif
 
 
@@ -84,17 +84,17 @@ CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 
 # don't use "-ffast-math" for clang < 10.0
 ifeq (1, $(shell [ "$(COMPILER)" = "clang" ] && expr $(CLANG_VERSION) \< 100000 ))
-	OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing
+    OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing
 else
-	OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
+    OPT_FLAGS   ?= -fomit-frame-pointer -fstrict-aliasing -ffast-math
 endif
 
 ifeq ($(BUILD_TYPE),debug)
-	OPT_FLAGS_O2 = $(OPT_FLAGS) -O0 -g
-	OPT_FLAGS_O3 = $(OPT_FLAGS) -O0 -g
+    OPT_FLAGS_O2 = $(OPT_FLAGS) -O0 -g
+    OPT_FLAGS_O3 = $(OPT_FLAGS) -O0 -g
 else
-	OPT_FLAGS_O2 = $(OPT_FLAGS) -O2 -DNDEBUG
-	OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
+    OPT_FLAGS_O2 = $(OPT_FLAGS) -O2 -DNDEBUG
+    OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
 endif
 
 CXXFLAGS  = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS) $(USER_CXXFLAGS)
@@ -118,14 +118,14 @@ endif
 
 
 ifeq "$(DONT_BUILD_BRIEFLZ)" "1"
-	DEFINES += -DBENCH_REMOVE_BRIEFLZ
+    DEFINES += -DBENCH_REMOVE_BRIEFLZ
 else
     BRIEFLZ_FILES = lz/brieflz/brieflz.o lz/brieflz/depack.o lz/brieflz/depacks.o
 endif
 
 
 ifeq "$(DONT_BUILD_BROTLI)" "1"
-	DEFINES += -DBENCH_REMOVE_BROTLI
+    DEFINES += -DBENCH_REMOVE_BROTLI
 else
     BROTLI_FILES = lz/brotli/common/constants.o lz/brotli/common/context.o lz/brotli/common/dictionary.o lz/brotli/common/platform.o lz/brotli/common/transform.o
     BROTLI_FILES += lz/brotli/dec/bit_reader.o lz/brotli/dec/decode.o lz/brotli/dec/huffman.o lz/brotli/dec/state.o
@@ -138,24 +138,24 @@ endif
 
 
 ifeq "$(DONT_BUILD_CRUSH)" "1"
-	DEFINES += -DBENCH_REMOVE_CRUSH
+    DEFINES += -DBENCH_REMOVE_CRUSH
 else
     MISC_FILES += lz/crush/crush.o
 endif
 
 
 ifeq "$(DONT_BUILD_FASTLZ)" "1"
-	DEFINES += -DBENCH_REMOVE_FASTLZ
+    DEFINES += -DBENCH_REMOVE_FASTLZ
 else
     MISC_FILES += lz/fastlz/fastlz.o
 endif
 
 
 ifeq "$(DONT_BUILD_FASTLZMA2)" "1"
-	DEFINES += -DBENCH_REMOVE_FASTLZMA2
+    DEFINES += -DBENCH_REMOVE_FASTLZMA2
 else
-	FASTLZMA2_SRC = $(wildcard lz/fast-lzma2/*.c)
-	FASTLZMA2_OBJ = $(FASTLZMA2_SRC:.c=.o)
+    FASTLZMA2_SRC = $(wildcard lz/fast-lzma2/*.c)
+    FASTLZMA2_OBJ = $(FASTLZMA2_SRC:.c=.o)
 endif
 
 
@@ -197,7 +197,7 @@ endif
 
 
 ifeq "$(DONT_BUILD_LIZARD)" "1"
-	DEFINES += -DBENCH_REMOVE_LIZARD
+    DEFINES += -DBENCH_REMOVE_LIZARD
 else
     LIZARD_FILES = lz/lizard/lizard_compress.o lz/lizard/lizard_decompress.o
     LIZARD_FILES += lz/lizard/entropy/huf_compress.o lz/lizard/entropy/huf_decompress.o lz/lizard/entropy/entropy_common.o
@@ -206,21 +206,21 @@ endif
 
 
 ifeq "$(DONT_BUILD_LZ4)" "1"
-	DEFINES += -DBENCH_REMOVE_LZ4
+    DEFINES += -DBENCH_REMOVE_LZ4
 else
     LZ4_FILES = lz/lz4/lib/lz4.o lz/lz4/lib/lz4hc.o
 endif
 
 
 ifeq "$(DONT_BUILD_LZF)" "1"
-	DEFINES += -DBENCH_REMOVE_LZF
+    DEFINES += -DBENCH_REMOVE_LZF
 else
     LZF_FILES = lz/lzf/lzf_c_ultra.o lz/lzf/lzf_c_very.o lz/lzf/lzf_d.o
 endif
 
 
 ifeq "$(DONT_BUILD_LZFSE)" "1"
-	DEFINES += -DBENCH_REMOVE_LZFSE
+    DEFINES += -DBENCH_REMOVE_LZFSE
 else
     LZFSE_FILES  = lz/lzfse/lzfse_decode.o lz/lzfse/lzfse_decode_base.o lz/lzfse/lzfse_encode.o lz/lzfse/lzfse_encode_base.o
     LZFSE_FILES += lz/lzfse/lzfse_fse.o lz/lzfse/lzvn_decode.o lz/lzfse/lzvn_decode_base.o lz/lzfse/lzvn_encode_base.o
@@ -228,7 +228,7 @@ endif
 
 
 ifeq "$(DONT_BUILD_LZG)" "1"
-	DEFINES += -DBENCH_REMOVE_LZG
+    DEFINES += -DBENCH_REMOVE_LZG
 else
     LIBLZG_FILES = lz/liblzg/decode.o lz/liblzg/encode.o lz/liblzg/checksum.o
 endif
@@ -245,9 +245,9 @@ endif
 
 
 ifeq "$(DONT_BUILD_LZLIB)" "1"
-	DEFINES += -DBENCH_REMOVE_LZLIB
+    DEFINES += -DBENCH_REMOVE_LZLIB
 else
-	MISC_FILES += lz/lzlib/lzlib.o
+    MISC_FILES += lz/lzlib/lzlib.o
 endif
 
 
@@ -283,23 +283,23 @@ endif
 
 
 ifeq "$(DONT_BUILD_QUICKLZ)" "1"
-	DEFINES += -DBENCH_REMOVE_QUICKLZ
+    DEFINES += -DBENCH_REMOVE_QUICKLZ
 else
     QUICKLZ_FILES = lz/quicklz/quicklz151b7.o lz/quicklz/quicklz1.o lz/quicklz/quicklz2.o lz/quicklz/quicklz3.o
 endif
 
 
 ifeq "$(DONT_BUILD_SLZ)" "1"
-	DEFINES += -DBENCH_REMOVE_SLZ
+    DEFINES += -DBENCH_REMOVE_SLZ
 else
-	MISC_FILES += lz/slz/src/slz.o
+    MISC_FILES += lz/slz/src/slz.o
 endif
 
 
 ifeq "$(DONT_BUILD_SNAPPY)" "1"
-	DEFINES += -DBENCH_REMOVE_SNAPPY
+    DEFINES += -DBENCH_REMOVE_SNAPPY
 else
-	SNAPPY_FILES = lz/snappy/snappy-sinksource.o lz/snappy/snappy-stubs-internal.o lz/snappy/snappy.o
+    SNAPPY_FILES = lz/snappy/snappy-sinksource.o lz/snappy/snappy-stubs-internal.o lz/snappy/snappy.o
 endif
 
 
@@ -312,7 +312,7 @@ endif
 
 
 ifeq "$(DONT_BUILD_UCL)" "1"
-	DEFINES += -DBENCH_REMOVE_UCL
+    DEFINES += -DBENCH_REMOVE_UCL
 else
     UCL_FILES = lz/ucl/alloc.o lz/ucl/n2b_99.o lz/ucl/n2b_d.o lz/ucl/n2b_ds.o lz/ucl/n2b_to.o lz/ucl/n2d_99.o lz/ucl/n2d_d.o lz/ucl/n2d_ds.o
     UCL_FILES += lz/ucl/n2d_to.o lz/ucl/n2e_99.o lz/ucl/n2e_d.o lz/ucl/n2e_ds.o lz/ucl/n2e_to.o lz/ucl/ucl_crc.o lz/ucl/ucl_init.o
@@ -321,7 +321,7 @@ endif
 
 
 ifeq "$(DONT_BUILD_XZ)" "1"
-	DEFINES += -DBENCH_REMOVE_XZ
+    DEFINES += -DBENCH_REMOVE_XZ
 else
     XZ_FILES = lz/xz/src/liblzma/lzma/lzma_decoder.o lz/xz/src/liblzma/lzma/lzma_encoder.o lz/xz/src/liblzma/lzma/lzma_encoder_optimum_fast.o lz/xz/src/liblzma/lzma/lzma_encoder_optimum_normal.o lz/xz/src/liblzma/lzma/fastpos_table.o
     XZ_FILES += lz/xz/src/liblzma/lzma/lzma_encoder_presets.o lz/xz/src/liblzma/lz/lz_decoder.o lz/xz/src/liblzma/lz/lz_encoder.o lz/xz/src/liblzma/lz/lz_encoder_mf.o lz/xz/src/liblzma/common/common.o lz/xz/src/liblzma/rangecoder/price_table.o
@@ -367,37 +367,37 @@ endif
 ifeq "$(DONT_BUILD_ZSTD)" "1"
     DEFINES += -DBENCH_REMOVE_ZSTD
 else
-	ZSTD_FILES  = lz/zstd/lib/common/zstd_common.o
-	ZSTD_FILES += lz/zstd/lib/common/fse_decompress.o
-	ZSTD_FILES += lz/zstd/lib/common/xxhash.o
-	ZSTD_FILES += lz/zstd/lib/common/error_private.o
-	ZSTD_FILES += lz/zstd/lib/common/entropy_common.o
-	ZSTD_FILES += lz/zstd/lib/common/pool.o
-	ZSTD_FILES += lz/zstd/lib/common/debug.o
-	ZSTD_FILES += lz/zstd/lib/common/threading.o
-	ZSTD_FILES += lz/zstd/lib/compress/zstd_compress.o
-	ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_literals.o
-	ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_sequences.o
-	ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_superblock.o
-	ZSTD_FILES += lz/zstd/lib/compress/zstdmt_compress.o
-	ZSTD_FILES += lz/zstd/lib/compress/zstd_double_fast.o
-	ZSTD_FILES += lz/zstd/lib/compress/zstd_fast.o
-	ZSTD_FILES += lz/zstd/lib/compress/zstd_lazy.o
-	ZSTD_FILES += lz/zstd/lib/compress/zstd_ldm.o
-	ZSTD_FILES += lz/zstd/lib/compress/zstd_opt.o
-	ZSTD_FILES += lz/zstd/lib/compress/zstd_preSplit.o
-	ZSTD_FILES += lz/zstd/lib/compress/fse_compress.o
-	ZSTD_FILES += lz/zstd/lib/compress/huf_compress.o
-	ZSTD_FILES += lz/zstd/lib/compress/hist.o
-	ZSTD_FILES += lz/zstd/lib/decompress/zstd_decompress.o
-	ZSTD_FILES += lz/zstd/lib/decompress/huf_decompress.o
-	ZSTD_FILES += lz/zstd/lib/decompress/zstd_ddict.o
-	ZSTD_FILES += lz/zstd/lib/decompress/zstd_decompress_block.o
-	ZSTD_FILES += lz/zstd/lib/dictBuilder/cover.o
-	ZSTD_FILES += lz/zstd/lib/dictBuilder/divsufsort.o
-	ZSTD_FILES += lz/zstd/lib/dictBuilder/fastcover.o
-	ZSTD_FILES += lz/zstd/lib/dictBuilder/zdict.o
-	MISC_FILES += lz/zstd/lib/decompress/huf_decompress_amd64.S
+    ZSTD_FILES  = lz/zstd/lib/common/zstd_common.o
+    ZSTD_FILES += lz/zstd/lib/common/fse_decompress.o
+    ZSTD_FILES += lz/zstd/lib/common/xxhash.o
+    ZSTD_FILES += lz/zstd/lib/common/error_private.o
+    ZSTD_FILES += lz/zstd/lib/common/entropy_common.o
+    ZSTD_FILES += lz/zstd/lib/common/pool.o
+    ZSTD_FILES += lz/zstd/lib/common/debug.o
+    ZSTD_FILES += lz/zstd/lib/common/threading.o
+    ZSTD_FILES += lz/zstd/lib/compress/zstd_compress.o
+    ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_literals.o
+    ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_sequences.o
+    ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_superblock.o
+    ZSTD_FILES += lz/zstd/lib/compress/zstdmt_compress.o
+    ZSTD_FILES += lz/zstd/lib/compress/zstd_double_fast.o
+    ZSTD_FILES += lz/zstd/lib/compress/zstd_fast.o
+    ZSTD_FILES += lz/zstd/lib/compress/zstd_lazy.o
+    ZSTD_FILES += lz/zstd/lib/compress/zstd_ldm.o
+    ZSTD_FILES += lz/zstd/lib/compress/zstd_opt.o
+    ZSTD_FILES += lz/zstd/lib/compress/zstd_preSplit.o
+    ZSTD_FILES += lz/zstd/lib/compress/fse_compress.o
+    ZSTD_FILES += lz/zstd/lib/compress/huf_compress.o
+    ZSTD_FILES += lz/zstd/lib/compress/hist.o
+    ZSTD_FILES += lz/zstd/lib/decompress/zstd_decompress.o
+    ZSTD_FILES += lz/zstd/lib/decompress/huf_decompress.o
+    ZSTD_FILES += lz/zstd/lib/decompress/zstd_ddict.o
+    ZSTD_FILES += lz/zstd/lib/decompress/zstd_decompress_block.o
+    ZSTD_FILES += lz/zstd/lib/dictBuilder/cover.o
+    ZSTD_FILES += lz/zstd/lib/dictBuilder/divsufsort.o
+    ZSTD_FILES += lz/zstd/lib/dictBuilder/fastcover.o
+    ZSTD_FILES += lz/zstd/lib/dictBuilder/zdict.o
+    MISC_FILES += lz/zstd/lib/decompress/huf_decompress_amd64.S
 endif
 
 
@@ -455,16 +455,16 @@ endif
 
 
 ifeq "$(DONT_BUILD_LZJB)" "1"
-	DEFINES += -DBENCH_REMOVE_LZJB
+    DEFINES += -DBENCH_REMOVE_LZJB
 else
-	MISC_FILES += lz/lzjb/lzjb2010.o
+    MISC_FILES += lz/lzjb/lzjb2010.o
 endif
 
 
 ifeq "$(DONT_BUILD_TAMP)" "1"
-	DEFINES += -DBENCH_REMOVE_TAMP
+    DEFINES += -DBENCH_REMOVE_TAMP
 else
-	MISC_FILES += lz/tamp/common.o lz/tamp/compressor.o lz/tamp/decompressor.o
+    MISC_FILES += lz/tamp/common.o lz/tamp/compressor.o lz/tamp/decompressor.o
 endif
 
 
