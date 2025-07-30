@@ -26,8 +26,8 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-cmake_minimum_required(VERSION 3.1)
-project(Snappy VERSION 1.2.1 LANGUAGES C CXX)
+cmake_minimum_required(VERSION 3.10)
+project(Snappy VERSION 1.2.2 LANGUAGES C CXX)
 
 # C++ standard can be overridden when this is used as a sub-project.
 if(NOT CMAKE_CXX_STANDARD)
@@ -38,7 +38,7 @@ if(NOT CMAKE_CXX_STANDARD)
 endif(NOT CMAKE_CXX_STANDARD)
 
 # https://github.com/izenecloud/cmake/blob/master/SetCompilerWarningAll.cmake
-if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+if(MSVC)
   # Use the highest warning level for Visual Studio.
   set(CMAKE_CXX_WARNING_LEVEL 4)
   if(CMAKE_CXX_FLAGS MATCHES "/W[0-4]")
@@ -55,7 +55,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # Disable RTTI.
   string(REGEX REPLACE "/GR" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR-")
-else(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+else(MSVC)
   # Use -Wall for clang and gcc.
   if(NOT CMAKE_CXX_FLAGS MATCHES "-Wall")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
@@ -85,7 +85,7 @@ else(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # Disable RTTI.
   string(REGEX REPLACE "-frtti" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti")
-endif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+endif(MSVC)
 
 # BUILD_SHARED_LIBS is a standard CMake variable, but we declare it here to make
 # it prominent in the GUI.
@@ -206,10 +206,13 @@ int main() {
 
 check_cxx_source_compiles("
 #include <arm_neon.h>
+#include <stdint.h>
 int main() {
   uint8_t val = 3, dup[8];
-  uint8x16_t v = vld1q_dup_u8(&val);
-  vst1q_u8(dup, v);
+  uint8x16_t v1 = vld1q_dup_u8(&val);
+  uint8x16_t v2 = vqtbl1q_u8(v1, v1);
+  vst1q_u8(dup, v1);
+  vst1q_u8(dup, v2);
   return 0;
 }" SNAPPY_HAVE_NEON)
 
@@ -258,9 +261,7 @@ target_sources(snappy
     "snappy-stubs-internal.cc"
     "snappy.cc"
     "${PROJECT_BINARY_DIR}/config.h"
-
-  # Only CMake 3.3+ supports PUBLIC sources in targets exported by "install".
-  $<$<VERSION_GREATER:CMAKE_VERSION,3.2>:PUBLIC>
+  PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/snappy-c.h>
     $<INSTALL_INTERFACE:include/snappy-c.h>
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/snappy-sinksource.h>
@@ -297,6 +298,9 @@ if(SNAPPY_BUILD_TESTS OR SNAPPY_BUILD_BENCHMARKS)
 
   # Test files include snappy-test.h, HAVE_CONFIG_H must be defined.
   target_compile_definitions(snappy_test_support PUBLIC -DHAVE_CONFIG_H)
+  if(BUILD_SHARED_LIBS)
+    set_target_properties(snappy_test_support PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+  endif(BUILD_SHARED_LIBS)
 
   target_link_libraries(snappy_test_support snappy)
 
