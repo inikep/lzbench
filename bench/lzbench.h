@@ -175,7 +175,7 @@ static const compressor_desc_t comp_desc[] =
     { "bsc_cuda7",  "bsc 3.3.9 -G -m7 -e0",    0,   0,    7,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
     { "bsc_cuda8",  "bsc 3.3.9 -G -m8 -e0",    0,   0,    8,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
     { "bzip2",      "bzip2 1.0.8",             1,   9,    0,       0, lzbench_bzip2_compress,      lzbench_bzip2_decompress,      NULL,                    NULL },
-    { "bzip3",      "bzip3 1.5.1",             1,  10,    0,       0, lzbench_bzip3_compress,      lzbench_bzip3_decompress,      NULL,                    NULL },
+    { "bzip3",      "bzip3 1.5.2",             1,  10,    0,       0, lzbench_bzip3_compress,      lzbench_bzip3_decompress,      NULL,                    NULL },
     { "crush",      "crush 1.0",               0,   2,    0,       1, lzbench_crush_compress,      lzbench_crush_decompress,      NULL,                    NULL },
     { "csc",        "csc 2016-10-13",          1,   5,    0,       0, lzbench_csc_compress,        lzbench_csc_decompress,        NULL,                    NULL },
     { "cudaMemcpy", "cudaMemcpy",              0,   0,    0,       0, lzbench_cuda_memcpy,         lzbench_cuda_memcpy,           lzbench_cuda_init,       lzbench_cuda_deinit },
