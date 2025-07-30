@@ -358,8 +358,13 @@ if test "x$enable_assembler" = xyes; then
 	esac
 fi
 case $enable_assembler in
-	x86 | no)
-		AC_MSG_RESULT([$enable_assembler])
+	x86)
+		AC_DEFINE([HAVE_CRC_X86_ASM], [1], [Define to 1 if
+			the 32-bit x86 CRC assembly files are used.])
+		AC_MSG_RESULT([x86])
+		;;
+	no)
+		AC_MSG_RESULT([no])
 		;;
 	*)
 		AC_MSG_RESULT([])
@@ -387,6 +392,16 @@ AC_ARG_ENABLE([arm64-crc32], AS_HELP_STRING([--disable-arm64-crc32],
 		[Do not use ARM64 CRC32 instructions even if support for it
 		is detected.]),
 	[], [enable_arm64_crc32=yes])
+
+
+################################
+# LoongArch CRC32 instructions #
+################################
+
+AC_ARG_ENABLE([loongarch-crc32], AS_HELP_STRING([--disable-loongarch-crc32],
+		[Do not use LoongArch CRC32 instructions even if support for
+		them is detected.]),
+	[], [enable_loongarch_crc32=yes])
 
 
 #####################
@@ -627,6 +642,32 @@ AM_PROG_CC_C_O
 AM_PROG_AS
 AC_USE_SYSTEM_EXTENSIONS
 
+# If using GCC or compatible compiler, verify that CFLAGS doesn't contain
+# something that makes -Werror unhappy. It's important to check this after
+# the above check for system extensions. It adds macros that can trigger,
+# for example, -Wunused-macros.
+if test "$GCC" = yes && test "x$SKIP_WERROR_CHECK" != xyes ; then
+	AC_MSG_CHECKING([if the -Werror option is usable])
+	OLD_CFLAGS=$CFLAGS
+	CFLAGS="$CFLAGS -Werror"
+	AC_COMPILE_IFELSE([AC_LANG_SOURCE([[extern int foo; int foo;]])], [
+		AC_MSG_RESULT([yes])
+	], [
+		AC_MSG_RESULT([no])
+		AC_MSG_ERROR([
+    CFLAGS contains something that makes -Werror complain (see config.log).
+    This would break certain checks in 'configure'. It is strongly
+    recommended to modify CFLAGS to fix this. If you want to use noisy
+    warning options, for example, -Weverything, it is still possible to
+    add them later when running 'make': make CFLAGS+=-Weverything
+
+    In case you really want to continue with the current CFLAGS, pass
+    'SKIP_WERROR_CHECK=yes' as an argument to 'configure'.
+		])
+	])
+	CFLAGS=$OLD_CFLAGS
+fi
+
 AS_CASE([$enable_threads],
 	[posix], [
 		echo
@@ -717,6 +758,7 @@ fi
 # --with-pic and --without-pic though. As long as neither --with-pic nor
 # --without-pic is used then we can use #ifdef PIC to detect if the file is
 # being built for a shared library.
+LINKER_FLAG_UNDEFINED_VERSION=
 AS_IF([test "x$enable_symbol_versions" = xno], [
 	enable_symbol_versions=no
 	AC_MSG_RESULT([no])
@@ -790,12 +832,34 @@ AS_IF([test "x$enable_symbol_versions" = xno], [
 		AC_MSG_ERROR([unknown symbol versioning variant '$enable_symbol_versions'])
 	fi
 	AC_MSG_RESULT([yes ($enable_symbol_versions)])
+
+	# If features are disabled in liblzma, some symbols may be missing.
+	# LLVM's lld defaults to --no-undefined-version and the build breaks
+	# if not all symbols in the version script exist. That is good for
+	# catching errors like typos, but in our case the downside is too big.
+	# Avoid the problem by using --undefined-version if the linker
+	# supports it.
+	#
+	# GNU ld has had --no-undefined-version for a long time but it's not
+	# the default. The opposite option --undefined-version was only added
+	# in 2022, thus we must use --undefined-version conditionally.
+	AC_MSG_CHECKING([if linker supports --undefined-version])
+	OLD_LDFLAGS=$LDFLAGS
+	LDFLAGS="$LDFLAGS -Wl,--undefined-version"
+	AC_LINK_IFELSE([AC_LANG_SOURCE([[int main(void) { return 0; }]])], [
+		LINKER_FLAG_UNDEFINED_VERSION=-Wl,--undefined-version
+		AC_MSG_RESULT([yes])
+	], [
+		AC_MSG_RESULT([no])
+	])
+	LDFLAGS=$OLD_LDFLAGS
 ])
 
 AM_CONDITIONAL([COND_SYMVERS_LINUX],
 	[test "x$enable_symbol_versions" = xlinux])
 AM_CONDITIONAL([COND_SYMVERS_GENERIC],
 	[test "x$enable_symbol_versions" = xgeneric])
+AC_SUBST([LINKER_FLAG_UNDEFINED_VERSION])
 
 
 ###############################################################################
@@ -810,6 +874,35 @@ echo "Initializing gettext:"
 AM_GNU_GETTEXT_REQUIRE_VERSION([0.19.6])
 AM_GNU_GETTEXT_VERSION([0.19.6])
 AM_GNU_GETTEXT([external])
+
+# The command line tools use UTF-8 on native Windows. Non-ASCII characters
+# display correctly only when using UCRT and gettext-runtime >= 0.23.1.
+AS_CASE([$USE_NLS-$host_os],
+	[yes-mingw*], [
+		AC_MSG_CHECKING([for UCRT and gettext-runtime >= 0.23.1])
+		AC_PREPROC_IFELSE([AC_LANG_SOURCE([[
+			#define WIN32_LEAN_AND_MEAN
+			#include <windows.h>
+			#include <libintl.h>
+
+			#ifndef _UCRT
+			#error "Not UCRT"
+			#endif
+
+			#if LIBINTL_VERSION < 0x001701
+			#error "gettext-runtime < 0.23.1"
+			#endif
+		]])], [
+			AC_MSG_RESULT([yes])
+		], [
+			AC_MSG_RESULT([no])
+			AC_MSG_ERROR([
+    Translation support (--enable-nls) on native Windows requires
+    UCRT and gettext-runtime >= 0.23.1. Use --disable-nls to build
+    with MSVCRT or old gettext-runtime.])
+		])
+	]
+)
 
 
 ###############################################################################
@@ -856,13 +949,6 @@ AC_C_BIGENDIAN
 # __attribute__((__constructor__)) can be used for one-time initializations.
 # Use -Werror because some compilers accept unknown attributes and just
 # give a warning.
-#
-# FIXME? Unfortunately -Werror can cause trouble if CFLAGS contains options
-# that produce warnings for unrelated reasons. For example, GCC and Clang
-# support -Wunused-macros which will warn about "#define _GNU_SOURCE 1"
-# which will be among the #defines that Autoconf inserts to the beginning of
-# the test program. There seems to be no nice way to prevent Autoconf from
-# inserting the any defines to the test program.
 AC_MSG_CHECKING([if __attribute__((__constructor__)) can be used])
 have_func_attribute_constructor=no
 OLD_CFLAGS="$CFLAGS"
@@ -1097,6 +1183,36 @@ AS_IF([test "x$enable_arm64_crc32" = xyes], [
 ])
 
 
+# LoongArch CRC32 intrinsics are in larchintrin.h.
+# These are supported by at least GCC and Clang.
+#
+# Only 64-bit LoongArch is currently supported.
+# It doesn't need runtime detection.
+AC_MSG_CHECKING([if LoongArch CRC32 instructions are usable])
+AS_IF([test "x$enable_loongarch_crc32" = xno], [
+	AC_MSG_RESULT([no, --disable-loongarch-crc32 was used])
+], [
+	AC_LINK_IFELSE([AC_LANG_SOURCE([[
+#if !(defined(__loongarch__) && __loongarch_grlen >= 64)
+#	error
+#endif
+
+#include <larchintrin.h>
+int main(void)
+{
+	return __crc_w_w_w(1, 2);
+}
+	]])], [
+		AC_DEFINE([HAVE_LOONGARCH_CRC32], [1], [Define to 1 if
+			64-bit LoongArch CRC32 instructions are supported.])
+		enable_loongarch_crc32=yes
+	], [
+		enable_loongarch_crc32=no
+	])
+	AC_MSG_RESULT([$enable_loongarch_crc32])
+])
+
+
 # Check for sandbox support. If one is found, set enable_sandbox=found.
 #
 # About -fsanitize: Of our three sandbox methods, only Landlock is
@@ -1142,8 +1258,9 @@ AS_CASE([$enable_sandbox],
 		]])], [
 			enable_sandbox=found
 
-			AS_CASE([$CFLAGS], [*-fsanitize=*], [AC_MSG_ERROR([
-    CFLAGS contains '-fsanitize=' which is incompatible with the Landlock
+			AS_CASE(["$CC $CFLAGS"], [*-fsanitize=*],
+				[AC_MSG_ERROR([
+    CC or CFLAGS contain '-fsanitize=' which is incompatible with the Landlock
     sandboxing. Use --disable-sandbox when using '-fsanitize'.])])
 
 			AC_DEFINE([HAVE_LINUX_LANDLOCK], [1],
@@ -1225,6 +1342,8 @@ AS_IF([test "$GCC" = yes], [
 			-Wmissing-prototypes \
 			-Wmissing-declarations \
 			-Wredundant-decls \
+			-Wimplicit-fallthrough \
+			-Wimplicit-fallthrough=5 \
 			\
 			-Wc99-compat \
 			-Wc11-extensions \

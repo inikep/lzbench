@@ -6,6 +6,9 @@ bin_PROGRAMS = lzmainfo
 lzmainfo_SOURCES = \
 	lzmainfo.c \
 	../common/tuklib_progname.c \
+	../common/tuklib_mbstr_nonprint.c \
+	../common/tuklib_mbstr_width.c \
+	../common/tuklib_mbstr_wrap.c \
 	../common/tuklib_exit.c
 
 if COND_W32
@@ -15,12 +18,14 @@ endif
 lzmainfo_CPPFLAGS = \
 	-DLOCALEDIR=\"$(localedir)\" \
 	-I$(top_srcdir)/src/common \
-	-I$(top_srcdir)/src/liblzma/api \
-	-I$(top_builddir)/lib
+	-I$(top_srcdir)/src/liblzma/api
 
 lzmainfo_LDADD = $(top_builddir)/src/liblzma/liblzma.la
 
 if COND_GNULIB
+lzmainfo_CPPFLAGS += \
+	-I$(top_builddir)/lib \
+	-I$(top_srcdir)/lib
 lzmainfo_LDADD += $(top_builddir)/lib/libgnu.a
 endif
 

@@ -32,8 +32,10 @@ xz_SOURCES = \
 	../common/tuklib_open_stdxxx.c \
 	../common/tuklib_progname.c \
 	../common/tuklib_exit.c \
+	../common/tuklib_mbstr_fw.c \
+	../common/tuklib_mbstr_nonprint.c \
 	../common/tuklib_mbstr_width.c \
-	../common/tuklib_mbstr_fw.c
+	../common/tuklib_mbstr_wrap.c
 
 if COND_MAIN_DECODER
 xz_SOURCES += \
@@ -48,12 +50,14 @@ endif
 xz_CPPFLAGS = \
 	-DLOCALEDIR=\"$(localedir)\" \
 	-I$(top_srcdir)/src/common \
-	-I$(top_srcdir)/src/liblzma/api \
-	-I$(top_builddir)/lib
+	-I$(top_srcdir)/src/liblzma/api
 
 xz_LDADD = $(top_builddir)/src/liblzma/liblzma.la
 
 if COND_GNULIB
+xz_CPPFLAGS += \
+	-I$(top_builddir)/lib \
+	-I$(top_srcdir)/lib
 xz_LDADD += $(top_builddir)/lib/libgnu.a
 endif
 
