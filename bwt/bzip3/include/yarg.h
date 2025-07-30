@@ -295,3 +295,61 @@ yarg_result * yarg_parse(int argc, char * argv[], yarg_options opt[], yarg_setti
 }
 
 #endif
+ntf(&res->error, yarg_oom);
+            return 0;
+          }
+        } else if (argv[i + 1] && argv[i + 1][0] != opt_char) {
+          if(!(res->args[res->argc].arg = yarg_strdup(argv[++i]))) {
+            yarg_asprintf(&res->error, yarg_oom);
+            return 0;
+          }
+        }
+      }
+      res->argc++;
+    } else if(!(res->pos_args[res->pos_argc++] = yarg_strdup(argv[i]))) {
+      yarg_asprintf(&res->error, yarg_oom);
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+void yarg_destroy(yarg_result * r) {
+  if(r) {
+    if(r->args) {
+      for (int i = 0; i < r->argc; i++) {
+        free(r->args[i].arg);
+      }
+    }
+    free(r->args);
+    if(r->pos_args) {
+      for (int i = 0; i < r->pos_argc; i++) {
+        free(r->pos_args[i]);
+      }
+    }
+    free(r->pos_args);
+    if (r->error != yarg_oom)
+      free(r->error);
+  }
+  free(r);
+}
+
+yarg_result * yarg_parse(int argc, char * argv[], yarg_options opt[], yarg_settings settings) {
+  yarg_result * res = (yarg_result *) calloc(sizeof(yarg_result), 1);
+  if (!res) return NULL;
+  switch (settings.style) {
+    case YARG_STYLE_WINDOWS:
+      yarg_parse_unix_short(argc, argv, opt, res, false, '/');
+      break;
+    case YARG_STYLE_UNIX:
+      yarg_parse_unix(argc, argv, opt, res, settings.dash_dash);
+      break;
+    case YARG_STYLE_UNIX_SHORT:
+      yarg_parse_unix_short(argc, argv, opt, res, settings.dash_dash, '-');
+      break;
+  }
+  return res;
+}
+
+#endif

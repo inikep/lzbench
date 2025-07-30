@@ -791,4 +791,35 @@ int main(int argc, char * argv[]) {
         remove_in_file(input, output_des);
     }
     return r;
+} skipping.\n", f1);
+                        return 1;
+                    }
+                }
+            } else {
+                // decode from f1 to f2.
+                input = f1;
+                output = f2;
+            }
+        }
+    }
+
+    FILE *input_des = NULL, *output_des = NULL;
+
+    input_des = open_input(input);
+    output_des = mode != MODE_TEST ? open_output(output, force) : NULL;
+
+    if (output != f2) free(output);
+
+    int r = process(input_des, output_des, mode, block_size, workers, verbose, input);
+
+    fclose(input_des);
+    close_out_file(output_des);
+    if (fclose(stdout)) {
+        fprintf(stderr, "Error: Failed on fclose(stdout): %s\n", strerror(errno));
+        return 1;
+    }
+    if (remove_input_file) {
+        remove_in_file(input, output_des);
+    }
+    return r;
 }

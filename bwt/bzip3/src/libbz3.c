@@ -1051,3 +1051,5 @@ BZIP3_API int bz3_orig_size_sufficient_for_decode(const u8 * block, size_t block
     if (model & 4) rle_size = read_neutral_s32(block + header_size);
     return bz3_check_buffer_size((size_t)orig_size, lzp_size, rle_size, orig_size);
 }
+lzp_size, rle_size, orig_size);
+}
