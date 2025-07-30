@@ -1,5 +1,10 @@
 v2.x.y
+- added zpaq v7.15 (thanks to @rsreds)
+- updated bzip3 to v1.5.2 (thanks to @tansy)
 - updated libbsc to v3.3.9 (thanks to @IlyaGrebnov)
+- updated libdeflate to v1.24 (thanks to @tansy)
+- updated snappy to v1.2.2 (thanks to @tansy)
+- updated xz to v5.8.1 (thanks to @tansy)
 
 v2.1 (Jul 17, 2025)
 - Added the -T parameter, which enables multi-threaded compression using an external thread
