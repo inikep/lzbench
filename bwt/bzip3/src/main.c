@@ -583,6 +583,10 @@ int main(int argc, char * argv[]) {
         .style = YARG_STYLE_UNIX,
     };
     yarg_result * res = yarg_parse(argc, argv, opt, settings);
+    if (!res) {
+        fprintf(stderr, "bzip3: out of memory.\n");
+        return 1;
+    }
     if (res->error) {
         fputs(res->error, stderr);
         fputs("Try 'bzip3 --help' for more information.\n", stderr);
@@ -633,7 +637,7 @@ int main(int argc, char * argv[]) {
         return 1;
     }
 
-    if (batch) {
+    if (batch && res->pos_argc) {
         switch (mode) {
             case MODE_ENCODE:
                 /* Encode each of the files. */
@@ -761,37 +765,6 @@ int main(int argc, char * argv[]) {
                         output[strlen(output) - 4] = 0;
                     else {
                         fprintf(stderr, "Warning: file %s has an unknown extension, skipping.\n", f1);
-                        return 1;
-                    }
-                }
-            } else {
-                // decode from f1 to f2.
-                input = f1;
-                output = f2;
-            }
-        }
-    }
-
-    FILE *input_des = NULL, *output_des = NULL;
-
-    input_des = open_input(input);
-    output_des = mode != MODE_TEST ? open_output(output, force) : NULL;
-
-    if (output != f2) free(output);
-
-    int r = process(input_des, output_des, mode, block_size, workers, verbose, input);
-
-    fclose(input_des);
-    close_out_file(output_des);
-    if (fclose(stdout)) {
-        fprintf(stderr, "Error: Failed on fclose(stdout): %s\n", strerror(errno));
-        return 1;
-    }
-    if (remove_input_file) {
-        remove_in_file(input, output_des);
-    }
-    return r;
-} skipping.\n", f1);
                         return 1;
                     }
                 }
