@@ -697,9 +697,14 @@ next_k:
 void lzbench_process_mem_blocks(lzbench_params_t *params, std::vector<size_t> &file_sizes, const char *namesWithParams, uint8_t *inbuf, size_t insize, bench_rate_t rate)
 {
     uint8_t *compbuf, *decomp;
-    size_t comprsize;
+    size_t comprsize, chunk_size;
     std::vector<size_t> chunk_sizes;
-    size_t chunk_size = (params->chunk_size > insize) ? insize : params->chunk_size;
+
+    if (params->chunk_size > 0) {
+        chunk_size = (params->chunk_size > insize) ? insize : params->chunk_size;
+    } else {
+        chunk_size = insize;
+    }
 
     for (int i=0; i<file_sizes.size(); i++) {
         size_t tmpsize = file_sizes[i];
@@ -849,14 +854,14 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
 
         if (params->random_read){
           unsigned long long pos = 0;
-          if (params->chunk_size < real_insize){
+          if (params->chunk_size > 0 && real_insize > params->chunk_size){
             pos = (rand() % (real_insize / params->chunk_size)) * params->chunk_size;
             insize = params->chunk_size;
             fseeko(in, pos, SEEK_SET);
           } else {
             insize = real_insize;
           }
-          printf("Seeking to: %llu %llu %llu\n", pos, (unsigned long long)params->chunk_size, (unsigned long long)insize);
+          printf("Seeking to: %llu, reading %llu bytes\n", pos, (unsigned long long)insize);
         }
 
         insize = fread(inbuf, 1, insize, in);
@@ -895,7 +900,7 @@ void usage(lzbench_params_t* params)
 {
     fprintf(stdout, "lzbench - in-memory benchmark of open-source compressors\n\n");
     fprintf(stdout, "usage: " PROGNAME " [options] [input]\n\nwhere [input] is a file/s or a directory and [options] are:\n");
-    fprintf(stdout, "  -b#   set block/chunk size to # KB {default: filesize} (max %llu KB)\n", (uint64)(params->chunk_size>>10));
+    fprintf(stdout, "  -b#   set block/chunk size to # KB, 0=disabled {default: %llu}\n", (uint64)(params->chunk_size>>10));
     fprintf(stdout, "  -c#   sort results by column # (1=algname, 2=ctime, 3=dtime, 4=comprsize)\n");
     fprintf(stdout, "  -e#   #=compressors separated by '/' with parameters specified after ',' {fast}\n");
     fprintf(stdout, "  -h    display this help and exit\n");
@@ -1010,7 +1015,7 @@ int main( int argc, char** argv)
     params->textformat = TEXT;
     params->show_speed = 1;
     params->verbose = 2;
-    params->chunk_size = (1ULL << 31) - (1ULL << 31)/6;
+    params->chunk_size = 0;
     params->cspeed = 0;
     params->c_iters = params->d_iters = 1;
     params->cmintime = 10*DEFAULT_LOOP_TIME/1000000; // 1 sec
