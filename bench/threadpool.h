@@ -53,7 +53,7 @@ private:
     std::queue<CompressionTask> tasks;
     std::mutex queueMutex;
     std::condition_variable condition;
-    std::atomic<bool> stop;
+    bool stop;
     std::atomic<size_t> activeTasks;
 
     void workerThread(int threadNo);
