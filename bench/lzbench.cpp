@@ -80,8 +80,8 @@ void print_header(lzbench_params_t *params)
         case TURBOBENCH:
             printf("  Compressed  Ratio   Cspeed   Dspeed         Compressor name Filename\n"); break;
         case TEXT:
-            if (params->threads > 0)
-                printf("Compressor name  C,D Threads Compress. Decompress. Compr. size  Ratio Filename\n");
+            if ((params->threads > 0) || (params->codec_threads > 0))
+                printf("Compressor name   %s Threads Compress. Decompress. Compr. size  Ratio Filename\n", params->codec_threads ? "C,D;K" : "  C,D");
             else
                 printf("Compressor name         Compress. Decompress. Compr. size  Ratio Filename\n"); break;
             break;
@@ -115,8 +115,16 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
         case TEXT:
         case TEXT_FULL:
             printf("%-23s", row.col1_algname.c_str());
-            if (params->threads > 0)
-                printf("%2d,%2d", row.usedCompThreads, row.usedDecompThreads);
+            if ((params->threads > 0) || (params->codec_threads > 0))
+            {
+                if (params->codec_threads > 0) {
+                    printf("%2d,%2d,%2d", row.usedCompThreads, row.usedDecompThreads, row.usedCodecThreads);
+                }
+                else {
+                    printf("%2d,%2d   ", row.usedCompThreads, row.usedDecompThreads);
+                }
+            }
+
             if (cspeed) {
                 if (cspeed < 10) printf("%6.2f MB/s", cspeed);
                 else if (cspeed < 100) printf("%6.1f MB/s", cspeed);
@@ -216,7 +224,7 @@ void print_time(lzbench_params_t *params, string_table_t& row)
 }
 
 
-void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int level, std::vector<uint64_t> &ctime, std::vector<uint64_t> &dtime, size_t insize, size_t outsize, bool comp_error, bool decomp_error, int usedCompThreads, int usedDecompThreads)
+void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int level, std::vector<uint64_t> &ctime, std::vector<uint64_t> &dtime, size_t insize, size_t outsize, bool comp_error, bool decomp_error, int used_comp_threads, int used_decomp_threads, int used_codec_threads)
 {
     std::string col1_algname;
     std::sort(ctime.begin(), ctime.end());
@@ -246,7 +254,7 @@ void print_stats(lzbench_params_t *params, const compressor_desc_t* desc, int le
         format(col1_algname, "%s -%d", desc->name_version, level);
 
     LZBENCH_PRINT(9, "ALL best_ctime=%llu best_dtime=%llu\n", (uint64)((comp_error)?0:best_ctime), (uint64)((decomp_error)?0:best_dtime));
-    params->results.push_back(string_table_t(col1_algname, (comp_error)?0:best_ctime, (decomp_error)?0:best_dtime, outsize, insize, params->in_filename, usedCompThreads, usedDecompThreads));
+    params->results.push_back(string_table_t(col1_algname, (comp_error)?0:best_ctime, (decomp_error)?0:best_dtime, outsize, insize, params->in_filename, used_comp_threads, used_decomp_threads, used_codec_threads));
     if (params->show_speed)
         print_speed(params, params->results[params->results.size()-1]);
     else
@@ -453,7 +461,7 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
     std::vector<size_t> compr_sizes;
     bool comp_error = false, decomp_error = false;
     int param2 = desc->additional_param;
-    size_t compThreadsUsed = (numThreads <= 1), decompThreadsUsed = (numThreads <= 1);
+    size_t compThreadsUsed = (numThreads <= 1), decompThreadsUsed = (numThreads <= 1), codecThreadsUsed = (params->codec_threads);
     std::vector<char*> workmems(numThreads, nullptr);
 
 
@@ -617,7 +625,7 @@ stats:
     }
     pool.clear();
 #endif // #ifndef DISABLE_THREADING
-    print_stats(params, desc, level, ctime, dtime, insize, complen, comp_error, decomp_error, compThreadsUsed, decompThreadsUsed);
+    print_stats(params, desc, level, ctime, dtime, insize, complen, comp_error, decomp_error, compThreadsUsed, decompThreadsUsed, codecThreadsUsed);
 
 done:
     if (desc->deinit) {
@@ -731,7 +739,7 @@ void lzbench_process_mem_blocks(lzbench_params_t *params, size_t max_chunk_size,
     int numThreads = lzbench_process_codec_list(params, max_chunk_size, chunk_sizes, namesWithParams, inbuf, insize, compbuf, comprsize, decomp, rate);
 
     if (chunk_sizes.size() > 1 || numThreads > 1)
-        LZBENCH_PRINT(2, "[Summary] Files=%zu Chunks=%zu ChunkSize=%zu Threads=%d\n", file_sizes.size(), chunk_sizes.size(), max_chunk_size, numThreads);
+        LZBENCH_PRINT(3, "[Summary] Files=%zu Chunks=%zu ChunkSize=%zu Threads=%d\n", file_sizes.size(), chunk_sizes.size(), max_chunk_size, numThreads);
 
     free(compbuf);
     free(decomp);
@@ -918,7 +926,8 @@ void usage(lzbench_params_t* params)
     fprintf(stdout, "  -r    operate recursively on directories\n");
 #endif
     fprintf(stdout, "  -s#   use only compressors with compression speed over # MB {%d MB}\n", params->cspeed);
-    fprintf(stdout, "  -T#   use # threads (works with -b to split input into blocks)\n");
+    fprintf(stdout, "  -TN;K use N threads pool; use K internal codec threads (optional)\n");
+    fprintf(stdout, "        with -b split input into blocks; no -b does automatic split into N parts\n");
     fprintf(stdout, "  -tX,Y set min. time in seconds for compression and decompression {%.0f, %.0f}\n", params->cmintime/1000.0, params->dmintime/1000.0);
     fprintf(stdout, "  -v    be verbose (-vv gives more)\n");
     fprintf(stdout, "  -V    output version information and exit\n");
@@ -1024,6 +1033,7 @@ int main( int argc, char** argv)
     params->dmintime = 20*DEFAULT_LOOP_TIME/1000000; // 2 sec
     params->cloop_time = params->dloop_time = DEFAULT_LOOP_TIME;
     params->threads = 0;
+    params->codec_threads = 0;
 
 
     while ((argc>1) && (argv[1][0]=='-')) {
@@ -1099,6 +1109,13 @@ int main( int argc, char** argv)
 #ifndef DISABLE_THREADING
             case 'T':
             params->threads = number;
+            if (*numPtr == ',' || *numPtr == ';')
+            {
+                numPtr++;
+                number = 0;
+                while ((*numPtr >='0') && (*numPtr <='9')) { number *= 10;  number += *numPtr - '0'; numPtr++; }
+                params->codec_threads = number;
+            }
             break;
 #endif // #ifndef DISABLE_THREADING
         case 'u':
