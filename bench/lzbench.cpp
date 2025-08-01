@@ -862,7 +862,8 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
         insize = fread(inbuf, 1, insize, in);
 
         size_t sv_chunk_size = params->chunk_size;
-        if (params->threads > 1)
+        // automatic split if -b# not set
+        if ((params->threads > 1) && (params->chunk_size == DEFAULT_PARAM_CHUNK_SIZE))
         {
             size_t chunk_size = (size_t)(insize + params->threads - 1) / params->threads;
             if (chunk_size < params->chunk_size)
@@ -1018,7 +1019,7 @@ int main( int argc, char** argv)
     params->textformat = TEXT;
     params->show_speed = 1;
     params->verbose = 2;
-    params->chunk_size = (1ULL << 31) - (1ULL << 31)/6;
+    params->chunk_size = DEFAULT_PARAM_CHUNK_SIZE;
     params->cspeed = 0;
     params->c_iters = params->d_iters = 1;
     params->cmintime = 10*DEFAULT_LOOP_TIME/1000000; // 1 sec
