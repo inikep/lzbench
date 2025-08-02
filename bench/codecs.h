@@ -18,7 +18,7 @@ typedef struct
     int level;
     int additional_param;
     char* work_mem;
-//    int threads;
+    int threads;
 } codec_options_t;
 
 
