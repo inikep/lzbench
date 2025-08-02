@@ -83,11 +83,11 @@ void print_header(lzbench_params_t *params)
         {
             std::string threads_format;
             if (params->threads > 0 && params->codec_threads > 0)
-                threads_format = "  C,D;K Threads";
+                threads_format = "  C,D;I Threads";
             else if (params->threads > 0)
                 threads_format = " C,D Threads";
             else if (params->codec_threads > 0)
-                threads_format = "K_Threads";
+                threads_format = "I_Threads";
             else
                 threads_format = "       ";
             printf("Compressor name %s Compress. Decompress. Compr. size  Ratio Filename\n", threads_format.c_str());
@@ -920,6 +920,7 @@ void usage(lzbench_params_t* params)
     fprintf(stdout, "  -c#   sort results by column # (1=algname, 2=ctime, 3=dtime, 4=comprsize)\n");
     fprintf(stdout, "  -e#   #=compressors separated by '/' with parameters specified after ',' {fast}\n");
     fprintf(stdout, "  -h    display this help and exit\n");
+    fprintf(stdout, "  -I#   use # internal threads (if compressor supports it)\n");
     fprintf(stdout, "  -iX,Y set min. number of compression and decompression iterations {%d, %d}\n", params->c_iters, params->d_iters);
     fprintf(stdout, "  -j    join files in memory but compress them independently (for many small files)\n");
     fprintf(stdout, "  -l    list of available compressors and aliases\n");
@@ -932,8 +933,7 @@ void usage(lzbench_params_t* params)
     fprintf(stdout, "  -r    operate recursively on directories\n");
 #endif
     fprintf(stdout, "  -s#   use only compressors with compression speed over # MB {%d MB}\n", params->cspeed);
-    fprintf(stdout, "  -TN;K use N threads pool; use K internal codec threads (optional)\n");
-    fprintf(stdout, "        with -b split input into blocks; no -b does automatic split into N parts\n");
+    fprintf(stdout, "  -T#   use # thread pool threads (works with -b to split input into blocks)\n");
     fprintf(stdout, "  -tX,Y set min. time in seconds for compression and decompression {%.0f, %.0f}\n", params->cmintime/1000.0, params->dmintime/1000.0);
     fprintf(stdout, "  -v    be verbose (-vv gives more)\n");
     fprintf(stdout, "  -V    output version information and exit\n");
@@ -1113,15 +1113,10 @@ int main( int argc, char** argv)
             }
             break;
 #ifndef DISABLE_THREADING
-            case 'T':
+        case 'T':
             params->threads = number;
-            if (*numPtr == ',' || *numPtr == ';')
-            {
-                numPtr++;
-                number = 0;
-                while ((*numPtr >='0') && (*numPtr <='9')) { number *= 10;  number += *numPtr - '0'; numPtr++; }
-                params->codec_threads = number;
-            }
+        case 'I':
+            params->codec_threads = number;
             break;
 #endif // #ifndef DISABLE_THREADING
         case 'u':
