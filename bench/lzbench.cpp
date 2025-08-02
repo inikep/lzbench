@@ -461,7 +461,8 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
     std::vector<size_t> compr_sizes;
     bool comp_error = false, decomp_error = false;
     int param2 = desc->additional_param;
-    size_t compThreadsUsed = (numThreads <= 1), decompThreadsUsed = (numThreads <= 1), codecThreadsUsed = (params->codec_threads);
+    int codec_threads = params->codec_threads;
+    size_t compThreadsUsed = (numThreads <= 1), decompThreadsUsed = (numThreads <= 1), codecThreadsUsed = (codec_threads);
     std::vector<char*> workmems(numThreads, nullptr);
 
 
@@ -477,7 +478,7 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
         }
     }
 
-    codec_options_t codec_options { param1, param2, workmems[0] };
+    codec_options_t codec_options { param1, param2, workmems[0], codec_threads };
 
     if (params->cspeed > 0)
     {

@@ -208,7 +208,7 @@ int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t 
 
     ostreambuf<char> buf(outbuf, outsize);
     std::iostream os(&buf);
-    int cores = 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
+    int cores = codec_options->threads > 1 ? codec_options->threads : 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
     kanzi::CompressedOutputStream cos(os, entropy, transform, szBlock, false, std::min(cores, 64));
     cos.write(inbuf, insize);
     cos.close();
@@ -219,11 +219,11 @@ int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_
 {
     istreambuf<char> buf(inbuf, insize);
     std::iostream is(&buf);
-    int cores = 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
+    int cores = codec_options->threads > 1 ? codec_options->threads : 1;
     kanzi::CompressedInputStream cis(is, std::min(cores, 64));
     cis.read(outbuf, outsize);
     cis.close();
-    return outsize;//cis.getRead();
+    return outsize; //cis.getRead();
 }
 #endif // BENCH_REMOVE_KANZI
 
@@ -436,7 +436,7 @@ int64_t lzbench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t 
     memset(&comp_params, 0, sizeof(comp_params));
     comp_params.m_struct_size = sizeof(lzham_compress_params);
     comp_params.m_dict_size_log2 = dict_size_log?dict_size_log:26;
-    comp_params.m_max_helper_threads = 0;
+    comp_params.m_max_helper_threads = codec_options->threads; ////?
     comp_params.m_level = (lzham_compress_level)codec_options->level;
 
     lzham_compress_status_t comp_status;
@@ -602,7 +602,7 @@ int64_t lzbench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 
     LzmaEncProps_Init(&props);
     props.level = codec_options->level;
-    props.numThreads = 1;
+    props.numThreads = codec_options->threads > 1 ? codec_options->threads : 1;
     LzmaEncProps_Normalize(&props);
   /*
   p->level = 5;
