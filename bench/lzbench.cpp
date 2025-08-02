@@ -80,11 +80,19 @@ void print_header(lzbench_params_t *params)
         case TURBOBENCH:
             printf("  Compressed  Ratio   Cspeed   Dspeed         Compressor name Filename\n"); break;
         case TEXT:
-            if ((params->threads > 0) || (params->codec_threads > 0))
-                printf("Compressor name   %s Threads Compress. Decompress. Compr. size  Ratio Filename\n", params->codec_threads ? "C,D;K" : "  C,D");
+        {
+            std::string threads_format;
+            if (params->threads > 0 && params->codec_threads > 0)
+                threads_format = "  C,D;K Threads";
+            else if (params->threads > 0)
+                threads_format = " C,D Threads";
+            else if (params->codec_threads > 0)
+                threads_format = "K_Threads";
             else
-                printf("Compressor name         Compress. Decompress. Compr. size  Ratio Filename\n"); break;
+                threads_format = "       ";
+            printf("Compressor name %s Compress. Decompress. Compr. size  Ratio Filename\n", threads_format.c_str());
             break;
+        }
         case TEXT_FULL:
             printf("Compressor name         Compress. Decompress.  Orig. size  Compr. size  Ratio Filename\n"); break;
         case MARKDOWN:
@@ -115,14 +123,12 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
         case TEXT:
         case TEXT_FULL:
             printf("%-23s", row.col1_algname.c_str());
-            if ((params->threads > 0) || (params->codec_threads > 0))
-            {
-                if (params->codec_threads > 0) {
-                    printf("%2d,%2d,%2d", row.usedCompThreads, row.usedDecompThreads, row.usedCodecThreads);
-                } else {
-                    printf("%2d,%2d   ", row.usedCompThreads, row.usedDecompThreads);
-                }
-            }
+            if (params->threads > 0)
+                printf("%2d,%2d", row.usedCompThreads, row.usedDecompThreads);
+            if ((params->threads > 0) && (params->codec_threads > 0))
+                printf(";");
+            if (params->codec_threads > 0)
+                printf("%2d", row.usedCodecThreads);
 
             if (cspeed) {
                 if (cspeed < 10) printf("%6.2f MB/s", cspeed);
