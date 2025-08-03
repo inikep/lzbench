@@ -1390,51 +1390,84 @@ int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 int64_t lzbench_xz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    lzma_options_lzma opt_lzma;
     lzma_stream strm = LZMA_STREAM_INIT;
-    uint32_t preset = codec_options->level; // preset |= LZMA_PRESET_EXTREME;
+    lzma_ret ret;
 
-    if (lzma_lzma_preset(&opt_lzma, preset))
-        return 0;
+    // Prepare multithreaded compression settings
+    lzma_mt mt_options = {0};
 
-    lzma_ret ret = lzma_alone_encoder(&strm, &opt_lzma);
-    if (ret != LZMA_OK)
-        return 0;
+    // Compression level: default to 6 if codec_options->level is unset
+    mt_options.preset = (codec_options && codec_options->level >= 0 && codec_options->level <= 9)
+                          ? (uint32_t)codec_options->level
+                          : LZMA_PRESET_DEFAULT;
 
-    strm.next_in = (uint8_t*)inbuf;
+    // Check type (CRC64 is default and common)
+    mt_options.check = LZMA_CHECK_NONE;
+    //mt_options.check = LZMA_CHECK_CRC32;
+
+    // Number of threads
+    mt_options.threads = codec_options->threads;
+    mt_options.block_size = 0;
+
+    // lzma_stream_encoder_mt supports .xz format with multithreading
+    ret = lzma_stream_encoder_mt(&strm, &mt_options);
+    if (ret != LZMA_OK) {
+        return -1;
+    }
+
+    strm.next_in = (const uint8_t *)inbuf;
     strm.avail_in = insize;
-    strm.next_out = (uint8_t*)outbuf;
+    strm.next_out = (uint8_t *)outbuf;
     strm.avail_out = outsize;
 
+    // Compress in one shot
     ret = lzma_code(&strm, LZMA_FINISH);
-    if (ret != LZMA_STREAM_END)
-        return 0;
+    if (ret != LZMA_STREAM_END) {
+        lzma_end(&strm);
+        return -2;
+    }
+
+    size_t compressed_size = strm.total_out;
 
     lzma_end(&strm);
-
-    return (char*)strm.next_out - outbuf;
+    return (int64_t)compressed_size;
 }
 
 int64_t lzbench_xz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     lzma_stream strm = LZMA_STREAM_INIT;
+    lzma_ret ret;
 
-    lzma_ret ret = lzma_alone_decoder(&strm, UINT64_MAX);
-    if (ret != LZMA_OK)
-        return 0;
+    // Configure multithreaded decoder options
+    lzma_mt mt_options = {0};
+    mt_options.threads = codec_options->threads;
 
-    strm.next_in = (uint8_t*)inbuf;
+    // Use unlimited memory for decoder
+    mt_options.memlimit_stop = UINT64_MAX;
+    mt_options.flags = LZMA_CONCATENATED | LZMA_IGNORE_CHECK;
+
+    // Use multithreaded decoder (available in XZ Utils 5.4.0+)
+    ret = lzma_stream_decoder_mt(&strm, &mt_options);
+    if (ret != LZMA_OK) {
+        lzma_end(&strm);
+        return -1;
+    }
+
+    strm.next_in = (const uint8_t *)inbuf;
     strm.avail_in = insize;
-    strm.next_out = (uint8_t*)outbuf;
+    strm.next_out = (uint8_t *)outbuf;
     strm.avail_out = outsize;
 
+    // Perform decompression
     ret = lzma_code(&strm, LZMA_FINISH);
-    if (ret != LZMA_STREAM_END)
-        return 0;
+    if (ret != LZMA_STREAM_END) {
+        lzma_end(&strm);
+        return -2;
+    }
 
+    size_t decompressed_size = strm.total_out;
     lzma_end(&strm);
-
-    return (char*)strm.next_out - outbuf;
+    return (int64_t)decompressed_size;
 }
 
 #endif // BENCH_REMOVE_XZ

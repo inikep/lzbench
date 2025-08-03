@@ -373,8 +373,18 @@ ifeq "$(DONT_BUILD_XZ)" "1"
 else
     XZ_FILES = lz/xz/src/liblzma/lzma/lzma_decoder.o lz/xz/src/liblzma/lzma/lzma_encoder.o lz/xz/src/liblzma/lzma/lzma_encoder_optimum_fast.o lz/xz/src/liblzma/lzma/lzma_encoder_optimum_normal.o lz/xz/src/liblzma/lzma/fastpos_table.o
     XZ_FILES += lz/xz/src/liblzma/lzma/lzma_encoder_presets.o lz/xz/src/liblzma/lz/lz_decoder.o lz/xz/src/liblzma/lz/lz_encoder.o lz/xz/src/liblzma/lz/lz_encoder_mf.o lz/xz/src/liblzma/common/common.o lz/xz/src/liblzma/rangecoder/price_table.o
-    XZ_FILES += lz/xz/src/liblzma/common/alone_encoder.o lz/xz/src/liblzma/common/alone_decoder.o lz/xz/src/liblzma/check/crc32_table.o
-    XZ_FLAGS = $(addprefix -I$(SOURCE_PATH),. lz/xz/src lz/xz/src/common lz/xz/src/liblzma/api lz/xz/src/liblzma/common lz/xz/src/liblzma/lzma lz/xz/src/liblzma/lz lz/xz/src/liblzma/check lz/xz/src/liblzma/rangecoder)
+    XZ_FILES += lz/xz/src/liblzma/common/block_decoder.o lz/xz/src/liblzma/common/block_util.o lz/xz/src/liblzma/common/outqueue.o
+    XZ_FILES += lz/xz/src/liblzma/common/stream_flags_common.o lz/xz/src/liblzma/common/index.o lz/xz/src/liblzma/check/check.o
+    XZ_FILES += lz/xz/src/liblzma/common/stream_encoder_mt.o lz/xz/src/liblzma/common/stream_decoder_mt.o
+    XZ_FILES += lz/xz/src/liblzma/common/filter_common.o lz/xz/src/liblzma/common/stream_flags_decoder.o
+    XZ_FILES += lz/xz/src/liblzma/common/stream_flags_encoder.o lz/xz/src/liblzma/common/block_buffer_encoder.o
+    XZ_FILES += lz/xz/src/liblzma/check/crc32_fast.o lz/xz/src/liblzma/common/block_header_encoder.o lz/xz/src/liblzma/common/vli_encoder.o
+    XZ_FILES += lz/xz/src/liblzma/common/vli_size.o lz/xz/src/liblzma/common/filter_flags_encoder.o lz/xz/src/liblzma/common/filter_encoder.o
+    XZ_FILES += lz/xz/src/liblzma/lzma/lzma2_encoder.o lz/xz/src/liblzma/common/easy_preset.o lz/xz/src/liblzma/common/block_encoder.o
+    XZ_FILES += lz/xz/src/liblzma/common/index_encoder.o lz/xz/src/liblzma/common/filter_decoder.o lz/xz/src/liblzma/lzma/lzma2_decoder.o
+    XZ_FILES += lz/xz/src/liblzma/common/block_header_decoder.o lz/xz/src/liblzma/common/vli_decoder.o lz/xz/src/liblzma/common/filter_flags_decoder.o
+    XZ_FILES += lz/xz/src/liblzma/common/index_hash.o
+    XZ_FLAGS = $(addprefix -I$(SOURCE_PATH),. lz/xz/src lz/xz/src/common lz/xz/src/liblzma/delta lz/xz/src/liblzma/simple lz/xz/src/liblzma/api lz/xz/src/liblzma/common lz/xz/src/liblzma/lzma lz/xz/src/liblzma/lz lz/xz/src/liblzma/check lz/xz/src/liblzma/rangecoder)
 endif
 
 
@@ -694,7 +704,7 @@ $(UCL_FILES): %.o : %.c
 
 $(XZ_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $(XZ_FLAGS) -DHAVE_CONFIG_H $< -c -o $@
+	$(CC) $(CFLAGS) $(XZ_FLAGS) -DHAVE_CHECK_CRC32 -DMYTHREAD_POSIX -DHAVE_CONFIG_H $< -c -o $@
 
 $(ZLIB_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
