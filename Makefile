@@ -119,6 +119,7 @@ ifeq "$(DISABLE_THREADING)" "1"
     FASTLZMA2_FLAGS = -DFL2_SINGLETHREAD
 else
     LZBENCH_FILES += bench/threadpool.o
+    ZSTD_FLAGS = -DZSTD_MULTITHREAD
 endif
 
 # Try compiling a small test with __builtin_ctz
@@ -713,6 +714,10 @@ $(ZLIB_FILES): %.o : %.c
 $(ZLIB_NG_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Ilz/zlib-ng $< -c -o $@
+
+$(ZSTD_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) $(ZSTD_FLAGS) $< -c -o $@
 
 $(ZPAQ_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)

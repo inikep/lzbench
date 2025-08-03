@@ -1606,6 +1606,9 @@ int64_t lzbench_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t o
     ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_compressionLevel, codec_options->level);
     ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_contentSizeFlag, 1);
 
+    if (codec_options->threads > 1)
+        ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_nbWorkers, codec_options->threads);
+
     if (windowLog) {
         size_t currentWindowLog = ZSTD_getParams(codec_options->level, insize, 0).cParams.windowLog;
         if (currentWindowLog > windowLog) {
