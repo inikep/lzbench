@@ -44,8 +44,9 @@ ifneq ($(shell echo|$(CC) -dM -E - -march=native 2>/dev/null|egrep -c '__(SSE4_1
     DONT_BUILD_LZSSE ?= 1
 endif
 
-# detect thread model for MinGW (posix or win32)
-THREAD_MODEL := $(shell $(CXX) --version | grep -iEo 'posix|win32')
+# detect thread model for gcc or clang
+THREAD_MODEL := $(shell $(CXX) -v 2>&1 | grep '^Thread model:' | awk '{print $$3}')
+$(info Detected thread model: $(THREAD_MODEL))
 
 # detect Windows
 ifneq (,$(filter Windows%,$(OS)))
@@ -55,6 +56,7 @@ ifneq (,$(filter Windows%,$(OS)))
         LDFLAGS += -lshell32 -lole32 -loleaut32 -static
     endif
 else
+    THREAD_MODEL := $(or $(THREAD_MODEL),posix)
     ifeq ($(shell uname -p),powerpc)
         # yappy doesn't work with big-endian PowerPC
         DONT_BUILD_YAPPY ?= 1
@@ -283,10 +285,21 @@ endif
 ifeq "$(DONT_BUILD_LZHAM)" "1"
     DEFINES += -DBENCH_REMOVE_LZHAM
 else
-    LZHAM_FILES  = lz/lzham/lzham_assert.o lz/lzham/lzham_checksum.o lz/lzham/lzham_huffman_codes.o lz/lzham/lzham_lzbase.o
-    LZHAM_FILES += lz/lzham/lzham_lzcomp.o lz/lzham/lzham_lzcomp_internal.o lz/lzham/lzham_lzdecomp.o lz/lzham/lzham_lzdecompbase.o
-    LZHAM_FILES += lz/lzham/lzham_match_accel.o lz/lzham/lzham_mem.o lz/lzham/lzham_platform.o lz/lzham/lzham_lzcomp_state.o
-    LZHAM_FILES += lz/lzham/lzham_prefix_coding.o lz/lzham/lzham_symbol_codec.o lz/lzham/lzham_timer.o lz/lzham/lzham_vector.o lz/lzham/lzham_lib.o
+    LZHAM_FILES  = lz/lzham/lzhamdecomp/lzham_assert.o lz/lzham/lzhamdecomp/lzham_checksum.o lz/lzham/lzhamdecomp/lzham_huffman_codes.o
+    LZHAM_FILES += lz/lzham/lzhamdecomp/lzham_lzdecomp.o lz/lzham/lzhamdecomp/lzham_lzdecompbase.o lz/lzham/lzhamdecomp/lzham_mem.o
+    LZHAM_FILES += lz/lzham/lzhamdecomp/lzham_platform.o lz/lzham/lzhamdecomp/lzham_prefix_coding.o lz/lzham/lzhamdecomp/lzham_timer.o
+    LZHAM_FILES += lz/lzham/lzhamdecomp/lzham_symbol_codec.o lz/lzham/lzhamdecomp/lzham_vector.o lz/lzham/lzhamlib/lzham_lib.o
+    LZHAM_FILES += lz/lzham/lzhamcomp/lzham_lzbase.o lz/lzham/lzhamcomp/lzham_lzcomp.o lz/lzham/lzhamcomp/lzham_lzcomp_internal.o
+    LZHAM_FILES += lz/lzham/lzhamcomp/lzham_lzcomp_state.o lz/lzham/lzhamcomp/lzham_match_accel.o
+
+    ifneq "$(DISABLE_THREADING)" "1"
+        ifeq ($(THREAD_MODEL), win32)
+            LZHAM_FILES += lz/lzham/lzhamcomp/lzham_win32_threading.o
+        else
+            LZHAM_FILES += lz/lzham/lzhamcomp/lzham_pthreads_threading.o
+            LZHAM_FLAGS = -DTHREAD_MODEL_POSIX
+        endif
+    endif
 endif
 
 
@@ -686,6 +699,10 @@ $(LIZARD_FILES): %.o : %.c
 $(LZ_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include $< -c -o $@
+
+$(LZHAM_FILES): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CFLAGS) $(LZHAM_FLAGS) -Ilz/lzham/include -Ilz/lzham/lzhamcomp -Ilz/lzham/lzhamdecomp $< -c -o $@
 
 $(LZO_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)

@@ -423,7 +423,7 @@ int64_t lzbench_lzg_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 #ifndef BENCH_REMOVE_LZHAM
-#include "lz/lzham/lzham.h"
+#include "lz/lzham/include/lzham.h"
 #include <memory.h>
 
 int64_t lzbench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
@@ -434,7 +434,7 @@ int64_t lzbench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t 
     memset(&comp_params, 0, sizeof(comp_params));
     comp_params.m_struct_size = sizeof(lzham_compress_params);
     comp_params.m_dict_size_log2 = dict_size_log?dict_size_log:26;
-    comp_params.m_max_helper_threads = 0;
+    comp_params.m_max_helper_threads = codec_options->threads > 1 ? codec_options->threads : 0;
     comp_params.m_level = (lzham_compress_level)codec_options->level;
 
     lzham_compress_status_t comp_status;
