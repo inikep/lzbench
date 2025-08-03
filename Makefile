@@ -689,7 +689,7 @@ $(LZSSE_FILES): %.o : %.cpp
 
 $(FASTLZMA2_OBJ): %.o : %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DFL2_SINGLETHREAD -DNO_XXHASH $< -c -o $@
+	$(CC) $(CFLAGS) -DNO_XXHASH $< -c -o $@
 
 $(XZ_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
