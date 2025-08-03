@@ -582,48 +582,123 @@ int64_t lzbench_lzlib_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 #include <string.h>
 #include "misc/7-zip/Alloc.h"
-#include "misc/7-zip/LzmaDec.h"
-#include "misc/7-zip/LzmaEnc.h"
+#include "misc/7-zip/Lzma2Dec.h"
+#include "misc/7-zip/Lzma2DecMt.h"
+#include "misc/7-zip/Lzma2Enc.h"
 
 int64_t lzbench_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    CLzmaEncProps props;
-    int res;
-    size_t headerSize = LZMA_PROPS_SIZE;
-    SizeT out_len = outsize - LZMA_PROPS_SIZE;
+    CLzma2EncProps props;
+    CLzma2EncHandle enc;
+    SRes res;
+    SizeT out_len = outsize;
 
-    LzmaEncProps_Init(&props);
-    props.level = codec_options->level;
-    props.numThreads = 1;
-    LzmaEncProps_Normalize(&props);
-  /*
-  p->level = 5;
-  p->dictSize = p->mc = 0;
-  p->reduceSize = (UInt64)(Int64)-1;
-  p->lc = p->lp = p->pb = p->algo = p->fb = p->btMode = p->numHashBytes = p->numThreads = -1;
-  p->writeEndMark = 0;
-  */
+    Lzma2EncProps_Init(&props);
+    props.lzmaProps.level = codec_options->level;
+    props.numTotalThreads = codec_options->threads;
 
-      res = LzmaEncode((uint8_t*)outbuf+LZMA_PROPS_SIZE, &out_len, (uint8_t*)inbuf, insize, &props, (uint8_t*)outbuf, &headerSize, 0/*int writeEndMark*/, NULL, &g_Alloc, &g_Alloc);
-    if (res != SZ_OK) return 0;
+    enc = Lzma2Enc_Create(&g_Alloc, &g_Alloc);
+    if (enc == NULL) return -1;
 
-//	printf("out_len=%u LZMA_PROPS_SIZE=%d headerSize=%d\n", (int)(out_len + LZMA_PROPS_SIZE), LZMA_PROPS_SIZE, (int)headerSize);
-    return LZMA_PROPS_SIZE + out_len;
+    res = Lzma2Enc_SetProps(enc, &props);
+    if (res != SZ_OK) {
+        Lzma2Enc_Destroy(enc);
+        return -2;
+    }
+
+    outbuf[0] = Lzma2Enc_WriteProperties(enc);;
+
+    res = Lzma2Enc_Encode2(enc, NULL, (Byte*)outbuf + 1, &out_len, NULL, (const Byte*)inbuf, insize, NULL);
+    Lzma2Enc_Destroy(enc);
+    if (res != SZ_OK) return -3;
+
+    return out_len + 1;
 }
 
-int64_t lzbench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    int res;
-    SizeT out_len = outsize;
-    SizeT src_len = insize - LZMA_PROPS_SIZE;
-    ELzmaStatus status;
+// ISeqInStream implementation for an in-memory buffer
+typedef struct {
+    ISeqInStream vt;
+    const Byte *data;
+    size_t size;
+} CBufInStream;
 
-//	SRes LzmaDecode(Byte *dest, SizeT *destLen, const Byte *src, SizeT *srcLen, const Byte *propData, unsigned propSize, ELzmaFinishMode finishMode, ELzmaStatus *status, ISzAlloc *alloc)
-    res = LzmaDecode((uint8_t*)outbuf, &out_len, (uint8_t*)inbuf+LZMA_PROPS_SIZE, &src_len, (uint8_t*)inbuf, LZMA_PROPS_SIZE, LZMA_FINISH_END, &status, &g_Alloc);
-    if (res != SZ_OK) return 0;
+static SRes MyRead(void *p, void *buf, size_t *size) {
+    CBufInStream *s = (CBufInStream *)p;
+    size_t toRead = *size;
+    if (toRead > s->size) {
+        toRead = s->size;
+    }
+    memcpy(buf, s->data, toRead);
+    s->data += toRead;
+    s->size -= toRead;
+    *size = toRead;
+    return SZ_OK;
+}
 
-//	printf("out_len=%u\n", (int)(out_len + LZMA_PROPS_SIZE));
-    return out_len;
+// ISeqOutStream implementation for an in-memory buffer
+typedef struct {
+    ISeqOutStream vt;
+    Byte *data;
+    size_t size;
+} CBufOutStream;
+
+static size_t MyWrite(void *p, const void *buf, size_t size) {
+    CBufOutStream *s = (CBufOutStream *)p;
+    size_t toWrite = size;
+    if (toWrite > s->size) {
+        toWrite = s->size;
+    }
+    memcpy(s->data, buf, toWrite);
+    s->data += toWrite;
+    s->size -= toWrite;
+    return toWrite;
+}
+
+int64_t lzbench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options) {
+    CLzma2DecMtHandle dec_handle;
+    CLzma2DecMtProps props;
+    UInt64 out_size_defined = (UInt64)outsize;
+    UInt64 in_processed = 0;
+    int is_mt = 0;
+    SRes res;
+    Byte prop_byte;
+
+    if (insize == 0) return -1;
+    prop_byte = (Byte)inbuf[0];
+
+    CBufInStream inStream;
+    inStream.vt.Read = (SRes (*)(ISeqInStreamPtr, void*, size_t*))MyRead;
+    inStream.data = (const Byte *)inbuf + 1;
+    inStream.size = insize - 1;
+
+    CBufOutStream outStream;
+    outStream.vt.Write = (size_t (*)(ISeqOutStreamPtr, const void*, size_t))MyWrite;
+    outStream.data = (Byte *)outbuf;
+    outStream.size = outsize;
+
+    dec_handle = Lzma2DecMt_Create(&g_Alloc, &g_Alloc);
+    if (!dec_handle) return -2;
+
+    Lzma2DecMtProps_Init(&props);
+    props.numThreads = codec_options->threads;
+
+    res = Lzma2DecMt_Decode(
+        dec_handle,
+        prop_byte,
+        &props,
+        &outStream.vt,
+        &out_size_defined,
+        1,
+        &inStream.vt,
+        &in_processed,
+        &is_mt,
+        NULL
+    );
+
+    Lzma2DecMt_Destroy(dec_handle);
+    if (res != SZ_OK) return -3;
+
+    return (int64_t)(outsize - outStream.size);
 }
 
 #endif

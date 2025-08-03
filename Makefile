@@ -299,7 +299,8 @@ ifeq "$(DONT_BUILD_LZMA)" "1"
     DEFINES += -DBENCH_REMOVE_LZMA
 else
     LZMA_FILES  = misc/7-zip/CpuArch.o misc/7-zip/LzFind.o misc/7-zip/LzFindOpt.o misc/7-zip/LzFindMt.o
-    LZMA_FILES += misc/7-zip/LzmaDec.o misc/7-zip/LzmaEnc.o misc/7-zip/Threads.o misc/7-zip/Alloc.o
+    LZMA_FILES += misc/7-zip/LzmaDec.o misc/7-zip/LzmaEnc.o misc/7-zip/Threads.o misc/7-zip/7zStream.o misc/7-zip/Alloc.o
+    LZMA_FILES += misc/7-zip/Lzma2Dec.o misc/7-zip/Lzma2DecMt.o misc/7-zip/Lzma2Enc.o misc/7-zip/MtCoder.o misc/7-zip/MtDec.o
 endif
 
 
