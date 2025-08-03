@@ -425,7 +425,7 @@ int64_t lzbench_lzg_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 #ifndef BENCH_REMOVE_LZHAM
-#include "lz/lzham/lzham.h"
+#include "lz/lzham/include/lzham.h"
 #include <memory.h>
 
 int64_t lzbench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
