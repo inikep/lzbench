@@ -680,6 +680,10 @@ $(ZLIB_NG_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Ilz/zlib-ng $< -c -o $@
 
+$(ZSTD_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -DZSTD_MULTITHREAD $< -c -o $@
+
 $(ZPAQ_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -I misc/zpaq $< -c -o $@
