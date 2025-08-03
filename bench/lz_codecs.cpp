@@ -122,14 +122,14 @@ int64_t lzbench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 int64_t lzbench_fastlzma2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    size_t ret = FL2_compress(outbuf, outsize, inbuf, insize, codec_options->level);
+    size_t ret = FL2_compressMt(outbuf, outsize, inbuf, insize, codec_options->level, codec_options->threads);
     if (FL2_isError(ret)) return 0;
     return ret;
 }
 
 int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    size_t ret = FL2_decompress(outbuf, outsize, inbuf, insize);
+    size_t ret = FL2_decompressMt(outbuf, outsize, inbuf, insize, codec_options->threads);
     if (FL2_isError(ret)) return 0;
     return ret;
 }
