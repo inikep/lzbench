@@ -292,20 +292,35 @@ jobs:
 
   strategy:
     matrix:
-      mingw32-gcc x86 32-bit [Windows]:
+      mingw32-gcc 15.1.0 x86 32-bit (POSIX threads) [Windows]:
         toolchain: 'mingw32'
         arch: '32-bit'
         SELECTED_CC: gcc
         SELECTED_CXX: g++
-        MORE_OPTIONS: 'DONT_BUILD_GLZA=1 DONT_BUILD_LZHAM=1'
-        ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/14.2.0-rt_v12-rev1/i686-14.2.0-release-posix-dwarf-ucrt-rt_v12-rev1.7z
-      mingw64-gcc x86 64-bit [Windows]:
+        MORE_OPTIONS: ""
+        ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/i686-15.1.0-release-posix-dwarf-ucrt-rt_v12-rev0.7z
+      mingw32-gcc 15.1.0 x86 32-bit (Windows threads) [Windows]:
+        toolchain: 'mingw32'
+        arch: '32-bit'
+        SELECTED_CC: gcc
+        SELECTED_CXX: g++
+        MORE_OPTIONS: ""
+        ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/i686-15.1.0-release-win32-dwarf-ucrt-rt_v12-rev0.7z
+
+      mingw64-gcc 15.1.0 x86 64-bit (POSIX threads) [Windows]:
         toolchain: 'mingw64'
         arch: '64-bit'
         SELECTED_CC: gcc
         SELECTED_CXX: g++
-        MORE_OPTIONS: 'DONT_BUILD_LZHAM=1'
-        ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/14.2.0-rt_v12-rev1/x86_64-14.2.0-release-posix-seh-ucrt-rt_v12-rev1.7z
+        MORE_OPTIONS: ""
+        ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
+      mingw64-gcc 15.1.0 x86 64-bit (Windows threads) [Windows]:
+        toolchain: 'mingw64'
+        arch: '64-bit'
+        SELECTED_CC: gcc
+        SELECTED_CXX: g++
+        MORE_OPTIONS: ""
+        ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-win32-seh-ucrt-rt_v12-rev0.7z
 
   steps:
   - powershell: |
