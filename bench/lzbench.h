@@ -279,6 +279,8 @@ static const alias_desc_t alias_desc[] =
                   "memcpy/bsc/bzip2/bzip3/density,1,2,3/ppmd8/zpaq" },
     { "MISC",     "Covers miscellaneous compressors.",
                   "memcpy/crush/lzjb/tamp/tornado/zling" },
+    { "INT_MT",   "Covers all compressors supporting internal multi-threading with -I option.",
+                  "memcpy/fastlzma2,1,5,10/kanzi,1,2,3,4,5,6,7/lzham,0,4/lzma,0,4,9/xz,0,4,9/zstd,1,5,9,14,18,22" },
     { "BUGGY",    "Lists potentially unstable codecs that may cause segmentation faults.",
                   "memcpy/csc/gipfeli/lzmat/lzrw/lzsse8fast/wflz/yalz77/yappy" }, // these can SEGFAULT
     { "UCL",      "Refers to all UCL compressor variants.",
