@@ -43,11 +43,12 @@ ifneq ($(shell echo|$(CC) -dM -E - -march=native|egrep -c '__(SSE4_1|x86_64)__')
     DONT_BUILD_LZSSE ?= 1
 endif
 
+# detect thread model for MinGW (posix or win32)
+THREAD_MODEL := $(shell $(CXX) --version | grep -iEo 'posix|win32')
+
 # detect Windows
 ifneq (,$(filter Windows%,$(OS)))
-    ifeq ($(COMPILER),clang)
-        DONT_BUILD_GLZA ?= 1
-    endif
+    THREAD_MODEL := $(or $(THREAD_MODEL),win32)
     BUILD_STATIC ?= 1
     ifeq ($(BUILD_STATIC),1)
         LDFLAGS += -lshell32 -lole32 -loleaut32 -static
@@ -67,11 +68,10 @@ else
         DONT_BUILD_CSC ?= 1
         DEFINES += -Dunix
     endif
-    ifeq ($(detected_OS), Linux)
+
+    ifneq ($(THREAD_MODEL), win32)
         DEFINES += -Dunix
     endif
-
-    LDFLAGS	+= -pthread
 
     ifeq ($(BUILD_STATIC),1)
         LDFLAGS	+= -static -static-libstdc++
@@ -100,7 +100,7 @@ endif
 CXXFLAGS  = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS) $(USER_CXXFLAGS)
 CFLAGS    = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS) $(USER_CFLAGS)
 CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES) $(MOREFLAGS) $(USER_CFLAGS)
-LDFLAGS  += $(MOREFLAGS) $(USER_LDFLAGS)
+LDFLAGS  += -pthread $(MOREFLAGS) $(USER_LDFLAGS)
 ifeq ($(detected_OS), Darwin)
     CXXFLAGS += -std=c++14
 endif

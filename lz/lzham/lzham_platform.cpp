@@ -10,7 +10,7 @@
 
 #define LZHAM_FORCE_DEBUGGER_PRESENT 1
 
-#ifndef _MSC_VER
+#if !defined(__MINGW32__) && !defined(_MSC_VER)
 int sprintf_s(char *buffer, size_t sizeOfBuffer, const char *format, ...)
 {
    if (!sizeOfBuffer)

@@ -59,7 +59,7 @@ LZHAM_FORCE_INLINE void lzham_yield_processor()
 }
 #endif
 
-#ifndef _MSC_VER
+#if !defined(__MINGW32__) && !defined(_MSC_VER)
    int sprintf_s(char *buffer, size_t sizeOfBuffer, const char *format, ...);
    int vsprintf_s(char *buffer, size_t sizeOfBuffer, const char *format, va_list args);
 #endif
