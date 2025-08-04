@@ -40,7 +40,7 @@ See also the bsc and libbsc web site:
 
 #if defined(_WIN32)
   #include <windows.h>
-  SIZE_T g_LargePageSize = 0;
+  SIZE_T bsc_LargePageSize = 0;
 #endif
 
 #if (LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2)
@@ -126,9 +126,9 @@ int bsc_get_cpu_features(void)
 static void * bsc_default_malloc(size_t size)
 {
 #if defined(_WIN32)
-    if ((g_LargePageSize != 0) && (size >= 256 * 1024))
+    if ((bsc_LargePageSize != 0) && (size >= 256 * 1024))
     {
-        void * address = VirtualAlloc(0, (size + g_LargePageSize - 1) & (~(g_LargePageSize - 1)), MEM_COMMIT | MEM_LARGE_PAGES, PAGE_READWRITE);
+        void * address = VirtualAlloc(0, (size + bsc_LargePageSize - 1) & (~(bsc_LargePageSize - 1)), MEM_COMMIT | MEM_LARGE_PAGES, PAGE_READWRITE);
         if (address != NULL) return address;
     }
     return VirtualAlloc(0, size, MEM_COMMIT, PAGE_READWRITE);
@@ -140,9 +140,9 @@ static void * bsc_default_malloc(size_t size)
 static void * bsc_default_zero_malloc(size_t size)
 {
 #if defined(_WIN32)
-    if ((g_LargePageSize != 0) && (size >= 256 * 1024))
+    if ((bsc_LargePageSize != 0) && (size >= 256 * 1024))
     {
-        void * address = VirtualAlloc(0, (size + g_LargePageSize - 1) & (~(g_LargePageSize - 1)), MEM_COMMIT | MEM_LARGE_PAGES, PAGE_READWRITE);
+        void * address = VirtualAlloc(0, (size + bsc_LargePageSize - 1) & (~(bsc_LargePageSize - 1)), MEM_COMMIT | MEM_LARGE_PAGES, PAGE_READWRITE);
         if (address != NULL) return address;
     }
     return VirtualAlloc(0, size, MEM_COMMIT, PAGE_READWRITE);
@@ -248,7 +248,7 @@ int bsc_platform_init(int features, void* (* malloc)(size_t size), void* (* zero
 
                     if ((largePageSize & (largePageSize - 1)) != 0) largePageSize = 0;
 
-                    g_LargePageSize = largePageSize;
+                    bsc_LargePageSize = largePageSize;
                 }
             }
         }
