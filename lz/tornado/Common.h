@@ -625,21 +625,21 @@ extern jmp_buf jumper;
 #define throw()
 #endif
 
-void *MyAlloc(size_t size) throw();
-void MyFree(void *address) throw();
+void *TornadoMyAlloc(size_t size) throw();
+void TornadoMyFree(void *address) throw();
 extern bool AllocTopDown;
 #ifdef FREEARC_WIN
 enum LPType {DEFAULT, FORCE, DISABLE, TRY};
 extern LPType DefaultLargePageMode;
-void *MidAlloc(size_t size) throw();
-void MidFree(void *address) throw();
-void *BigAlloc (int64 size, LPType LargePageMode=DEFAULT) throw();
-void BigFree(void *address) throw();
+void *TornadoMidAlloc(size_t size) throw();
+void TornadoMidFree(void *address) throw();
+void *TornadoBigAlloc (int64 size, LPType LargePageMode=DEFAULT) throw();
+void TornadoBigFree(void *address) throw();
 #else
-#define MidAlloc(size) MyAlloc(size)
-#define MidFree(address) MyFree(address)
-#define BigAlloc(size) MyAlloc(size)
-#define BigFree(address) MyFree(address)
+#define TornadoMidAlloc(size) TornadoMyAlloc(size)
+#define TornadoMidFree(address) TornadoMyFree(address)
+#define TornadoBigAlloc(size) TornadoMyAlloc(size)
+#define TornadoBigFree(address) TornadoMyFree(address)
 #endif // !FREEARC_WIN
 
 

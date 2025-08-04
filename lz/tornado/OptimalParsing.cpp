@@ -52,8 +52,8 @@ struct OptimalParser : Coder
     OptimalParser (BYTE *_buf, BYTE *_bufend, int _coder, CALLBACK_FUNC *_callback, void *_auxdata, UINT chunk, UINT pad, int _fast_bytes)
           : Coder (_coder, _callback, _auxdata, chunk, pad),  buf(_buf),  bufend(_bufend),  callback(_callback),  auxdata(_auxdata),  fast_bytes(_fast_bytes)
     {
-        x         = (Info*)     MidAlloc (sizeof(Info)     * (OPTIMAL_WINDOW+1));
-        stack_buf = (DISTANCE*) MidAlloc (sizeof(DISTANCE) * (OPTIMAL_WINDOW*2));
+        x         = (Info*)     TornadoMidAlloc (sizeof(Info)     * (OPTIMAL_WINDOW+1));
+        stack_buf = (DISTANCE*) TornadoMidAlloc (sizeof(DISTANCE) * (OPTIMAL_WINDOW*2));
         errcode   = (x==NULL || stack_buf==NULL)?  FREEARC_ERRCODE_NOT_ENOUGH_MEMORY : FREEARC_OK;
         prev_outsize = 0;
     }
@@ -61,8 +61,8 @@ struct OptimalParser : Coder
     {
         stat_only (printf("lit=%.3lf, repdist=%.3lf, check_match_len=%.3lf, len_in_repdist=%.3lf, match=%.3lf, len_in_match=%.3lf\n",
                           double(cnt_eval_lit)/1e6, double(cnt_eval_repdist)/1e6, double(cnt_check_match_len)/1e6, double(cnt_eval_len_in_repdist)/1e6, double(cnt_eval_match)/1e6, double(cnt_eval_len_in_match)/1e6));
-        MidFree (stack_buf);
-        MidFree (x);
+        TornadoMidFree (stack_buf);
+        TornadoMidFree (x);
     }
 
     void start_block  (BYTE *_basep);  // Prepare to collect statistics, required to optimally encode the block starting at address _basep
@@ -322,12 +322,12 @@ int tor_compress0_optimal (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata
     // -1: don't slide buffer, fill it with new data instead
     m.shift = m.shift?  m.shift  :  m.buffer/16;
     // Allocate buffer for input data
-    void *buf = buf0? buf0 : BigAlloc (m.buffer+LOOKAHEAD);       // use calloc() to make Valgrind happy :)  or can we just clear a few bytes after fread?
+    void *buf = buf0? buf0 : TornadoBigAlloc (m.buffer+LOOKAHEAD);       // use calloc() to make Valgrind happy :)  or can we just clear a few bytes after fread?
     if (!buf)  return FREEARC_ERRCODE_NOT_ENOUGH_MEMORY;
 
     // MAIN COMPRESSION FUNCTION
     int result = tor_compress_chunk_optimal<MatchFinder,Coder> (m, callback, auxdata, (byte*) buf, bytes_to_compress);
 
-    if (!buf0)  BigFree(buf);
+    if (!buf0)  TornadoBigFree(buf);
     return result;
 }

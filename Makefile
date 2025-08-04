@@ -255,7 +255,7 @@ ifeq "$(DONT_BUILD_LZMA)" "1"
     DEFINES += -DBENCH_REMOVE_LZMA
 else
     LZMA_FILES  = misc/7-zip/CpuArch.o misc/7-zip/LzFind.o misc/7-zip/LzFindOpt.o misc/7-zip/LzFindMt.o
-    LZMA_FILES += misc/7-zip/LzmaDec.o misc/7-zip/LzmaEnc.o misc/7-zip/Threads.o
+    LZMA_FILES += misc/7-zip/LzmaDec.o misc/7-zip/LzmaEnc.o misc/7-zip/Threads.o misc/7-zip/Alloc.o
 endif
 
 
@@ -305,7 +305,6 @@ endif
 
 ifeq "$(DONT_BUILD_TORNADO)" "1"
     DEFINES += "-DBENCH_REMOVE_TORNADO"
-    LZMA_FILES += misc/7-zip/Alloc.o
 else
     MISC_FILES += lz/tornado/tor_test.o
 endif

@@ -310,13 +310,13 @@ int tor_compress0 (PackMethod &m, CALLBACK_FUNC *callback, void *auxdata, void *
                                      m.hashsize>=512*kb? m.buffer/4*3 :
                                                          -1);
     // Allocate buffer for input data
-    void *buf = buf0? buf0 : BigAlloc (m.buffer+LOOKAHEAD);       // use calloc() to make Valgrind happy :)  or can we just clear a few bytes after fread?
+    void *buf = buf0? buf0 : TornadoBigAlloc (m.buffer+LOOKAHEAD);       // use calloc() to make Valgrind happy :)  or can we just clear a few bytes after fread?
     if (!buf)  return FREEARC_ERRCODE_NOT_ENOUGH_MEMORY;
 
     // MAIN COMPRESSION FUNCTION
     int result = tor_compress_chunk<MatchFinder,Coder> (m, callback, auxdata, (byte*) buf, bytes_to_compress);
 
-    if (!buf0)  BigFree(buf);
+    if (!buf0)  TornadoBigFree(buf);
     return result;
 }
 
@@ -534,7 +534,7 @@ int tor_decompress0 (CALLBACK_FUNC *callback, void *auxdata, int _bufsize, int m
     Decoder decoder (callback, auxdata, _bufsize);        // LZ77 decoder parses raw input bitstream and returns literals&matches
     if (decoder.error() != FREEARC_OK)  return decoder.error();
     uint bufsize = tornado_decompressor_outbuf_size (_bufsize);  // Size of output buffer
-    BYTE *outbuf = (byte*) BigAlloc (bufsize+PAD_FOR_TABLES*2);  // Circular buffer for decompressed data
+    BYTE *outbuf = (byte*) TornadoBigAlloc (bufsize+PAD_FOR_TABLES*2);  // Circular buffer for decompressed data
     if (!outbuf)  return FREEARC_ERRCODE_NOT_ENOUGH_MEMORY;
     outbuf += PAD_FOR_TABLES;       // We need at least PAD_FOR_TABLES bytes available before and after outbuf in order to simplify datatables undiffing
     BYTE *output      = outbuf;     // Current position in decompressed data buffer
@@ -599,7 +599,7 @@ int tor_decompress0 (CALLBACK_FUNC *callback, void *auxdata, int _bufsize, int m
     }
 finished:
     PROGRESS(decoder.insize()-prev_insize, output-write_start);
-    BigFree(outbuf-PAD_FOR_TABLES);
+    TornadoBigFree(outbuf-PAD_FOR_TABLES);
     // Return decoder error code, errcode or FREEARC_OK
     return decoder.error() < 0 ?  decoder.error() :
            errcode         < 0 ?  errcode

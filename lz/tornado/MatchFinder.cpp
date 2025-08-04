@@ -166,7 +166,7 @@ BaseMatchFinder::BaseMatchFinder (BYTE *buf, uint dictsize, uint hashsize, int _
     HashSize  = (1<<lb(hashsize)) / sizeof(*HTable);
     HashShift = 32-lb(HashSize);
     HashMask  = (HashSize-1) & ~(roundup_to_power_of(hash_row_width,2)-1);
-    HTable    = (PtrVal*) BigAlloc (sizeof(PtrVal) * HashSize);
+    HTable    = (PtrVal*) TornadoBigAlloc (sizeof(PtrVal) * HashSize);
 }
 
 // Returns error code if there is any problem in MF work
@@ -200,7 +200,7 @@ struct MatchFinder1 : BaseMatchFinder
     MatchFinder1 (BYTE *buf, uint dictsize, uint hashsize, int hash_row_width, uint auxhash_size, int auxhash_row_width)
         : BaseMatchFinder (buf, dictsize, hashsize, hash_row_width, auxhash_size, auxhash_row_width)
                      {clear_hash(buf);}
-    ~MatchFinder1 () {BigFree(HTable);}
+    ~MatchFinder1 () {TornadoBigFree(HTable);}
 
     uint find_matchlen (byte *p, void *bufend, UINT prevlen)
     {
@@ -237,7 +237,7 @@ struct MatchFinder2 : BaseMatchFinder
     MatchFinder2 (BYTE *buf, uint dictsize, uint hashsize, int hash_row_width, uint auxhash_size, int auxhash_row_width)
         : BaseMatchFinder (buf, dictsize, hashsize, hash_row_width, auxhash_size, auxhash_row_width)
                      {clear_hash(buf);}
-    ~MatchFinder2 () {BigFree(HTable);}
+    ~MatchFinder2 () {TornadoBigFree(HTable);}
 
     uint find_matchlen (byte *p, void *bufend, UINT prevlen)
     {
@@ -287,7 +287,7 @@ struct MatchFinderN : BaseMatchFinder
     MatchFinderN (BYTE *buf, uint dictsize, uint hashsize, int hash_row_width, uint auxhash_size, int auxhash_row_width)
         : BaseMatchFinder (buf, dictsize, hashsize, hash_row_width, auxhash_size, auxhash_row_width)
                      {clear_hash(buf);}
-    ~MatchFinderN () {BigFree(HTable);}
+    ~MatchFinderN () {TornadoBigFree(HTable);}
 
     // Fill the `matches` buffer with len/dist of all found matches
     DISTANCE *find_all_matches (byte *p, void *bufend, DISTANCE *matches)
@@ -381,7 +381,7 @@ struct ExactMatchFinder : BaseMatchFinder
     ExactMatchFinder (BYTE *buf, uint dictsize, uint hashsize, int hash_row_width, uint auxhash_size, int auxhash_row_width)
         : BaseMatchFinder (buf, dictsize, hashsize, hash_row_width, auxhash_size, auxhash_row_width)
                          {clear_hash(buf);}
-    ~ExactMatchFinder () {BigFree(HTable);}
+    ~ExactMatchFinder () {TornadoBigFree(HTable);}
 
     // Fill the `matches` buffer with len/dist of all found matches
     DISTANCE *find_all_matches (byte *p, void *bufend, DISTANCE *matches)
@@ -455,7 +455,7 @@ struct CachingMatchFinder : BaseMatchFinder
     int hash_row_width2, hash_row_width_up;
 
     CachingMatchFinder (BYTE *buf, uint dictsize, uint hashsize, int _hash_row_width, uint auxhash_size, int auxhash_row_width);
-    ~CachingMatchFinder() {BigFree(HTable);}
+    ~CachingMatchFinder() {TornadoBigFree(HTable);}
 
     void clear_hash (BYTE *buf);
     void shift (BYTE *buf, int shift);
@@ -671,7 +671,7 @@ CachingMatchFinder<N>::CachingMatchFinder (BYTE *buf, uint dictsize, uint hashsi
 
     UINT rows = 1 << lb(hashsize / (sizeof(*HTable) * hash_row_width2));
     HashSize  = rows * hash_row_width2;
-    HTable    = (PtrVal*) BigAlloc (HashSize * sizeof(*HTable));
+    HTable    = (PtrVal*) TornadoBigAlloc (HashSize * sizeof(*HTable));
 
     HashShift = 32 - lb(rows);
     HashMask  = ~0;
@@ -707,7 +707,7 @@ struct CycledCachingMatchFinder : BaseMatchFinder
     UINT  HeadSize;
 
     CycledCachingMatchFinder (BYTE *buf, uint dictsize, uint hashsize, int _hash_row_width, uint auxhash_size, int auxhash_row_width);
-    ~CycledCachingMatchFinder()  {BigFree(HTable);  BigFree(Head);}
+    ~CycledCachingMatchFinder()  {TornadoBigFree(HTable);  TornadoBigFree(Head);}
     int error()  {return HTable==NULL || Head==NULL?  FREEARC_ERRCODE_NOT_ENOUGH_MEMORY : FREEARC_OK;}    // Returns error code if there is any problem in MF work
 
     void clear_hash (BYTE *buf);
@@ -847,10 +847,10 @@ CycledCachingMatchFinder<N>::CycledCachingMatchFinder (BYTE *buf, uint dictsize,
         --hash_row_width;
 
     HeadSize  = 1 << lb(hashsize / (sizeof(*HTable) * hash_row_width * 2));
-    Head      = (BYTE*)  BigAlloc (HeadSize * sizeof(*Head));
+    Head      = (BYTE*)  TornadoBigAlloc (HeadSize * sizeof(*Head));
 
     HashSize  = HeadSize * hash_row_width * 2;
-    HTable    = (PtrVal*) BigAlloc (HashSize * sizeof(*HTable));
+    HTable    = (PtrVal*) TornadoBigAlloc (HashSize * sizeof(*HTable));
 
     HashShift = 32 - lb(HeadSize);
     HashMask  = ~0;
@@ -890,14 +890,14 @@ struct BinaryTreeMatchFinder : BaseMatchFinder
     BinaryTreeMatchFinder (BYTE *buf, uint dictsize, uint hashsize, int maxdepth, uint auxhash_size, int auxhash_row_width)
         : BaseMatchFinder (buf, dictsize, hashsize, 1, auxhash_size, auxhash_row_width),  DictSize(dictsize),  MaxDepth(maxdepth)
     {
-        BinaryTree = (UINT*) BigAlloc (2 * sizeof(UINT) * DictSize);  // for every dictionary position, we save pointers to the left and right "sons" as UINT indexes
+        BinaryTree = (UINT*) TornadoBigAlloc (2 * sizeof(UINT) * DictSize);  // for every dictionary position, we save pointers to the left and right "sons" as UINT indexes
         if (error() == FREEARC_OK)
             clear_hash(buf);
     }
     ~BinaryTreeMatchFinder()
     {
-        BigFree(BinaryTree);
-        BigFree(HTable);
+        TornadoBigFree(BinaryTree);
+        TornadoBigFree(HTable);
     }
     // Returns error code if there is any problem in MF work
     int error()  {return BinaryTree==NULL?  FREEARC_ERRCODE_NOT_ENOUGH_MEMORY : BaseMatchFinder::error();}
@@ -1209,16 +1209,16 @@ Hash3<MatchFinder, HASH3_LOG, HASH2_LOG, FULL_UPDATE>
 {
     HashSize  = 1 << HASH3_LOG;
     HashSize2 = 1 << HASH2_LOG;
-    HTable  = (BYTE**) MidAlloc (sizeof(BYTE*) * HashSize);
-    HTable2 = (BYTE**) MidAlloc (sizeof(BYTE*) * HashSize2);
+    HTable  = (BYTE**) TornadoMidAlloc (sizeof(BYTE*) * HashSize);
+    HTable2 = (BYTE**) TornadoMidAlloc (sizeof(BYTE*) * HashSize2);
     clear_hash3 (buf);
 }
 
 template <class MatchFinder, int HASH3_LOG, int HASH2_LOG, bool FULL_UPDATE>
 Hash3<MatchFinder, HASH3_LOG, HASH2_LOG, FULL_UPDATE> :: ~Hash3()
 {
-    MidFree(HTable);
-    MidFree(HTable2);
+    TornadoMidFree(HTable);
+    TornadoMidFree(HTable2);
 }
 
 template <class MatchFinder, int HASH3_LOG, int HASH2_LOG, bool FULL_UPDATE>

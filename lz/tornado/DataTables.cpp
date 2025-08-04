@@ -139,7 +139,7 @@ struct DataTables
    byte              original[MAX_TABLE_ROW_AT_DECOMPRESSION];
 
    DataTables();
-   ~DataTables()   {MidFree(tables);}
+   ~DataTables()   {TornadoMidFree(tables);}
 
    // Add description of one more datatable to the list
    void add (int _table_type, BYTE *_table_start, int _table_len);
@@ -169,7 +169,7 @@ struct DataTables
 DataTables::DataTables()
 {
     ENTRIES    = 10000;
-    tables     = (DataTableEntry *) MidAlloc (sizeof(DataTableEntry) * ENTRIES);
+    tables     = (DataTableEntry *) TornadoMidAlloc (sizeof(DataTableEntry) * ENTRIES);
     curtable   = tables;
     tables_end = tables + ENTRIES;
 }
@@ -179,9 +179,9 @@ void DataTables::add (int _table_type, BYTE *_table_start, int _table_len)
 {
     if (curtable >= tables_end) {
         ENTRIES *= 2;
-        DataTableEntry *newtables  =  (DataTableEntry *) MidAlloc (sizeof(DataTableEntry) * ENTRIES);
+        DataTableEntry *newtables  =  (DataTableEntry *) TornadoMidAlloc (sizeof(DataTableEntry) * ENTRIES);
         memcpy (newtables, tables, (char*)curtable - (char*)tables);
-        MidFree(tables);
+        TornadoMidFree(tables);
         curtable   = newtables + (curtable - tables);
         tables     = newtables;
         tables_end = newtables + ENTRIES;

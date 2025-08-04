@@ -25,7 +25,7 @@ int g_allocCountBig = 0;
 #define alloc_debug_printf(x)
 #endif
 
-void *MyAlloc(size_t size) throw()
+void *TornadoMyAlloc(size_t size) throw()
 {
   if (size == 0)
     return 0;
@@ -33,7 +33,7 @@ void *MyAlloc(size_t size) throw()
   return ::malloc(size);
 }
 
-void MyFree(void *address) throw()
+void TornadoMyFree(void *address) throw()
 {
   if (address != 0)
     alloc_debug_printf((stderr, "  Free; count = %10d\n", --g_allocCount));
@@ -43,7 +43,7 @@ void MyFree(void *address) throw()
 
 #ifdef FREEARC_WIN
 
-void *MidAlloc(size_t size) throw()
+void *TornadoMidAlloc(size_t size) throw()
 {
   if (size == 0)
     return 0;
@@ -51,7 +51,7 @@ void *MidAlloc(size_t size) throw()
   return ::VirtualAlloc(0, size, MEM_COMMIT, PAGE_READWRITE);
 }
 
-void MidFree(void *address) throw()
+void TornadoMidFree(void *address) throw()
 {
   if (address == 0)
     return;
@@ -81,7 +81,7 @@ SIZE_T GetLargePageSize()
 
 LPType DefaultLargePageMode = TRY;
 
-void *BigAlloc (int64 size, LPType LargePageMode) throw()
+void *TornadoBigAlloc (int64 size, LPType LargePageMode) throw()
 {
   if (size<=0 || size>size_t(-1))  return 0;
   void *address = 0;
@@ -104,7 +104,7 @@ void *BigAlloc (int64 size, LPType LargePageMode) throw()
   return address;
 }
 
-void BigFree(void *address) throw()
+void TornadoBigFree(void *address) throw()
 {
   if (address == 0)
     return;

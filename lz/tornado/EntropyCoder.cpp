@@ -42,10 +42,10 @@ struct OutputByteStream
     {
         callback = _callback;  auxdata = _auxdata;  chunk = _chunk;  shifted_out = 0;
         // Add 512 bytes for LZ77_ByteCoder (its LZSS scheme needs to overwrite old flag words) and 4096 for rounding written chunks
-        last_qwrite = output = buf = (byte*) BigAlloc (chunk+pad+512+4096);
+        last_qwrite = output = buf = (byte*) TornadoBigAlloc (chunk+pad+512+4096);
         errcode = buf==NULL?  FREEARC_ERRCODE_NOT_ENOUGH_MEMORY : FREEARC_OK;
     }
-    ~OutputByteStream()       {BigFree(buf);}
+    ~OutputByteStream()       {TornadoBigFree(buf);}
     // Returns error code if there was any problems in stream work
     int error()               {return errcode;}
     // Drop/use anchor which marks place in buffer
@@ -125,13 +125,13 @@ struct InputByteStream
     {
         callback   = _callback;  auxdata = _auxdata;  shifted_out = 0;
         bufsize    = compress_all_at_once? _bufsize+(_bufsize/4) : LARGE_BUFFER_SIZE;  // For all-at-once compression input buffer should be large enough to hold all compressed data
-        buf        = (byte*) BigAlloc (MAXELEM+bufsize);
+        buf        = (byte*) TornadoBigAlloc (MAXELEM+bufsize);
         errcode    = buf==NULL?  FREEARC_ERRCODE_NOT_ENOUGH_MEMORY : FREEARC_OK;
         input      = buf + MAXELEM;
         read_point = buf + bufsize;
         if (error()==FREEARC_OK)   errcode = callback ("read", buf+MAXELEM, bufsize, auxdata);
     }
-    ~InputByteStream()  {BigFree(buf);}
+    ~InputByteStream()  {TornadoBigFree(buf);}
     // Returns error code if there is any problem in stream work
     int error()  {return errcode<0? errcode : FREEARC_OK;}
 
