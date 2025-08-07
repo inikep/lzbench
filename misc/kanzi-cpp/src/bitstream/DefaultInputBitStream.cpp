@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "DefaultInputBitStream.hpp"
 #include "../util.hpp"
-#include "../io/IOException.hpp"
 
 using namespace kanzi;
 using namespace std;
@@ -78,6 +77,7 @@ uint DefaultInputBitStream::readBits(byte bits[], uint count)
             memcpy(&bits[start], &_buffer[_position], availBytes);
             start += availBytes;
             remaining -= (availBytes << 3);
+            _position = _maxPosition + 1;
 
             if (readFromInputStream(_bufferSize) < int(_bufferSize))
                 break;
@@ -96,14 +96,19 @@ uint DefaultInputBitStream::readBits(byte bits[], uint count)
     }
     else if (remaining >= 64) {
         // Not byte aligned
-        const uint r = 64 - _availBits;
         const uint a = _availBits;
+        const uint r = 64 - a;
 
         while (remaining >= 256) {
             const uint64 v0 = _current;
 
             if (_position + 32 > _maxPosition) {
-                _availBits = pullCurrent() - r;
+                _availBits = pullCurrent();
+
+                if (_availBits < r)
+                   throw BitStreamException("No more data to read in the bitstream", BitStreamException::END_OF_STREAM);
+
+                _availBits -= r;
                 BigEndian::writeLong64(&bits[start], (v0 << r) | (_current >> _availBits));
                 start += 8;
                 remaining -= 64;
@@ -114,6 +119,7 @@ uint DefaultInputBitStream::readBits(byte bits[], uint count)
             const uint64 v2 = BigEndian::readLong64(&_buffer[_position + 8]);
             const uint64 v3 = BigEndian::readLong64(&_buffer[_position + 16]);
             const uint64 v4 = BigEndian::readLong64(&_buffer[_position + 24]);
+            _current = v4;
             _position += 32;
             BigEndian::writeLong64(&bits[start + 0], (v0 << r) | (v1 >> a));
             BigEndian::writeLong64(&bits[start + 8], (v1 << r) | (v2 >> a));
@@ -121,12 +127,16 @@ uint DefaultInputBitStream::readBits(byte bits[], uint count)
             BigEndian::writeLong64(&bits[start + 24], (v3 << r) | (v4 >> a));
             start += 32;
             remaining -= 256;
-            _current = v4;
         }
 
         while (remaining >= 64) {
             const uint64 v = _current;
-            _availBits = pullCurrent() - r;
+            _availBits = pullCurrent();
+
+            if (_availBits < r)
+               throw BitStreamException("No more data to read in the bitstream", BitStreamException::END_OF_STREAM);
+
+            _availBits -= r;
             BigEndian::writeLong64(&bits[start], (v << r) | (_current >> _availBits));
             start += 8;
             remaining -= 64;
@@ -171,19 +181,23 @@ int DefaultInputBitStream::readFromInputStream(uint count)
     int size = -1;
 
     try {
-        _read += (int64(_maxPosition + 1) << 3);
+        _read += (int64(_position) << 3);
         _is.read(reinterpret_cast<char*>(_buffer), count);
         _position = 0;
         size = (_is.good() == true) ? int(count) : int(_is.gcount());
         _maxPosition = (size <= 0) ? -1 : size - 1;
+        // Clear flags (required for future seeks when EOF is reached)
+        _is.clear();
     }
-    catch (IOException& e) {
+    catch (runtime_error& e) {
+        // Catch IOException without depending on io package
         throw BitStreamException(e.what(), BitStreamException::INPUT_OUTPUT);
     }
 
     if (size <= 0) {
-       throw BitStreamException("No more data to read in the bitstream",
-           BitStreamException::END_OF_STREAM);
+        _is.clear();
+        throw BitStreamException("No more data to read in the bitstream",
+            BitStreamException::END_OF_STREAM);
     }
 
     return size;

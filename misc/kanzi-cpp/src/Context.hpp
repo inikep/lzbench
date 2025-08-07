@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -17,18 +17,11 @@ limitations under the License.
 #ifndef _Context_
 #define _Context_
 
+#include <map>
 #include <sstream>
 #include <string>
 #include "concurrent.hpp"
 #include "util/strings.hpp"
-
-#if __cplusplus >= 201103L
-   #include <unordered_map>
-   #define CTX_MAP std::unordered_map
-#else
-   #include <map>
-   #define CTX_MAP std::map
-#endif
 
 namespace kanzi
 {
@@ -38,11 +31,11 @@ namespace kanzi
    // The extra memory used does not matter for the application context since
    // the map is small.
    typedef struct ContextVal {
-       bool isString;
        int64 lVal;
        std::string sVal;
+       bool isString;
 
-       ContextVal(bool b, uint64 val, const std::string& str) : isString(b), lVal(val), sVal(str) {}
+       ContextVal(bool b, int64 val, const std::string& str) : lVal(val), sVal(str), isString(b) {}
        ContextVal() { isString = false; lVal = 0; }
    } ctxVal;
 
@@ -51,21 +44,17 @@ namespace kanzi
    public:
 
 #ifdef CONCURRENCY_ENABLED
-    #if defined(WIN32) || defined(_WIN32) || defined(_WIN64)
-       // Windows already has a built-in threadpool. Using it is better for performance.
-       Context(const ThreadPool*) { _pool = nullptr; }
-       Context(const Context& c, const ThreadPool*) : _map(c._map) { _pool = nullptr; }
-       Context() { _pool = nullptr; }
-       Context(const Context& c) : _map(c._map) { _pool = nullptr; }
-    #else
        Context(ThreadPool* p = nullptr) : _pool(p) {}
-       Context(const Context& c, ThreadPool* p = nullptr) : _map(c._map), _pool(p) {}
-    #endif
+       Context(const Context& c) : _map(c._map), _pool(c._pool) {}
+       Context(const Context& c, ThreadPool* p) : _map(c._map), _pool(p) {}
+       Context& operator=(const Context& c) = default;
 #else
        Context() {}
        Context(const Context& c) : _map(c._map) {}
+       Context& operator=(const Context& c) { _map = c._map; return *this; };
 #endif
 
+       virtual ~Context() {}
        bool has(const std::string& key) const;
        int getInt(const std::string& key, int defValue = 0) const;
        int64 getLong(const std::string& key, int64 defValue = 0) const;
@@ -79,7 +68,7 @@ namespace kanzi
 #endif
 
    private:
-       CTX_MAP<std::string, ContextVal> _map;
+       std::map<std::string, ContextVal> _map;
 
 #ifdef CONCURRENCY_ENABLED
        ThreadPool* _pool;
@@ -101,7 +90,7 @@ namespace kanzi
 
    inline int64 Context::getLong(const std::string& key, int64 defValue) const
    {
-      CTX_MAP<std::string, ContextVal>::const_iterator it = _map.find(key);
+      std::map<std::string, ContextVal>::const_iterator it = _map.find(key);
 
       if (it == _map.end())
           return defValue;
@@ -112,7 +101,7 @@ namespace kanzi
 
    inline std::string Context::getString(const std::string& key, const std::string& defValue) const
    {
-      CTX_MAP<std::string, ContextVal>::const_iterator it = _map.find(key);
+      std::map<std::string, ContextVal>::const_iterator it = _map.find(key);
 
       if (it == _map.end())
           return defValue;

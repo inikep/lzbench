@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -31,12 +31,12 @@ namespace kanzi
 
    class RangeDecoder : public EntropyDecoder {
    public:
-       static const int DECODING_BATCH_SIZE = 12; // in bits
-       static const int DECODING_MASK = (1 << DECODING_BATCH_SIZE) - 1;
+       static const int DECODING_BATCH_SIZE;
+       static const int DECODING_MASK;
 
        RangeDecoder(InputBitStream& bitstream, int chunkSize = DEFAULT_CHUNK_SIZE);
 
-       ~RangeDecoder() { _dispose(); delete[] _f2s; }
+       ~RangeDecoder() { _dispose(); if (_f2s != nullptr) delete[] _f2s; }
 
        int decode(byte block[], uint blkptr, uint len);
 
@@ -45,12 +45,12 @@ namespace kanzi
        void dispose() { _dispose(); }
 
    private:
-       static const uint64 TOP_RANGE    = 0x0FFFFFFFFFFFFFFF;
-       static const uint64 BOTTOM_RANGE = 0x000000000000FFFF;
-       static const uint64 RANGE_MASK   = 0x0FFFFFFF00000000;
-       static const int DEFAULT_CHUNK_SIZE = 1 << 15; // 32 KB by default
-       static const int DEFAULT_LOG_RANGE = 12;
-       static const int MAX_CHUNK_SIZE = 1 << 30;
+       static const uint64 TOP_RANGE;
+       static const uint64 BOTTOM_RANGE;
+       static const uint64 RANGE_MASK;
+       static const int DEFAULT_CHUNK_SIZE;
+       static const int DEFAULT_LOG_RANGE;
+       static const int MAX_CHUNK_SIZE;
 
        uint64 _code;
        uint64 _low;

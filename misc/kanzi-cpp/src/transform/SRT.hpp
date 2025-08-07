@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -35,16 +35,14 @@ namespace kanzi {
 
        bool inverse(SliceArray<byte>& pSrc, SliceArray<byte>& pDst, int length);
 
-       int getMaxEncodedLength(int srcLen) const { return srcLen + MAX_HEADER_SIZE; }
+       int getMaxEncodedLength(int srcLen) const { return srcLen + 1024 /* max header size */; }
 
    private:
-       static const int MAX_HEADER_SIZE = 4 * 256;
+       static int preprocess(const uint freqs[], uint8 symbols[]);
 
-       static int preprocess(const int freqs[], uint8 symbols[]);
+       static int encodeHeader(const uint freqs[], byte dst[]);
 
-       static int encodeHeader(int freqs[], byte dst[]);
-
-       static int decodeHeader(const byte src[], int freqs[]);
+       static int decodeHeader(const byte src[], uint freqs[]);
    };
 }
 #endif

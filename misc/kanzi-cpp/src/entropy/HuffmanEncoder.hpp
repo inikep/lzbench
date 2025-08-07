@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -31,7 +31,7 @@ namespace kanzi
    public:
        HuffmanEncoder(OutputBitStream& bitstream, int chunkSize = HuffmanCommon::MAX_CHUNK_SIZE);
 
-       ~HuffmanEncoder() { _dispose(); delete[] _buffer; }
+       ~HuffmanEncoder() { _dispose(); if (_buffer != nullptr) delete[] _buffer; }
 
        int updateFrequencies(uint frequencies[]);
 
@@ -49,9 +49,11 @@ namespace kanzi
        byte* _buffer;
        uint _bufferSize;
 
-       uint computeCodeLengths(uint16 sizes[], uint sranks[], int count) const;
+       void encodeChunk(const byte block[], uint count);
 
-       uint limitCodeLengths(const uint alphabet[], uint freqs[], uint16 sizes[], uint sranks[], int count) const;
+       int computeCodeLengths(uint16 sizes[], uint sranks[], int count) const;
+
+       int limitCodeLengths(const uint alphabet[], uint freqs[], uint16 sizes[], uint sranks[], int count) const;
 
        void _dispose() const {}
 

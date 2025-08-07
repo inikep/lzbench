@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef _InfoPrinter_
 #define _InfoPrinter_
 
+#include "../Event.hpp"
 #include "../Listener.hpp"
 #include "../OutputStream.hpp"
 #include "../util/Clock.hpp"
@@ -33,7 +34,7 @@ namespace kanzi
 
    // An implementation of Listener to display block information (verbose option
    // of the BlockCompressor/BlockDecompressor)
-   class InfoPrinter : public Listener {
+   class InfoPrinter : public Listener<Event> {
    public:
        enum Type {
            ENCODING,
@@ -42,7 +43,12 @@ namespace kanzi
 
        InfoPrinter(int infoLevel, InfoPrinter::Type type, OutputStream& os);
 
-       ~InfoPrinter() {}
+       ~InfoPrinter() {
+          for (int i = 0; i < 1024; i++) {
+             if (_map[i] != nullptr)
+                delete _map[i];
+          }
+       }
 
        void processEvent(const Event& evt);
 
@@ -56,7 +62,7 @@ namespace kanzi
        Clock _clock23;
        Clock _clock34;
 	   
-       static int hash(int id) { return (id * 0x1E35A7BD) & 0x03FF; }
+       static uint hash(uint id) { return (id * 0x1E35A7BD) & 0x03FF; }
    };
 }
 #endif

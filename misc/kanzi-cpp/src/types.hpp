@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -40,26 +40,26 @@ limitations under the License.
     #endif
 
    #ifdef __SSE__
-      #include <xmmintrin.h> 
+      #include <xmmintrin.h>
    #endif
-   
-   #ifdef __SSE2__ 
+
+   #ifdef __SSE2__
       #include <emmintrin.h>
    #endif
 
-   #ifdef __SSE3__ 
+   #ifdef __SSE3__
       #include <pmmintrin.h>
    #endif
 
    #ifdef __SSE4_1__
-       #include <smmintrin.h> 
+       #include <smmintrin.h>
    #endif
 
-   #ifdef __AVX__ 
+   #ifdef __AVX__
        #include <immintrin.h>
    #endif
 
-   #ifdef __AVX2__ 
+   #ifdef __AVX2__
        #include <immintrin.h>
    #endif
 
@@ -102,7 +102,7 @@ limitations under the License.
    */
 
    #ifdef _MSC_VER
-      #if _MSC_VER >= 1930 
+      #if _MSC_VER >= 1930
          #define _MSC_VER_STR 2022
       #elif _MSC_VER >= 1920
          #define _MSC_VER_STR 2019
@@ -127,10 +127,6 @@ limitations under the License.
       #endif
    #endif
 
-    #ifndef _GLIBCXX_USE_NOEXCEPT
-       #define _GLIBCXX_USE_NOEXCEPT
-    #endif
-
     // Notice: in Visual Studio (prior to VS2017 version 15.7)
     // __cplusplus always defaults to 199711L (aka C++98) !!! (unless
     // the extra option /Zc:__cplusplus is added to the command line).
@@ -138,10 +134,12 @@ limitations under the License.
     #if __cplusplus >= 201103L
        // C++ 11
        #define FINAL final
+       #define NOEXCEPT noexcept
        #include <cstdint>
     #else
        #define FINAL
- 
+       #define NOEXCEPT throw()
+
        #if defined(_MSC_VER)
           #if _MSC_VER < 1300
              typedef signed char int8_t;
@@ -167,12 +165,15 @@ limitations under the License.
              typedef unsigned char uint8_t;
              typedef unsigned short uint16_t;
              typedef unsigned int uint32_t;
-             typedef signed long int64_t;
-             typedef unsigned long uint64_t;
+
+             #if !defined(__APPLE__)
+                 typedef signed long int64_t;
+                 typedef unsigned long uint64_t;
+             #endif
        #endif
 
 
-      #if !defined(_MSC_VER) || _MSC_VER < 1910
+      #if !defined(nullptr)
           #define nullptr NULL
       #endif
     #endif
@@ -180,11 +181,11 @@ limitations under the License.
 #if __cplusplus >= 201703L
     // byte is defined in C++17 and above
     #include <cstddef>
-namespace kanzi 
+namespace kanzi
 {
     typedef std::byte byte;
 #else
-namespace kanzi 
+namespace kanzi
 {
     typedef uint8_t byte;
 #endif
@@ -193,14 +194,22 @@ namespace kanzi
     typedef uint8_t uint8;
     typedef int16_t int16;
     typedef int32_t int32;
-    typedef int64_t int64;
     typedef uint16_t uint16;
     typedef uint32_t uint;
     typedef uint32_t uint32;
-    typedef uint64_t uint64;
+
+    #if defined(__APPLE__)
+        typedef signed long int64;
+        typedef unsigned long uint64;
+    #else
+        typedef int64_t int64;
+        typedef uint64_t uint64;
+    #endif
 }
 
-   #if defined(WIN32) || defined(_WIN32) || defined(_WIN64)
+   #if defined(__MINGW32__)
+      #define PATH_SEPARATOR '/'
+   #elif defined(WIN32) || defined(_WIN32) || defined(_WIN64)
       #define PATH_SEPARATOR '\\'
    #else
       #define PATH_SEPARATOR '/'
@@ -209,10 +218,8 @@ namespace kanzi
 
    #if defined(_MSC_VER)
       #define ALIGNED_(x) __declspec(align(x))
-   #else
-      #if defined(__GNUC__)
-         #define ALIGNED_(x) __attribute__ ((aligned(x)))
-      #endif
+   #elif defined(__GNUC__)
+      #define ALIGNED_(x) __attribute__ ((aligned(x)))
    #endif
 
 #endif

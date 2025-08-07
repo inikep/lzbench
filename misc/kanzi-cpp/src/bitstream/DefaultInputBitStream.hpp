@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -21,12 +21,17 @@ limitations under the License.
 #include "../InputBitStream.hpp"
 #include "../InputStream.hpp"
 #include "../Memory.hpp"
+#include "../Seekable.hpp"
 #include "../util/strings.hpp"
 
 
 namespace kanzi {
 
+#if defined(_MSC_VER) && _MSC_VER <= 1500
    class DefaultInputBitStream FINAL : public InputBitStream
+#else
+   class DefaultInputBitStream FINAL : public InputBitStream, public Seekable
+#endif
    {
    private:
        InputStream& _is;
@@ -68,6 +73,12 @@ namespace kanzi {
 
        bool isClosed() const { return _closed; }
 
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+       int64 tell();
+
+       bool seek(int64 pos);
+#endif
+
        DefaultInputBitStream(InputStream& is, uint bufferSize = 65536);
 
        ~DefaultInputBitStream();
@@ -77,10 +88,9 @@ namespace kanzi {
    inline int DefaultInputBitStream::readBit()
    {
        if (_availBits == 0)
-           _availBits = pullCurrent() - 1; // Triggers an exception if stream is closed
-       else
-           _availBits--;
+           _availBits = pullCurrent(); // Triggers an exception if stream is closed
 
+       _availBits--;
        return int(_current >> _availBits) & 1;
    }
 
@@ -98,8 +108,8 @@ namespace kanzi {
        // Not enough spots available in 'current'
        count -= _availBits;
        const uint64 res = _current & ((uint64(1) << _availBits) - 1);
-       _availBits = pullCurrent() - count;
-       return (res << count) | (_current >> _availBits);
+       _availBits = pullCurrent();
+       return (res << 1 << (count - 1)) | readBits(count); // handle count = 64 and _availBits < count (at EOS)
    }
 
    // Pull 64 bits of current value from buffer.
@@ -130,6 +140,41 @@ namespace kanzi {
        _position += 8;
        return 64;
    }
+
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+   inline int64 DefaultInputBitStream::tell()
+   {
+       if (isClosed())
+           return -1;
+
+       _is.clear();
+       const int64 res = int64(_is.tellg());
+       return (res < 0) ? -1 : 8 * (res - int64(_maxPosition + 1 - _position)) - int64(_availBits);
+   }
+
+   inline bool DefaultInputBitStream::seek(int64 pos)
+   {
+       if (isClosed())
+           return false;
+
+       if (pos < 0)
+           return false;
+
+       // Update internal states to force read at new stream position
+       _read += (8 * int64(_position) - int64(_availBits));
+       _availBits = 0;
+       _position = 0;
+       _maxPosition = -1;
+       _is.clear();
+       _is.seekg(std::streampos(pos >> 3));
+
+       if ((pos & 7) != 0)
+           readBits(pos & 7);
+
+       return true;
+   }
+#endif
+
 }
 #endif
 

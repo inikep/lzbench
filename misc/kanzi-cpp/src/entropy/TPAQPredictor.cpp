@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -16,6 +16,38 @@ limitations under the License.
 #include "TPAQPredictor.hpp"
 
 using namespace kanzi;
+
+const int TPAQMixer::BEGIN_LEARN_RATE = 60 << 7;
+const int TPAQMixer::END_LEARN_RATE = 11 << 7;
+
+template<>
+const int TPAQPredictor<true>::MAX_LENGTH = 88;
+template<>
+const int TPAQPredictor<true>::BUFFER_SIZE = 64 * 1024 * 1024;
+template<>
+const int TPAQPredictor<true>::HASH_SIZE = 16 * 1024 * 1024;
+template<>
+const int TPAQPredictor<true>::HASH = 0x7FEB352D;
+template<>
+const int TPAQPredictor<true>::MASK_80808080 = 0x80808080;
+template<>
+const int TPAQPredictor<true>::MASK_F0F0F000 = 0xF0F0F000;
+template<>
+const int TPAQPredictor<true>::MASK_4F4FFFFF = 0x4F4FFFFF;
+template<>
+const int TPAQPredictor<false>::MAX_LENGTH = 88;
+template<>
+const int TPAQPredictor<false>::BUFFER_SIZE = 64 * 1024 * 1024;
+template<>
+const int TPAQPredictor<false>::HASH_SIZE = 16 * 1024 * 1024;
+template<>
+const int TPAQPredictor<false>::HASH = 0x7FEB352D;
+template<>
+const int TPAQPredictor<false>::MASK_80808080 = 0x80808080;
+template<>
+const int TPAQPredictor<false>::MASK_F0F0F000 = 0xF0F0F000;
+template<>
+const int TPAQPredictor<false>::MASK_4F4FFFFF = 0x4F4FFFFF;
 
 
 TPAQMixer::TPAQMixer()

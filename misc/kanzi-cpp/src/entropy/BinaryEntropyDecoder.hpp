@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -28,11 +28,11 @@ namespace kanzi
    class BinaryEntropyDecoder FINAL : public EntropyDecoder
    {
    private:
-       static const uint64 TOP = 0x00FFFFFFFFFFFFFF;
-       static const uint64 MASK_0_56 = 0x00FFFFFFFFFFFFFF;
-       static const uint64 MASK_0_32 = 0x00000000FFFFFFFF;
-       static const int MAX_BLOCK_SIZE = 1 << 30;
-       static const int MAX_CHUNK_SIZE = 1 << 26;
+       static const uint64 TOP;
+       static const uint64 MASK_0_56;
+       static const uint64 MASK_0_32;
+       static const int MAX_BLOCK_SIZE;
+       static const int MAX_CHUNK_SIZE;
 
        Predictor* _predictor;
        uint64 _low;
@@ -66,7 +66,6 @@ namespace kanzi
    inline int BinaryEntropyDecoder::decodeBit(int pred)
    {
        // Calculate interval split
-       // Written in a way to maximize accuracy of multiplication/division
        const uint64 split = ((((_high - _low) >> 4) * uint64(pred)) >> 8) + _low;
        int bit;
 

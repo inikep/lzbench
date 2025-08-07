@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -13,10 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <cstring>
+
+#include <algorithm>
 #include <stdexcept>
 #include "Global.hpp"
 
 using namespace kanzi;
+using namespace std;
 
 // int(Math.log2(x-1))
 const int Global::LOG2[256] = {
@@ -81,6 +85,7 @@ int Global::SQUASH[4096];
 
 int Global::STRETCH[4096];
 
+
 Global::Global()
 {
     //  65536 /(1 + exp(-alpha*x)) with alpha ~= 0.54
@@ -112,6 +117,18 @@ Global::Global()
     }
 
     STRETCH[4095] = 2047;
+
+#if defined(WIN32) || defined(_WIN32) || defined(_WIN64)
+    static const string reserved[27] = {
+       "AUX", "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6",
+       "COM7", "COM8", "COM9", "COM¹", "COM²", "COM³", "CON", "LPT0",
+       "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8",
+       "LPT9", "NUL", "PRN"
+    };
+
+    for (int i = 0; i < 27; i++)
+       _reservedNames.insert(reserved[i]);
+#endif
 }
 
 // Return 1024 * log2(x). Max error is around 0.1%
@@ -155,31 +172,34 @@ void Global::computeHistogram(const byte block[], int length, uint freqs[], bool
 
     if (isOrder0 == true) {
         if (withTotal == true)
-            freqs[256] = length;
+            freqs[256] = uint(length);
 
         uint f0[256] = { 0 };
         uint f1[256] = { 0 };
         uint f2[256] = { 0 };
         uint f3[256] = { 0 };
         const uint8* end16 = reinterpret_cast<const uint8*>(&block[length & -16]);
+        uint64 q;
 
         while (p < end16) {
-            f0[p[0]]++;
-            f1[p[1]]++;
-            f2[p[2]]++;
-            f3[p[3]]++;
-            f0[p[4]]++;
-            f1[p[5]]++;
-            f2[p[6]]++;
-            f3[p[7]]++;
-            f0[p[8]]++;
-            f1[p[9]]++;
-            f2[p[10]]++;
-            f3[p[11]]++;
-            f0[p[12]]++;
-            f1[p[13]]++;
-            f2[p[14]]++;
-            f3[p[15]]++;
+            memcpy(&q, &p[0], 8);
+            f0[uint8(q>>56)]++;
+            f1[uint8(q>>48)]++;
+            f2[uint8(q>>40)]++;
+            f3[uint8(q>>32)]++;
+            f0[uint8(q>>24)]++;
+            f1[uint8(q>>16)]++;
+            f2[uint8(q>>8)]++;
+            f3[uint8(q)]++;
+            memcpy(&q, &p[8], 8);
+            f0[uint8(q>>56)]++;
+            f1[uint8(q>>48)]++;
+            f2[uint8(q>>40)]++;
+            f3[uint8(q>>32)]++;
+            f0[uint8(q>>24)]++;
+            f1[uint8(q>>16)]++;
+            f2[uint8(q>>8)]++;
+            f3[uint8(q)]++;
             p += 16;
         }
 
@@ -287,7 +307,7 @@ int Global::computeFirstOrderEntropy1024(int blockLen, const uint histo[])
         return 0;
 
     uint64 sum = 0;
-    const int logLength1024 = Global::log2_1024(blockLen);
+    const int logLength1024 = Global::log2_1024(uint32(blockLen));
 
     for (int i = 0; i < 256; i++) {
         if (histo[i] == 0)
@@ -369,3 +389,17 @@ Global::DataType Global::detectSimpleType(int count, const uint freqs0[]) {
 
     return (sum <= 4) ? SMALL_ALPHABET : UNDEFINED;
 }
+
+#if defined(WIN32) || defined(_WIN32) || defined(_WIN64)
+bool Global::isReservedName(string fileName)
+{
+    transform(fileName.begin(), fileName.end(), fileName.begin(), ::toupper);
+    return _singleton._reservedNames.find(fileName) != _singleton._reservedNames.end();
+}
+#else
+bool Global::isReservedName(string)
+{
+    return false;
+}
+#endif
+

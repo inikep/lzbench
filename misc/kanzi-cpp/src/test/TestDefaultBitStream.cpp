@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,12 +14,17 @@ limitations under the License.
 */
 
 #include <algorithm>
+#include <cstdio>
 #include <iostream>
 #include <fstream>
+#include <streambuf>
 #include <time.h>
 #include "../bitstream/DebugOutputBitStream.hpp"
 #include "../bitstream/DefaultInputBitStream.hpp"
 #include "../bitstream/DefaultOutputBitStream.hpp"
+#include "../BitStreamException.hpp"
+#include "../util.hpp"
+#include "../io/IOException.hpp"
 
 using namespace std;
 using namespace kanzi;
@@ -40,7 +45,7 @@ int testBitStreamCorrectnessAligned1()
         iostream ios(&buffer);
         DefaultOutputBitStream obs(ios, 16384);
         cout << endl;
-        obs.writeBits(0x0123456789ABCDEFL, t);
+        obs.writeBits(0x01234567L, t);
         cout << "Written (before close): " << obs.written() << endl;
         obs.close();
         cout << "Written (after close): " << obs.written() << endl;
@@ -142,7 +147,7 @@ int testBitStreamCorrectnessMisaligned1()
         DefaultOutputBitStream obs(ios, 16384);
         cout << endl;
         obs.writeBit(1);
-        obs.writeBits(0x0123456789ABCDEFL, t);
+        obs.writeBits(0x01234567L, t);
         cout << "Written (before close): " << obs.written() << endl;
         obs.close();
         cout << "Written (after close): " << obs.written() << endl;
@@ -294,14 +299,15 @@ int testBitStreamSpeed1(const string& fileName)
         read += ibs.read();
     }
 
-    double d = 1024.0 * 8192.0;
+    // MB = 1000 * 1000, MiB = 1024 * 1024
+    double d = 8.0 * 1024.0 * 1024.0;
     cout << written << " bits written (" << (written / 1024 / 1024 / 8) << " MB)" << endl;
     cout << read << " bits read (" << (read / 1024 / 1024 / 8) << " MB)" << endl;
     cout << endl;
-    cout << "Write [ms]        : " << (int)(delta1 / CLOCKS_PER_SEC * 1000) << endl;
-    cout << "Throughput [MB/s] : " << (int)((double)written / d / (delta1 / CLOCKS_PER_SEC)) << endl;
-    cout << "Read [ms]         : " << (int)(delta2 / CLOCKS_PER_SEC * 1000) << endl;
-    cout << "Throughput [MB/s] : " << (int)((double)read / d / (delta2 / CLOCKS_PER_SEC)) << endl;
+    cout << "Write [ms]         : " << (int)(delta1 / CLOCKS_PER_SEC * 1000) << endl;
+    cout << "Throughput [MiB/s] : " << (int)((double)written / d / (delta1 / CLOCKS_PER_SEC)) << endl;
+    cout << "Read [ms]          : " << (int)(delta2 / CLOCKS_PER_SEC * 1000) << endl;
+    cout << "Throughput [MiB/s] : " << (int)((double)read / d / (delta2 / CLOCKS_PER_SEC)) << endl;
     return 0;
 }
 
@@ -491,6 +497,104 @@ int testBitStreamCorrectnessMisaligned2()
     return res;
 }
 
+int testSeek(const string& name)
+{
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+    // Test correctness (not byte aligned)
+    cout << endl << "Seek Test" << endl << endl;
+    byte input[256];
+    byte output[256];
+
+    for (int i = 0; i < 256; i++)
+       input[i] = byte(i);
+
+    cout << "Test OutputBitStream" << endl;
+    ofstream ofs(name.c_str(), ios_base::out | ios_base::binary);
+    DefaultOutputBitStream obs(ofs);
+
+    for (int i = 0; i < 128; i++)
+       obs.writeBits(uint64(0xAA), 8);
+
+    obs.seek(8 * 32);
+    obs.writeBits(&input[10], 8 * 32);
+    obs.seek(8 * 2);
+    obs.writeBits(&input[100], 8 * 32);
+    obs.close();
+    ofs.close();
+    cout << "Bits written: " << obs.written() << endl;
+    remove(name.c_str());
+
+    cout << endl;
+    cout << "Test InputBitStream" << endl;
+
+    for (int i = 0; i < 256; i++)
+        input[i] = byte(i);
+
+    ofstream ofs2(name.c_str(), ios_base::out | ios_base::binary);
+    ofs2.write(reinterpret_cast<const char*>(input), 256);
+    ofs2.close();
+    ifstream ifs(name.c_str(), ios_base::in | ios_base::binary);
+    DefaultInputBitStream ibs(ifs);
+    memset(output, 0, 256);
+    ibs.readBits(&output[0], 8 * 16);
+
+    for (int i = 0; i < 16; i++) {
+       if (output[i] != byte(i)) {
+          cout << "Read failure" << endl;
+          remove(name.c_str());
+          return 1;
+       }
+    }
+
+    // Positions in bytes
+    int64 positions[5] = { 50, 0, 20, 33, 0 };
+    memset(output, 0, 256);
+
+    for (int i = 0; i < 5; i ++) {
+       int64 pos = positions[i];
+       cout << "Seek " << pos << endl;
+       ibs.seek(8 * pos);
+
+       if (ibs.tell() != 8 * pos) {
+          cout << "Seek/tell mismatch" << endl;
+          remove(name.c_str());
+          return 2;
+       }
+
+       if (ibs.tell() != 8 * ifs.tellg()) {
+          cout << "Seek/tell mismatch" << endl;
+          remove(name.c_str());
+          return 3;
+       }
+
+       cout << "Read bits at position " << pos << endl;
+       ibs.readBits(&output[pos], 8 * 10);
+       int64 r = ibs.readBits(8);
+
+       if (r != pos + 10) {
+          cout << "Incorrect number of read bits" << endl;
+          remove(name.c_str());
+          return 4;
+       }
+
+       for (int j = 0; j < 10; j++) {
+          if (output[pos + j] != byte(pos + j)) {
+             cout << "Read failure" << endl;
+             remove(name.c_str());
+             return 5;
+          }
+       }
+
+       cout << "OK" << endl;
+    }
+
+    cout << "Bits read: " << ibs.read() << endl;
+    remove(name.c_str());
+    cout << endl << "Success" << endl;
+#endif
+    return 0;
+}
+
 int testBitStreamSpeed2(const string& fileName)
 {
     // Test speed
@@ -539,14 +643,15 @@ int testBitStreamSpeed2(const string& fileName)
         read += ibs.read();
     }
 
+    // MiB = 1024 * 1024, MB = 1000 * 1000
     double d = 1024.0 * 8192.0;
-    cout << written << " bits written (" << (written / 1024 / 1024 / 8) << " MB)" << endl;
-    cout << read << " bits read (" << (read / 1024 / 1024 / 8) << " MB)" << endl;
+    cout << written << " bits written (" << (written / 1024 / 1024 / 8) << " MiB)" << endl;
+    cout << read << " bits read (" << (read / 1024 / 1024 / 8) << " MiB)" << endl;
     cout << endl;
-    cout << "Write [ms]        : " << (int)(delta1 / CLOCKS_PER_SEC * 1000) << endl;
-    cout << "Throughput [MB/s] : " << (int)((double)written / d / (delta1 / CLOCKS_PER_SEC)) << endl;
-    cout << "Read [ms]         : " << (int)(delta2 / CLOCKS_PER_SEC * 1000) << endl;
-    cout << "Throughput [MB/s] : " << (int)((double)read / d / (delta2 / CLOCKS_PER_SEC)) << endl;
+    cout << "Write [ms]         : " << (int)(delta1 / CLOCKS_PER_SEC * 1000) << endl;
+    cout << "Throughput [MiB/s] : " << (int)((double)written / d / (delta1 / CLOCKS_PER_SEC)) << endl;
+    cout << "Read [ms]          : " << (int)(delta2 / CLOCKS_PER_SEC * 1000) << endl;
+    cout << "Throughput [MiB/s] : " << (int)((double)read / d / (delta2 / CLOCKS_PER_SEC)) << endl;
 
     delete[] input;
     delete[] output;
@@ -574,16 +679,27 @@ int TestDefaultBitStream_main(int argc, const char* argv[])
     }
 
     int res = 0;
-    string fileName = argv[1];
-    res |= testBitStreamCorrectnessAligned1();
-    res |= testBitStreamCorrectnessAligned2();
-    res |= testBitStreamCorrectnessMisaligned1();
-    res |= testBitStreamCorrectnessMisaligned2();
 
-    if (doPerf == true) {
-       res |= testBitStreamSpeed1(fileName);
-       res |= testBitStreamSpeed2(fileName);
+    try {
+       string fileName = argv[1];
+       res |= testBitStreamCorrectnessAligned1();
+       res |= testBitStreamCorrectnessAligned2();
+       res |= testBitStreamCorrectnessMisaligned1();
+       res |= testBitStreamCorrectnessMisaligned2();
+       res |= testSeek(fileName);
+
+       if (doPerf == true) {
+          res |= testBitStreamSpeed1(fileName);
+          res |= testBitStreamSpeed2(fileName);
+       }
+    } catch (kanzi::IOException& e) {
+       cout << "Exception: " << e.what() << endl;
+       res = 99;
+    } catch (BitStreamException& e) {
+       cout << "Exception: " << e.what() << endl;
+       res = 99;
     }
 
     return res;
 }
+

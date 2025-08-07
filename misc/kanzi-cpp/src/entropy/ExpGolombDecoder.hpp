@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -58,6 +58,9 @@ namespace kanzi
 
        while (_bitstream.readBit() == 0)
            log2++;
+
+       // Clamp. Do not attempt to detect a corrupted bitstream
+       log2 &= 7;
 
        if (_signed == true) {
            // Decode signed: read value + sign

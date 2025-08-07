@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -25,16 +25,12 @@ namespace kanzi {
 
    // Utility class to en/de-code a BWT data block and its associated primary index(es)
 
-   // BWT stream format: Header (m bytes) Data (n bytes)
-   // Header: For each primary index,
-   //   mode (8 bits) + primary index (8,16 or 24 bits)
-   //   mode: bits 7-6 contain the size in bits of the primary index :
-   //             00: primary index size <=  6 bits (fits in mode byte)
-   //             01: primary index size <= 14 bits (1 extra byte)
-   //             10: primary index size <= 22 bits (2 extra bytes)
-   //             11: primary index size  > 22 bits (3 extra bytes)
-   //         bits 5-0 contain 6 most significant bits of primary index
-   //   primary index: remaining bits (up to 3 bytes)
+   // BWT stream format: Header (mode + primary index(es)) | Data (n bytes)
+   //   mode (8 bits): xxxyyyzz
+   //   xxx: ignored
+   //   yyy: log(chunks)
+   //   zz: primary index size - 1 (in bytes)
+   //   primary indexes (chunks * (8|16|24|32 bits))
 
    class BWTBlockCodec FINAL : public Transform<byte> {
    public:
@@ -50,13 +46,12 @@ namespace kanzi {
        // Required encoding output buffer size
        int getMaxEncodedLength(int srcLen) const
        {
-           return srcLen + BWT_MAX_HEADER_SIZE;
+           return srcLen + 32 /* max header size */;
        }
 
    private:
-       static const int BWT_MAX_HEADER_SIZE = 8 * 4;
-
        BWT* _pBWT;
+       int _bsVersion;
    };
 }
 #endif

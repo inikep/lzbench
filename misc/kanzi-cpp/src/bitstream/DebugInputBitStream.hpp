@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -21,10 +21,9 @@ limitations under the License.
 #include "../OutputStream.hpp"
 
 
-namespace kanzi
-{
+namespace kanzi {
 
-   class DebugInputBitStream : public InputBitStream
+   class DebugInputBitStream FINAL : public InputBitStream
    {
    private:
        InputBitStream& _delegate;
@@ -76,7 +75,6 @@ namespace kanzi
 
        bool mark() const { return _mark; }
    };
-
 }
 #endif
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -21,6 +21,15 @@ limitations under the License.
 using namespace kanzi;
 using namespace std;
 
+
+const int EntropyUtils::FULL_ALPHABET = 0;
+const int EntropyUtils::PARTIAL_ALPHABET = 1;
+const int EntropyUtils::ALPHABET_256 = 0;
+const int EntropyUtils::ALPHABET_0 = 1;
+const int EntropyUtils::INCOMPRESSIBLE_THRESHOLD = 973; // 0.95*1024
+
+
+
 class FreqSortData {
 public:
     uint* _freq;
@@ -38,7 +47,7 @@ struct FreqDataComparator {
     {
         // Decreasing frequency then decreasing symbol
         int r;
-        return  ((r = *fd1._freq - *fd2._freq) == 0) ? fd1._symbol > fd2._symbol: r > 0;
+        return ((r = int(*fd1._freq - *fd2._freq)) == 0) ? fd1._symbol > fd2._symbol: r > 0;
     }
 };
 
@@ -66,14 +75,13 @@ int EntropyUtils::encodeAlphabet(OutputBitStream& obs, const uint alphabet[], in
         obs.writeBit(PARTIAL_ALPHABET);
         byte masks[32] = { byte(0) };
 
+        // Encode presence flags
         for (int i = 0; i < count; i++)
             masks[alphabet[i] >> 3] |= byte(1 << (alphabet[i] & 7));
 
         const int lastMask = alphabet[count - 1] >> 3;
         obs.writeBits(lastMask, 5);
-
-        for (int i = 0; i <= lastMask; i++)
-            obs.writeBits(uint64(masks[i]), 8);
+        obs.writeBits(masks, 8 * (lastMask + 1));
     }
 
     return count;
@@ -94,16 +102,19 @@ int EntropyUtils::decodeAlphabet(InputBitStream& ibs, uint alphabet[])
 
     // Partial alphabet
     const int lastMask = int(ibs.readBits(5));
+    byte masks[32] = { byte(0) };
     int count = 0;
 
     // Decode presence flags
-    for (int i = 0; i <= lastMask; i++) {
-        const byte mask = byte(ibs.readBits(8));
+    ibs.readBits(masks, 8 * (lastMask + 1));
 
-        for (int j = 0; j < 8; j++) {
-            if ((mask & byte(1 << j)) != byte(0)) {
-                alphabet[count++] = (i << 3) + j;
-            }
+    for (int i = 0; i <= lastMask; i++) {
+        const int n = 8 * i;
+
+        for (uint j = 0; j < 8; j++) {
+            const int bit = int(masks[i] >> j) & 1;
+            alphabet[count] = n + j;
+            count += bit;
         }
     }
 
@@ -113,7 +124,7 @@ int EntropyUtils::decodeAlphabet(InputBitStream& ibs, uint alphabet[])
 
 // Returns the size of the alphabet
 // length is the length of the alphabet array
-// 'totalFreq 'is the sum of frequencies.
+// 'totalFreq' is the sum of frequencies.
 // 'scale' is the target new total of frequencies
 // The alphabet and freqs parameters are updated
 int EntropyUtils::normalizeFrequencies(uint freqs[], uint alphabet[], int length, uint totalFreq, uint scale)
@@ -171,9 +182,7 @@ int EntropyUtils::normalizeFrequencies(uint freqs[], uint alphabet[], int length
             const int64 prod = int64(scaledFreq) * int64(totalFreq);
             const int64 errCeiling = prod + int64(totalFreq) - sf;
             const int64 errFloor = sf - prod;
-
-            if (errCeiling < errFloor)
-                scaledFreq++;
+            scaledFreq += (errCeiling < errFloor ? 1 : 0);
         }
 
         alphabet[alphabetSize++] = i;
@@ -197,62 +206,54 @@ int EntropyUtils::normalizeFrequencies(uint freqs[], uint alphabet[], int length
     if (sumScaledFreq == scale)
         return alphabetSize;
 
-    const int delta = int(sumScaledFreq - scale);
-    const int inc = (delta > 0) ? -1 : 1;
+    int delta = int(sumScaledFreq - scale);
+    const int errThr = int(freqs[idxMax]) >> 4;
 
-    if (abs(delta) * 16 <= int(freqs[idxMax])) {
+    if (abs(delta) <= errThr) {
         // Fast path (small error): just adjust the max frequency
         freqs[idxMax] -= delta;
         return alphabetSize;
     }
 
     if (delta < 0) {
-        sumScaledFreq += (freqs[idxMax] >> 4);
-        freqs[idxMax] += (freqs[idxMax] >> 4);
+        delta += errThr;
+        freqs[idxMax] += uint(errThr);
     }
     else {
-        sumScaledFreq -= (freqs[idxMax] >> 4);
-        freqs[idxMax] -= (freqs[idxMax] >> 4);
+        delta -= errThr;
+        freqs[idxMax] -= uint(errThr);
     }
 
     // Slow path: spread error across frequencies
-    deque<FreqSortData> queue;
+    const int inc = (delta < 0) ? 1 : -1;
+    delta = abs(delta);
+    int round = 0;
 
-    // Create sorted queue of present symbols
-    for (int i = 0; i < alphabetSize; i++) {
-       if (int(freqs[alphabet[i]]) <= 2) // Do not distort small frequencies
-          continue;
+    while ((++round < 6) && (delta > 0)) {
+        int adjustments = 0;
 
-       queue.push_back(FreqSortData(&freqs[alphabet[i]], alphabet[i]));
-    }
+        for (int i = 0; i < alphabetSize; i++) {
+            const int idx = alphabet[i];
 
-    if (queue.empty()) {
-        freqs[idxMax] += inc * delta;
-        return alphabetSize;
-    }
+            // Skip small frequencies to avoid big distortion
+            // Do not zero out frequencies
+            if (freqs[idx] <= 2)
+                continue;
 
-    sort(queue.begin(), queue.end(), FreqDataComparator());
+            // Adjust frequency
+            freqs[idx] += inc;
+            adjustments++;
+            delta--;
 
-    while (sumScaledFreq != scale) {
-        // Remove next symbol
-#if __cplusplus >= 201103L
-        FreqSortData fsd = std::move(queue.front()); // qualified move (std::) to avoid warning
-#else
-        FreqSortData fsd = queue.front();
-#endif
-        queue.pop_front();
-
-        // Do not zero out any frequency
-        if (int(*fsd._freq) == -inc) {
-            continue;
+            if (delta == 0)
+                break;
         }
 
-        // Distort frequency and re-enqueue
-        *fsd._freq += inc;
-        sumScaledFreq += inc;
-        queue.push_back(fsd);
+        if (adjustments == 0)
+           break;
     }
 
+    freqs[idxMax] = max(freqs[idxMax] - delta, uint(1));
     return alphabetSize;
 }
 

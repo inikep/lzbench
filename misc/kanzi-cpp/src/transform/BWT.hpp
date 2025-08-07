@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -84,10 +84,10 @@ namespace kanzi {
    class BWT FINAL : public Transform<byte> {
 
    private:
-       static const int MAX_BLOCK_SIZE = 1024 * 1024 * 1024; // 1024 MB
-       static const int NB_FASTBITS = 17;
-       static const int BLOCK_SIZE_THRESHOLD1 = 256;
-       static const int BLOCK_SIZE_THRESHOLD2 = 2 * 1024 * 1024;
+       static const int MAX_BLOCK_SIZE;
+       static const int NB_FASTBITS;
+       static const int BLOCK_SIZE_THRESHOLD1;
+       static const int BLOCK_SIZE_THRESHOLD2;
 
        uint* _buffer;
        int* _sa;
@@ -105,13 +105,13 @@ namespace kanzi {
        bool inverseMergeTPSI(SliceArray<byte>& input, SliceArray<byte>& output, int count);
 
    public:
-       static const int MASK_FASTBITS = (1 << NB_FASTBITS) - 1;
+       static const int MASK_FASTBITS;
 
        BWT(int jobs = 1);
 
        BWT(Context& ctx);
 
-       ~BWT() { delete[] _buffer; delete[] _sa; }
+       ~BWT() { if (_buffer != nullptr) delete[] _buffer; if (_sa != nullptr) delete[] _sa; }
 
        bool forward(SliceArray<byte>& input, SliceArray<byte>& output, int length);
 

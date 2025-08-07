@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -18,6 +18,7 @@ limitations under the License.
 #define _HuffmanDecoder_
 
 #include "HuffmanCommon.hpp"
+#include "../Context.hpp"
 #include "../EntropyDecoder.hpp"
 
 
@@ -28,9 +29,9 @@ namespace kanzi
    class HuffmanDecoder : public EntropyDecoder
    {
    public:
-       HuffmanDecoder(InputBitStream& bitstream, int chunkSize = HuffmanCommon::MAX_CHUNK_SIZE);
+       HuffmanDecoder(InputBitStream& bitstream, Context* pCtx = nullptr, int chunkSize = HuffmanCommon::MAX_CHUNK_SIZE) ;
 
-       ~HuffmanDecoder() { _dispose(); delete[] _buffer; }
+       ~HuffmanDecoder() { _dispose(); if (_buffer != nullptr) delete[] _buffer; }
 
        int decode(byte block[], uint blkptr, uint len);
 
@@ -39,8 +40,8 @@ namespace kanzi
        void dispose() { _dispose(); }
 
    private:
-       static const int DECODING_BATCH_SIZE = 12; // ensures decoding table fits in L1 cache
-       static const int TABLE_MASK = (1 << DECODING_BATCH_SIZE) - 1;
+       static const int DECODING_BATCH_SIZE;
+       static const int TABLE_MASK;
 
        InputBitStream& _bitstream;
        byte* _buffer;
@@ -48,14 +49,21 @@ namespace kanzi
        uint16 _codes[256];
        uint _alphabet[256];
        uint16 _sizes[256];
-       uint16 _table[TABLE_MASK + 1]; // decoding table: code -> size, symbol
+       uint16 _table[1 << 12]; // decoding table: code -> size, symbol
        int _chunkSize;
+       Context* _pCtx;
 
        int readLengths();
 
-       void buildDecodingTable(int count);
+       bool decodeChunk(byte block[], uint count);
+
+       bool buildDecodingTable(int count);
 
        bool reset();
+
+       int decodeV5(byte block[], uint blkptr, uint len);
+
+       int decodeV6(byte block[], uint blkptr, uint len);
 
        void _dispose() const {}
    };

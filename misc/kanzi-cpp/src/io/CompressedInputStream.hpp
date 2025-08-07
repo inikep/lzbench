@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -22,11 +22,12 @@ limitations under the License.
 #include <vector>
 #include "../concurrent.hpp"
 #include "../Context.hpp"
+#include "../Event.hpp"
 #include "../Listener.hpp"
 #include "../InputStream.hpp"
-#include "../InputBitStream.hpp"
 #include "../SliceArray.hpp"
-#include "../util/XXHash32.hpp"
+#include "../bitstream/DefaultInputBitStream.hpp"
+#include "../util/XXHash.hpp"
 
 #if __cplusplus >= 201103L
    #include <functional>
@@ -43,7 +44,7 @@ namespace kanzi
        byte* _data;
        int _error; // 0 = OK
        std::string _msg;
-       int _checksum;
+       uint64 _checksum;
        bool _skipped;
        clock_t _completionTime;
 
@@ -58,7 +59,7 @@ namespace kanzi
            _completionTime = clock();
        }
 
-       DecodingTaskResult(const SliceArray<byte>& data, int blockId, int decoded, int checksum,
+       DecodingTaskResult(const SliceArray<byte>& data, int blockId, int decoded, uint64 checksum,
           int error, const std::string& msg, bool skipped = false)
            : _blockId(blockId)
            , _decoded(decoded)
@@ -107,16 +108,17 @@ namespace kanzi
        SliceArray<byte>* _data;
        SliceArray<byte>* _buffer;
        int _blockLength;
-       InputBitStream* _ibs;
-       XXHash32* _hasher;
+       DefaultInputBitStream* _ibs;
+       XXHash32* _hasher32;
+       XXHash64* _hasher64;
        ATOMIC_INT* _processedBlockId;
-       std::vector<Listener*> _listeners;
+       std::vector<Listener<Event>*> _listeners;
        Context _ctx;
 
    public:
        DecodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuffer,
-           int blockSize, InputBitStream* ibs, XXHash32* hasher,
-           ATOMIC_INT* processedBlockId, std::vector<Listener*>& listeners,
+           int blockSize, DefaultInputBitStream* ibs, XXHash32* hasher32, XXHash64* hasher64,
+           ATOMIC_INT* processedBlockId, std::vector<Listener<Event>*>& listeners,
            const Context& ctx);
 
        ~DecodingTask(){}
@@ -130,40 +132,28 @@ namespace kanzi
    public:
         // If headerless == false, all provided compression parameters will be overwritten
         // with values read from the bitstream header.
+        CompressedInputStream(InputStream& is,
+                   int jobs = 1,
+                   const std::string& entropy = "NONE",
+                   const std::string& transform = "NONE",
+                   int blockSize = 4*1024*1024,
+                   int checksum = 0,
+                   uint64 originalSize = 0,
 #ifdef CONCURRENCY_ENABLED
-        CompressedInputStream(InputStream& is, int jobs = 1, ThreadPool* pool = nullptr,
-                   bool headerless = false,
-                   bool checksum = false,
-                   int blockSize = 4*1024*1024,
-                   std::string transform = "NONE",
-                   std::string entropy = "NONE",
-                   uint64 originalSize = 0,
-                   int bsVersion = BITSTREAM_FORMAT_VERSION);
-#else
-        CompressedInputStream(InputStream& is, int jobs = 1,
-                   bool headerless = false,
-                   bool checksum = false,
-                   int blockSize = 4*1024*1024,
-                   std::string transform = "NONE",
-                   std::string entropy = "NONE",
-                   uint64 originalSize = 0,
-                   int bsVersion = BITSTREAM_FORMAT_VERSION);
+                   ThreadPool* pool = nullptr,
 #endif
+                   bool headerless = false,
+                   int bsVersion = BITSTREAM_FORMAT_VERSION);
 
       // If headerless == true, the context must contain "entropy", "transform", "checksum" & "blockSize"
       // If "bsVersion" is missing, the current value of BITSTREAM_FORMAT_VERSION is assumed.
-#if __cplusplus >= 201103L
-       CompressedInputStream(InputStream& is, Context& ctx, bool headerless = false,
-          std::function<InputBitStream*(InputStream&)>* createBitStream = nullptr);
-#else
        CompressedInputStream(InputStream& is, Context& ctx, bool headerless = false);
-#endif
 
        ~CompressedInputStream();
 
-       bool addListener(Listener& bl);
+       bool addListener(Listener<Event>& bl);
 
-       bool removeListener(Listener& bl);
+       bool removeListener(Listener<Event>& bl);
 
        std::streampos tellg();
 
@@ -185,6 +175,12 @@ namespace kanzi
 
        uint64 getRead() const { return (_ibs->read() + 7) >> 3; }
 
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+       bool seek(int64 bitPos);
+
+       int64 tell();
+#endif
+
 
    protected:
 
@@ -192,17 +188,17 @@ namespace kanzi
 
 
    private:
-       static const int BITSTREAM_TYPE = 0x4B414E5A; // "KANZ"
-       static const int BITSTREAM_FORMAT_VERSION = 5;
-       static const int DEFAULT_BUFFER_SIZE = 256 * 1024;
-       static const int EXTRA_BUFFER_SIZE = 512;
-       static const byte COPY_BLOCK_MASK = byte(0x80);
-       static const byte TRANSFORMS_MASK = byte(0x10);
-       static const int MIN_BITSTREAM_BLOCK_SIZE = 1024;
-       static const int MAX_BITSTREAM_BLOCK_SIZE = 1024 * 1024 * 1024;
-       static const int CANCEL_TASKS_ID = -1;
-       static const int MAX_CONCURRENCY = 64;
-       static const int MAX_BLOCK_ID = int((uint(1) << 31) - 1);
+       static const int BITSTREAM_TYPE;
+       static const int BITSTREAM_FORMAT_VERSION;
+       static const int DEFAULT_BUFFER_SIZE;
+       static const int EXTRA_BUFFER_SIZE;
+       static const byte COPY_BLOCK_MASK;
+       static const byte TRANSFORMS_MASK;
+       static const int MIN_BITSTREAM_BLOCK_SIZE;
+       static const int MAX_BITSTREAM_BLOCK_SIZE;
+       static const int CANCEL_TASKS_ID;
+       static const int MAX_CONCURRENCY;
+       static const int MAX_BLOCK_ID;
 
        int _blockSize;
        int _bufferId; // index of current read buffer
@@ -210,17 +206,18 @@ namespace kanzi
        int _nbInputBlocks;
        int _jobs;
        int _bufferThreshold;
-       int _available; // decoded not consumed bytes
+       int64 _available; // decoded not consumed bytes
        int64 _outputSize;
-       XXHash32* _hasher;
+       XXHash32* _hasher32;
+       XXHash64* _hasher64;
        SliceArray<byte>** _buffers; // input & output per block
        short _entropyType;
        uint64 _transformType;
-       InputBitStream* _ibs;
+       DefaultInputBitStream* _ibs;
        ATOMIC_BOOL _initialized;
        ATOMIC_BOOL _closed;
        ATOMIC_INT _blockId;
-       std::vector<Listener*> _listeners;
+       std::vector<Listener<Event>*> _listeners;
        std::streamsize _gcount;
        Context _ctx;
        Context* _parentCtx; // not owner
@@ -229,11 +226,11 @@ namespace kanzi
        ThreadPool* _pool;
 #endif
 
-       int processBlock();
+       int64 processBlock();
 
        int _get(int inc);
 
-       static void notifyListeners(std::vector<Listener*>& listeners, const Event& evt);
+       static void notifyListeners(std::vector<Listener<Event>*>& listeners, const Event& evt);
    };
 
 
@@ -251,12 +248,11 @@ namespace kanzi
 
    inline std::streampos CompressedInputStream::tellg()
    {
-       return uint(getRead());
+       throw std::ios_base::failure("Not supported");
    }
 
    inline std::istream& CompressedInputStream::seekg(std::streampos)
    {
-       setstate(std::ios::badbit);
        throw std::ios_base::failure("Not supported");
    }
 
@@ -272,6 +268,22 @@ namespace kanzi
        throw std::ios_base::failure("Not supported");
    }
 
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+   inline bool CompressedInputStream::seek(int64 bitPos)
+   {
+      // Beware. There be dragons !
+      // The only valid bitstream positions are the beginning of a block.
+      // Useful to navigate the bitstream block by block without decompressing.
+      _available = 0;
+      _bufferId = 0;
+      return _ibs->seek(bitPos);
+   }
+
+   inline int64 CompressedInputStream::tell()
+   {
+      return _ibs->tell();
+   }
+#endif
 }
 #endif
 

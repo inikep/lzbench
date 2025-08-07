@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -26,10 +26,18 @@ limitations under the License.
 using namespace kanzi;
 using namespace std;
 
+
+const int BWT::MAX_BLOCK_SIZE = 1024 * 1024 * 1024; // 1024 MB
+const int BWT::NB_FASTBITS = 17;
+const int BWT::MASK_FASTBITS = (1 << NB_FASTBITS) - 1;
+const int BWT::BLOCK_SIZE_THRESHOLD1 = 256;
+const int BWT::BLOCK_SIZE_THRESHOLD2 = 2 * 1024 * 1024;
+
+
 BWT::BWT(int jobs)
 {
-    _buffer = new uint[0];
-    _sa = new int[0];
+    _buffer = nullptr;
+    _sa = nullptr;
     _bufferSize = 0;
     _saSize = 0;
 
@@ -50,8 +58,8 @@ BWT::BWT(int jobs)
 
 BWT::BWT(Context& ctx)
 {
-    _buffer = new uint[0];
-    _sa = new int[0];
+    _buffer = nullptr;
+    _sa = nullptr;
     _bufferSize = 0;
     _saSize = 0;
     int jobs = ctx.getInt("jobs", 1);
@@ -98,17 +106,21 @@ bool BWT::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
         return true;
     }
 
-    byte* src = &input._array[input._index];
+    const byte* src = &input._array[input._index];
     byte* dst = &output._array[output._index];
 
     // Lazy dynamic memory allocation
     if (_saSize < count) {
-         delete[] _sa;
+         if (_sa != nullptr)
+             delete[] _sa;
+
          _saSize = count;
          _sa = new int[_saSize];
     }
 
-    _saAlgo.computeBWT(src, dst, _sa, count, _primaryIndexes, getBWTChunks(count));
+    if (_saAlgo.computeBWT(src, dst, _sa, count, _primaryIndexes, getBWTChunks(count)) == false)
+        return false;
+
     input._index += count;
     output._index += count;
     return true;
@@ -140,17 +152,22 @@ bool BWT::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
 // When count <= BLOCK_SIZE_THRESHOLD2, mergeTPSI algo
 bool BWT::inverseMergeTPSI(SliceArray<byte>& input, SliceArray<byte>& output, int count)
 {
-    // Lazy dynamic memory allocation
-    if (_bufferSize < count) {
-        delete[] _buffer;
-        _bufferSize = max(count, 256);
-        _buffer = new uint[_bufferSize];
-    }
+    if (count == 0)
+       return true;
 
     const int pIdx = getPrimaryIndex(0);
 
-    if ((pIdx < 0) || (pIdx > count))
+    if ((pIdx <= 0) || (pIdx > count))
         return false;
+
+    // Lazy dynamic memory allocation
+    if (_bufferSize < count) {
+        if (_buffer != nullptr)
+           delete[] _buffer;
+
+        _bufferSize = max(count, 256);
+        _buffer = new uint[_bufferSize];
+    }
 
     // Build array of packed index + value (assumes block size < 1<<24)
     uint buckets[256] = { 0 };
@@ -165,53 +182,71 @@ bool BWT::inverseMergeTPSI(SliceArray<byte>& input, SliceArray<byte>& output, in
     const byte* src = &input._array[input._index];
     byte* dst = &output._array[output._index];
     memset(&_buffer[0], 0, size_t(_bufferSize) * sizeof(uint));
+    const uint end1 = uint(pIdx);
+    const uint end2 = uint(count);
 
-    for (int i = 0; i < pIdx; i++) {
+    _buffer[buckets[uint8(src[0])]] = uint(src[0]);
+    buckets[uint8(src[0])]++;
+
+    for (uint i = 1; i < end1; i++) {
         const uint8 val = uint8(src[i]);
         _buffer[buckets[val]] = ((i - 1) << 8) | val;
         buckets[val]++;
     }
 
-    for (int i = pIdx; i < count; i++) {
+    for (uint i = end1; i < end2; i++) {
         const uint8 val = uint8(src[i]);
         _buffer[buckets[val]] = (i << 8) | val;
         buckets[val]++;
     }
 
-    if (count < BLOCK_SIZE_THRESHOLD1) {
-        for (int i = 0, t = pIdx - 1; i < count; i++) {
-            const uint ptr = _buffer[t];
-            dst[i] = byte(ptr);
+    if (getBWTChunks(count) != 8) {
+        int t = pIdx - 1;
+        int n = 0;
+
+        while (n < count) {
+            const int ptr = _buffer[t];
+            dst[n++] = byte(ptr);
             t = ptr >> 8;
         }
     }
     else {
         const int ckSize = ((count & 7) == 0) ? count >> 3 : (count >> 3) + 1;
         int t0 = getPrimaryIndex(0) - 1;
+        if ((t0 < 0) || (t0 >= _bufferSize)) return false;
         int t1 = getPrimaryIndex(1) - 1;
+        if ((t1 < 0) || (t1 >= _bufferSize)) return false;
         int t2 = getPrimaryIndex(2) - 1;
+        if ((t2 < 0) || (t2 >= _bufferSize)) return false;
         int t3 = getPrimaryIndex(3) - 1;
+        if ((t3 < 0) || (t3 >= _bufferSize)) return false;
         int t4 = getPrimaryIndex(4) - 1;
+        if ((t4 < 0) || (t4 >= _bufferSize)) return false;
         int t5 = getPrimaryIndex(5) - 1;
+        if ((t5 < 0) || (t5 >= _bufferSize)) return false;
         int t6 = getPrimaryIndex(6) - 1;
+        if ((t6 < 0) || (t6 >= _bufferSize)) return false;
         int t7 = getPrimaryIndex(7) - 1;
-        byte* d0 = &dst[ckSize * 0];
-        byte* d1 = &dst[ckSize * 1];
-        byte* d2 = &dst[ckSize * 2];
-        byte* d3 = &dst[ckSize * 3];
-        byte* d4 = &dst[ckSize * 4];
-        byte* d5 = &dst[ckSize * 5];
-        byte* d6 = &dst[ckSize * 6];
-        byte* d7 = &dst[ckSize * 7];
-        int n = 0;
+        if ((t7 < 0) || (t7 >= _bufferSize)) return false;
+
+        // Last interval [7*chunk:count] smaller when 8*ckSize != count
+        const int end = count - ckSize * 7;
+        byte* d0 = &dst[end + ckSize * 0];
+        byte* d1 = &dst[end + ckSize * 1];
+        byte* d2 = &dst[end + ckSize * 2];
+        byte* d3 = &dst[end + ckSize * 3];
+        byte* d4 = &dst[end + ckSize * 4];
+        byte* d5 = &dst[end + ckSize * 5];
+        byte* d6 = &dst[end + ckSize * 6];
+        byte* d7 = &dst[end + ckSize * 7];
+        int n = -end;
         int ptr;
 
         #define S(t, d) ptr = _buffer[t]; \
            d[n] = byte(ptr); \
-           t = ptr >> 8; \
-           prefetchRead(&_buffer[t])
+           t = ptr >> 8
 
-        while (true) {
+        while (n < 0) {
             S(t0, d0);
             S(t1, d1);
             S(t2, d2);
@@ -221,12 +256,9 @@ bool BWT::inverseMergeTPSI(SliceArray<byte>& input, SliceArray<byte>& output, in
             S(t6, d6);
             S(t7, d7);
             n++;
-
-            if (ptr < 0)
-                break;
         }
 
-        while (n < ckSize) {
+        while (n < ckSize - end) {
             S(t0, d0);
             S(t1, d1);
             S(t2, d2);
@@ -248,7 +280,9 @@ bool BWT::inverseBiPSIv2(SliceArray<byte>& input, SliceArray<byte>& output, int 
 {
     // Lazy dynamic memory allocations
     if (_bufferSize < count + 1) {
-        delete[] _buffer;
+        if (_buffer != nullptr)
+            delete[] _buffer;
+
         _bufferSize = max(count + 1, 256);
         _buffer = new uint[_bufferSize];
     }
@@ -435,36 +469,88 @@ T InverseBiPSIv2Task<T>::run()
     byte* d1 = &_dst[1 * _ckSize];
     byte* d2 = &_dst[2 * _ckSize];
     byte* d3 = &_dst[3 * _ckSize];
+    byte* d4 = &_dst[4 * _ckSize];
+    byte* d5 = &_dst[5 * _ckSize];
+    byte* d6 = &_dst[6 * _ckSize];
+    byte* d7 = &_dst[7 * _ckSize];
 
-    if (_start + 4 * _ckSize < _total) {
-        for (; c + 3 < _lastChunk; c += 4) {
+    if (_start + 7 * _ckSize <= _total) {
+        for (; c + 8 <= _lastChunk; c += 8) {
             const int end = _start + _ckSize;
-            uint p0 = _primaryIndexes[c];
+            uint p0 = _primaryIndexes[c + 0];
             uint p1 = _primaryIndexes[c + 1];
             uint p2 = _primaryIndexes[c + 2];
             uint p3 = _primaryIndexes[c + 3];
+            uint p4 = _primaryIndexes[c + 4];
+            uint p5 = _primaryIndexes[c + 5];
+            uint p6 = _primaryIndexes[c + 6];
+            uint p7 = _primaryIndexes[c + 7];
 
             for (int i = _start + 1; i <= end; i += 2) {
                 prefetchRead(&_data[p0]);
                 prefetchRead(&_data[p1]);
                 prefetchRead(&_data[p2]);
                 prefetchRead(&_data[p3]);
+                prefetchRead(&_data[p4]);
+                prefetchRead(&_data[p5]);
+                prefetchRead(&_data[p6]);
+                prefetchRead(&_data[p7]);
                 uint16 s0 = _fastBits[p0 >> shift];
                 uint16 s1 = _fastBits[p1 >> shift];
                 uint16 s2 = _fastBits[p2 >> shift];
                 uint16 s3 = _fastBits[p3 >> shift];
+                uint16 s4 = _fastBits[p4 >> shift];
+                uint16 s5 = _fastBits[p5 >> shift];
+                uint16 s6 = _fastBits[p6 >> shift];
+                uint16 s7 = _fastBits[p7 >> shift];
 
-                while (_buckets[s0] <= (const uint)p0)
-                    s0++;
+                if (_buckets[s0] <= p0) {
+                   do {
+                      s0++;
+                   } while (_buckets[s0] <= p0);
+                }
 
-                while (_buckets[s1] <= (const uint)p1)
-                    s1++;
+                if (_buckets[s1] <= p1) {
+                   do {
+                      s1++;
+                   } while (_buckets[s1] <= p1);
+                }
 
-                while (_buckets[s2] <= (const uint)p2)
-                    s2++;
+                if (_buckets[s2] <= p2) {
+                   do {
+                      s2++;
+                    } while (_buckets[s2] <= p2);
+                }
 
-                while (_buckets[s3] <= (const uint)p3)
-                    s3++;
+                if (_buckets[s3] <= p3) {
+                   do {
+                      s3++;
+                    } while (_buckets[s3] <= p3);
+                }
+
+                if (_buckets[s4] <= p4) {
+                   do {
+                      s4++;
+                    } while (_buckets[s4] <= p4);
+                }
+
+                if (_buckets[s5] <= p5) {
+                   do {
+                      s5++;
+                    } while (_buckets[s5] <= p5);
+                }
+
+                if (_buckets[s6] <= p6) {
+                   do {
+                      s6++;
+                    } while (_buckets[s6] <= p6);
+                }
+
+                if (_buckets[s7] <= p7) {
+                   do {
+                      s7++;
+                    } while (_buckets[s7] <= p7);
+                }
 
                 d0[i - 1] = byte(s0 >> 8);
                 d0[i] = byte(s0);
@@ -474,14 +560,26 @@ T InverseBiPSIv2Task<T>::run()
                 d2[i] = byte(s2);
                 d3[i - 1] = byte(s3 >> 8);
                 d3[i] = byte(s3);
+                d4[i - 1] = byte(s4 >> 8);
+                d4[i] = byte(s4);
+                d5[i - 1] = byte(s5 >> 8);
+                d5[i] = byte(s5);
+                d6[i - 1] = byte(s6 >> 8);
+                d6[i] = byte(s6);
+                d7[i - 1] = byte(s7 >> 8);
+                d7[i] = byte(s7);
 
                 p0 = _data[p0];
                 p1 = _data[p1];
                 p2 = _data[p2];
                 p3 = _data[p3];
+                p4 = _data[p4];
+                p5 = _data[p5];
+                p6 = _data[p6];
+                p7 = _data[p7];
             }
 
-            _start = end + 3 * _ckSize;
+            _start += (8 * _ckSize);
         }
     }
 
@@ -492,7 +590,7 @@ T InverseBiPSIv2Task<T>::run()
         for (int i = _start + 1; i <= end; i += 2) {
             uint16 s = _fastBits[p >> shift];
 
-            while (_buckets[s] <= (const uint)p)
+            while (_buckets[s] <= p)
                 s++;
 
             _dst[i - 1] = byte(s >> 8);

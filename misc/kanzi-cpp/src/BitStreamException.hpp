@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -31,11 +31,13 @@ namespace kanzi
        int _code;
 
    public:
-       static const int UNDEFINED = 0;
-       static const int INPUT_OUTPUT = 1;
-       static const int END_OF_STREAM = 2;
-       static const int INVALID_STREAM = 3;
-       static const int STREAM_CLOSED = 4;
+       enum BitStreamStatus {
+           UNDEFINED = 0,
+           INPUT_OUTPUT = 1,
+           END_OF_STREAM = 2,
+           INVALID_STREAM = 3,
+           STREAM_CLOSED = 4
+       };
 
        BitStreamException(const std::string& msg) : std::runtime_error(msg)
        {
@@ -48,7 +50,7 @@ namespace kanzi
 
        int error() const { return _code; }
 
-       virtual ~BitStreamException() _GLIBCXX_USE_NOEXCEPT {}
+       virtual ~BitStreamException() NOEXCEPT {}
    };
 
 }

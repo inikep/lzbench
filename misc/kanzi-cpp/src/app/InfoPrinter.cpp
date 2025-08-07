@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,9 +14,9 @@ limitations under the License.
 */
 
 #include <iomanip>
+#include <ios>
 #include <sstream>
 #include "InfoPrinter.hpp"
-#include <ios>
 
 using namespace kanzi;
 using namespace std;
@@ -43,8 +43,8 @@ InfoPrinter::InfoPrinter(int infoLevel, InfoPrinter::Type type, OutputStream& os
         _thresholds[5] = Event::DECOMPRESSION_END;
     }
 	
-	for (int i = 0; i < 1024; i++)
-		_map[i] = nullptr;
+    for (int i = 0; i < 1024; i++)
+        _map[i] = nullptr;
 }
 
 void InfoPrinter::processEvent(const Event& evt)
@@ -56,9 +56,7 @@ void InfoPrinter::processEvent(const Event& evt)
         BlockInfo* bi = new BlockInfo();
         _clock12.start();
 
-        if (_type == InfoPrinter::ENCODING)
-            bi->_stage0Size = evt.getSize();
-
+        bi->_stage0Size = evt.getSize();
         _map[hash(currentBlockId)] = bi;
 
         if (_level >= 5) {
@@ -70,9 +68,6 @@ void InfoPrinter::processEvent(const Event& evt)
 
         if (bi == nullptr)
             return;
-
-        if (_type == InfoPrinter::DECODING)
-            bi->_stage0Size = evt.getSize();
 
         _clock12.stop();
         _clock23.start();

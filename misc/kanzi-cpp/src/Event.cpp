@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -20,16 +20,6 @@ limitations under the License.
 
 using namespace kanzi;
 
-Event::Event(Event::Type type, int id, int64 size, clock_t evtTime)
-    : _type(type)
-    , _time(evtTime)
-    , _id(id)
-    , _size(size)
-{
-    _hash = 0;
-    _hashing = false;
-}
-
 Event::Event(Event::Type type, int id, const std::string& msg, clock_t evtTime)
     : _type(type)
     , _time(evtTime)
@@ -38,16 +28,21 @@ Event::Event(Event::Type type, int id, const std::string& msg, clock_t evtTime)
 {
     _size = 0;
     _hash = 0;
-    _hashing = false;
+    _hashType = NO_HASH;
+    _offset = -1;
+    _skipFlags = 0;
 }
 
-Event::Event(Event::Type type, int id, int64 size, int hash, bool hashing, clock_t evtTime)
+Event::Event(Event::Type type, int id, int64 size, clock_t evtTime,
+             uint64 hash, HashType hashType, int64 offset, uint8 skipFlags)
     : _type(type)
     , _time(evtTime)
     , _id(id)
     , _size(size)
+    , _offset(offset)
     , _hash(hash)
-    , _hashing(hashing)
+    , _hashType(hashType)
+    , _skipFlags(skipFlags)
 {
 }
 
@@ -63,11 +58,26 @@ std::string Event::toString() const
         ss << ", \"id\":" << getId();
 
     ss << ", \"size\":" << getSize();
-    ss << ", \"time\":" << getTime();
 
-    if (_hashing == true) {
-        ss << ", \"hash\":";
-        ss << std::uppercase << std::setfill('0') << std::setw(8) << std::hex << getHash();
+    if (getType() != BLOCK_INFO)
+        ss << ", \"time\":" << getTime();
+
+    if (_hashType != NO_HASH) {
+        ss << ", \"hash\":\"";
+        ss << std::uppercase << std::setfill('0');
+
+        if (_hashType == SIZE_32)
+           ss << std::setw(8) << std::hex << getHash() << "\"";
+        else
+           ss << std::setw(16) << std::hex << getHash() << "\"";
+    }
+
+    if (getType() == BLOCK_INFO) {
+         ss << ", \"offset\":" << getOffset();
+         ss << ", \"skipFlags\": ";
+
+        for (int i = 128; i >= 1; i >>= 1)
+           ss << ((_skipFlags & i) == 0 ? "0" : "1");
     }
 
     ss << " }";
@@ -103,6 +113,9 @@ std::string Event::getTypeAsString() const
 
     case COMPRESSION_START:
         return "COMPRESSION_START";
+
+    case BLOCK_INFO:
+        return "BLOCK_INFO";
 
     default:
         return "Unknown Type";

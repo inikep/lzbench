@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <algorithm>
 #include <sstream>
+#include <stdio.h>
 #include "CompressedOutputStream.hpp"
 #include "IOException.hpp"
 #include "../Error.hpp"
 #include "../Magic.hpp"
-#include "../bitstream/DefaultOutputBitStream.hpp"
 #include "../entropy/EntropyEncoderFactory.hpp"
 #include "../entropy/EntropyUtils.hpp"
 #include "../transform/TransformFactory.hpp"
@@ -30,14 +31,30 @@ limitations under the License.
 using namespace kanzi;
 using namespace std;
 
+
+const int CompressedOutputStream::BITSTREAM_TYPE = 0x4B414E5A; // "KANZ"
+const int CompressedOutputStream::BITSTREAM_FORMAT_VERSION = 6;
+const int CompressedOutputStream::DEFAULT_BUFFER_SIZE = 256 * 1024;
+const byte CompressedOutputStream::COPY_BLOCK_MASK = byte(0x80);
+const byte CompressedOutputStream::TRANSFORMS_MASK = byte(0x10);
+const int CompressedOutputStream::MIN_BITSTREAM_BLOCK_SIZE = 1024;
+const int CompressedOutputStream::MAX_BITSTREAM_BLOCK_SIZE = 1024 * 1024 * 1024;
+const int CompressedOutputStream::SMALL_BLOCK_SIZE = 15;
+const int CompressedOutputStream::CANCEL_TASKS_ID = -1;
+const int CompressedOutputStream::MAX_CONCURRENCY = 64;
+
+
+CompressedOutputStream::CompressedOutputStream(OutputStream& os,
+                   int tasks,
+                   const string& entropy,
+                   const string& transform,
+                   int blockSize,
+                   int checksum,
+                   uint64 fileSize,
 #ifdef CONCURRENCY_ENABLED
-CompressedOutputStream::CompressedOutputStream(OutputStream& os, const string& entropyCodec,
-          const string& transform, int bSize, bool checksum, int tasks, uint64 fileSize,
-          ThreadPool* pool, bool headerless)
-#else
-CompressedOutputStream::CompressedOutputStream(OutputStream& os, const string& entropyCodec,
-          const string& transform, int bSize, bool checksum, int tasks, uint64 fileSize, bool headerless)
+                   ThreadPool* pool,
 #endif
+                   bool headerless)
     : OutputStream(os.rdbuf())
 {
 #ifdef CONCURRENCY_ENABLED
@@ -53,60 +70,71 @@ CompressedOutputStream::CompressedOutputStream(OutputStream& os, const string& e
         throw invalid_argument("The number of jobs is limited to 1 in this version");
 #endif
 
-    if (bSize > MAX_BITSTREAM_BLOCK_SIZE) {
+    if (blockSize > MAX_BITSTREAM_BLOCK_SIZE) {
         std::stringstream ss;
         ss << "The block size must be at most " << (MAX_BITSTREAM_BLOCK_SIZE >> 20) << " MB";
         throw invalid_argument(ss.str());
     }
 
-    if (bSize < MIN_BITSTREAM_BLOCK_SIZE) {
+    if (blockSize < MIN_BITSTREAM_BLOCK_SIZE) {
         std::stringstream ss;
         ss << "The block size must be at least " << MIN_BITSTREAM_BLOCK_SIZE;
         throw invalid_argument(ss.str());
     }
 
-    if ((bSize & -16) != bSize)
+    if ((blockSize & -16) != blockSize)
         throw invalid_argument("The block size must be a multiple of 16");
 
     _blockId = 0;
     _bufferId = 0;
-    _blockSize = bSize;
-    _bufferThreshold = bSize;
+    _blockSize = blockSize;
+    _bufferThreshold = blockSize;
     _inputSize = fileSize;
-    const int nbBlocks = (_inputSize == 0) ? 0 : int((_inputSize + int64(bSize - 1)) / int64(bSize));
+    const int nbBlocks = (_inputSize == 0) ? 0 : int((_inputSize + int64(blockSize - 1)) / int64(blockSize));
     _nbInputBlocks = min(nbBlocks, MAX_CONCURRENCY - 1);
     _headless = headerless;
     _initialized = false;
     _closed = false;
     _obs = new DefaultOutputBitStream(os, DEFAULT_BUFFER_SIZE);
-    _entropyType = EntropyEncoderFactory::getType(entropyCodec.c_str());
+    _entropyType = EntropyEncoderFactory::getType(entropy.c_str());
     _transformType = TransformFactory<byte>::getType(transform.c_str());
-    _hasher = (checksum == true) ? new XXHash32(BITSTREAM_TYPE) : nullptr;
+
+    if (checksum == 0) {
+       _hasher32 = nullptr;
+       _hasher64 = nullptr;
+    }
+    else if (checksum == 32) {
+       _hasher32 = new XXHash32(BITSTREAM_TYPE);
+       _hasher64 = nullptr;
+    }
+    else if (checksum == 64) {
+       _hasher32 = nullptr;
+       _hasher64 = new XXHash64(BITSTREAM_TYPE);
+    }
+    else {
+        throw invalid_argument("The block checksum size must be 0, 32 or 64");
+    }
+
     _jobs = tasks;
     _buffers = new SliceArray<byte>*[2 * _jobs];
     _ctx.putInt("blockSize", _blockSize);
-    _ctx.putInt("checksum", (checksum == true) ? 1 : 0);
-    _ctx.putString("entropy", entropyCodec);
+    _ctx.putInt("checksum", checksum);
+    _ctx.putString("entropy", entropy);
     _ctx.putString("transform", transform);
     _ctx.putInt("bsVersion", BITSTREAM_FORMAT_VERSION);
 
     // Allocate first buffer and add padding for incompressible blocks
-    const int bufSize = max(_blockSize + (_blockSize >> 6), 65536);
+    const int bufSize = max(_blockSize + (_blockSize >> 3), DEFAULT_BUFFER_SIZE);
     _buffers[0] = new SliceArray<byte>(new byte[bufSize], bufSize, 0);
-    _buffers[_jobs] = new SliceArray<byte>(new byte[0], 0, 0);
+    _buffers[_jobs] = new SliceArray<byte>(nullptr, 0, 0);
 
     for (int i = 1; i < _jobs; i++) {
-       _buffers[i] = new SliceArray<byte>(new byte[0], 0, 0);
-       _buffers[i + _jobs] = new SliceArray<byte>(new byte[0], 0, 0);
+       _buffers[i] = new SliceArray<byte>(nullptr, 0, 0);
+       _buffers[i + _jobs] = new SliceArray<byte>(nullptr, 0, 0);
     }
 }
 
-#if __cplusplus >= 201103L
-CompressedOutputStream::CompressedOutputStream(OutputStream& os, Context& ctx,
-          std::function<OutputBitStream*(OutputStream&)>* createBitStream)
-#else
-CompressedOutputStream::CompressedOutputStream(OutputStream& os, Context& ctx)
-#endif
+CompressedOutputStream::CompressedOutputStream(OutputStream& os, Context& ctx, bool headerless)
     : OutputStream(os.rdbuf())
     , _ctx(ctx)
 {
@@ -125,60 +153,68 @@ CompressedOutputStream::CompressedOutputStream(OutputStream& os, Context& ctx)
         throw invalid_argument("The number of jobs is limited to 1 in this version");
 #endif
 
-    int bSize = ctx.getInt("blockSize");
+    int blockSize = ctx.getInt("blockSize");
 
-    if (bSize > MAX_BITSTREAM_BLOCK_SIZE) {
+    if (blockSize > MAX_BITSTREAM_BLOCK_SIZE) {
         std::stringstream ss;
         ss << "The block size must be at most " << (MAX_BITSTREAM_BLOCK_SIZE >> 20) << " MB";
         throw invalid_argument(ss.str());
     }
 
-    if (bSize < MIN_BITSTREAM_BLOCK_SIZE) {
+    if (blockSize < MIN_BITSTREAM_BLOCK_SIZE) {
         std::stringstream ss;
         ss << "The block size must be at least " << MIN_BITSTREAM_BLOCK_SIZE;
         throw invalid_argument(ss.str());
     }
 
-    if ((bSize & -16) != bSize)
+    if ((blockSize & -16) != blockSize)
         throw invalid_argument("The block size must be a multiple of 16");
 
     _inputSize = ctx.getLong("fileSize", 0);
-    const int nbBlocks = (_inputSize == 0) ? 0 : int((_inputSize + int64(bSize - 1)) / int64(bSize));
+    const int nbBlocks = (_inputSize == 0) ? 0 : int((_inputSize + int64(blockSize - 1)) / int64(blockSize));
     _nbInputBlocks = min(nbBlocks, MAX_CONCURRENCY - 1);
     _jobs = tasks;
     _blockId = 0;
     _bufferId = 0;
-    _blockSize = bSize;
-    _bufferThreshold = bSize;
+    _blockSize = blockSize;
+    _bufferThreshold = blockSize;
     _initialized = false;
     _closed = false;
-    _headless = _ctx.getInt("headerless") != 0;
-
-#if __cplusplus >= 201103L
-    // A hook can be provided by the caller to customize the instantiation of the
-    // output bitstream.
-    _obs = (createBitStream == nullptr) ? new DefaultOutputBitStream(os, DEFAULT_BUFFER_SIZE) : (*createBitStream)(os);
-#else
+    _headless = headerless;
     _obs = new DefaultOutputBitStream(os, DEFAULT_BUFFER_SIZE);
-#endif
-
     string entropyCodec = ctx.getString("entropy");
     string transform = ctx.getString("transform");
     _entropyType = EntropyEncoderFactory::getType(entropyCodec.c_str());
     _transformType = TransformFactory<byte>::getType(transform.c_str());
-    bool checksum = ctx.getInt("checksum", 0) == 1;
-    _hasher = (checksum == true) ? new XXHash32(BITSTREAM_TYPE) : nullptr;
+    int checksum = ctx.getInt("checksum", 0);
+
+    if (checksum == 0) {
+       _hasher32 = nullptr;
+       _hasher64 = nullptr;
+    }
+    else if (checksum == 32) {
+       _hasher32 = new XXHash32(BITSTREAM_TYPE);
+       _hasher64 = nullptr;
+    }
+    else if (checksum == 64) {
+       _hasher32 = nullptr;
+       _hasher64 = new XXHash64(BITSTREAM_TYPE);
+    }
+    else {
+        throw invalid_argument("The block checksum size must be 0, 32 or 64");
+    }
+
     _ctx.putInt("bsVersion", BITSTREAM_FORMAT_VERSION);
     _buffers = new SliceArray<byte>*[2 * _jobs];
 
     // Allocate first buffer and add padding for incompressible blocks
-    const int bufSize = max(_blockSize + (_blockSize >> 6), 65536);
+    const int bufSize = max(_blockSize + (_blockSize >> 3), DEFAULT_BUFFER_SIZE);
     _buffers[0] = new SliceArray<byte>(new byte[bufSize], bufSize, 0);
-    _buffers[_jobs] = new SliceArray<byte>(new byte[0], 0, 0);
+    _buffers[_jobs] = new SliceArray<byte>(nullptr, 0, 0);
 
     for (int i = 1; i < _jobs; i++) {
-       _buffers[i] = new SliceArray<byte>(new byte[0], 0, 0);
-       _buffers[i + _jobs] = new SliceArray<byte>(new byte[0], 0, 0);
+       _buffers[i] = new SliceArray<byte>(nullptr, 0, 0);
+       _buffers[i + _jobs] = new SliceArray<byte>(nullptr, 0, 0);
     }
 }
 
@@ -192,29 +228,46 @@ CompressedOutputStream::~CompressedOutputStream()
     }
 
     for (int i = 0; i < 2 * _jobs; i++) {
-        delete[] _buffers[i]->_array;
+        if (_buffers[i]->_array != nullptr)
+           delete[] _buffers[i]->_array;
+
         delete _buffers[i];
     }
 
     delete[] _buffers;
     delete _obs;
 
-    if (_hasher != nullptr) {
-        delete _hasher;
-        _hasher = nullptr;
+    if (_hasher32 != nullptr) {
+        delete _hasher32;
+        _hasher32 = nullptr;
+    }
+
+    if (_hasher64 != nullptr) {
+        delete _hasher64;
+        _hasher64 = nullptr;
     }
 }
 
 void CompressedOutputStream::writeHeader()
 {
+    if ((_headless == true) || (_initialized.exchange(true, memory_order_acquire)))
+        return;
+
     if (_obs->writeBits(BITSTREAM_TYPE, 32) != 32)
         throw IOException("Cannot write bitstream type to header", Error::ERR_WRITE_FILE);
 
     if (_obs->writeBits(BITSTREAM_FORMAT_VERSION, 4) != 4)
         throw IOException("Cannot write bitstream version to header", Error::ERR_WRITE_FILE);
 
-    if (_obs->writeBits((_hasher != nullptr) ? 1 : 0, 1) != 1)
-        throw IOException("Cannot write checksum to header", Error::ERR_WRITE_FILE);
+    uint ckSize = 0;
+
+    if (_hasher32 != nullptr)
+        ckSize = 1;
+    else if (_hasher64 != nullptr)
+        ckSize = 2;
+
+    if (_obs->writeBits(ckSize, 2) != 2)
+        throw IOException("Cannot write block checksum size to header", Error::ERR_WRITE_FILE);
 
     if (_obs->writeBits(_entropyType, 5) != 5)
         throw IOException("Cannot write entropy type to header", Error::ERR_WRITE_FILE);
@@ -237,8 +290,15 @@ void CompressedOutputStream::writeHeader()
             throw IOException("Cannot write size of input to header", Error::ERR_WRITE_FILE);
     }
 
+    const uint64 padding = 0;
+
+    if (_obs->writeBits(padding, 15) != 15)
+        throw IOException("Cannot write padding to header", Error::ERR_WRITE_FILE);
+
+    uint32 seed = 0x01030507 * BITSTREAM_FORMAT_VERSION; // no const to avoid VS2008 warning
     const uint32 HASH = 0x1E35A7BD;
-    uint32 cksum = HASH * BITSTREAM_FORMAT_VERSION;
+    uint32 cksum = HASH * seed;
+    cksum ^= (HASH * uint32(~ckSize));
     cksum ^= (HASH * uint32(~_entropyType));
     cksum ^= (HASH * uint32((~_transformType) >> 32));
     cksum ^= (HASH * uint32(~_transformType));
@@ -251,19 +311,19 @@ void CompressedOutputStream::writeHeader()
 
     cksum = (cksum >> 23) ^ (cksum >> 3);
 
-    if (_obs->writeBits(cksum, 16) != 16)
+    if (_obs->writeBits(cksum, 24) != 24)
         throw IOException("Cannot write checksum to header", Error::ERR_WRITE_FILE);
 }
 
-bool CompressedOutputStream::addListener(Listener& bl)
+bool CompressedOutputStream::addListener(Listener<Event>& bl)
 {
     _listeners.push_back(&bl);
     return true;
 }
 
-bool CompressedOutputStream::removeListener(Listener& bl)
+bool CompressedOutputStream::removeListener(Listener<Event>& bl)
 {
-    std::vector<Listener*>::iterator it = find(_listeners.begin(), _listeners.end(), &bl);
+    std::vector<Listener<Event>*>::iterator it = find(_listeners.begin(), _listeners.end(), &bl);
 
     if (it == _listeners.end())
         return false;
@@ -298,10 +358,12 @@ ostream& CompressedOutputStream::write(const char* data, streamsize length)
 
                 if (_bufferId + 1 < nbTasks) {
                     _bufferId++;
-                    const int bufSize = max(_blockSize + (_blockSize >> 6), 65536);
+                    const int bufSize = max(_blockSize + (_blockSize >> 3), DEFAULT_BUFFER_SIZE);
 
                     if (_buffers[_bufferId]->_length == 0) {
-                        delete[] _buffers[_bufferId]->_array;
+                        if (_buffers[_bufferId]->_array != nullptr)
+                           delete[] _buffers[_bufferId]->_array;
+
                         _buffers[_bufferId]->_array = new byte[bufSize];
                         _buffers[_bufferId]->_length = bufSize;
                     }
@@ -349,8 +411,10 @@ void CompressedOutputStream::close()
 
     // Release resources, force error on any subsequent write attempt
     for (int i = 0; i < 2 * _jobs; i++) {
-        delete[] _buffers[i]->_array;
-        _buffers[i]->_array = new byte[0];
+        if (_buffers[i]->_array != nullptr)
+           delete[] _buffers[i]->_array;
+
+        _buffers[i]->_array = nullptr;
         _buffers[i]->_length = 0;
         _buffers[i]->_index = 0;
     }
@@ -358,15 +422,14 @@ void CompressedOutputStream::close()
 
 void CompressedOutputStream::processBlock()
 {
-    if ((_headless == false) && (!_initialized.exchange(true, memory_order_acquire)))
-        writeHeader();
+    writeHeader();
 
     // All buffers empty, nothing to do
     if (_buffers[0]->_index == 0)
         return;
 
     // Protect against future concurrent modification of the list of block listeners
-    vector<Listener*> blockListeners(_listeners);
+    vector<Listener<Event>*> blockListeners(_listeners);
     vector<EncodingTask<EncodingTaskResult>*> tasks;
 
     try {
@@ -404,8 +467,8 @@ void CompressedOutputStream::processBlock()
 
             EncodingTask<EncodingTaskResult>* task = new EncodingTask<EncodingTaskResult>(_buffers[taskId],
                 _buffers[_jobs + taskId],
-                _obs, _hasher, &_blockId,
-                blockListeners, copyCtx);
+                _obs, _hasher32, _hasher64,
+                &_blockId, blockListeners, copyCtx);
             tasks.push_back(task);
         }
 
@@ -485,16 +548,16 @@ void CompressedOutputStream::processBlock()
     }
 }
 
-void CompressedOutputStream::notifyListeners(vector<Listener*>& listeners, const Event& evt)
+void CompressedOutputStream::notifyListeners(vector<Listener<Event>*>& listeners, const Event& evt)
 {
-    for (vector<Listener*>::iterator it = listeners.begin(); it != listeners.end(); ++it)
+    for (vector<Listener<Event>*>::iterator it = listeners.begin(); it != listeners.end(); ++it)
         (*it)->processEvent(evt);
 }
 
 template <class T>
 EncodingTask<T>::EncodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuffer,
-    OutputBitStream* obs, XXHash32* hasher,
-    ATOMIC_INT* processedBlockId, vector<Listener*>& listeners,
+    DefaultOutputBitStream* obs, XXHash32* hasher32, XXHash64* hasher64,
+    ATOMIC_INT* processedBlockId, vector<Listener<Event>*>& listeners,
     const Context& ctx)
     : _obs(obs)
     , _listeners(listeners)
@@ -502,19 +565,18 @@ EncodingTask<T>::EncodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuff
 {
     _data = iBuffer;
     _buffer = oBuffer;
-    _hasher = hasher;
+    _hasher32 = hasher32;
+    _hasher64 = hasher64;
     _processedBlockId = processedBlockId;
 }
 
 // Encode mode + transformed entropy coded data
-// mode | 0b10000000 => copy block
+// mode | 0b1yy0xxxx => copy block
 //      | 0b0yy00000 => size(size(block))-1
-//      | 0b000y0000 => 1 if more than 4 transforms
 //  case 4 transforms or less
-//      | 0b0000yyyy => transform sequence skip flags (1 means skip)
+//      | 0b0001xxxx => transform sequence skip flags (1 means skip)
 //  case more than 4 transforms
-//      | 0b00000000
-//      then 0byyyyyyyy => transform sequence skip flags (1 means skip)
+//      | 0b0yy00000 0bxxxxxxxx => transform sequence skip flags in next byte (1 means skip)
 template <class T>
 T EncodingTask<T>::run()
 {
@@ -532,19 +594,25 @@ T EncodingTask<T>::run()
 
         byte mode = byte(0);
         int postTransformLength = blockLength;
-        uint32 checksum = 0;
+        uint64 checksum = 0;
         uint64 tType = _ctx.getLong("tType");
         short eType = short(_ctx.getInt("eType"));
+        Event::HashType hashType = Event::NO_HASH;
 
         // Compute block checksum
-        if (_hasher != nullptr)
-            checksum = _hasher->hash(&_data->_array[_data->_index], blockLength);
+        if (_hasher32 != nullptr) {
+            checksum = _hasher32->hash(&_data->_array[_data->_index], blockLength);
+            hashType = Event::SIZE_32;
+        }
+        else if (_hasher64 != nullptr) {
+            checksum = _hasher64->hash(&_data->_array[_data->_index], blockLength);
+            hashType = Event::SIZE_64;
+        }
 
         if (_listeners.size() > 0) {
             // Notify before transform
             Event evt(Event::BEFORE_TRANSFORM, blockId,
-                int64(blockLength), checksum, _hasher != nullptr, clock());
-
+                int64(blockLength), clock(), checksum, hashType);
             CompressedOutputStream::notifyListeners(_listeners, evt);
         }
 
@@ -556,7 +624,7 @@ T EncodingTask<T>::run()
         else {
             int checkSkip = _ctx.getInt("skipBlocks", 0);
 
-            if (checkSkip == 1) {
+            if (checkSkip != 0) {
                 bool skip = Magic::isCompressed(Magic::getType(&_data->_array[_data->_index]));
 
                 if (skip == false) {
@@ -591,7 +659,9 @@ T EncodingTask<T>::run()
         }
 
         if (_buffer->_length < requiredSize) {
-            delete[] _buffer->_array;
+            if (_buffer->_array != nullptr)
+               delete[] _buffer->_array;
+
             _buffer->_array = new byte[requiredSize];
             _buffer->_length = requiredSize;
         }
@@ -625,12 +695,12 @@ T EncodingTask<T>::run()
         if (_listeners.size() > 0) {
             // Notify after transform
             Event evt(Event::AFTER_TRANSFORM, blockId,
-                int64(postTransformLength), checksum, _hasher != nullptr, clock());
-
+                int64(postTransformLength), clock(), checksum, hashType);
             CompressedOutputStream::notifyListeners(_listeners, evt);
         }
 
-        const int bufSize = max(512 * 1024, max(postTransformLength, blockLength + (blockLength >> 3)));
+        const int bufSize = max(CompressedOutputStream::DEFAULT_BUFFER_SIZE,
+                                max(postTransformLength, blockLength + (blockLength >> 3)));
 
         if (_data->_length < bufSize) {
             // Rare case where the transform expanded the input or
@@ -659,14 +729,15 @@ T EncodingTask<T>::run()
         obs.writeBits(postTransformLength, 8 * dataSize);
 
         // Write checksum
-        if (_hasher != nullptr)
+        if (_hasher32 != nullptr)
             obs.writeBits(checksum, 32);
+        else if (_hasher64 != nullptr)
+            obs.writeBits(checksum, 64);
 
         if (_listeners.size() > 0) {
             // Notify before entropy
             Event evt(Event::BEFORE_ENTROPY, blockId,
-                int64(postTransformLength), checksum, _hasher != nullptr, clock());
-
+                int64(postTransformLength), clock(), checksum, hashType);
             CompressedOutputStream::notifyListeners(_listeners, evt);
         }
 
@@ -704,10 +775,24 @@ T EncodingTask<T>::run()
 
         if (_listeners.size() > 0) {
             // Notify after entropy
-            Event evt(Event::AFTER_ENTROPY, blockId,
-                int64((written + 7) >> 3), checksum, _hasher != nullptr, clock());
+            Event evt1(Event::AFTER_ENTROPY, blockId,
+                int64((written + 7) >> 3), clock(), checksum, hashType);
+            CompressedOutputStream::notifyListeners(_listeners, evt1);
 
-            CompressedOutputStream::notifyListeners(_listeners, evt);
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+            if (_ctx.getInt("verbosity", 0) > 4) {
+                string oName = _ctx.getString("outputName");
+
+                if (oName.length() == 4) {
+                    std::transform(oName.begin(), oName.end(), oName.begin(), ::toupper);
+                }
+
+                const int64 blockOffset = (oName != "NONE") ? _obs->tell() : _obs->written();
+                Event evt2(Event::BLOCK_INFO, blockId,
+                   int64((written + 7) >> 3), clock(), checksum, hashType, blockOffset, uint8(skipFlags));
+                CompressedOutputStream::notifyListeners(_listeners, evt2);
+            }
+#endif
         }
 
         // Emit block size in bits (max size pre-entropy is 1 GB = 1 << 30 bytes)
@@ -716,7 +801,7 @@ T EncodingTask<T>::run()
         _obs->writeBits(written, lw);
 
         // Emit data to shared bitstream
-        for (int n = 0; written > 0; ) {
+        for (uint n = 0; written > 0; ) {
             uint chkSize = uint(min(written, uint64(1) << 30));
             _obs->writeBits(&_data->_array[n], chkSize);
             n += ((chkSize + 7) >> 3);

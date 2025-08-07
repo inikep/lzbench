@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -38,6 +38,16 @@ limitations under the License.
    #define TOSTR(v) std::to_string(v)
 #endif
 
+
+inline void to_binary(int num, char* buffer, int length)
+{
+    for (int i = length - 2; i >= 0; i--) {
+        buffer[i] = (num & 1) ? '1' : '0';
+        num >>= 1;
+    }
+
+    buffer[length - 1] = '\0';
+}
 
 // trim from end of string (right)
 inline std::string& rtrim(std::string& s)

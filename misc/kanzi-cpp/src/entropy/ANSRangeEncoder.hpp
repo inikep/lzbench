@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -28,20 +28,8 @@ limitations under the License.
 namespace kanzi
 {
 
-   class ANSEncSymbol FINAL
+   struct ANSEncSymbol
    {
-   public:
-      ANSEncSymbol() :
-         _xMax(0)
-       , _bias(0)
-       , _cmplFreq(0)
-       , _invShift(0)
-       , _invFreq(0)
-      {
-      }
-
-      ~ANSEncSymbol() { }
-
       void reset(int cumFreq, int freq, uint logRange);
 
       int _xMax; // (Exclusive) upper bound of pre-normalization interval
@@ -55,7 +43,7 @@ namespace kanzi
    class ANSRangeEncoder : public EntropyEncoder
    {
    public:
-       static const int ANS_TOP = 1 << 15; // max possible for ANS_TOP=1<<23
+       static const int ANS_TOP;
 
        ANSRangeEncoder(OutputBitStream& bitstream,
                       int order = 0,
@@ -74,10 +62,10 @@ namespace kanzi
 
 
    private:
-       static const int DEFAULT_ANS0_CHUNK_SIZE = 16384;
-       static const int DEFAULT_LOG_RANGE = 12;
-       static const int MIN_CHUNK_SIZE = 1024;
-       static const int MAX_CHUNK_SIZE = 1 << 27; // 8*MAX_CHUNK_SIZE must not overflow
+       static const int DEFAULT_ANS0_CHUNK_SIZE;
+       static const int DEFAULT_LOG_RANGE;
+       static const int MIN_CHUNK_SIZE;
+       static const int MAX_CHUNK_SIZE;
 
        ANSEncSymbol* _symbols;
        uint* _freqs;
@@ -139,9 +127,8 @@ namespace kanzi
 
       // Compute next ANS state
       // C(s,x) = M floor(x/q_s) + mod(x,q_s) + b_s where b_s = q_0 + ... + q_{s-1}
-      // st = ((st / freq) << lr) + (st % freq) + cumFreq[prv];
-      const int q = int((st * sym._invFreq) >> sym._invShift);
-      return st + sym._bias + q * sym._cmplFreq;
+      // st = ((st / freq) << lr) + (st % freq) + cumFreq;
+      return st + sym._bias + int((st * sym._invFreq) >> sym._invShift) * sym._cmplFreq;
    }
 }
 #endif

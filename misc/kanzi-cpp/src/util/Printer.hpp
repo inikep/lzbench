@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -30,7 +30,15 @@ namespace kanzi
    {
       public:
          Printer(std::ostream& os) { _os = &os; }
-         ~Printer() {}
+
+         ~Printer() {
+            try  {
+                _os->flush();
+            }
+            catch (std::exception&) {
+                // Ignore: best effort
+            }
+         }
 
          void print(const char* msg, bool print) {
             if ((print == true) && (msg != nullptr)) {

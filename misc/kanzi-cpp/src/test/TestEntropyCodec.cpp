@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <iostream>
 #include <algorithm>
+#include <iostream>
 #include <time.h>
+#include <vector>
 #include "../types.hpp"
 #include "../entropy/HuffmanEncoder.hpp"
 #include "../entropy/RangeEncoder.hpp"
@@ -128,7 +129,7 @@ int testEntropyCodecCorrectness(const string& name)
              << endl
              << "Test " << ii << endl;
         byte val[256];
-        int size = 32;
+        int size = 40;
 
         if (ii == 3) {
             byte val2[] = { (byte)0, (byte)0, (byte)32, (byte)15, (byte)-4, (byte)16, (byte)0, (byte)16, (byte)0, (byte)7, (byte)-1, (byte)-4, (byte)-32, (byte)0, (byte)31, (byte)-1 };
@@ -141,11 +142,11 @@ int testEntropyCodecCorrectness(const string& name)
             memcpy(val, &val2[0], size);
         }
         else if (ii == 1) {
-            for (int i = 0; i < 32; i++)
+            for (int i = 0; i < size; i++)
                 val[i] = byte(2); // all identical
         }
         else if (ii == 4) {
-            for (int i = 0; i < 32; i++)
+            for (int i = 0; i < size; i++)
                 val[i] = byte(2 + (i & 1)); // 2 symbols
         }
         else if (ii == 5) {
@@ -156,6 +157,10 @@ int testEntropyCodecCorrectness(const string& name)
             size = 2;
             val[0] = byte(42);
             val[1] = byte(42);
+        }
+        else if (ii == 7) {
+            for (int i = 0; i < 44; i++)
+                val[i] = byte(i & 7);
         }
         else {
             size = 256;
@@ -315,14 +320,15 @@ int testEntropyCodecSpeed(const string& name)
             }
         }
 
+        // KB = 1000, KiB = 1024
         double prod = double(iter) * double(size);
-        double b2KB = double(1) / double(1024);
+        double b2KiB = double(1) / double(1024);
         double d1_sec = delta1 / CLOCKS_PER_SEC;
         double d2_sec = delta2 / CLOCKS_PER_SEC;
-        cout << "Encode [ms]       : " << (int)(d1_sec * 1000) << endl;
-        cout << "Throughput [KB/s] : " << (int)(prod * b2KB / d1_sec) << endl;
-        cout << "Decode [ms]       : " << (int)(d2_sec * 1000) << endl;
-        cout << "Throughput [KB/s] : " << (int)(prod * b2KB / d2_sec) << endl;
+        cout << "Encode [ms]        : " << (int)(d1_sec * 1000) << endl;
+        cout << "Throughput [KiB/s] : " << (int)(prod * b2KiB / d1_sec) << endl;
+        cout << "Decode [ms]        : " << (int)(d2_sec * 1000) << endl;
+        cout << "Throughput [KiB/s] : " << (int)(prod * b2KiB / d2_sec) << endl;
     }
 
     return res;

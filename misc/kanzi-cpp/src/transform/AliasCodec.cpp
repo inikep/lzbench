@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -24,10 +24,13 @@ using namespace kanzi;
 using namespace std;
 
 
-AliasCodec::AliasCodec(Context& ctx) : 
-          _pCtx(&ctx) 
+const int AliasCodec::MIN_BLOCK_SIZE = 1024;
+
+
+AliasCodec::AliasCodec(Context& ctx) :
+          _pCtx(&ctx)
 {
-   _order = _pCtx->getInt("alias", 1);
+   _onlyDNA = _pCtx->getInt("packOnlyDNA", 0) != 0;
 }
 
 
@@ -58,6 +61,9 @@ bool AliasCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
 
         if ((dt == Global::EXE) || (dt == Global::BIN))
             return false;
+
+        if ((_onlyDNA == true) && (dt != Global::UNDEFINED) && (dt != Global::DNA))
+            return false;
     }
 
     byte* dst = &output._array[output._index];
@@ -74,19 +80,21 @@ bool AliasCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
             absent[n0++] = i;
     }
 
-    if (n0 < 16) {
-        if ((_pCtx != nullptr) && (dt == Global::UNDEFINED)) {
-            dt = Global::detectSimpleType(count, freqs0);
-
-            if (dt != Global::UNDEFINED)
-                _pCtx->putInt("dataType", dt);
-        }
-
+    if (n0 < 16)
         return false;
+
+    if (dt == Global::UNDEFINED) {
+        dt = Global::detectSimpleType(count, freqs0);
+
+        if ((_pCtx != nullptr) && (dt != Global::UNDEFINED))
+            _pCtx->putInt("dataType", dt);
+
+        if ((dt != Global::DNA) && (_onlyDNA == true))
+            return false;
     }
 
     int srcIdx, dstIdx;
- 
+
     if (n0 >= 240) {
         // Small alphabet => pack bits
         dst[0] = byte(n0);
@@ -114,7 +122,7 @@ bool AliasCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 // 4 symbols or less
                 const int c3 = count & 3;
                 dst[dstIdx++] = byte(c3);
-                memcpy(&dst[dstIdx], &src[srcIdx], c3);
+                memcpy(&dst[dstIdx], &src[srcIdx], size_t(c3));
                 srcIdx += c3;
                 dstIdx += c3;
 
@@ -139,12 +147,9 @@ bool AliasCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
         }
     }
     else {
-        if (_order == 0)
-            return false;
-
         // Digram encoding
         vector<sdAlias> v;
-        
+
         {
             // Find missing 2-byte symbols
             uint* freqs1 = new uint[65536];
@@ -172,16 +177,16 @@ bool AliasCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 // Fewer distinct 2-byte symbols than 1-byte symbols
                 n0 = n1;
 
-                if (n0 < 16) 
+                if (n0 < 16)
                     return false;
-            }   
+            }
 
             // Sort by decreasing order 1 frequencies
-            sort(v.begin(), v.end());  
+            sort(v.begin(), v.end());
         }
 
         int16 map16[65536];
- 
+
         // Build map symbol -> alias
         for (int i = 0; i < 65536; i++)
             map16[i] = 0x100 | int16(i >> 8);
@@ -252,7 +257,7 @@ bool AliasCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
     int dstIdx = 0;
 
     if (n >= 240) {
-        n = 256 - n; 
+        n = 256 - n;
         srcIdx = 1;
 
         if (n == 1) {
@@ -260,10 +265,10 @@ bool AliasCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
             const byte val = src[1];
             const int oSize = LittleEndian::readInt32(&src[2]);
 
-            if (output._index + oSize > output._length)
+            if ((oSize < 0) || (output._index + oSize > output._length))
                 return false;
 
-            memset(&dst[0], int(val), oSize);
+            memset(&dst[0], int(val), size_t(oSize));
             srcIdx = count;
             dstIdx = oSize;
         }
@@ -280,7 +285,7 @@ bool AliasCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 return false;
 
             if (n <= 4) {
-                // 4 symbols or less 
+                // 4 symbols or less
                 int32 decodeMap[256] = { 0 };
 
                 for (int i = 0; i < 256; i++) {
@@ -295,7 +300,7 @@ bool AliasCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
                     decodeMap[i] = val;
                 }
 
-                memcpy(&dst[dstIdx], &src[srcIdx], adjust);
+                memcpy(&dst[dstIdx], &src[srcIdx], size_t(adjust));
                 srcIdx += adjust;
                 dstIdx += adjust;
 

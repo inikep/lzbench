@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -17,6 +17,13 @@ limitations under the License.
 #include "SBRT.hpp"
 
 using namespace kanzi;
+
+
+const int SBRT::MODE_MTF = 1; // alpha = 0
+const int SBRT::MODE_RANK = 2; // alpha = 1/2
+const int SBRT::MODE_TIMESTAMP = 3; // alpha = 1
+
+
 
 SBRT::SBRT(int mode) :
 	  _mask1((mode == MODE_TIMESTAMP) ? 0 : -1)
@@ -71,12 +78,12 @@ bool SBRT::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
         // Move up symbol to correct rank
         while ((r > 0) && (q[r2s[r - 1]] <= qc)) {
             r2s[r] = r2s[r - 1];
-            s2r[r2s[r]] = r;
+            s2r[r2s[r]] = uint8(r);
             r--;
         }
 
         r2s[r] = c;
-        s2r[c] = r;
+        s2r[c] = uint8(r);
     }
 
     input._index += count;

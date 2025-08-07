@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -17,7 +17,6 @@ limitations under the License.
 #include "CompressedInputStream.hpp"
 #include "IOException.hpp"
 #include "../Error.hpp"
-#include "../bitstream/DefaultInputBitStream.hpp"
 #include "../entropy/EntropyDecoderFactory.hpp"
 #include "../transform/TransformFactory.hpp"
 
@@ -29,25 +28,31 @@ using namespace kanzi;
 using namespace std;
 
 
+const int CompressedInputStream::BITSTREAM_TYPE = 0x4B414E5A; // "KANZ"
+const int CompressedInputStream::BITSTREAM_FORMAT_VERSION = 6;
+const int CompressedInputStream::DEFAULT_BUFFER_SIZE = 256 * 1024;
+const int CompressedInputStream::EXTRA_BUFFER_SIZE = 512;
+const byte CompressedInputStream::COPY_BLOCK_MASK = byte(0x80);
+const byte CompressedInputStream::TRANSFORMS_MASK = byte(0x10);
+const int CompressedInputStream::MIN_BITSTREAM_BLOCK_SIZE = 1024;
+const int CompressedInputStream::MAX_BITSTREAM_BLOCK_SIZE = 1024 * 1024 * 1024;
+const int CompressedInputStream::CANCEL_TASKS_ID = -1;
+const int CompressedInputStream::MAX_CONCURRENCY = 64;
+const int CompressedInputStream::MAX_BLOCK_ID = int((uint(1) << 31) - 1);
+
+
+CompressedInputStream::CompressedInputStream(InputStream& is,
+                   int tasks,
+                   const string& entropy,
+                   const string& transform,
+                   int blockSize,
+                   int checksum,
+                   uint64 originalSize,
 #ifdef CONCURRENCY_ENABLED
-CompressedInputStream::CompressedInputStream(InputStream& is, int tasks, ThreadPool* pool,
-                   bool headerless,
-                   bool checksum,
-                   int blockSize,
-                   string transform,
-                   string entropy,
-                   uint64 originalSize,
-                   int bsVersion)
-#else
-CompressedInputStream::CompressedInputStream(InputStream& is, int tasks,
-                   bool headerless,
-                   bool checksum,
-                   int blockSize,
-                   string transform,
-                   string entropy,
-                   uint64 originalSize,
-                   int bsVersion)
+                   ThreadPool* pool,
 #endif
+                   bool headerless,
+                   int bsVersion)
     : InputStream(is.rdbuf())
     , _parentCtx(nullptr)
 {
@@ -64,6 +69,8 @@ CompressedInputStream::CompressedInputStream(InputStream& is, int tasks,
         throw invalid_argument("The number of jobs is limited to 1 in this version");
 #endif
 
+    _hasher32 = nullptr;
+    _hasher64 = nullptr;
     _blockId = 0;
     _bufferId = 0;
     _maxBufferId = 0;
@@ -77,7 +84,6 @@ CompressedInputStream::CompressedInputStream(InputStream& is, int tasks,
     _gcount = 0;
     _ibs = new DefaultInputBitStream(is, DEFAULT_BUFFER_SIZE);
     _jobs = tasks;
-    _hasher = (checksum == true) ? new XXHash32(BITSTREAM_TYPE) : nullptr;
     _outputSize = originalSize;
     _nbInputBlocks = 0;
     _buffers = new SliceArray<byte>*[2 * _jobs];
@@ -94,18 +100,25 @@ CompressedInputStream::CompressedInputStream(InputStream& is, int tasks,
        _ctx.putString("entropy", entropy);
        _ctx.putString("transform", transform);
        _ctx.putInt("blockSize", blockSize);
+
+       if (checksum == 32) {
+          _hasher32 = new XXHash32(BITSTREAM_TYPE);
+          _hasher64 = nullptr;
+       }
+       else if (checksum == 64) {
+          _hasher32 = nullptr;
+          _hasher64 = new XXHash64(BITSTREAM_TYPE);
+       }
+       else if (checksum != 0) {
+           throw invalid_argument("The block checksum size must be 0, 32 or 64");
+       }
     }
 
     for (int i = 0; i < 2 * _jobs; i++)
-        _buffers[i] = new SliceArray<byte>(new byte[0], 0, 0);
+        _buffers[i] = new SliceArray<byte>(nullptr, 0, 0);
 }
 
-#if __cplusplus >= 201103L
-CompressedInputStream::CompressedInputStream(InputStream& is, Context& ctx, bool headerless,
-    std::function<InputBitStream* (InputStream&)>* createBitStream)
-#else
 CompressedInputStream::CompressedInputStream(InputStream& is, Context& ctx, bool headerless)
-#endif
     : InputStream(is.rdbuf())
     , _ctx(ctx)
     , _parentCtx(&ctx)
@@ -135,17 +148,10 @@ CompressedInputStream::CompressedInputStream(InputStream& is, Context& ctx, bool
     _initialized = false;
     _closed = false;
     _gcount = 0;
-
-#if __cplusplus >= 201103L
-    // A hook can be provided by the caller to customize the instantiation of the
-    // input bitstream.
-    _ibs = (createBitStream == nullptr) ? new DefaultInputBitStream(is, DEFAULT_BUFFER_SIZE) : (*createBitStream)(is);
-#else
     _ibs = new DefaultInputBitStream(is, DEFAULT_BUFFER_SIZE);
-#endif
-
     _jobs = tasks;
-    _hasher = nullptr;
+    _hasher32 = nullptr;
+    _hasher64 = nullptr;
     _outputSize = 0;
     _nbInputBlocks = 0;
     _headless = headerless;
@@ -155,7 +161,7 @@ CompressedInputStream::CompressedInputStream(InputStream& is, Context& ctx, bool
         // Optional bsVersion
         const int bsVersion = _ctx.getInt("bsVersion", BITSTREAM_FORMAT_VERSION);
 
-        if (bsVersion != BITSTREAM_FORMAT_VERSION) {
+        if (bsVersion > BITSTREAM_FORMAT_VERSION) {
             stringstream ss;
             ss << "Invalid or missing bitstream version, cannot read this version of the stream: " << bsVersion;
             throw invalid_argument(ss.str());
@@ -190,14 +196,29 @@ CompressedInputStream::CompressedInputStream(InputStream& is, Context& ctx, bool
         _nbInputBlocks = min(nbBlocks, MAX_CONCURRENCY - 1);
 
         // Optional checksum
-        if (_ctx.getInt("checksum") != 0)
-            _hasher = new XXHash32(BITSTREAM_TYPE);
+        int checksum = ctx.getInt("checksum", 0);
+
+        if (checksum == 0) {
+            _hasher32 = nullptr;
+            _hasher64 = nullptr;
+        }
+        else if (checksum == 32) {
+            _hasher32 = new XXHash32(BITSTREAM_TYPE);
+            _hasher64 = nullptr;
+        }
+        else if (checksum == 64) {
+            _hasher32 = nullptr;
+            _hasher64 = new XXHash64(BITSTREAM_TYPE);
+        }
+        else {
+            throw invalid_argument("The block checksum size must be 0, 32 or 64");
+        }
     }
 
     _buffers = new SliceArray<byte>*[2 * _jobs];
 
     for (int i = 0; i < 2 * _jobs; i++)
-        _buffers[i] = new SliceArray<byte>(new byte[0], 0, 0);
+        _buffers[i] = new SliceArray<byte>(nullptr, 0, 0);
 }
 
 CompressedInputStream::~CompressedInputStream()
@@ -210,21 +231,31 @@ CompressedInputStream::~CompressedInputStream()
     }
 
     for (int i = 0; i < 2 * _jobs; i++) {
-        delete[] _buffers[i]->_array;
+        if (_buffers[i]->_array != nullptr)
+            delete[] _buffers[i]->_array;
+
         delete _buffers[i];
     }
 
     delete[] _buffers;
     delete _ibs;
 
-    if (_hasher != nullptr) {
-        delete _hasher;
-        _hasher = nullptr;
+    if (_hasher32 != nullptr) {
+        delete _hasher32;
+        _hasher32 = nullptr;
+    }
+
+    if (_hasher64 != nullptr) {
+        delete _hasher64;
+        _hasher64 = nullptr;
     }
 }
 
 void CompressedInputStream::readHeader()
 {
+    if ((_headless == true) || (_initialized.exchange(true, memory_order_relaxed)))
+        return;
+
     // Read stream type
     const int type = int(_ibs->readBits(32));
 
@@ -244,10 +275,27 @@ void CompressedInputStream::readHeader()
     }
 
     _ctx.putInt("bsVersion", bsVersion);
+    uint64 ckSize = 0;
 
     // Read block checksum
-    if (_ibs->readBit() == 1)
-        _hasher = new XXHash32(BITSTREAM_TYPE);
+    if (bsVersion >= 6) {
+        ckSize = _ibs->readBits(2);
+
+        if (ckSize == 1) {
+            _hasher32 = new XXHash32(BITSTREAM_TYPE);
+        }
+        else if (ckSize == 2) {
+            _hasher64 = new XXHash64(BITSTREAM_TYPE);
+        }
+        else if (ckSize == 3) {
+           throw IOException("Invalid bitstream, incorrect block checksum size",
+               Error::ERR_INVALID_FILE);
+        }
+    }
+    else {
+       if (_ibs->readBit() == 1)
+           _hasher32 = new XXHash32(BITSTREAM_TYPE);
+    }
 
     try {
         // Read entropy codec
@@ -296,10 +344,23 @@ void CompressedInputStream::readHeader()
         _nbInputBlocks = min(nbBlocks, MAX_CONCURRENCY - 1);
     }
 
+    if (bsVersion >= 6) {
+       // Padding
+       _ibs->readBits(15);
+    }
+
     // Read & verify checksum
-    const uint32 cksum1 = uint32(_ibs->readBits(16));
+    const int crcSize = bsVersion <= 5 ? 16 : 24;
+    const uint32 cksum1 = uint32(_ibs->readBits(crcSize));
+
+    uint32 seed = (bsVersion >= 6 ? 0x01030507 : 1) * uint32(bsVersion);
     const uint32 HASH = 0x1E35A7BD;
-    uint32 cksum2 = HASH * uint32(bsVersion);
+
+    uint32 cksum2 = HASH * seed;
+
+    if (bsVersion >= 6)
+        cksum2 ^= (HASH * uint32(~ckSize));
+
     cksum2 ^= (HASH * uint32(~_entropyType));
     cksum2 ^= (HASH * uint32((~_transformType) >> 32));
     cksum2 ^= (HASH * uint32(~_transformType));
@@ -312,13 +373,20 @@ void CompressedInputStream::readHeader()
 
     cksum2 = (cksum2 >> 23) ^ (cksum2 >> 3);
 
-    if (cksum1 != (cksum2 & 0xFFFF))
-        throw IOException("Invalid bitstream, corrupted header", Error::ERR_CRC_CHECK);
+    if (cksum1 != (cksum2 & ((1 << crcSize) - 1)))
+        throw IOException("Invalid bitstream, header checksum mismatch", Error::ERR_CRC_CHECK);
 
     if (_listeners.size() > 0) {
         stringstream ss;
         ss << "Bitstream version: " << bsVersion << endl;
-        ss << "Checksum: " << (_hasher != nullptr ? "true" : "false") << endl;
+        string ckSize = "NONE";
+
+        if (_hasher32 != nullptr)
+            ckSize = "32 bits";
+        else if (_hasher64 != nullptr)
+            ckSize = "64 bits";
+
+        ss << "Block checksum: " << ckSize<< endl;
         ss << "Block size: " << _blockSize << " bytes" << endl;
         string w1 = EntropyDecoderFactory::getName(_entropyType);
         ss << "Using " << ((w1 == "NONE") ? "no" : w1) << " entropy codec (stage 1)" << endl;
@@ -331,21 +399,21 @@ void CompressedInputStream::readHeader()
         }
 
         // Protect against future concurrent modification of the list of block listeners
-        vector<Listener*> blockListeners(_listeners);
+        vector<Listener<Event>*> blockListeners(_listeners);
         Event evt(Event::AFTER_HEADER_DECODING, 0, ss.str(), clock());
         CompressedInputStream::notifyListeners(blockListeners, evt);
     }
 }
 
-bool CompressedInputStream::addListener(Listener& bl)
+bool CompressedInputStream::addListener(Listener<Event>& bl)
 {
     _listeners.push_back(&bl);
     return true;
 }
 
-bool CompressedInputStream::removeListener(Listener& bl)
+bool CompressedInputStream::removeListener(Listener<Event>& bl)
 {
-    std::vector<Listener*>::iterator it = find(_listeners.begin(), _listeners.end(), &bl);
+    std::vector<Listener<Event>*>::iterator it = find(_listeners.begin(), _listeners.end(), &bl);
 
     if (it == _listeners.end())
         return false;
@@ -405,7 +473,7 @@ istream& CompressedInputStream::read(char* data, streamsize length)
 
     while (remaining > 0) {
         // Limit to number of available bytes in current buffer
-        const int lenChunk = min(remaining, min(_available, _bufferThreshold - _buffers[_bufferId]->_index));
+        const int lenChunk = min(remaining, int(min(_available, int64(_bufferThreshold - _buffers[_bufferId]->_index))));
 
         if (lenChunk > 0) {
             // Process a chunk of in-buffer data. No access to bitstream required
@@ -440,26 +508,24 @@ istream& CompressedInputStream::read(char* data, streamsize length)
     return *this;
 }
 
-int CompressedInputStream::processBlock()
+int64 CompressedInputStream::processBlock()
 {
-    if ((_headless == false) && (!_initialized.exchange(true, memory_order_relaxed)))
-        readHeader();
+    readHeader();
 
     // Protect against future concurrent modification of the list of block listeners
-    vector<Listener*> blockListeners(_listeners);
+    vector<Listener<Event>*> blockListeners(_listeners);
     vector<DecodingTask<DecodingTaskResult>*> tasks;
 
     try {
         // Add a padding area to manage any block temporarily expanded
         const int blkSize = max(_blockSize + EXTRA_BUFFER_SIZE, _blockSize + (_blockSize >> 4));
-        int decoded = 0;
+        int64 decoded = 0;
         int nbTasks = _jobs;
         int jobsPerTask[MAX_CONCURRENCY];
 
         // Assign optimal number of tasks and jobs per task (if the number of blocks is available)
         if (nbTasks > 1) {
             // Limit the number of tasks if there are fewer blocks that _jobs
-            // It allows more jobs per task and reduces memory usage.
             if (_nbInputBlocks != 0)
                 nbTasks = min(_nbInputBlocks, _jobs);
 
@@ -474,10 +540,11 @@ int CompressedInputStream::processBlock()
         while (true) {
             const int firstBlockId = _blockId.load(memory_order_acquire);
 
-            // Create as many tasks as empty buffers to decode
             for (int taskId = 0; taskId < nbTasks; taskId++) {
                 if (_buffers[taskId]->_length < bufSize) {
-                    delete[] _buffers[taskId]->_array;
+                    if (_buffers[taskId]->_array != nullptr)
+                       delete[] _buffers[taskId]->_array;
+
                     _buffers[taskId]->_array = new byte[bufSize];
                     _buffers[taskId]->_length = bufSize;
                 }
@@ -494,7 +561,7 @@ int CompressedInputStream::processBlock()
 
                 DecodingTask<DecodingTaskResult>* task = new DecodingTask<DecodingTaskResult>(_buffers[taskId],
                     _buffers[_jobs + taskId], blkSize,
-                    _ibs, _hasher, &_blockId,
+                    _ibs, _hasher32, _hasher64, &_blockId,
                     blockListeners, copyCtx);
                 tasks.push_back(task);
             }
@@ -516,8 +583,11 @@ int CompressedInputStream::processBlock()
                 if (res._skipped == true)
                     skipped++;
 
-                if (decoded > _blockSize)
-                    throw IOException("Invalid data", Error::ERR_PROCESS_BLOCK); // deallocate in catch code
+                if (decoded > _blockSize) {
+                    stringstream ss;
+                    ss << "Block " << res._blockId << " incorrectly decompressed";
+                    throw IOException(ss.str(), Error::ERR_PROCESS_BLOCK); // deallocate in catch code
+                }
 
                 if (_buffers[_bufferId]->_array != res._data)
                    memcpy(&_buffers[_bufferId]->_array[0], &res._data[0], res._decoded);
@@ -525,9 +595,16 @@ int CompressedInputStream::processBlock()
                 _buffers[_bufferId]->_index = 0;
 
                 if (blockListeners.size() > 0) {
+                    Event::HashType hashType = Event::NO_HASH;
+
+                    if (_hasher32 != nullptr)
+                        hashType = Event::SIZE_32;
+                    else if (_hasher64 != nullptr)
+                        hashType = Event::SIZE_64;
+
                     // Notify after transform ... in block order !
                     Event evt(Event::AFTER_TRANSFORM, res._blockId,
-                        int64(res._decoded), res._checksum, _hasher != nullptr, res._completionTime);
+                        int64(res._decoded), res._completionTime, res._checksum, hashType);
                     CompressedInputStream::notifyListeners(blockListeners, evt);
                 }
             }
@@ -560,7 +637,9 @@ int CompressedInputStream::processBlock()
 
                     if (res._decoded > _blockSize) {
                         error = Error::ERR_PROCESS_BLOCK;
-                        msg = "Invalid data";
+                        stringstream ss;
+                        ss << "Block " << res._blockId << " incorrectly decompressed";
+                        msg = ss.str();
                         continue;
                     }
 
@@ -573,9 +652,16 @@ int CompressedInputStream::processBlock()
                         _buffers[i]->_index = 0;
 
                         if (blockListeners.size() > 0) {
+                           Event::HashType hashType = Event::NO_HASH;
+
+                           if (_hasher32 != nullptr)
+                               hashType = Event::SIZE_32;
+                           else if (_hasher64 != nullptr)
+                               hashType = Event::SIZE_64;
+
                            // Notify after transform ... in block order !
                            Event evt(Event::AFTER_TRANSFORM, res._blockId,
-                               int64(res._decoded), res._checksum, _hasher != nullptr, res._completionTime);
+                               int64(res._decoded), res._completionTime, res._checksum, hashType);
                            CompressedInputStream::notifyListeners(blockListeners, evt);
                         }
                     }
@@ -640,23 +726,25 @@ void CompressedInputStream::close()
 
     // Release resources, force error on any subsequent write attempt
     for (int i = 0; i < 2 * _jobs; i++) {
-        delete[] _buffers[i]->_array;
-        _buffers[i]->_array = new byte[0];
+        if (_buffers[i]->_array != nullptr)
+           delete[] _buffers[i]->_array;
+
+        _buffers[i]->_array = nullptr;
         _buffers[i]->_length = 0;
         _buffers[i]->_index = 0;
     }
 }
 
-void CompressedInputStream::notifyListeners(vector<Listener*>& listeners, const Event& evt)
+void CompressedInputStream::notifyListeners(vector<Listener<Event>*>& listeners, const Event& evt)
 {
-    for (vector<Listener*>::iterator it = listeners.begin(); it != listeners.end(); ++it)
+    for (vector<Listener<Event>*>::iterator it = listeners.begin(); it != listeners.end(); ++it)
         (*it)->processEvent(evt);
 }
 
 template <class T>
 DecodingTask<T>::DecodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuffer,
-    int blockSize, InputBitStream* ibs, XXHash32* hasher,
-    ATOMIC_INT* processedBlockId, vector<Listener*>& listeners,
+    int blockSize, DefaultInputBitStream* ibs, XXHash32* hasher32, XXHash64* hasher64,
+    ATOMIC_INT* processedBlockId, vector<Listener<Event>*>& listeners,
     const Context& ctx)
     : _listeners(listeners)
     , _ctx(ctx)
@@ -665,19 +753,18 @@ DecodingTask<T>::DecodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuff
     _data = iBuffer;
     _buffer = oBuffer;
     _ibs = ibs;
-    _hasher = hasher;
+    _hasher32 = hasher32;
+    _hasher64 = hasher64;
     _processedBlockId = processedBlockId;
 }
 
 // Decode mode + transformed entropy coded data
-// mode | 0b10000000 => copy block
+// mode | 0b1yy0xxxx => copy block
 //      | 0b0yy00000 => size(size(block))-1
-//      | 0b000y0000 => 1 if more than 4 transforms
 //  case 4 transforms or less
-//      | 0b0000yyyy => transform sequence skip flags (1 means skip)
+//      | 0b0001xxxx => transform sequence skip flags (1 means skip)
 //  case more than 4 transforms
-//      | 0b00000000
-//      then 0byyyyyyyy => transform sequence skip flags (1 means skip)
+//      | 0b0yy00000 0bxxxxxxxx => transform sequence skip flags in next byte (1 means skip)
 template <class T>
 T DecodingTask<T>::run()
 {
@@ -699,7 +786,7 @@ T DecodingTask<T>::run()
         CPU_PAUSE();
     }
 
-    uint32 checksum1 = 0;
+    uint64 checksum1 = 0;
     EntropyDecoder* ed = nullptr;
     InputBitStream* ibs = nullptr;
     TransformSequence<byte>* transform = nullptr;
@@ -709,6 +796,9 @@ T DecodingTask<T>::run()
 
     try {
         // Read shared bitstream sequentially (each task is gated by _processedBlockId)
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+        const uint64 blockOffset = _ibs->tell();
+#endif
         const uint lr = 3 + uint(_ibs->readBits(5));
         uint64 read = _ibs->readBits(lr);
 
@@ -747,8 +837,11 @@ T DecodingTask<T>::run()
         const int to = _ctx.getInt("to", CompressedInputStream::MAX_BLOCK_ID);
 
         // Check if the block must be skipped
-        if ((blockId < from) || (blockId >= to)) {
+        if (blockId < from) {
             return T(*_data, blockId, 0, 0, 0, "Skipped", true);
+        }
+        else if (blockId >= to) {
+            return T(*_data, blockId, 0, 0, 0, "Success");
         }
 
         istreambuf<char> buf(reinterpret_cast<char*>(&_data->_array[0]), streamsize(r));
@@ -774,18 +867,9 @@ T DecodingTask<T>::run()
         const int length = dataSize << 3;
         const uint64 mask = (uint64(1) << length) - 1;
         const int preTransformLength = int(ibs->readBits(length) & mask);
+        const int maxTransformSize = min(max(_blockLength + _blockLength / 2, 2048), CompressedInputStream::MAX_BITSTREAM_BLOCK_SIZE);
 
-        if (preTransformLength == 0) {
-            // Error => cancel concurrent decoding tasks
-            _processedBlockId->store(CompressedInputStream::CANCEL_TASKS_ID, memory_order_release);
-
-            if (streamPerTask == true)
-                delete ibs;
-
-            return T(*_data, blockId, 0, checksum1, 0, "Invalid transform block size");
-        }
-
-        if ((preTransformLength < 0) || (preTransformLength > CompressedInputStream::MAX_BITSTREAM_BLOCK_SIZE)) {
+        if ((preTransformLength <= 0) || (preTransformLength > maxTransformSize)) {
             // Error => cancel concurrent decoding tasks
             _processedBlockId->store(CompressedInputStream::CANCEL_TASKS_ID, memory_order_release);
             stringstream ss;
@@ -797,21 +881,39 @@ T DecodingTask<T>::run()
             return T(*_data, blockId, 0, checksum1, Error::ERR_READ_FILE, ss.str());
         }
 
+        Event::HashType hashType = Event::NO_HASH;
+
         // Extract checksum from bitstream (if any)
-        if (_hasher != nullptr)
-            checksum1 = uint32(ibs->readBits(32));
+        if (_hasher32 != nullptr) {
+            checksum1 = ibs->readBits(32);
+            hashType = Event::SIZE_32;
+        }
+        else if (_hasher64 != nullptr) {
+            checksum1 = ibs->readBits(64);
+            hashType = Event::SIZE_64;
+        }
 
         if (_listeners.size() > 0) {
-            // Notify before entropy (block size in bitstream is unknown)
-            Event evt(Event::BEFORE_ENTROPY, blockId, int64(-1), checksum1, _hasher != nullptr, clock());
-            CompressedInputStream::notifyListeners(_listeners, evt);
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+            if (_ctx.getInt("verbosity", 0) > 4) {
+                Event evt1(Event::BLOCK_INFO, blockId, int64(r), clock(), checksum1,
+                           hashType, blockOffset, uint8(skipFlags));
+                CompressedInputStream::notifyListeners(_listeners, evt1);
+            }
+#endif
+
+            // Notify before entropy
+            Event evt2(Event::BEFORE_ENTROPY, blockId, int64(r), clock(), checksum1, hashType);
+            CompressedInputStream::notifyListeners(_listeners, evt2);
         }
 
         const int bufferSize = max(_blockLength, preTransformLength + CompressedInputStream::EXTRA_BUFFER_SIZE);
 
         if (_buffer->_length < bufferSize) {
             _buffer->_length = bufferSize;
-            delete[] _buffer->_array;
+            if (_buffer->_array != nullptr)
+               delete[] _buffer->_array;
+
             _buffer->_array = new byte[_buffer->_length];
         }
 
@@ -840,19 +942,15 @@ T DecodingTask<T>::run()
         ed = nullptr;
 
         if (_listeners.size() > 0) {
-            // Notify after entropy (block size set to size in bitstream)
-            Event evt(Event::AFTER_ENTROPY, blockId,
-                int64(r), checksum1, _hasher != nullptr, clock());
+            // Notify after entropy
+            Event evt1(Event::AFTER_ENTROPY, blockId,
+                int64(preTransformLength), clock(), checksum1, hashType);
+            CompressedInputStream::notifyListeners(_listeners, evt1);
 
-            CompressedInputStream::notifyListeners(_listeners, evt);
-        }
-
-        if (_listeners.size() > 0) {
             // Notify before transform (block size after entropy decoding)
-            Event evt(Event::BEFORE_TRANSFORM, blockId,
-                int64(preTransformLength), checksum1, _hasher != nullptr, clock());
-
-            CompressedInputStream::notifyListeners(_listeners, evt);
+            Event evt2(Event::BEFORE_TRANSFORM, blockId,
+                int64(preTransformLength), clock(), checksum1, hashType);
+            CompressedInputStream::notifyListeners(_listeners, evt2);
         }
 
         transform = TransformFactory<byte>::newTransform(_ctx, tType);
@@ -872,12 +970,21 @@ T DecodingTask<T>::run()
         const int decoded = _data->_index - savedIdx;
 
         // Verify checksum
-        if (_hasher != nullptr) {
-            const uint32 checksum2 = _hasher->hash(&_data->_array[savedIdx], decoded);
+        if (_hasher32 != nullptr) {
+            const uint32 checksum2 = _hasher32->hash(&_data->_array[savedIdx], decoded);
+
+            if (checksum2 != uint32(checksum1)) {
+                stringstream ss;
+                ss << "Corrupted bitstream: expected checksum " << std::hex << checksum1 << ", found " << std::hex << checksum2;
+                return T(*_data, blockId, decoded, checksum1, Error::ERR_CRC_CHECK, ss.str());
+            }
+        }
+        else if (_hasher64 != nullptr) {
+            const uint64 checksum2 = _hasher64->hash(&_data->_array[savedIdx], decoded);
 
             if (checksum2 != checksum1) {
                 stringstream ss;
-                ss << "Corrupted bitstream: expected checksum " << hex << checksum1 << ", found " << hex << checksum2;
+                ss << "Corrupted bitstream: expected checksum " << std::hex << checksum1 << ", found " << std::hex << checksum2;
                 return T(*_data, blockId, decoded, checksum1, Error::ERR_CRC_CHECK, ss.str());
             }
         }

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -22,6 +22,37 @@ limitations under the License.
 
 using namespace kanzi;
 using namespace std;
+
+
+const int TextCodec::MAX_DICT_SIZE = 1 << 19; // must be less than 1<<24
+const int TextCodec::MAX_WORD_LENGTH = 31; // must be less than 128
+const int TextCodec::MIN_BLOCK_SIZE = 1024;
+const int TextCodec::MAX_BLOCK_SIZE = 1 << 30; // 1 GB
+const byte TextCodec::ESCAPE_TOKEN1 = byte(0x0F); // dictionary word preceded by space symbol
+const byte TextCodec::ESCAPE_TOKEN2 = byte(0x0E); // toggle upper/lower case of first word char
+const byte TextCodec::MASK_1F = byte(0x1F);
+const byte TextCodec::MASK_3F = byte(0x3F);
+const byte TextCodec::MASK_20 = byte(0x20);
+const byte TextCodec::MASK_40 = byte(0x40);
+const byte TextCodec::MASK_80 = byte(0x80);
+const byte TextCodec::MASK_FLIP_CASE = byte(0x80);
+const int TextCodec::HASH1 = 0x7FEB352D;
+const int TextCodec::HASH2 = 0x846CA68B;
+const byte TextCodec::CR = byte(0x0D);
+const byte TextCodec::LF = byte(0x0A);
+const byte TextCodec::SP = byte(0x20);
+const int TextCodec::THRESHOLD1 = 128;
+const int TextCodec::THRESHOLD2 = TextCodec::THRESHOLD1 * TextCodec::THRESHOLD1;
+const int TextCodec::THRESHOLD3 = 64;
+const int TextCodec::THRESHOLD4 = TextCodec::THRESHOLD3 * 128;
+const int TextCodec::LOG_HASHES_SIZE = 24; // 16 MB
+const byte TextCodec::MASK_NOT_TEXT = byte(0x80);
+const byte TextCodec::MASK_CRLF = byte(0x40);
+const byte TextCodec::MASK_XML_HTML = byte(0x20);
+const byte TextCodec::MASK_DT = byte(0x0F);
+const int TextCodec::MASK_LENGTH = 0x0007FFFF; // 19 bits
+
+
 
 // 1024 of the most common English words with at least 2 chars.
 char TextCodec::DICT_EN_1024[] =
@@ -114,18 +145,17 @@ rBeautifulOnlineFanPriorityTraditionalSixUnited";
 
 
 DictEntry TextCodec::STATIC_DICTIONARY[1024] = {};
-bool TextCodec::DELIMITER_CHARS[256] = {};
-bool TextCodec::TEXT_CHARS[256] = {};
-const bool TextCodec::INIT = TextCodec::init(TextCodec::DELIMITER_CHARS, TextCodec::TEXT_CHARS);
+int8 TextCodec::CHAR_TYPE[256] = {};
+const bool TextCodec::INIT = TextCodec::init(TextCodec::CHAR_TYPE);
 const int TextCodec::STATIC_DICT_WORDS = TextCodec::createDictionary(DICT_EN_1024, sizeof(DICT_EN_1024), STATIC_DICTIONARY, 1024, 0);
 
-bool TextCodec::init(bool delims[256], bool text[256])
+bool TextCodec::init(int8 cType[256])
 {
     for (int i = 0; i < 256; i++) {
         if ((i >= ' ') && (i <= '/')) // [ !"#$%&'()*+,-./]
-            delims[i] = true;
+            cType[i] = 1;
         else if ((i >= ':') && (i <= '?')) // [:;<=>?]
-            delims[i] = true;
+            cType[i] = 1;
         else {
             switch (i) {
             case '\n':
@@ -137,14 +167,12 @@ bool TextCodec::init(bool delims[256], bool text[256])
             case '}':
             case '[':
             case ']':
-                delims[i] = true;
+                cType[i] = 1;
                 break;
             default:
-                delims[i] = false;
+                cType[i] = (isUpperCase(byte(i)) || isLowerCase(byte(i))) == true ? 0 : -1;
             }
         }
-
-        text[i] = isUpperCase(byte(i)) || isLowerCase(byte(i));
     }
 
     return true;
@@ -154,7 +182,7 @@ bool TextCodec::init(bool delims[256], bool text[256])
 int TextCodec::createDictionary(char words[], int dictSize, DictEntry dict[], int maxWords, int startWord)
 {
     int delimAnchor = 0;
-    int h = HASH1;
+    uint h = HASH1;
     int nbWords = startWord;
     byte* src = reinterpret_cast<byte*>(words);
 
@@ -173,7 +201,7 @@ int TextCodec::createDictionary(char words[], int dictSize, DictEntry dict[], in
             src[i] ^= byte(0x20);
         }
 
-        h = h * HASH1 ^ int(src[i]) * HASH2;
+        h = h * HASH1 ^ uint(src[i]) * HASH2;
     }
 
     if (nbWords < maxWords) {
@@ -270,7 +298,7 @@ byte TextCodec::computeStats(const byte block[], int count, uint freqs0[], bool 
         // Getting this flag wrong results in a very small compression speed degradation.
         const int f60 = freqs0[60]; // '<'
         const int f62 = freqs0[62]; // '>'
-        const int f38 = freqs1[38 * 256 + 97]  + freqs1[38 * 256 + 103] + 
+        const int f38 = freqs1[38 * 256 + 97]  + freqs1[38 * 256 + 103] +
                         freqs1[38 * 256 + 108] + freqs1[38 * 256 + 113]; // '&a', '&g', '&l', '&q'
         const int minFreq = max((count - nbBinChars) >> 9, 2);
 
@@ -316,8 +344,8 @@ byte TextCodec::detectType(const uint freqs0[], const uint freqs1[], int count) 
     if (dt != Global::UNDEFINED)
        return TextCodec::MASK_NOT_TEXT | byte(dt);
 
-    // Check UTF-8
-    // See Unicode 14 Standard - UTF-8 Table 3.7
+    // Valid UTF-8 sequences
+    // See Unicode 16 Standard - UTF-8 Table 3.7
     // U+0000..U+007F          00..7F
     // U+0080..U+07FF          C2..DF 80..BF
     // U+0800..U+0FFF          E0 A0..BF 80..BF
@@ -328,40 +356,72 @@ byte TextCodec::detectType(const uint freqs0[], const uint freqs1[], int count) 
     // U+40000..U+FFFFF        F1..F3 80..BF 80..BF 80..BF
     // U+100000..U+10FFFF      F4 80..8F 80..BF 80..BF
 
-    if ((freqs0[0xC0] > 0) || (freqs0[0xC1] > 0))
-        return TextCodec::MASK_NOT_TEXT;
+    // Check rules for 1 byte
+    uint sum = freqs0[0xC0] + freqs0[0xC1];
+    uint sum2 = 0;
+    bool res = true;
 
-    for (int i = 0xF5; i <= 0xFF; i++) {
-        if (freqs0[i] > 0)
-            return TextCodec::MASK_NOT_TEXT;
+    for (int i = 0xF5; i <= 0xFF; i++)
+        sum += freqs0[i];
+
+    if (sum != 0) {
+        res = false;
+        goto end;
     }
-   
-    int sum = 0;
 
+    // Check rules for first 2 bytes
     for (int i = 0; i < 256; i++) {
         // Exclude < 0xE0A0 || > 0xE0BF
-        if (((i < 0xA0) || (i > 0xBF)) && (freqs1[(0xE0 << 8) + i] > 0))
-            return TextCodec::MASK_NOT_TEXT;
+        if ((i < 0xA0) || (i > 0xBF))
+            sum += freqs1[0xE0 * 256 + i];
 
         // Exclude < 0xED80 || > 0xEDE9F
-        if (((i < 0x80) || (i > 0x9F)) && (freqs1[(0xED << 8) + i] > 0))
-            return TextCodec::MASK_NOT_TEXT;
+        if ((i < 0x80) || (i > 0x9F))
+            sum += freqs1[0xED * 256 + i];
 
         // Exclude < 0xF090 || > 0xF0BF
-        if (((i < 0x90) || (i > 0xBF)) && (freqs1[(0xF0 << 8) + i] > 0))
-            return TextCodec::MASK_NOT_TEXT;
+        if ((i < 0x90) || (i > 0xBF))
+            sum += freqs1[0xF0 * 256 + i];
 
-        // Exclude < 0xF480 || > 0xF4BF
-        if (((i < 0x80) || (i > 0xBF)) && (freqs1[(0xF4 << 8) + i] > 0))
-            return TextCodec::MASK_NOT_TEXT;
+        // Exclude < 0xF480 || > 0xF48F
+        if ((i < 0x80) || (i > 0x8F))
+            sum += freqs1[0xF4 * 256 + i];
 
-        // Count non-primary bytes
-        if ((i >= 0x80) && (i <= 0xBF))
-           sum += freqs0[i];
+        if ((i < 0x80) || (i > 0xBF)) {
+            // Exclude < 0x??80 || > 0x??BF with ?? in [C2..DF]
+            for (int j = 0xC2; j <= 0xDF; j++)
+                sum += freqs1[j * 256 + i];
+
+            // Exclude < 0x??80 || > 0x??BF with ?? in [E1..EC]
+            for (int j = 0xE1; j <= 0xEC; j++)
+                sum += freqs1[j * 256 + i];
+
+            // Exclude < 0x??80 || > 0x??BF with ?? in [F1..F3]
+            sum += freqs1[0xF1 * 256 + i];
+            sum += freqs1[0xF2 * 256 + i];
+            sum += freqs1[0xF3 * 256 + i];
+
+            // Exclude < 0xEE80 || > 0xEEBF
+            sum += freqs1[0xEE * 256 + i];
+
+            // Exclude < 0xEF80 || > 0xEFBF
+            sum += freqs1[0xEF * 256 + i];
+        }
+        else {
+            // Count non-primary bytes
+            sum2 += freqs0[i];
+        }
+
+        if (sum != 0) {
+            res = false;
+            break;
+        }
     }
 
-    // Another ad-hoc threshold
-    return (sum < count / 4) ? TextCodec::MASK_NOT_TEXT : TextCodec::MASK_NOT_TEXT | byte(Global::UTF8);
+end:
+    // Ad-hoc threshold
+    res &= (sum2 >= uint(count / 8));
+    return res == true ? TextCodec::MASK_NOT_TEXT | byte(Global::UTF8) : TextCodec::MASK_NOT_TEXT;
 }
 
 
@@ -538,12 +598,14 @@ bool TextCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
     int delimAnchor = TextCodec::isText(src[srcIdx]) ? srcIdx - 1 : srcIdx; // previous delimiter
 
     while (srcIdx < srcEnd) {
-        if (TextCodec::isText(src[srcIdx])) {
+        const int8 cType = TextCodec::getType(src[srcIdx]);
+
+        if (cType == 0) {
             srcIdx++;
             continue;
         }
 
-        if ((srcIdx > delimAnchor + 2) && TextCodec::isDelimiter(src[srcIdx])) { // At least 2 letters
+        if ((srcIdx > delimAnchor + 2) && (cType > 0)) { // At least 2 letters
             const byte val = src[delimAnchor + 1];
             const int length = srcIdx - delimAnchor - 1;
 
@@ -551,14 +613,14 @@ bool TextCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 // Compute hashes
                 // h1 -> hash of word chars
                 // h2 -> hash of word chars with first char case flipped
-                int h1 = TextCodec::HASH1;
-                h1 = h1 * TextCodec::HASH1 ^ int(val) * TextCodec::HASH2;
-                int h2 = TextCodec::HASH1;
-                h2 = h2 * TextCodec::HASH1 ^ (int(val) ^ 0x20) * TextCodec::HASH2;
+                uint h1 = TextCodec::HASH1;
+                h1 = h1 * TextCodec::HASH1 ^ uint(val) * TextCodec::HASH2;
+                uint h2 = TextCodec::HASH1;
+                h2 = h2 * TextCodec::HASH1 ^ (uint(val) ^ 0x20) * TextCodec::HASH2;
 
                 for (int i = delimAnchor + 2; i < srcIdx; i++) {
-                    h1 = h1 * TextCodec::HASH1 ^ int(src[i]) * TextCodec::HASH2;
-                    h2 = h2 * TextCodec::HASH1 ^ int(src[i]) * TextCodec::HASH2;
+                    h1 = h1 * TextCodec::HASH1 ^ uint(src[i]) * TextCodec::HASH2;
+                    h2 = h2 * TextCodec::HASH1 ^ uint(src[i]) * TextCodec::HASH2;
                 }
 
                 // Check word in dictionary
@@ -566,7 +628,6 @@ bool TextCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 prefetchRead(&_dictMap[h1 & _hashMask]);
                 DictEntry* pe1 = _dictMap[h1 & _hashMask];
 
-                // Check for hash collisions
                 if ((pe1 != nullptr) && (pe1->_hash == h1) && ((pe1->_data >> 24) == length))
                     pe = pe1;
                 else {
@@ -577,6 +638,7 @@ bool TextCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
                         pe = pe2;
                 }
 
+                // Check for hash collisions
                 if ((pe != nullptr) && (!TextCodec::sameWords(&pe->_ptr[1], &src[delimAnchor + 2], length - 1)))
                     pe = nullptr;
 
@@ -737,14 +799,16 @@ int TextCodec1::emitWordIndex(byte dst[], int val)
 {
     // Emit word index (varint 5 bits + 7 bits + 7 bits)
     if (val >= TextCodec::THRESHOLD1) {
-        int dstIdx = 0;
+        if (val >= TextCodec::THRESHOLD2) {
+            dst[0] = byte(0xE0 | (val >> 14));
+            dst[1] = byte(0x80 | (val >> 7));
+            dst[2] = byte(0x7F & val);
+            return 3;
+        }
 
-        if (val >= TextCodec::THRESHOLD2)
-            dst[dstIdx++] = byte(0xE0 | (val >> 14));
-
-        dst[dstIdx] = byte(0x80 | (val >> 7));
-        dst[dstIdx + 1] = byte(0x7F & val);
-        return dstIdx + 2;
+        dst[0] = byte(0x80 | (val >> 7));
+        dst[1] = byte(0x7F & val);
+        return 2;
     }
 
     dst[0] = byte(val);
@@ -757,6 +821,7 @@ bool TextCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
     const byte* src = &input._array[input._index];
     byte* dst = &output._array[output._index];
     _isCRLF = int(src[0] & TextCodec::MASK_CRLF) != 0;
+    const bool isCRLF = _isCRLF;
     int srcIdx = 1;
     int dstIdx = 0;
     const int srcEnd = count;
@@ -768,22 +833,25 @@ bool TextCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
 
     while ((srcIdx < srcEnd) && (dstIdx < dstEnd)) {
         const byte cur = src[srcIdx];
+        const int8 cType = TextCodec::getType(cur);
 
-        if (TextCodec::isText(cur)) {
-            dst[dstIdx] = cur;
+        if (cType == 0) {
+            dst[dstIdx] = src[srcIdx];
             srcIdx++;
             dstIdx++;
             continue;
         }
 
-        if ((srcIdx > delimAnchor + 3) && TextCodec::isDelimiter(cur)) {
+        if ((srcIdx > delimAnchor + 3) && (cType > 0)) {
             const int length = srcIdx - delimAnchor - 1; // length > 2
 
             if (length <= TextCodec::MAX_WORD_LENGTH) {
-                int h1 = TextCodec::HASH1;
+                uint h1 = TextCodec::HASH1;
+                h1 = h1 * TextCodec::HASH1 ^ uint(src[delimAnchor + 1]) * TextCodec::HASH2;
+                h1 = h1 * TextCodec::HASH1 ^ uint(src[delimAnchor + 2]) * TextCodec::HASH2;
 
-                for (int i = delimAnchor + 1; i < srcIdx; i++)
-                    h1 = h1 * TextCodec::HASH1 ^ int(src[i]) * TextCodec::HASH2;
+                for (int i = delimAnchor + 3; i < srcIdx; i++)
+                    h1 = h1 * TextCodec::HASH1 ^ uint(src[i]) * TextCodec::HASH2;
 
                 // Lookup word in dictionary
                 DictEntry* pe = nullptr;
@@ -887,7 +955,7 @@ bool TextCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
             wordRun = false;
             delimAnchor = srcIdx - 1;
 
-            if ((_isCRLF == true) && (cur == TextCodec::LF)) {
+            if ((isCRLF == true) && (cur == TextCodec::LF)) {
                 dst[dstIdx++] = TextCodec::CR;
 
                 if (dstIdx >= dstEnd) {
@@ -915,6 +983,7 @@ TextCodec2::TextCodec2()
     _staticDictSize = TextCodec::STATIC_DICT_WORDS;
     _isCRLF = false;
     _pCtx = nullptr;
+    _bsVersion = 6;
 }
 
 TextCodec2::TextCodec2(Context& ctx)
@@ -929,6 +998,7 @@ TextCodec2::TextCodec2(Context& ctx)
     _staticDictSize = TextCodec::STATIC_DICT_WORDS;
     _isCRLF = false;
     _pCtx = &ctx;
+    _bsVersion = ctx.getInt("bsVersion");
 }
 
 void TextCodec2::reset(int count)
@@ -996,7 +1066,7 @@ bool TextCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
     const int srcEnd = count;
     const int dstEnd = getMaxEncodedLength(count);
     const int dstEnd3 = dstEnd - 3;
-    int emitAnchor = 0; // never less than 0
+    int emitAnchor = 0;
     int words = _staticDictSize;
 
     // DOS encoded end of line (CR+LF) ?
@@ -1015,12 +1085,14 @@ bool TextCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
     int delimAnchor = TextCodec::isText(src[srcIdx]) ? srcIdx - 1 : srcIdx; // previous delimiter
 
     while (srcIdx < srcEnd) {
-        if (TextCodec::isText(src[srcIdx])) {
+        const int8 cType = TextCodec::getType(src[srcIdx]);
+
+        if (cType == 0) {
             srcIdx++;
             continue;
         }
 
-        if ((srcIdx > delimAnchor + 2) && TextCodec::isDelimiter(src[srcIdx])) {
+        if ((srcIdx > delimAnchor + 2) && (cType > 0)) {
             const byte val = src[delimAnchor + 1];
             const int length = srcIdx - delimAnchor - 1;
 
@@ -1028,14 +1100,14 @@ bool TextCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 // Compute hashes
                 // h1 -> hash of word chars
                 // h2 -> hash of word chars with first char case flipped
-                int h1 = TextCodec::HASH1;
-                h1 = h1 * TextCodec::HASH1 ^ int(val) * TextCodec::HASH2;
-                int h2 = TextCodec::HASH1;
-                h2 = h2 * TextCodec::HASH1 ^ (int(val) ^ 0x20) * TextCodec::HASH2;
+                uint h1 = TextCodec::HASH1;
+                h1 = h1 * TextCodec::HASH1 ^ uint(val) * TextCodec::HASH2;
+                uint h2 = TextCodec::HASH1;
+                h2 = h2 * TextCodec::HASH1 ^ (uint(val) ^ 0x20) * TextCodec::HASH2;
 
                 for (int i = delimAnchor + 2; i < srcIdx; i++) {
-                    h1 = h1 * TextCodec::HASH1 ^ int(src[i]) * TextCodec::HASH2;
-                    h2 = h2 * TextCodec::HASH1 ^ int(src[i]) * TextCodec::HASH2;
+                    h1 = h1 * TextCodec::HASH1 ^ uint(src[i]) * TextCodec::HASH2;
+                    h2 = h2 * TextCodec::HASH1 ^ uint(src[i]) * TextCodec::HASH2;
                 }
 
                 // Check word in dictionary
@@ -1043,7 +1115,6 @@ bool TextCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 prefetchRead(&_dictMap[h1 & _hashMask]);
                 DictEntry* pe1 = _dictMap[h1 & _hashMask];
 
-                // Check for hash collisions
                 if ((pe1 != nullptr) && (pe1->_hash == h1) && ((pe1->_data >> 24) == length))
                     pe = pe1;
                 else {
@@ -1054,6 +1125,7 @@ bool TextCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
                         pe = pe2;
                 }
 
+                // Check for hash collisions
                 if ((pe != nullptr) && (!TextCodec::sameWords(&pe->_ptr[1], &src[delimAnchor + 2], length - 1)))
                     pe = nullptr;
 
@@ -1101,7 +1173,10 @@ bool TextCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
                         break;
                     }
 
-                    dstIdx += emitWordIndex(&dst[dstIdx], pe->_data & TextCodec::MASK_LENGTH, (pe == pe1) ? 0 : 32);
+                    // Case flip is encoded as 0x80
+                    dst[dstIdx] = TextCodec::MASK_FLIP_CASE;
+                    dstIdx += (pe == pe1 ? 0 : 1);
+                    dstIdx += emitWordIndex(&dst[dstIdx], pe->_data & TextCodec::MASK_LENGTH);
                     emitAnchor = delimAnchor + 1 + (pe->_data >> 24);
                 }
             }
@@ -1154,21 +1229,19 @@ bool TextCodec2::expandDictionary()
 
 int TextCodec2::emitSymbols(const byte src[], byte dst[], const int srcEnd, const int dstEnd) const
 {
-// Work around incorrect warning by GCC 7.x.x with C++17
-#ifdef __GNUC__
-    #if (__GNUC__ == 7) && (__cplusplus > 201402L)
-        #pragma GCC diagnostic push
-        #pragma GCC diagnostic ignored "-Wswitch"
+    // Work around incorrect warning by GCC 7.x.x with C++17
+    #ifdef __GNUC__
+        #if (__GNUC__ == 7) && (__cplusplus > 201402L)
+            #pragma GCC diagnostic push
+            #pragma GCC diagnostic ignored "-Wswitch"
+        #endif
     #endif
-#endif
 
     int dstIdx = 0;
 
     if (2 * srcEnd < dstEnd) {
         for (int i = 0; i < srcEnd; i++) {
-            const byte cur = src[i];
-
-            switch (cur) {
+            switch (src[i]) {
             case TextCodec::ESCAPE_TOKEN1:
                 dst[dstIdx++] = TextCodec::ESCAPE_TOKEN1;
                 dst[dstIdx++] = TextCodec::ESCAPE_TOKEN1;
@@ -1176,23 +1249,20 @@ int TextCodec2::emitSymbols(const byte src[], byte dst[], const int srcEnd, cons
 
             case TextCodec::CR:
                 if (_isCRLF == false)
-                    dst[dstIdx++] = cur;
+                    dst[dstIdx++] = src[i];
 
                 break;
 
             default:
-                if (cur >= byte(128))
-                    dst[dstIdx++] = TextCodec::ESCAPE_TOKEN1;
-
-                dst[dstIdx++] = cur;
+                dst[dstIdx] = TextCodec::ESCAPE_TOKEN1;
+                dstIdx += int(src[i] >> 7);
+                dst[dstIdx++] = src[i];
             }
         }
     }
     else {
         for (int i = 0; i < srcEnd; i++) {
-            const byte cur = src[i];
-
-            switch (cur) {
+            switch (src[i]) {
             case TextCodec::ESCAPE_TOKEN1:
                 if (dstIdx >= dstEnd - 1)
                     return -1;
@@ -1206,13 +1276,13 @@ int TextCodec2::emitSymbols(const byte src[], byte dst[], const int srcEnd, cons
                     if (dstIdx >= dstEnd)
                         return -1;
 
-                    dst[dstIdx++] = cur;
+                    dst[dstIdx++] = src[i];
                 }
 
                 break;
 
             default:
-                if (cur >= byte(128)) {
+                if (src[i] >= byte(128)) {
                     if (dstIdx >= dstEnd)
                         return -1;
 
@@ -1222,43 +1292,43 @@ int TextCodec2::emitSymbols(const byte src[], byte dst[], const int srcEnd, cons
                 if (dstIdx >= dstEnd)
                     return -1;
 
-                dst[dstIdx++] = cur;
+                dst[dstIdx++] = src[i];
             }
         }
     }
 
-// Work around incorrect warning by GCC 7.x.x with C++17
-#ifdef __GNUC__
-    #if (__GNUC__ == 7) && (__cplusplus > 201402L)
-        #pragma GCC diagnostic pop
+    // Work around incorrect warning by GCC 7.x.x with C++17
+    #ifdef __GNUC__
+        #if (__GNUC__ == 7) && (__cplusplus > 201402L)
+            #pragma GCC diagnostic pop
+        #endif
     #endif
-#endif
 
     return dstIdx;
 }
 
-int TextCodec2::emitWordIndex(byte dst[], int val, int mask)
+int TextCodec2::emitWordIndex(byte dst[], int wIdx)
 {
-    // Emit word index (varint 5 bits + 7 bits + 7 bits)
-    // 1st byte: 0x80 => word idx, 0x40 => more bytes, 0x20 => toggle case 1st symbol
-    // 2nd byte: 0x80 => 1 more byte
-    if (val >= TextCodec::THRESHOLD3) {
-        if (val >= TextCodec::THRESHOLD4) {
-            // 5 + 7 + 7 => 2^19
-            dst[0] = byte(0xC0 | mask | ((val >> 14) & 0x1F));
-            dst[1] = byte(0x80 | (val >> 7));
-            dst[2] = byte(val & 0x7F);
+    // 0x80 is reserved to first symbol case flip
+    wIdx++;
+
+    if (wIdx >= TextCodec::THRESHOLD3) {
+        if (wIdx >= TextCodec::THRESHOLD4) {
+            // 3 byte index (1111xxxx xxxxxxxx xxxxxxxx)
+            dst[0] = byte(0xF0 | (wIdx >> 16));
+            dst[1] = byte(wIdx >> 8);
+            dst[2] = byte(wIdx);
             return 3;
         }
 
-        // 5 + 7 => 2^12 = 32*128
-        dst[0] = byte(0xC0 | mask | (val >> 7));
-        dst[1] = byte(val & 0x7F);
+        // 2 byte index (110xxxxx xxxxxxxx)
+        dst[0] = byte(0xC0 | (wIdx >> 8));
+        dst[1] = byte(wIdx);
         return 2;
     }
 
-    // 5 => 32
-    dst[0] = byte(0x80 | mask | val);
+    // 1 byte index (10xxxxxx) with 0x80 excluded
+    dst[0] = byte(0x80 | wIdx);
     return 1;
 }
 
@@ -1268,6 +1338,7 @@ bool TextCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
     const byte* src = &input._array[input._index];
     byte* dst = &output._array[output._index];
     _isCRLF = (src[0] & TextCodec::MASK_CRLF) != byte(0);
+    const bool isCRLF = _isCRLF;
     int srcIdx = 1;
     int dstIdx = 0;
     const int srcEnd = count;
@@ -1276,25 +1347,29 @@ bool TextCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
     int words = _staticDictSize;
     bool wordRun = false;
     bool res = true;
+    const bool oldEncoding = _bsVersion < 6;
 
     while ((srcIdx < srcEnd) && (dstIdx < dstEnd)) {
-        const byte cur = src[srcIdx];
+        byte cur = src[srcIdx];
+        const int8 cType = TextCodec::getType(cur);
 
-        if (TextCodec::isText(cur)) {
-            dst[dstIdx] = cur;
+        if (cType == 0) {
+            dst[dstIdx] = src[srcIdx];
             srcIdx++;
             dstIdx++;
             continue;
         }
 
-        if ((srcIdx > delimAnchor + 3) && TextCodec::isDelimiter(cur)) {
+        if ((srcIdx > delimAnchor + 3) && (cType > 0)) {
             const int length = srcIdx - delimAnchor - 1; // length > 2
 
             if (length <= TextCodec::MAX_WORD_LENGTH) {
-                int h1 = TextCodec::HASH1;
+                uint h1 = TextCodec::HASH1;
+                h1 = h1 * TextCodec::HASH1 ^ uint(src[delimAnchor + 1]) * TextCodec::HASH2;
+                h1 = h1 * TextCodec::HASH1 ^ uint(src[delimAnchor + 2]) * TextCodec::HASH2;
 
-                for (int i = delimAnchor + 1; i < srcIdx; i++)
-                    h1 = h1 * TextCodec::HASH1 ^ int(src[i]) * TextCodec::HASH2;
+                for (int i = delimAnchor + 3; i < srcIdx; i++)
+                    h1 = h1 * TextCodec::HASH1 ^ uint(src[i]) * TextCodec::HASH2;
 
                 // Lookup word in dictionary
                 DictEntry* pe = nullptr;
@@ -1334,27 +1409,71 @@ bool TextCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
         }
 
         srcIdx++;
+        byte flipMask = byte(0);
 
         if (cur >= TextCodec::MASK_80) {
             // Word in dictionary
-            // Read word index (varint 5 bits + 7 bits + 7 bits)
-            int idx = int(cur & TextCodec::MASK_1F);
+            int idx;
 
-            if ((cur & TextCodec::MASK_40) != byte(0)) {
-                const int idx2 = int(src[srcIdx++]);
+            if (oldEncoding == true) {
+                // Read word index (varint 5 bits + 7 bits + 7 bits)
+                flipMask = cur & TextCodec::MASK_20;
+                idx = int(cur & TextCodec::MASK_1F);
 
-                if (idx2 >= 128) {
-                    idx = (idx << 14) | ((idx2 & 0x7F) << 7) | int(src[srcIdx]);
-                    srcIdx++;
+                if ((cur & TextCodec::MASK_40) != byte(0)) {
+                    const int idx2 = int(src[srcIdx++]);
+
+                    if (idx2 >= 128) {
+                        idx = (idx << 14) | ((idx2 & 0x7F) << 7) | int(src[srcIdx]);
+                        srcIdx++;
+                    }
+                    else {
+                        idx = (idx << 7) | idx2;
+                    }
+
+                    // Sanity check
+                    if (idx >= _dictSize) {
+                        res = false;
+                        break;
+                    }
                 }
-                else {
-                    idx = (idx << 7) | idx2;
+            }
+            else {
+                if (cur == TextCodec::MASK_80) {
+                    // Flip first char case
+                    flipMask = TextCodec::MASK_20;
+                    cur = src[srcIdx++];
                 }
 
-                if (idx >= _dictSize) {
+                // Read word index
+                // 10xxxxxx => 1 byte
+                // 110xxxxx => 2 bytes
+                // 1111xxxx => 3 bytes
+                idx = int(cur) & 0x7F;
+
+                if (idx >= 64) {
+                    if (idx >= 112) {
+                        idx = ((idx & 0x0F) << 16) | (int(src[srcIdx]) << 8) | int(src[srcIdx + 1]);
+                        srcIdx += 2;
+                    }
+                    else {
+                        idx = ((idx & 0x1F) << 8) | int(src[srcIdx]);
+                        srcIdx++;
+                    }
+
+                    // Sanity check before adjusting index
+                    if (idx > _dictSize) {
+                        res = false;
+                        break;
+                    }
+                }
+                else if (idx == 0) {
                     res = false;
                     break;
                 }
+
+                // Adjust index
+                idx--;
             }
 
             const int length = (_dictList[idx]._data >> 24) & 0xFF;
@@ -1389,7 +1508,7 @@ bool TextCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
             memcpy(&dst[dstIdx], _dictList[idx]._ptr, length);
 
             // Flip case of first character ?
-            dst[dstIdx] ^= (cur & TextCodec::MASK_20);
+            dst[dstIdx] ^= flipMask;
             dstIdx += length;
         }
         else {
@@ -1397,7 +1516,7 @@ bool TextCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 dst[dstIdx++] = src[srcIdx++];
             }
             else {
-                if ((_isCRLF == true) && (cur == TextCodec::LF)) {
+                if ((isCRLF == true) && (cur == TextCodec::LF)) {
                     dst[dstIdx++] = TextCodec::CR;
 
                     if (dstIdx >= dstEnd) {
