@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -19,6 +19,12 @@ limitations under the License.
 
 using namespace kanzi;
 using namespace std;
+
+
+const int FSDCodec::MIN_LENGTH = 1024;
+const byte FSDCodec::ESCAPE_TOKEN = byte(255);
+const byte FSDCodec::DELTA_CODING = byte(0);
+const byte FSDCodec::XOR_CODING = byte(1);
 
 const uint8 FSDCodec::ZIGZAG1[256] = {
 	   253,   251,   249,   247,   245,   243,   241,   239,
@@ -139,7 +145,7 @@ bool FSDCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
     const int srcEnd = count;
     const int dstEnd = getMaxEncodedLength(count);
     const int count10 = count / 10;
-    const int count5 = 2 * count10; // count5=count/5 doest not guarantee count5=2*count10 !
+    const int count5 = 2 * count10; // count5=count/5 does not guarantee count5=2*count10 !
     uint histo[7][256];
     memset(&histo[0][0], 0, sizeof(histo));
 
@@ -156,7 +162,7 @@ bool FSDCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
         histo[3][int(b0 ^ in0[i - 3])]++;
         histo[4][int(b0 ^ in0[i - 4])]++;
         histo[5][int(b0 ^ in0[i - 8])]++;
-        histo[6][int(b0 ^ in0[i - 16])]++;       
+        histo[6][int(b0 ^ in0[i - 16])]++;
         const byte b1 = in1[i];
         histo[0][int(b1)]++;
         histo[1][int(b1 ^ in1[i - 1])]++;
@@ -299,7 +305,7 @@ bool FSDCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int co
         return false;
 
     // Emit first bytes
-    memcpy(&dst[0], &src[2], dist);
+    memcpy(&dst[0], &src[2], size_t(dist));
     int srcIdx = dist + 2;
     int dstIdx = dist;
 
@@ -323,12 +329,16 @@ bool FSDCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int co
             dstIdx++;
         }
     }
-    else { // mode == XOR_CODING
+    else if (mode == XOR_CODING) {
         while (srcIdx < srcEnd) {
             dst[dstIdx] = src[srcIdx] ^ dst[dstIdx - dist];
             srcIdx++;
             dstIdx++;
         }
+    }
+    else {
+        // Invalid mode
+        return false;
     }
 
     input._index += srcIdx;

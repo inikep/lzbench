@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -23,6 +23,18 @@ limitations under the License.
 using namespace kanzi;
 using namespace std;
 
+
+const int RangeDecoder::DECODING_BATCH_SIZE = 12; // in bits
+const int RangeDecoder::DECODING_MASK = (1 << DECODING_BATCH_SIZE) - 1;
+const uint64 RangeDecoder::TOP_RANGE    = 0x0FFFFFFFFFFFFFFF;
+const uint64 RangeDecoder::BOTTOM_RANGE = 0x000000000000FFFF;
+const uint64 RangeDecoder::RANGE_MASK   = 0x0FFFFFFF00000000;
+const int RangeDecoder::DEFAULT_CHUNK_SIZE = 1 << 15; // 32 KB by default
+const int RangeDecoder::DEFAULT_LOG_RANGE = 12;
+const int RangeDecoder::MAX_CHUNK_SIZE = 1 << 30;
+
+
+
 // The chunk size indicates how many bytes are encoded (per block) before
 // resetting the frequency stats.
 RangeDecoder::RangeDecoder(InputBitStream& bitstream, int chunkSize) : _bitstream(bitstream)
@@ -33,7 +45,7 @@ RangeDecoder::RangeDecoder(InputBitStream& bitstream, int chunkSize) : _bitstrea
     if (chunkSize > MAX_CHUNK_SIZE)
         throw invalid_argument("The chunk size must be at most 2^30");
 
-    _f2s = new short[0];
+    _f2s = nullptr;
     _chunkSize = chunkSize;
     reset();
 }
@@ -115,7 +127,9 @@ int RangeDecoder::decodeHeader(uint frequencies[])
     _cumFreqs[0] = 0;
 
     if (_lenF2S < scale) {
-        delete[] _f2s;
+        if (_f2s != nullptr)
+           delete[] _f2s;
+
         _lenF2S = scale;
         _f2s = new short[_lenF2S];
     }

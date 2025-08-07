@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -16,6 +16,9 @@ limitations under the License.
 #pragma once
 #ifndef _Global_
 #define _Global_
+
+#include <set>
+#include <string>
 
 #include "types.hpp"
 
@@ -51,9 +54,11 @@ namespace kanzi {
 
        static DataType detectSimpleType(int count, const uint histo[]);
 
+       static bool isReservedName(std::string fileName);
+
    private:
        Global();
-       ~Global() {};
+       ~Global() {}
 
        static const Global _singleton;
        static const int LOG2_4096[257]; // 4096*Math.log2(x)
@@ -63,6 +68,8 @@ namespace kanzi {
        static char BASE64_SYMBOLS[];
        static char DNA_SYMBOLS[];
        static char NUMERIC_SYMBOLS[];
+
+       std::set<std::string> _reservedNames;
    };
 
 
@@ -87,7 +94,7 @@ namespace kanzi {
            unsigned long res;
            _BitScanReverse(&res, x);
            return int(res);
-       #elif defined(__GNUG__) 
+       #elif defined(__GNUG__)
            return 31 ^ __builtin_clz(x);
        #elif defined(__clang__)
            return 31 ^ __builtin_clz(x);

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -18,6 +18,10 @@ limitations under the License.
 
 using namespace kanzi;
 using namespace std;
+
+
+const int BWTS::MAX_BLOCK_SIZE = 1024 * 1024 * 1024; // 1024 MB
+
 
 bool BWTS::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
 {
@@ -45,15 +49,21 @@ bool BWTS::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
         return true;
     }
 
-    byte* src = &input._array[input._index];
+    const byte* src = &input._array[input._index];
     byte* dst = &output._array[output._index];
 
     // Lazy dynamic memory allocation
     if (_bufferSize < count) {
         _bufferSize = count;
-        delete[] _buffer1;
+
+        if (_buffer1 != nullptr)
+           delete[] _buffer1;
+
         _buffer1 = new int[_bufferSize];
-        delete[] _buffer2;
+
+        if (_buffer2 != nullptr)
+           delete[] _buffer2;
+
         _buffer2 = new int[_bufferSize];
     }
 
@@ -61,7 +71,8 @@ bool BWTS::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
     int* sa = _buffer1;
     int* isa = _buffer2;
 
-    _saAlgo.computeSuffixArray(src, sa, count);
+    if (_saAlgo.computeSuffixArray(src, sa, count) == false)
+        return false;
 
     for (int i = 0; i < count; i++)
         isa[sa[i]] = i;
@@ -180,7 +191,10 @@ bool BWTS::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
     // Lazy dynamic memory allocation
     if (_bufferSize < count) {
         _bufferSize = count;
-        delete[] _buffer1;
+
+        if (_buffer1 != nullptr)
+           delete[] _buffer1;
+
         _buffer1 = new int[_bufferSize];
     }
 

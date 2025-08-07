@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -19,6 +19,45 @@ limitations under the License.
 
 using namespace kanzi;
 using namespace std;
+
+const byte EXECodec::X86_MASK_JUMP = byte(0xFE);
+const byte EXECodec::X86_INSTRUCTION_JUMP = byte(0xE8);
+const byte EXECodec::X86_INSTRUCTION_JCC = byte(0x80);
+const byte EXECodec::X86_TWO_BYTE_PREFIX = byte(0x0F);
+const byte EXECodec::X86_MASK_JCC = byte(0xF0);
+const byte EXECodec::X86_ESCAPE = byte(0x9B);
+const byte EXECodec::NOT_EXE = byte(0x80);
+const byte EXECodec::X86 = byte(0x40);
+const byte EXECodec::ARM64 = byte(0x20);
+const byte EXECodec::MASK_DT = byte(0x0F);
+const int EXECodec::X86_ADDR_MASK = (1 << 24) - 1;
+const int EXECodec::MASK_ADDRESS = 0xF0F0F0F0;
+const int EXECodec::ARM_B_ADDR_MASK = (1 << 26) - 1;
+const int EXECodec::ARM_B_OPCODE_MASK = 0xFFFFFFFF ^ ARM_B_ADDR_MASK;
+const int EXECodec::ARM_B_ADDR_SGN_MASK = 1 << 25;
+const int EXECodec::ARM_OPCODE_B = 0x14000000;  // 6 bit opcode
+const int EXECodec::ARM_OPCODE_BL = 0x94000000; // 6 bit opcode
+const int EXECodec::ARM_CB_REG_BITS = 5; // lowest bits for register
+const int EXECodec::ARM_CB_ADDR_MASK = 0x00FFFFE0; // 18 bit addr mask
+const int EXECodec::ARM_CB_ADDR_SGN_MASK = 1 << 18;
+const int EXECodec::ARM_CB_OPCODE_MASK = 0x7F000000;
+const int EXECodec::ARM_OPCODE_CBZ = 0x34000000;  // 8 bit opcode
+const int EXECodec::ARM_OPCODE_CBNZ = 0x3500000; // 8 bit opcode
+const int EXECodec::WIN_PE = 0x00004550;
+const uint16 EXECodec::WIN_X86_ARCH = 0x014C;
+const uint16 EXECodec::WIN_AMD64_ARCH = 0x8664;
+const uint16 EXECodec::WIN_ARM64_ARCH = 0xAA64;
+const int EXECodec::ELF_X86_ARCH = 0x03;
+const int EXECodec::ELF_AMD64_ARCH = 0x3E;
+const int EXECodec::ELF_ARM64_ARCH = 0xB7;
+const int EXECodec::MAC_AMD64_ARCH = 0x01000007;
+const int EXECodec::MAC_ARM64_ARCH = 0x0100000C;
+const int EXECodec::MAC_MH_EXECUTE = 0x02;
+const int EXECodec::MAC_LC_SEGMENT = 0x01;
+const int EXECodec::MAC_LC_SEGMENT64 = 0x19;
+const int EXECodec::MIN_BLOCK_SIZE = 4096;
+const int EXECodec::MAX_BLOCK_SIZE = (1 << (26 + 2)) - 1; // max offset << 2
+
 
 bool EXECodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
 {
@@ -79,8 +118,14 @@ bool EXECodec::forwardX86(SliceArray<byte>& input, SliceArray<byte>& output, int
     int matches = 0;
     const int dstEnd = output._length - 5;
 
+    if ((dstIdx + codeStart > output._length) || (srcIdx + codeStart > input._length))
+        return false;
+
+    if (codeEnd > input._length)
+        return false;
+
     if (codeStart > 0) {
-        memcpy(&dst[dstIdx], &src[0], codeStart);
+        memcpy(&dst[dstIdx], &src[0], size_t(codeStart));
         dstIdx += codeStart;
     }
 
@@ -132,7 +177,7 @@ bool EXECodec::forwardX86(SliceArray<byte>& input, SliceArray<byte>& output, int
 
     LittleEndian::writeInt32(&dst[1], codeStart);
     LittleEndian::writeInt32(&dst[5], dstIdx);
-    memcpy(&dst[dstIdx], &src[srcIdx], count - srcIdx);
+    memcpy(&dst[dstIdx], &src[srcIdx], size_t(count - srcIdx));
     dstIdx += (count - srcIdx);
 
     // Cap expansion due to false positives
@@ -154,8 +199,14 @@ bool EXECodec::forwardARM(SliceArray<byte>& input, SliceArray<byte>& output, int
     int matches = 0;
     const int dstEnd = output._length - 8;
 
+    if ((dstIdx + codeStart > output._length) || (srcIdx + codeStart > input._length))
+        return false;
+
+    if (codeEnd > input._length)
+        return false;
+
     if (codeStart > 0) {
-        memcpy(&dst[dstIdx], &src[0], codeStart);
+        memcpy(&dst[dstIdx], &src[0], size_t(codeStart));
         dstIdx += codeStart;
     }
 
@@ -163,7 +214,7 @@ bool EXECodec::forwardARM(SliceArray<byte>& input, SliceArray<byte>& output, int
         const int instr = LittleEndian::readInt32(&src[srcIdx]);
         const int opcode1 = instr & ARM_B_OPCODE_MASK;
         //const int opcode2 = instr & ARM_CB_OPCODE_MASK;
-        bool isBL = (opcode1 == ARM_OPCODE_B) || (opcode1 == ARM_OPCODE_BL); // inconditional jump
+        bool isBL = (opcode1 == ARM_OPCODE_B) || (opcode1 == ARM_OPCODE_BL); // unconditional jump
         bool isCB = false; // disable for now ... isCB = (opcode2 == ARM_OPCODE_CBZ) || (opcode2 == ARM_OPCODE_CBNZ); // conditional jump
 
         if ((isBL == false) && (isCB == false)) {
@@ -178,7 +229,7 @@ bool EXECodec::forwardARM(SliceArray<byte>& input, SliceArray<byte>& output, int
 
         if (isBL == true) {
             // opcode(6) + sgn(1) + offset(25)
-            // Absolute target address = srcIdx +/- (offet*4)
+            // Absolute target address = srcIdx +/- (offset*4)
             const int offset = instr & ARM_B_ADDR_MASK;
             const int sgn = instr & ARM_B_ADDR_SGN_MASK;
             addr = srcIdx + 4 * ((sgn == 0) ? offset : -(-offset & ARM_B_ADDR_MASK));
@@ -189,7 +240,7 @@ bool EXECodec::forwardARM(SliceArray<byte>& input, SliceArray<byte>& output, int
             val = opcode1 | (addr >> 2);
         } else { // isCB == true
             // opcode(8) + sgn(1) + offset(18) + register(5)
-            // Absolute target address = srcIdx +/- (offet*4)
+            // Absolute target address = srcIdx +/- (offset*4)
             const int offset = (instr & ARM_CB_ADDR_MASK) >> ARM_CB_REG_BITS;
             const int sgn = instr & ARM_CB_ADDR_SGN_MASK;
             addr = srcIdx + 4 * ((sgn == 0) ? offset : -(-offset & ARM_B_ADDR_MASK));
@@ -222,7 +273,7 @@ bool EXECodec::forwardARM(SliceArray<byte>& input, SliceArray<byte>& output, int
 
     LittleEndian::writeInt32(&dst[1], codeStart);
     LittleEndian::writeInt32(&dst[5], dstIdx);
-    memcpy(&dst[dstIdx], &src[srcIdx], count - srcIdx);
+    memcpy(&dst[dstIdx], &src[srcIdx], size_t(count - srcIdx));
     dstIdx += (count - srcIdx);
 
     // Cap expansion due to false positives
@@ -265,8 +316,12 @@ bool EXECodec::inverseX86(SliceArray<byte>& input, SliceArray<byte>& output, int
     const int codeStart = LittleEndian::readInt32(&src[1]);
     const int codeEnd = LittleEndian::readInt32(&src[5]);
 
+    // Sanity check
+    if ((codeEnd > count) || (codeStart + srcIdx > count) || (codeStart + dstIdx > output._length))
+        return false;
+
     if (codeStart > 0) {
-        memcpy(&dst[dstIdx], &src[9], codeStart);
+        memcpy(&dst[dstIdx], &src[srcIdx], size_t(codeStart));
         dstIdx += codeStart;
         srcIdx += codeStart;
     }
@@ -301,8 +356,11 @@ bool EXECodec::inverseX86(SliceArray<byte>& input, SliceArray<byte>& output, int
         dstIdx += 4;
     }
 
-    memcpy(&dst[dstIdx], &src[srcIdx], count - srcIdx);
-    dstIdx += (count - srcIdx);
+    if (srcIdx < count) {
+       memcpy(&dst[dstIdx], &src[srcIdx], size_t(count - srcIdx));
+       dstIdx += (count - srcIdx);
+    }
+
     input._index += count;
     output._index += dstIdx;
     return true;
@@ -317,8 +375,12 @@ bool EXECodec::inverseARM(SliceArray<byte>& input, SliceArray<byte>& output, int
     const int codeStart = LittleEndian::readInt32(&src[1]);
     const int codeEnd = LittleEndian::readInt32(&src[5]);
 
+    // Sanity check
+    if ((codeEnd > count) || (codeStart + srcIdx > count) || (codeStart + dstIdx > output._length))
+        return false;
+
     if (codeStart > 0) {
-        memcpy(&dst[dstIdx], &src[9], codeStart);
+        memcpy(&dst[dstIdx], &src[srcIdx], size_t(codeStart));
         dstIdx += codeStart;
         srcIdx += codeStart;
     }
@@ -327,7 +389,7 @@ bool EXECodec::inverseARM(SliceArray<byte>& input, SliceArray<byte>& output, int
         const int instr = LittleEndian::readInt32(&src[srcIdx]);
         const int opcode1 = instr & ARM_B_OPCODE_MASK;
         //const int opcode2 = instr & ARM_CB_OPCODE_MASK;
-        bool isBL = (opcode1 == ARM_OPCODE_B) || (opcode1 == ARM_OPCODE_BL); // inconditional jump
+        bool isBL = (opcode1 == ARM_OPCODE_B) || (opcode1 == ARM_OPCODE_BL); // unconditional jump
         bool isCB = false; // disable for now ... isCB = (opcode2 == ARM_OPCODE_CBZ) || (opcode2 == ARM_OPCODE_CBNZ); // conditional jump
 
         if ((isBL == false) && (isCB == false)) {
@@ -363,14 +425,17 @@ bool EXECodec::inverseARM(SliceArray<byte>& input, SliceArray<byte>& output, int
         dstIdx += 4;
     }
 
-    memcpy(&dst[dstIdx], &src[srcIdx], count - srcIdx);
-    dstIdx += (count - srcIdx);
+    if (srcIdx < count) {
+       memcpy(&dst[dstIdx], &src[srcIdx], size_t(count - srcIdx));
+       dstIdx += (count - srcIdx);
+    }
+
     input._index += count;
     output._index += dstIdx;
     return true;
 }
 
-byte EXECodec::detectType(byte src[], int count, int& codeStart, int& codeEnd)
+byte EXECodec::detectType(const byte src[], int count, int& codeStart, int& codeEnd)
 {
     // Let us check the first bytes ... but this may not be the first block
     // Best effort
@@ -378,26 +443,27 @@ byte EXECodec::detectType(byte src[], int count, int& codeStart, int& codeEnd)
     int arch = 0;
 
     if (parseHeader(src, count, magic, arch, codeStart, codeEnd) == true) {
-        if ((arch == ELF_X86_ARCH) || (arch == ELF_AMD64_ARCH))
-            return X86;
+        switch(arch) {
+            case ELF_X86_ARCH:
+            case ELF_AMD64_ARCH:
+            case WIN_X86_ARCH:
+            case WIN_AMD64_ARCH:
+            case MAC_AMD64_ARCH:
+               return X86;
 
-        if ((arch == WIN_X86_ARCH) || (arch == WIN_AMD64_ARCH))
-            return X86;
+            case ELF_ARM64_ARCH:
+            case WIN_ARM64_ARCH:
+            case MAC_ARM64_ARCH:
+               return ARM64;
 
-        if (arch == MAC_AMD64_ARCH)
-            return X86;
-
-        if ((arch == ELF_ARM64_ARCH) || (arch == WIN_ARM64_ARCH))
-            return ARM64;
-
-        if (arch == MAC_ARM64_ARCH)
-            return ARM64;
+            default:
+               count = codeEnd - codeStart;
+        }
     }
 
     int jumpsX86 = 0;
     int jumpsARM64 = 0;
     uint histo[256] = { 0 };
-    count = codeEnd - codeStart;
 
     for (int i = codeStart; i < codeEnd; i++) {
         histo[int(src[i])]++;
@@ -441,12 +507,15 @@ byte EXECodec::detectType(byte src[], int count, int& codeStart, int& codeEnd)
         return NOT_EXE | byte(dt);
 
     // Filter out (some/many) multimedia files
+    if ((histo[0] < uint(count / 10)) || (histo[255] < uint(count / 100)))
+        return NOT_EXE | byte(dt);
+
     int smallVals = 0;
 
     for (int i = 0; i < 16; i++)
         smallVals += histo[i];
 
-    if ((histo[0] < uint(count / 10)) || (smallVals > (count / 2)) || (histo[255] < uint(count / 100)))
+    if (smallVals > (count / 2))
         return NOT_EXE | byte(dt);
 
     // Ad-hoc thresholds
@@ -643,7 +712,7 @@ bool EXECodec::parseHeader(const byte src[], int count, uint magic, int& arch, i
             codeStart = min(codeStart, count);
             codeEnd = min(codeEnd, count);
             return true;
-        } 
+        }
     }
 
     return false;

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -59,7 +59,7 @@ namespace kanzi
        if (output._index + length > output._length)
            return false;
 
-       memcpy(&output._array[output._index], &input._array[input._index], length);
+       memcpy(&output._array[output._index], &input._array[input._index], size_t(length));
        input._index += length;
        output._index += length;
        return true;

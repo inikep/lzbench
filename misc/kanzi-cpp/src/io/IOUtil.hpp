@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -21,6 +21,8 @@ limitations under the License.
 #include <sstream>
 #include <vector>
 #include <sys/stat.h>
+#include <string.h>
+
 
 #include "../types.hpp"
 
@@ -76,7 +78,7 @@ namespace kanzi
             if (idx != std::string::npos) {
                _path = path.substr(0, idx + 1);
                _name = path.substr(idx + 1);
-            } 
+            }
             else {
                _path = "";
                _name = path;
@@ -98,7 +100,7 @@ namespace kanzi
    };
 
 
-   static inline void createFileList(std::string& target, std::vector<FileData>& files, const FileListConfig& cfg, 
+   static inline void createFileList(std::string& target, std::vector<FileData>& files, const FileListConfig& cfg,
                                      std::vector<std::string>& errors)
    {
        if (target.size() == 0)
@@ -116,7 +118,7 @@ namespace kanzi
 
        if (res != 0) {
            std::stringstream ss;
-           ss << "Cannot access input file '" << target << "'";
+           ss << "Cannot access input file '" << target << "': " << strerror(errno);
            errors.push_back(ss.str());
 
            if (cfg._continueOnErrors == false)
@@ -150,7 +152,7 @@ namespace kanzi
        if (cfg._recursive) {
           if (target[target.size() - 1] != PATH_SEPARATOR)
              target += PATH_SEPARATOR;
-       } 
+       }
        else {
           target.resize(target.size() - 1);
        }
@@ -172,7 +174,7 @@ namespace kanzi
 
                if (res != 0) {
                    std::stringstream ss;
-                   ss << "Cannot access input file '" << fullpath << "'";
+                   ss << "Cannot access input file '" << fullpath << "': " << strerror(errno);
                    errors.push_back(ss.str());
 
                    if (cfg._continueOnErrors == false) {
@@ -189,7 +191,7 @@ namespace kanzi
                      if ((idx != std::string::npos) && (idx < fullpath.length() - 1) && (fullpath[idx + 1] == '.'))
                         continue;
                   }
-                 
+
                   if ((cfg._ignoreLinks == false) || (buffer.st_mode & S_IFMT) != S_IFLNK)
    #if __cplusplus >= 201103L
                      files.emplace_back(fullpath, buffer.st_size, buffer.st_mtime);
@@ -201,10 +203,10 @@ namespace kanzi
                   if (cfg._ignoreDotFiles == true) {
                      size_t idx = fullpath.rfind(PATH_SEPARATOR);
 
-                     if ((idx != std::string::npos) && (idx < fullpath.length() - 1) && (fullpath[idx + 1] == '.')) 
+                     if ((idx != std::string::npos) && (idx < fullpath.length() - 1) && (fullpath[idx + 1] == '.'))
                         continue;
                   }
-                   
+
                   createFileList(fullpath, files, cfg, errors);
                }
            }
@@ -240,57 +242,64 @@ namespace kanzi
 
    static inline void sortFilesByPathAndSize(std::vector<FileData>& files, bool sortBySize = false)
    {
-       FileDataComparator c = { sortBySize };
-       sort(files.begin(), files.end(), c);
+       if (files.size() > 1) {
+          FileDataComparator c = { sortBySize };
+          sort(files.begin(), files.end(), c);
+       }
    }
 
 
-   static inline int mkdirAll(const std::string& path) {
-      errno = 0;
-   #if defined(WIN32) || defined(_WIN32) || defined(_WIN64)
+#if defined(WIN32) || defined(_WIN32) || defined(_WIN64)
+   static inline int mkdirAll(const std::string& path)
+   {
       bool foundDrive = false;
-   #endif
+#else
+   static inline int mkdirAll(const std::string& path, mode_t mode = S_IRWXU | S_IRWXG | S_IROTH | S_IWOTH | S_IXOTH)
+   {
+#endif
+
+      int res = 0;
+      errno = 0;
 
       // Scan path, ignoring potential PATH_SEPARATOR at position 0
-      for (uint i = 1; i < path.size(); i++) {
+      for (size_t i = 1; i < path.size(); i++) {
           if (path[i] == PATH_SEPARATOR) {
               std::string curPath = path;
               curPath.resize(i);
 
-             if (curPath.length() == 0)
-                 continue;
+              if (curPath.length() == 0)
+                  continue;
 
-   #if defined(WIN32) || defined(_WIN32) || defined(_WIN64)
-             //Skip if drive
-             if ((foundDrive == false) && (curPath.length() == 2) && (curPath[1] == ':')) {
-                 foundDrive = true;
-                 continue;
-             }
-   #endif
+#if defined(WIN32) || defined(_WIN32) || defined(_WIN64)
+              //Skip if drive
+              if ((foundDrive == false) && (curPath.length() == 2) && (curPath[1] == ':')) {
+                  foundDrive = true;
+                  continue;
+              }
+#endif
 
-   #if defined(_MSC_VER)
-             if ((_mkdir(curPath.c_str()) != 0) && (errno != EEXIST)) {
-   #elif defined(__MINGW32__)
-             if ((mkdir(curPath.c_str()) != 0) && (errno != EEXIST)) {
-   #else
-             if ((mkdir(curPath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0) && (errno != EEXIST)) {
-   #endif
-                    return -1;
-             }
+#if defined(_MSC_VER)
+              res = _mkdir(curPath.c_str());
+#elif defined(__MINGW32__)
+              res = mkdir(curPath.c_str());
+#else
+              res = mkdir(curPath.c_str(), mode);
+#endif
+              if ((res != 0) && (errno != EEXIST))
+                  return errno;
           }
-       }
+      }
+      errno = 0;
 
-   #if defined(_MSC_VER)
-       if ((_mkdir(path.c_str()) != 0) && (errno != EEXIST)) {
-   #elif defined(__MINGW32__)
-       if ((mkdir(path.c_str()) != 0) && (errno != EEXIST)) {
-   #else
-       if ((mkdir(path.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0) && (errno != EEXIST)) {
-   #endif
-               return -1;
-       }
+#if defined(_MSC_VER)
+      res = _mkdir(path.c_str());
+#elif defined(__MINGW32__)
+      res = mkdir(path.c_str());
+#else
+      res = mkdir(path.c_str(), mode);
+#endif
 
-       return 0;
+      return (res == 0) ? 0 : errno;
    }
 
 

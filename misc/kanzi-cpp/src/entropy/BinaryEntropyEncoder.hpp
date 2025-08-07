@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -28,11 +28,11 @@ namespace kanzi
    class BinaryEntropyEncoder FINAL : public EntropyEncoder
    {
    private:
-       static const uint64 TOP = 0x00FFFFFFFFFFFFFF;
-       static const uint64 MASK_0_24 = 0x0000000000FFFFFF;
-       static const uint64 MASK_0_32 = 0x00000000FFFFFFFF;
-       static const int MAX_BLOCK_SIZE = 1 << 30;
-       static const int MAX_CHUNK_SIZE = 1 << 26;
+       static const uint64 TOP;
+       static const uint64 MASK_0_24;
+       static const uint64 MASK_0_32;
+       static const int MAX_BLOCK_SIZE;
+       static const int MAX_CHUNK_SIZE;
 
        Predictor* _predictor;
        uint64 _low;
@@ -66,13 +66,9 @@ namespace kanzi
    inline void BinaryEntropyEncoder::encodeBit(int bit, int pred)
    {
        // Update fields with new interval bounds and predictor
-       if (bit == 0) {
-          _low = _low + ((((_high - _low) >> 4) * uint64(pred)) >> 8) + 1;
-          _predictor->update(0);
-       } else  {
-          _high = _low + ((((_high - _low) >> 4) * uint64(pred)) >> 8);
-          _predictor->update(1);
-       }
+       const uint64 mid = _low + ((((_high - _low) >> 4) * uint64(pred)) >> 8);
+       (bit != 0) ? _high = mid : _low = mid + 1;
+       _predictor->update(bit != 0);
 
        // Write unchanged first 32 bits to bitstream
        if (((_low ^ _high) >> 24) == 0)

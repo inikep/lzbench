@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -34,6 +34,12 @@ limitations under the License.
 using namespace kanzi;
 using namespace std;
 
+
+const int BlockCompressor::DEFAULT_BLOCK_SIZE = 4 * 1024 * 1024;
+const int BlockCompressor::MIN_BLOCK_SIZE = 1024;
+const int BlockCompressor::MAX_BLOCK_SIZE = 1024 * 1024 * 1024;
+
+
 BlockCompressor::BlockCompressor(const Context& ctx) :
             _ctx(ctx)
 {
@@ -67,6 +73,12 @@ BlockCompressor::BlockCompressor(const Context& ctx) :
        }
     }
 
+    _checksum = _ctx.getInt("checksum", 0);
+
+    if ((_checksum != 0) && (_checksum != 32) && (_checksum != 64))
+       throw invalid_argument("Invalid block checksum size");
+
+    _ctx.putInt("checksum", _checksum);
     _ctx.putString("entropy", _codec);
     _ctx.putString("transform", _transform);
     _overwrite = _ctx.getInt("overwrite", 0) != 0;
@@ -77,8 +89,6 @@ BlockCompressor::BlockCompressor(const Context& ctx) :
     _ctx.putInt("verbosity", _verbosity);
     _jobs = _ctx.getInt("jobs", 1);
     _ctx.putInt("jobs", _jobs);
-    _checksum = _ctx.getInt("checksum", 0) != 0;
-    _ctx.putInt("checksum", _checksum ? 1 : 0);
     _noDotFiles = _ctx.getInt("noDotFiles", 0) != 0;
     _ctx.putInt("noDotFiles", _noDotFiles ? 1 : 0);
     _noLinks = _ctx.getInt("noLinks", 0) != 0;
@@ -95,12 +105,17 @@ BlockCompressor::BlockCompressor(const Context& ctx) :
 
     _inputName = _ctx.getString("inputName") == "" ? "STDIN" : _ctx.getString("inputName");
 
+    if (Global::isReservedName(_inputName))
+        throw invalid_argument("'" + _inputName + "' is a reserved name");
+
      if (_ctx.has("outputName") == false)
         throw invalid_argument("Missing output name");
 
     string str = _ctx.getString("outputName");
     _outputName = (str == "") && (_inputName == "STDIN") ? "STDOUT" : str;
 
+    if (Global::isReservedName(_outputName))
+        throw invalid_argument("'" + _outputName + "' is a reserved name");
 
     if (_ctx.has("blockSize") == false) {
         switch (level) {
@@ -157,9 +172,9 @@ int BlockCompressor::compress(uint64& outputSize)
     int nbFiles = 1;
     Printer log(cout);
     stringstream ss;
-    string str = _inputName;
-    transform(str.begin(), str.end(), str.begin(), ::toupper);
-    bool isStdIn = str == "STDIN";
+    string upperInputName = _inputName;
+    transform(upperInputName.begin(), upperInputName.end(), upperInputName.begin(), ::toupper);
+    bool isStdIn = upperInputName == "STDIN";
 
     if (isStdIn == false) {
         vector<string> errors;
@@ -169,15 +184,15 @@ int BlockCompressor::compress(uint64& outputSize)
         FileListConfig cfg = { isRecursive, _noLinks, false, _noDotFiles };
         createFileList(_inputName, files, cfg, errors);
 
-        if (files.size() == 0) {
-            cerr << "Cannot access input file '" << _inputName << "'" << endl;
-            return Error::ERR_OPEN_FILE;
-        }
-
         if (errors.size() > 0) {
             for (size_t i = 0; i < errors.size(); i++)
                cerr << errors[i] << endl;
 
+            return Error::ERR_OPEN_FILE;
+        }
+
+        if (files.size() == 0) {
+            cerr << "Cannot find any file to compress" << endl;
             return Error::ERR_OPEN_FILE;
         }
 
@@ -211,7 +226,14 @@ int BlockCompressor::compress(uint64& outputSize)
 
         ss << "Verbosity: " << _verbosity << endl;
         ss << "Overwrite: " << (_overwrite ? "true" : "false") << endl;
-        ss << "Checksum: " << (_checksum ? "true" : "false") << endl;
+        string ckSize = "NONE";
+
+        if (_checksum == 32)
+           ckSize = "32 bits";
+        else if (_checksum == 64)
+           ckSize = "64 bits";
+
+        ss << "Block checksum: " << ckSize << endl;
         string etransform = _transform;
         transform(etransform.begin(), etransform.end(), etransform.begin(), ::toupper);
         ss << "Using " << (etransform == "NONE" ? "no" : _transform) << " transform (stage 1)" << endl;
@@ -298,9 +320,9 @@ int BlockCompressor::compress(uint64& outputSize)
 
         if (isStdIn == true) {
             if (oName.length() == 0) {
-                oName = "STDOUT";
+               oName = "STDOUT";
             }
-        } else {
+         } else {
             iName = files[0].fullPath();
             _ctx.putLong("fileSize", files[0]._size);
 
@@ -332,9 +354,10 @@ int BlockCompressor::compress(uint64& outputSize)
     }
     else {
         vector<FileCompressTask<FileCompressResult>*> tasks;
-        int* jobsPerTask = new int[nbFiles];
-        Global::computeJobsPerTask(jobsPerTask, _jobs, nbFiles);
-        int n = 0;
+#ifdef CONCURRENCY_ENABLED
+        vector<int> jobsPerTask(nbFiles);
+        Global::computeJobsPerTask(jobsPerTask.data(), _jobs, nbFiles);
+#endif
 
         if (_reorderFiles == true)
             sortFilesByPathAndSize(files, true);
@@ -362,7 +385,11 @@ int BlockCompressor::compress(uint64& outputSize)
             taskCtx.putString("inputName", iName);
             taskCtx.putString("outputName", oName);
             taskCtx.putInt("blockSize", _blockSize);
-            taskCtx.putInt("jobs", jobsPerTask[n++]);
+#ifdef CONCURRENCY_ENABLED
+            taskCtx.putInt("jobs", jobsPerTask[i]);
+#else
+            taskCtx.putInt("jobs", 1);
+#endif
             FileCompressTask<FileCompressResult>* task = new FileCompressTask<FileCompressResult>(taskCtx, _listeners);
             tasks.push_back(task);
         }
@@ -381,7 +408,7 @@ int BlockCompressor::compress(uint64& outputSize)
 
                 if (_ctx.getPool() == nullptr)
                     results.push_back(async(launch::async, &FileCompressWorker<FCTask*, FileCompressResult>::run, workers[i]));
-                else 
+                else
                     results.push_back(_ctx.getPool()->schedule(&FileCompressWorker<FCTask*, FileCompressResult>::run, workers[i]));
             }
 
@@ -417,8 +444,6 @@ int BlockCompressor::compress(uint64& outputSize)
                 }
             }
         }
-
-        delete[] jobsPerTask;
 
         for (int i = 0; i < nbFiles; i++)
             delete tasks[i];
@@ -461,15 +486,15 @@ int BlockCompressor::compress(uint64& outputSize)
     return res;
 }
 
-bool BlockCompressor::addListener(Listener& bl)
+bool BlockCompressor::addListener(Listener<Event>& bl)
 {
     _listeners.push_back(&bl);
     return true;
 }
 
-bool BlockCompressor::removeListener(Listener& bl)
+bool BlockCompressor::removeListener(Listener<Event>& bl)
 {
-    std::vector<Listener*>::iterator it = find(_listeners.begin(), _listeners.end(), &bl);
+    std::vector<Listener<Event>*>::iterator it = find(_listeners.begin(), _listeners.end(), &bl);
 
     if (it == _listeners.end())
         return false;
@@ -478,9 +503,9 @@ bool BlockCompressor::removeListener(Listener& bl)
     return true;
 }
 
-void BlockCompressor::notifyListeners(vector<Listener*>& listeners, const Event& evt)
+void BlockCompressor::notifyListeners(vector<Listener<Event>*>& listeners, const Event& evt)
 {
-    for (vector<Listener*>::iterator it = listeners.begin(); it != listeners.end(); ++it)
+    for (vector<Listener<Event>*>::iterator it = listeners.begin(); it != listeners.end(); ++it)
         (*it)->processEvent(evt);
 }
 
@@ -493,12 +518,12 @@ void BlockCompressor::getTransformAndCodec(int level, string tranformAndCodec[2]
         break;
 
     case 1:
-        tranformAndCodec[0] = "PACK+LZ";
+        tranformAndCodec[0] = "LZX";
         tranformAndCodec[1] = "NONE";
         break;
 
     case 2:
-        tranformAndCodec[0] = "PACK+LZ";
+        tranformAndCodec[0] = "DNA+LZ";
         tranformAndCodec[1] = "HUFFMAN";
         break;
 
@@ -528,12 +553,12 @@ void BlockCompressor::getTransformAndCodec(int level, string tranformAndCodec[2]
         break;
 
     case 8:
-        tranformAndCodec[0] = "EXE+RLT+TEXT+UTF";
+        tranformAndCodec[0] = "EXE+RLT+TEXT+UTF+DNA";
         tranformAndCodec[1] = "TPAQ";
         break;
 
     case 9:
-        tranformAndCodec[0] = "EXE+RLT+TEXT+UTF";
+        tranformAndCodec[0] = "EXE+RLT+TEXT+UTF+DNA";
         tranformAndCodec[1] = "TPAQX";
         break;
 
@@ -544,7 +569,7 @@ void BlockCompressor::getTransformAndCodec(int level, string tranformAndCodec[2]
 }
 
 template <class T>
-FileCompressTask<T>::FileCompressTask(const Context& ctx, vector<Listener*>& listeners)
+FileCompressTask<T>::FileCompressTask(const Context& ctx, vector<Listener<Event>*>& listeners)
     : _ctx(ctx)
     , _listeners(listeners)
 {
@@ -570,6 +595,11 @@ T FileCompressTask<T>::run()
 
     bool overwrite = _ctx.getInt("overwrite") != 0;
     OutputStream* os = nullptr;
+
+#define CLEANUP_COMP_OS  if ((os != nullptr) && (os != &cout)) {\
+                            delete os; \
+                            os = nullptr; \
+                         }
 
     try {
         string str = outputName;
@@ -611,23 +641,35 @@ T FileCompressTask<T>::run()
             os = new ofstream(outputName.c_str(), ofstream::out | ofstream::binary);
 
             if (!*os) {
+                string errMsg;
+
                 if (overwrite == true) {
                     // Attempt to create the full folder hierarchy to file
                     string parentDir = outputName;
                     size_t idx = outputName.find_last_of(PATH_SEPARATOR);
 
-                    if (idx != string::npos) {
+                    if (idx != string::npos)
                         parentDir.resize(idx);
-                    }
 
-                    if (mkdirAll(parentDir) == 0) {
+                    int rmkd = mkdirAll(parentDir);
+
+                    if ((rmkd == 0) || (rmkd == EEXIST)) {
+                        delete os;
                         os = new ofstream(outputName.c_str(), ofstream::binary);
+                    }
+                    else {
+                        errMsg = strerror(rmkd);
                     }
                 }
 
                 if (!*os) {
+                    delete os;
                     stringstream sserr;
                     sserr << "Cannot open output file '" << outputName << "' for writing";
+
+                    if (errMsg != "")
+                        sserr << ": " << errMsg;
+
                     return T(Error::ERR_CREATE_FILE, 0, 0, sserr.str().c_str());
                 }
             }
@@ -640,16 +682,23 @@ T FileCompressTask<T>::run()
                 _cos->addListener(*_listeners[i]);
         }
         catch (invalid_argument& e) {
+            CLEANUP_COMP_OS
             stringstream sserr;
             sserr << "Cannot create compressed stream: " << e.what();
             return T(Error::ERR_CREATE_COMPRESSOR, 0, 0, sserr.str().c_str());
         }
     }
     catch (exception& e) {
+        CLEANUP_COMP_OS
         stringstream sserr;
         sserr << "Cannot open output file '" << outputName << "' for writing: " << e.what();
         return T(Error::ERR_CREATE_FILE, 0, 0, sserr.str().c_str());
     }
+
+#define CLEANUP_COMP_IS  if ((_is != nullptr) && (_is != &cin)) {\
+                            delete _is; \
+                            _is = nullptr; \
+                         }
 
     try {
         string str = inputName;
@@ -662,6 +711,9 @@ T FileCompressTask<T>::run()
             ifstream* ifs = new ifstream(inputName.c_str(), ifstream::in | ifstream::binary);
 
             if (!*ifs) {
+                delete ifs;
+                delete _cos;
+                _cos = nullptr;
                 stringstream sserr;
                 sserr << "Cannot open input file '" << inputName << "'";
                 return T(Error::ERR_OPEN_FILE, 0, 0, sserr.str().c_str());
@@ -671,6 +723,10 @@ T FileCompressTask<T>::run()
         }
     }
     catch (exception& e) {
+        CLEANUP_COMP_IS
+        CLEANUP_COMP_OS
+        delete _cos;
+        _cos = nullptr;
         stringstream sserr;
         sserr << "Cannot open input file '" << inputName << "': " << e.what();
         return T(Error::ERR_OPEN_FILE, 0, 0, sserr.str().c_str());
@@ -685,7 +741,8 @@ T FileCompressTask<T>::run()
     SliceArray<byte> sa(buf, DEFAULT_BUFFER_SIZE, 0);
 
     if (_listeners.size() > 0) {
-        Event evt(Event::COMPRESSION_START, -1, int64(0), clock());
+        int64 inputSize = _ctx.getLong("fileSize", -1);
+        Event evt(Event::COMPRESSION_START, -1, inputSize, clock());
         BlockCompressor::notifyListeners(_listeners, evt);
     }
 
@@ -700,10 +757,16 @@ T FileCompressTask<T>::run()
                 len = *_is ? sa._length : int(_is->gcount());
             }
             catch (exception& e) {
+                CLEANUP_COMP_IS
+                CLEANUP_COMP_OS
+                const uint64 w = _cos->getWritten();
+                delete[] buf;
+                delete _cos;
+                _cos = nullptr;
                 stringstream sserr;
                 sserr << "Failed to read block from file '" << inputName << "': ";
                 sserr << e.what() << endl;
-                return T(Error::ERR_READ_FILE, read, _cos->getWritten(), sserr.str().c_str());
+                return T(Error::ERR_READ_FILE, read, w, sserr.str().c_str());
             }
 
             if (len <= 0)
@@ -715,15 +778,25 @@ T FileCompressTask<T>::run()
         }
     }
     catch (IOException& ioe) {
+        CLEANUP_COMP_IS
+        CLEANUP_COMP_OS
+        const uint64 w = _cos->getWritten();
         delete[] buf;
-        return T(ioe.error(), read, _cos->getWritten(), ioe.what());
+        delete _cos;
+        _cos = nullptr;
+        return T(ioe.error(), read, w, ioe.what());
     }
     catch (exception& e) {
+        CLEANUP_COMP_IS
+        CLEANUP_COMP_OS
+        const uint64 w = _cos->getWritten();
         delete[] buf;
+        delete _cos;
+        _cos = nullptr;
         stringstream sserr;
         sserr << "An unexpected condition happened. Exiting ..." << endl
               << e.what();
-        return T(Error::ERR_UNKNOWN, read, _cos->getWritten(), sserr.str().c_str());
+        return T(Error::ERR_UNKNOWN, read, w, sserr.str().c_str());
     }
 
     // Close streams to ensure all data are flushed
@@ -732,8 +805,7 @@ T FileCompressTask<T>::run()
     uint64 encoded = _cos->getWritten();
 
     // os destructor will call close if ofstream
-    if ((os != &cout) && (os != nullptr))
-        delete os;
+    CLEANUP_COMP_OS
 
     // Clean up resources at the end of the method as the task may be
     // recycled in a threadpool and the destructor not called.
@@ -741,10 +813,7 @@ T FileCompressTask<T>::run()
     _cos = nullptr;
 
     try {
-        if ((_is != nullptr) && (_is != &cin)) {
-            delete _is;
-        }
-
+        CLEANUP_COMP_IS
         _is = nullptr;
     }
     catch (exception&) {
@@ -762,24 +831,24 @@ T FileCompressTask<T>::run()
             if (delta >= 1e5) {
                 ss.precision(1);
                 ss.setf(ios::fixed);
-                ss << "Compression time:  " << (delta / 1000) << " s" << endl;
+                ss << "Compression time:   " << (delta / 1000) << " s" << endl;
             }
             else {
-                ss << "Compression time:  " << int(delta) << " ms" << endl;
+                ss << "Compression time:   " << int(delta) << " ms" << endl;
             }
 
-            ss << "Input size:        " << read << endl;
-            ss << "Output size:       " << encoded << endl;
+            ss << "Input size:         " << read << endl;
+            ss << "Output size:        " << encoded << endl;
 
             if (read > 0) {
                 ss.precision(6);
-                ss << "Compression ratio: " << (double(encoded) / double(read)) << endl;
+                ss << "Compression ratio:  " << (double(encoded) / double(read)) << endl;
             }
 
             log.print(ss.str(), true);
             ss.str(string());
         } else {
-            ss << "Compressing " << inputName << ": " << read << " => " << encoded;
+            ss << "Compressed " << inputName << ":  " << read << " => " << encoded;
             ss.precision(2);
             ss.setf(ios::fixed);
 
@@ -801,8 +870,8 @@ T FileCompressTask<T>::run()
         }
 
         if ((verbosity > 1) && (delta > 0) && (read > 0)) {
-            double b2KB = double(1000) / double(1024);
-            ss << "Throughput (KB/s): " << uint(double(read) * b2KB / delta);
+            double b2KiB = double(1000) / double(1024);
+            ss << "Throughput (KiB/s): " << uint(double(read) * b2KiB / delta);
             log.println(ss.str(), true);
             ss.str(string());
         }

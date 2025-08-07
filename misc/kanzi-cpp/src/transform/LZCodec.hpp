@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -53,11 +53,11 @@ namespace kanzi {
     public:
         LZXCodec()
         {
-            _hashes = new int32[0];
+            _hashes = nullptr;
             _hashSize = 0;
-            _tkBuf = new byte[0];
-            _mLenBuf = new byte[0];
-            _mBuf = new byte[0];
+            _tkBuf = nullptr;
+            _mLenBuf = nullptr;
+            _mBuf = nullptr;
             _bufferSize = 0;
             _pCtx = nullptr;
         }
@@ -65,11 +65,11 @@ namespace kanzi {
         LZXCodec(Context& ctx) :
             _pCtx(&ctx)
         {
-            _hashes = new int32[0];
+            _hashes = nullptr;
             _hashSize = 0;
-            _tkBuf = new byte[0];
-            _mLenBuf = new byte[0];
-            _mBuf = new byte[0];
+            _tkBuf = nullptr;
+            _mLenBuf = nullptr;
+            _mBuf = nullptr;
             _bufferSize = 0;
         }
 
@@ -77,10 +77,10 @@ namespace kanzi {
         {
             _bufferSize = 0;
             _hashSize = 0;
-            delete[] _hashes;
-            delete[] _mLenBuf;
-            delete[] _mBuf;
-            delete[] _tkBuf;
+            if (_hashes != nullptr) delete[] _hashes;
+            if (_mLenBuf != nullptr) delete[] _mLenBuf;
+            if (_mBuf != nullptr) delete[] _mBuf;
+            if (_tkBuf != nullptr) delete[] _tkBuf;
         }
 
         bool forward(SliceArray<byte>& src, SliceArray<byte>& dst, int length);
@@ -94,19 +94,17 @@ namespace kanzi {
         }
 
     private:
-        static const uint HASH_SEED = 0x1E35A7BD;
-        static const uint HASH_LOG1 = 17;
-        static const uint HASH_SHIFT1 = 40 - HASH_LOG1;
-        static const uint HASH_MASK1 = (1 << HASH_LOG1) - 1;
-        static const uint HASH_LOG2 = 21;
-        static const uint HASH_SHIFT2 = 48 - HASH_LOG2;
-        static const uint HASH_MASK2 = (1 << HASH_LOG2) - 1;
-        static const int MAX_DISTANCE1 = (1 << 16) - 2;
-        static const int MAX_DISTANCE2 = (1 << 24) - 2;
-        static const int MIN_MATCH4 = 4;
-        static const int MIN_MATCH9 = 9;
-        static const int MAX_MATCH = 65535 + 254 + 15 + MIN_MATCH4;
-        static const int MIN_BLOCK_LENGTH = 24;
+        static const uint HASH_SEED;
+        static const uint HASH_LOG;
+        static const uint HASH_LSHIFT;
+        static const uint HASH_RSHIFT;
+        static const int MAX_DISTANCE1;
+        static const int MAX_DISTANCE2;
+        static const int MIN_MATCH4;
+        static const int MIN_MATCH6;
+        static const int MIN_MATCH9;
+        static const int MAX_MATCH;
+        static const int MIN_BLOCK_LENGTH;
 
         int32* _hashes;
         int _hashSize;
@@ -115,6 +113,10 @@ namespace kanzi {
         byte* _tkBuf;
         int _bufferSize;
         Context* _pCtx;
+
+        bool inverseV6(SliceArray<byte>& src, SliceArray<byte>& dst, int length);
+
+        bool inverseV5(SliceArray<byte>& src, SliceArray<byte>& dst, int length);
 
         static int emitLength(byte block[], int len);
 
@@ -131,13 +133,13 @@ namespace kanzi {
     public:
         LZPCodec()
         {
-            _hashes = new int32[0];
+            _hashes = nullptr;
             _hashSize = 0;
         }
 
         LZPCodec(Context&)
         {
-            _hashes = new int32[0];
+            _hashes = nullptr;
             _hashSize = 0;
         }
 
@@ -157,12 +159,12 @@ namespace kanzi {
         }
 
     private:
-        static const uint HASH_SEED = 0x7FEB352D;
-        static const uint HASH_LOG = 16;
-        static const uint HASH_SHIFT = 32 - HASH_LOG;
-        static const int MIN_MATCH = 64;
-        static const int MIN_BLOCK_LENGTH = 128;
-        static const int MATCH_FLAG = 0xFC;
+        static const uint HASH_SEED;
+        static const uint HASH_LOG;
+        static const uint HASH_SHIFT;
+        static const int MIN_MATCH;
+        static const int MIN_BLOCK_LENGTH;
+        static const int MATCH_FLAG;
 
         int32* _hashes;
         int _hashSize;
@@ -173,15 +175,14 @@ namespace kanzi {
     template <bool T>
     inline void LZXCodec<T>::emitLiterals(const byte src[], byte dst[], int len)
     {
-        for (int i = 0; i < len; i += 8)
-            memcpy(&dst[i], &src[i], 8);
+        for (int i = 0; i < len; i += 16)
+            memcpy(&dst[i], &src[i], 16);
     }
 
     template <bool T>
     inline int32 LZXCodec<T>::hash(const byte* p)
     {
-        return (T == true) ? ((LittleEndian::readLong64(p) * HASH_SEED) >> HASH_SHIFT2) & HASH_MASK2 :
-            ((LittleEndian::readLong64(p) * HASH_SEED) >> HASH_SHIFT1) & HASH_MASK1;
+        return ((uint64(LittleEndian::readLong64(p)) << HASH_LSHIFT) * HASH_SEED) >> HASH_RSHIFT;
     }
 
     template <bool T>
@@ -193,13 +194,13 @@ namespace kanzi {
         }
 
         if (length < 65536 + 254) {
-            length = (length - 254) | 0x00FE0000;
-            kanzi::BigEndian::writeInt32(&block[0], length << 8);
+            const uint32 l = (length - 254) | 0x00FE0000;
+            kanzi::BigEndian::writeInt32(&block[0], l << 8);
             return 3;
         }
 
-        length = (length - 255) | 0xFF000000;
-        kanzi::BigEndian::writeInt32(&block[0], length);
+        const uint32 l = (length - 255) | 0xFF000000;
+        kanzi::BigEndian::writeInt32(&block[0], l);
         return 4;
     }
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <sys/stat.h>
 #include "Compressor.hpp"
 #include "../types.hpp"
 #include "../Error.hpp"
 #include "../io/CompressedOutputStream.hpp"
 #include "../transform/TransformFactory.hpp"
 #include "../entropy/EntropyEncoderFactory.hpp"
-#include <sys/stat.h>
 
 
 #ifdef _MSC_VER
@@ -60,7 +60,7 @@ namespace kanzi {
         ofstreambuf (int fd) : _fd(fd) { }
 
      private:
-        int _fd; 
+        int _fd;
 
         virtual int_type overflow(int_type c) {
             if (c == EOF)
@@ -105,7 +105,7 @@ int CDECL initCompressor(struct cData* pData, FILE* dst, struct cContext** pCtx)
            return Error::ERR_CREATE_COMPRESSOR;
 
         string transform = TransformFactory<byte>::getName(TransformFactory<byte>::getType(pData->transform));
-        
+
         if (transform.length() >= 63)
             return Error::ERR_INVALID_PARAM;
 
@@ -115,7 +115,7 @@ int CDECL initCompressor(struct cData* pData, FILE* dst, struct cContext** pCtx)
 
         if (entropy.length() >= 15)
             return Error::ERR_INVALID_PARAM;
-        
+
         strncpy(pData->entropy, entropy.data(), entropy.length());
         pData->entropy[entropy.length() + 1] = 0;
         pData->blockSize = (pData->blockSize + 15) & -16;
@@ -131,14 +131,15 @@ int CDECL initCompressor(struct cData* pData, FILE* dst, struct cContext** pCtx)
         // Create compression stream and update context
         fos = new FileOutputStream(fd);
         cctx = new cContext();
-        bool checksum = pData->checksum == 0 ? false : true;
-        bool headerless = pData->headerless == 0 ? false : true;
 
+        cctx->pCos = new CompressedOutputStream(*fos, pData->jobs,
+                                                pData->entropy, pData->transform,
+                                                pData->blockSize, pData->checksum,
+                                                fileSize,
 #ifdef CONCURRENCY_ENABLED
-        cctx->pCos = new CompressedOutputStream(*fos, pData->entropy, pData->transform, pData->blockSize, checksum, pData->jobs, fileSize, nullptr, headerless);
-#else
-        cctx->pCos = new CompressedOutputStream(*fos, pData->entropy, pData->transform, pData->blockSize, checksum, pData->jobs, fileSize, headerless);
+                                                nullptr,
 #endif
+                                                pData->headerless != 0);
 
         cctx->blockSize = pData->blockSize;
         cctx->fos = fos;

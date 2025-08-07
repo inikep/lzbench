@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -19,6 +19,14 @@ limitations under the License.
 #include "../Memory.hpp"
 
 using namespace kanzi;
+
+
+const int DivSufSort::SS_INSERTIONSORT_THRESHOLD = 16;
+const int DivSufSort::SS_BLOCKSIZE = 4096;
+const int DivSufSort::SS_MISORT_STACKSIZE = 16;
+const int DivSufSort::SS_SMERGE_STACKSIZE = 32;
+const int DivSufSort::TR_STACKSIZE = 64;
+const int DivSufSort::TR_INSERTIONSORT_THRESHOLD = 16;
 
 const int DivSufSort::SQQ_TABLE[] = {
     0, 16, 22, 27, 32, 35, 39, 42, 45, 48, 50, 53, 55, 57, 59, 61,
@@ -82,13 +90,18 @@ void DivSufSort::reset()
     memset(&_bucketB[0], 0, sizeof(int) * 65536);
 }
 
-void DivSufSort::computeSuffixArray(const byte input[], int sa[], int length)
+bool DivSufSort::computeSuffixArray(const byte input[], int sa[], int length)
 {
     _buffer = reinterpret_cast<const uint8*>(&input[0]);
     _sa = sa;
     reset();
     const int m = sortTypeBstar(_bucketA, _bucketB, length);
+
+    if (m < 0)
+       return false;
+
     constructSuffixArray(_bucketA, _bucketB, length, m);
+    return true;
 }
 
 void DivSufSort::constructSuffixArray(int bucketA[], int bucketB[], int n, int m)
@@ -155,13 +168,21 @@ void DivSufSort::constructSuffixArray(int bucketA[], int bucketB[], int n, int m
     }
 }
 
-int DivSufSort::computeBWT(const byte input[], byte output[], int bwt[], int length, int indexes[], int idxCount)
+bool DivSufSort::computeBWT(const byte input[], byte output[], int bwt[], int length, int indexes[], int idxCount)
 {
     _buffer = reinterpret_cast<const uint8*>(&input[0]);
     _sa = bwt;
     reset();
     const int m = sortTypeBstar(_bucketA, _bucketB, length);
+
+    if (m < 0)
+        return false;
+
     const int pIdx = constructBWT(_bucketA, _bucketB, length, m, indexes, idxCount);
+
+    if (pIdx < 0)
+        return false;
+
     output[0] = input[length - 1];
 
     for (int i = 0; i < pIdx; i++)
@@ -170,7 +191,7 @@ int DivSufSort::computeBWT(const byte input[], byte output[], int bwt[], int len
     for (int i = pIdx + 1; i < length; i++)
         output[i] = byte(bwt[i]);
 
-    return pIdx + 1;
+    return true;
 }
 
 int DivSufSort::constructBWT(int bucketA[], int bucketB[], int n, int m, int indexes[], int idxCount)
@@ -288,7 +309,10 @@ int DivSufSort::sortTypeBstar(int bucketA[], int bucketB[], int n)
             c1 = c0;
             bucketA[c1]++;
             i--;
-        } while ((i >= 0) && ((c0 = _buffer[i]) >= c1));
+
+           if (i < 0)
+              break;
+        } while ((c0 = _buffer[i]) >= c1);
 
         if (i < 0)
             break;
@@ -299,7 +323,10 @@ int DivSufSort::sortTypeBstar(int bucketA[], int bucketB[], int n)
         i--;
         c1 = c0;
 
-        while ((i >= 0) && ((c0 = _buffer[i]) <= c1)) {
+        while (i >= 0) {
+            if ((c0 = _buffer[i]) > c1)
+                break;
+
             bucketB[(c1 << 8) + c0]++;
             c1 = c0;
             i--;
@@ -395,7 +422,10 @@ int DivSufSort::sortTypeBstar(int bucketA[], int bucketB[], int n)
         for (int i = n - 1, j = m; i >= 0;) {
             i--;
 
-            for (int c1 = c0; (i >= 0) && ((c0 = _buffer[i]) >= c1); i--) {
+            for (int c1 = c0; i >= 0; i--) {
+                if ((c0 = _buffer[i]) < c1)
+                   break;
+
                 c1 = c0;
             }
 
@@ -403,7 +433,10 @@ int DivSufSort::sortTypeBstar(int bucketA[], int bucketB[], int n)
                 const int tt = i;
                 i--;
 
-                for (int c1 = c0; (i >= 0) && ((c0 = _buffer[i]) <= c1); i--) {
+                for (int c1 = c0; i >= 0; i--) {
+                    if ((c0 = _buffer[i]) > c1)
+                       break;
+
                     c1 = c0;
                 }
 
@@ -696,7 +729,7 @@ void DivSufSort::ssSwapMerge(int pa, int first, int middle, int last, int buf,
             if ((first < middle) && (middle < last))
                 ssMergeBackward(pa, first, middle, last, buf, depth);
 
-            if (((check & 1) != 0) || 
+            if (((check & 1) != 0) ||
                 (((check & 2) != 0) && (ssCompare(&_sa[pa + getIndex(_sa[first - 1])], &_sa[pa + _sa[first]], depth) == 0))) {
                 _sa[first] = ~_sa[first];
             }
@@ -1302,19 +1335,18 @@ int DivSufSort::ssPivot(int td, int pa, int first, int last) const
     int middle = first + (t >> 1);
 
     if (t <= 512) {
-        return (t <= 32) ? ssMedian3(td, pa, first, middle, last - 1) : ssMedian5(td, pa, first, first + (t >> 2), middle, last - 1 - (t >> 2), last - 1);
+        return (t <= 32) ? ssMedian3(&_buffer[td], pa, first, middle, last - 1) : ssMedian5(&_buffer[td], pa, first, first + (t >> 2), middle, last - 1 - (t >> 2), last - 1);
     }
 
     t >>= 3;
-    first = ssMedian3(td, pa, first, first + t, first + (t << 1));
-    middle = ssMedian3(td, pa, middle - t, middle, middle + t);
-    last = ssMedian3(td, pa, last - 1 - (t << 1), last - 1 - t, last - 1);
-    return ssMedian3(td, pa, first, middle, last);
+    first = ssMedian3(&_buffer[td], pa, first, first + t, first + (t << 1));
+    middle = ssMedian3(&_buffer[td], pa, middle - t, middle, middle + t);
+    last = ssMedian3(&_buffer[td], pa, last - 1 - (t << 1), last - 1 - t, last - 1);
+    return ssMedian3(&_buffer[td], pa, first, middle, last);
 }
 
-int DivSufSort::ssMedian5(const int idx, int pa, int v1, int v2, int v3, int v4, int v5) const
+int DivSufSort::ssMedian5(const uint8 buf0[], int pa, int v1, int v2, int v3, int v4, int v5) const
 {
-    const uint8* buf0 = &_buffer[idx];
     const int* buf1 = &_sa[pa];
 
     if (buf0[buf1[_sa[v2]]] > buf0[buf1[_sa[v3]]]) {
@@ -1345,9 +1377,8 @@ int DivSufSort::ssMedian5(const int idx, int pa, int v1, int v2, int v3, int v4,
     return (buf0[buf1[_sa[v3]]] > buf0[buf1[_sa[v4]]]) ? v4 : v3;
 }
 
-int DivSufSort::ssMedian3(int idx, int pa, int v1, int v2, int v3) const
+int DivSufSort::ssMedian3(const uint8 buf0[], int pa, int v1, int v2, int v3) const
 {
-    const uint8* buf0 = &_buffer[idx];
     const int* buf1 = &_sa[pa];
 
     if (buf0[buf1[_sa[v1]]] > buf0[buf1[_sa[v2]]]) {
@@ -1519,7 +1550,10 @@ uint64 DivSufSort::trPartition(int isad, int first, int middle, int last, int v)
     int a = b;
 
     if ((a < last) && (x < v)) {
-        while ((++b < last) && ((x = p[_sa[b]]) <= v)) {
+        while (++b < last) {
+            if ((x = p[_sa[b]]) > v)
+                break;
+
             if (x == v) {
                 std::swap(_sa[a], _sa[b]);
                 a++;
@@ -1541,7 +1575,10 @@ uint64 DivSufSort::trPartition(int isad, int first, int middle, int last, int v)
     int d = c;
 
     if ((b < d) && (x > v)) {
-        while ((--c > b) && ((x = p[_sa[c]]) >= v)) {
+        while (--c > b) {
+            if ((x = p[_sa[c]]) < v)
+                break;
+
             if (x == v) {
                 std::swap(_sa[c], _sa[d]);
                 d--;
@@ -1674,6 +1711,9 @@ void DivSufSort::trIntroSort(int isa, int isad, int first, int last, TRBudget& b
             else if (limit == -2) {
                 // tandem repeat copy
                 const StackElement* se = _trStack->pop();
+
+                if (se == nullptr)
+                    return;
 
                 if (se->_d == 0) {
                     trCopy(isa, first, se->_b, se->_c, last, isad - isa);

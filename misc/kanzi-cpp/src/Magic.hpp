@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -22,14 +22,14 @@ limitations under the License.
 
 namespace kanzi
 {
-   class Magic {
-   public:
+   struct Magic {
        static const uint NO_MAGIC = 0;
        static const uint JPG_MAGIC = 0xFFD8FFE0;
        static const uint GIF_MAGIC = 0x47494638;
        static const uint PDF_MAGIC = 0x25504446;
        static const uint ZIP_MAGIC = 0x504B0304; // Works for jar & office docs
-       static const uint LZMA_MAGIC = 0x377ABCAF; // Works for 7z  37 7A BC AF 27 1C 
+       static const uint LZMA_MAGIC = 0x377ABCAF; // Works for 7z  37 7A BC AF 27 1C
+       static const uint RAR_MAGIC = 0x52617221; // 52 61 72 21 1A 07 00
        static const uint PNG_MAGIC = 0x89504E47;
        static const uint ELF_MAGIC = 0x7F454C46;
        static const uint MAC_MAGIC32 = 0xFEEDFACE;
@@ -50,70 +50,64 @@ namespace kanzi
        static const uint GZIP_MAGIC = 0x1F8B;
        static const uint BMP_MAGIC = 0x424D;
        static const uint WIN_MAGIC = 0x4D5A;
-       static const uint PBM_MAGIC = 0x5034; // bin only       
+       static const uint PBM_MAGIC = 0x5034; // bin only
        static const uint PGM_MAGIC = 0x5035; // bin only
        static const uint PPM_MAGIC = 0x5036; // bin only
-       
+
        static uint getType(const byte src[]);
 
-       static bool isCompressed(uint magic);       
+       static bool isCompressed(uint magic);
 
-       static bool isMultimedia(uint magic);       
+       static bool isMultimedia(uint magic);
 
-       static bool isExecutable(uint magic);       
-  
+       static bool isExecutable(uint magic);
+    };
 
-    private:
-       Magic() {}
-       ~Magic() {}        
-       
-    }; 
-    
-       
+
     // 4 bytes must be readable in src
-    inline uint Magic::getType(const byte src[]) 
+    inline uint Magic::getType(const byte src[])
     {
-        static const uint KEYS32[17] = { 
+        static const uint KEYS32[18] = {
             GIF_MAGIC, PDF_MAGIC, ZIP_MAGIC, LZMA_MAGIC, PNG_MAGIC,
             ELF_MAGIC, MAC_MAGIC32, MAC_CIGAM32, MAC_MAGIC64, MAC_CIGAM64,
             ZSTD_MAGIC, BROTLI_MAGIC, CAB_MAGIC, RIFF_MAGIC, FLAC_MAGIC,
-            XZ_MAGIC, KNZ_MAGIC
+            XZ_MAGIC, KNZ_MAGIC, RAR_MAGIC
         };
 
-        static const uint KEYS16[3] = { 
+        static const uint KEYS16[3] = {
             GZIP_MAGIC, BMP_MAGIC, WIN_MAGIC
         };
-    
+
         const uint key = uint(BigEndian::readInt32(&src[0]));
-       
+
         if ((key & ~0x0F) == JPG_MAGIC)
             return key;
 
         if (((key >> 8) == BZIP2_MAGIC)  || ((key >> 8) == MP3_ID3_MAGIC))
             return key >> 8;
-       
+
         const int n = sizeof(KEYS32) / sizeof(uint);
 
         for (int i = 0; i < n; i++) {
             if (key == KEYS32[i])
                return key;
         }
-       
+
         const uint key16 = key >> 16;
-        
+
         for (int i = 0; i < 3; i++) {
             if (key16 == KEYS16[i])
                 return key16;
-        }    
-        
+        }
+
         if ((key16 == PBM_MAGIC) || (key16 == PGM_MAGIC) || (key16 == PPM_MAGIC)) {
             const uint subkey = (key >> 8) & 0xFF;
-            
+
             if ((subkey == 0x07) || (subkey == 0x0A) || (subkey == 0x0D) || (subkey == 0x20))
                 return key16;
         }
-            
-        return NO_MAGIC;      
+
+        return NO_MAGIC;
     }
 
 
@@ -134,6 +128,7 @@ namespace kanzi
             case MP3_ID3_MAGIC:
             case XZ_MAGIC:
             case KNZ_MAGIC:
+            case RAR_MAGIC:
                 return true;
 				
             default:
@@ -176,6 +171,6 @@ namespace kanzi
     }
 
 }
-    
-#endif      
+
+#endif
 

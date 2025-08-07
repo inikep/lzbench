@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -76,47 +76,42 @@ uint DefaultOutputBitStream::writeBits(const byte bits[], uint count)
             remaining -= (r << 3);
         }
     }
-    else {
+    else if (remaining >= 64) {
         // Not byte aligned
-        if (remaining >= 64) {
-            const uint r = 64 - _availBits;
-            const uint a = _availBits;
+        const uint r = 64 - _availBits;
+        const uint a = _availBits;
 
-            while (remaining >= 256) {
-                const uint64 v1 = uint64(BigEndian::readLong64(&bits[start]));
-                const uint64 v2 = uint64(BigEndian::readLong64(&bits[start + 8]));
-                const uint64 v3 = uint64(BigEndian::readLong64(&bits[start + 16]));
-                const uint64 v4 = uint64(BigEndian::readLong64(&bits[start + 24]));
-                _current |= (v1 >> r);
+        while (remaining >= 256) {
+            const uint64 v1 = uint64(BigEndian::readLong64(&bits[start]));
+            const uint64 v2 = uint64(BigEndian::readLong64(&bits[start + 8]));
+            const uint64 v3 = uint64(BigEndian::readLong64(&bits[start + 16]));
+            const uint64 v4 = uint64(BigEndian::readLong64(&bits[start + 24]));
+            _current |= (v1 >> r);
 
-                if (_position >= _bufferSize - 32)
-                    flush();
+            if (_position >= _bufferSize - 32)
+                flush();
 
-                BigEndian::writeLong64(&_buffer[_position], _current);
-                _current = (v1 << a) | (v2 >> r);
-                BigEndian::writeLong64(&_buffer[_position + 8], _current);
-                _current = (v2 << a) | (v3 >> r);
-                BigEndian::writeLong64(&_buffer[_position + 16], _current);
-                _current = (v3 << a) | (v4 >> r);
-                BigEndian::writeLong64(&_buffer[_position + 24], _current);
-                _current = (v4 << a);
-                start += 32;
-                remaining -= 256;
-                _availBits = 64;
-                _position += 32;
-            }
-
-            while (remaining >= 64) {
-               const uint64 v = uint64(BigEndian::readLong64(&bits[start]));
-               _current |= (v >> r);
-               pushCurrent();
-               _current = v << a;
-               start += 8;
-               remaining -= 64;
-            }
-
-            _availBits = a;
+            BigEndian::writeLong64(&_buffer[_position], _current);
+            BigEndian::writeLong64(&_buffer[_position + 8],  (v1 << a) | (v2 >> r));
+            BigEndian::writeLong64(&_buffer[_position + 16], (v2 << a) | (v3 >> r));
+            BigEndian::writeLong64(&_buffer[_position + 24], (v3 << a) | (v4 >> r));
+            _position += 32;
+            _current = (v4 << a);
+            start += 32;
+            remaining -= 256;
+            _availBits = 64;
         }
+
+        while (remaining >= 64) {
+           const uint64 v = uint64(BigEndian::readLong64(&bits[start]));
+           _current |= (v >> r);
+           pushCurrent();
+           _current = v << a;
+           start += 8;
+           remaining -= 64;
+        }
+
+        _availBits = a;
     }
 
     // Last bytes

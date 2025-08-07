@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -29,13 +29,8 @@ limitations under the License.
 namespace kanzi
 {
 
-   class ANSDecSymbol FINAL
+   struct ANSDecSymbol
    {
-   public:
-      ANSDecSymbol() :  _cumFreq(0),  _freq(0)  { }
-
-      ~ANSDecSymbol() { }
-
       void reset(int cumFreq, int freq, int logRange);
 
       uint16 _cumFreq;
@@ -45,7 +40,7 @@ namespace kanzi
 
    class ANSRangeDecoder : public EntropyDecoder {
    public:
-      static const int ANS_TOP = 1 << 15; // max possible for ANS_TOP=1<<23
+      static const uint ANS_TOP;
 
       ANSRangeDecoder(InputBitStream& bitstream,
                       int order = 0,
@@ -61,10 +56,10 @@ namespace kanzi
 
 
    private:
-      static const int DEFAULT_ANS0_CHUNK_SIZE = 16384;
-      static const int DEFAULT_LOG_RANGE = 12;
-      static const int MIN_CHUNK_SIZE = 1024;
-      static const int MAX_CHUNK_SIZE = 1 << 27; // 8*MAX_CHUNK_SIZE must not overflow
+      static const int DEFAULT_ANS0_CHUNK_SIZE;
+      static const int DEFAULT_LOG_RANGE;
+      static const int MIN_CHUNK_SIZE;
+      static const int MAX_CHUNK_SIZE;
 
       InputBitStream& _bitstream;
       uint* _freqs;
@@ -77,9 +72,9 @@ namespace kanzi
       uint _order;
       uint _logRange;
 
-      void decodeChunk(byte block[], int end);
+      bool decodeChunk(byte block[], uint count);
 
-      int decodeSymbol(byte*& p, int& st, const ANSDecSymbol& sym, const int mask) const;
+      uint decodeSymbol(byte*& p, uint& st, const ANSDecSymbol& sym, const int mask) const;
 
       int decodeHeader(uint frequencies[], uint alphabet[]);
 
@@ -94,16 +89,15 @@ namespace kanzi
    }
 
 
-   inline int ANSRangeDecoder::decodeSymbol(byte*& p, int& st, const ANSDecSymbol& sym, const int mask) const
+   inline uint ANSRangeDecoder::decodeSymbol(byte*& p, uint& st, const ANSDecSymbol& sym, const int mask) const
    {
       // Compute next ANS state
       // D(x) = (s, q_s (x/M) + mod(x,M) - b_s) where s is such b_s <= x mod M < b_{s+1}
-      st = int(sym._freq) * (st >> _logRange) + (st & mask) - int(sym._cumFreq);
+      st = uint(sym._freq) * (st >> _logRange) + (st & mask) - uint(sym._cumFreq);
 
       // Normalize
       const int x = (st < ANS_TOP) ? -1 : 0;
-      st <<= (x & 16);
-      st |= (x & ((int(p[0]) << 8) | int(p[1])));
+      st = (st << (x & 16)) | (x & ((uint(p[0]) << 8) | uint(p[1])));
       p -= (x + x);
       return st;
    }

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -20,6 +20,9 @@ limitations under the License.
 #include <cstring>
 #include <stdexcept>
 #include "../Transform.hpp"
+
+#define SKIP_MASK  byte(0xFF)
+
 
 namespace kanzi {
 
@@ -45,7 +48,6 @@ namespace kanzi {
        int getNbTransforms() const { return _length; }
 
    private:
-       static const byte SKIP_MASK = byte(0xFF);
 
        Transform<T>* _transforms[8]; // transforms or functions
        bool _deallocate; // deallocate memory for transforms ?
@@ -123,7 +125,7 @@ namespace kanzi {
            // Apply forward transform
            if (_transforms[i]->forward(*in, *out, count) == false) {
                // Transform failed. Either it does not apply to this type
-               // of data or a recoverable error occured => revert
+               // of data or a recoverable error occurred => revert
                in->_index = savedIIdx;
                out->_index = savedOIdx;
                continue;
@@ -141,7 +143,7 @@ namespace kanzi {
            if ((output._index + count > output._length) || (in->_index + count > in->_length))
                _skipFlags = SKIP_MASK;
            else
-               std::memcpy(&output._array[output._index], &in->_array[in->_index], count);
+               std::memcpy(&output._array[output._index], &in->_array[in->_index], size_t(count));
        }
 
        input._index += blockSize;
@@ -165,7 +167,7 @@ namespace kanzi {
            return true;
 
        if (_skipFlags == SKIP_MASK) {
-           std::memcpy(&output._array[output._index], &input._array[input._index], count);
+           std::memcpy(&output._array[output._index], &input._array[input._index], size_t(count));
            input._index += count;
            output._index += count;
            return true;
@@ -213,7 +215,7 @@ namespace kanzi {
            if ((output._index + count > output._length) || (input._index + count > input._length))
                res = false;
            else
-               std::memcpy(&output._array[output._index], &input._array[input._index], count);
+               std::memcpy(&output._array[output._index], &input._array[input._index], size_t(count));
        }
 
        input._index += blockSize;
@@ -227,10 +229,13 @@ namespace kanzi {
        int requiredSize = srcLength;
 
        for (int i = 0; i < _length; i++) {
-           const int max = _transforms[i]->getMaxEncodedLength(requiredSize);
+           if (_transforms[i] == nullptr)
+               continue;
 
-           if (max > requiredSize)
-               requiredSize = max;
+           const int nxtSize = _transforms[i]->getMaxEncodedLength(requiredSize);
+
+           if (nxtSize > requiredSize)
+               requiredSize = nxtSize;
        }
 
        return requiredSize;

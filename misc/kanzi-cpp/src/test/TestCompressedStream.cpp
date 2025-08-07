@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -13,23 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <cstdio>
+#include <fstream>
 #include <iostream>
 #include "../io/CompressedInputStream.hpp"
 #include "../io/CompressedOutputStream.hpp"
+#include "../io/IOException.hpp"
 
 using namespace std;
 using namespace kanzi;
 
-
 uint64 compress1(byte block[], uint length)
 {
-    cout << "Test - Regular" << endl;
+    cout << "Test - Regular (RLT+TEXT&HUFFMAN)" << endl;
     uint blockSize = (length / (1 + (rand() & 3))) & -16;
     byte* buf = new byte[length];
     memcpy(&buf[0], &block[0], size_t(length));
     stringbuf buffer;
     iostream ios(&buffer);
-    CompressedOutputStream* cos = new CompressedOutputStream(ios, "HUFFMAN", "RLT+TEXT", blockSize, false, 1);
+    CompressedOutputStream* cos = new CompressedOutputStream(ios, 1, "HUFFMAN", "RLT+TEXT", blockSize);
     cos->write((const char*)block, length);
     cos->close();
     uint64 written = cos->getWritten();
@@ -60,22 +62,28 @@ uint64 compress2(byte block[], uint length)
 {
     int jobs;
     srand((uint)time(nullptr));
-    bool check = (rand() & 1) == 0;
+    int checksum = 32 * min(rand() & 3, 2);
     uint blockSize = (length / (1 + (rand() & 3))) & -16;
 
 #ifdef CONCURRENCY_ENABLED
     jobs = 1 + (rand() & 3);
-    cout << "Test - " << jobs << " job(s)" << ((check == true) ? " - checksum" : "") << endl;
+    cout << "Test - " << jobs << " job(s) - ";
 #else
     jobs = 1;
-    cout << "Test" << ((check == true) ? " - checksum" : "") << endl;
+    cout << "Test - ";
 #endif
+    if (checksum == 0)
+       cout << "no checksum";
+    else
+       cout << checksum << " bits checksum";
+
+    cout << " (LZX&ANS0)" << endl;
 
     byte* buf = new byte[length];
     memcpy(&buf[0], &block[0], size_t(length));
     stringbuf buffer;
     iostream ios(&buffer);
-    CompressedOutputStream* cos = new CompressedOutputStream(ios, "ANS0", "LZX", blockSize, check, jobs);
+    CompressedOutputStream* cos = new CompressedOutputStream(ios, jobs, "ANS0", "LZX", blockSize, checksum);
     cos->write((const char*)block, length);
     cos->close();
     uint64 written = cos->getWritten();
@@ -104,13 +112,13 @@ uint64 compress2(byte block[], uint length)
 
 uint64 compress3(byte block[], uint length)
 {
-    cout << "Test - incompressible data" << endl;
+    cout << "Test - incompressible data (LZP+RLT&FPAQ)" << endl;
     uint blockSize = (length / (1 + (rand() & 3))) & -16;
     byte* buf = new byte[length];
     memcpy(&buf[0], &block[0], size_t(length));
     stringbuf buffer;
     iostream ios(&buffer);
-    CompressedOutputStream* cos = new CompressedOutputStream(ios, "FPAQ", "LZP+ZRLT", blockSize, true, 1);
+    CompressedOutputStream* cos = new CompressedOutputStream(ios, 1, "FPAQ", "LZP+ZRLT", blockSize, 32);
     cos->write((const char*)block, length);
     cos->close();
     uint64 written = cos->getWritten();
@@ -143,10 +151,10 @@ uint64 compress4(byte block[], uint length)
     uint64 res;
 
     try {
-        cout << "Test - write after close" << endl;
+        cout << "Test - write after close (TEXT&HUFFMAN)" << endl;
         stringbuf buffer;
         iostream os(&buffer);
-        cos = new CompressedOutputStream(os, "HUFFMAN", "TEXT", 4 * 1024 * 1024, false, 1);
+        cos = new CompressedOutputStream(os, 1, "HUFFMAN", "TEXT");
         cos->write((const char*)block, length);
         cos->close();
         cos->put(char(0));
@@ -169,10 +177,10 @@ uint64 compress5(byte block[], uint length)
     uint64 res;
 
     try {
-        cout << "Test - read after close" << endl;
+        cout << "Test - read after close (TEXT&HUFFMAN)" << endl;
         stringbuf buffer;
         iostream ios(&buffer);
-        cos = new CompressedOutputStream(ios, "HUFFMAN", "TEXT", 4 * 1024 * 1024, false, 1);
+        cos = new CompressedOutputStream(ios, 1, "HUFFMAN", "TEXT");
         cos->write((const char*)block, length);
         cos->close();
         ios.seekg(0);
@@ -246,11 +254,61 @@ int testCorrectness(int, const char*[])
     return (res == true) ? 0 : 1;
 }
 
+void testSeek(string name)
+{
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+    ifstream ifs;
+    ifs.open(name.c_str(), ios::binary|ios::in);
+
+    char buf[1024];
+    int64 pos1 = 0;
+    int64 pos2 = 0;
+    CompressedInputStream cis(ifs, 1);
+    cis.read((char*)buf, 100);
+
+    for (int i = 0; i < 100; i++)
+       cout << buf[i];
+
+    cout << endl << endl;
+
+    // Block positions for enwik8 compressed with L5 & version 2.4
+    // To be updated.
+    int64 positions[4] = { 17729391, 26695626, 8843019, 192 };
+
+    for (int i = 0; i< 4; i++) {
+        pos1 = positions[i]; 
+        cis.seek(pos1);
+        pos2 = cis.tell();
+        cout << pos1 << " / " << pos2 << endl;
+        cis.read(buf, 100);
+
+        for (int j = 0; j < 100; j++)
+           cout << buf[j];
+
+        cout << endl << endl;
+    }
+    
+    cis.close();
+    ifs.close();
+#endif
+}
+
 #ifdef __GNUG__
 int main(int argc, const char* argv[])
 #else
 int TestCompressedStream_main(int argc, const char* argv[])
 #endif
 {
-    return testCorrectness(argc, argv);
+    try {
+        //testSeek("/tmp/enwik8.knz");
+        return testCorrectness(argc, argv);
+    }
+    catch (IOException& e) {
+        cout << "Exception: " << e.what() << endl;
+        return e.error();
+    }
+    catch (runtime_error& e) {
+        cout << "Exception: " << e.what() << endl;
+        return 255;
+    }
 }

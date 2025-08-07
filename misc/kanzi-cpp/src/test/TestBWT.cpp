@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -210,7 +210,7 @@ int testBWTSpeed(bool isBWT, int iter, bool isSmallSize)
             tf->forward(ia1, ia2, size);
             clock_t after1 = clock();
             delta1 += (after1 - before1);
-            
+
             if (isBWT) {
                 BWT* bwt = (BWT*)tf;
 
@@ -254,14 +254,15 @@ int testBWTSpeed(bool isBWT, int iter, bool isSmallSize)
         delete[] output;
         delete[] reverse;
 
+        // KB = 1000, KiB = 1024
         double prod = double(iter) * double(size);
-        double b2KB = double(1) / double(1024);
+        double b2KiB = double(1) / double(1024);
         double d1_sec = double(delta1) / CLOCKS_PER_SEC;
         double d2_sec = double(delta2) / CLOCKS_PER_SEC;
         cout << "Forward transform [ms] : " << int(d1_sec * 1000) << endl;
-        cout << "Throughput [KB/s]      : " << int(prod * b2KB / d1_sec) << endl;
+        cout << "Throughput [KiB/s]     : " << int(prod * b2KiB / d1_sec) << endl;
         cout << "Reverse transform [ms] : " << int(d2_sec * 1000) << endl;
-        cout << "Throughput [KB/s]      : " << int(prod * b2KB / d2_sec) << endl;
+        cout << "Throughput [KiB/s]     : " << int(prod * b2KiB / d2_sec) << endl;
         cout << endl;
     }
 

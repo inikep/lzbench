@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -22,11 +22,18 @@ limitations under the License.
 using namespace kanzi;
 using namespace std;
 
+const uint64 BinaryEntropyEncoder::TOP = 0x00FFFFFFFFFFFFFF;
+const uint64 BinaryEntropyEncoder::MASK_0_24 = 0x0000000000FFFFFF;
+const uint64 BinaryEntropyEncoder::MASK_0_32 = 0x00000000FFFFFFFF;
+const int BinaryEntropyEncoder::MAX_BLOCK_SIZE = 1 << 30;
+const int BinaryEntropyEncoder::MAX_CHUNK_SIZE = 1 << 26;
+
+
 BinaryEntropyEncoder::BinaryEntropyEncoder(OutputBitStream& bitstream, Predictor* predictor, bool deallocate)
     : _predictor(predictor)
     , _bitstream(bitstream)
     , _deallocate(deallocate)
-    , _sba(new byte[0], 0)
+    , _sba(nullptr, 0)
 {
     if (predictor == nullptr)
         throw invalid_argument("Invalid null predictor parameter");
@@ -39,7 +46,9 @@ BinaryEntropyEncoder::BinaryEntropyEncoder(OutputBitStream& bitstream, Predictor
 BinaryEntropyEncoder::~BinaryEntropyEncoder()
 {
     _dispose();
-    delete[] _sba._array;
+
+    if (_sba._array != nullptr)
+        delete[] _sba._array;
 
     if (_deallocate)
         delete _predictor;
@@ -52,7 +61,7 @@ int BinaryEntropyEncoder::encode(const byte block[], uint blkptr, uint count)
 
     uint startChunk = blkptr;
     const uint end = blkptr + count;
-    uint length = max(count, uint(64));
+    uint length = max(count, 64u);
 
     if (length >= MAX_CHUNK_SIZE) {
         // If the block is big (>=64MB), split the encoding to avoid allocating
@@ -60,18 +69,21 @@ int BinaryEntropyEncoder::encode(const byte block[], uint blkptr, uint count)
         length = (length / 8 < MAX_CHUNK_SIZE) ? count >> 3 : count >> 4;
     }
 
+    const uint bufSize = length + (length >> 3);
+
+    if (_sba._length < int(bufSize)) {
+        if (_sba._array != nullptr)
+            delete[] _sba._array;
+
+        _sba._length = int(bufSize);
+        _sba._array = new byte[_sba._length];
+    }
+
     // Split block into chunks, encode chunk and write bit array to bitstream
     while (startChunk < end) {
         const uint chunkSize = min(length, end - startChunk);
-
-        if (_sba._length < int(chunkSize + (chunkSize >> 3))) {
-            delete[] _sba._array;
-            _sba._length = chunkSize + (chunkSize >> 3);
-            _sba._array = new byte[_sba._length];
-        }
-
-        _sba._index = 0;
         const uint endChunk = startChunk + chunkSize;
+        _sba._index = 0;
 
         for (uint i = startChunk; i < endChunk; i++) {
             encodeBit(int(block[i]) & 0x80, _predictor->get());

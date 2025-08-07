@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -50,16 +50,7 @@ namespace kanzi
 
    template <class T>
    inline bool SliceArray<T>::isValid(const SliceArray& sa) {
-       if (sa._array == nullptr)
-          return false;
-
-       if (sa._index < 0)
-          return false;
-
-       if (sa._length < 0)
-          return false;
-
-       return (sa._index <= sa._length);
+       return ((sa._array != nullptr) && (sa._index >= 0) && (sa._length >= 0) && (sa._index <= sa._length));
    }
 
 #if __cplusplus < 201103L

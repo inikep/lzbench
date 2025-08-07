@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#include <iostream>
 #include <algorithm>
+#include <iostream>
 #include <time.h>
 #include "../types.hpp"
 #include "../transform/AliasCodec.hpp"
@@ -89,11 +89,15 @@ int testTransformsCorrectness(const string& name)
     int mod = (name == "ZRLT") ? 5 : 256;
     int res = 0;
 
-    for (int ii = 0; ii < 50; ii++) {
+    for (int ii = 0; ii < 51; ii++) {
         cout << endl
              << "Test " << ii << endl;
-        int size = 80000;
-        byte values[80000] = { byte(0xAA) };
+        int size; // Declare size, will be set in conditions
+        byte values[1024 * 1024] = { byte(0xAA) };
+
+        if (ii != 50) {
+            size = 80000;
+        }
 
         if (name == "ALIAS")
           mod = 15 + 12 * ii;
@@ -109,7 +113,16 @@ int testTransformsCorrectness(const string& name)
 
             memcpy(values, &arr[0], size);
         }
-        else if (ii == 1) {
+        else if (ii < 10) {
+            size = ii;
+            memset(values, ii, size);
+        }
+        else if (ii == 10) {
+            size = 255;
+            memset(values, ii, size);
+            values[127] = byte(255);
+        }
+        else if (ii == 11) {
             size = 80000;
             byte arr[80000];
             arr[0] = byte(1);
@@ -119,12 +132,12 @@ int testTransformsCorrectness(const string& name)
 
             memcpy(values, &arr[0], size);
         }
-        else if (ii == 2) {
+        else if (ii == 12) {
             size = 8;
             byte arr[8] = { (byte)0, (byte)0, (byte)1, (byte)1, (byte)2, (byte)2, (byte)3, (byte)3 };
             memcpy(values, &arr[0], size);
         }
-        else if (ii == 3) {
+        else if (ii == 13) {
             // For RLT
             size = 512;
             byte arr[512];
@@ -137,7 +150,7 @@ int testTransformsCorrectness(const string& name)
             arr[1] = byte(255); // force RLT escape to be first symbol
             memcpy(values, &arr[0], size);
         }
-        else if (ii == 4) {
+        else if (ii == 14) {
             // Lots of zeros
             size = 1024;
             byte arr[1024] = { byte(0) };
@@ -153,7 +166,7 @@ int testTransformsCorrectness(const string& name)
 
             memcpy(values, &arr[0], size);
         }
-        else if (ii == 5) {
+        else if (ii == 15) {
             // Lots of zeros
             size = 2048;
             byte arr[2048] = { byte(0) };
@@ -169,7 +182,7 @@ int testTransformsCorrectness(const string& name)
 
             memcpy(values, &arr[0], size);
         }
-        else if (ii == 6) {
+        else if (ii == 16) {
             // Totally random
             size = 512;
             byte arr[512] = { byte(0) };
@@ -180,7 +193,7 @@ int testTransformsCorrectness(const string& name)
 
             memcpy(values, &arr[0], size);
         }
-        else if (ii < 10) {
+        else if (ii < 25) {
             size = 2048;
             byte arr[2048] = { byte(0) };
             const int step = max(ii - 5, 2);
@@ -190,12 +203,23 @@ int testTransformsCorrectness(const string& name)
             arr[63] = byte(rand() % mod);
 
             // Simulate interleaved channels for MM
-            for (int j = 64; j < size; j += step) {
+            for (int j = 64; j + step < size; j += step) {
                 for (int k = 0; k < step; k++)
                    arr[j + k] = arr[j + k - step];
-        }
+            }
 
             memcpy(values, &arr[0], size);
+        }
+        else if (ii == 50) {
+            cout << "Large random data" << endl;
+            size = 1024 * 1024;
+            byte* arr = new byte[size];
+
+            for (int i = 0; i < size; i++)
+                arr[i] = byte(rand() % 256);
+
+            memcpy(values, arr, size);
+            delete[] arr;
         }
         else {
             size = 1024;
@@ -223,13 +247,12 @@ int testTransformsCorrectness(const string& name)
         }
 
         Context ctx;
-        ctx.putInt("bsVersion", 4);
+        ctx.putInt("bsVersion", 6);
         ctx.putString("transform", name);
         Transform<byte>* ff = getByteTransform(name, ctx);
 
-        if (ff == nullptr) {
+        if (ff == nullptr)
             return 1;
-        }
 
         Transform<byte>* fi = getByteTransform(name, ctx);
 
@@ -238,13 +261,15 @@ int testTransformsCorrectness(const string& name)
             return 1;
         }
 
+        const int dstSize = ff->getMaxEncodedLength(size);
         byte* input = new byte[size];
-        byte* output = new byte[ff->getMaxEncodedLength(size)];
+        byte* output = new byte[dstSize];
         byte* reverse = new byte[size];
+
         SliceArray<byte> iba1(input, size, 0);
-        SliceArray<byte> iba2(output, ff->getMaxEncodedLength(size), 0);
+        SliceArray<byte> iba2(output, dstSize, 0);
         SliceArray<byte> iba3(reverse, size, 0);
-        memset(output, 0xAA, ff->getMaxEncodedLength(size));
+        memset(output, 0xAA, dstSize);
         memset(reverse, 0xAA, size);
         int count;
 
@@ -254,12 +279,17 @@ int testTransformsCorrectness(const string& name)
         cout << endl
              << "Original: " << endl;
 
-        if (ii == 1) {
+        if (ii == 11) {
             cout << "1 8 (" << (size - 1) << " times)";
         }
         else {
-            for (int i = 0; i < size; i++)
-                cout << (int(input[i]) & 0xFF) << " ";
+            if (size > 1024) {
+                cout << "Large data block - not printing all values.";
+            }
+            else {
+                for (int i = 0; i < size; i++)
+                    cout << (int(input[i]) & 0xFF) << " ";
+            }
         }
 
         if (ff->forward(iba1, iba2, size) == false) {
@@ -267,13 +297,17 @@ int testTransformsCorrectness(const string& name)
                 cout << endl
                      << "No compression (ratio > 1.0), skip reverse" << endl;
                 delete ff;
+                delete fi;
+                delete[] input;
+                delete[] output;
+                delete[] reverse;
                 continue;
             }
 
             cout << endl
                  << "Encoding error" << endl;
             res = 1;
-            delete ff;
+            ff = nullptr;
             goto End;
         }
 
@@ -282,16 +316,24 @@ int testTransformsCorrectness(const string& name)
                 cout << endl
                      << "No compression (ratio > 1.0), skip reverse" << endl;
                 delete ff;
+                delete fi;
+                delete[] input;
+                delete[] output;
+                delete[] reverse;
                 continue;
             }
         }
 
-        delete ff;
         cout << endl;
         cout << "Coded: " << endl;
 
-        for (int i = 0; i < iba2._index; i++)
-            cout << (int(output[i]) & 0xFF) << " ";
+        if (iba2._index > 1024) {
+            cout << "Large data block - not printing all values.";
+        }
+        else {
+            for (int i = 0; i < iba2._index; i++)
+                cout << (int(output[i]) & 0xFF) << " ";
+        }
 
         cout << " (Compression ratio: " << (iba2._index * 100 / size) << "%)" << endl;
         count = iba2._index;
@@ -302,18 +344,22 @@ int testTransformsCorrectness(const string& name)
         if (fi->inverse(iba2, iba3, count) == false) {
             cout << "Decoding error" << endl;
             res = 1;
-            delete fi;
             goto End;
         }
 
         cout << "Decoded: " << endl;
 
-        if (ii == 1) {
+        if (ii == 11) {
             cout << "1 8 (" << (size - 1) << " times)";
         }
         else {
-            for (int i = 0; i < size; i++)
-                cout << (int(reverse[i]) & 0xFF) << " ";
+            if (size > 1024) {
+                cout << "Large data block - not printing all values.";
+            }
+            else {
+                for (int i = 0; i < size; i++)
+                    cout << (int(reverse[i]) & 0xFF) << " ";
+            }
         }
 
         cout << endl;
@@ -324,7 +370,6 @@ int testTransformsCorrectness(const string& name)
                 cout << (int(input[i]) & 0xFF) << " - " << (int(reverse[i]) & 0xFF);
                 cout << ")" << endl;
                 res = 1;
-                delete fi;
                 goto End;
             }
         }
@@ -333,9 +378,13 @@ int testTransformsCorrectness(const string& name)
              << "Identical" << endl
              << endl;
 
-        delete fi;
-
     End:
+        if (ff != nullptr)
+           delete ff;
+
+        if (fi != nullptr)
+           delete fi;
+
         delete[] input;
         delete[] output;
         delete[] reverse;
@@ -348,7 +397,11 @@ int testTransformsSpeed(const string& name)
 {
     // Test speed
     srand((uint)time(nullptr));
-    int iter = (name.rfind("ROLZ", 0) == 0) ? 2000 : ((name == "SRT") ? 4000 : 50000);
+    int iter = 50000;
+
+    if ((name == "ROLZ") || (name == "SRT") || (name == "RANK") || (name == "MTFT"))
+        iter = 4000;
+
     int size = 30000;
     int res = 0;
 
@@ -417,9 +470,10 @@ int testTransformsSpeed(const string& name)
             delete ff;
         }
 
+        int count = iba2._index;
+
         for (int ii = 0; ii < iter; ii++) {
             Transform<byte>* fi = getByteTransform(name, ctx);
-            int count = iba2._index;
             iba3._index = 0;
             iba2._index = 0;
             before = clock();
@@ -451,14 +505,15 @@ int testTransformsSpeed(const string& name)
             res = 1;
         }
 
+        // MB = 1000 * 1000, MiB = 1024 * 1024
         double prod = double(iter) * double(size);
-        double b2MB = double(1) / double(1024 * 1024);
+        double b2MiB = double(1) / double(1024 * 1024);
         double d1_sec = delta1 / CLOCKS_PER_SEC;
         double d2_sec = delta2 / CLOCKS_PER_SEC;
         cout << name << " encoding [ms]: " << (int)(d1_sec * 1000) << endl;
-        cout << "Throughput [MB/s]: " << (int)(prod * b2MB / d1_sec) << endl;
+        cout << "Throughput [MiB/s]: " << (int)(prod * b2MiB / d1_sec) << endl;
         cout << name << " decoding [ms]: " << (int)(d2_sec * 1000) << endl;
-        cout << "Throughput [MB/s]: " << (int)(prod * b2MB / d2_sec) << endl;
+        cout << "Throughput [MiB/s]: " << (int)(prod * b2MiB / d2_sec) << endl;
     }
 
     return res;
@@ -490,7 +545,14 @@ int TestTransforms_main(int argc, const char* argv[])
             string str = argv[1];
             transform(str.begin(), str.end(), str.begin(), ::toupper);
 
-            if (str == "-TYPE=ALL") {
+            if (str != "-TYPE=ALL") {
+                codecs.push_back(str.substr(6));
+
+                if (str.compare(0, 6, "-TYPE=") != 0) {
+                     cout << "Missing transform type" << endl;
+                     return 1;
+                }
+            } else {
 #if __cplusplus < 201103L
                 string allCodecs[13] = { "LZ", "LZX", "LZP", "ROLZ", "ROLZX", "RLT", "ZRLT", "RANK", "SRT", "NONE", "ALIAS", "MM", "MTFT" };
 
@@ -499,9 +561,6 @@ int TestTransforms_main(int argc, const char* argv[])
 #else
                 codecs = { "LZ", "LZX", "LZP", "ROLZ", "ROLZX", "RLT", "ZRLT", "RANK", "SRT", "NONE", "ALIAS", "MM", "MTFT" };
 #endif
-            }
-            else {
-                codecs.push_back(str.substr(6));
             }
 
             if (argc > 2) {
@@ -513,14 +572,21 @@ int TestTransforms_main(int argc, const char* argv[])
 
         for (vector<string>::iterator it = codecs.begin(); it != codecs.end(); ++it) {
             cout << endl
-                << endl
-                << "Test" << *it << endl;
-            res |= testTransformsCorrectness(*it);
+                 << endl
+                 << "Test" << *it << endl;
+            res = testTransformsCorrectness(*it);
 
-            if ((doPerf == true) && (*it != "LZP") && (*it != "MM")) // skip codecs with no good data
-               res |= testTransformsSpeed(*it);
+            if (res)
+               break;
+
+            if ((doPerf == true) && (*it != "LZP") && (*it != "MM")) { // skip codecs with no good data
+               res = testTransformsSpeed(*it);
+
+               if (res)
+                  break;
+            }
         }
-    
+
     }
     catch (exception& e) {
         cout << e.what() << endl;

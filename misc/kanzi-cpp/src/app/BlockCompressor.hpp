@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -99,7 +99,7 @@ namespace kanzi {
    public:
        static const int DEFAULT_BUFFER_SIZE = 65536;
 
-       FileCompressTask(const Context& ctx, std::vector<Listener*>& listeners);
+       FileCompressTask(const Context& ctx, std::vector<Listener<Event>*>& listeners);
 
        ~FileCompressTask();
 
@@ -111,7 +111,7 @@ namespace kanzi {
        Context _ctx;
        InputStream* _is;
        CompressedOutputStream* _cos;
-       std::vector<Listener*> _listeners;
+       std::vector<Listener<Event>*> _listeners;
    };
 
 
@@ -127,20 +127,20 @@ namespace kanzi {
 
        int compress(uint64& written);
 
-       bool addListener(Listener& bl);
+       bool addListener(Listener<Event>& bl);
 
-       bool removeListener(Listener& bl);
+       bool removeListener(Listener<Event>& bl);
 
        void dispose() const {};
 
    private:
-       static const int DEFAULT_BLOCK_SIZE = 4 * 1024 * 1024;
-       static const int MIN_BLOCK_SIZE = 1024;
-       static const int MAX_BLOCK_SIZE = 1024 * 1024 * 1024;
+       static const int DEFAULT_BLOCK_SIZE;
+       static const int MIN_BLOCK_SIZE;
+       static const int MAX_BLOCK_SIZE;
 
        int _verbosity;
+       int _checksum;
        bool _overwrite;
-       bool _checksum;
        bool _skipBlocks;
        std::string _inputName;
        std::string _outputName;
@@ -149,13 +149,13 @@ namespace kanzi {
        int _blockSize;
        bool _autoBlockSize; // derive block size from input size and jobs
        int _jobs;
-       std::vector<Listener*> _listeners;
+       std::vector<Listener<Event>*> _listeners;
        bool _reorderFiles;
        bool _noDotFiles;
        bool _noLinks;
        Context _ctx;
 
-       static void notifyListeners(std::vector<Listener*>& listeners, const Event& evt);
+       static void notifyListeners(std::vector<Listener<Event>*>& listeners, const Event& evt);
 
        static void getTransformAndCodec(int level, std::string tranformAndCodec[2]);
    };

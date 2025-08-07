@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -198,7 +198,10 @@ class Task {
    #define ATOMIC_BOOL std::atomic_bool
 
 #else
-   #if __cplusplus < 201103L 
+   #if defined(__APPLE__)
+        #define ATOMIC_INT std::atomic_int
+        #define ATOMIC_BOOL std::atomic_bool
+   #elif __cplusplus < 201103L
         // ! Stubs for NON CONCURRENT USAGE !
         // Used to compile and provide a non concurrent version AND
         // when atomic.h is not available (VS C++)

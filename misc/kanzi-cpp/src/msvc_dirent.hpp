@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -24,6 +24,7 @@ limitations under the License.
 #ifndef DIRENT_H
 #define DIRENT_H
 
+#if defined(WIN32) || defined(_WIN32) || defined(_WIN64)
 /*
  * Include windows.h without Windows Sockets 1.1 to prevent conflicts with
  * Windows Sockets 2.0.
@@ -1160,5 +1161,8 @@ dirent_set_errno(
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* WINDOWS */
+
 #endif /*DIRENT_H*/
 

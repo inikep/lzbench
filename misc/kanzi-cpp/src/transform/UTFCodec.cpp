@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -23,8 +23,25 @@ limitations under the License.
 using namespace kanzi;
 using namespace std;
 
-const int UTFCodec::SIZES[16] = { 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 2, 2, 3, 4 };
-
+const int UTFCodec::MIN_BLOCK_SIZE = 1024;
+const int UTFCodec::LEN_SEQ[256] = {
+   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+   0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+   2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+   3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+   4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+};
 
 bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
 {
@@ -57,13 +74,23 @@ bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
     }
 
     int start = 0;
+    const uint32 bom = 0xEFBBBF;
 
-    // First (possibly) invalid symbols (due to block truncation)
-    while ((start < 4) && (SIZES[uint8(src[start]) >> 4] == 0))
-        start++;
+    if (memcmp(&src[0], &bom, 3) == 0) {
+        // Byte Order Mark (BOM)
+        start = 3;
+    }
+    else {
+        // First (possibly) invalid symbols (due to block truncation).
+        while ((start < 4) && (LEN_SEQ[uint8(src[start])] == 0))
+            start++;
+    }
 
     if ((mustValidate == true) && (validate(&src[start], count - start - 4)) == false)
         return false;
+
+    if (_pCtx != nullptr)
+        _pCtx->putInt("dataType", Global::UTF8);
 
     // 1-3 bit size + (7 or 11 or 16 or 21) bit payload
     // 3 MSBs indicate symbol size (limit map size to 22 bits)
@@ -74,39 +101,44 @@ bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
     uint32* aliasMap = new uint32[1 << 22];
     memset(aliasMap, 0, size_t(1 << 22) * sizeof(uint32));
     vector<sdUTF> v;
+    v.reserve(max(count >> 9, 256));
     int n = 0;
     bool res = true;
 
-    for (int i = start; i < count - 4; ) {
+    for (int i = start; i < (count - 4); ) {
         uint32 val;
         const int s = pack(&src[i], val);
+        res = s != 0;
 
-        if (s == 0) {
-            res = false;
-            break;
-        }
+        // Validation of longer sequences
+        // Third byte in [0x80..0xBF]
+        res &= ((s != 3) || ((src[i + 2] & byte(0xC0)) == byte(0x80)));
+        // Third and fourth bytes in [0x80..0xBF]
+        res &= ((s != 4) || ((((uint16(src[i + 2]) << 8) | uint16(src[i + 3])) & 0xC0C0) == 0x8080));
 
+        // Add to map ?
         if (aliasMap[val] == 0) {
+            n++;
+            res &= (n < 32768);
+
 #if __cplusplus >= 201103L
             v.emplace_back(val, 0);
 #else
             sdUTF u(val, 0);
             v.push_back(u);
 #endif
-
-            if (++n >= 32768) {
-                res = false;
-                break;
-            }
         }
+
+        if (res == false)
+           break;
 
         aliasMap[val]++;
         i += s;
     }
 
-    const int dstEnd = count - (count / 10);
+    const int maxTarget = count - (count / 10);
 
-    if ((res == false) || (n == 0) || ((3 * n + 6) >= dstEnd)) {
+    if ((res == false) || (n == 0) || ((3 * n + 6) >= maxTarget)) {
         delete[] aliasMap;
         return false;
     }
@@ -135,7 +167,7 @@ bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
         dstIdx += 3;
     }
 
-    if (estimate >= dstEnd) {
+    if (estimate >= maxTarget) {
         // Not worth it
         delete[] aliasMap;
         return false;
@@ -168,7 +200,7 @@ bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
     delete[] aliasMap;
     input._index += srcIdx;
     output._index += dstIdx;
-    return dstIdx < dstEnd;
+    return dstIdx < maxTarget;
 }
 
 bool UTFCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
@@ -187,15 +219,14 @@ bool UTFCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int co
 
     const byte* src = &input._array[input._index];
     byte* dst = &output._array[output._index];
-    const int start = int(src[0]);
-    const int adjust = int(src[1]); // adjust end of regular processing
+    const int start = int(src[0]) & 0x03;
+    const int adjust = int(src[1]) & 0x03; // adjust end of regular processing
     const int n = (int(src[2]) << 8) + int(src[3]);
 
     // Protect against invalid map size value
-    if ((n >= 32768) || (3 * n >= count))
+    if ((n == 0) || (n >= 32768) || (3 * n >= count))
         return false;
 
-#pragma pack(1)
     struct symb {
         uint32 val;
         uint8 len;
@@ -209,9 +240,8 @@ bool UTFCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int co
         int s = (uint32(src[srcIdx]) << 16) | (uint32(src[srcIdx + 1]) << 8) | uint32(src[srcIdx + 2]);
         const int sl = unpack(s, (byte*)&m[i].val);
 
-        if (sl == 0) {
+        if (sl == 0)
             return false;
-        }
 
         m[i].len = uint8(sl);
         srcIdx += 3;
@@ -219,12 +249,16 @@ bool UTFCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int co
 
     int dstIdx = 0;
     const int srcEnd = count - 4 + adjust;
+    const int dstEnd = output._length - 4;
+
+    if (dstEnd < 0)
+        return false;
 
     for (int i = 0; i < start; i++)
         dst[dstIdx++] = src[srcIdx++];
 
     // Emit data
-    while (srcIdx < srcEnd) {
+    while ((srcIdx < srcEnd) && (dstIdx < dstEnd)) {
         uint alias = uint(src[srcIdx++]);
 
         if (alias >= 128)
@@ -235,15 +269,19 @@ bool UTFCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int co
         dstIdx += s.len;
     }
 
-    for (int i = srcEnd; i < count; i++)
-        dst[dstIdx++] = src[srcIdx++];
+    if ((srcIdx >= srcEnd) && (dstIdx < dstEnd + adjust)) {
+        for (int i = 0; i < 4 - adjust; i++)
+            dst[dstIdx++] = src[srcIdx++];
+    }
 
     input._index += srcIdx;
     output._index += dstIdx;
     return srcIdx == count;
 }
 
-
+// A quick partial validation
+// A more complete validation is done during processing for the remaining cases
+// (rules for 3 and 4 byte sequences)
 bool UTFCodec::validate(const byte block[], int count)
 {
     uint freqs0[256] = { 0 };
@@ -285,10 +323,8 @@ bool UTFCodec::validate(const byte block[], int count)
         freqs0[i] += (f0[i] + f1[i] + f2[i] + f3[i]);
     }
 
-    int sum = 0;
-
-    // Check UTF-8
-    // See Unicode 14 Standard - UTF-8 Table 3.7
+    // Valid UTF-8 sequences
+    // See Unicode 16 Standard - UTF-8 Table 3.7
     // U+0000..U+007F          00..7F
     // U+0080..U+07FF          C2..DF 80..BF
     // U+0800..U+0FFF          E0 A0..BF 80..BF
@@ -298,51 +334,71 @@ bool UTFCodec::validate(const byte block[], int count)
     // U+10000..U+3FFFF        F0 90..BF 80..BF 80..BF
     // U+40000..U+FFFFF        F1..F3 80..BF 80..BF 80..BF
     // U+100000..U+10FFFF      F4 80..8F 80..BF 80..BF
-    if ((freqs0[0xC0] > 0) || (freqs0[0xC1] > 0)) {
+
+    // Check rules for 1 byte
+    uint sum = freqs0[0xC0] + freqs0[0xC1];
+    uint sum2 = 0;
+
+    for (int i = 0xF5; i <= 0xFF; i++)
+        sum += freqs0[i];
+
+    if (sum != 0) {
         res = false;
         goto end;
     }
 
-    for (int i = 0xF5; i <= 0xFF; i++) {
-        if (freqs0[i] > 0) {
-            res = false;
-            goto end;
-        }
-    }
-
+    // Check rules for first 2 bytes
     for (int i = 0; i < 256; i++) {
         // Exclude < 0xE0A0 || > 0xE0BF
-        if (((i < 0xA0) || (i > 0xBF)) && (freqs1[(0xE0 * 256) + i] > 0)) {
-            res = false;
-            goto end;
-        }
+        if ((i < 0xA0) || (i > 0xBF))
+            sum += freqs1[0xE0 * 256 + i];
 
         // Exclude < 0xED80 || > 0xEDE9F
-        if (((i < 0x80) || (i > 0x9F)) && (freqs1[(0xED * 256) + i] > 0)) {
-            res = false;
-            goto end;
-        }
+        if ((i < 0x80) || (i > 0x9F))
+            sum += freqs1[0xED * 256 + i];
 
         // Exclude < 0xF090 || > 0xF0BF
-        if (((i < 0x90) || (i > 0xBF)) && (freqs1[(0xF0 * 256) + i] > 0)) {
-            res = false;
-            goto end;
+        if ((i < 0x90) || (i > 0xBF))
+            sum += freqs1[0xF0 * 256 + i];
+
+        // Exclude < 0xF480 || > 0xF48F
+        if ((i < 0x80) || (i > 0x8F))
+            sum += freqs1[0xF4 * 256 + i];
+
+        if ((i < 0x80) || (i > 0xBF)) {
+            // Exclude < 0x??80 || > 0x??BF with ?? in [C2..DF]
+            for (int j = 0xC2; j <= 0xDF; j++)
+                sum += freqs1[j * 256 + i];
+
+            // Exclude < 0x??80 || > 0x??BF with ?? in [E1..EC]
+            for (int j = 0xE1; j <= 0xEC; j++)
+                sum += freqs1[j * 256 + i];
+
+            // Exclude < 0x??80 || > 0x??BF with ?? in [F1..F3]
+            sum += freqs1[0xF1 * 256 + i];
+            sum += freqs1[0xF2 * 256 + i];
+            sum += freqs1[0xF3 * 256 + i];
+
+            // Exclude < 0xEE80 || > 0xEEBF
+            sum += freqs1[0xEE * 256 + i];
+
+            // Exclude < 0xEF80 || > 0xEFBF
+            sum += freqs1[0xEF * 256 + i];
+        }
+        else {
+            // Count non-primary bytes
+            sum2 += freqs0[i];
         }
 
-        // Exclude < 0xF480 || > 0xF4BF
-        if (((i < 0x80) || (i > 0xBF)) && (freqs1[(0xF4 * 256) + i] > 0)) {
+        if (sum != 0) {
             res = false;
-            goto end;
+            break;
         }
-
-        // Count non-primary bytes
-        if ((i >= 0x80) && (i <= 0xBF))
-            sum += freqs0[i];
     }
 
 end:
     delete[] freqs1;
 
     // Ad-hoc threshold
-    return (res == true) && (sum >= (count / 4));
+    return (res == true) && (sum2 >= uint(count / 8));
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -91,9 +91,7 @@ namespace kanzi {
    template <class T>
    class FileDecompressTask FINAL : public Task<T> {
    public:
-       static const int DEFAULT_BUFFER_SIZE = 65536;
-
-       FileDecompressTask(const Context& ctx, std::vector<Listener*>& listeners);
+       FileDecompressTask(const Context& ctx, std::vector<Listener<Event>*>& listeners);
 
        ~FileDecompressTask();
 
@@ -105,7 +103,7 @@ namespace kanzi {
        Context _ctx;
        OutputStream* _os;
        CompressedInputStream* _cis;
-       std::vector<Listener*> _listeners;
+       std::vector<Listener<Event>*> _listeners;
    };
 
    typedef FileDecompressTask<FileDecompressResult> FDTask;
@@ -120,27 +118,25 @@ namespace kanzi {
 
        int decompress(uint64& read);
 
-       bool addListener(Listener& bl);
+       bool addListener(Listener<Event>& bl);
 
-       bool removeListener(Listener& bl);
+       bool removeListener(Listener<Event>& bl);
 
        void dispose() const {};
 
    private:
-       static const int DEFAULT_BUFFER_SIZE = 32768;
-
        int _verbosity;
        bool _overwrite;
        std::string _inputName;
        std::string _outputName;
        int _blockSize;
        int _jobs;
-       std::vector<Listener*> _listeners;
+       std::vector<Listener<Event>*> _listeners;
        bool _noDotFiles;
        bool _noLinks;
        Context _ctx;
 
-       static void notifyListeners(std::vector<Listener*>& listeners, const Event& evt);
+       static void notifyListeners(std::vector<Listener<Event>*>& listeners, const Event& evt);
    };
 }
 #endif

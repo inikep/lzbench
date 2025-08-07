@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -26,13 +26,13 @@ namespace kanzi
    class EntropyUtils
    {
    private:
-       static const int FULL_ALPHABET = 0;
-       static const int PARTIAL_ALPHABET = 1;
-       static const int ALPHABET_256 = 0;
-       static const int ALPHABET_0 = 1;
+       static const int FULL_ALPHABET;
+       static const int PARTIAL_ALPHABET;
+       static const int ALPHABET_256;
+       static const int ALPHABET_0;
 
    public:
-       static const int INCOMPRESSIBLE_THRESHOLD = 973; // 0.95*1024
+       static const int INCOMPRESSIBLE_THRESHOLD;
 
        EntropyUtils() {}
 

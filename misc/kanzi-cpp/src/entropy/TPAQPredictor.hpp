@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -45,8 +45,8 @@ namespace kanzi
        int get(int p0, int p1, int p2, int p3, int p4, int p5, int p6, int p7);
 
    private:
-       static const int BEGIN_LEARN_RATE = 60 << 7;
-       static const int END_LEARN_RATE = 11 << 7;
+       static const int BEGIN_LEARN_RATE;
+       static const int END_LEARN_RATE;
 
        int _w0, _w1, _w2, _w3, _w4, _w5, _w6, _w7;
        int _p0, _p1, _p2, _p3, _p4, _p5, _p6, _p7;
@@ -70,13 +70,13 @@ namespace kanzi
        int get() { return _pr; }
 
    private:
-       static const int MAX_LENGTH = 88;
-       static const int BUFFER_SIZE = 64 * 1024 * 1024;
-       static const int HASH_SIZE = 16 * 1024 * 1024;
-       static const int MASK_80808080 = 0x80808080;
-       static const int MASK_F0F0F000 = 0xF0F0F000;
-       static const int MASK_4F4FFFFF = 0x4F4FFFFF;
-       static const int HASH = 0x7FEB352D;
+       static const int MAX_LENGTH;
+       static const int BUFFER_SIZE;
+       static const int HASH_SIZE;
+       static const int HASH;
+       static const int MASK_80808080;
+       static const int MASK_F0F0F000;
+       static const int MASK_4F4FFFFF;
 
        #define SSE0_RATE(T) ((T == true) ? 6 : 7)
 
@@ -90,7 +90,7 @@ namespace kanzi
        int _matchLen;
        int _matchPos;
        int _matchVal;
-       int _hash;
+       uint _hash;
        LogisticAdaptiveProbMap<false, SSE0_RATE(T)> _sse0;
        LogisticAdaptiveProbMap<false, 7> _sse1;
        TPAQMixer* _mixers;
@@ -119,7 +119,7 @@ namespace kanzi
        int _ctx5;
        int _ctx6;
 
-       int hash(int x, int y) const;
+       int hash(uint x, uint y) const;
 
        int createContext(uint ctxId, uint cx) const;
 
@@ -301,12 +301,11 @@ namespace kanzi
        uint statesSize = 1 << 28;
        uint mixersSize = 1 << 12;
        uint hashSize = HASH_SIZE;
-       uint extraMem = 0;
+       uint extraMem = (T == true) ? 1 : 0;
        uint bufferSize = BUFFER_SIZE;
+       uint bsVersion = 6;
 
        if (ctx != nullptr) {
-           extraMem = (T == true) ? 1 : 0;
-
            // Block size requested by the user
            // The user can request a big block size to force more states
            const int rbsz = ctx->getInt("blockSize", 32768);
@@ -336,13 +335,20 @@ namespace kanzi
            else
                mixersSize = (absz >= 1 * 1024 * 1024) ? 1 << 11 : 1 << 8;
 
-           bufferSize = (rbsz < BUFFER_SIZE) ? rbsz : BUFFER_SIZE;
-           hashSize = (hashSize < 16 * uint(absz)) ? hashSize : 16 * uint(absz);
+           bufferSize = rbsz < BUFFER_SIZE ? rbsz : BUFFER_SIZE;
+           const uint mxsz = absz < (1 << 26) ? absz * 16 : 1 << 30;
+           hashSize = hashSize < mxsz ? hashSize : mxsz;
+           bsVersion = ctx->getInt("bsVersion", bsVersion);
        }
 
        mixersSize <<= (2 * extraMem);
        statesSize <<= (2 * extraMem);
        hashSize <<= (2 * extraMem);
+
+       // Cap hash size for java compatibility
+       if ((bsVersion > 5) && (hashSize > 1024 * 1024 * 1024))
+           hashSize = 1024 * 1024 * 1024;
+
        _statesMask = statesSize - 1;
        _mixersMask = (mixersSize - 1) & ~1;
        _hashMask = hashSize - 1;
@@ -459,10 +465,10 @@ namespace kanzi
        // on SandyBridge/Windows and slower on SkyLake/Linux except when [ctx & 255 == 0]
        // (with c < 256). Hence, use XOR for _ctx5 which is the only context that fulfills
        // the condition.
-       const int idx2 = (_ctx2 + _c0) & _statesMask;
-       const int idx3 = (_ctx3 + _c0) & _statesMask;
-       const int idx4 = (_ctx4 + _c0) & _statesMask;
-       const int idx5 = (_ctx5 ^ _c0) & _statesMask;
+       const int idx2 = (uint(_ctx2) + _c0) & _statesMask;
+       const int idx3 = (uint(_ctx3) + _c0) & _statesMask;
+       const int idx4 = (uint(_ctx4) + _c0) & _statesMask;
+       const int idx5 = (uint(_ctx5) ^ _c0) & _statesMask;
        prefetchRead(&_bigStatesMap[idx2]);
        prefetchRead(&_bigStatesMap[idx3]);
        prefetchRead(&_bigStatesMap[idx4]);
@@ -501,7 +507,7 @@ namespace kanzi
           }
        } else {
           // One more prediction
-          const int idx6 = (_ctx6 + _c0) & _statesMask;
+          const int idx6 = (uint(_ctx6) + _c0) & _statesMask;
           prefetchRead(&_bigStatesMap[idx6]);
           *_cp6 = table[*_cp6];
           _cp6 = &_bigStatesMap[idx6];
@@ -559,7 +565,7 @@ namespace kanzi
    }
 
    template <bool T>
-   inline int TPAQPredictor<T>::hash(int x, int y) const
+   inline int TPAQPredictor<T>::hash(uint x, uint y) const
    {
        const int h = x * HASH ^ y * HASH;
        return (h >> 1) ^ (h >> 9) ^ (x >> 2) ^ (y >> 3) ^ HASH;

@@ -14,15 +14,30 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _OutputStream_
-#define _OutputStream_
+#ifndef _Seekable_
+#define _Seekable_
 
-#include <ostream>
+#include "types.hpp"
+
 
 namespace kanzi
 {
-   // Maps to ostream
-   typedef std::ostream OutputStream;
+
+   class Seekable
+   {
+   public:
+       Seekable(){}
+
+       // return position in bits
+       virtual int64 tell() = 0;
+
+       // position in bits
+       // return success or failure
+       virtual bool seek(int64 position) = 0;
+
+       virtual ~Seekable(){}
+   };
+
 }
 #endif
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -22,11 +22,12 @@ limitations under the License.
 #include <vector>
 #include "../concurrent.hpp"
 #include "../Context.hpp"
+#include "../Event.hpp"
 #include "../Listener.hpp"
 #include "../OutputStream.hpp"
-#include "../OutputBitStream.hpp"
 #include "../SliceArray.hpp"
-#include "../util/XXHash32.hpp"
+#include "../bitstream/DefaultOutputBitStream.hpp"
+#include "../util/XXHash.hpp"
 
 #if __cplusplus >= 201103L
    #include <functional>
@@ -79,16 +80,17 @@ namespace kanzi {
    private:
        SliceArray<byte>* _data;
        SliceArray<byte>* _buffer;
-       OutputBitStream* _obs;
-       XXHash32* _hasher;
+       DefaultOutputBitStream* _obs;
+       XXHash32* _hasher32;
+       XXHash64* _hasher64;
        ATOMIC_INT* _processedBlockId;
-       std::vector<Listener*> _listeners;
+       std::vector<Listener<Event>*> _listeners;
        Context _ctx;
 
    public:
        EncodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuffer,
-           OutputBitStream* obs, XXHash32* hasher,
-           ATOMIC_INT* processedBlockId, std::vector<Listener*>& listeners,
+           DefaultOutputBitStream* obs, XXHash32* hasher32, XXHash64* hasher64,
+           ATOMIC_INT* processedBlockId, std::vector<Listener<Event>*>& listeners,
            const Context& ctx);
 
        ~EncodingTask(){}
@@ -100,28 +102,25 @@ namespace kanzi {
        friend class EncodingTask<EncodingTaskResult>;
 
    public:
+       CompressedOutputStream(OutputStream& os,
+                   int jobs = 1,
+                   const std::string& entropy = "NONE",
+                   const std::string& transform = "NONE",
+                   int blockSize = 4*1024*1024,
+                   int checksum = 0,
+                   uint64 originalSize = 0,
 #ifdef CONCURRENCY_ENABLED
-       CompressedOutputStream(OutputStream& os, const std::string& codec, const std::string& transform,
-          int blockSize = 4 * 1024 * 1024, bool checksum = false, int jobs = 1,
-           uint64 fileSize = 0, ThreadPool* pool = nullptr, bool headerless = false);
-#else
-       CompressedOutputStream(OutputStream& os, const std::string& codec, const std::string& transform,
-          int blockSize = 4 * 1024 * 1024, bool checksum = false, int jobs = 1,
-          uint64 fileSize = 0, bool headerless = false);
+                   ThreadPool* pool = nullptr,
 #endif
+                   bool headerless = false);
 
-#if __cplusplus >= 201103L
-       CompressedOutputStream(OutputStream& os, Context& ctx,
-          std::function<OutputBitStream*(OutputStream&)>* createBitStream = nullptr);
-#else
-       CompressedOutputStream(OutputStream& os, Context& ctx);
-#endif
+       CompressedOutputStream(OutputStream& os, Context& ctx, bool headerless = false);
 
        ~CompressedOutputStream();
 
-       bool addListener(Listener& bl);
+       bool addListener(Listener<Event>& bl);
 
-       bool removeListener(Listener& bl);
+       bool removeListener(Listener<Event>& bl);
 
        std::ostream& write(const char* s, std::streamsize n);
 
@@ -144,16 +143,16 @@ namespace kanzi {
 
 
    private:
-       static const int BITSTREAM_TYPE = 0x4B414E5A; // "KANZ"
-       static const int BITSTREAM_FORMAT_VERSION = 5;
-       static const int DEFAULT_BUFFER_SIZE = 256 * 1024;
-       static const byte COPY_BLOCK_MASK = byte(0x80);
-       static const byte TRANSFORMS_MASK = byte(0x10);
-       static const int MIN_BITSTREAM_BLOCK_SIZE = 1024;
-       static const int MAX_BITSTREAM_BLOCK_SIZE = 1024 * 1024 * 1024;
-       static const int SMALL_BLOCK_SIZE = 15;
-       static const int CANCEL_TASKS_ID = -1;
-       static const int MAX_CONCURRENCY = 64;
+       static const int BITSTREAM_TYPE;
+       static const int BITSTREAM_FORMAT_VERSION;
+       static const int DEFAULT_BUFFER_SIZE;
+       static const byte COPY_BLOCK_MASK;
+       static const byte TRANSFORMS_MASK;
+       static const int MIN_BITSTREAM_BLOCK_SIZE;
+       static const int MAX_BITSTREAM_BLOCK_SIZE;
+       static const int SMALL_BLOCK_SIZE;
+       static const int CANCEL_TASKS_ID;
+       static const int MAX_CONCURRENCY;
 
        int _blockSize;
        int _bufferId; // index of current write buffer
@@ -161,15 +160,16 @@ namespace kanzi {
        int _bufferThreshold;
        int _nbInputBlocks;
        int64 _inputSize;
-       XXHash32* _hasher;
+       XXHash32* _hasher32;
+       XXHash64* _hasher64;
        SliceArray<byte>** _buffers; // input & output per block
        short _entropyType;
        uint64 _transformType;
-       OutputBitStream* _obs;
+       DefaultOutputBitStream* _obs;
        ATOMIC_BOOL _initialized;
        ATOMIC_BOOL _closed;
        ATOMIC_INT _blockId;
-       std::vector<Listener*> _listeners;
+       std::vector<Listener<Event>*> _listeners;
        Context _ctx;
        bool _headless;
 #ifdef CONCURRENCY_ENABLED
@@ -178,24 +178,23 @@ namespace kanzi {
 
        void processBlock();
 
-       static void notifyListeners(std::vector<Listener*>& listeners, const Event& evt);
+       static void notifyListeners(std::vector<Listener<Event>*>& listeners, const Event& evt);
    };
 
 
    inline std::streampos CompressedOutputStream::tellp()
    {
-       return uint(getWritten());
+       throw std::ios_base::failure("Not supported");
    }
 
    inline std::ostream& CompressedOutputStream::seekp(std::streampos)
    {
-       setstate(std::ios::badbit);
        throw std::ios_base::failure("Not supported");
    }
 
    inline std::ostream& CompressedOutputStream::flush()
    {
-       // Let the underlying output stream flush itself when needed
+       // NOOP: let the underlying output stream flush itself when needed
        return *this;
    }
 

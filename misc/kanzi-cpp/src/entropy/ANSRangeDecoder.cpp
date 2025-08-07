@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -22,6 +22,13 @@ limitations under the License.
 
 using namespace kanzi;
 using namespace std;
+
+const uint ANSRangeDecoder::ANS_TOP = 1 << 15; // max possible for ANS_TOP=1<<23
+const int ANSRangeDecoder::DEFAULT_ANS0_CHUNK_SIZE = 16384;
+const int ANSRangeDecoder::DEFAULT_LOG_RANGE = 12;
+const int ANSRangeDecoder::MIN_CHUNK_SIZE = 1024;
+const int ANSRangeDecoder::MAX_CHUNK_SIZE = 1 << 27; // 8*MAX_CHUNK_SIZE must not over
+
 
 // The chunk size indicates how many bytes are encoded (per block) before
 // resetting the frequency stats.
@@ -47,9 +54,9 @@ ANSRangeDecoder::ANSRangeDecoder(InputBitStream& bitstream, int order, int chunk
     const int dim = 255 * order + 1;
     _freqs = new uint[dim * 256];
     _symbols = new ANSDecSymbol[dim * 256];
-    _buffer = new byte[0];
+    _buffer = nullptr;
     _bufferSize = 0;
-    _f2s = new uint8[0];
+    _f2s = nullptr;
     _f2sSize = 0;
     _logRange = DEFAULT_LOG_RANGE;
 }
@@ -57,10 +64,15 @@ ANSRangeDecoder::ANSRangeDecoder(InputBitStream& bitstream, int order, int chunk
 ANSRangeDecoder::~ANSRangeDecoder()
 {
     _dispose();
-    delete[] _buffer;
-    delete[] _symbols;
-    delete[] _f2s;
+
+    if (_buffer != nullptr)
+       delete[] _buffer;
+
+    if (_f2s != nullptr)
+       delete[] _f2s;
+
     delete[] _freqs;
+    delete[] _symbols;
 }
 
 int ANSRangeDecoder::decodeHeader(uint frequencies[], uint alphabet[])
@@ -75,14 +87,16 @@ int ANSRangeDecoder::decodeHeader(uint frequencies[], uint alphabet[])
 
     int res = 0;
     const int dim = 255 * _order + 1;
-    const int scale = 1 << _logRange;
 
-    if (_f2sSize < dim * scale) {
-        delete[] _f2s;
-        _f2sSize = dim * scale;
+    if (_f2sSize < (dim << _logRange)) {
+        if (_f2s != nullptr)
+           delete[] _f2s;
+
+        _f2sSize = dim << _logRange;
         _f2s = new uint8[_f2sSize];
     }
 
+    const uint scale = 1 << _logRange;
     int llr = 3;
 
     while (uint(1 << llr) <= _logRange)
@@ -95,12 +109,12 @@ int ANSRangeDecoder::decodeHeader(uint frequencies[], uint alphabet[])
             continue;
 
         uint* f = &frequencies[k << 8];
- 
+
         if (alphabetSize != 256)
             memset(f, 0, sizeof(uint) * 256);
 
         const int chkSize = (alphabetSize >= 64) ? 8 : 6;
-        int sum = 0;
+        uint sum = 0;
 
         // Decode all frequencies (but the first one) by chunks
         for (int i = 1; i < alphabetSize; i += chkSize) {
@@ -118,16 +132,16 @@ int ANSRangeDecoder::decodeHeader(uint frequencies[], uint alphabet[])
 
             // Read frequencies
             for (int j = i; j < endj; j++) {
-                const int freq = (logMax == 0) ? 1 : int(_bitstream.readBits(logMax) + 1);
+                const uint freq = (logMax == 0) ? 1 : uint(_bitstream.readBits(logMax) + 1);
 
-                if ((freq < 0) || (freq >= scale)) {
+                if (freq >= scale) {
                     stringstream ss;
                     ss << "Invalid bitstream: incorrect frequency " << freq;
                     ss << " for symbol '" << alphabet[j] << "' in ANS range decoder";
                     throw BitStreamException(ss.str(), BitStreamException::INVALID_STREAM);
                 }
 
-                f[alphabet[j]] = uint(freq);
+                f[alphabet[j]] = freq;
                 sum += freq;
             }
         }
@@ -150,9 +164,7 @@ int ANSRangeDecoder::decodeHeader(uint frequencies[], uint alphabet[])
             if (f[i] == 0)
                 continue;
 
-            for (int j = f[i] - 1; j >= 0; j--)
-                freq2sym[sum + j] = uint8(i);
-
+            memset(&freq2sym[sum], i, size_t(f[i]));
             symb[i].reset(sum, f[i], _logRange);
             sum += f[i];
         }
@@ -170,13 +182,22 @@ int ANSRangeDecoder::decode(byte block[], uint blkptr, uint count)
         return count;
     }
 
+    const uint minBufSize = 2 * uint(_chunkSize);
+
+    if (_bufferSize < minBufSize) {
+        if (_buffer != nullptr)
+            delete[] _buffer;
+
+        _bufferSize = minBufSize;
+        _buffer = new byte[_bufferSize];
+    }
+
     const uint end = blkptr + count;
     uint startChunk = blkptr;
-    uint sz = uint(_chunkSize);
     uint alphabet[256];
 
     while (startChunk < end) {
-        const uint sizeChunk = min(sz, end - startChunk);
+        const uint sizeChunk = min(uint(_chunkSize), end - startChunk);
         const int alphabetSize = decodeHeader(_freqs, alphabet);
 
         if (alphabetSize == 0)
@@ -186,7 +207,8 @@ int ANSRangeDecoder::decode(byte block[], uint blkptr, uint count)
             // Shortcut for chunks with only one symbol
             memset(&block[startChunk], alphabet[0], size_t(sizeChunk));
         } else {
-            decodeChunk(&block[startChunk], sizeChunk);
+            if (decodeChunk(&block[startChunk], sizeChunk) == false)
+                break;
         }
 
         startChunk += sizeChunk;
@@ -195,34 +217,33 @@ int ANSRangeDecoder::decode(byte block[], uint blkptr, uint count)
     return count;
 }
 
-void ANSRangeDecoder::decodeChunk(byte block[], int end)
+bool ANSRangeDecoder::decodeChunk(byte block[], uint count)
 {
     // Read chunk size
-    const uint sz = uint(EntropyUtils::readVarInt(_bitstream) & (MAX_CHUNK_SIZE - 1));
+    const uint sz = uint(EntropyUtils::readVarInt(_bitstream));
+
+    if (sz >= MAX_CHUNK_SIZE)
+       return false;
 
     // Read initial ANS states
-    int st0 = int(_bitstream.readBits(32));
-    int st1 = int(_bitstream.readBits(32));
-    int st2 = int(_bitstream.readBits(32));
-    int st3 = int(_bitstream.readBits(32));
+    uint st0 = uint(_bitstream.readBits(32));
+    uint st1 = uint(_bitstream.readBits(32));
+    uint st2 = uint(_bitstream.readBits(32));
+    uint st3 = uint(_bitstream.readBits(32));
+
+    if (count == 0)
+        return true;
 
     // Read encoded data from bitstream
-    if (sz != 0) {
-         if (_bufferSize < sz) {
-            delete[] _buffer;
-            _bufferSize = max(sz + (sz >> 3), uint(256));
-            _buffer = new byte[_bufferSize];
-        }
-
-        _bitstream.readBits(&_buffer[0], 8 * sz);
-    }
-
+    memset(_buffer, 0, _bufferSize);
+    _bitstream.readBits(&_buffer[0], 8 * sz);
     byte* p = &_buffer[0];
+
     const int mask = (1 << _logRange) - 1;
-    const int end4 = end & -4;
+    const int count4 = count & -4;
 
     if (_order == 0) {
-        for (int i = 0; i < end4; i += 4) {
+        for (int i = 0; i < count4; i += 4) {
             const uint8 cur3 = _f2s[st3 & mask];
             block[i] = byte(cur3);
             st3 = decodeSymbol(p, st3, _symbols[cur3], mask);
@@ -238,7 +259,7 @@ void ANSRangeDecoder::decodeChunk(byte block[], int end)
         }
     }
     else {
-        const int quarter = end4 >> 2;
+        const int quarter = count4 >> 2;
         int i0 = 0;
         int i1 = 1 * quarter;
         int i2 = 2 * quarter;
@@ -265,6 +286,8 @@ void ANSRangeDecoder::decodeChunk(byte block[], int end)
         }
     }
 
-    for (int i = end4; i < end; i++)
+    for (uint i = count4; i < count; i++)
         block[i] = *p++;
+
+    return true;
 }

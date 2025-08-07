@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -26,10 +26,10 @@ namespace kanzi
    class CMPredictor FINAL : public Predictor
    {
    private:
-       static const int FAST_RATE = 2;
-       static const int MEDIUM_RATE = 4;
-       static const int SLOW_RATE = 6;
-       static const int PSCALE = 65536;
+       static const int FAST_RATE;
+       static const int MEDIUM_RATE;
+       static const int SLOW_RATE;
+       static const int PSCALE;
 
        int _c1;
        int _c2;

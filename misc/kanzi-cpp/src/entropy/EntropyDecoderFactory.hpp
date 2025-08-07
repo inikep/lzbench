@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -57,13 +57,14 @@ namespace kanzi {
        static short getType(const char* name);
    };
 
+
    inline EntropyDecoder* EntropyDecoderFactory::newDecoder(InputBitStream& ibs, Context& ctx, short entropyType)
    {
        switch (entropyType) {
        // Each block is decoded separately
        // Rebuild the entropy decoder to reset block statistics
        case HUFFMAN_TYPE:
-           return new HuffmanDecoder(ibs);
+           return new HuffmanDecoder(ibs, &ctx);
 
        case ANS0_TYPE:
            return new ANSRangeDecoder(ibs, 0);

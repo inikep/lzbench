@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -29,11 +29,11 @@ namespace kanzi {
 
    class ROLZEncoder {
    private:
-       static const uint64 TOP = 0x00FFFFFFFFFFFFFF;
-       static const uint64 MASK_0_32 = 0x00000000FFFFFFFF;
-       static const int MATCH_FLAG = 0;
-       static const int LITERAL_FLAG = 1;
-       static const int PSCALE = 0xFFFF;
+       static const uint64 TOP;
+       static const uint64 MASK_0_32;
+       static const int MATCH_FLAG;
+       static const int LITERAL_FLAG;
+       static const int PSCALE;
 
        uint16* _probs[2];
        uint _logSizes[2];
@@ -69,12 +69,12 @@ namespace kanzi {
 
    class ROLZDecoder {
    private:
-       static const uint64 TOP = 0x00FFFFFFFFFFFFFF;
-       static const uint64 MASK_0_56 = 0x00FFFFFFFFFFFFFF;
-       static const uint64 MASK_0_32 = 0x00000000FFFFFFFF;
-       static const int MATCH_FLAG = 0;
-       static const int LITERAL_FLAG = 1;
-       static const int PSCALE = 0xFFFF;
+       static const uint64 TOP;
+       static const uint64 MASK_0_56;
+       static const uint64 MASK_0_32;
+       static const int MATCH_FLAG;
+       static const int LITERAL_FLAG;
+       static const int PSCALE;
 
        uint16* _probs[2];
        uint _logSizes[2];
@@ -116,7 +116,7 @@ namespace kanzi {
 
        ROLZCodec1(Context& ctx);
 
-       ~ROLZCodec1() { delete[] _matches; }
+       ~ROLZCodec1() { if (_matches != nullptr) delete[] _matches; }
 
        bool forward(SliceArray<byte>& src, SliceArray<byte>& dst, int length);
 
@@ -129,13 +129,14 @@ namespace kanzi {
        }
 
    private:
-       static const int MIN_MATCH3 = 3;
-       static const int MIN_MATCH4 = 4;
-       static const int MIN_MATCH7 = 7;
-       static const int MAX_MATCH = MIN_MATCH3 + 65535;
-       static const int LOG_POS_CHECKS = 4;
+       static const int MIN_MATCH3;
+       static const int MIN_MATCH4;
+       static const int MIN_MATCH7;
+       static const int MAX_MATCH;
+       static const int LOG_POS_CHECKS;
 
-       int32* _matches;
+       uint32* _matches;
+       size_t _mSize;
        uint8 _counters[65536];
        int _logPosChecks;
        int _posChecks;
@@ -143,7 +144,7 @@ namespace kanzi {
        int _minMatch;
        uint8 _maskChecks;	   
 
-       int findMatch(const byte buf[], int pos, int end, int32 hash32, const int32* matches, const uint8* counter) const;
+       int findMatch(const byte buf[], int pos, int end, uint32 hash32, const uint32* matches, const uint8* counter) const;
 
        int emitLength(byte block[], int length) const;
 
@@ -158,7 +159,7 @@ namespace kanzi {
 
        ROLZCodec2(Context& ctx);
 
-       ~ROLZCodec2() { delete[] _matches; }
+       ~ROLZCodec2() { if (_matches != nullptr) delete[] _matches; }
 
        bool forward(SliceArray<byte>& src, SliceArray<byte>& dst, int length);
 
@@ -173,16 +174,16 @@ namespace kanzi {
        }
 
    private:
-       static const int MATCH_FLAG = 0;
-       static const int LITERAL_FLAG = 1;
-       static const int MATCH_CTX = 0;
-       static const int LITERAL_CTX = 1;
-       static const int MIN_MATCH3 = 3;
-       static const int MIN_MATCH7 = 7;
-       static const int MAX_MATCH = MIN_MATCH3 + 255;
-       static const int LOG_POS_CHECKS = 5;
+       static const int MATCH_FLAG;
+       static const int LITERAL_FLAG;
+       static const int MATCH_CTX;
+       static const int LITERAL_CTX;
+       static const int MIN_MATCH3;
+       static const int MIN_MATCH7;
+       static const int MAX_MATCH;
+       static const int LOG_POS_CHECKS;
 
-       int32* _matches;
+       uint32* _matches;
        uint8 _counters[65536];
        int _logPosChecks;
        uint8 _maskChecks;
@@ -215,12 +216,12 @@ namespace kanzi {
        }
 
    private:
-       static const int HASH_SIZE = 65536;
-       static const int CHUNK_SIZE = 16 * 1024 * 1024;
-       static const int32 HASH = 200002979;
-       static const int32 HASH_MASK = ~(CHUNK_SIZE - 1);
-       static const int MAX_BLOCK_SIZE = 1024 * 1024 * 1024;
-       static const int MIN_BLOCK_SIZE = 64;
+       static const int HASH_SIZE;
+       static const int CHUNK_SIZE;
+       static const int32 HASH;
+       static const int32 HASH_MASK;
+       static const int MAX_BLOCK_SIZE;
+       static const int MIN_BLOCK_SIZE;
 
        Transform<byte>* _delegate;
 
@@ -231,12 +232,12 @@ namespace kanzi {
 
        static uint32 getKey2(const byte* p)
        {
-           return uint32((LittleEndian::readLong64(p) * HASH) >> 40) & (HASH_SIZE - 1);
+           return uint32((uint64(LittleEndian::readLong64(p)) * HASH) >> 40) & (HASH_SIZE - 1);
        }
 
-       static int32 hash(const byte* p)
+       static uint32 hash(const byte* p)
        {
-           return ((LittleEndian::readInt32(p) << 8) * HASH) & HASH_MASK;
+           return ((uint32(LittleEndian::readInt32(p)) << 8) * HASH) & HASH_MASK;
        }
 
        static int emitCopy(byte dst[], int dstIdx, int ref, int matchLen);
@@ -286,19 +287,15 @@ namespace kanzi {
        return length;
    }
 
-   inline int ROLZCodec::emitCopy(byte dst[], int dstIdx, int ref, int matchLen)
+   inline int ROLZCodec::emitCopy(byte buf[], int dstIdx, int ref, int matchLen)
    {
-       if (dstIdx >= ref + 8) {
-           while (matchLen >= 8) {
-               memcpy(&dst[dstIdx], &dst[ref], 8);
-               dstIdx += 8;
-               ref += 8;
-               matchLen -= 8;
-           }
+       if (dstIdx >= ref + matchLen) {
+           memcpy(&buf[dstIdx], &buf[ref], size_t(matchLen));
+           return dstIdx + matchLen;
        }
 
        while (matchLen != 0) {
-           dst[dstIdx++] = dst[ref++];
+           buf[dstIdx++] = buf[ref++];
            matchLen--;
        }
 

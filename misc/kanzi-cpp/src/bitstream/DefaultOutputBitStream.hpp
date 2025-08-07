@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -21,13 +21,18 @@ limitations under the License.
 #include "../OutputStream.hpp"
 #include "../OutputBitStream.hpp"
 #include "../Memory.hpp"
+#include "../Seekable.hpp"
 #include "../util/strings.hpp"
 
 
 namespace kanzi
 {
 
+#if defined(_MSC_VER) && _MSC_VER <= 1500
    class DefaultOutputBitStream FINAL : public OutputBitStream
+#else
+   class DefaultOutputBitStream FINAL : public OutputBitStream, public Seekable
+#endif
    {
    private:
        OutputStream& _os;
@@ -57,6 +62,12 @@ namespace kanzi
        uint writeBits(const byte bits[], uint length);
 
        void close() { _close(); }
+
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+       int64 tell();
+
+       bool seek(int64 pos);
+#endif
 
        // Return number of bits written so far
        uint64 written() const
@@ -117,6 +128,46 @@ namespace kanzi
        if (_position >= _bufferSize - 8)
            flush();
    }
+
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+   inline int64 DefaultOutputBitStream::tell()
+   {
+       if (isClosed() == true)
+           return -1;
+
+       _os.clear();
+       const int64 res = int64(_os.tellp());
+       return (res < 0) ? -1 : 8 * res + (int64(_position) << 3) + int64(64 - _availBits);
+   }
+
+   // Only support a new position at the byte boundary (pos & 7 == 0)
+   inline bool DefaultOutputBitStream::seek(int64 pos)
+   {
+       if (isClosed() == true)
+           return false;
+
+       if ((pos < 0) || ((pos & 7) != 0))
+           return false;
+
+       // Flush buffer
+       // Round down to byte alignment
+       const uint a = _availBits & -8;
+
+       for (uint i = 56; i >= a; i -= 8) {
+          _buffer[_position++] = byte(_current >> i);
+
+          if (_position >= _bufferSize)
+             flush();
+       }
+
+       _availBits = 64;
+       flush();
+       _os.clear();
+       _os.seekp(std::streampos(pos >> 3));
+       return true;
+   }
+#endif
+
 }
 #endif
 

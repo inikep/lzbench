@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -21,9 +21,17 @@ limitations under the License.
 using namespace kanzi;
 using namespace std;
 
+
+const uint64 FPAQDecoder::TOP = 0x00FFFFFFFFFFFFFF;
+const uint64 FPAQDecoder::MASK_0_56 = 0x00FFFFFFFFFFFFFF;
+const uint64 FPAQDecoder::MASK_0_32 = 0x00000000FFFFFFFF;
+const uint FPAQDecoder::DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024;
+const uint FPAQDecoder::MAX_BLOCK_SIZE = 1 << 30;
+const int FPAQDecoder::PSCALE = 65536;
+
+
 FPAQDecoder::FPAQDecoder(InputBitStream& bitstream)
     : _bitstream(bitstream)
-    , _sba(new byte[0], 0)
 {
     reset();
 }
@@ -31,7 +39,6 @@ FPAQDecoder::FPAQDecoder(InputBitStream& bitstream)
 FPAQDecoder::~FPAQDecoder()
 {
     _dispose();
-    delete[] _sba._array;
 }
 
 bool FPAQDecoder::reset()
@@ -58,34 +65,40 @@ int FPAQDecoder::decode(byte block[], uint blkptr, uint count)
     uint startChunk = blkptr;
     const uint end = blkptr + count;
 
-    // Split block into chunks, read bit array from bitstream and decode chunk
+    // Read bit array from bitstream and decode chunk
     while (startChunk < end) {
-        const uint chunkSize = min(DEFAULT_CHUNK_SIZE, end - startChunk);
-        const int szBytes = int(EntropyUtils::readVarInt(_bitstream));
+        const uint szBytes = uint(EntropyUtils::readVarInt(_bitstream));
+
+        // Sanity check
+        if (szBytes >= 2 * count)
+            return 0;
+
+        const size_t bufSize = max(szBytes + (szBytes >> 2), 8192u);
+
+        if (_buf.size() < bufSize)
+            _buf.resize(bufSize);
+
         _current = _bitstream.readBits(56);
-        const int bufSize = max(szBytes + (szBytes >> 3), 1024);
 
-        if (_sba._length < bufSize) {
-            delete[] _sba._array;
-            _sba._length = bufSize;
-            _sba._array = new byte[_sba._length];
-        }
+        if (bufSize > szBytes)
+            memset(&_buf[szBytes], 0, bufSize - szBytes);
 
-        _bitstream.readBits(&_sba._array[0], 8 * szBytes);
-        _sba._index = 0;
+        _bitstream.readBits(&_buf[0], 8 * szBytes);
+        _index = 0;
+        const uint chunkSize = min(DEFAULT_CHUNK_SIZE, end - startChunk);
         const uint endChunk = startChunk + chunkSize;
         _p = _probs[0];
 
         for (uint i = startChunk; i < endChunk; i++) {
             _ctx = 1;
-            decodeBit(int(_p[_ctx]));
-            decodeBit(int(_p[_ctx]));
-            decodeBit(int(_p[_ctx]));
-            decodeBit(int(_p[_ctx]));
-            decodeBit(int(_p[_ctx]));
-            decodeBit(int(_p[_ctx]));
-            decodeBit(int(_p[_ctx]));
-            decodeBit(int(_p[_ctx]));
+            decodeBit(_p[_ctx]);
+            decodeBit(_p[_ctx]);
+            decodeBit(_p[_ctx]);
+            decodeBit(_p[_ctx]);
+            decodeBit(_p[_ctx]);
+            decodeBit(_p[_ctx]);
+            decodeBit(_p[_ctx]);
+            decodeBit(_p[_ctx]);
             block[i] = byte(_ctx);
             _p = _probs[(_ctx & 0xFF) >> 6];
         }

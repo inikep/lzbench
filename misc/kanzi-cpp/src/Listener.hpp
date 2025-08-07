@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -17,17 +17,16 @@ limitations under the License.
 #ifndef _Listener_
 #define _Listener_
 
-#include "Event.hpp"
-
 namespace kanzi
 {
 
+   template <class T>
    class Listener
    {
    public:
        Listener(){}
 
-       virtual void processEvent(const Event& evt) = 0;
+       virtual void processEvent(const T& evt) = 0;
 
        virtual ~Listener(){}
    };

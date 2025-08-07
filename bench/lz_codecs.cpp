@@ -158,12 +158,12 @@ int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t 
         szBlock = 4 * 1024 * 1024;
         break;
     case 1:
-        transform = "PACK+LZ";
+        transform = "LZX";
         entropy = "NONE";
         szBlock = 4 * 1024 * 1024;
         break;
     case 2:
-        transform = "PACK+LZ";
+        transform = "DNA+LZ";
         entropy = "HUFFMAN";
         szBlock = 4 * 1024 * 1024;
         break;
@@ -193,12 +193,12 @@ int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t 
         szBlock = 16 * 1024 * 1024;
         break;
     case 8:
-        transform = "EXE+RLT+TEXT+UTF";
+        transform = "EXE+RLT+TEXT+UTF+DNA";
         entropy = "TPAQ";
         szBlock = 16 * 1024 * 1024;
         break;
     case 9:
-        transform = "EXE+RLT+TEXT+UTF";
+        transform = "EXE+RLT+TEXT+UTF+DNA";
         entropy = "TPAQX";
         szBlock = 32 * 1024 * 1024;
         break;
@@ -209,7 +209,7 @@ int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t 
     ostreambuf<char> buf(outbuf, outsize);
     std::iostream os(&buf);
     int cores = 1; ///std::max(int(std::thread::hardware_concurrency()) / 2, 1);
-    kanzi::CompressedOutputStream cos(os, entropy, transform, szBlock, false, std::min(cores, 64));
+    kanzi::CompressedOutputStream cos(os, cores, entropy, transform, szBlock);
     cos.write(inbuf, insize);
     cos.close();
     return cos.getWritten();

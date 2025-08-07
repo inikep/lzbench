@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -17,6 +17,12 @@ limitations under the License.
 #include "CMPredictor.hpp"
 
 using namespace kanzi;
+
+const int CMPredictor::FAST_RATE = 2;
+const int CMPredictor::MEDIUM_RATE = 4;
+const int CMPredictor::SLOW_RATE = 6;
+const int CMPredictor::PSCALE = 65536;
+
 
 CMPredictor::CMPredictor()
 {

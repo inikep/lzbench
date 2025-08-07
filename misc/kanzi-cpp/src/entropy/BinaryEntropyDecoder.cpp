@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -22,11 +22,18 @@ limitations under the License.
 using namespace kanzi;
 using namespace std;
 
+const uint64 BinaryEntropyDecoder::TOP = 0x00FFFFFFFFFFFFFF;
+const uint64 BinaryEntropyDecoder::MASK_0_56 = 0x00FFFFFFFFFFFFFF;
+const uint64 BinaryEntropyDecoder::MASK_0_32 = 0x00000000FFFFFFFF;
+const int BinaryEntropyDecoder::MAX_BLOCK_SIZE = 1 << 30;
+const int BinaryEntropyDecoder::MAX_CHUNK_SIZE = 1 << 26;
+
+
 BinaryEntropyDecoder::BinaryEntropyDecoder(InputBitStream& bitstream, Predictor* predictor, bool deallocate)
     : _predictor(predictor)
     , _bitstream(bitstream)
     , _deallocate(deallocate)
-    , _sba(new byte[0], 0)
+    , _sba(nullptr, 0)
 {
     if (predictor == nullptr)
         throw invalid_argument("Invalid null predictor parameter");
@@ -39,7 +46,9 @@ BinaryEntropyDecoder::BinaryEntropyDecoder(InputBitStream& bitstream, Predictor*
 BinaryEntropyDecoder::~BinaryEntropyDecoder()
 {
     _dispose();
-    delete[] _sba._array;
+
+    if (_sba._array != nullptr)
+        delete[] _sba._array;
 
     if (_deallocate)
         delete _predictor;
@@ -52,7 +61,7 @@ int BinaryEntropyDecoder::decode(byte block[], uint blkptr, uint count)
 
     uint startChunk = blkptr;
     const uint end = blkptr + count;
-    uint length = max(count, uint(64));
+    uint length = max(count, 64u);
 
     if (length >= MAX_CHUNK_SIZE) {
         // If the block is big (>=64MB), split the decoding to avoid allocating
@@ -60,34 +69,41 @@ int BinaryEntropyDecoder::decode(byte block[], uint blkptr, uint count)
         length = (length / 8 < MAX_CHUNK_SIZE) ? count >> 3 : count >> 4;
     }
 
+    const uint bufSize = length + (length >> 3);
+
+    if (_sba._length < int(bufSize)) {
+        if (_sba._array != nullptr)
+            delete[] _sba._array;
+
+        _sba._length = int(bufSize);
+        _sba._array = new byte[_sba._length];
+    }
+
     // Split block into chunks, read bit array from bitstream and decode chunk
     while (startChunk < end) {
         const uint chunkSize = min(length, end - startChunk);
+        const uint szBytes = uint(EntropyUtils::readVarInt(_bitstream));
 
-        if (_sba._length < int(chunkSize + (chunkSize >> 3))) {
-            delete[] _sba._array;
-            _sba._length = int(chunkSize + (chunkSize >> 3));
-            _sba._array = new byte[_sba._length];
-        }
+        if (szBytes > bufSize)
+           return 0;
 
-        const int szBytes = int(EntropyUtils::readVarInt(_bitstream));
         _current = _bitstream.readBits(56);
 
         if (szBytes != 0)
-           _bitstream.readBits(&_sba._array[0], 8 * szBytes);
+            _bitstream.readBits(&_sba._array[0], 8 * szBytes);
 
         _sba._index = 0;
         const uint endChunk = startChunk + chunkSize;
 
         for (uint i = startChunk; i < endChunk; i++) {
-           block[i] = byte((decodeBit(_predictor->get()) << 7)
-                         | (decodeBit(_predictor->get()) << 6)
-                         | (decodeBit(_predictor->get()) << 5)
-                         | (decodeBit(_predictor->get()) << 4)
-                         | (decodeBit(_predictor->get()) << 3)
-                         | (decodeBit(_predictor->get()) << 2)
-                         | (decodeBit(_predictor->get()) << 1)
-                         |  decodeBit(_predictor->get()));
+            block[i] = byte((decodeBit(_predictor->get()) << 7)
+                          | (decodeBit(_predictor->get()) << 6)
+                          | (decodeBit(_predictor->get()) << 5)
+                          | (decodeBit(_predictor->get()) << 4)
+                          | (decodeBit(_predictor->get()) << 3)
+                          | (decodeBit(_predictor->get()) << 2)
+                          | (decodeBit(_predictor->get()) << 1)
+                          |  decodeBit(_predictor->get()));
         }
 
         startChunk = endChunk;

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -44,13 +44,13 @@ namespace kanzi
        int getMaxEncodedLength(int srcLen) const { return (srcLen <= 512) ? srcLen + 32 : srcLen; }
 
    private:
-       static const int RUN_LEN_ENCODE1 = 224; // used to encode run length
-       static const int RUN_LEN_ENCODE2 = (255 - RUN_LEN_ENCODE1) << 8; // used to encode run length
-       static const int RUN_THRESHOLD = 3;
-       static const int MAX_RUN = 0xFFFF + RUN_LEN_ENCODE2 + RUN_THRESHOLD - 1;
-       static const int MAX_RUN4 = MAX_RUN - 4;
-       static const int MIN_BLOCK_LENGTH = 16;
-       static const byte DEFAULT_ESCAPE = byte(0xFB);
+       static const int RUN_LEN_ENCODE1;
+       static const int RUN_LEN_ENCODE2;
+       static const int RUN_THRESHOLD;
+       static const int MAX_RUN;
+       static const int MAX_RUN4;
+       static const int MIN_BLOCK_LENGTH;
+       static const byte DEFAULT_ESCAPE;
 
        static int emitRunLength(byte dst[], int run, byte escape, byte val);
 

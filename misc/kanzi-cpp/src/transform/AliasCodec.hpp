@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -30,7 +30,7 @@ namespace kanzi {
 
         friend bool operator< (ssAlias const& lhs, ssAlias const& rhs) {
             int r;
-            return ((r = lhs.freq - rhs.freq) != 0) ? r > 0 : lhs.val > rhs.val;
+            return ((r = int(lhs.freq - rhs.freq)) != 0) ? r > 0 : lhs.val > rhs.val;
         }
     } sdAlias;
 
@@ -40,7 +40,7 @@ namespace kanzi {
    {
 
    public:
-       AliasCodec(int order = 1) : _order(order) { _pCtx = nullptr; }
+       AliasCodec() { _pCtx = nullptr; _onlyDNA = false; }
 
        AliasCodec(Context& ctx);
 
@@ -58,10 +58,10 @@ namespace kanzi {
        }
 
    private:
-       static const int MIN_BLOCK_SIZE = 1024;
+       static const int MIN_BLOCK_SIZE;
 
        Context* _pCtx;
-       int _order;
+       bool _onlyDNA;
    };
 }
 

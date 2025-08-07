@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -119,12 +119,12 @@ namespace kanzi
    class DivSufSort
    {
    private:
-       static const int SS_INSERTIONSORT_THRESHOLD = 16;
-       static const int SS_BLOCKSIZE = 4096;
-       static const int SS_MISORT_STACKSIZE = 16;
-       static const int SS_SMERGE_STACKSIZE = 32;
-       static const int TR_STACKSIZE = 64;
-       static const int TR_INSERTIONSORT_THRESHOLD = 16;
+       static const int SS_INSERTIONSORT_THRESHOLD;
+       static const int SS_BLOCKSIZE;
+       static const int SS_MISORT_STACKSIZE;
+       static const int SS_SMERGE_STACKSIZE;
+       static const int TR_STACKSIZE;
+       static const int TR_INSERTIONSORT_THRESHOLD;
        static const int SQQ_TABLE[];
        static const int LOG_TABLE[];
 
@@ -175,9 +175,9 @@ namespace kanzi
 
        int ssPivot(int td, int pa, int first, int last) const;
 
-       int ssMedian5(const int idx, int pa, int v1, int v2, int v3, int v4, int v5) const;
+       int ssMedian5(const uint8 buf[], int pa, int v1, int v2, int v3, int v4, int v5) const;
 
-       int ssMedian3(int idx, int pa, int v1, int v2, int v3) const;
+       int ssMedian3(const uint8 buf[], int pa, int v1, int v2, int v3) const;
 
        int ssPartition(int pa, int first, int last, int depth);
 
@@ -218,9 +218,9 @@ namespace kanzi
 
        ~DivSufSort();
 
-       void computeSuffixArray(const byte input[], int sa[], int length);
+       bool computeSuffixArray(const byte input[], int sa[], int length);
 
-       int computeBWT(const byte input[], byte output[], int sa[], int length, int indexes[], int idxCount = 8);
+       bool computeBWT(const byte input[], byte output[], int sa[], int length, int indexes[], int idxCount = 8);
    };
 
 

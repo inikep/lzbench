@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -56,11 +56,17 @@ BlockDecompressor::BlockDecompressor(const Context& ctx) :
 
     _inputName = _ctx.getString("inputName") == "" ? "STDIN" : _ctx.getString("inputName");
 
-     if (_ctx.has("outputName") == false)
+    if (Global::isReservedName(_inputName))
+        throw invalid_argument("'" + _inputName + "' is a reserved name");
+
+    if (_ctx.has("outputName") == false)
         throw invalid_argument("Missing output name");
 
     string str = _ctx.getString("outputName");
     _outputName = (str == "") && (_inputName == "STDIN") ? "STDOUT" : str;
+
+    if (Global::isReservedName(_outputName))
+        throw invalid_argument("'" + _outputName + "' is a reserved name");
 }
 
 BlockDecompressor::~BlockDecompressor()
@@ -77,9 +83,9 @@ int BlockDecompressor::decompress(uint64& inputSize)
     int nbFiles = 1;
     Printer log(cout);
     stringstream ss;
-    string str = _inputName;
-    transform(str.begin(), str.end(), str.begin(), ::toupper);
-    bool isStdIn = str == "STDIN";
+    string upperInputName = _inputName;
+    transform(upperInputName.begin(), upperInputName.end(), upperInputName.begin(), ::toupper);
+    bool isStdIn = upperInputName == "STDIN";
 
     if (isStdIn == false) {
         vector<string> errors;
@@ -87,7 +93,7 @@ int BlockDecompressor::decompress(uint64& inputSize)
             (_inputName[_inputName.length() - 1] != '.');
         FileListConfig cfg = { isRecursive, _noLinks, false, _noDotFiles };
         createFileList(_inputName, files, cfg, errors);
-        
+
         if (errors.size() > 0) {
             for (size_t i = 0; i < errors.size(); i++)
                cerr << errors[i] << endl;
@@ -96,7 +102,7 @@ int BlockDecompressor::decompress(uint64& inputSize)
         }
 
         if (files.size() == 0) {
-            cerr << "Cannot access input file '" << _inputName << "'" << endl;
+            cerr << "Cannot find any file to decompress" << endl;
             return Error::ERR_OPEN_FILE;
         }
 
@@ -202,7 +208,6 @@ int BlockDecompressor::decompress(uint64& inputSize)
         string oName = formattedOutName;
         string iName = "STDIN";
 
-
         if (isStdIn == true) {
             if (oName.length() == 0) {
                 oName = "STDOUT";
@@ -213,48 +218,75 @@ int BlockDecompressor::decompress(uint64& inputSize)
             _ctx.putLong("fileSize", files[0]._size);
 
             if (oName.length() == 0) {
-                oName = iName + ".bak";
+                oName = iName;
+
+                if ((upperInputName.length() >= 4) && (upperInputName.substr(upperInputName.length() - 4) == ".KNZ"))
+                    oName.resize(oName.length() - 4);
+                else
+                    oName = oName + ".bak";
             }
             else if ((inputIsDir == true) && (specialOutput == false)) {
-                oName = formattedOutName + iName.substr(formattedInName.size()) + ".bak";
+                oName = formattedOutName + iName.substr(formattedInName.size());
+
+                if ((upperInputName.length() >= 4) && (upperInputName.substr(upperInputName.length() - 4) == ".KNZ"))
+                    oName.resize(oName.length() - 4);
+                else
+                    oName = oName + ".bak";
             }
         }
 
-        _ctx.putString("inputName", iName);
-        _ctx.putString("outputName", oName);
-        FileDecompressTask<FileDecompressResult> task(_ctx, _listeners);
-        FileDecompressResult fdr = task.run();
-        res = fdr._code;
-        read = fdr._read;
+         _ctx.putString("inputName", iName);
+         _ctx.putString("outputName", oName);
+         FileDecompressTask<FileDecompressResult> task(_ctx, _listeners);
+         FileDecompressResult fdr = task.run();
+         res = fdr._code;
+         read = fdr._read;
 
-        if (res != 0) {
+         if (res != 0) {
             cerr << fdr._errMsg << endl;
-        }
+         }
     }
     else {
         vector<FileDecompressTask<FileDecompressResult>*> tasks;
-        int* jobsPerTask = new int[nbFiles];
-        Global::computeJobsPerTask(jobsPerTask, _jobs, nbFiles);
-        int n = 0;
+#ifdef CONCURRENCY_ENABLED
+        vector<int> jobsPerTask(nbFiles);
+        Global::computeJobsPerTask(jobsPerTask.data(), _jobs, nbFiles);
+#endif
         sortFilesByPathAndSize(files, true);
 
         //  Create one task per file
         for (int i = 0; i < nbFiles; i++) {
             string oName = formattedOutName;
             string iName = files[i].fullPath();
+            upperInputName = iName;
+            transform(upperInputName.begin(), upperInputName.end(), upperInputName.begin(), ::toupper);
 
             if (oName.length() == 0) {
-                oName = iName + ".bak";
+                oName = iName;
+
+                if ((upperInputName.length() >= 4) && (upperInputName.substr(upperInputName.length() - 4) == ".KNZ"))
+                    oName.resize(oName.length() - 4);
+                else
+                    oName = oName + ".bak";
             }
             else if ((inputIsDir == true) && (specialOutput == false)) {
-                oName = formattedOutName + iName.substr(formattedInName.size()) + ".bak";
+                oName = formattedOutName + iName.substr(formattedInName.size());
+
+                if ((upperInputName.length() >= 4) && (upperInputName.substr(upperInputName.length() - 4) == ".KNZ"))
+                    oName.resize(oName.length() - 4);
+                else
+                    oName = oName + ".bak";
             }
 
             Context taskCtx(_ctx);
             taskCtx.putLong("fileSize", files[i]._size);
             taskCtx.putString("inputName", iName);
             taskCtx.putString("outputName", oName);
-            taskCtx.putInt("jobs", jobsPerTask[n++]);
+#ifdef CONCURRENCY_ENABLED
+            taskCtx.putInt("jobs", jobsPerTask[i]);
+#else
+            taskCtx.putInt("jobs", 1);
+#endif
             FileDecompressTask<FileDecompressResult>* task = new FileDecompressTask<FileDecompressResult>(taskCtx, _listeners);
             tasks.push_back(task);
         }
@@ -308,8 +340,6 @@ int BlockDecompressor::decompress(uint64& inputSize)
             }
         }
 
-        delete[] jobsPerTask;
-
         for (int i = 0; i < nbFiles; i++)
             delete tasks[i];
     }
@@ -342,15 +372,15 @@ int BlockDecompressor::decompress(uint64& inputSize)
     return res;
 }
 
-bool BlockDecompressor::addListener(Listener& bl)
+bool BlockDecompressor::addListener(Listener<Event>& bl)
 {
     _listeners.push_back(&bl);
     return true;
 }
 
-bool BlockDecompressor::removeListener(Listener& bl)
+bool BlockDecompressor::removeListener(Listener<Event>& bl)
 {
-    std::vector<Listener*>::iterator it = find(_listeners.begin(), _listeners.end(), &bl);
+    std::vector<Listener<Event>*>::iterator it = find(_listeners.begin(), _listeners.end(), &bl);
 
     if (it == _listeners.end())
         return false;
@@ -359,14 +389,14 @@ bool BlockDecompressor::removeListener(Listener& bl)
     return true;
 }
 
-void BlockDecompressor::notifyListeners(vector<Listener*>& listeners, const Event& evt)
+void BlockDecompressor::notifyListeners(vector<Listener<Event>*>& listeners, const Event& evt)
 {
-    for (vector<Listener*>::iterator it = listeners.begin(); it != listeners.end(); ++it)
+    for (vector<Listener<Event>*>::iterator it = listeners.begin(); it != listeners.end(); ++it)
         (*it)->processEvent(evt);
 }
 
 template <class T>
-FileDecompressTask<T>::FileDecompressTask(const Context& ctx, vector<Listener*>& listeners)
+FileDecompressTask<T>::FileDecompressTask(const Context& ctx, vector<Listener<Event>*>& listeners)
     : _ctx(ctx)
     , _listeners(listeners)
 {
@@ -395,6 +425,7 @@ FileDecompressTask<T>::~FileDecompressTask()
         // Ignore: best effort
     }
 }
+
 
 template <class T>
 T FileDecompressTask<T>::run()
@@ -433,6 +464,11 @@ T FileDecompressTask<T>::run()
     bool checkOutputSize = str != "/DEV/NULL";
 #endif
 
+#define CLEANUP_DECOMP_OS  if ((_os != nullptr) && (_os != &cout)) { \
+                              delete _os; \
+                              _os = nullptr; \
+                           }
+
     if (str == "NONE") {
         _os = new NullOutputStream();
         checkOutputSize = false;
@@ -469,29 +505,43 @@ T FileDecompressTask<T>::run()
                 remove(outputName.c_str());
             }
 
-            _os = new ofstream(outputName.c_str(), ofstream::out | ofstream::binary);
+            ofstream* ofs = new ofstream(outputName.c_str(), ofstream::out | ofstream::binary);
 
-            if (!*_os) {
+            if (!*ofs) {
+                string errMsg;
+
                 if (overwrite == true) {
                     // Attempt to create the full folder hierarchy to file
                     string parentDir = outputName;
                     size_t idx = outputName.find_last_of(PATH_SEPARATOR);
 
-                    if (idx != string::npos) {
+                    if (idx != string::npos)
                         parentDir.resize(idx);
-                    }
 
-                    if (mkdirAll(parentDir) == 0) {
-                        _os = new ofstream(outputName.c_str(), ofstream::binary);
+                    int rmkd = mkdirAll(parentDir);
+
+                    if ((rmkd == 0) || (rmkd == EEXIST))  {
+                        delete ofs;
+                        ofs = new ofstream(outputName.c_str(), ofstream::binary);
+                    }
+                    else {
+                        errMsg = strerror(rmkd);
                     }
                 }
 
-                if (!*_os) {
+                if (!*ofs) {
+                    delete ofs;
                     stringstream sserr;
                     sserr << "Cannot open output file '" << outputName << "' for writing";
+
+                    if (errMsg != "")
+                        sserr << ": " << errMsg;
+
                     return T(Error::ERR_CREATE_FILE, 0, sserr.str().c_str());
                 }
             }
+
+            _os = ofs;
         }
         catch (exception& e) {
             stringstream sserr;
@@ -500,7 +550,12 @@ T FileDecompressTask<T>::run()
         }
     }
 
-    InputStream* is;
+    InputStream* is = nullptr;
+
+#define CLEANUP_DECOMP_IS  if ((is != nullptr) && (is != &cin)) { \
+                              delete is; \
+                              is = nullptr; \
+                           }
 
     try {
         str = inputName;
@@ -513,6 +568,8 @@ T FileDecompressTask<T>::run()
             ifstream* ifs = new ifstream(inputName.c_str(), ifstream::in | ifstream::binary);
 
             if (!*ifs) {
+                delete ifs;
+                CLEANUP_DECOMP_OS
                 stringstream sserr;
                 sserr << "Cannot open input file '" << inputName << "'";
                 return T(Error::ERR_OPEN_FILE, 0, sserr.str().c_str());
@@ -528,18 +585,23 @@ T FileDecompressTask<T>::run()
                 _cis->addListener(*_listeners[i]);
         }
         catch (invalid_argument& e) {
+            CLEANUP_DECOMP_IS
+            CLEANUP_DECOMP_OS
             stringstream sserr;
             sserr << "Cannot create compressed stream: " << e.what();
             return T(Error::ERR_CREATE_DECOMPRESSOR, 0, sserr.str().c_str());
         }
     }
     catch (exception& e) {
+        CLEANUP_DECOMP_IS
+        CLEANUP_DECOMP_OS
         stringstream sserr;
         sserr << "Cannot open input file '" << inputName << "': " << e.what();
         return T(Error::ERR_OPEN_FILE, _cis->getRead(), sserr.str().c_str());
     }
 
     Clock stopClock;
+    static const int DEFAULT_BUFFER_SIZE = 65536;
     byte* buf = new byte[DEFAULT_BUFFER_SIZE];
 
     try {
@@ -552,10 +614,16 @@ T FileDecompressTask<T>::run()
             decoded = int(_cis->gcount());
 
             if (decoded < 0) {
+                dispose();
+                const uint64 d = _cis->getRead();
+                CLEANUP_DECOMP_IS
+                CLEANUP_DECOMP_OS
                 delete[] buf;
+                delete _cis;
+                _cis = nullptr;
                 stringstream sserr;
                 sserr << "Reached end of stream";
-                return T(Error::ERR_READ_FILE, _cis->getRead(), sserr.str().c_str());
+                return T(Error::ERR_READ_FILE, d, sserr.str().c_str());
             }
 
             try {
@@ -565,39 +633,52 @@ T FileDecompressTask<T>::run()
                 }
             }
             catch (exception& e) {
+                dispose();
+                const uint64 d = _cis->getRead();
+                CLEANUP_DECOMP_IS
+                CLEANUP_DECOMP_OS
                 delete[] buf;
+                delete _cis;
+                _cis = nullptr;
                 stringstream sserr;
                 sserr << "Failed to write decompressed block to file '" << outputName << "': " << e.what();
-                return T(Error::ERR_READ_FILE, _cis->getRead(), sserr.str().c_str());
+                return T(Error::ERR_READ_FILE, d, sserr.str().c_str());
             }
         } while (decoded == sa._length);
     }
     catch (IOException& e) {
-        // Close streams to ensure all data are flushed
         dispose();
+        const uint64 d = _cis->getRead();
+        bool isEOF = _cis->eof();
+        CLEANUP_DECOMP_IS
+        CLEANUP_DECOMP_OS
         delete[] buf;
+        delete _cis;
+        _cis = nullptr;
+
+        if (isEOF == true)
+            return T(Error::ERR_READ_FILE, d, "Reached end of stream");
+
         stringstream sserr;
-
-        if (_cis->eof()) {
-            return T(Error::ERR_READ_FILE, _cis->getRead(), "Reached end of stream");
-        }
-
         sserr << e.what();
-        return T(e.error(), _cis->getRead(), sserr.str().c_str());
+        return T(e.error(), d, sserr.str().c_str());
     }
     catch (exception& e) {
-        // Close streams to ensure all data are flushed
         dispose();
+        const uint64 d = _cis->getRead();
+        bool isEOF = _cis->eof();
+        CLEANUP_DECOMP_IS
+        CLEANUP_DECOMP_OS
         delete[] buf;
+        delete _cis;
+        _cis = nullptr;
+
+        if (isEOF == true)
+            return T(Error::ERR_READ_FILE, d, "Reached end of stream");
+
         stringstream sserr;
-
-        if (_cis->eof()) {
-            return T(Error::ERR_READ_FILE, _cis->getRead(), "Reached end of stream");
-        }
-
-        sserr << "An unexpected condition happened. Exiting ..." << endl
-              << e.what();
-        return T(Error::ERR_UNKNOWN, _cis->getRead(), sserr.str().c_str());
+        sserr << "An unexpected condition happened. Exiting ..." << endl << e.what();
+        return T(Error::ERR_UNKNOWN, d, sserr.str().c_str());
     }
 
     // Close streams to ensure all data are flushed
@@ -607,8 +688,7 @@ T FileDecompressTask<T>::run()
     const uint64 written = (checkOutputSize == true) ? uint64(_os->tellp()) : 0;
 
     // is destructor will call close if ifstream
-    if ((is != &cin) && (is != nullptr))
-        delete is;
+    CLEANUP_DECOMP_IS
 
     // Clean up resources at the end of the method as the task may be
     // recycled in a threadpool and the destructor not called.
@@ -616,10 +696,7 @@ T FileDecompressTask<T>::run()
     _cis = nullptr;
 
     try {
-        if ((_os != nullptr) && (_os != &cout)) {
-            delete _os;
-        }
-
+        CLEANUP_DECOMP_OS
         _os = nullptr;
     }
     catch (exception&) {
@@ -635,6 +712,7 @@ T FileDecompressTask<T>::run()
         const uint64 outputSize = _ctx.getLong("outputSize", 0);
 
         if ((outputSize != 0) && (written != outputSize)) {
+            delete[] buf;
             stringstream sserr;
             sserr << "Corrupted bitstream: invalid output size (expected " << outputSize;
             sserr << ", got " << written << ")";
@@ -663,7 +741,7 @@ T FileDecompressTask<T>::run()
         }
 
         if (verbosity == 1) {
-            ss << "Decompressing " << inputName << ": " << decoded << " => " << read;
+            ss << "Decompressed " << inputName << ": " << decoded << " => " << read;
 
             if (delta >= 1e5) {
                 ss.precision(1);
@@ -679,8 +757,8 @@ T FileDecompressTask<T>::run()
         }
 
         if ((verbosity > 1) && (delta > 0)) {
-            double b2KB = double(1000) / double(1024);
-            ss << "Throughput (KB/s):  " << uint(double(read) * b2KB / delta);
+            double b2KiB = double(1000) / double(1024);
+            ss << "Throughput (KiB/s): " << uint(double(read) * b2KiB / delta);
             log.println(ss.str(), true);
             ss.str(string());
         }

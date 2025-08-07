@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -33,10 +33,10 @@ bool SRT::forward(SliceArray<byte>& input, SliceArray<byte>& output, int length)
     if (output._length - output._index < getMaxEncodedLength(length))
         return false;
 
-    int freqs[256] = { 0 };
+    uint freqs[256] = { 0 };
     uint8 s2r[256] = { 0 };
     uint8 r2s[256] = { 0 };
-    byte* src = &input._array[input._index];
+    const byte* src = &input._array[input._index];
 
     // find first symbols and count occurrences
     for (int i = 0, b = 0; i < length;) {
@@ -119,12 +119,16 @@ bool SRT::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int length)
     if (!SliceArray<byte>::isValid(output))
         throw std::invalid_argument("SRT: Invalid output block");
 
-    int freqs[256];
+    uint freqs[256] = { 0 };
     const int headerSize = decodeHeader(&input._array[input._index], freqs);
     input._index += headerSize;
     length -= headerSize;
-    byte* src = &input._array[input._index];
-    uint8 symbols[256];
+
+    if (length > output._length - output._index)
+        return false;
+
+    const byte* src = &input._array[input._index];
+    uint8 symbols[256] = { 0 };
 
     // init arrays
     int nbSymbols = preprocess(freqs, symbols);
@@ -134,6 +138,10 @@ bool SRT::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int length)
 
     for (int i = 0, bucketPos = 0; i < nbSymbols; i++) {
         const uint8 c = symbols[i];
+
+        if ((bucketPos < 0) || (bucketPos >= length))
+            return false;
+
         r2s[int(src[bucketPos])] = c;
         buckets[c] = bucketPos + 1;
         bucketPos += freqs[c];
@@ -154,7 +162,7 @@ bool SRT::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int length)
             if (r == 0)
                 continue;
 
-            memmove(&r2s[0], &r2s[1], r);
+            memmove(&r2s[0], &r2s[1], size_t(r));
             r2s[r] = c;
             c = r2s[0];
         }
@@ -163,7 +171,7 @@ bool SRT::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int length)
                 continue;
 
             nbSymbols--;
-            memmove(&r2s[0], &r2s[1], nbSymbols);
+            memmove(&r2s[0], &r2s[1], size_t(nbSymbols));
             c = r2s[0];
         }
     }
@@ -173,7 +181,7 @@ bool SRT::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int length)
     return true;
 }
 
-int SRT::preprocess(const int freqs[], uint8 symbols[])
+int SRT::preprocess(const uint freqs[], uint8 symbols[])
 {
     int nbSymbols = 0;
 
@@ -199,7 +207,7 @@ int SRT::preprocess(const int freqs[], uint8 symbols[])
 
             for (b = i - h; b >= 0; b -= h) {
                 const int val = freqs[symbols[b]] - freqs[t];
-                
+
                 if ((val >= 0) && ((val != 0) || (t >= symbols[b])))
                    break;
 
@@ -213,39 +221,66 @@ int SRT::preprocess(const int freqs[], uint8 symbols[])
     return nbSymbols;
 }
 
-int SRT::encodeHeader(int freqs[], byte dst[])
+int SRT::encodeHeader(const uint freqs[], byte dst[])
 {
     int dstIdx = 0;
 
     for (int i = 0; i < 256; i++) {
-        while (freqs[i] >= 128) {
-            dst[dstIdx++] = byte(0x80 | freqs[i]);
-            freqs[i] >>= 7;
+        uint f = freqs[i];
+
+        if (f >= 128) {
+            dst[dstIdx++] = byte(0x80 | f);
+            f >>= 7;
+
+            if (f >= 128) {
+                dst[dstIdx++] = byte(0x80 | f);
+                f >>= 7;
+
+                if (f >= 128) {
+                    dst[dstIdx++] = byte(0x80 | f);
+                    f >>= 7;
+
+                    if (f >= 128) {
+                        dst[dstIdx++] = byte(0x80 | f);
+                        f >>= 7;
+                    }
+                }
+            }
         }
 
-        dst[dstIdx++] = byte(freqs[i]);
+        dst[dstIdx++] = byte(f);
     }
 
     return dstIdx;
 }
 
-int SRT::decodeHeader(const byte src[], int freqs[])
+int SRT::decodeHeader(const byte src[], uint freqs[])
 {
     int srcIdx = 0;
+    uint res = 0;
 
     for (int i = 0; i < 256; i++) {
-        int val = int(src[srcIdx++]);
-        int res = val & 0x7F;
-        int shift = 7;
+        uint val = uint(src[srcIdx++]);
+        res = val & 0x7F;
 
-        while (val >= 128) {
-            val = int(src[srcIdx++]);
-            res |= ((val & 0x7F) << shift);
+        if (val >= 128) {
+            val = uint(src[srcIdx++]);
+            res |= ((val & 0x7F) << 7);
 
-            if (shift > 21)
-                break;
+            if (val >= 128) {
+                val = uint(src[srcIdx++]);
+                res |= ((val & 0x7F) << 14);
 
-            shift += 7;
+                if (val >= 128) {
+                    val = uint(src[srcIdx++]);
+                    res |= ((val & 0x7F) << 21);
+
+                    if (val >= 128) {
+                        val = uint(src[srcIdx++]);
+                        res |= ((val & 0x7F) << 28);
+                    }
+                }
+            }
         }
 
         freqs[i] = res;

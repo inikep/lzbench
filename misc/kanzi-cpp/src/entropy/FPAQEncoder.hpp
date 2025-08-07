@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -17,6 +17,8 @@ limitations under the License.
 #ifndef _FPAQEncoder_
 #define _FPAQEncoder_
 
+#include <vector>
+
 #include "../EntropyEncoder.hpp"
 #include "../Memory.hpp"
 #include "../SliceArray.hpp"
@@ -30,18 +32,19 @@ namespace kanzi
    class FPAQEncoder : public EntropyEncoder
    {
    private:
-       static const uint64 TOP = 0x00FFFFFFFFFFFFFF;
-       static const uint64 MASK_0_24 = 0x0000000000FFFFFF;
-       static const uint64 MASK_0_32 = 0x00000000FFFFFFFF;
-       static const uint DEFAULT_CHUNK_SIZE = 4 * 1024 * 1024;
-       static const uint MAX_BLOCK_SIZE = 1 << 30;
-       static const int PSCALE = 65536;
+       static const uint64 TOP;
+       static const uint64 MASK_0_24;
+       static const uint64 MASK_0_32;
+       static const uint DEFAULT_CHUNK_SIZE;
+       static const uint MAX_BLOCK_SIZE;
+       static const int PSCALE;
 
        uint64 _low;
        uint64 _high;
        bool _disposed;
        OutputBitStream& _bitstream;
-       SliceArray<byte> _sba;
+       std::vector<byte> _buf;
+       int _index;
        uint16 _probs[4][256]; // probability of bit=1
 
 
@@ -84,8 +87,8 @@ namespace kanzi
 
    inline void FPAQEncoder::flush()
    {
-       BigEndian::writeInt32(&_sba._array[_sba._index], int32(_high >> 24));
-       _sba._index += 4;
+       BigEndian::writeInt32(&_buf[_index], int32(_high >> 24));
+       _index += 4;
        _low <<= 32;
        _high = (_high << 32) | MASK_0_32;
    }

@@ -1,20 +1,25 @@
 #CXX=clang++
 LDFLAGS=-lpthread
+OBJ_DIR = obj
+TEST_OBJ_DIR=$(OBJ_DIR)/test
+APP=kanzi
 
 ifeq ($(CONCURRENCY_DISABLED), 1)
 	CONCURRENCY_FLAG = -DCONCURRENCY_DISABLED
 endif
 
-ifeq ($(OS),Windows_NT)
+ifeq ($(OS), Windows_NT)
 	CXXFLAGS=-c -std=c++11 -Wall -Wextra -O3 -fomit-frame-pointer -fPIC -DNDEBUG -pedantic -march=native -fno-rtti $(CONCURRENCY_FLAG)
+	LDFLAGS=-lpthread -static
 	#LDFLAGS=-static-libgcc -static-libstdc++ -Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic
 else
 	ARCH ?= $(shell uname -m)
 
-	ifeq ($(ARCH),x86_64)
-		CXXFLAGS=-c -std=c++17 -Wall -Wextra -O3 -fomit-frame-pointer -fPIC -DNDEBUG -pedantic -march=native -fno-rtti $(CONCURRENCY_FLAG)
+	ifeq ($(ARCH), x86_64)
+		CXXFLAGS=-c -std=c++14 -Wall -Wextra -O3 -fomit-frame-pointer -fPIC -DNDEBUG -pedantic -march=native -fno-rtti $(CONCURRENCY_FLAG)
 	else
-		CXXFLAGS=-c -std=c++14 -Wall -Wextra -O3 -fPIC -DNDEBUG -pedantic -fno-rtti $(CONCURRENCY_FLAG)
+		#CXXFLAGS=-c -std=c++17 -fsanitize=signed-integer-overflow -ftrapv -D_FORTIFY_SOURCE=3 -Wall -Wextra -O3 -fPIC -DNDEBUG -pedantic -fno-rtti $(CONCURRENCY_FLAG)
+		CXXFLAGS=-c -std=c++17 -fstrict-aliasing -Wall -Wextra -O3 -fPIC -DNDEBUG -pedantic -fno-rtti $(CONCURRENCY_FLAG)
 	endif
 endif	
 
@@ -39,7 +44,6 @@ LIB_COMMON_SOURCES=Global.cpp \
 	transform/UTFCodec.cpp \
 	transform/EXECodec.cpp \
 	transform/ZRLT.cpp
-LIB_COMMON_OBJECTS=$(LIB_COMMON_SOURCES:.cpp=.o)
 
 LIB_COMP_SOURCES=api/Compressor.cpp \
 	bitstream/DebugOutputBitStream.cpp \
@@ -51,7 +55,6 @@ LIB_COMP_SOURCES=api/Compressor.cpp \
 	entropy/FPAQEncoder.cpp \
 	entropy/HuffmanEncoder.cpp \
 	entropy/RangeEncoder.cpp
-LIB_COMP_OBJECTS=$(LIB_COMP_SOURCES:.cpp=.o)
 
 LIB_DECOMP_SOURCES=api/Decompressor.cpp \
 	bitstream/DebugInputBitStream.cpp \
@@ -63,30 +66,38 @@ LIB_DECOMP_SOURCES=api/Decompressor.cpp \
 	entropy/FPAQDecoder.cpp \
 	entropy/HuffmanDecoder.cpp \
 	entropy/RangeDecoder.cpp
-LIB_DECOMP_OBJECTS=$(LIB_DECOMP_SOURCES:.cpp=.o)
 
 LIB_SOURCES=$(LIB_COMMON_SOURCES) $(LIB_COMP_SOURCES) $(LIB_DECOMP_SOURCES)
 
-LIB_OBJECTS=$(LIB_COMMON_OBJECTS) $(LIB_COMP_OBJECTS) $(LIB_DECOMP_OBJECTS)
+# Define library object files
+LIB_OBJECTS=$(filter-out $(OBJ_DIR)/test/%.o,$(LIB_COMMON_OBJECTS) $(LIB_COMP_OBJECTS) $(LIB_DECOMP_OBJECTS))
+
 
 TEST_SOURCES=test/TestEntropyCodec.cpp \
 	test/TestBWT.cpp \
 	test/TestCompressedStream.cpp \
 	test/TestDefaultBitStream.cpp \
 	test/TestTransforms.cpp
-TEST_OBJECTS=$(TEST_SOURCES:.cpp=.o)
 
 APP_SOURCES=app/Kanzi.cpp \
 	app/InfoPrinter.cpp \
 	app/BlockCompressor.cpp \
 	app/BlockDecompressor.cpp
-APP_OBJECTS=$(APP_SOURCES:.cpp=.o)
 
 SOURCES=$(LIB_SOURCES) $(APP_SOURCES)
-OBJECTS=$(SOURCES:.cpp=.o)
+
+# Function to create object file paths, preserving the directory structure
+OBJ = $(OBJ_DIR)/$(patsubst %.cpp,%.o,$(1))
+
+LIB_COMMON_OBJECTS=$(foreach src,$(LIB_COMMON_SOURCES),$(call OBJ,$(src)))
+LIB_COMP_OBJECTS=$(foreach src,$(LIB_COMP_SOURCES),$(call OBJ,$(src)))
+LIB_DECOMP_OBJECTS=$(foreach src,$(LIB_DECOMP_SOURCES),$(call OBJ,$(src)))
+LIB_OBJECTS=$(LIB_COMMON_OBJECTS) $(LIB_COMP_OBJECTS) $(LIB_DECOMP_OBJECTS)
+#TEST_OBJECTS=$(foreach src,$(TEST_SOURCES),$(call OBJ,$(src)))
+APP_OBJECTS=$(foreach src,$(APP_SOURCES),$(call OBJ,$(src)))
+OBJECTS=$(LIB_OBJECTS) $(APP_OBJECTS) $(TEST_OBJECTS)
 RPTS=$(SOURCES:.cpp=.optrpt)
-	
-APP=kanzi
+
 	
 STATIC_LIB_SUFFIX := .a
 SHARED_LIB_SUFFIX := .so
@@ -133,24 +144,26 @@ $(SHARED_DECOMP_LIB):$(LIB_DECOMP_OBJECTS)
 	$(CXX) -o ../lib/$@ $(LDFLAGS) -shared $+
 
 
-testBWT: $(LIB_OBJECTS) test/TestBWT.o
+# Targets for test executables
+testBWT: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestBWT.o
 	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
 
-testTransforms: $(LIB_OBJECTS) test/TestTransforms.o
+testTransforms: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestTransforms.o
 	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
 
-testEntropyCodec: $(LIB_OBJECTS) test/TestEntropyCodec.o
+testEntropyCodec: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestEntropyCodec.o
 	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
 
-testDefaultBitStream: $(LIB_OBJECTS) test/TestDefaultBitStream.o
+testDefaultBitStream: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestDefaultBitStream.o
 	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
 
-testCompressedStream: $(LIB_OBJECTS) test/TestCompressedStream.o
+testCompressedStream: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestCompressedStream.o
 	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
 
 test: testBWT testTransforms testEntropyCodec testDefaultBitStream testCompressedStream
 
-kanzi: $(OBJECTS) app/Kanzi.o
+# Target for the main application
+kanzi: $(LIB_OBJECTS) $(APP_OBJECTS)
 	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
 
 all: lib test $(APP)
@@ -185,7 +198,6 @@ else
 	install -m 644 ./util/*.hpp $(INSTALL_DIR)/include/kanzi/util
 	install -d $(INSTALL_DIR)/bin
 	install -m577 ../bin/$(APP)$(PROG_SUFFIX) $(INSTALL_DIR)/bin
-	install -m 644 ../kanzi.1.gz /usr/share/man/man1
 endif
 
 # Uninstall may require sudo or admin rights
@@ -197,21 +209,29 @@ else
 	rm -f $(INSTALL_DIR)/lib/$(STATIC_LIB)
 	rm -f $(INSTALL_DIR)/lib/$(SHARED_LIB)
 	rm -f $(INSTALL_DIR)/bin/$(APP)$(PROG_SUFFIX)
-	rm -f /usr/share/man/man1/kanzi.1.gz
 endif
 
 clean:
 ifeq ($(OS),Windows_NT)
-	del /S *.o *.obj ..\bin\$(APP)$(PROG_SUFFIX) ..\bin\test*$(PROG_SUFFIX) \
+	del /S $(OBJ_DIR)\*.o ..\bin\$(APP)$(PROG_SUFFIX) ..\bin\test*$(PROG_SUFFIX) \
 	..\lib\$(STATIC_LIB) ..\lib\$(SHARED_LIB) \
 	..\lib\$(STATIC_COMP_LIB) ..\lib\$(STATIC_DECOMP_LIB) \
 	..\lib\$(SHARED_COMP_LIB) ..\lib\$(SHARED_DECOMP_LIB)
 else
-	rm -f ../bin/test*$(PROG_SUFFIX) $(OBJECTS) $(LIB_OBJECTS) $(RPTS) $(TEST_OBJECTS) \
-        ../bin/$(APP)$(PROG_SUFFIX) ../lib/$(STATIC_LIB) ../lib/$(SHARED_LIB) \
+	rm -f ../bin/test*$(PROG_SUFFIX) $(OBJECTS) $(RPTS) \
+	../bin/$(APP)$(PROG_SUFFIX) ../lib/$(STATIC_LIB) ../lib/$(SHARED_LIB) \
 	../lib/$(STATIC_COMP_LIB) ../lib/$(STATIC_DECOMP_LIB) \
 	../lib/$(SHARED_COMP_LIB) ../lib/$(SHARED_DECOMP_LIB)
+	rm -rf $(OBJ_DIR)
 endif
 
-.cpp.o:
+ifeq ($(OS),Windows_NT)
+   MKDIR = if not exist $(subst /,\,$(dir $@)) mkdir $(subst /,\,$(dir $@))
+else
+   MKDIR = mkdir -p $(dir $@)
+endif
+
+$(OBJ_DIR)/%.o: %.cpp
+	@$(MKDIR)
 	$(CXX) $(CXXFLAGS) $< -o $@
+

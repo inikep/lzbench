@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -16,6 +16,13 @@ limitations under the License.
 #include "HuffmanCommon.hpp"
 
 using namespace kanzi;
+
+
+const int HuffmanCommon::LOG_MAX_CHUNK_SIZE = 14;
+const int HuffmanCommon::MAX_CHUNK_SIZE = 1 << LOG_MAX_CHUNK_SIZE;
+const int HuffmanCommon::MAX_SYMBOL_SIZE = 12;
+const int HuffmanCommon::BUFFER_SIZE = (MAX_SYMBOL_SIZE << 8) + 256;
+
 
 // Return the number of codes generated
 // codes and symbols are updated

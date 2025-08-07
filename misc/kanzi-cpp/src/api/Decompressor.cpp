@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -123,20 +123,15 @@ int CDECL initDecompressor(struct dData* pData, FILE* src, struct dContext** pCt
            strncpy(pData->entropy, entropy.data(), entropy.length());
            pData->entropy[entropy.length() + 1] = 0;
            pData->blockSize = (pData->blockSize + 15) & -16;
-           bool checksum = pData->checksum == 0 ? false : true;
 
+           dctx->pCis = new CompressedInputStream(*fis, pData->jobs,
+                                                  pData->entropy, pData->transform,
+                                                  pData->blockSize, pData->checksum,
+                                                  pData->originalSize,
 #ifdef CONCURRENCY_ENABLED
-   #if __cplusplus >= 201103L
-           dctx->pCis = new CompressedInputStream(*fis, pData->jobs, nullptr, true,
-               checksum, pData->blockSize, std::move(transform), std::move(entropy), pData->originalSize, pData->bsVersion);
-   #else
-           dctx->pCis = new CompressedInputStream(*fis, pData->jobs, nullptr, true,
-               checksum, pData->blockSize, transform, entropy, pData->originalSize, pData->bsVersion);
-   #endif
-#else
-           dctx->pCis = new CompressedInputStream(*fis, pData->jobs, true,
-               checksum, pData->blockSize, transform, entropy, pData->originalSize, pData->bsVersion);
+                                                  nullptr,
 #endif
+                                                  true, pData->bsVersion);
         }
         else {
            dctx->pCis = new CompressedInputStream(*fis, pData->jobs);

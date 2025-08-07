@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -26,14 +26,14 @@ namespace kanzi
    class HuffmanCommon
    {
    public:
-       static const int LOG_MAX_CHUNK_SIZE = 14;
-       static const int MAX_CHUNK_SIZE = 1 << LOG_MAX_CHUNK_SIZE;
-       static const int MAX_SYMBOL_SIZE = 12;
+       static const int LOG_MAX_CHUNK_SIZE;
+       static const int MAX_CHUNK_SIZE;
+       static const int MAX_SYMBOL_SIZE;
 
        static int generateCanonicalCodes(const uint16 sizes[], uint16 codes[], uint ranks[], int count);
 
    private:
-       static const int BUFFER_SIZE = (MAX_SYMBOL_SIZE << 8) + 256;
+       static const int BUFFER_SIZE;
    };
 
 }

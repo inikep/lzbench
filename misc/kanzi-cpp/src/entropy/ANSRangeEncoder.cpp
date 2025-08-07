@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2024 Frederic Langlet
+Copyright 2011-2025 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -23,6 +23,13 @@ limitations under the License.
 
 using namespace kanzi;
 using namespace std;
+
+const int ANSRangeEncoder::ANS_TOP = 1 << 15; // max possible for ANS_TOP=1<<23
+const int ANSRangeEncoder::DEFAULT_ANS0_CHUNK_SIZE = 16384;
+const int ANSRangeEncoder::DEFAULT_LOG_RANGE = 12;
+const int ANSRangeEncoder::MIN_CHUNK_SIZE = 1024;
+const int ANSRangeEncoder::MAX_CHUNK_SIZE = 1 << 27; // 8*MAX_CHUNK_SIZE must not overflow
+
 
 // The chunk size indicates how many bytes are encoded (per block) before
 // resetting the frequency stats.
@@ -54,15 +61,18 @@ ANSRangeEncoder::ANSRangeEncoder(OutputBitStream& bitstream, int order, int chun
     const int dim = 255 * order + 1;
     _symbols = new ANSEncSymbol[dim * 256];
     _freqs = new uint[dim * 257]; // freqs[x][256] = total(freqs[x][0..255])
-    _buffer = new byte[0];
+    _buffer = nullptr;
     _bufferSize = 0;
-    _logRange = (order == 0) ? logRange : logRange - 1;
+    _logRange = (order == 0) ? logRange : max(logRange - 1, 8);
 }
 
 ANSRangeEncoder::~ANSRangeEncoder()
 {
     _dispose();
-    delete[] _buffer;
+
+    if (_buffer != nullptr)
+       delete[] _buffer;
+
     delete[] _symbols;
     delete[] _freqs;
 }
@@ -160,7 +170,9 @@ int ANSRangeEncoder::encode(const byte block[], uint blkptr, uint count)
     const uint size = max(min(sz + (sz >> 3), 2 * count), uint(65536));
 
     if (_bufferSize < size) {
-        delete[] _buffer;
+        if (_buffer != nullptr)
+           delete[] _buffer;
+
         _bufferSize = size;
         _buffer = new byte[_bufferSize];
     }
@@ -201,7 +213,6 @@ void ANSRangeEncoder::encodeChunk(const byte block[], int end)
             st1 = encodeSymbol(p, st1, _symbols[int(block[i - 1])]);
             st2 = encodeSymbol(p, st2, _symbols[int(block[i - 2])]);
             st3 = encodeSymbol(p, st3, _symbols[int(block[i - 3])]);
-            prefetchRead(&block[i + 128]);
         }
     }
     else { // order 1
