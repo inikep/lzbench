@@ -39,7 +39,7 @@ GCC_VERSION = $(shell echo | $(CC) -dM -E - | grep __VERSION__  | sed -e 's:\#de
 CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*version \([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 
 # LZSSE requires compiler with __SSE4_1__ support and 64-bit CPU
-ifneq ($(shell echo|$(CC) -dM -E - -march=native|egrep -c '__(SSE4_1|x86_64)__'), 2)
+ifneq ($(shell echo|$(CC) -dM -E - -march=native 2>/dev/null|egrep -c '__(SSE4_1|x86_64)__'), 2)
     DONT_BUILD_LZSSE ?= 1
 endif
 
