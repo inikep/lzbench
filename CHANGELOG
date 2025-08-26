@@ -5,6 +5,7 @@ v2.x.y
 - updated libdeflate to v1.24 (thanks to @tansy)
 - updated snappy to v1.2.2 (thanks to @tansy)
 - updated xz to v5.8.1 (thanks to @tansy)
+- updated libbsc to v3.3.11 (thanks to @vectorsss)
 
 v2.1 (Jul 17, 2025)
 - Added the -T parameter, which enables multi-threaded compression using an external thread

@@ -1,3 +1,14 @@
+Changes in 3.3.11(August 13, 2025)
+- Updated libsais to v2.10.3.
+- Updated libcubwt to v1.6.3.
+- Support for CUDA Toolkit 13.0.
+- Optimized scalability for modern multi-core systems.
+
+Changes in 3.3.10 (July 30, 2025)
+- Improved LZP algorithm performance.
+- Reduced minimum match length from 128 to 72 to improve compression-speed tradeoff.
+- Optimized scalability for modern multi-core systems.
+
 Changes in 3.3.9 (May 21, 2025)
 - Optimized QLFC transform for AVX512 instruction-set.
 - Optimized Adler-32 checksum for AVX2 instruction-set.
