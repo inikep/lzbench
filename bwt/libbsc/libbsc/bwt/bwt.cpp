@@ -197,7 +197,8 @@ int bsc_bwt_encode(unsigned char * T, int n, unsigned char * num_indexes, int * 
             }
 
 #ifdef LIBBSC_OPENMP
-            index = libsais_bwt_aux_omp(T, T, A, n, 0, NULL, mod + 1, I, (features & LIBBSC_FEATURE_MULTITHREADING) > 0 ? 0 : 1);
+            int numThreads = (features & LIBBSC_FEATURE_MULTITHREADING) > 0 ? omp_get_max_threads() / omp_get_num_threads() : 1;
+            index = libsais_bwt_aux_omp(T, T, A, n, 0, NULL, mod + 1, I, numThreads > 1 ? numThreads : 1);
 #else
             index = libsais_bwt_aux(T, T, A, n, 0, NULL, mod + 1, I);
 #endif
@@ -211,7 +212,8 @@ int bsc_bwt_encode(unsigned char * T, int n, unsigned char * num_indexes, int * 
         else
         {
 #ifdef LIBBSC_OPENMP
-            index = libsais_bwt_omp(T, T, A, n, 0, NULL, (features & LIBBSC_FEATURE_MULTITHREADING) > 0 ? 0 : 1);
+            int numThreads = (features & LIBBSC_FEATURE_MULTITHREADING) > 0 ? omp_get_max_threads() / omp_get_num_threads() : 1;
+            index = libsais_bwt_omp(T, T, A, n, 0, NULL, numThreads > 1 ? numThreads : 1);
 #else
             index = libsais_bwt(T, T, A, n, 0, NULL);
 #endif
@@ -304,7 +306,8 @@ int bsc_bwt_decode(unsigned char * T, int n, int index, unsigned char num_indexe
             int I[256]; I[0] = index; for (int t = 0; t < num_indexes; ++t) { I[t + 1] = indexes[t] + 1; }
 
 #ifdef LIBBSC_OPENMP
-            index = libsais_unbwt_aux_omp(T, T, P, n, NULL, mod + 1, I, (features & LIBBSC_FEATURE_MULTITHREADING) > 0 ? 0 : 1);
+            int numThreads = (features & LIBBSC_FEATURE_MULTITHREADING) > 0 ? omp_get_max_threads() / omp_get_num_threads() : 1;
+            index = libsais_unbwt_aux_omp(T, T, P, n, NULL, mod + 1, I, numThreads > 1 ? numThreads : 1);
 #else
             index = libsais_unbwt_aux(T, T, P, n, NULL, mod + 1, I);
 #endif
@@ -312,7 +315,8 @@ int bsc_bwt_decode(unsigned char * T, int n, int index, unsigned char num_indexe
         else
         {
 #ifdef LIBBSC_OPENMP
-            index = libsais_unbwt_omp(T, T, P, n, NULL, index, (features & LIBBSC_FEATURE_MULTITHREADING) > 0 ? 0 : 1);
+            int numThreads = (features & LIBBSC_FEATURE_MULTITHREADING) > 0 ? omp_get_max_threads() / omp_get_num_threads() : 1;
+            index = libsais_unbwt_omp(T, T, P, n, NULL, index, numThreads > 1 ? numThreads : 1);
 #else
             index = libsais_unbwt(T, T, P, n, NULL, index);
 #endif

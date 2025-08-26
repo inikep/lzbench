@@ -1,3 +1,9 @@
+Changes in 2.10.3 (August 12, 2025)
+- No functional changes, added CMake install and export package rules.
+
+Changes in 2.10.2 (June 10, 2025)
+- Improved performance of suffix array and burrows wheeler transform construction on degenerate inputs.
+
 Changes in 2.10.1 (May 11, 2025)
 - No functional changes, slightly improved performance.
 
