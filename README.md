@@ -9,7 +9,7 @@ lzbench is an in-memory benchmarking tool for open-source compressors. It integr
 | [![Build Status][AzurePipelinesMasterBadge]][AzurePipelinesLink] |
 
 [AzurePipelinesMasterBadge]: https://dev.azure.com/inikep/lzbench/_apis/build/status%2Finikep.lzbench?branchName=master "gcc and clang tests"
-[AzurePipelinesLink]: https://dev.azure.com/inikep/lzbench/_build/latest?definitionId=17&branchName=master
+[AzurePipelinesLink]: https://dev.azure.com/inikep/lzbench/_build/latest?definitionId=19&branchName=master
 
 The list of changes in lzbench is available in the [CHANGELOG](CHANGELOG).
 
