@@ -18,6 +18,10 @@
 
 # direct GNU Make to search the directories relative to the
 # parent directory of this file
+
+UPDATE_SUBMODULES := $(shell git submodule update --init --recursive)
+COMPILE_DENSITY_LIB := $(shell cd misc/density/src; RUSTFLAGS="-C target-cpu=native" cargo rustc --crate-type=staticlib --release)
+
 SOURCE_PATH=$(dir $(lastword $(MAKEFILE_LIST)))
 vpath
 vpath %.c $(SOURCE_PATH)
@@ -33,6 +37,7 @@ ifeq ($(BUILD_ARCH),32-bit)
 endif
 
 CC?=gcc
+RUSTC = rustc
 
 COMPILER = $(shell $(CC) -v 2>&1 | grep -q "clang version" && echo clang || echo gcc)
 GCC_VERSION = $(shell echo | $(CC) -dM -E - | grep __VERSION__  | sed -e 's:\#define __VERSION__ "\([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
@@ -55,8 +60,7 @@ ifneq (,$(filter Windows%,$(OS)))
     endif
 else
     ifeq ($(shell uname -p),powerpc)
-        # density and yappy don't work with big-endian PowerPC
-        DONT_BUILD_DENSITY ?= 1
+        # yappy doesn't work with big-endian PowerPC
         DONT_BUILD_YAPPY ?= 1
         DONT_BUILD_ZLING ?= 1
     endif
@@ -91,6 +95,7 @@ endif
 
 ifeq ($(BUILD_TYPE),debug)
     OPT_FLAGS_O2 = $(OPT_FLAGS) -O0 -g
+    OPT_FLAGS_O3 = $(OPT_FLAGS) -O0 -g
     OPT_FLAGS_O3 = $(OPT_FLAGS) -O0 -g
 else
     OPT_FLAGS_O2 = $(OPT_FLAGS) -O2 -DNDEBUG
@@ -487,12 +492,7 @@ endif
 ifeq "$(DONT_BUILD_DENSITY)" "1"
     DEFINES += -DBENCH_REMOVE_DENSITY
 else
-    BUGGY_FILES += lz/density/globals.o lz/density/buffers/buffer.o
-    BUGGY_FILES += lz/density/algorithms/cheetah/core/cheetah_decode.o lz/density/algorithms/cheetah/core/cheetah_encode.o
-    BUGGY_FILES += lz/density/algorithms/lion/forms/lion_form_model.o lz/density/algorithms/lion/core/lion_decode.o
-    BUGGY_FILES += lz/density/algorithms/lion/core/lion_encode.o lz/density/algorithms/dictionaries.o
-    BUGGY_FILES += lz/density/algorithms/chameleon/core/chameleon_decode.o lz/density/algorithms/chameleon/core/chameleon_encode.o
-    BUGGY_FILES += lz/density/algorithms/algorithms.o lz/density/structure/header.o
+	MISC_FILES += misc/density/src/target/release/libdensity_rs.a
 endif
 
 
