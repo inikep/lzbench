@@ -19,9 +19,10 @@
 # direct GNU Make to search the directories relative to the
 # parent directory of this file
 
-UPDATE_SUBMODULES := $(shell git submodule update --init --recursive)
-COMPILE_DENSITY_LIB := $(shell cd misc/density/src; RUSTFLAGS="-C target-cpu=native" cargo rustc --crate-type=staticlib --release)
-LDFLAGS += -fuse-ld=lld
+SUBMODULES_UPDATE := $(shell git submodule update --init --recursive)
+DENSITY_SRC_DIR=./misc/density/src/
+DENSITY_LIB_BUILD := $(shell cd $(DENSITY_SRC_DIR); RUSTFLAGS="-C target-cpu=native -C linker=$(CXX)" cargo rustc --crate-type=cdylib --release --verbose)
+LDFLAGS += -Wl,-rpath=$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
 
 SOURCE_PATH=$(dir $(lastword $(MAKEFILE_LIST)))
 vpath
@@ -687,3 +688,4 @@ $(BSC_CUDA_FILES): %.cu.o: %.cu
 clean:
 	rm -rf lzbench lzbench.exe
 	find . -type f -name "*.o" -exec rm -f {} +
+	rm -rf $(DENSITY_SRC_DIR)target/
