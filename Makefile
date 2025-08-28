@@ -24,12 +24,16 @@ DENSITY_SRC_DIR=misc/density/src/
 DONT_BUILD_DENSITY ?= 1
 ifeq ($(shell uname -m),$(firstword $(subst -, ,$(shell $(CXX) -dumpmachine))))		# Skip cross compilation
 	ifneq ($(BUILD_ARCH),32-bit)	# Skip user-requested 32-bit compilation
-		DENSITY_LIB_BUILD := $(shell cd $(DENSITY_SRC_DIR); RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" cargo rustc --crate-type=staticlib --release --verbose -- --print=native-static-libs)
-		LDFLAGS += -Wl,-rpath,$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
-		ifneq (,$(filter Windows%,$(OS)))
-			LDFLAGS += -lkernel32 -lntdll -luserenv -lws2_32 -ldbghelp -lmsvcrt		# Required native static libs
+		ifeq (,$(filter Windows%,$(OS)))	# Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
+			ifeq ($(BUILD_STATIC),1)
+				DENSITY_BUILD_TYPE=staticlib
+			else
+				DENSITY_BUILD_TYPE=cdylib
+			endif
+			DENSITY_LIB_BUILD := $(shell cd $(DENSITY_SRC_DIR); RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" cargo rustc --crate-type=$(DENSITY_BUILD_TYPE) --release --verbose -- --print=native-static-libs)
+			LDFLAGS += -Wl,-rpath,$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
+			DONT_BUILD_DENSITY = 0
 		endif
-		DONT_BUILD_DENSITY = 0
 	endif
 endif
 
