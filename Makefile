@@ -21,7 +21,7 @@
 
 SUBMODULES_UPDATE := $(shell git submodule update --init --recursive)
 DENSITY_SRC_DIR=misc/density/src/
-DENSITY_LIB_BUILD := $(shell cd $(DENSITY_SRC_DIR); RUSTFLAGS="-C target-cpu=native -C linker=$(CXX)" cargo rustc --crate-type=cdylib --release --verbose)
+DENSITY_LIB_BUILD := $(shell cd $(DENSITY_SRC_DIR); RUSTFLAGS="-C target-cpu=native" cargo rustc --crate-type=cdylib --release --verbose)
 LDFLAGS += -Wl,-rpath,$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
 
 SOURCE_PATH=$(dir $(lastword $(MAKEFILE_LIST)))
