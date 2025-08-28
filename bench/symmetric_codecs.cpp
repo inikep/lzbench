@@ -325,7 +325,10 @@ int64_t lzbench_zpaq_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 #ifndef BENCH_REMOVE_DENSITY
-#include "misc/density/density.h"
+extern "C"
+{
+    #include "misc/density/density.h"
+}
 
 char* lzbench_density_init(size_t insize, size_t level, size_t)
 {
