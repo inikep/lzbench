@@ -20,8 +20,8 @@
 # parent directory of this file
 
 UPDATE_SUBMODULES := $(shell git submodule update --init --recursive)
-COMPILE_DENSITY_LIB := $(shell cd misc/density/src; RUSTFLAGS="-C target-cpu=native" cargo rustc --crate-type=cdylib --release)
-DYLIB_SUFFIX=.dylib
+COMPILE_DENSITY_LIB := $(shell cd misc/density/src; RUSTFLAGS="-C target-cpu=native" cargo rustc --crate-type=staticlib --release)
+LDFLAGS += -fuse-ld=lld
 
 SOURCE_PATH=$(dir $(lastword $(MAKEFILE_LIST)))
 vpath
@@ -58,7 +58,6 @@ ifneq (,$(filter Windows%,$(OS)))
     ifeq ($(BUILD_STATIC),1)
         LDFLAGS += -lshell32 -lole32 -loleaut32 -static
     endif
-    DYLIB_SUFFIX=.dll
 else
     ifeq ($(shell uname -p),powerpc)
         # yappy doesn't work with big-endian PowerPC
@@ -72,8 +71,6 @@ else
         DONT_BUILD_LZHAM ?= 1
         DONT_BUILD_CSC ?= 1
         DEFINES += -Dunix
-    else
-    	DYLIB_SUFFIX=.so
     endif
 
     ifneq ($(THREAD_MODEL), win32)
@@ -495,7 +492,7 @@ endif
 ifeq "$(DONT_BUILD_DENSITY)" "1"
     DEFINES += -DBENCH_REMOVE_DENSITY
 else
-	MISC_FILES += misc/density/src/target/release/libdensity_rs$(DYLIB_SUFFIX)
+	MISC_FILES += misc/density/src/target/release/libdensity_rs.a
 endif
 
 
