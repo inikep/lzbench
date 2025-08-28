@@ -26,6 +26,9 @@ ifeq ($(shell uname -m),$(firstword $(subst -, ,$(shell $(CXX) -dumpmachine))))	
 	ifneq ($(BUILD_ARCH),32-bit)	# Skip user-requested 32-bit compilation
 		DENSITY_LIB_BUILD := $(shell cd $(DENSITY_SRC_DIR); RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" cargo rustc --crate-type=staticlib --release --verbose -- --print=native-static-libs)
 		LDFLAGS += -Wl,-rpath,$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
+		ifneq (,$(filter Windows%,$(OS)))
+			LDFLAGS += -lkernel32 -lntdll -luserenv -lws2_32 -ldbghelp -lmsvcrt		# Required native static libs
+		endif
 		DONT_BUILD_DENSITY = 0
 	endif
 endif
