@@ -492,8 +492,6 @@ endif
 
 ifeq "$(DONT_BUILD_DENSITY)" "1"
     DEFINES += -DBENCH_REMOVE_DENSITY
-else
-	MISC_FILES += misc/density/src/target/release/libdensity_rs.a
 endif
 
 
