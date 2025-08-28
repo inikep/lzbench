@@ -103,7 +103,7 @@ void print_speed(lzbench_params_t *params, string_table_t& row)
 {
     float cspeed, dspeed, ratio;
     cspeed = (!row.col2_ctime) ? 0 : (row.col5_origsize * 1000.0 / row.col2_ctime);
-    dspeed = (!row.col3_dtime) ? 0 : (row.col5_origsize * 1000.0 / row.col3_dtime);
+    dspeed = (!row.col3_dtime) ? 0 : (row.col4_comprsize * 1000.0 / row.col3_dtime);
     ratio = row.col4_comprsize * 100.0 / row.col5_origsize;
 
     switch (params->textformat)
@@ -604,7 +604,7 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
         total_d_iters += i;
         LZBENCH_PRINT(9, "DEC %s dnanosec=%llu iters=%d/%d\n", desc->name, (uint64)nanosec, i, params->d_iters);
         if ((total_d_iters >= params->d_iters) && (total_nanosec > ((uint64_t)params->dmintime*1000000))) break;
-        LZBENCH_STDERR(2, "%s decompr iter=%d time=%.2fs speed=%.2f MB/s     \r", desc->name, total_d_iters, total_nanosec/1000000000.0, (float)insize*i*1000/nanosec);
+        LZBENCH_STDERR(2, "%s decompr iter=%d time=%.2fs speed=%.2f MB/s     \r", desc->name, total_d_iters, total_nanosec/1000000000.0, (float)complen*i*1000/nanosec);
     }
     while (true);
 
