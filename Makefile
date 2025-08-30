@@ -19,24 +19,6 @@
 # direct GNU Make to search the directories relative to the
 # parent directory of this file
 
-SUBMODULES_UPDATE := $(shell git submodule update --init --recursive)
-DENSITY_SRC_DIR=misc/density/src/
-DONT_BUILD_DENSITY ?= 1
-ifeq ($(shell uname -m),$(firstword $(subst -, ,$(shell $(CXX) -dumpmachine))))		# Skip cross compilation
-	ifneq ($(BUILD_ARCH),32-bit)	# Skip user-requested 32-bit compilation
-		ifeq (,$(filter Windows%,$(OS)))	# Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
-			ifeq ($(BUILD_STATIC),1)
-				DENSITY_BUILD_TYPE=staticlib
-			else
-				DENSITY_BUILD_TYPE=cdylib
-			endif
-			DENSITY_LIB_BUILD := $(shell cd $(DENSITY_SRC_DIR); RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" cargo rustc --crate-type=$(DENSITY_BUILD_TYPE) --release --verbose -- --print=native-static-libs)
-			LDFLAGS += -Wl,-rpath,$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
-			DONT_BUILD_DENSITY = 0
-		endif
-	endif
-endif
-
 SOURCE_PATH=$(dir $(lastword $(MAKEFILE_LIST)))
 vpath
 vpath %.c $(SOURCE_PATH)
@@ -44,6 +26,38 @@ vpath %.cc $(SOURCE_PATH)
 vpath %.cpp $(SOURCE_PATH)
 vpath bench/lzbench.h $(SOURCE_PATH)
 vpath wflz/wfLZ.h $(SOURCE_PATH)
+
+
+DONT_BUILD_DENSITY ?= 1
+DENSITY_SRC_DIR=misc/density/src/
+
+HOST_ARCH   := $(shell uname -m)
+TARGET_ARCH := $(firstword $(subst -, ,$(shell $(CXX) -dumpmachine)))
+HAVE_CARGO  := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
+
+ifeq ($(HAVE_CARGO),1)
+  CARGO_VERSION := $(shell cargo --version | awk '{print $$2}')
+  HAVE_EDITION_2024 := $(shell printf "%s\n1.82.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.82.0 && echo 1 || echo 0)
+endif
+
+# Only build Density if native build, not 32-bit, not Windows
+ifneq ($(HAVE_CARGO),1)
+    $(info Cargo not found – skipping Density build)
+else ifneq ($(HAVE_EDITION_2024),1)
+    $(info Cargo $(CARGO_VERSION) does not support edition 2024 – skipping Density build)
+else ifneq ($(HOST_ARCH),$(TARGET_ARCH)) # Skip cross-compilation
+else ifeq ($(BUILD_ARCH),32-bit)         # Skip user requested 32-bit compilation
+else ifneq (,$(filter Windows%,$(OS)))   # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
+else
+    ifeq ($(BUILD_STATIC),1)
+        DENSITY_BUILD_TYPE=staticlib
+    else
+        DENSITY_BUILD_TYPE=cdylib
+    endif
+    DENSITY_LIB_BUILD := $(shell cd $(DENSITY_SRC_DIR); RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" cargo rustc --crate-type=$(DENSITY_BUILD_TYPE) --release --verbose -- --print=native-static-libs)
+    LDFLAGS += -Wl,-rpath,$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
+    DONT_BUILD_DENSITY = 0
+endif
 
 ifeq ($(BUILD_ARCH),32-bit)
     CODE_FLAGS += -m32
@@ -113,7 +127,6 @@ endif
 
 ifeq ($(BUILD_TYPE),debug)
     OPT_FLAGS_O2 = $(OPT_FLAGS) -O0 -g
-    OPT_FLAGS_O3 = $(OPT_FLAGS) -O0 -g
     OPT_FLAGS_O3 = $(OPT_FLAGS) -O0 -g
 else
     OPT_FLAGS_O2 = $(OPT_FLAGS) -O2 -DNDEBUG
