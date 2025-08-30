@@ -112,44 +112,6 @@ int64_t lzbench_csc_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 
-#ifndef BENCH_REMOVE_DENSITY
-extern "C"
-{
-    #include "lz/density/density_api.h"
-}
-
-char* lzbench_density_init(size_t insize, size_t level, size_t)
-{
-    return (char*) malloc(std::max(density_compress_safe_size(insize), density_decompress_safe_size(insize)));
-}
-
-void lzbench_density_deinit(char* workmem)
-{
-    free(workmem);
-}
-
-int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    density_processing_result result = density_compress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, density_compress_safe_size(outsize), (DENSITY_ALGORITHM)codec_options->level);
-    if (result.state)
-        return 0;
-
-    return result.bytesWritten;
-}
-
-int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    density_processing_result result = density_decompress((uint8_t *)inbuf, insize, (uint8_t *)outbuf, density_decompress_safe_size(outsize));
-    if (result.state)
-        return 0;
-
-    return result.bytesWritten;
-}
-
-#endif // BENCH_REMOVE_DENSITY
-
-
-
 #ifndef BENCH_REMOVE_GIPFELI
 #include "lz/gipfeli/gipfeli.h"
 
