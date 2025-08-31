@@ -27,38 +27,6 @@ vpath %.cpp $(SOURCE_PATH)
 vpath bench/lzbench.h $(SOURCE_PATH)
 vpath wflz/wfLZ.h $(SOURCE_PATH)
 
-
-DONT_BUILD_DENSITY ?= 1
-DENSITY_SRC_DIR=misc/density/src/
-
-HOST_ARCH   := $(shell uname -m)
-TARGET_ARCH := $(firstword $(subst -, ,$(shell $(CXX) -dumpmachine)))
-HAVE_CARGO  := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
-
-ifeq ($(HAVE_CARGO),1)
-  CARGO_VERSION := $(shell cargo --version | awk '{print $$2}')
-  HAVE_EDITION_2024 := $(shell printf "%s\n1.82.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.82.0 && echo 1 || echo 0)
-endif
-
-# Only build Density if native build, not 32-bit, not Windows
-ifneq ($(HAVE_CARGO),1)
-    $(info Cargo not found – skipping Density build)
-else ifneq ($(HAVE_EDITION_2024),1)
-    $(info Cargo $(CARGO_VERSION) does not support edition 2024 – skipping Density build)
-else ifneq ($(HOST_ARCH),$(TARGET_ARCH)) # Skip cross-compilation
-else ifeq ($(BUILD_ARCH),32-bit)         # Skip user requested 32-bit compilation
-else ifneq (,$(filter Windows%,$(OS)))   # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
-else
-    ifeq ($(BUILD_STATIC),1)
-        DENSITY_BUILD_TYPE=staticlib
-    else
-        DENSITY_BUILD_TYPE=cdylib
-    endif
-    DENSITY_LIB_BUILD := $(shell cd $(DENSITY_SRC_DIR); RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" cargo rustc --crate-type=$(DENSITY_BUILD_TYPE) --release --verbose -- --print=native-static-libs)
-    LDFLAGS += -Wl,-rpath,$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
-    DONT_BUILD_DENSITY = 0
-endif
-
 ifeq ($(BUILD_ARCH),32-bit)
     CODE_FLAGS += -m32
     LDFLAGS += -m32
@@ -151,6 +119,42 @@ ifneq "$(DISABLE_THREADING)" "1"
 else
     DEFINES += -DDISABLE_THREADING
 endif
+
+
+# Density and Rust related detection
+HOST_ARCH   := $(shell uname -m)
+TARGET_ARCH := $(firstword $(subst -, ,$(shell $(CXX) -dumpmachine)))
+HAVE_CARGO  := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
+
+ifeq ($(HAVE_CARGO),1)
+    CARGO_VERSION := $(shell cargo --version | awk '{print $$2}')
+    HAVE_EDITION_2024 := $(shell printf "%s\n1.82.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.82.0 && echo 1 || echo 0)
+endif
+
+ifneq ($(DONT_BUILD_DENSITY),1)
+    DENSITY_SRC_DIR=misc/density/src/
+    DONT_BUILD_DENSITY := 1
+
+    # Only build Density if native build, not 32-bit, not Windows
+    ifneq ($(HAVE_CARGO),1)
+        $(info Cargo not found – skipping Density build)
+    else ifneq ($(HAVE_EDITION_2024),1)
+        $(info Cargo $(CARGO_VERSION) does not support edition 2024 – skipping Density build)
+    else ifneq ($(HOST_ARCH),$(TARGET_ARCH)) # Skip cross-compilation
+    else ifeq ($(BUILD_ARCH),32-bit)         # Skip user requested 32-bit compilation
+    else ifneq (,$(filter Windows%,$(OS)))   # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
+    else
+        ifeq ($(BUILD_STATIC),1)
+            DENSITY_BUILD_TYPE=staticlib
+        else
+            DENSITY_BUILD_TYPE=cdylib
+        endif
+
+        LDFLAGS += -Wl,-rpath,$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
+        DONT_BUILD_DENSITY := 0
+    endif
+endif
+
 
 
 ifeq "$(DONT_BUILD_BRIEFLZ)" "1"
@@ -601,7 +605,7 @@ lzbench: $(BUGGY_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
-bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h
+bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h DENSITY_LIB
 
 # disable the implicit rule for making a binary out of a single object file
 %: %.o
@@ -712,6 +716,14 @@ $(BSC_CXX_FILES): %.o : %.cpp
 $(BSC_CUDA_FILES): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
 	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) $(BSC_FLAGS) -c $< -o $@
+
+DENSITY_LIB:
+ifneq ($(DONT_BUILD_DENSITY),1)
+	@echo "Building Density..."
+	cd $(DENSITY_SRC_DIR) && \
+	RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" \
+	cargo rustc --crate-type=$(DENSITY_BUILD_TYPE) --release -- --print=native-static-libs
+endif
 
 clean:
 	rm -rf lzbench lzbench.exe
