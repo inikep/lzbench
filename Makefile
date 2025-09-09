@@ -388,6 +388,7 @@ else
 
     ZLIB_NG_FILES += lz/zlib-ng/arch/generic/adler32_c.o lz/zlib-ng/arch/generic/chunkset_c.o lz/zlib-ng/arch/generic/crc32_braid_c.o lz/zlib-ng/arch/generic/slide_hash_c.o
     ZLIB_NG_FILES += lz/zlib-ng/arch/generic/adler32_fold_c.o lz/zlib-ng/arch/generic/compare256_c.o lz/zlib-ng/arch/generic/crc32_fold_c.o
+    ZLIB_NG_FILES += lz/zlib-ng/arch/generic/crc32_c.o lz/zlib-ng/arch/generic/crc32_chorba_c.o
 
 #    ZLIB_NG_FILES += lz/zlib-ng/arch/x86/adler32_avx2.o lz/zlib-ng/arch/x86/adler32_ssse3.o lz/zlib-ng/arch/x86/chunkset_ssse3.o lz/zlib-ng/arch/x86/crc32_vpclmulqdq.o
 #    ZLIB_NG_FILES += lz/zlib-ng/arch/x86/adler32_avx512.o lz/zlib-ng/arch/x86/chunkset_avx2.o lz/zlib-ng/arch/x86/compare256_avx2.o lz/zlib-ng/arch/x86/slide_hash_avx2.o
