@@ -102,7 +102,7 @@ int32_t Z_EXPORT PREFIX(inflateBackInit_)(PREFIX3(stream) *strm, int32_t windowB
     do { \
         PULL(); \
         have--; \
-        hold += ((unsigned)(*next++) << bits); \
+        hold += ((uint64_t)(*next++) << bits); \
         bits += 8; \
     } while (0)
 
@@ -149,12 +149,12 @@ int32_t Z_EXPORT PREFIX(inflateBackInit_)(PREFIX3(stream) *strm, int32_t windowB
    inflateBack() can also return Z_STREAM_ERROR if the input parameters
    are not correct, i.e. strm is NULL or the state was not initialized.
  */
-int32_t Z_EXPORT PREFIX(inflateBack)(PREFIX3(stream) *strm, zng_in_func in, void *in_desc, zng_out_func out, void *out_desc) {
+int32_t Z_EXPORT PREFIX(inflateBack)(PREFIX3(stream) *strm, in_func in, void *in_desc, out_func out, void *out_desc) {
     struct inflate_state *state;
     z_const unsigned char *next; /* next input */
     unsigned char *put;          /* next output */
     unsigned have, left;         /* available input and output */
-    uint32_t hold;               /* bit buffer */
+    uint64_t hold;               /* bit buffer */
     unsigned bits;               /* bits in bit buffer */
     unsigned copy;               /* number of stored or match bytes to copy */
     unsigned char *from;         /* where to copy match bytes from */

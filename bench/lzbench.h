@@ -234,7 +234,7 @@ static const compressor_desc_t comp_desc[] =
     { "yalz77",     "yalz77 2015-09-19",       1,  12,    0,       0, lzbench_yalz77_compress,     lzbench_yalz77_decompress,     NULL,                    NULL },
     { "yappy",      "yappy 2014-03-22",        1,  12,    0,       1, lzbench_yappy_compress,      lzbench_yappy_decompress,      lzbench_yappy_init,      NULL },
     { "zlib",       "zlib 1.3.1",              1,   9,    0,       0, lzbench_zlib_compress,       lzbench_zlib_decompress,       NULL,                    NULL },
-    { "zlib-ng",    "zlib-ng 2.2.3",           1,   9,    0,       0, lzbench_zlib_ng_compress,    lzbench_zlib_ng_decompress,    NULL,                    NULL },
+    { "zlib-ng",    "zlib-ng 2.2.5",           1,   9,    0,       0, lzbench_zlib_ng_compress,    lzbench_zlib_ng_decompress,    NULL,                    NULL },
     { "zling",      "zling 2018-10-12",        0,   4,    0,       0, lzbench_zling_compress,      lzbench_zling_decompress,      NULL,                    NULL },
     { "zpaq",       "zpaq 7.15",               1,   5,    0,       0, lzbench_zpaq_compress,       lzbench_zpaq_decompress,       NULL,                    NULL },
     { "zstd",       "zstd 1.5.7",              1,  22,    0,       0, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
