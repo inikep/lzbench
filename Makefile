@@ -340,6 +340,59 @@ ifeq "$(DONT_BUILD_SNAPPY)" "1"
     DEFINES += -DBENCH_REMOVE_SNAPPY
 else
     SNAPPY_FILES = lz/snappy/snappy-sinksource.o lz/snappy/snappy-stubs-internal.o lz/snappy/snappy.o
+
+    # ===========================================================================
+    # This is the definitive "Verifier" logic block for performance optimizations.
+    # It does NOT automatically add any compiler flags (-march).
+    # It only VERIFIES if the user's intent matches the environment's capability.
+    # ===========================================================================
+
+    # --- Stage 1: Gather Information from User and Environment ---
+
+    # 1a. Check User's Intent: Did the user specify a -march flag?
+    USER_PROVIDED_MARCH := $(filter -march=%,$(MOREFLAGS) $(USER_CFLAGS) $(USER_CXXFLAGS))
+    USER_ISA_STRING :=
+
+    ifneq ($(USER_PROVIDED_MARCH),)
+        # Extract the ISA string from the user-provided flag.
+        USER_ISA_STRING := $(patsubst -march=%,%,$(firstword $(USER_PROVIDED_MARCH)))
+    endif
+
+    # 1b. Check Environment's Capability: What does the hardware actually support?
+    detected_ARCH := $(shell uname -m)
+    is_riscv := $(filter riscv%,$(detected_ARCH))
+    ENV_ISA_STRING :=
+
+    ifneq ($(is_riscv),)
+        ENV_ISA_STRING := $(shell cat /proc/cpuinfo | grep -m1 isa | cut -d: -f2 | tr -d '[:space:]')
+    endif
+
+    # --- Stage 2: Make the Final Decision Based on Verification ---
+    # First, ensure we have a capable compiler.
+    # If the compiler is capable, proceed with architecture-specific checks.
+    ifneq ($(is_riscv),)
+        # We are on RISC-V. Both user intent AND environment capability must support Zbb.
+        user_wants_zbb := $(findstring zbb,$(USER_ISA_STRING)) #-march=rv64gc_zbb
+        env_supports_zbb := $(findstring zbb,$(ENV_ISA_STRING))
+
+        ifneq ($(user_wants_zbb),)
+            ifneq ($(env_supports_zbb),)
+                # Double confirmation: User asked for Zbb AND environment has Zbb.
+                DEFINES += -DHAVE_BUILTIN_CTZ 
+            else
+                # WARNING: User requested Zbb, but the build environment does not support it.
+                # The macro will NOT be added. This may result in suboptimal performance.
+                $(info WARNING: -march specifies 'zbb', but build host's /proc/cpuinfo lacks it. Performance macros disabled.)
+            endif
+        endif
+    else
+        # We are on a non-RISC-V architecture (e.g., x86, ARM).
+        # The decision to add macros depends only on the compiler.
+        DEFINES += -DHAVE_BUILTIN_CTZ 
+    endif
+
+    # ===========================================================================
+
 endif
 
 
