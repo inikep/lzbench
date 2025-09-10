@@ -46,7 +46,17 @@ static inline void chunkmemset_8(uint8_t *from, chunk_t *chunk) {
 }
 
 static inline void chunkmemset_16(uint8_t *from, chunk_t *chunk) {
+    /* Unfortunately there seems to be a compiler bug in Visual Studio 2015 where
+     * the load is dumped to the stack with an aligned move for this memory-register
+     * broadcast. The vbroadcasti128 instruction is 2 fewer cycles and this dump to
+     * stack doesn't exist if compiled with optimizations. For the sake of working
+     * properly in a debugger, let's take the 2 cycle penalty */
+#if defined(_MSC_VER) && _MSC_VER <= 1900
+    halfchunk_t half = _mm_loadu_si128((__m128i*)from);
+    *chunk = _mm256_inserti128_si256(_mm256_castsi128_si256(half), half, 1);
+#else
     *chunk = _mm256_broadcastsi128_si256(_mm_loadu_si128((__m128i*)from));
+#endif
 }
 
 static inline void loadchunk(uint8_t const *s, chunk_t *chunk) {
@@ -88,6 +98,10 @@ static inline uint8_t* CHUNKCOPY(uint8_t *out, uint8_t const *from, unsigned len
     return out;
 }
 
+/* MSVC compiler decompression bug when optimizing for size */
+#if defined(_MSC_VER) && _MSC_VER < 1943
+#  pragma optimize("", off)
+#endif
 static inline chunk_t GET_CHUNK_MAG(uint8_t *buf, uint32_t *chunk_rem, uint32_t dist) {
     lut_rem_pair lut_rem = perm_idx_lut[dist - 3];
     __m256i ret_vec;
@@ -118,6 +132,9 @@ static inline chunk_t GET_CHUNK_MAG(uint8_t *buf, uint32_t *chunk_rem, uint32_t 
 
     return ret_vec;
 }
+#if defined(_MSC_VER) && _MSC_VER < 1943
+#  pragma optimize("", on)
+#endif
 
 static inline void storehalfchunk(uint8_t *out, halfchunk_t *chunk) {
     _mm_storeu_si128((__m128i *)out, *chunk);

@@ -86,7 +86,7 @@ Supported compressors
  - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
  - [xz 5.8.1](https://github.com/tukaani-project/xz)
  - [zlib 1.3.1](http://zlib.net)
- - [zlib-ng 2.2.3](https://github.com/zlib-ng/zlib-ng)
+ - [zlib-ng 2.2.5](https://github.com/zlib-ng/zlib-ng)
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
  - [zpaq 7.15](https://github.com/zpaq/zpaq)
  - [zstd 1.5.7](https://github.com/facebook/zstd)

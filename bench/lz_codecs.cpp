@@ -1217,7 +1217,9 @@ int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 #undef z_const
 #undef Z_NULL
 
-#include "zlib-ng/zlib-ng.h"
+#define in_func zlibng_in_func
+#include "lz/zlib-ng/zlib-ng.h"
+#undef in_func
 
 int64_t lzbench_zlib_ng_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {

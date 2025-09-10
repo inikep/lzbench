@@ -48,11 +48,11 @@
 extern "C" {
 #endif
 
-#define ZLIBNG_VERSION "2.2.3"
-#define ZLIBNG_VERNUM 0x020203F0L   /* MMNNRRSM: major minor revision status modified */
+#define ZLIBNG_VERSION "2.2.5"
+#define ZLIBNG_VERNUM 0x020205F0L   /* MMNNRRSM: major minor revision status modified */
 #define ZLIBNG_VER_MAJOR 2
 #define ZLIBNG_VER_MINOR 2
-#define ZLIBNG_VER_REVISION 3
+#define ZLIBNG_VER_REVISION 5
 #define ZLIBNG_VER_STATUS F         /* 0=devel, 1-E=beta, F=Release (DEPRECATED) */
 #define ZLIBNG_VER_STATUSH 0xF      /* Hex values: 0=devel, 1-E=beta, F=Release */
 #define ZLIBNG_VER_MODIFIED 0       /* non-zero if modified externally from zlib-ng */
@@ -1076,11 +1076,11 @@ int32_t zng_inflateBackInit(zng_stream *strm, int32_t windowBits, uint8_t *windo
    allocated.
 */
 
-typedef uint32_t (*zng_in_func) (void *, const uint8_t * *);
-typedef int32_t  (*zng_out_func) (void *, uint8_t *, uint32_t);
+typedef uint32_t (*in_func) (void *, const uint8_t * *);
+typedef int32_t  (*out_func) (void *, uint8_t *, uint32_t);
 
 Z_EXTERN Z_EXPORT
-int32_t zng_inflateBack(zng_stream *strm, zng_in_func in, void *in_desc, zng_out_func out, void *out_desc);
+int32_t zng_inflateBack(zng_stream *strm, in_func in, void *in_desc, out_func out, void *out_desc);
 /*
      inflateBack() does a raw inflate with a single call using a call-back
    interface for input and output.  This is potentially more efficient than
