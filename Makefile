@@ -340,6 +340,18 @@ ifeq "$(DONT_BUILD_SNAPPY)" "1"
     DEFINES += -DBENCH_REMOVE_SNAPPY
 else
     SNAPPY_FILES = lz/snappy/snappy-sinksource.o lz/snappy/snappy-stubs-internal.o lz/snappy/snappy.o
+
+    # Try compiling a small test with __builtin_ctz
+    # This is especially impactful on RISC-V CPUs that support the "Zbb" Bit
+    # Manipulation extension, as it enables the use of the fast 'ctz' instruction.
+    # The same benefit applies to other architectures like x86 (with BMI1/TZCNT)
+    # and ARM.
+    HAVE_BUILTIN_CTZ := $(shell \
+        echo 'int main(void){return __builtin_ctz(8);}' \
+        | $(CC) $(CFLAGS) -x c -o /dev/null - 2>/dev/null && echo 1 || echo 0)
+    ifeq ($(HAVE_BUILTIN_CTZ), 1)
+    DEFINES += -DHAVE_BUILTIN_CTZ
+    endif
 endif
 
 
