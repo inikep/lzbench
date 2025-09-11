@@ -120,6 +120,10 @@ else
     DEFINES += -DDISABLE_THREADING
 endif
 
+# Try compiling a small test with __builtin_ctz
+# Efficient on CPUs with bit-manipulation support (e.g., RISC-V Zbb, x86 BMI1/TZCNT, ARM).
+HAVE_BUILTIN_CTZ := $(shell echo 'int main(void){return __builtin_ctz(8);}' \
+    | $(CC) $(CFLAGS) -x c -o /dev/null - 2>/dev/null && echo 1 || echo 0)
 
 # Density and Rust related detection
 HOST_ARCH   := $(shell uname -m)
@@ -340,17 +344,8 @@ ifeq "$(DONT_BUILD_SNAPPY)" "1"
     DEFINES += -DBENCH_REMOVE_SNAPPY
 else
     SNAPPY_FILES = lz/snappy/snappy-sinksource.o lz/snappy/snappy-stubs-internal.o lz/snappy/snappy.o
-
-    # Try compiling a small test with __builtin_ctz
-    # This is especially impactful on RISC-V CPUs that support the "Zbb" Bit
-    # Manipulation extension, as it enables the use of the fast 'ctz' instruction.
-    # The same benefit applies to other architectures like x86 (with BMI1/TZCNT)
-    # and ARM.
-    HAVE_BUILTIN_CTZ := $(shell \
-        echo 'int main(void){return __builtin_ctz(8);}' \
-        | $(CC) $(CFLAGS) -x c -o /dev/null - 2>/dev/null && echo 1 || echo 0)
     ifeq ($(HAVE_BUILTIN_CTZ), 1)
-    DEFINES += -DHAVE_BUILTIN_CTZ
+        SNAPPY_FLAGS += -DHAVE_BUILTIN_CTZ
     endif
 endif
 
@@ -551,21 +546,21 @@ endif
 ifeq "$(DONT_BUILD_LZMAT)" "1"
     DEFINES += -DBENCH_REMOVE_LZMAT
 else
-    BUGGY_FILES += lz/lzmat/lzmat_dec.o lz/lzmat/lzmat_enc.o
+    BUGGY_C_FILES += lz/lzmat/lzmat_dec.o lz/lzmat/lzmat_enc.o
 endif
 
 
 ifeq "$(DONT_BUILD_LZRW)" "1"
     DEFINES += -DBENCH_REMOVE_LZRW
 else
-    BUGGY_FILES += lz/lzrw/lzrw1-a.o lz/lzrw/lzrw1.o lz/lzrw/lzrw2.o lz/lzrw/lzrw3.o lz/lzrw/lzrw3-a.o
+    BUGGY_C_FILES += lz/lzrw/lzrw1-a.o lz/lzrw/lzrw1.o lz/lzrw/lzrw2.o lz/lzrw/lzrw3.o lz/lzrw/lzrw3-a.o
 endif
 
 
 ifeq "$(DONT_BUILD_WFLZ)" "1"
     DEFINES += -DBENCH_REMOVE_WFLZ
 else
-    BUGGY_FILES += lz/wflz/wfLZ.o
+    BUGGY_C_FILES += lz/wflz/wfLZ.o
 endif
 
 
@@ -613,7 +608,7 @@ endif # ifneq "$(LIBCUDART)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
+lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -634,8 +629,12 @@ bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/code
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) $< -c -o $@
 
+$(BROTLI_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz/brotli/include $< -c -o $@
+
 # FIX for SEGFAULT on GCC 4.9+
-$(BUGGY_FILES): %.o : %.c
+$(BUGGY_C_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS_O2) $< -c -o $@
 
@@ -643,13 +642,29 @@ $(BUGGY_CC_FILES): %.o : %.cc
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) $< -c -o $@
 
+$(BUGGY_CODECS): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) -Ilz/libcsc $< -c -o $@
+
 $(BUGGY_CXX_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) $< -c -o $@
 
+$(BZIP3_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -DVERSION=\"1.5.1\" -Ibwt/bzip3/include $< -c -o $@
+
 $(CSC_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) -Ilz/libcsc $< -c -o $@
+
+$(FASTLZMA2_OBJ): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -DFL2_SINGLETHREAD -DNO_XXHASH $< -c -o $@
+
+$(LIBDEFLATE_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz/libdeflate $< -c -o $@
 
 $(LIZARD_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
@@ -659,23 +674,7 @@ $(LZ_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include $< -c -o $@
 
-$(BUGGY_CODECS): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz/libcsc $< -c -o $@
-
-$(BROTLI_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz/brotli/include $< -c -o $@
-
-$(LIBDEFLATE_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz/libdeflate $< -c -o $@
-
 $(LZO_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz $< -c -o $@
-
-$(UCL_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Ilz $< -c -o $@
 
@@ -683,9 +682,13 @@ $(LZSSE_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -std=c++0x -msse4.1 $< -c -o $@
 
-$(FASTLZMA2_OBJ): %.o : %.c
+$(SNAPPY_FILES): %.o : %.cc
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DFL2_SINGLETHREAD -DNO_XXHASH $< -c -o $@
+	$(CC) $(CFLAGS) $(SNAPPY_FLAGS) $< -c -o $@
+
+$(UCL_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz $< -c -o $@
 
 $(XZ_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
@@ -704,11 +707,7 @@ $(ZPAQ_FILES): %.o : %.cpp
 	$(CXX) $(CXXFLAGS) -I misc/zpaq $< -c -o $@
 
 
-
-$(BZIP3_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DVERSION=\"1.5.1\" -Ibwt/bzip3/include $< -c -o $@
-
+# CUDA compressors
 $(NVCOMP_CU_OBJ): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
 	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -Imisc/nvcomp/include -Imisc/nvcomp/src -Imisc/nvcomp/src/lowlevel -c $< -o $@
