@@ -684,7 +684,7 @@ $(LZSSE_FILES): %.o : %.cpp
 
 $(SNAPPY_FILES): %.o : %.cc
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $(SNAPPY_FLAGS) $< -c -o $@
+	$(CXX) $(CXXFLAGS) $(SNAPPY_FLAGS) $< -c -o $@
 
 $(UCL_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
