@@ -218,7 +218,7 @@ static const compressor_desc_t comp_desc[] =
     { "lzsse8fast", "lzsse8fast 2019-04-18",   0,   0,    0,       0, lzbench_lzsse8fast_compress, lzbench_lzsse8_decompress,     lzbench_lzsse8fast_init, lzbench_lzsse8fast_deinit },
     { "lzvn",       "lzvn 2017-03-08",         0,   0,    0,       0, lzbench_lzvn_compress,       lzbench_lzvn_decompress,       lzbench_lzvn_init,       lzbench_lzvn_deinit },
     { "nvcomp_lz4", "nvcomp_lz4 2.2.0",        0,   7,    0,       0, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },
-    { "ppmd8",      "ppmd8 24.09",             1,   9,    0,       0, lzbench_ppmd_compress,       lzbench_ppmd_decompress,       NULL,                    NULL },
+    { "ppmd8",      "ppmd8 25.01",             1,   9,    0,       0, lzbench_ppmd_compress,       lzbench_ppmd_decompress,       NULL,                    NULL },
     { "quicklz",    "quicklz 1.5.0",           1,   3,    0,       0, lzbench_quicklz_compress,    lzbench_quicklz_decompress,    NULL,                    NULL },
     { "slz_deflate","slz_deflate 1.2.1",       1,   3,    2,       0, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
     { "slz_gzip",   "slz_gzip 1.2.1",          1,   3,    1,       0, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
