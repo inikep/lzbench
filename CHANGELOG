@@ -9,6 +9,7 @@ v2.x.y
 - updated density to v0.16.6 (Rust based) (thanks to @g1mv)
 - updated zlib-ng to 2.2.5
 - updated lzma and ppmd8 (no changes for ppmd8) to 25.01 (thanks to @tansy)
+- updated tamp to v1.10.0
 - improvement: Automatic chunk size splitting for multi-threading (-T) when -b is not specified
 
 v2.1 (Jul 17, 2025)

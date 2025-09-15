@@ -81,7 +81,7 @@ Supported compressors
  - [quicklz 1.5.0](http://www.quicklz.com)
  - [slz 1.2.1](http://www.libslz.org/) - only a compressor, uses zlib for decompression
  - [snappy 1.2.2](https://github.com/google/snappy)
- - [tamp 1.3.1](https://github.com/BrianPugh/tamp)
+ - [tamp v1.10.0](https://github.com/BrianPugh/tamp)
  - [tornado 0.6a](http://freearc.org)
  - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
  - [xz 5.8.1](https://github.com/tukaani-project/xz)
