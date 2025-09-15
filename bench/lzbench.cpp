@@ -460,6 +460,10 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
     LZBENCH_PRINT(5, "*** trying %s insize=%zu comprsize=%zu chunk_size=%zu\n", desc->name, insize, comprsize, max_chunk_size);
 
     if (!desc->compress || !desc->decompress) return;
+    if (level < desc->first_level || level > desc->last_level) {
+        LZBENCH_PRINT(0, "ERROR in %s: level %d out of range (%d, %d)\n", desc->name, level, desc->first_level, desc->last_level);
+        return;
+    }
 
     if (desc->init) {
         for (int i = 0; i < numThreads; i++) {
