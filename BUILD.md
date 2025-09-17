@@ -104,7 +104,7 @@ Compilation for various CPU architectures
 - `arm/aarch64` works fine with all default codecs except LZSSE for `arm` (32-bit) in our tests
 - `ppc64le` (PowerPC 64-bit Little-endian) works fine with all default codecs
 - `ppc/ppc64` (PowerPC 32-bit and 64-bit Big-endian) - a lot compressors fail because of Big-endian architecture
-- `riscv32/riscv64` - we have reports it works fine with `DONT_BUILD_TORNADO=1`
+- `riscv32/riscv64` - we have reports it works fine with `DONT_BUILD_TORNADO=1`. For riscv64, if the environment includes the B extension (which comprises the Zba, Zbb, and Zbs extensions), you can improve performance by adding `MOREFLAGS="-march=rv64gc_zba_zbb_zbs"` during compilation
 - `mipsel/mips64el` - waiting for reports
 - `mips/mips64` - a lot compressors will fail because of Big-endian architecture
 - `loongarch64` - we have reports it works fine
