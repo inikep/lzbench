@@ -292,3 +292,4 @@ The results sorted by ratio are available [here](doc/lzbench20_sorted.md).
 | zstd 1.5.6 -15          |  8.36 MB/s |  1369 MB/s |    57168834 | 26.97 |
 | zstd 1.5.6 -18          |  3.79 MB/s |  1169 MB/s |    53329873 | 25.16 |
 | zstd 1.5.6 -22          |  2.08 MB/s |  1073 MB/s |    52333880 | 24.69 |
+ |

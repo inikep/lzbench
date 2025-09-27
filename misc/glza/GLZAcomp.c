@@ -1,6 +1,6 @@
 /***********************************************************************
 
-Copyright 2014-2016 Kennon Conrad
+Copyright 2014-2025 Kennon Conrad
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,31 +34,34 @@ uint8_t GLZAcomp(size_t insize, uint8_t * inbuf, size_t * outsize_ptr, uint8_t *
     struct param_data * params)
 {
   uint8_t status;
-  uint8_t * temp2buf = 0;
+  uint8_t * temp2buf;
   uint8_t * tempbuf;
   size_t tempsize;
+
+  if (insize == 0) {
+    *outsize_ptr = 0;
+    return(1);
+  }
 
   if (fd == 0) {
     tempbuf = (uint8_t *)malloc(insize);
     if (tempbuf == 0) return(0);
     memcpy(tempbuf, inbuf, insize);
-    status = GLZAformat(insize, (uint8_t *)tempbuf, outsize_ptr, &temp2buf);
+    status = GLZAformat(insize, (uint8_t *)tempbuf, outsize_ptr, &temp2buf, params);
     free(tempbuf);
   }
-  else
-    status = GLZAformat(insize, (uint8_t *)inbuf, outsize_ptr, &temp2buf);
+  else {
+    status = GLZAformat(insize, (uint8_t *)inbuf, outsize_ptr, &temp2buf, params);
+    free(inbuf);
+  }
   if (status == 0)
     return(0);
   tempsize = *outsize_ptr;
-  status = GLZAcompress(tempsize, (uint8_t *)temp2buf, outsize_ptr, &tempbuf, params);
+  status = GLZAcompress(tempsize, outsize_ptr, &temp2buf, params);
+  if (status == 0)
+    return(0);
+  tempsize = *outsize_ptr;
+  status = GLZAencode(tempsize, temp2buf, outsize_ptr, outbuf, (FILE *)fd, insize, params);
   free(temp2buf);
-  if (status == 0)
-    return(0);
-  inbuf = tempbuf;
-  tempsize = *outsize_ptr;
-  status = GLZAencode(tempsize, inbuf, outsize_ptr, outbuf, (FILE *)fd, insize);
-  free(inbuf);
-  if (status == 0)
-    return(0);
-  return(1);
+  return(status);
 }
