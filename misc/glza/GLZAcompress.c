@@ -4475,7 +4475,7 @@ uint8_t GLZAcompress(size_t in_size, size_t * outsize_ptr, uint8_t ** iobuf, str
     if (available_RAM > max_memory_usage)
       available_RAM = max_memory_usage;
     if (0 == (start_symbol_ptr = (uint32_t *)malloc(available_RAM))) {
-      fprintf(stderr, "ERROR - Insufficient RAM to compress - unable to allocate %Iu bytes\n", (size_t)available_RAM);
+      fprintf(stderr, "ERROR - Insufficient RAM to compress - unable to allocate %zu bytes\n", (size_t)available_RAM);
       return(0);
     }
     else if (available_RAM < (41 * (uint64_t)in_size) / 10) {
@@ -4497,7 +4497,7 @@ uint8_t GLZAcompress(size_t in_size, size_t * outsize_ptr, uint8_t ** iobuf, str
       available_RAM = (available_RAM / 10) * 9;
     } while (available_RAM > 1500000000);
     if ((start_symbol_ptr == 0) || (available_RAM < (uint64_t)in_size * 9 / 2)) {
-      fprintf(stderr, "ERROR - Insufficient RAM to compress - unable to allocate %Iu bytes\n",
+      fprintf(stderr, "ERROR - Insufficient RAM to compress - unable to allocate %zu bytes\n",
           (size_t)((available_RAM * 10) / 9));
       return(0);
     }
@@ -4622,7 +4622,7 @@ uint8_t GLZAcompress(size_t in_size, size_t * outsize_ptr, uint8_t ** iobuf, str
   free(*iobuf);
   if (available_RAM
       < 4 * (uint64_t)in_size + 4 * BASE_NODES_CHILD_ARRAY_SIZE * num_simple_symbols + 0x10 * MAX_SCORES_FAST) {
-    fprintf(stderr, "ERROR - Insufficient RAM to compress - unable to allocate %Iu bytes\n",
+    fprintf(stderr, "ERROR - Insufficient RAM to compress - unable to allocate %zu bytes\n",
         (size_t)(4 * (uint64_t)in_size + 4 * BASE_NODES_CHILD_ARRAY_SIZE * num_simple_symbols + 0x10 * MAX_SCORES_FAST));
     return(0);
   }
