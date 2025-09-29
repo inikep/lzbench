@@ -1,6 +1,10 @@
 v2.x.y
-- updated GLZA to v0.11.8
+- improvement: Automatic chunk size splitting for multi-threading (-T) when -b is not specified
+- improvement: Added the -I# option, which enables compression using # internal (built-in) threads
+               when supported. Currently available for the following compressors: fast-lzma2,
+               kanzi, lzham, lzma, xz, and zstd.
 - added zpaq v7.15 (thanks to @rsreds)
+- updated GLZA to v0.11.8 (thanks to @tansy)
 - updated bzip3 to v1.5.2 (thanks to @tansy)
 - updated libdeflate to v1.24 (thanks to @tansy)
 - updated snappy to v1.2.2 (thanks to @tansy)
@@ -11,7 +15,6 @@ v2.x.y
 - updated zlib-ng to 2.2.5
 - updated lzma and ppmd8 (no changes for ppmd8) to 25.01 (thanks to @tansy)
 - updated tamp to v1.10.0
-- improvement: Automatic chunk size splitting for multi-threading (-T) when -b is not specified
 
 v2.1 (Jul 17, 2025)
 - Added the -T parameter, which enables multi-threaded compression using an external thread
@@ -24,7 +27,7 @@ v2.1 (Jul 17, 2025)
 - updated lzav 4.22 (thanks to @avaneev)
 - fixed: lzma 24.09 was using 2 threads for level 5 and higher (a bug introduced in v2.0)
 - removed max_block_size parameter and blosclz, shrinker, xpack codecs
-- removed pithy, Nakamichi Okamigan
+- removed pithy (issues with incompressible data), Nakamichi Okamigan
 - improvement: report compiler version (thanks to @danfe)
 - improvement: reorganization of lzbench directories
 - improvement: changed interface of compression and decompression functions (thanks to @tansy)
