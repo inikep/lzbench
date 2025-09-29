@@ -1,4 +1,5 @@
 v2.x.y
+- updated GLZA to v0.11.8
 - added zpaq v7.15 (thanks to @rsreds)
 - updated bzip3 to v1.5.2 (thanks to @tansy)
 - updated libdeflate to v1.24 (thanks to @tansy)
@@ -225,4 +226,3 @@ v0.7.1 (Nov 2, 2015)
 
 v0.7
 The first release for GitHub
-first release for GitHub

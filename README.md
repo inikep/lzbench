@@ -61,7 +61,7 @@ Supported compressors
  - [density 0.16.6](https://github.com/g1mv/density)
  - [fastlz 0.5.0](https://github.com/ariya/FastLZ)
  - [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2)
- - [glza 0.8](https://encode.su/threads/2427-GLZA)
+ - [glza 0.11.8](https://encode.su/threads/2427-GLZA)
  - [kanzi 2.3](https://github.com/flanglet/kanzi-cpp)
  - [libdeflate v1.24](https://github.com/ebiggers/libdeflate)
  - [lizard v2.1](https://github.com/inikep/lizard)
@@ -292,4 +292,3 @@ The results sorted by ratio are available [here](doc/lzbench20_sorted.md).
 | zstd 1.5.6 -15          |  8.36 MB/s |  1369 MB/s |    57168834 | 26.97 |
 | zstd 1.5.6 -18          |  3.79 MB/s |  1169 MB/s |    53329873 | 25.16 |
 | zstd 1.5.6 -22          |  2.08 MB/s |  1073 MB/s |    52333880 | 24.69 |
- |
