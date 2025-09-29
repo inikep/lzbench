@@ -869,6 +869,11 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
 
         insize = fread(inbuf, 1, insize, in);
 
+        if (insize == 0) {
+            LZBENCH_PRINT(2, "[Warning] File %s is empty and will be ignored\n", inFileNames[i]);
+            continue;
+        }
+
         size_t max_chunk_size = params->chunk_size;
         if (params->chunk_size == 0 && params->threads > 1) {
             max_chunk_size = (insize + params->threads - 1) / params->threads;
