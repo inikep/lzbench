@@ -57,7 +57,7 @@ int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
     return outsize;
 }
 
-#ifdef BENCH_HAS_CUDA
+#ifdef LIBBSC_CUDA_SUPPORT
 
 int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
@@ -94,7 +94,7 @@ int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, si
     return outsize;
 }
 
-#endif // BENCH_HAS_CUDA
+#endif // LIBBSC_CUDA_SUPPORT
 
 #endif // BENCH_HAS_BSC
 
