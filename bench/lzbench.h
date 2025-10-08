@@ -166,6 +166,7 @@ static const compressor_desc_t comp_desc[] =
     { "bsc4",       "bsc 3.3.11 -m4 -e1",       0,   0,    4,       0, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
     { "bsc5",       "bsc 3.3.11 -m5 -e1",       0,   0,    5,       0, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
     { "bsc6",       "bsc 3.3.11 -m6 -e1",       0,   0,    6,       0, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
+#ifdef LIBBSC_CUDA_SUPPORT
     { "bsc_cuda0",  "bsc 3.3.11 -G -m0 -e2",    0,   0,    0,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
     { "bsc_cuda1",  "bsc 3.3.11 -G -m0 -e1",    0,   0,    1,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
     { "bsc_cuda2",  "bsc 3.3.11 -G -m0 -e0",    0,   0,    2,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
@@ -175,6 +176,7 @@ static const compressor_desc_t comp_desc[] =
     { "bsc_cuda6",  "bsc 3.3.11 -G -m6 -e1",    0,   0,    6,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
     { "bsc_cuda7",  "bsc 3.3.11 -G -m7 -e0",    0,   0,    7,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
     { "bsc_cuda8",  "bsc 3.3.11 -G -m8 -e0",    0,   0,    8,       0, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
+#endif
     { "bzip2",      "bzip2 1.0.8",             1,   9,    0,       0, lzbench_bzip2_compress,      lzbench_bzip2_decompress,      NULL,                    NULL },
     { "bzip3",      "bzip3 1.5.2",             1,  10,    0,       0, lzbench_bzip3_compress,      lzbench_bzip3_decompress,      NULL,                    NULL },
     { "crush",      "crush 1.0",               0,   2,    0,       1, lzbench_crush_compress,      lzbench_crush_decompress,      NULL,                    NULL },
@@ -274,7 +276,12 @@ static const alias_desc_t alias_desc[] =
               "memcpy/brotli,6,7,8,9,10,11/fastlzma2,1,2,3,4,5,6,7,8,9,10/lzham,0,1,2,3,4/" \
               "lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
     { "CUDA",     "Represents all CUDA-based compressors.",
+#ifdef LIBBSC_CUDA_SUPPORT
                   "memcpy/cudaMemcpy/nvcomp_lz4/bsc_cuda" },
+#else
+                  "memcpy/cudaMemcpy/nvcomp_lz4" },
+#endif
+
     { "SYMMETRIC","Includes compressors with similar compression and decompression speeds.",
                   "memcpy/bsc/bzip2/bzip3/density,1,2,3/ppmd8/zpaq" },
     { "MISC",     "Covers miscellaneous compressors.",
@@ -289,8 +296,10 @@ static const alias_desc_t alias_desc[] =
                   "lzo1/lzo1a/lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a" },
     { "BSC",      "Represents all bsc compressor variants.",
                   "bsc0/bsc1/bsc2/bsc3/bsc4/bsc5/bsc6" },
+#ifdef LIBBSC_CUDA_SUPPORT
     { "BSC_CUDA", "Represents all bsc_cuda compressor variants.",
                   "bsc_cuda0/bsc_cuda1/bsc_cuda2/bsc_cuda3/bsc_cuda4/bsc_cuda5/bsc_cuda6/bsc_cuda7/bsc_cuda8" },
+#endif
     { "lzo1",     nullptr, "lzo1,1,99" },
     { "lzo1a",    nullptr, "lzo1a,1,99" },
     { "lzo1b",    nullptr, "lzo1b,1,2,3,4,5,6,7,8,9,99,999" },

@@ -624,7 +624,7 @@ ifneq "$(DONT_BUILD_NVCOMP)" "1"
     NVCOMP_FILES   = $(NVCOMP_CU_OBJ) $(NVCOMP_CPP_OBJ)
 endif
 
-ifneq "$(DONT_BUILD_BSC)" "1"
+ifneq "$(DONT_BUILD_BSC_WITH_CUDA_SUPPORT)" "1"
     BSC_FLAGS += -DLIBBSC_CUDA_SUPPORT
     BSC_CUDA_FILES = bwt/libbsc/libbsc/bwt/libcubwt/libcubwt.cu.o bwt/libbsc/libbsc/st/st.cu.o
 endif

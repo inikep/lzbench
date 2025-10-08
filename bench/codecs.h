@@ -62,7 +62,7 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
     int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
 
-    #ifdef BENCH_HAS_CUDA
+    #ifdef BENCH_HAS_CUDA_SUPPORT
         int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
         int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     #else
@@ -585,4 +585,4 @@ extern "C"
     #define lzbench_tamp_decompress NULL
 #endif
 
-#endif // LZBENCH_COMPRESSORS_H
+#endif
