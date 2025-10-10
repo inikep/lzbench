@@ -482,7 +482,10 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, const std::vector<si
 
 void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_params_t *params, size_t max_chunk_size, const std::vector<size_t> &chunk_sizes, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate, int param1)
 {
-    if (desc->max_threads > 0) numThreads = std::min(numThreads, desc->max_threads);
+    int codec_threads = params->codec_threads;
+
+    if (!(desc->mt_mode & BENCH_POOL_MT)) numThreads = 1;  // No support for lzbench's external thread pool
+    if (!(desc->mt_mode & INTERNAL_MT)) codec_threads = 1; // No support for internal (built-in) multithreading
 
     float speed;
     int i, total_c_iters, total_d_iters;
@@ -493,7 +496,6 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
     std::vector<size_t> compr_sizes;
     bool comp_error = false, decomp_error = false;
     int param2 = desc->additional_param;
-    int codec_threads = params->codec_threads;
     size_t compThreadsUsed = (numThreads <= 1), decompThreadsUsed = (numThreads <= 1), codecThreadsUsed = (codec_threads);
     std::vector<char*> workmems(numThreads, nullptr);
 
