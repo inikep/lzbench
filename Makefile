@@ -122,6 +122,8 @@ ifeq "$(DISABLE_THREADING)" "1"
 else
     LZBENCH_FILES += bench/threadpool.o
     ZSTD_FLAGS = -DZSTD_MULTITHREAD
+    BSC_FLAGS = -fopenmp -DLIBBSC_OPENMP_SUPPORT -DLIBSAIS_OPENMP
+    LDFLAGS += -fopenmp
 endif
 
 # Try compiling a small test with __builtin_ctz
