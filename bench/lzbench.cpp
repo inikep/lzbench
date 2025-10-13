@@ -1188,9 +1188,19 @@ int main( int argc, char** argv)
                 if (comp_desc[i].compress)
                 {
                     if (comp_desc[i].first_level < comp_desc[i].last_level)
-                        printf("%s = %s [%d-%d]\n", comp_desc[i].name, comp_desc[i].name_version, comp_desc[i].first_level, comp_desc[i].last_level);
+                        printf("%s = %s; levels=[%d-%d]", comp_desc[i].name, comp_desc[i].name_version, comp_desc[i].first_level, comp_desc[i].last_level);
                     else
-                        printf("%s = %s\n", comp_desc[i].name, comp_desc[i].name_version);
+                        printf("%s = %s", comp_desc[i].name, comp_desc[i].name_version);
+
+                    if (comp_desc[i].mt_mode == FULL_THREADING)
+                        printf("; threading=-I,-T");
+                    else if (comp_desc[i].mt_mode & INTERNAL_MT)
+                        printf("; threading=-I");
+                    else if (comp_desc[i].mt_mode & BENCH_POOL_MT)
+                        ;//printf("threading=-T");
+                    else
+                        printf("; threading=none");
+                    printf("\n");
                 }
             }
 
