@@ -156,6 +156,11 @@ typedef struct
     const char* params;
 } alias_desc_t;
 
+#if defined(_OPENMP)
+    #define BSC_THREADING FULL_THREADING
+#else
+    #define BSC_THREADING BENCH_POOL_MT
+#endif
 
 static const compressor_desc_t comp_desc[] =
 {
@@ -166,13 +171,13 @@ static const compressor_desc_t comp_desc[] =
     { "brotli",     "brotli 1.1.0",            0,  11,    0,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli22",   "brotli 1.1.0 -d22",       0,  11,   22,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli24",   "brotli 1.1.0 -d24",       0,  11,   24,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
-    { "bsc0",       "bsc 3.3.11 -m0 -e2",      0,   0,    0, FULL_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc1",       "bsc 3.3.11 -m0 -e1",      0,   0,    1, FULL_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc2",       "bsc 3.3.11 -m0 -e0",      0,   0,    2, FULL_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc3",       "bsc 3.3.11 -m3 -e1",      0,   0,    3, FULL_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc4",       "bsc 3.3.11 -m4 -e1",      0,   0,    4, FULL_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc5",       "bsc 3.3.11 -m5 -e1",      0,   0,    5, FULL_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc6",       "bsc 3.3.11 -m6 -e1",      0,   0,    6, FULL_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
+    { "bsc0",       "bsc 3.3.11 -m0 -e2",      0,   0,    0,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
+    { "bsc1",       "bsc 3.3.11 -m0 -e1",      0,   0,    1,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
+    { "bsc2",       "bsc 3.3.11 -m0 -e0",      0,   0,    2,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
+    { "bsc3",       "bsc 3.3.11 -m3 -e1",      0,   0,    3,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
+    { "bsc4",       "bsc 3.3.11 -m4 -e1",      0,   0,    4,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
+    { "bsc5",       "bsc 3.3.11 -m5 -e1",      0,   0,    5,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
+    { "bsc6",       "bsc 3.3.11 -m6 -e1",      0,   0,    6,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
     { "bsc_cuda0",  "bsc 3.3.11 -G -m0 -e2",   0,   0,    0,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
     { "bsc_cuda1",  "bsc 3.3.11 -G -m0 -e1",   0,   0,    1,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
     { "bsc_cuda2",  "bsc 3.3.11 -G -m0 -e0",   0,   0,    2,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },

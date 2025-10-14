@@ -114,16 +114,29 @@ endif
 
 LZ_CODECS     = bench/lz_codecs.o
 BUGGY_CODECS  = bench/buggy_codecs.o
-LZBENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) bench/lzbench.o bench/symmetric_codecs.o bench/misc_codecs.o
+SYMMETRIC_CODECS = bench/symmetric_codecs.o
+BENCH_MAIN = bench/lzbench.o
+BENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) $(SYMMETRIC_CODECS) $(BENCH_MAIN) bench/misc_codecs.o
 
 ifeq "$(DISABLE_THREADING)" "1"
     DEFINES += -DDISABLE_THREADING
     FASTLZMA2_FLAGS = -DFL2_SINGLETHREAD
 else
-    LZBENCH_FILES += bench/threadpool.o
+    BENCH_FILES += bench/threadpool.o
     ZSTD_FLAGS = -DZSTD_MULTITHREAD
-    BSC_FLAGS = -fopenmp -DLIBBSC_OPENMP_SUPPORT -DLIBSAIS_OPENMP
-    LDFLAGS += -fopenmp
+
+    OMP_TEST_CODE = \#include <omp.h>\nint main(){return 0;}\n
+    HAVE_OPENMP := $(shell printf '$(OMP_TEST_CODE)' | $(CXX) -x c++ - -fopenmp -o /dev/null 2>/dev/null && echo 1 || echo 0)
+
+    ifeq ($(HAVE_OPENMP),1)
+        $(info OpenMP found: compiling bsc with OMP multithreading)
+        BSC_FLAGS = -fopenmp -DLIBBSC_OPENMP_SUPPORT -DLIBSAIS_OPENMP
+        LDFLAGS += -fopenmp
+        SYMMETRIC_CXXFLAGS += -fopenmp
+        BENCH_CXXFLAGS += -fopenmp
+    else
+        $(info OpenMP not found: compiling bsc without multithreading)
+    endif
 endif
 
 # Try compiling a small test with __builtin_ctz
@@ -636,11 +649,11 @@ endif # ifneq "$(LIBCUDART)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
+lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(BENCH_FILES) $(PPMD_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
-bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h DENSITY_LIB
+$(BENCH_MAIN): bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h DENSITY_LIB
 
 # disable the implicit rule for making a binary out of a single object file
 %: %.o
@@ -669,6 +682,10 @@ $(BUGGY_C_FILES): %.o : %.c
 $(BUGGY_CC_FILES): %.o : %.cc
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) $< -c -o $@
+
+$(BENCH_MAIN): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) $(BENCH_CXXFLAGS) $< -c -o $@
 
 $(BUGGY_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
@@ -717,6 +734,10 @@ $(LZSSE_FILES): %.o : %.cpp
 $(SNAPPY_FILES): %.o : %.cc
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) $(SNAPPY_FLAGS) $< -c -o $@
+
+$(SYMMETRIC_CODECS): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) $(SYMMETRIC_CXXFLAGS) $< -c -o $@
 
 $(UCL_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)

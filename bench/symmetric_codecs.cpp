@@ -14,7 +14,7 @@
 
 #ifndef BENCH_REMOVE_BSC
 #include "bwt/libbsc/libbsc/libbsc.h"
-#ifndef DISABLE_THREADING
+#if defined(_OPENMP)
 #include <omp.h> // omp_set_num_threads
 #endif
 
@@ -33,13 +33,13 @@ int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
     int blockSorter = LIBBSC_DEFAULT_BLOCKSORTER;
     int coder = LIBBSC_DEFAULT_CODER;
 
-#ifndef DISABLE_THREADING
+#if defined(_OPENMP)
     if (codec_options->threads > 1) {
-        features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING;
         omp_set_num_threads(codec_options->threads);
+        features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING;
     } else
 #endif
-    features = LIBBSC_FEATURE_FASTMODE;
+        features = LIBBSC_FEATURE_FASTMODE;
 
     int level = codec_options->additional_param;
     blockSorter = level < 3 ? 1 : (int)level;
@@ -60,7 +60,7 @@ int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 {
     int features, insize_bsc, outsize_bsc;
 
-#ifndef DISABLE_THREADING
+#if defined(_OPENMP)
     if (codec_options->threads > 1) {
         omp_set_num_threads(codec_options->threads);
         features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING;

@@ -44,7 +44,7 @@ jobs:
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-20 main'
         SELECTED_CC: clang-20
         SELECTED_CXX: clang++-20
-        PACKAGES: 'clang-20 llvm-20-dev'
+        PACKAGES: 'clang-20 llvm-20-dev libomp-20-dev'
 
       clang-19 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -52,7 +52,7 @@ jobs:
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-19 main'
         SELECTED_CC: clang-19
         SELECTED_CXX: clang++-19
-        PACKAGES: 'clang-19 llvm-19-dev'
+        PACKAGES: 'clang-19 llvm-19-dev libomp-19-dev'
 
       clang-18 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -60,7 +60,7 @@ jobs:
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-18 main'
         SELECTED_CC: clang-18
         SELECTED_CXX: clang++-18
-        PACKAGES: 'clang-18 llvm-18-dev'
+        PACKAGES: 'clang-18 llvm-18-dev libomp-18-dev'
 
       clang-17 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -68,7 +68,7 @@ jobs:
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-17 main'
         SELECTED_CC: clang-17
         SELECTED_CXX: clang++-17
-        PACKAGES: 'clang-17 llvm-17-dev'
+        PACKAGES: 'clang-17 llvm-17-dev libomp-17-dev'
 
       clang-16 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -76,7 +76,7 @@ jobs:
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-16 main'
         SELECTED_CC: clang-16
         SELECTED_CXX: clang++-16
-        PACKAGES: 'clang-16 llvm-16-dev'
+        PACKAGES: 'clang-16 llvm-16-dev libomp-16-dev'
 
       clang-15 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -84,7 +84,7 @@ jobs:
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-15 main'
         SELECTED_CC: clang-15
         SELECTED_CXX: clang++-15
-        PACKAGES: 'clang-15 llvm-15-dev'
+        PACKAGES: 'clang-15 llvm-15-dev libomp-15-dev'
 
       clang-14 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -92,7 +92,7 @@ jobs:
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-14 main'
         SELECTED_CC: clang-14
         SELECTED_CXX: clang++-14
-        PACKAGES: 'clang-14 llvm-14-dev'
+        PACKAGES: 'clang-14 llvm-14-dev libomp-14-dev'
 
       clang-13 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -100,7 +100,7 @@ jobs:
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-13 main'
         SELECTED_CC: clang-13
         SELECTED_CXX: clang++-13
-        PACKAGES: 'clang-13 llvm-13-dev'
+        PACKAGES: 'clang-13 llvm-13-dev libomp-13-dev'
 
       clang-12 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -108,7 +108,7 @@ jobs:
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-12 main'
         SELECTED_CC: clang-12
         SELECTED_CXX: clang++-12
-        PACKAGES: 'clang-12 llvm-12-dev'
+        PACKAGES: 'clang-12 llvm-12-dev libomp-12-dev'
 
 
       # gcc-9 and newer compilers
@@ -202,8 +202,12 @@ jobs:
 
         echo Instaling PACKAGES=$PACKAGES
         PACKAGES="$(eval echo $PACKAGES)"
-        echo Instaling PACKAGES=$PACKAGES
 
+        if [[ "$(Compiler)" == "clang" ]]; then
+          sudo apt purge -y 'libomp*'
+        fi
+
+        echo Instaling PACKAGES=$PACKAGES
         sudo -E apt-get -yq --no-install-suggests --no-install-recommends --allow-unauthenticated install $PACKAGES ccache
 
         if [[ "$(Compiler)" == "clang" ]]; then
@@ -214,7 +218,7 @@ jobs:
       else
          REAL_COMPILER_VER=`$SELECTED_CC --version | grep -o "clang version.*" | awk '{print $3}'`
          brew update
-         brew install ccache
+         brew install ccache libomp
       fi
 
       UPDATE_TIME=$SECONDS
