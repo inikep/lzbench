@@ -1,7 +1,7 @@
 v2.x.y
 - improvement: Automatic chunk size splitting for multi-threading (-T) when -b is not specified
 - improvement: Added the -I# option, which enables compression using # internal (built-in) threads
-               when supported. Currently available for the following compressors: fast-lzma2,
+               when supported. Currently available for the following compressors: bsc, fast-lzma2,
                kanzi, lzham, lzma, xz, and zstd.
 - added zpaq v7.15 (thanks to @rsreds)
 - updated GLZA to v0.11.8 (thanks to @tansy)
