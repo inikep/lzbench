@@ -78,7 +78,7 @@ Supported compressors
  - [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE)
  - [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) - if CUDA is available
  - [ppmd8 25.01](http://7-zip.org)
- - [quicklz 1.5.0](http://www.quicklz.com)
+ - [quicklz 1.5.0](https://web.archive.org/web/20160110073818/https://quicklz.com/)
  - [slz 1.2.1](http://www.libslz.org/) - only a compressor, uses zlib for decompression
  - [snappy 1.2.2](https://github.com/google/snappy)
  - [tamp v1.10.0](https://github.com/BrianPugh/tamp)
