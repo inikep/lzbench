@@ -1278,7 +1278,7 @@ int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     int err = uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize);
     if (err != Z_OK)
         return 0;
-    return outsize;
+    return zdecomplen;
 }
 
 #endif
@@ -1309,7 +1309,7 @@ int64_t lzbench_zlib_ng_decompress(char *inbuf, size_t insize, char *outbuf, siz
     int err = zng_uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize);
     if (err != Z_OK)
         return 0;
-    return outsize;
+    return zdecomplen;
 }
 
 #endif
