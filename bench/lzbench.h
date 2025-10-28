@@ -19,7 +19,7 @@
 
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "2.2"
+#define PROGVERSION "2.2.1"
 #define PAD_SIZE (1024)
 #define MIN_PAGE_SIZE 4096  // smallest page size we expect, if it's wrong the first algorithm might be a bit slower
 #define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second
