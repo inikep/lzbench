@@ -19,7 +19,7 @@
 
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "2.1.1"
+#define PROGVERSION "2.2"
 #define PAD_SIZE (1024)
 #define MIN_PAGE_SIZE 4096  // smallest page size we expect, if it's wrong the first algorithm might be a bit slower
 #define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second
@@ -292,7 +292,7 @@ static const alias_desc_t alias_desc[] =
     { "MISC",     "Covers miscellaneous compressors.",
                   "memcpy/crush/lzjb/tamp/tornado/zling" },
     { "INT_MT",   "Covers all compressors supporting internal multi-threading with -I option.",
-                  "memcpy/fastlzma2,1,5,10/kanzi,1,2,3,4,5,6,7/lzham,0,4/lzma,0,4,9/xz,0,4,9/zstd,1,5,9,14,18,22" },
+                  "memcpy/bsc0/bsc1/bsc4/bsc5/bsc6/fastlzma2,1,5,10/kanzi,1,2,3,4,5,6,7/lzham,1,4/lzma,0,4,9/xz,0,4,9/zstd,1,5,9,14,18,22" },
     { "BUGGY",    "Lists potentially unstable codecs that may cause segmentation faults.",
                   "memcpy/csc/gipfeli/lzmat/lzrw/lzsse8fast/wflz/yalz77/yappy" }, // these can SEGFAULT
     { "UCL",      "Refers to all UCL compressor variants.",
