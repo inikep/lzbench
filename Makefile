@@ -191,12 +191,12 @@ ifeq "$(DONT_BUILD_BROTLI)" "1"
     DEFINES += -DBENCH_REMOVE_BROTLI
 else
     BROTLI_FILES = lz/brotli/common/constants.o lz/brotli/common/context.o lz/brotli/common/dictionary.o lz/brotli/common/platform.o lz/brotli/common/transform.o
-    BROTLI_FILES += lz/brotli/dec/bit_reader.o lz/brotli/dec/decode.o lz/brotli/dec/huffman.o lz/brotli/dec/state.o
+    BROTLI_FILES += lz/brotli/dec/bit_reader.o lz/brotli/dec/decode.o lz/brotli/dec/huffman.o lz/brotli/dec/prefix.o lz/brotli/dec/state.o lz/brotli/dec/static_init.o
     BROTLI_FILES += lz/brotli/enc/backward_references.o lz/brotli/enc/block_splitter.o lz/brotli/enc/brotli_bit_stream.o lz/brotli/enc/encode.o lz/brotli/enc/encoder_dict.o
     BROTLI_FILES += lz/brotli/enc/entropy_encode.o lz/brotli/enc/fast_log.o lz/brotli/enc/histogram.o lz/brotli/enc/command.o lz/brotli/enc/literal_cost.o lz/brotli/enc/memory.o
-    BROTLI_FILES += lz/brotli/enc/metablock.o lz/brotli/enc/static_dict.o lz/brotli/enc/utf8_util.o lz/brotli/enc/compress_fragment.o lz/brotli/enc/compress_fragment_two_pass.o
-    BROTLI_FILES += lz/brotli/enc/cluster.o lz/brotli/enc/bit_cost.o lz/brotli/enc/backward_references_hq.o lz/brotli/enc/dictionary_hash.o lz/brotli/common/shared_dictionary.o
-    BROTLI_FILES += lz/brotli/enc/compound_dictionary.o
+    BROTLI_FILES += lz/brotli/enc/metablock.o lz/brotli/enc/static_dict.o lz/brotli/enc/static_dict_lut.o lz/brotli/enc/static_init.o lz/brotli/enc/utf8_util.o
+    BROTLI_FILES += lz/brotli/enc/compress_fragment.o lz/brotli/enc/compress_fragment_two_pass.o lz/brotli/enc/cluster.o lz/brotli/enc/bit_cost.o lz/brotli/enc/backward_references_hq.o
+    BROTLI_FILES += lz/brotli/enc/dictionary_hash.o lz/brotli/common/shared_dictionary.o lz/brotli/enc/compound_dictionary.o
 endif
 
 
