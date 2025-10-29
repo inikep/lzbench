@@ -168,9 +168,9 @@ static const compressor_desc_t comp_desc[] =
      // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func
     { "memcpy",     "memcpy",                  0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
     { "brieflz",    "brieflz 1.3.0",           1,   9,    0,  BENCH_POOL_MT, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
-    { "brotli",     "brotli 1.1.0",            0,  11,    0,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
-    { "brotli22",   "brotli 1.1.0 -d22",       0,  11,   22,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
-    { "brotli24",   "brotli 1.1.0 -d24",       0,  11,   24,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
+    { "brotli",     "brotli 1.2.0",            0,  11,    0,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
+    { "brotli22",   "brotli 1.2.0 -d22",       0,  11,   22,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
+    { "brotli24",   "brotli 1.2.0 -d24",       0,  11,   24,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "bsc0",       "bsc 3.3.11 -m0 -e2",      0,   0,    0,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
     { "bsc1",       "bsc 3.3.11 -m0 -e1",      0,   0,    1,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
     { "bsc2",       "bsc 3.3.11 -m0 -e0",      0,   0,    2,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },

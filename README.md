@@ -53,7 +53,7 @@ Supported compressors
 -------------------------
 
  - [brieflz 1.3.0](https://github.com/jibsen/brieflz)
- - [brotli 1.1.0](https://github.com/google/brotli)
+ - [brotli 1.2.0](https://github.com/google/brotli)
  - [bsc 3.3.11](https://github.com/IlyaGrebnov/libbsc)
  - [bzip2 1.0.8](https://www.sourceware.org/bzip2/downloads.html)
  - [bzip3 1.5.2](https://github.com/kspalaiologos/bzip3)
