@@ -282,27 +282,37 @@ static const alias_desc_t alias_desc[] =
               "xz,1,3,5,7,9/zlib,1,6,9/zlib-ng,1,6,9/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22" },
     { "MAINSTREAM", "Represents mainstream compressors.",
               "memcpy/lz4fast,17,9,5/lz4/lz4hc,1,3,9/zstd_fast,-5,-3,-1/zstd,1,3,7,12,17,22/zlib,1,6,9/lzma,0,4,9/bzip2,1,9/ppmd8,4" },
-    { "OPT",  "Includes compressors that use optimal parsing (slow compression, fast decompression).",
-              "memcpy/brotli,6,7,8,9,10,11/fastlzma2,1,2,3,4,5,6,7,8,9,10/lzham,0,1,2,3,4/" \
-              "lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
-    { "CUDA",     "Represents all CUDA-based compressors.",
-                  "memcpy/cudaMemcpy/nvcomp_lz4/bsc_cuda" },
+    { "INT_MT",   "Covers all compressors supporting internal multi-threading with -I option.",
+                  "memcpy/bsc0/bsc1/bsc4/bsc5/bsc6/fastlzma2,1,5,10/kanzi,1,2,3,4,5,6,7/lzham,1,4/lzma,0,4,9/xz,0,4,9/zstd,1,5,9,14,18,22" },
+    { "OPT",      "Includes compressors that use optimal parsing (slow compression, fast decompression).",
+                  "memcpy/brotli,6,7,8,9,10,11/fastlzma2,1,2,3,4,5,6,7,8,9,10/lzham,0,1,2,3,4/" \
+                  "lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
     { "SYMMETRIC","Includes compressors with similar compression and decompression speeds.",
                   "memcpy/bsc/bzip2/bzip3/density,1,2,3/ppmd8/zpaq" },
     { "MISC",     "Covers miscellaneous compressors.",
                   "memcpy/crush/lzjb/tamp/tornado/zling" },
-    { "INT_MT",   "Covers all compressors supporting internal multi-threading with -I option.",
-                  "memcpy/bsc0/bsc1/bsc4/bsc5/bsc6/fastlzma2,1,5,10/kanzi,1,2,3,4,5,6,7/lzham,1,4/lzma,0,4,9/xz,0,4,9/zstd,1,5,9,14,18,22" },
     { "BUGGY",    "Lists potentially unstable codecs that may cause segmentation faults.",
                   "memcpy/csc/gipfeli/lzmat/lzrw/lzsse8fast/wflz/yalz77/yappy" }, // these can SEGFAULT
+#if !defined(BENCH_REMOVE_UCL)
     { "UCL",      "Refers to all UCL compressor variants.",
                   "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },
+#endif
+#if !defined(BENCH_REMOVE_LZO)
     { "LZO",      "Represents all LZO compressor variants.",
                   "lzo1/lzo1a/lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a" },
+#endif
+#if !defined(BENCH_REMOVE_BSC)
     { "BSC",      "Represents all bsc compressor variants.",
                   "bsc0/bsc1/bsc2/bsc3/bsc4/bsc5/bsc6" },
+#endif
+#if !defined(BENCH_REMOVE_BSC) && defined(BENCH_HAS_CUDA)
     { "BSC_CUDA", "Represents all bsc_cuda compressor variants.",
                   "bsc_cuda0/bsc_cuda1/bsc_cuda2/bsc_cuda3/bsc_cuda4/bsc_cuda5/bsc_cuda6/bsc_cuda7/bsc_cuda8" },
+#endif
+#ifdef BENCH_HAS_CUDA
+    { "CUDA",     "Represents all CUDA-based compressors.",
+                  "memcpy/cudaMemcpy/nvcomp_lz4/bsc_cuda" },
+#endif
     { "lzo1",     nullptr, "lzo1,1,99" },
     { "lzo1a",    nullptr, "lzo1a,1,99" },
     { "lzo1b",    nullptr, "lzo1b,1,2,3,4,5,6,7,8,9,99,999" },

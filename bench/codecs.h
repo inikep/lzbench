@@ -56,7 +56,6 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
     #define lzbench_brotli_decompress NULL
 #endif
 
-
 #ifndef BENCH_REMOVE_BSC
     char* lzbench_bsc_init(size_t insize, size_t level, size_t);
     int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);

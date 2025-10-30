@@ -1,3 +1,6 @@
+v2.x.y (work in progress)
+- updated brotli to 1.2.0 (thanks to @data-man)
+
 v2.2 (Oct 28, 2025)
 - improvement: Automatic chunk size splitting for multi-threading (-T) when -b is not specified
 - improvement: Added the -I# option, which enables compression using # internal (built-in) threads
