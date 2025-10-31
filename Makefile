@@ -360,7 +360,7 @@ endif
 ifeq "$(DONT_BUILD_QUICKLZ)" "1"
     DEFINES += -DBENCH_REMOVE_QUICKLZ
 else
-    QUICKLZ_FILES = lz/quicklz/quicklz151b7.o lz/quicklz/quicklz1.o lz/quicklz/quicklz2.o lz/quicklz/quicklz3.o
+    QUICKLZ_FILES = lz/quicklz/quicklz_lvl1.o lz/quicklz/quicklz_lvl2.o lz/quicklz/quicklz_lvl3.o
 endif
 
 
@@ -738,6 +738,10 @@ $(SNAPPY_FILES): %.o : %.cc
 $(SYMMETRIC_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) $(SYMMETRIC_CXXFLAGS) $< -c -o $@
+
+lz/quicklz/quicklz_lvl%.o: lz/quicklz/quicklz151b7.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -DQLZ_COMPRESSION_LEVEL=$* $< -c -o $@
 
 $(UCL_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)

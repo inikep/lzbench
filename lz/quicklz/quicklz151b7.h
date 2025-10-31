@@ -22,12 +22,25 @@
 	//#define QLZ_COMPRESSION_LEVEL 2
 	//#define QLZ_COMPRESSION_LEVEL 3
 
+	//#define QLZ_MEMORY_SAFE
+#endif
+
+#ifndef QLZ_STREAMING_BUFFER
 	#define QLZ_STREAMING_BUFFER 0
 	//#define QLZ_STREAMING_BUFFER 100000
 	//#define QLZ_STREAMING_BUFFER 1000000
-
-	//#define QLZ_MEMORY_SAFE
 #endif
+
+#define QLZ_CAT_(a, b) a##b
+#define QLZ_CAT(a, b) QLZ_CAT_(a, b)
+
+// Automatically append compression level
+#define qlz_size_decompressed QLZ_CAT(qlz151_size_decompressed_, QLZ_COMPRESSION_LEVEL)
+#define qlz_compress QLZ_CAT(qlz151_compress_, QLZ_COMPRESSION_LEVEL)
+#define qlz_decompress QLZ_CAT(qlz151_decompress_, QLZ_COMPRESSION_LEVEL)
+#define qlz_get_setting QLZ_CAT(qlz151_get_setting_, QLZ_COMPRESSION_LEVEL)
+#define qlz_size_compressed QLZ_CAT(qlz151_size_compressed_, QLZ_COMPRESSION_LEVEL)
+#define qlz_size_header QLZ_CAT(qlz151_size_header_, QLZ_COMPRESSION_LEVEL)
 
 #define QLZ_VERSION_MAJOR 1
 #define QLZ_VERSION_MINOR 5
@@ -130,9 +143,15 @@ extern "C" {
 // Public functions of QuickLZ
 size_t qlz_size_decompressed(const char *source);
 size_t qlz_size_compressed(const char *source);
-size_t qlz_compress(const void *source, char *destination, size_t size, qlz_state_compress *state);
-size_t qlz_decompress(const char *source, void *destination, qlz_state_decompress *state);
-int qlz_get_setting(int setting);
+size_t qlz151_compress_1(const void *source, char *destination, size_t size, qlz_state_compress *state);
+size_t qlz151_compress_2(const void *source, char *destination, size_t size, qlz_state_compress *state);
+size_t qlz151_compress_3(const void *source, char *destination, size_t size, qlz_state_compress *state);
+size_t qlz151_decompress_1(const char *source, void *destination, qlz_state_decompress *state);
+size_t qlz151_decompress_2(const char *source, void *destination, qlz_state_decompress *state);
+size_t qlz151_decompress_3(const char *source, void *destination, qlz_state_decompress *state);
+int qlz151_get_setting_1(int setting);
+int qlz151_get_setting_2(int setting);
+int qlz151_get_setting_3(int setting);
 
 #if defined (__cplusplus)
 }
