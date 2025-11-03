@@ -26,6 +26,18 @@ typedef struct
 int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
 
 
+#ifndef BENCH_REMOVE_MEMLZ
+char* lzbench_memlz_init(size_t, size_t level, size_t);
+void lzbench_memlz_deinit(char* workmem);
+int64_t lzbench_memlz_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options);
+int64_t lzbench_memlz_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options);
+#else
+#define lzbench_memlz_init NULL
+#define lzbench_memlz_deinit NULL
+#define lzbench_memlz_compress NULL
+#define lzbench_memlz_decompress NULL
+#endif
+
 #ifndef BENCH_REMOVE_BRIEFLZ
     char* lzbench_brieflz_init(size_t insize, size_t level, size_t);
     void lzbench_brieflz_deinit(char* workmem);

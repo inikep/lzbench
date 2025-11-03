@@ -76,6 +76,7 @@ Supported compressors
  - [lzma v25.01](http://7-zip.org)
  - [lzo 2.10](http://www.oberhumer.com/opensource/lzo)
  - [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE)
+ - [memlz 0.2 beta](https://github.com/rrrlasse/memlz)
  - [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) - if CUDA is available
  - [ppmd8 25.01](http://7-zip.org)
  - [quicklz to 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/)
