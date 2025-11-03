@@ -26,6 +26,38 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
 
 
 
+#ifndef BENCH_REMOVE_MEMLZ
+#include "lz/memlz/memlz.h"
+
+char* lzbench_memlz_init(size_t insize, size_t level, size_t)
+{
+    return (char*)malloc(sizeof(memlz_state));
+}
+
+void lzbench_memlz_deinit(char* workmem)
+{
+    free(workmem);
+}
+
+int64_t lzbench_memlz_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    if (!codec_options->work_mem)
+        return 0;
+
+    memlz_reset((memlz_state*)codec_options->work_mem);
+    return memlz_stream_compress(outbuf, inbuf, insize, (memlz_state*)codec_options->work_mem);
+}
+
+int64_t lzbench_memlz_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    memlz_reset((memlz_state*)codec_options->work_mem);
+    return (int64_t)memlz_stream_decompress(outbuf, inbuf, (memlz_state*)codec_options->work_mem);
+}
+
+#endif // BENCH_REMOVE_MEMLZ
+
+
+
 #ifndef BENCH_REMOVE_BRIEFLZ
 #include "lz/brieflz/brieflz.h"
 
