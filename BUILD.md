@@ -88,13 +88,18 @@ of problems, particular compressor can be excluded from build by setting
 CUDA support
 -------------------------
 
+To enable CUDA use:
+
+	make ENABLE_CUDA=1
+
+The directory where the CUDA compiler and libraries are available can be passed to `make` via the `CUDA_BASE` variable (which is `/usr/local/cuda` by default), *e.g.*:
+
+	make ENABLE_CUDA=1 CUDA_BASE=/usr/local/cuda
+
 If CUDA is available, lzbench supports additional compressors:
 - [cudaMemcpy](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__MEMORY.html#group__CUDART__MEMORY_1gc263dbe6574220cc776b45438fc351e8) - similar to the reference `memcpy` benchmark, using GPU memory
-- [nvcomp](https://github.com/NVIDIA/nvcomp) - LZ4 GPU-only compressor
-
-The directory where the CUDA compiler and libraries are available can be passed to `make` via the `CUDA_BASE` variable, *e.g.*:
-
-	make CUDA_BASE=/usr/local/cuda
+- [nvcomp_lz4](https://github.com/NVIDIA/nvcomp) - LZ4 GPU-only compressor
+- [bsc_cuda] - GPU modes for libbsc
 
 
 Compilation for various CPU architectures
