@@ -20,6 +20,8 @@ When adding a new codec, please follow these steps:
 - Create a new subdirectory with the codec files (e.g., `xxxx`) in `lz`, `bwt`, or `misc` directory.
 - Add a new codec to `README.md` with a proper link to the upstream repository.
 - Add a new entry in `CHANGELOG`
+- Add a new entry in comp_desc[] in bench/lzbench.h.
+- Add it to all appropriate lists in alias_desc[] in bench/lzbench.h.
 - Add declarations of compression and decompression functions in `bench/codecs.h`, e.g.:
 
 ```
