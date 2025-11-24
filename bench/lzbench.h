@@ -203,7 +203,7 @@ static const compressor_desc_t comp_desc[] =
     { "lz4",        "lz4 1.10.0",              0,   0,    0,  BENCH_POOL_MT, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
     { "lz4fast",    "lz4 1.10.0 --fast",       1,  99,    0,  BENCH_POOL_MT, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
     { "lz4hc",      "lz4hc 1.10.0",            1,  12,    0,  BENCH_POOL_MT, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },
-    { "lzav",       "lzav 4.22",               1,   2,    0,  BENCH_POOL_MT, lzbench_lzav_compress,       lzbench_lzav_decompress,       NULL,                    NULL },
+    { "lzav",       "lzav 5.5",                1,   2,    0,  BENCH_POOL_MT, lzbench_lzav_compress,       lzbench_lzav_decompress,       NULL,                    NULL },
     { "lzf",        "lzf 3.6",                 0,   1,    0,  BENCH_POOL_MT, lzbench_lzf_compress,        lzbench_lzf_decompress,        NULL,                    NULL },
     { "lzfse",      "lzfse 2017-03-08",        0,   0,    0,  BENCH_POOL_MT, lzbench_lzfse_compress,      lzbench_lzfse_decompress,      lzbench_lzfse_init,      lzbench_lzfse_deinit },
     { "lzg",        "lzg 1.0.10",              1,   9,    0,  BENCH_POOL_MT, lzbench_lzg_compress,        lzbench_lzg_decompress,        NULL,                    NULL },
