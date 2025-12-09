@@ -315,6 +315,10 @@ size_t common(uint8_t *p1, uint8_t *p2)
  */
 void *alloc_and_touch(size_t size, bool must_zero) {
     void *buf = must_zero ? calloc(1, size) : malloc(size);
+    if (buf == NULL) {
+        fprintf(stderr, "Error: could not allocate buf@%s\n", "alloc_and_touch()");
+        return NULL;
+    }
     volatile char zero = 0;
     for (size_t i = 0; i < size; i += MIN_PAGE_SIZE) {
         static_cast<char * volatile>(buf)[i] = zero;
@@ -769,7 +773,7 @@ void lzbench_process_mem_blocks(lzbench_params_t *params, size_t max_chunk_size,
     if (!compbuf || !decomp)
     {
         printf("Not enough memory, please use -m option!\n");
-        g_exit_result=3;
+        g_exit_result = 3;
         return;
     }
 
