@@ -42,9 +42,6 @@ extern "C" {
 #if defined(__AVX2__)
 #define ZXC_USE_AVX2
 #endif
-#if defined(__SSE4_1__) || defined(__AVX__)
-#define ZXC_USE_SSE41
-#endif
 #elif (defined(__ARM_NEON) || defined(__ARM_NEON__))
 #include <arm_acle.h>
 #include <arm_neon.h>
@@ -517,7 +514,7 @@ static ZXC_ALWAYS_INLINE int zxc_ctz64(uint64_t x) {
  * @return uint32_t The computed 32-bit hash value.
  */
 static ZXC_ALWAYS_INLINE uint32_t zxc_hash_func(uint32_t val) {
-#if defined(ZXC_USE_SSE41) || defined(__SSE4_2__)
+#if defined(__SSE4_2__)
     return _mm_crc32_u32(0, val);
 #elif defined(__ARM_FEATURE_CRC32)
     return __crc32cw(0, val);
