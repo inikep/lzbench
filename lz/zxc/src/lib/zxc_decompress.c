@@ -6,7 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include "../../include/zxc.h"
+#include "../../include/zxc_buffer.h"
+#include "../../include/zxc_sans_io.h"
 #include "zxc_internal.h"
 
 #define ZXC_DEC_BATCH 32  // Number of sequences to decode in a batch
@@ -23,8 +24,8 @@
  * are present in the accumulator or buffer before calling this function to
  * avoid undefined behavior or reading past valid memory.
  *
- * @param br Pointer to the bit reader instance.
- * @param n The number of bits to consume (must be <= 32, typically <= 24
+ * @param[in,out] br Pointer to the bit reader instance.
+ * @param[in] n The number of bits to consume (must be <= 32, typically <= 24
  * depending on implementation).
  * @return The value of the consumed bits as a 32-bit unsigned integer.
  */
@@ -50,8 +51,8 @@ static ZXC_ALWAYS_INLINE uint32_t zxc_br_consume_fast(zxc_bit_reader_t* br, uint
  * available to satisfy a subsequent read operation of `needed` bits. If not, it
  * refills the buffer from the source.
  *
- * @param br Pointer to the bit reader context.
- * @param needed The number of bits required to be available in the buffer.
+ * @param[in,out] br Pointer to the bit reader context.
+ * @param[in] needed The number of bits required to be available in the buffer.
  */
 static ZXC_ALWAYS_INLINE void zxc_br_ensure(zxc_bit_reader_t* br, int needed) {
     if (UNLIKELY(br->bits < needed)) {
@@ -98,7 +99,7 @@ static ZXC_ALWAYS_INLINE void zxc_br_ensure(zxc_bit_reader_t* br, int needed) {
  * token field. VByte encoding uses the high bit of each byte as a continuation
  * flag (1 = more bytes, 0 = last byte).
  *
- * @param ptr Address of the pointer to the current read position. The pointer
+ * @param[in,out] ptr Address of the pointer to the current read position. The pointer
  * is advanced.
  * @return The decoded 32-bit integer.
  */
@@ -133,7 +134,7 @@ static ZXC_ALWAYS_INLINE uint32_t zxc_read_vbyte(const uint8_t** ptr) {
  * a+b, a+b+c, a+b+c+d]`. This operation is typically used for calculating
  * cumulative distributions or offsets in parallel.
  *
- * @param v The input vector containing four 32-bit unsigned integers.
+ * @param[in] v The input vector containing four 32-bit unsigned integers.
  * @return A uint32x4_t vector containing the prefix sums.
  */
 static ZXC_ALWAYS_INLINE uint32x4_t zxc_neon_prefix_sum_u32(uint32x4_t v) {
@@ -167,7 +168,7 @@ static ZXC_ALWAYS_INLINE uint32x4_t zxc_neon_prefix_sum_u32(uint32x4_t v) {
  *   ...
  *   out[7] = v[0] + v[1] + ... + v[7]
  *
- * @param v The input 256-bit vector containing eight 32-bit integers.
+ * @param[in] v The input 256-bit vector containing eight 32-bit integers.
  * @return A 256-bit vector containing the prefix sums of the input elements.
  */
 static ZXC_ALWAYS_INLINE __m256i zxc_mm256_prefix_sum_epi32(__m256i v) {
@@ -197,7 +198,7 @@ static ZXC_ALWAYS_INLINE __m256i zxc_mm256_prefix_sum_epi32(__m256i v) {
  *
  * @note This function is forced inline for performance reasons.
  *
- * @param v The input 512-bit vector containing sixteen 32-bit integers.
+ * @param[in] v The input 512-bit vector containing sixteen 32-bit integers.
  * @return A 512-bit vector containing the prefix sums of the input elements.
  */
 static ZXC_ALWAYS_INLINE __m512i zxc_mm512_prefix_sum_epi32(__m512i v) {
@@ -241,12 +242,12 @@ static ZXC_ALWAYS_INLINE __m512i zxc_mm512_prefix_sum_epi32(__m512i v) {
  * 4. **Delta Reconstruction:** Adds the signed delta to a `running_val`
  * accumulator to recover the original integer sequence.
  *
- * @param src Pointer to the source buffer containing compressed data.
- * @param src_size Size of the source buffer in bytes.
- * @param dst Pointer to the destination buffer where decompressed data will be
+ * @param[in] src Pointer to the source buffer containing compressed data.
+ * @param[in] src_size Size of the source buffer in bytes.
+ * @param[out] dst Pointer to the destination buffer where decompressed data will be
  * written.
- * @param dst_capacity Maximum capacity of the destination buffer in bytes.
- * @param expected_raw_size Expected size of the uncompressed data (unused in
+ * @param[in] dst_capacity Maximum capacity of the destination buffer in bytes.
+ * @param[in] expected_raw_size Expected size of the uncompressed data (unused in
  * current implementation).
  *
  * @return The number of bytes written to the destination buffer on success,
@@ -275,7 +276,9 @@ static int zxc_decode_block_num(const uint8_t* restrict src, size_t src_size, ui
         uint16_t bits = zxc_le16(p + 2);
         uint32_t psize = zxc_le32(p + 12);
         p += 16;
-        if (UNLIKELY(p + psize > p_end || d_ptr + nvals * 4 > d_end)) return -1;
+        if (UNLIKELY(p + psize > p_end || d_ptr + nvals * 4 > d_end ||
+                     bits > (sizeof(uint32_t) * 8)))
+            return -1;
 
         zxc_bit_reader_t br;
         zxc_br_init(&br, p, psize);
@@ -398,18 +401,17 @@ static int zxc_decode_block_num(const uint8_t* restrict src, size_t src_size, ui
  * - Reconstructs the data by copying literals from the literal stream and
  *   matches from the previously decoded output (history).
  *
- * @param ctx Pointer to the compression context (`zxc_cctx_t`) containing
- * @param src Pointer to the source buffer containing compressed data.
- * @param src_size Size of the source buffer in bytes.
- * @param dst Pointer to the destination buffer for decompressed data.
- * @param dst_capacity Maximum capacity of the destination buffer.
- * @param expected_raw_size The expected size of the decompressed data (used for
+ * @param[in,out] ctx Pointer to the compression context (`zxc_cctx_t`) containing
+ * @param[in] src Pointer to the source buffer containing compressed data.
+ * @param[in] src_size Size of the source buffer in bytes.
+ * @param[out] dst Pointer to the destination buffer for decompressed data.
+ * @param[in] dst_capacity Maximum capacity of the destination buffer.
+ * @param[in] expected_raw_size The expected size of the decompressed data (used for
  * validation and trailing literals).
  *
  * @return The number of bytes written to the destination buffer on success, or
  * -1 on failure (e.g., invalid header, buffer overflow, or corrupted data).
  */
-
 static int zxc_decode_block_gnr(zxc_cctx_t* ctx, const uint8_t* restrict src, size_t src_size,
                                 uint8_t* restrict dst, size_t dst_capacity,
                                 uint32_t expected_raw_size) {
@@ -421,15 +423,19 @@ static int zxc_decode_block_gnr(zxc_cctx_t* ctx, const uint8_t* restrict src, si
     const uint8_t* p_curr = p_data;
 
     const uint8_t* l_ptr;
+    const uint8_t* l_end;
     uint8_t* rle_buf = NULL;
 
     if (gh.enc_lit == 1) {
         // RLE Encoded Literals
         size_t required_size = (size_t)(desc[0].sizes >> 32);
+        size_t rle_stream_size = (size_t)(desc[0].sizes & 0xFFFFFFFF);
 
         if (required_size > 0) {
-            if (ctx->lit_buffer_cap < required_size) {
-                uint8_t* new_buf = (uint8_t*)realloc(ctx->lit_buffer, required_size);
+            if (UNLIKELY(required_size > dst_capacity)) return -1;
+
+            if (ctx->lit_buffer_cap < required_size + ZXC_PAD_SIZE) {
+                uint8_t* new_buf = (uint8_t*)realloc(ctx->lit_buffer, required_size + ZXC_PAD_SIZE);
                 if (UNLIKELY(!new_buf)) {
                     free(ctx->lit_buffer);
                     ctx->lit_buffer = NULL;
@@ -438,23 +444,25 @@ static int zxc_decode_block_gnr(zxc_cctx_t* ctx, const uint8_t* restrict src, si
                 }
 
                 ctx->lit_buffer = new_buf;
-                ctx->lit_buffer_cap = required_size;
+                ctx->lit_buffer_cap = required_size + ZXC_PAD_SIZE;
             }
 
             rle_buf = ctx->lit_buffer;
-            if (!rle_buf) return -1;
+
+            if (UNLIKELY(!rle_buf || rle_stream_size > (size_t)(src + src_size - p_curr)))
+                return -1;
 
             const uint8_t* r_ptr = p_curr;
-            const uint8_t* r_end = r_ptr + (size_t)(desc[0].sizes & 0xFFFFFFFF);
-            uint8_t* w_ptr = rle_buf;
+            const uint8_t* r_end = r_ptr + rle_stream_size;
             const uint8_t* const w_end = rle_buf + required_size;
+            uint8_t* w_ptr = rle_buf;
 
             while (r_ptr < r_end && w_ptr < w_end) {
                 uint8_t token = *r_ptr++;
                 if (token & 0x80) {
                     // Repeat Run
                     size_t len = (token & 0x7F) + 4;
-                    if (w_ptr + len > w_end || r_ptr >= r_end) return -1;
+                    if (UNLIKELY(w_ptr + len > w_end || r_ptr >= r_end)) return -1;
 
                     uint8_t val = *r_ptr++;
                     ZXC_MEMSET(w_ptr, val, len);
@@ -462,30 +470,40 @@ static int zxc_decode_block_gnr(zxc_cctx_t* ctx, const uint8_t* restrict src, si
                 } else {
                     // Literal Run
                     size_t len = token + 1;
-                    if (w_ptr + len > w_end || r_ptr + len > r_end) return -1;
+                    if (UNLIKELY(w_ptr + len > w_end || r_ptr + len > r_end)) return -1;
                     ZXC_MEMCPY(w_ptr, r_ptr, len);
                     w_ptr += len;
                     r_ptr += len;
                 }
             }
-            if (w_ptr != w_end) return -1;
+            if (UNLIKELY(w_ptr != w_end)) return -1;
             // RLE stream ended prematurely or overran
             l_ptr = rle_buf;
+            l_end = rle_buf + required_size;
         } else {
             l_ptr = p_curr;
+            l_end = p_curr;
         }
     } else {
         // RAW Literals
         l_ptr = p_curr;
+        l_end = p_curr + (size_t)(desc[0].sizes & 0xFFFFFFFF);
     }
 
     p_curr += (size_t)(desc[0].sizes & 0xFFFFFFFF);
 
-    const uint8_t* ptr_tokens = p_curr;
-    const uint8_t* ptr_offsets = ptr_tokens + (size_t)(desc[1].sizes & 0xFFFFFFFF);
-    const uint8_t* ptr_extras = ptr_offsets + (size_t)(desc[2].sizes & 0xFFFFFFFF);
+    size_t sz_tokens = (size_t)(desc[1].sizes & 0xFFFFFFFF);
+    size_t sz_offsets = (size_t)(desc[2].sizes & 0xFFFFFFFF);
+    size_t sz_extras = (size_t)(desc[3].sizes & 0xFFFFFFFF);
 
-    if (UNLIKELY(ptr_extras + (size_t)(desc[3].sizes & 0xFFFFFFFF) > src + src_size)) return -1;
+    const uint8_t* ptr_tokens = p_curr;
+    const uint8_t* ptr_offsets = ptr_tokens + sz_tokens;
+    const uint8_t* ptr_extras = ptr_offsets + sz_offsets;
+
+    if (UNLIKELY(sz_tokens < gh.n_sequences || sz_offsets < (size_t)gh.n_sequences * 2 ||
+                 ptr_extras + sz_extras > src + src_size)) {
+        return -1;
+    }
 
     uint8_t* d_ptr = dst;
     const uint8_t* const d_end = dst + dst_capacity;
@@ -1047,7 +1065,7 @@ static int zxc_decode_block_gnr(zxc_cctx_t* ctx, const uint8_t* restrict src, si
     if (generated < expected_raw_size) {
         size_t rem = expected_raw_size - generated;
 
-        if (UNLIKELY(d_ptr + rem > d_end)) return -1;
+        if (UNLIKELY(d_ptr + rem > d_end || l_ptr + rem > l_end)) return -1;
 
         ZXC_MEMCPY(d_ptr, l_ptr, rem);
         d_ptr += rem;
@@ -1056,31 +1074,6 @@ static int zxc_decode_block_gnr(zxc_cctx_t* ctx, const uint8_t* restrict src, si
     return (int)(d_ptr - dst);
 }
 
-/**
- * @brief Decompresses a single chunk of data based on its block header.
- *
- * This internal wrapper function reads the block header from the source buffer
- * to determine the compression type (RAW, NUM, or GNR) and flags (such as
- * checksum presence). It then dispatches the decompression to the appropriate
- * specific decoder.
- *
- * If a checksum flag is present in the header and checksum verification is
- * enabled in the context, the function verifies the integrity of the
- * decompressed data against the stored CRC.
- *
- * @param ctx Pointer to the decompression context (zxc_cctx_t), used for
- * configuration like checksums.
- * @param src Pointer to the source buffer containing the compressed block
- * (including header).
- * @param src_sz Size of the source buffer in bytes.
- * @param dst Pointer to the destination buffer where decompressed data will be
- * written.
- * @param dst_cap Capacity of the destination buffer in bytes.
- *
- * @return The size of the decompressed data in bytes on success, or -1 if an
- * error occurs (e.g., invalid header, buffer overflow, unknown block type, or
- * checksum mismatch).
- */
 int zxc_decompress_chunk_wrapper(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz, uint8_t* dst,
                                  size_t dst_cap) {
     if (UNLIKELY(src_sz < ZXC_BLOCK_HEADER_SIZE)) return -1;
@@ -1101,7 +1094,7 @@ int zxc_decompress_chunk_wrapper(zxc_cctx_t* ctx, const uint8_t* src, size_t src
     if (type == ZXC_BLOCK_GNR) {
         decoded_sz = zxc_decode_block_gnr(ctx, data, comp_sz, dst, dst_cap, raw_sz);
     } else if (type == ZXC_BLOCK_RAW) {
-        if (UNLIKELY(raw_sz > dst_cap)) return -1;
+        if (UNLIKELY(raw_sz > dst_cap || raw_sz > comp_sz)) return -1;
         ZXC_MEMCPY(dst, data, raw_sz);
         decoded_sz = (int)raw_sz;
     } else if (type == ZXC_BLOCK_NUM) {
@@ -1120,48 +1113,11 @@ int zxc_decompress_chunk_wrapper(zxc_cctx_t* ctx, const uint8_t* src, size_t src
     return decoded_sz;
 }
 
-/**
- * @brief Decompresses a data stream from an input file to an output file.
- *
- * This function acts as a high-level wrapper for the ZXC stream engine,
- * configured specifically for decompression. It processes the input stream
- * using the specified number of threads and optionally verifies the data
- * integrity using a checksum.
- *
- * @param f_in      Pointer to the input file stream containing compressed data.
- * @param f_out     Pointer to the output file stream where decompressed data
- * will be written.
- * @param n_threads The number of worker threads to use for parallel
- * decompression.
- * @param checksum_enabled  Flag indicating whether to verify the checksum of
- * the data (1 to enable, 0 to disable).
- * @return          Returns 0 on success, or a non-zero error code if the
- * decompression fails.
- */
-int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out, int n_threads, int checksum_enabled) {
-    return zxc_stream_engine_run(f_in, f_out, n_threads, 0, 0, checksum_enabled,
-                                 (zxc_chunk_processor_t)zxc_decompress_chunk_wrapper);
-}
-
-/**
- * @brief Decompresses a ZXC compressed buffer.
- *
- * This version uses standard size_t types and void pointers.
- * It expects a valid ZXC file header followed by compressed blocks.
- *
- * @param src          Pointer to the source buffer containing compressed data.
- * @param src_size      Size of the compressed data in bytes.
- * @param dst          Pointer to the destination buffer.
- * @param dst_capacity  Capacity of the destination buffer.
- * @param checksum_enabled Flag indicating whether to verify checksums (1 to
- * enable, 0 to disable).
- *
- * @return The number of bytes written to dst, or 0 if decompression fails
- * (invalid header, corruption, or destination too small).
- */
 // cppcheck-suppress unusedFunction
 size_t zxc_decompress(const void* src, size_t src_size, void* dst, size_t dst_capacity,
                       int checksum_enabled) {
+    if (!src || !dst || src_size < ZXC_FILE_HEADER_SIZE) return 0;
+
     const uint8_t* ip = (const uint8_t*)src;
     const uint8_t* ip_end = ip + src_size;
     uint8_t* op = (uint8_t*)dst;
@@ -1169,9 +1125,7 @@ size_t zxc_decompress(const void* src, size_t src_size, void* dst, size_t dst_ca
     const uint8_t* op_end = op + dst_capacity;
 
     zxc_cctx_t ctx;
-    if (zxc_cctx_init(&ctx, ZXC_CHUNK_SIZE, 0, 0, checksum_enabled) != 0) {
-        return 0;
-    }
+    if (zxc_cctx_init(&ctx, ZXC_CHUNK_SIZE, 0, 0, checksum_enabled) != 0) return 0;
 
     // File header verification
     if (zxc_read_file_header(ip, src_size) != 0) {

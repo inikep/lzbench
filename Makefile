@@ -531,7 +531,7 @@ endif
 ifeq "$(DONT_BUILD_ZXC)" "1"
     DEFINES += -DBENCH_REMOVE_ZXC
 else
-    ZXC_FILES = lz/zxc/src/lib/zxc_common.o lz/zxc/src/lib/zxc_decompress.o lz/zxc/src/lib/zxc_compress.o
+    ZXC_FILES = lz/zxc/src/lib/zxc_common.o lz/zxc/src/lib/zxc_driver.o lz/zxc/src/lib/zxc_decompress.o lz/zxc/src/lib/zxc_compress.o
 endif
 
 # Symmetric codecs
