@@ -16,8 +16,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "../../include/zxc_sans_io.h"
+
 #ifdef __cplusplus
 extern "C" {
+#endif
+
+#if !defined(__cplusplus) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_ATOMICS__)
+#include <stdatomic.h>
+#define ZXC_ATOMIC _Atomic
+#else
+#define ZXC_ATOMIC volatile
 #endif
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -131,6 +140,8 @@ extern "C" {
 #define ZXC_LZ_HASH_BITS 13                       // (2*(2^13) * 4 bytes = 64KB)
 #define ZXC_LZ_HASH_SIZE (1 << ZXC_LZ_HASH_BITS)  // Hash table size
 #define ZXC_LZ_WINDOW_SIZE (1 << 16)              // 64KB sliding window
+// Note: sliding window of 64KB allows chain_table to use uint16_t for valid offsets (since any
+// match > 64KB is invalid).
 #define ZXC_LZ_MIN_MATCH 5                        // Minimum match length
 #define ZXC_LZ_MAX_DIST (ZXC_LZ_WINDOW_SIZE - 1)  // Maximum offset distance
 
@@ -169,31 +180,6 @@ typedef enum {
     ZXC_SECTION_ENCODING_FSE = 3,         // Reserved
     ZXC_SECTION_ENCODING_BITPACK_FSE = 4  // Reserved
 } zxc_section_encoding_t;
-
-/**
- * @struct zxc_block_header_t
- * @brief Represents the on-disk header structure for a ZXC block.
- *
- * This structure contains metadata required to parse and decompress a block.
- *
- * @var zxc_block_header_t::block_type
- * The type of the block (see zxc_block_type_t).
- * @var zxc_block_header_t::block_flags
- * Bit flags indicating properties like checksum presence.
- * @var zxc_block_header_t::reserved
- * Reserved bytes for future protocol extensions.
- * @var zxc_block_header_t::comp_size
- * The size of the compressed data payload in bytes (excluding this header).
- * @var zxc_block_header_t::raw_size
- * The size of the data after decompression.
- */
-typedef struct {
-    uint8_t block_type;   // Block type (e.g., RAW, GNR, NUM)
-    uint8_t block_flags;  // Flags (e.g., checksum presence)
-    uint16_t reserved;    // Reserved for future use
-    uint32_t comp_size;   // Compressed size excluding header
-    uint32_t raw_size;    // Decompressed size
-} zxc_block_header_t;
 
 /**
  * @struct zxc_gnr_header_t
@@ -255,53 +241,6 @@ typedef struct {
     uint64_t n_values;
     uint16_t frame_size;
 } zxc_num_header_t;
-
-/**
- * @typedef zxc_cctx_t
- * @brief Compression Context structure.
- *
- * This structure holds the state and buffers required for the compression
- * process. It is designed to be reused across multiple blocks or calls to avoid
- * the overhead of repeated memory allocations.
- *
- * **Key Fields:**
- * - `hash_table`: Stores indices of 4-byte sequences. Size is `2 *
- * ZXC_LZ_HASH_SIZE` to reduce collisions (load factor < 0.5).
- * - `chain_table`: Handles collisions by storing the *previous* occurrence of a
- *   hash. This forms a linked list for each hash bucket, allowing us to
- * traverse history.
- * - `epoch`: Used for "Lazy Hash Table Invalidation". Instead of
- * `ZXC_MEMSET`ing the entire hash table (which is slow) for every block, we
- * store `(epoch << 16) | offset`. If the stored epoch doesn't match the current
- * `ctx->epoch`, the entry is considered invalid/empty.
- *
- * @field hash_table Pointer to the hash table used for LZ77 match finding.
- * @field chain_table Pointer to the chain table for collision resolution.
- * @field buf_ll Pointer to the buffer for literal length codes.
- * @field buf_ml Pointer to the buffer for match length codes.
- * @field buf_off Pointer to the buffer for offset codes.
- * @field literals Pointer to the buffer for raw literal bytes.
- * @field epoch Current epoch counter for lazy hash table invalidation.
- * @field checksum_enabled Flag indicating if checksums should be computed.
- * @field compression_level The configured compression level.
- * @field lit_buffer Pointer to a scratch buffer for literal processing (e.g.,
- * RLE decoding).
- * @field lit_buffer_cap Current capacity of the literal scratch buffer.
- */
-typedef struct {
-    uint32_t* hash_table;   // Hash table for LZ77
-    uint32_t* chain_table;  // Chain table for collision resolution
-    uint32_t* buf_ll;       // Buffer for literal lengths
-    uint32_t* buf_ml;       // Buffer for match lengths
-    uint32_t* buf_off;      // Buffer for offsets
-    uint8_t* literals;      // Buffer for literal bytes
-    uint32_t epoch;         // Current epoch for hash table
-    int checksum_enabled;   // Checksum enabled flag
-    int compression_level;  // Compression level
-    uint8_t* lit_buffer;    // Buffer scratch for literals (RLE)
-    size_t lit_buffer_cap;  // Current capacity of this buffer
-    void* memory_block;     // Single allocation block
-} zxc_cctx_t;
 
 /**
  * @typedef zxc_bit_reader_t
@@ -583,6 +522,33 @@ static ZXC_ALWAYS_INLINE int32_t zxc_zigzag_decode(uint32_t n) {
     return (int32_t)(n >> 1) ^ -(int32_t)(n & 1);
 }
 
+/**
+ * @brief Allocates aligned memory in a cross-platform manner.
+ *
+ * This function provides a unified interface for allocating memory with a specific
+ * alignment requirement. It wraps `_aligned_malloc` for Windows
+ * environments and `posix_memalign` for POSIX-compliant systems.
+ *
+ * @param[in] size The size of the memory block to allocate, in bytes.
+ * @param[in] alignment The alignment value, which must be a power of two and a multiple
+ *                  of `sizeof(void *)`.
+ * @return A pointer to the allocated memory block, or NULL if the allocation fails.
+ *         The returned pointer must be freed using the corresponding aligned free function.
+ */
+void* zxc_aligned_malloc(size_t size, size_t alignment);
+
+/**
+ * @brief Frees memory previously allocated with an aligned allocation function.
+ *
+ * This function provides a cross-platform wrapper for freeing aligned memory.
+ * On Windows, it calls `_aligned_free`.
+ * On other platforms, it falls back to the standard `free` function.
+ *
+ * @param[in] ptr A pointer to the memory block to be freed. If ptr is NULL, no operation is
+ * performed.
+ */
+void zxc_aligned_free(void* ptr);
+
 /*
  * ============================================================================
  * COMPRESSION CONTEXT & STRUCTS
@@ -591,54 +557,10 @@ static ZXC_ALWAYS_INLINE int32_t zxc_zigzag_decode(uint32_t n) {
 
 // Represents a found LZ77 sequence (Literal Length, Match Length, Offset)
 
-/**
- * @typedef zxc_chunk_processor_t
- * @brief Function pointer type for processing a chunk of data.
- *
- * This type defines the signature for internal functions responsible for
- * processing (compressing or transforming) a specific chunk of input data.
- *
- * @param ctx     Pointer to the compression context containing state and
- * configuration.
- * @param in      Pointer to the input data buffer.
- * @param in_sz   Size of the input data in bytes.
- * @param out     Pointer to the output buffer where processed data will be
- * written.
- * @param out_cap Capacity of the output buffer in bytes.
- *
- * @return The number of bytes written to the output buffer on success, or a
- * negative error code on failure.
- */
-typedef int (*zxc_chunk_processor_t)(zxc_cctx_t* ctx, const uint8_t* in, size_t in_sz, uint8_t* out,
-                                     size_t out_cap);
-
 /*
  * INTERNAL API
  * ------------
  */
-/**
- * @brief Initializes a ZXC compression context.
- *
- * Sets up the internal state required for compression operations, allocating
- * necessary buffers based on the chunk size and compression level.
- *
- * @param ctx Pointer to the compression context structure to initialize.
- * @param chunk_size The size of the data chunks to process.
- * @param mode The compression mode (e.g., fast, high compression).
- * @param level The specific compression level (1-9).
- * @param checksum_enabled
- * @return 0 on success, or a negative error code on failure.
- */
-int zxc_cctx_init(zxc_cctx_t* ctx, size_t chunk_size, int mode, int level, int checksum_enabled);
-
-/**
- * @brief Frees resources associated with a ZXC compression context.
- *
- * Releases memory allocated during initialization and resets the context state.
- *
- * @param ctx Pointer to the compression context to free.
- */
-void zxc_cctx_free(zxc_cctx_t* ctx);
 
 /**
  * @brief Calculates a 64-bit XXH3checksum for a given input buffer.
@@ -649,56 +571,6 @@ void zxc_cctx_free(zxc_cctx_t* ctx);
  * @return The calculated 64-bit hash value.
  */
 uint64_t zxc_checksum(const void* RESTRICT input, size_t len);
-
-/**
- * @brief Validates and reads the ZXC file header from a source buffer.
- *
- * Checks for the correct magic bytes and version number.
- *
- * @param src Pointer to the start of the file data.
- * @param src_size Size of the available source data (must be at least header
- * size).
- * @return The size of the header in bytes on success, or a negative error code.
- */
-int zxc_read_file_header(const uint8_t* src, size_t src_size);
-
-/**
- * @brief Writes the standard ZXC file header to a destination buffer.
- *
- * Writes the magic bytes and version information.
- *
- * @param dst Pointer to the destination buffer.
- * @param dst_capacity Maximum capacity of the destination buffer.
- * @return The number of bytes written on success, or a negative error code.
- */
-int zxc_write_file_header(uint8_t* dst, size_t dst_capacity);
-
-/**
- * @brief Parses a block header from the source stream.
- *
- * Decodes the block size, compression type, and checksum flags into the
- * provided block header structure.
- *
- * @param src Pointer to the current position in the source stream.
- * @param src_size Available bytes remaining in the source stream.
- * @param bh Pointer to a block header structure to populate.
- * @return The number of bytes read (header size) on success, or a negative
- * error code.
- */
-int zxc_read_block_header(const uint8_t* src, size_t src_size, zxc_block_header_t* bh);
-
-/**
- * @brief Encodes a block header into the destination buffer.
- *
- * Serializes the information contained in the block header structure (size,
- * flags, etc.) into the binary format expected by the decoder.
- *
- * @param dst Pointer to the destination buffer.
- * @param dst_capacity Maximum capacity of the destination buffer.
- * @param bh Pointer to the block header structure containing the metadata.
- * @return The number of bytes written on success, or a negative error code.
- */
-int zxc_write_block_header(uint8_t* dst, size_t dst_capacity, const zxc_block_header_t* bh);
 
 /**
  * @brief Initializes a bit reader structure.
@@ -787,31 +659,6 @@ int zxc_write_gnr_header_and_desc(uint8_t* dst, size_t rem, const zxc_gnr_header
  */
 int zxc_read_gnr_header_and_desc(const uint8_t* src, size_t len, zxc_gnr_header_t* gh,
                                  zxc_section_desc_t desc[4]);
-
-/**
- * @brief Runs the main compression/decompression stream engine.
- *
- * This function orchestrates the processing of data from an input stream to an
- * output stream, potentially utilizing multiple threads for parallel
- * processing. It handles the setup, execution, and teardown of the streaming
- * process based on the specified configuration.
- *
- * @param f_in Pointer to the input file stream (source data).
- * @param f_out Pointer to the output file stream (destination data).
- * @param n_threads The number of threads to use for processing. If 0 or 1,
- * processing may be sequential.
- * @param mode The operation mode (e.g., compression or decompression).
- * @param level The compression level to apply (relevant only for compression
- * mode).
- * @param checksum_enabled Flag indicating whether to calculate and verify checksums (1
- * for yes, 0 for no).
- * @param func The chunk processing callback function (`zxc_chunk_processor_t`)
- * responsible for handling individual data blocks.
- *
- * @return Returns 0 on success, or a non-zero error code on failure.
- */
-int64_t zxc_stream_engine_run(FILE* f_in, FILE* f_out, int n_threads, int mode, int level,
-                              int checksum_enabled, zxc_chunk_processor_t func);
 
 /**
  * @brief Internal wrapper function to decompress a single chunk of data.

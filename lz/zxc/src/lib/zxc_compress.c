@@ -6,7 +6,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-#include "../../include/zxc.h"
+#include "../../include/zxc_buffer.h"
+#include "../../include/zxc_sans_io.h"
 #include "zxc_internal.h"
 
 #define ZXC_NUM_FRAME_SIZE \
@@ -64,15 +65,15 @@ static ZXC_ALWAYS_INLINE uint32_t zxc_mm256_reduce_max_epu32(__m256i v) {
  * 4. **Bit Packing:** Packs the ZigZag-encoded deltas into a compact bitstream
  *    using `b` bits per value.
  *
- * @param src Pointer to the source buffer containing raw 32-bit integer data.
- * @param src_size Size of the source buffer in bytes. Must be a multiple of 4
+ * @param[in] src Pointer to the source buffer containing raw 32-bit integer data.
+ * @param[in] src_size Size of the source buffer in bytes. Must be a multiple of 4
  * and non-zero.
- * @param dst Pointer to the destination buffer where compressed data will be
+ * @param[out] dst Pointer to the destination buffer where compressed data will be
  * written.
- * @param dst_cap Capacity of the destination buffer in bytes.
- * @param out_sz Pointer to a variable where the total size of the compressed
+ * @param[in] dst_cap Capacity of the destination buffer in bytes.
+ * @param[out] out_sz Pointer to a variable where the total size of the compressed
  * output will be stored.
- * @param crc_val The pre-calculated XXH3 value (if checksum is enabled).
+ * @param[in] crc_val The pre-calculated XXH3 value (if checksum is enabled).
  *
  * @return 0 on success, or -1 on failure (e.g., invalid input size, destination
  * buffer too small).
@@ -189,10 +190,11 @@ static int zxc_encode_block_num(const zxc_cctx_t* ctx, const uint8_t* src, size_
 #else
             // NEON 32-bit (ARMv7) fallback for horizontal max using standard shifts
             // Reduce 4 elements -> 2
-            uint32x4_t v_swap = vextq_u32(v_max_accum, v_max_accum, 2); // Swap low/high 64-bit halves
+            uint32x4_t v_swap =
+                vextq_u32(v_max_accum, v_max_accum, 2);  // Swap low/high 64-bit halves
             uint32x4_t v_max2 = vmaxq_u32(v_max_accum, v_swap);
             // Reduce 2 -> 1
-            v_swap = vextq_u32(v_max2, v_max2, 1); // Shift by 32 bits
+            v_swap = vextq_u32(v_max2, v_max2, 1);  // Shift by 32 bits
             uint32x4_t v_max1 = vmaxq_u32(v_max2, v_swap);
             max_d = vgetq_lane_u32(v_max1, 0);
 #endif
@@ -200,7 +202,8 @@ static int zxc_encode_block_num(const zxc_cctx_t* ctx, const uint8_t* src, size_
             if (j > 0) prev = zxc_le32(in_ptr + (j - 1) * 4);
         }
 #endif
-#if defined(ZXC_USE_AVX2) || defined(ZXC_USE_AVX512) || defined(ZXC_USE_NEON64) || defined(ZXC_USE_NEON32)
+#if defined(ZXC_USE_AVX2) || defined(ZXC_USE_AVX512) || defined(ZXC_USE_NEON64) || \
+    defined(ZXC_USE_NEON32)
     _scalar:
 #ifndef _MSC_VER
         __attribute__((unused));
@@ -281,16 +284,16 @@ static int zxc_encode_block_num(const zxc_cctx_t* ctx, const uint8_t* src, size_
  * literals (using Raw or RLE encoding), and bit-packs the sequence streams into
  * the destination buffer.
  *
- * @param ctx       Pointer to the compression context containing hash tables
+ * @param[in,out] ctx       Pointer to the compression context containing hash tables
  * and configuration.
- * @param src       Pointer to the input source data.
- * @param src_size  Size of the input data in bytes.
- * @param dst       Pointer to the destination buffer where compressed data will
+ * @param[in] src       Pointer to the input source data.
+ * @param[in] src_size  Size of the input data in bytes.
+ * @param[out] dst       Pointer to the destination buffer where compressed data will
  * be written.
- * @param dst_cap   Maximum capacity of the destination buffer.
- * @param out_sz    [Out] Pointer to a variable that will receive the total size
+ * @param[in] dst_cap   Maximum capacity of the destination buffer.
+ * @param[out] out_sz    [Out] Pointer to a variable that will receive the total size
  * of the compressed output.
- * @param crc_val   The pre-calculated XXH3 value (if checksum is enabled).
+ * @param[in] crc_val   The pre-calculated XXH3 value (if checksum is enabled).
  *
  * @return 0 on success, or -1 if an error occurs (e.g., buffer overflow).
  */
@@ -338,16 +341,16 @@ static int zxc_encode_block_gnr(zxc_cctx_t* ctx, const uint8_t* src, size_t src_
     const uint8_t *ip = src, *iend = src + src_size, *anchor = ip, *mflimit = iend - 12;
 
     uint32_t* hash_table = ctx->hash_table;
-    uint32_t* chain_table = ctx->chain_table;
+    uint16_t* chain_table = ctx->chain_table;
     uint8_t* literals = ctx->literals;
 
     uint32_t seq_c = 0;
     size_t lit_c = 0;
 
     // --- TOKEN ENCODING PRE-INIT ---
-    uint8_t* buf_tokens = (uint8_t*)ctx->buf_off;    // Reuse buf_off for tokens
-    uint16_t* buf_offsets = (uint16_t*)ctx->buf_ml;  // Reuse buf_ml for offsets
-    uint32_t* buf_extras = ctx->buf_ll;  // Reuse buf_ll for extras (32-bit temp storage)
+    uint8_t* buf_tokens = ctx->buf_tokens;
+    uint16_t* buf_offsets = ctx->buf_offsets;
+    uint32_t* buf_extras = ctx->buf_extras;
     size_t n_extras = 0;
     size_t vbyte_size = 0;
 
@@ -368,7 +371,11 @@ static int zxc_encode_block_gnr(zxc_cctx_t* ctx, const uint8_t* src, size_t src_
             (raw_head & ~ZXC_OFFSET_MASK) == epoch_mark ? (raw_head & ZXC_OFFSET_MASK) : 0;
 
         hash_table[2 * h] = epoch_mark | cur_pos;
-        chain_table[cur_pos] = match_idx;
+        // cppcheck-suppress knownConditionTrueFalse ; false positive
+        if (match_idx > 0 && (cur_pos - match_idx) < 0x10000)
+            chain_table[cur_pos] = (uint16_t)(cur_pos - match_idx);
+        else
+            chain_table[cur_pos] = 0;
 
         const uint8_t* best_ref = NULL;
         uint32_t best_len = ZXC_LZ_MIN_MATCH - 1;
@@ -464,14 +471,16 @@ static int zxc_encode_block_gnr(zxc_cctx_t* ctx, const uint8_t* src, size_t src_
                         uint8x16_t v_diff = vmvnq_u8(v_cmp);
                         // Access as 32-bit lanes to reconstruct 64-bit values or check directly
                         // Reconstructing 64-bit for compatibility with zxc_ctz64 usage
-                        uint64_t lo = (uint64_t)vgetq_lane_u32(vreinterpretq_u32_u8(v_diff), 0) |
-                                      ((uint64_t)vgetq_lane_u32(vreinterpretq_u32_u8(v_diff), 1) << 32);
+                        uint64_t lo =
+                            (uint64_t)vgetq_lane_u32(vreinterpretq_u32_u8(v_diff), 0) |
+                            ((uint64_t)vgetq_lane_u32(vreinterpretq_u32_u8(v_diff), 1) << 32);
 
                         if (lo != 0)
                             mlen += (zxc_ctz64(lo) >> 3);
                         else {
-                            uint64_t hi = (uint64_t)vgetq_lane_u32(vreinterpretq_u32_u8(v_diff), 2) |
-                                          ((uint64_t)vgetq_lane_u32(vreinterpretq_u32_u8(v_diff), 3) << 32);
+                            uint64_t hi =
+                                (uint64_t)vgetq_lane_u32(vreinterpretq_u32_u8(v_diff), 2) |
+                                ((uint64_t)vgetq_lane_u32(vreinterpretq_u32_u8(v_diff), 3) << 32);
                             mlen += 8 + (zxc_ctz64(hi) >> 3);
                         }
                         goto _match_len_done;
@@ -495,10 +504,14 @@ static int zxc_encode_block_gnr(zxc_cctx_t* ctx, const uint8_t* src, size_t src_
                 if (mlen > best_len) {
                     best_len = mlen;
                     best_ref = ref;
-                    if (best_len >= (uint32_t)sufficient_len) break;
+                    if (best_len >= (uint32_t)sufficient_len) break;  // Sufficient match found
+
+                    if (ip + best_len >= iend) break;  // Prevent overruns
                 }
             }
-            match_idx = chain_table[match_idx];
+            uint16_t delta = chain_table[match_idx];
+            if (delta == 0) break;
+            match_idx -= delta;
         }
 
         if (use_lazy && best_ref && best_len < 128 && ip + 1 < mflimit) {
@@ -519,7 +532,9 @@ static int zxc_encode_block_gnr(zxc_cctx_t* ctx, const uint8_t* src, size_t src_
                     while (ip + 1 + l2 < iend && ref2[l2] == ip[1 + l2]) l2++;
                     if (l2 > max_lazy) max_lazy = l2;
                 }
-                next_idx = chain_table[next_idx];
+                uint16_t delta = chain_table[next_idx];
+                if (delta == 0) break;
+                next_idx -= delta;
             }
             if (max_lazy > best_len + 1) best_ref = NULL;
         }
@@ -593,7 +608,10 @@ static int zxc_encode_block_gnr(zxc_cctx_t* ctx, const uint8_t* src, size_t src_
 
                     // Update the hash table and chain table
                     hash_table[2 * h_u] = epoch_mark | pos_u;
-                    chain_table[pos_u] = prev_idx;
+                    if (prev_idx > 0 && (pos_u - prev_idx) < 0x10000)
+                        chain_table[pos_u] = (uint16_t)(pos_u - prev_idx);
+                    else
+                        chain_table[pos_u] = 0;
                 }
             }
 
@@ -783,15 +801,15 @@ static int zxc_encode_block_gnr(zxc_cctx_t* ctx, const uint8_t* src, size_t src_
  * buffer. It handles the block header, copying of source data, and optionally
  * the calculation and storage of a checksum.
  *
- * @param src Pointer to the source data to encode.
- * @param sz Size of the source data in bytes.
- * @param dst Pointer to the destination buffer.
- * @param cap Maximum capacity of the destination buffer.
- * @param out_sz Pointer to a variable receiving the total written size
+ * @param[in] src Pointer to the source data to encode.
+ * @param[in] src_sz Size of the source data in bytes.
+ * @param[out] dst Pointer to the destination buffer.
+ * @param[in] dst_cap Maximum capacity of the destination buffer.
+ * @param[out] out_sz Pointer to a variable receiving the total written size
  * (header
  * + data + checksum).
- * @param chk Boolean flag: if non-zero, a checksum is calculated and added.
- * @param crc_val The pre-calculated XXH3 value (if checksum is enabled).
+ * @param[in] chk Boolean flag: if non-zero, a checksum is calculated and added.
+ * @param[in] crc_val The pre-calculated XXH3 value (if checksum is enabled).
  *
  * @return 0 on success, -1 if the destination buffer capacity is
  * insufficient.
@@ -860,34 +878,6 @@ static int zxc_probe_is_numeric(const uint8_t* src, size_t size) {
     return (small_deltas > (count * 90) / 100);
 }
 
-/**
- * @brief Wraps the compression logic for a single chunk of data, selecting
- * the best encoding strategy.
- *
- * This function attempts to compress a given data chunk using different
- * strategies based on the data size and compressibility.
- *
- * **Decision Logic:**
- * 1. **GNR First:** We always attempt General (LZ77) compression first as it
- * handles most data types well.
- * 2. **Fallbacks:**
- *    - If GNR compression ratio is poor (> 90% of original size) AND the data
- * looks like an array of integers (size multiple of 4), we *might* try NUM
- * compression (currently commented out/disabled in code, but logic is there).
- *    - If compression fails to save space, we fall back to **RAW** storage
- * (uncompressed) to avoid expansion.
- *
- * @param ctx Pointer to the ZXC compression context containing configuration
- * (e.g., checksum flags).
- * @param chunk Pointer to the source data buffer to be compressed.
- * @param src_sz Size of the source data chunk in bytes.
- * @param dst Pointer to the destination buffer where compressed data will be
- * written.
- * @param dst_cap Capacity of the destination buffer.
- *
- * @return The size of the written data in bytes on success, or -1 if an error
- * occurred (e.g., buffer overflow or encoding failure).
- */
 int zxc_compress_chunk_wrapper(zxc_cctx_t* ctx, const uint8_t* chunk, size_t src_sz, uint8_t* dst,
                                size_t dst_cap) {
     int chk = ctx->checksum_enabled;
@@ -926,60 +916,18 @@ int zxc_compress_chunk_wrapper(zxc_cctx_t* ctx, const uint8_t* chunk, size_t src
     return (int)w;
 }
 
-/**
- * @brief Compresses a data stream from an input file to an output file.
- *
- * This function initializes the compression engine to process the input
- * stream using the specified number of threads and compression level. It acts
- * as a wrapper around the generic stream engine, specifically configuring it
- * for compression operations.
- *
- * @param f_in      Pointer to the input file stream to be compressed.
- * @param f_out     Pointer to the output file stream where compressed data
- * will be written.
- * @param n_threads The number of threads to use for parallel compression.
- * @param level     The compression level (determines the trade-off between
- * speed and ratio).
- * @param checksum_enabled  Flag indicating whether to calculate and store a checksum
- * for data integrity.
- *
- * @return          Returns 0 on success, or a non-zero error code on failure.
- */
-int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, int n_threads, int level,
-                            int checksum_enabled) {
-    return zxc_stream_engine_run(f_in, f_out, n_threads, 1, level, checksum_enabled,
-                                 zxc_compress_chunk_wrapper);
-}
-
-/**
- * @brief Compresses a data buffer using the ZXC algorithm.
- *
- * This version uses standard size_t types and void pointers. It writes the
- * ZXC file header followed by compressed blocks, single threaded
- *
- * @param src          Pointer to the source buffer.
- * @param src_size     Size of the source data in bytes.
- * @param dst          Pointer to the destination buffer.
- * @param dst_capacity Maximum capacity of the destination buffer.
- * @param level        Compression level (e.g., ZXC_LEVEL_BALANCED).
- * @param checksum_enabled Flag indicating whether to verify the checksum of
- * the data (1 to enable, 0 to disable).
- *
- * @return The number of bytes written to dst, or 0 if the destination buffer
- * is too small or an error occurred.
- */
 // cppcheck-suppress unusedFunction
 size_t zxc_compress(const void* src, size_t src_size, void* dst, size_t dst_capacity, int level,
                     int checksum_enabled) {
+    if (!src || !dst || src_size == 0 || dst_capacity == 0) return 0;
+
     const uint8_t* ip = (const uint8_t*)src;
     uint8_t* op = (uint8_t*)dst;
     const uint8_t* op_start = op;
     const uint8_t* op_end = op + dst_capacity;
 
     zxc_cctx_t ctx;
-    if (zxc_cctx_init(&ctx, ZXC_CHUNK_SIZE, 1, level, checksum_enabled) != 0) {
-        return 0;
-    }
+    if (zxc_cctx_init(&ctx, ZXC_CHUNK_SIZE, 1, level, checksum_enabled) != 0) return 0;
 
     int h_size = zxc_write_file_header(op, (size_t)(op_end - op));
     if (h_size < 0) {
