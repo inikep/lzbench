@@ -495,7 +495,9 @@ static int zxc_encode_block_gnr(zxc_cctx_t* ctx, const uint8_t* src, size_t src_
                 if (mlen > best_len) {
                     best_len = mlen;
                     best_ref = ref;
-                    if (best_len >= (uint32_t)sufficient_len) break;
+                    if (best_len >= (uint32_t)sufficient_len) break; // Sufficient match found
+
+                    if (ip + best_len >= iend) break; // Prevent overruns
                 }
             }
             match_idx = chain_table[match_idx];
