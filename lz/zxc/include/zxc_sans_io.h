@@ -43,9 +43,9 @@ extern "C" {
  *
  * @field hash_table Pointer to the hash table used for LZ77 match finding.
  * @field chain_table Pointer to the chain table for collision resolution.
- * @field buf_ll Pointer to the buffer for literal length codes.
- * @field buf_ml Pointer to the buffer for match length codes.
- * @field buf_off Pointer to the buffer for offset codes.
+ * @field buf_extras Pointer to the buffer for extra lengths (LL >= 15 or ML >= 15).
+ * @field buf_offsets Pointer to the buffer for offsets.
+ * @field buf_tokens Pointer to the buffer for token sequences.
  * @field literals Pointer to the buffer for raw literal bytes.
  * @field epoch Current epoch counter for lazy hash table invalidation.
  * @field checksum_enabled Flag indicating if checksums should be computed.
@@ -53,6 +53,7 @@ extern "C" {
  * @field lit_buffer Pointer to a scratch buffer for literal processing (e.g.,
  * RLE decoding).
  * @field lit_buffer_cap Current capacity of the literal scratch buffer.
+ * @field memory_block Pointer to the single allocation block containing all buffers.
  */
 typedef struct {
     uint32_t* hash_table;   // Hash table for LZ77

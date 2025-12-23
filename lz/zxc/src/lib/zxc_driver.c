@@ -471,7 +471,8 @@ static int64_t zxc_stream_engine_run(FILE* f_in, FILE* f_out, int n_threads, int
     size_t raw_alloc_out = ((mode) ? max_out : ZXC_CHUNK_SIZE) + ZXC_PAD_SIZE;
     size_t alloc_out = (raw_alloc_out + 63) & ~63;
 
-    size_t alloc_size = ctx.ring_size * (sizeof(zxc_stream_job_t) + sizeof(int) + alloc_in + alloc_out);
+    size_t alloc_size =
+        ctx.ring_size * (sizeof(zxc_stream_job_t) + sizeof(int) + alloc_in + alloc_out);
     uint8_t* mem_block = zxc_aligned_malloc(alloc_size, 64);
     if (UNLIKELY(!mem_block)) return -1;
     ZXC_MEMSET(mem_block, 0, alloc_size);

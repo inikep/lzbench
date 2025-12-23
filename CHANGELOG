@@ -3,7 +3,7 @@ v2.x.y (work in progress)
 - updated brotli to 1.2.0 (thanks to @data-man)
 - updated lzav 5.5 (thanks to @avaneev)
 - updated quicklz to 1.5.1 beta 7
-- added zxc 0.2.0 beta
+- added zxc 0.3.1 beta
 
 v2.2 (Oct 28, 2025)
 - improvement: Automatic chunk size splitting for multi-threading (-T) when -b is not specified
