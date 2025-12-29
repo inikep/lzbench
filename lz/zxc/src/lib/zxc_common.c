@@ -177,7 +177,7 @@ void zxc_br_init(zxc_bit_reader_t* br, const uint8_t* src, size_t size) {
 // Packs an array of 32-bit integers into a bitstream using 'bits' bits per
 // integer.
 
-int zxc_bitpack_stream_32(const uint32_t* restrict src, size_t count, uint8_t* restrict dst,
+int zxc_bitpack_stream_32(const uint32_t* RESTRICT src, size_t count, uint8_t* RESTRICT dst,
                           size_t dst_cap, uint8_t bits) {
     size_t out_bytes = ((count * bits) + 7) / 8;
 
