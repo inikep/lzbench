@@ -43,31 +43,37 @@ extern "C" {
  *
  * @field hash_table Pointer to the hash table used for LZ77 match finding.
  * @field chain_table Pointer to the chain table for collision resolution.
+ * @field memory_block Pointer to the single allocation block containing all buffers.
+ * @field epoch Current epoch counter for lazy hash table invalidation.
  * @field buf_extras Pointer to the buffer for extra lengths (LL >= 15 or ML >= 15).
  * @field buf_offsets Pointer to the buffer for offsets.
  * @field buf_tokens Pointer to the buffer for token sequences.
  * @field literals Pointer to the buffer for raw literal bytes.
- * @field epoch Current epoch counter for lazy hash table invalidation.
- * @field checksum_enabled Flag indicating if checksums should be computed.
- * @field compression_level The configured compression level.
  * @field lit_buffer Pointer to a scratch buffer for literal processing (e.g.,
  * RLE decoding).
  * @field lit_buffer_cap Current capacity of the literal scratch buffer.
- * @field memory_block Pointer to the single allocation block containing all buffers.
+ * @field checksum_enabled Flag indicating if checksums should be computed.
+ * @field compression_level The configured compression level.
  */
 typedef struct {
+    // Hot zone: random access / high frequency
+    // Kept at the start to ensure they reside in the first cache line (64 bytes).
     uint32_t* hash_table;   // Hash table for LZ77
     uint16_t* chain_table;  // Chain table for collision resolution
-    uint32_t* buf_extras;   // Buffer for extra lengths (LL >= 15 or ML >= 15)
+    void* memory_block;     // Single allocation block owner
+    uint32_t epoch;         // Current epoch for hash table (checked per match)
+
+    // Warm zone: sequential access per sequence
+    uint32_t* buf_extras;   // Buffer for extra lengths
     uint16_t* buf_offsets;  // Buffer for offsets
     uint8_t* buf_tokens;    // Buffer for token sequences
     uint8_t* literals;      // Buffer for literal bytes
-    uint32_t epoch;         // Current epoch for hash table
-    int checksum_enabled;   // Checksum enabled flag
-    int compression_level;  // Compression level
+
+    // Cold zone: configuration / scratch / resizeable
     uint8_t* lit_buffer;    // Buffer scratch for literals (RLE)
     size_t lit_buffer_cap;  // Current capacity of this buffer
-    void* memory_block;     // Single allocation block
+    int checksum_enabled;   // Checksum enabled flag
+    int compression_level;  // Compression level
 } zxc_cctx_t;
 
 /**
@@ -121,10 +127,11 @@ int zxc_write_file_header(uint8_t* dst, size_t dst_capacity);
  *
  * @param[in] src Pointer to the source buffer containing the file data.
  * @param[in] src_size Size of the source buffer in bytes.
+ * @param[out] out_block_size Optional pointer to receive the recommended block size
  * @return 0 if the header is valid, -1 otherwise (e.g., buffer too small,
  * invalid magic word, or incorrect version).
  */
-int zxc_read_file_header(const uint8_t* src, size_t src_size);
+int zxc_read_file_header(const uint8_t* src, size_t src_size, size_t* out_block_size);
 
 /**
  * @struct zxc_block_header_t

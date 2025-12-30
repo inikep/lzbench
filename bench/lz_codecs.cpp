@@ -1761,7 +1761,7 @@ int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
   if (!ctx)
     return 0;
 
-  if (zxc_read_file_header(src, insize) != 0)
+  if (zxc_read_file_header(src, insize, NULL) != 0)
     return 0;
 
   src += ZXC_FILE_HEADER_SIZE;
