@@ -30,14 +30,6 @@ extern "C" {
 #define ZXC_ATOMIC volatile
 #endif
 
-#if defined(__GNUC__) || defined(__clang__)
-#define RESTRICT __restrict__
-#elif defined(_MSC_VER)
-#define RESTRICT __restrict
-#else
-#define RESTRICT
-#endif
-
 /*
  * ============================================================================
  * SIMD INTRINSICS & COMPILER MACROS
@@ -62,45 +54,57 @@ extern "C" {
 #endif
 #endif
 
+/*
+ * ============================================================================
+ * LIKELY/UNLIKELY, PREFETCH, MEMCPY/MEMSET, ALIGN, ALWAYS_INLINE
+ * ============================================================================
+ */
+
 #if defined(__GNUC__) || defined(__clang__)
-#define LIKELY(x) (__builtin_expect((!!(x)), 1))
+#define LIKELY(x) (__builtin_expect(!!(x), 1))
 #define UNLIKELY(x) (__builtin_expect(!!(x), 0))
+#define RESTRICT __restrict__
 #define ZXC_PREFETCH_READ(ptr) __builtin_prefetch((const void*)(ptr), 0, 3)
 #define ZXC_PREFETCH_WRITE(ptr) __builtin_prefetch((const void*)(ptr), 1, 3)
-#define ZXC_MEMCPY(dst, src, size) __builtin_memcpy(dst, src, size)
-#define ZXC_MEMSET(dst, val, size) __builtin_memset(dst, val, size)
+#define ZXC_MEMCPY(dst, src, n) __builtin_memcpy(dst, src, n)
+#define ZXC_MEMSET(dst, val, n) __builtin_memset(dst, val, n)
+#define ZXC_ALIGN(x) __attribute__((aligned(x)))
+#define ZXC_ALWAYS_INLINE inline __attribute__((always_inline))
+
+#elif defined(_MSC_VER)
+#include <intrin.h>
+#if defined(_M_IX86) || defined(_M_X64) || defined(_M_AMD64)
+#include <xmmintrin.h>
+#define ZXC_PREFETCH_READ(ptr) _mm_prefetch((const char*)(ptr), _MM_HINT_T0)
+#define ZXC_PREFETCH_WRITE(ptr) _mm_prefetch((const char*)(ptr), _MM_HINT_T0)
+#else
+#define ZXC_PREFETCH_READ(ptr) __prefetch((const void*)(ptr))
+#define ZXC_PREFETCH_WRITE(ptr) __prefetch((const void*)(ptr))
+#endif
+#define LIKELY(x) (x)
+#define UNLIKELY(x) (x)
+#define RESTRICT __restrict
+#pragma intrinsic(memcpy, memset)
+#define ZXC_MEMCPY(dst, src, n) memcpy(dst, src, n)
+#define ZXC_MEMSET(dst, val, n) memset(dst, val, n)
+#define ZXC_ALIGN(x) __declspec(align(x))
+#define ZXC_ALWAYS_INLINE __forceinline
+#pragma intrinsic(_BitScanReverse)
 #else
 #define LIKELY(x) (x)
 #define UNLIKELY(x) (x)
+#define RESTRICT
 #define ZXC_PREFETCH_READ(ptr)
 #define ZXC_PREFETCH_WRITE(ptr)
-#define ZXC_MEMCPY(dst, src, size) memcpy(dst, src, size)
-#define ZXC_MEMSET(dst, val, size) memset(dst, val, size)
-#endif
-
-#if defined(__GNUC__) || defined(__clang__)
-#define ZXC_ALIGN(x) __attribute__((aligned(x)))
-#elif defined(_MSC_VER)
-#define ZXC_ALIGN(x) __declspec(align(x))
-#elif defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
+#define ZXC_MEMCPY(dst, src, n) memcpy(dst, src, n)
+#define ZXC_MEMSET(dst, val, n) memset(dst, val, n)
+#define ZXC_ALWAYS_INLINE inline
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 #include <stdalign.h>
 #define ZXC_ALIGN(x) _Alignas(x)
 #else
-#define ZXC_ALIGN(x) /* No alignment */
+#define ZXC_ALIGN(x)
 #endif
-
-// Force inlining for critical paths
-#if defined(__GNUC__) || defined(__clang__)
-#define ZXC_ALWAYS_INLINE inline __attribute__((always_inline))
-#elif defined(_MSC_VER)
-#define ZXC_ALWAYS_INLINE __forceinline
-#else
-#define ZXC_ALWAYS_INLINE inline
-#endif
-
-#ifdef _MSC_VER
-#include <intrin.h>
-#pragma intrinsic(_BitScanReverse)
 #endif
 
 /*
@@ -109,16 +113,18 @@ extern "C" {
  * ============================================================================
  */
 
-#define ZXC_MAGIC_WORD 0x0043585AU        // Magic signature "ZXC0" (Little Endian)
-#define ZXC_FILE_FORMAT_VERSION 1         // Current file format version
-#define ZXC_CHUNK_SIZE (256 * 1024)       // Size of data blocks processed by threads
-#define ZXC_IO_BUFFER_SIZE (1024 * 1024)  // Size of stdio buffers
-#define ZXC_PAD_SIZE 32                   // Padding size for buffer overruns
+#define ZXC_MAGIC_WORD 0x0043585AU  // Magic signature "ZXC0" (Little Endian)
+#define ZXC_FILE_FORMAT_VERSION 2   // Current file format version (v2: variable offset encoding)
+#define ZXC_BLOCK_UNIT (4096)       // Block size unit (4KB)
+#define ZXC_CHUNK_SIZE (64 * ZXC_BLOCK_UNIT)  // Size of data blocks processed by threads (252KB)
+#define ZXC_IO_BUFFER_SIZE (1024 * 1024)      // Size of stdio buffers
+#define ZXC_PAD_SIZE 32                       // Padding size for buffer overruns
 
 // Binary Header Sizes
 #define ZXC_FILE_HEADER_SIZE 8  // Magic (4 bytes) + Version (1 byte) + Reserved (3 bytes)
 #define ZXC_BLOCK_HEADER_SIZE \
     12  // Type (1) + Flags (1) + Reserved (2) + Comp Size (4) + Raw Size (4)
+#define ZXC_BLOCK_CHECKSUM_SIZE 8      // Size of checksum field in bytes
 #define ZXC_NUM_HEADER_BINARY_SIZE 16  // Num Header: N Values (8) + Frame Size (2) + Reserved (6)
 #define ZXC_GNR_HEADER_BINARY_SIZE \
     16  // GNR Header: N Sequences (4) + N Literals (4) + 4 x 1-byte Encoding Types
@@ -127,10 +133,10 @@ extern "C" {
 // Block Flags
 #define ZXC_BLOCK_FLAG_NONE 0U         // No flags
 #define ZXC_BLOCK_FLAG_CHECKSUM 0x80U  // Block has a checksum (8 bytes after header)
-#define ZXC_BLOCK_CHECKSUM_SIZE 8      // Size of checksum field in bytes
 
 // Token Format Constants
 #define ZXC_TOKEN_LIT_BITS 4    // Number of bits for Literal Length in token
+#define ZXC_TOKEN_LL_MASK 0x0F  // Mask to extract Literal Length from token
 #define ZXC_TOKEN_ML_MASK 0x0F  // Mask to extract Match Length from token
 
 // LZ77 Constants
@@ -406,8 +412,7 @@ static ZXC_ALWAYS_INLINE void zxc_copy32(void* dst, const void* src) {
     vst1q_u8((uint8_t*)dst, vld1q_u8((const uint8_t*)src));
     vst1q_u8((uint8_t*)dst + 16, vld1q_u8((const uint8_t*)src + 16));
 #else
-    ZXC_MEMCPY(dst, src, 16);
-    ZXC_MEMCPY((uint8_t*)dst + 16, (const uint8_t*)src + 16, 16);
+    ZXC_MEMCPY(dst, src, 32);
 #endif
 }
 
@@ -588,9 +593,8 @@ void zxc_aligned_free(void* ptr);
 /**
  * @brief Calculates a 64-bit XXH3checksum for a given input buffer.
  *
- * @param input Pointer to the data buffer.
- * @param len Length of the data in bytes.
- * @param seed Initial seed value for the hash calculation.
+ * @param[in] input Pointer to the data buffer.
+ * @param[in] len Length of the data in bytes.
  * @return The calculated 64-bit hash value.
  */
 uint64_t zxc_checksum(const void* RESTRICT input, size_t len);
@@ -601,9 +605,9 @@ uint64_t zxc_checksum(const void* RESTRICT input, size_t len);
  * Sets up the internal state of the bit reader to read from the specified
  * source buffer.
  *
- * @param br Pointer to the bit reader structure to initialize.
- * @param src Pointer to the source buffer containing the data to read.
- * @param size The size of the source buffer in bytes.
+ * @param[out] br Pointer to the bit reader structure to initialize.
+ * @param[in] src Pointer to the source buffer containing the data to read.
+ * @param[in] size The size of the source buffer in bytes.
  */
 void zxc_br_init(zxc_bit_reader_t* br, const uint8_t* src, size_t size);
 
@@ -613,12 +617,12 @@ void zxc_br_init(zxc_bit_reader_t* br, const uint8_t* src, size_t size);
  * Compresses an array of 32-bit integers by packing them using a specified
  * number of bits per integer.
  *
- * @param src Pointer to the source array of 32-bit integers.
- * @param count The number of integers to pack.
- * @param dst Pointer to the destination buffer where packed data will be
+ * @param[in] src Pointer to the source array of 32-bit integers.
+ * @param[in] count The number of integers to pack.
+ * @param[out] dst Pointer to the destination buffer where packed data will be
  * written.
- * @param dst_cap The capacity of the destination buffer in bytes.
- * @param bits The number of bits to use for each integer during packing.
+ * @param[in] dst_cap The capacity of the destination buffer in bytes.
+ * @param[in] bits The number of bits to use for each integer during packing.
  * @return The number of bytes written to the destination buffer, or a negative
  * error code on failure.
  */
@@ -630,9 +634,9 @@ int zxc_bitpack_stream_32(const uint32_t* RESTRICT src, size_t count, uint8_t* R
  *
  * Serializes the `zxc_num_header_t` structure into the output stream.
  *
- * @param dst Pointer to the destination buffer.
- * @param rem The remaining space in the destination buffer.
- * @param nh Pointer to the numeric header structure to write.
+ * @param[out] dst Pointer to the destination buffer.
+ * @param[in] rem The remaining space in the destination buffer.
+ * @param[in] nh Pointer to the numeric header structure to write.
  * @return The number of bytes written, or a negative error code if the buffer
  * is too small.
  */
@@ -643,9 +647,9 @@ int zxc_write_num_header(uint8_t* dst, size_t rem, const zxc_num_header_t* nh);
  *
  * Deserializes data from the input stream into a `zxc_num_header_t` structure.
  *
- * @param src Pointer to the source buffer.
- * @param src_size The size of the source buffer available for reading.
- * @param nh Pointer to the numeric header structure to populate.
+ * @param[in] src Pointer to the source buffer.
+ * @param[in] src_size The size of the source buffer available for reading.
+ * @param[out] nh Pointer to the numeric header structure to populate.
  * @return The number of bytes read from the source, or a negative error code on
  * failure.
  */
@@ -657,10 +661,10 @@ int zxc_read_num_header(const uint8_t* src, size_t src_size, zxc_num_header_t* n
  *
  * Serializes the `zxc_gnr_header_t` and an array of 4 section descriptors.
  *
- * @param dst Pointer to the destination buffer.
- * @param rem The remaining space in the destination buffer.
- * @param gh Pointer to the generic header structure to write.
- * @param desc Array of 4 section descriptors to write.
+ * @param[out] dst Pointer to the destination buffer.
+ * @param[in] rem The remaining space in the destination buffer.
+ * @param[in] gh Pointer to the generic header structure to write.
+ * @param[in] desc Array of 4 section descriptors to write.
  * @return The number of bytes written, or a negative error code if the buffer
  * is too small.
  */
@@ -673,10 +677,10 @@ int zxc_write_gnr_header_and_desc(uint8_t* dst, size_t rem, const zxc_gnr_header
  * Deserializes data into a `zxc_gnr_header_t` and an array of 4 section
  * descriptors.
  *
- * @param src Pointer to the source buffer.
- * @param len The length of the source buffer available for reading.
- * @param gh Pointer to the generic header structure to populate.
- * @param desc Array of 4 section descriptors to populate.
+ * @param[in] src Pointer to the source buffer.
+ * @param[in] len The length of the source buffer available for reading.
+ * @param[out] gh Pointer to the generic header structure to populate.
+ * @param[out] desc Array of 4 section descriptors to populate.
  * @return The number of bytes read from the source, or a negative error code on
  * failure.
  */
@@ -690,13 +694,13 @@ int zxc_read_gnr_header_and_desc(const uint8_t* src, size_t len, zxc_gnr_header_
  * buffer into the destination buffer using the provided compression context. It
  * serves as an abstraction layer over the core decompression logic.
  *
- * @param ctx     Pointer to the ZXC compression context structure containing
+ * @param[in,out] ctx     Pointer to the ZXC compression context structure containing
  *                internal state and configuration.
- * @param src     Pointer to the source buffer containing compressed data.
- * @param src_sz  Size of the compressed data in the source buffer (in bytes).
- * @param dst     Pointer to the destination buffer where decompressed data will
+ * @param[in] src     Pointer to the source buffer containing compressed data.
+ * @param[in] src_sz  Size of the compressed data in the source buffer (in bytes).
+ * @param[out] dst     Pointer to the destination buffer where decompressed data will
  * be written.
- * @param dst_cap Capacity of the destination buffer (maximum bytes that can be
+ * @param[in] dst_cap Capacity of the destination buffer (maximum bytes that can be
  * written).
  *
  * @return int    Returns 0 on success, or a negative error code on failure.
@@ -713,14 +717,14 @@ int zxc_decompress_chunk_wrapper(zxc_cctx_t* ctx, const uint8_t* src, size_t src
  * provided compression context. It handles the interaction with the underlying
  * compression algorithm for a specific block of memory.
  *
- * @param ctx   Pointer to the ZXC compression context containing configuration
+ * @param[in,out] ctx   Pointer to the ZXC compression context containing configuration
  *              and state.
- * @param chunk Pointer to the source buffer containing the raw data to
+ * @param[in] chunk Pointer to the source buffer containing the raw data to
  * compress.
- * @param src_sz    The size of the source chunk in bytes.
- * @param dst   Pointer to the destination buffer where compressed data will be
+ * @param[in] src_sz    The size of the source chunk in bytes.
+ * @param[out] dst   Pointer to the destination buffer where compressed data will be
  * written.
- * @param dst_cap   The capacity of the destination buffer (maximum bytes to write).
+ * @param[in] dst_cap   The capacity of the destination buffer (maximum bytes to write).
  *
  * @return The number of bytes written to the destination buffer on success,
  *         or a negative error code on failure.

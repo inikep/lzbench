@@ -228,6 +228,8 @@ typedef int (*zxc_chunk_processor_t)(zxc_cctx_t* ctx, const uint8_t* in, size_t 
  *      Flag indicating whether checksum verification/generation is active.
  * @var zxc_stream_ctx_t::compression_level
  *      The configured level of compression (trading off speed vs. ratio).
+ * @var zxc_stream_ctx_t::chunk_size
+ *      The size of each data chunk to be processed.
  */
 typedef struct {
     zxc_stream_job_t* jobs;
@@ -243,6 +245,7 @@ typedef struct {
     int write_idx;
     int checksum_enabled;
     int compression_level;
+    size_t chunk_size;
 } zxc_stream_ctx_t;
 
 /**
@@ -301,7 +304,7 @@ static void* zxc_stream_worker(void* arg) {
     zxc_stream_ctx_t* ctx = (zxc_stream_ctx_t*)arg;
     zxc_cctx_t cctx;
 
-    if (zxc_cctx_init(&cctx, ZXC_CHUNK_SIZE, ctx->compression_mode, ctx->compression_level,
+    if (zxc_cctx_init(&cctx, ctx->chunk_size, ctx->compression_mode, ctx->compression_level,
                       ctx->checksum_enabled) != 0) {
         zxc_cctx_free(&cctx);
         return NULL;
@@ -458,17 +461,24 @@ static int64_t zxc_stream_engine_run(FILE* f_in, FILE* f_out, int n_threads, int
     ctx.compression_level = level;
 
     int num_threads = (n_threads > 0) ? n_threads : (int)sysconf(_SC_NPROCESSORS_ONLN);
-
     // Reserve 1 thread for Writer/Reader overhead if possible
     int num_workers = (num_threads > 1) ? num_threads - 1 : 1;
-
     ctx.ring_size = num_workers * 4;
 
-    size_t max_out = zxc_compress_bound(ZXC_CHUNK_SIZE);
-    size_t raw_alloc_in = ((mode) ? ZXC_CHUNK_SIZE : max_out) + ZXC_PAD_SIZE;
+    size_t runtime_chunk_sz = ZXC_CHUNK_SIZE;
+    if (mode == 0) {
+        uint8_t h[ZXC_FILE_HEADER_SIZE];
+        if (fread(h, 1, ZXC_FILE_HEADER_SIZE, f_in) != ZXC_FILE_HEADER_SIZE ||
+            zxc_read_file_header(h, ZXC_FILE_HEADER_SIZE, &runtime_chunk_sz) != 0)
+            return -1;
+    }
+    ctx.chunk_size = runtime_chunk_sz;
+
+    size_t max_out = zxc_compress_bound(runtime_chunk_sz);
+    size_t raw_alloc_in = ((mode) ? runtime_chunk_sz : max_out) + ZXC_PAD_SIZE;
     size_t alloc_in = (raw_alloc_in + 63) & ~63;
 
-    size_t raw_alloc_out = ((mode) ? max_out : ZXC_CHUNK_SIZE) + ZXC_PAD_SIZE;
+    size_t raw_alloc_out = ((mode) ? max_out : runtime_chunk_sz) + ZXC_PAD_SIZE;
     size_t alloc_out = (raw_alloc_out + 63) & ~63;
 
     size_t alloc_size =
@@ -523,11 +533,6 @@ static int64_t zxc_stream_engine_run(FILE* f_in, FILE* f_out, int n_threads, int
 
     int read_idx = 0;
     int read_eof = 0;
-
-    if (mode == 0) {
-        uint8_t h[8];
-        if (fread(h, 1, 8, f_in) != 8 || zxc_read_file_header(h, 8) != 0) read_eof = 1;
-    }
 
     // Reader Loop: Reads from file, prepares jobs, pushes to worker queue.
     while (!read_eof && !ctx.io_error) {
