@@ -91,7 +91,7 @@ Supported compressors
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
  - [zpaq 7.15](https://github.com/zpaq/zpaq)
  - [zstd 1.5.7](https://github.com/facebook/zstd)
- - [zxc 0.4.0](https://github.com/hellobertrand/zxc)
+ - [zxc 0.5.1](https://github.com/hellobertrand/zxc)
 
 **Warning**: The compressors listed below have security issues and/or are
 no longer maintained. For information about the security of the various compressors,
