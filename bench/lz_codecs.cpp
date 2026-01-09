@@ -1693,7 +1693,7 @@ char *lzbench_zxc_init(size_t insize, size_t level, size_t)
   if (!ctx)
     return NULL;
 
-  if (zxc_cctx_init(ctx, ZXC_CHUNK_SIZE, 1, (int)level, 0) != 0)
+  if (zxc_cctx_init(ctx, ZXC_BLOCK_SIZE, 1, (int)level, 0) != 0)
   {
     free(ctx);
     return NULL;
@@ -1732,7 +1732,7 @@ int64_t lzbench_zxc_compress(char *inbuf, size_t insize, char *outbuf,
   while (pos < insize)
   {
     size_t chunk_len =
-        (insize - pos > ZXC_CHUNK_SIZE) ? ZXC_CHUNK_SIZE : (insize - pos);
+        (insize - pos > ZXC_BLOCK_SIZE) ? ZXC_BLOCK_SIZE : (insize - pos);
     size_t rem_cap = dst_end - dst;
 
     int res =
@@ -1777,11 +1777,8 @@ int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
     if (raw_written < 0)
       return 0;
 
-    int has_crc = (bh.block_flags & ZXC_BLOCK_FLAG_CHECKSUM);
-    size_t header_overhead =
-        ZXC_BLOCK_HEADER_SIZE + (has_crc ? ZXC_BLOCK_CHECKSUM_SIZE : 0);
-
-    src += header_overhead + bh.comp_size;
+    src += ZXC_BLOCK_HEADER_SIZE + bh.comp_size;
+    src += (bh.block_flags & ZXC_BLOCK_FLAG_CHECKSUM) ? ZXC_BLOCK_CHECKSUM_SIZE : 0;
     dst += raw_written;
   }
 

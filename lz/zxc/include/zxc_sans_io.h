@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2025, Bertrand Lebonnois
+ * Copyright (c) 2025-2026, Bertrand Lebonnois
  * All rights reserved.
  *
  * This source code is licensed under the BSD-style license found in the
@@ -64,10 +64,11 @@ typedef struct {
     uint32_t epoch;         // Current epoch for hash table (checked per match)
 
     // Warm zone: sequential access per sequence
-    uint32_t* buf_extras;   // Buffer for extra lengths
-    uint16_t* buf_offsets;  // Buffer for offsets
-    uint8_t* buf_tokens;    // Buffer for token sequences
-    uint8_t* literals;      // Buffer for literal bytes
+    uint32_t* buf_sequences;  // Buffer for sequence records (packed: LL (8) | ML (8) | Offset (16))
+    uint8_t* buf_tokens;      // Buffer for token sequences
+    uint16_t* buf_offsets;    // Buffer for offsets
+    uint8_t* buf_extras;      // Buffer for extra lengths (vbytes for LL/ML)
+    uint8_t* literals;        // Buffer for literal bytes
 
     // Cold zone: configuration / scratch / resizeable
     uint8_t* lit_buffer;    // Buffer scratch for literals (RLE)
@@ -151,7 +152,7 @@ int zxc_read_file_header(const uint8_t* src, size_t src_size, size_t* out_block_
  * The size of the data after decompression.
  */
 typedef struct {
-    uint8_t block_type;   // Block type (e.g., RAW, GNR, NUM)
+    uint8_t block_type;   // Block type (e.g., RAW, GLO, GHI, NUM)
     uint8_t block_flags;  // Flags (e.g., checksum presence)
     uint16_t reserved;    // Reserved for future use
     uint32_t comp_size;   // Compressed size excluding header
