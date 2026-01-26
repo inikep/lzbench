@@ -73,7 +73,7 @@ typedef struct {
     // Cold zone: configuration / scratch / resizeable
     uint8_t* lit_buffer;    // Buffer scratch for literals (RLE)
     size_t lit_buffer_cap;  // Current capacity of this buffer
-    int checksum_enabled;   // Checksum enabled flag
+    int checksum_enabled;   // 1 if checksum calculation/verification is enabled
     int compression_level;  // Compression level
 } zxc_cctx_t;
 
@@ -92,7 +92,8 @@ typedef struct {
  * @return 0 on success, or -1 if memory allocation fails for any of the
  * internal buffers.
  */
-int zxc_cctx_init(zxc_cctx_t* ctx, size_t chunk_size, int mode, int level, int checksum_enabled);
+int zxc_cctx_init(zxc_cctx_t* ctx, const size_t chunk_size, const int mode, const int level,
+                  const int checksum_enabled);
 
 /**
  * @brief Frees resources associated with a ZXC compression context.
@@ -117,7 +118,7 @@ void zxc_cctx_free(zxc_cctx_t* ctx);
  * @return The number of bytes written (ZXC_FILE_HEADER_SIZE) on success,
  *         or -1 if the destination capacity is insufficient.
  */
-int zxc_write_file_header(uint8_t* dst, size_t dst_capacity);
+int zxc_write_file_header(uint8_t* dst, const size_t dst_capacity, const int has_checksum);
 
 /**
  * @brief Validates and reads the ZXC file header from a source buffer.
@@ -128,35 +129,38 @@ int zxc_write_file_header(uint8_t* dst, size_t dst_capacity);
  *
  * @param[in] src Pointer to the source buffer containing the file data.
  * @param[in] src_size Size of the source buffer in bytes.
- * @param[out] out_block_size Optional pointer to receive the recommended block size
+ * @param[out] out_block_size Optional pointer to receive the recommended block size.
  * @return 0 if the header is valid, -1 otherwise (e.g., buffer too small,
  * invalid magic word, or incorrect version).
  */
-int zxc_read_file_header(const uint8_t* src, size_t src_size, size_t* out_block_size);
+int zxc_read_file_header(const uint8_t* src, const size_t src_size, size_t* out_block_size,
+                         int* out_has_checksum);
 
 /**
  * @struct zxc_block_header_t
- * @brief Represents the on-disk header structure for a ZXC block.
+ * @brief Represents the on-disk header structure for a ZXC block (8 bytes).
  *
  * This structure contains metadata required to parse and decompress a block.
+ * Note: raw_size is not stored in the header; decoders derive it from Section
+ * Descriptors within the compressed payload.
  *
  * @var zxc_block_header_t::block_type
  * The type of the block (see zxc_block_type_t).
  * @var zxc_block_header_t::block_flags
  * Bit flags indicating properties like checksum presence.
  * @var zxc_block_header_t::reserved
- * Reserved bytes for future protocol extensions.
+ * Reserved byte for future protocol extensions.
+ * @var zxc_block_header_t::header_crc
+ * Header checksum (1 byte).
  * @var zxc_block_header_t::comp_size
  * The size of the compressed data payload in bytes (excluding this header).
- * @var zxc_block_header_t::raw_size
- * The size of the data after decompression.
  */
 typedef struct {
     uint8_t block_type;   // Block type (e.g., RAW, GLO, GHI, NUM)
     uint8_t block_flags;  // Flags (e.g., checksum presence)
-    uint16_t reserved;    // Reserved for future use
+    uint8_t reserved;     // Reserved for future use
+    uint8_t header_crc;   // Header checksum (1 byte)
     uint32_t comp_size;   // Compressed size excluding header
-    uint32_t raw_size;    // Decompressed size
 } zxc_block_header_t;
 
 /**
@@ -175,7 +179,7 @@ typedef struct {
  * @return The number of bytes written (ZXC_BLOCK_HEADER_SIZE) on success,
  *         or -1 if the destination buffer capacity is insufficient.
  */
-int zxc_write_block_header(uint8_t* dst, size_t dst_capacity, const zxc_block_header_t* bh);
+int zxc_write_block_header(uint8_t* dst, const size_t dst_capacity, const zxc_block_header_t* bh);
 
 /**
  * @brief Read and parses a ZXC block header from a source buffer.
@@ -193,7 +197,20 @@ int zxc_write_block_header(uint8_t* dst, size_t dst_capacity, const zxc_block_he
  * @return 0 on success, or -1 if the source buffer is smaller than the
  *         required block header size.
  */
-int zxc_read_block_header(const uint8_t* src, size_t src_size, zxc_block_header_t* bh);
+int zxc_read_block_header(const uint8_t* src, const size_t src_size, zxc_block_header_t* bh);
+
+/**
+ * @brief Writes the ZXC file footer.
+ *
+ * @param[out] dst             Destination buffer.
+ * @param[in] dst_capacity     Capacity of destination buffer.
+ * @param[in] src_size         Original uncompressed size of the data.
+ * @param[in] global_hash      Global checksum hash (if enabled).
+ * @param[in] checksum_enabled Flag indicating if checksum is enabled.
+ * @return Number of bytes written (12) on success, or -1 on failure.
+ */
+int zxc_write_file_footer(uint8_t* dst, const size_t dst_capacity, const uint64_t src_size,
+                          const uint32_t global_hash, const int checksum_enabled);
 
 #ifdef __cplusplus
 }
