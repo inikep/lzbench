@@ -24,33 +24,41 @@
  */
 
 // Decompression Prototypes
-int zxc_decompress_chunk_wrapper_default(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz,
-                                         uint8_t* dst, size_t dst_cap);
+int zxc_decompress_chunk_wrapper_default(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                         const size_t src_sz, uint8_t* RESTRICT dst,
+                                         const size_t dst_cap);
 
 #ifndef ZXC_ONLY_DEFAULT
 #if defined(__x86_64__) || defined(_M_X64)
-int zxc_decompress_chunk_wrapper_avx2(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz,
-                                      uint8_t* dst, size_t dst_cap);
-int zxc_decompress_chunk_wrapper_avx512(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz,
-                                        uint8_t* dst, size_t dst_cap);
+int zxc_decompress_chunk_wrapper_avx2(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                      const size_t src_sz, uint8_t* RESTRICT dst,
+                                      const size_t dst_cap);
+int zxc_decompress_chunk_wrapper_avx512(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                        const size_t src_sz, uint8_t* RESTRICT dst,
+                                        const size_t dst_cap);
 #elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
-int zxc_decompress_chunk_wrapper_neon(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz,
-                                      uint8_t* dst, size_t dst_cap);
+int zxc_decompress_chunk_wrapper_neon(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                      const size_t src_sz, uint8_t* RESTRICT dst,
+                                      const size_t dst_cap);
 #endif
 #endif
 
 // Compression Prototypes
-int zxc_compress_chunk_wrapper_default(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz,
-                                       uint8_t* dst, size_t dst_cap);
+int zxc_compress_chunk_wrapper_default(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                       const size_t src_sz, uint8_t* RESTRICT dst,
+                                       const size_t dst_cap);
 
 #if defined(__x86_64__) || defined(_M_X64)
-int zxc_compress_chunk_wrapper_avx2(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz,
-                                    uint8_t* dst, size_t dst_cap);
-int zxc_compress_chunk_wrapper_avx512(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz,
-                                      uint8_t* dst, size_t dst_cap);
+int zxc_compress_chunk_wrapper_avx2(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                    const size_t src_sz, uint8_t* RESTRICT dst,
+                                    const size_t dst_cap);
+int zxc_compress_chunk_wrapper_avx512(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                      const size_t src_sz, uint8_t* RESTRICT dst,
+                                      const size_t dst_cap);
 #elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
-int zxc_compress_chunk_wrapper_neon(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz,
-                                    uint8_t* dst, size_t dst_cap);
+int zxc_compress_chunk_wrapper_neon(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                    const size_t src_sz, uint8_t* RESTRICT dst,
+                                    const size_t dst_cap);
 #endif
 
 /*
@@ -139,15 +147,18 @@ static zxc_cpu_feature_t zxc_detect_cpu_features(void) {
  * We use a function pointer initialized on first use (lazy initialization).
  */
 
-typedef int (*zxc_decompress_func_t)(zxc_cctx_t*, const uint8_t*, size_t, uint8_t*, size_t);
-typedef int (*zxc_compress_func_t)(zxc_cctx_t*, const uint8_t*, size_t, uint8_t*, size_t);
+typedef int (*zxc_decompress_func_t)(zxc_cctx_t* RESTRICT, const uint8_t* RESTRICT, const size_t,
+                                     uint8_t* RESTRICT, const size_t);
+typedef int (*zxc_compress_func_t)(zxc_cctx_t* RESTRICT, const uint8_t* RESTRICT, const size_t,
+                                   uint8_t* RESTRICT, const size_t);
 
 static ZXC_ATOMIC zxc_decompress_func_t zxc_decompress_ptr = NULL;
 static ZXC_ATOMIC zxc_compress_func_t zxc_compress_ptr = NULL;
 
 // Initializer for Decompression
-static int zxc_decompress_dispatch_init(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz,
-                                        uint8_t* dst, size_t dst_cap) {
+static int zxc_decompress_dispatch_init(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                        const size_t src_sz, uint8_t* RESTRICT dst,
+                                        const size_t dst_cap) {
     zxc_cpu_feature_t cpu = zxc_detect_cpu_features();
     zxc_decompress_func_t zxc_decompress_ptr_local = NULL;
 
@@ -183,8 +194,9 @@ static int zxc_decompress_dispatch_init(zxc_cctx_t* ctx, const uint8_t* src, siz
 }
 
 // Initializer for Compression
-static int zxc_compress_dispatch_init(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz,
-                                      uint8_t* dst, size_t dst_cap) {
+static int zxc_compress_dispatch_init(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                      const size_t src_sz, uint8_t* RESTRICT dst,
+                                      const size_t dst_cap) {
     zxc_cpu_feature_t cpu = zxc_detect_cpu_features();
     zxc_compress_func_t zxc_compress_ptr_local = NULL;
 
@@ -221,8 +233,8 @@ static int zxc_compress_dispatch_init(zxc_cctx_t* ctx, const uint8_t* src, size_
 
 // Public Wrappers (Dispatcher and Main API)
 
-int zxc_decompress_chunk_wrapper(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz, uint8_t* dst,
-                                 size_t dst_cap) {
+int zxc_decompress_chunk_wrapper(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                 const size_t src_sz, uint8_t* RESTRICT dst, const size_t dst_cap) {
 #if ZXC_USE_C11_ATOMICS
     zxc_decompress_func_t func = atomic_load_explicit(&zxc_decompress_ptr, memory_order_acquire);
 #else
@@ -232,8 +244,8 @@ int zxc_decompress_chunk_wrapper(zxc_cctx_t* ctx, const uint8_t* src, size_t src
     return func(ctx, src, src_sz, dst, dst_cap);
 }
 
-int zxc_compress_chunk_wrapper(zxc_cctx_t* ctx, const uint8_t* src, size_t src_sz, uint8_t* dst,
-                               size_t dst_cap) {
+int zxc_compress_chunk_wrapper(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                               const size_t src_sz, uint8_t* RESTRICT dst, const size_t dst_cap) {
 #if ZXC_USE_C11_ATOMICS
     zxc_compress_func_t func = atomic_load_explicit(&zxc_compress_ptr, memory_order_acquire);
 #else
@@ -252,19 +264,20 @@ int zxc_compress_chunk_wrapper(zxc_cctx_t* ctx, const uint8_t* src, size_t src_s
  */
 
 // cppcheck-suppress unusedFunction
-size_t zxc_compress(const void* src, size_t src_size, void* dst, size_t dst_capacity, int level,
-                    int checksum_enabled) {
+size_t zxc_compress(const void* RESTRICT src, const size_t src_size, void* RESTRICT dst,
+                    const size_t dst_capacity, const int level, const int checksum_enabled) {
     if (UNLIKELY(!src || !dst || src_size == 0 || dst_capacity == 0)) return 0;
 
     const uint8_t* ip = (const uint8_t*)src;
     uint8_t* op = (uint8_t*)dst;
     const uint8_t* op_start = op;
     const uint8_t* op_end = op + dst_capacity;
-
+    uint32_t global_hash = 0;
     zxc_cctx_t ctx;
-    if (zxc_cctx_init(&ctx, ZXC_BLOCK_SIZE, 1, level, checksum_enabled) != 0) return 0;
 
-    int h_size = zxc_write_file_header(op, (size_t)(op_end - op));
+    if (UNLIKELY(zxc_cctx_init(&ctx, ZXC_BLOCK_SIZE, 1, level, checksum_enabled) != 0)) return 0;
+
+    const int h_size = zxc_write_file_header(op, (size_t)(op_end - op), checksum_enabled);
     if (UNLIKELY(h_size < 0)) {
         zxc_cctx_free(&ctx);
         return 0;
@@ -273,13 +286,23 @@ size_t zxc_compress(const void* src, size_t src_size, void* dst, size_t dst_capa
 
     size_t pos = 0;
     while (pos < src_size) {
-        size_t chunk_len = (src_size - pos > ZXC_BLOCK_SIZE) ? ZXC_BLOCK_SIZE : (src_size - pos);
-        size_t rem_cap = (size_t)(op_end - op);
+        const size_t chunk_len =
+            (src_size - pos > ZXC_BLOCK_SIZE) ? ZXC_BLOCK_SIZE : (src_size - pos);
+        const size_t rem_cap = (size_t)(op_end - op);
 
-        int res = zxc_compress_chunk_wrapper(&ctx, ip + pos, chunk_len, op, rem_cap);
+        const int res = zxc_compress_chunk_wrapper(&ctx, ip + pos, chunk_len, op, rem_cap);
         if (UNLIKELY(res < 0)) {
             zxc_cctx_free(&ctx);
             return 0;
+        }
+
+        if (checksum_enabled) {
+            // Update Global Hash (Rotation + XOR)
+            // Block checksum is at the end of the written block data
+            if (LIKELY(res >= ZXC_GLOBAL_CHECKSUM_SIZE)) {
+                const uint32_t block_hash = zxc_le32(op + res - ZXC_GLOBAL_CHECKSUM_SIZE);
+                global_hash = zxc_hash_combine_rotate(global_hash, block_hash);
+            }
         }
 
         op += res;
@@ -287,12 +310,29 @@ size_t zxc_compress(const void* src, size_t src_size, void* dst, size_t dst_capa
     }
 
     zxc_cctx_free(&ctx);
+
+    // Write EOF Block (Checksum flag handled by Block Header, but we zero it out now)
+    const size_t rem_cap = (size_t)(op_end - op);
+    zxc_block_header_t eof_bh = {
+        .block_type = ZXC_BLOCK_EOF, .block_flags = 0, .reserved = 0, .comp_size = 0};
+    const int eof_size = zxc_write_block_header(op, rem_cap, &eof_bh);
+    if (UNLIKELY(eof_size < 0)) return 0;
+    op += eof_size;
+
+    if (UNLIKELY(rem_cap < (size_t)eof_size + ZXC_FILE_FOOTER_SIZE)) return 0;
+
+    // Write 12-byte Footer: [Source Size (8)] + [Global Hash (4)]
+    const int footer_size =
+        zxc_write_file_footer(op, (size_t)(op_end - op), src_size, global_hash, checksum_enabled);
+    if (UNLIKELY(footer_size < 0)) return 0;
+    op += footer_size;
+
     return (size_t)(op - op_start);
 }
 
 // cppcheck-suppress unusedFunction
-size_t zxc_decompress(const void* src, size_t src_size, void* dst, size_t dst_capacity,
-                      int checksum_enabled) {
+size_t zxc_decompress(const void* RESTRICT src, const size_t src_size, void* RESTRICT dst,
+                      const size_t dst_capacity, const int checksum_enabled) {
     if (UNLIKELY(!src || !dst || src_size < ZXC_FILE_HEADER_SIZE)) return 0;
 
     const uint8_t* ip = (const uint8_t*)src;
@@ -301,47 +341,88 @@ size_t zxc_decompress(const void* src, size_t src_size, void* dst, size_t dst_ca
     const uint8_t* op_start = op;
     const uint8_t* op_end = op + dst_capacity;
     size_t runtime_chunk_size = 0;
-
-    // File header verification
-    if (zxc_read_file_header(ip, src_size, &runtime_chunk_size) != 0) return 0;
-
     zxc_cctx_t ctx;
-    if (zxc_cctx_init(&ctx, runtime_chunk_size, 0, 0, checksum_enabled) != 0) return 0;
+
+    int file_has_checksums = 0;
+    // File header verification and context initialization
+    if (UNLIKELY(
+            zxc_read_file_header(ip, src_size, &runtime_chunk_size, &file_has_checksums) != 0 ||
+            zxc_cctx_init(&ctx, runtime_chunk_size, 0, 0, file_has_checksums && checksum_enabled) !=
+                0)) {
+        return 0;
+    }
 
     ip += ZXC_FILE_HEADER_SIZE;
 
     // Block decompression loop
+    uint32_t global_hash = 0;
+
     while (ip < ip_end) {
-        size_t rem_src = (size_t)(ip_end - ip);
+        const size_t rem_src = (size_t)(ip_end - ip);
         zxc_block_header_t bh;
         // Read the block header to determine the compressed size
-        if (zxc_read_block_header(ip, rem_src, &bh) != 0) {
+        if (UNLIKELY(zxc_read_block_header(ip, rem_src, &bh) != 0)) {
             zxc_cctx_free(&ctx);
             return 0;
         }
 
-        // Safety check: ensure the block (header + data + checksum) fits in the input buffer
-        size_t checksum_sz =
-            (bh.block_flags & ZXC_BLOCK_FLAG_CHECKSUM) ? ZXC_BLOCK_CHECKSUM_SIZE : 0;
-        size_t total_block_sz = ZXC_BLOCK_HEADER_SIZE + bh.comp_size + checksum_sz;
+        // Handle EOF block separately (not a real chunk to decompress)
+        if (UNLIKELY(bh.block_type == ZXC_BLOCK_EOF)) {
+            // Validate we have the footer after the header
+            if (UNLIKELY(rem_src < ZXC_BLOCK_HEADER_SIZE + ZXC_FILE_FOOTER_SIZE)) {
+                zxc_cctx_free(&ctx);
+                return 0;
+            }
+            const uint8_t* footer = ip + ZXC_BLOCK_HEADER_SIZE;
 
-        if (UNLIKELY(total_block_sz > rem_src)) {
-            zxc_cctx_free(&ctx);
-            return 0;
+            // Validate source size matches what we decompressed
+            const uint64_t stored_size = zxc_le64(footer);
+            if (UNLIKELY(stored_size != (uint64_t)(op - op_start))) {
+                zxc_cctx_free(&ctx);
+                return 0;
+            }
+
+            // Validate global checksum if enabled and file has checksums
+            if (checksum_enabled && file_has_checksums) {
+                const uint32_t stored_hash = zxc_le32(footer + sizeof(uint64_t));
+                if (UNLIKELY(stored_hash != global_hash)) {
+                    zxc_cctx_free(&ctx);
+                    return 0;
+                }
+            }
+            break;  // EOF reached, exit loop
         }
 
-        size_t rem_cap = (size_t)(op_end - op);
-        int res = zxc_decompress_chunk_wrapper(&ctx, ip, rem_src, op, rem_cap);
+        const size_t rem_cap = (size_t)(op_end - op);
+        const int res = zxc_decompress_chunk_wrapper(&ctx, ip, rem_src, op, rem_cap);
         if (UNLIKELY(res < 0)) {
             zxc_cctx_free(&ctx);
             return 0;
         }
 
-        ip += ZXC_BLOCK_HEADER_SIZE + bh.comp_size;
-        ip += (bh.block_flags & ZXC_BLOCK_FLAG_CHECKSUM) ? ZXC_BLOCK_CHECKSUM_SIZE : 0;
+        // Update global hash from block checksum
+        if (checksum_enabled && file_has_checksums) {
+            const uint32_t block_hash = zxc_le32(ip + ZXC_BLOCK_HEADER_SIZE + bh.comp_size);
+            global_hash = zxc_hash_combine_rotate(global_hash, block_hash);
+        }
+
+        ip += ZXC_BLOCK_HEADER_SIZE + bh.comp_size +
+              (file_has_checksums ? ZXC_BLOCK_CHECKSUM_SIZE : 0);
         op += res;
     }
 
     zxc_cctx_free(&ctx);
     return (size_t)(op - op_start);
+}
+
+size_t zxc_get_decompressed_size(const void* src, const size_t src_size) {
+    if (UNLIKELY(src_size < ZXC_FILE_HEADER_SIZE + ZXC_FILE_FOOTER_SIZE)) return 0;
+
+    const uint8_t* p = (const uint8_t*)src;
+    if (UNLIKELY(zxc_le32(p) != ZXC_MAGIC_WORD)) return 0;
+
+    const uint8_t* footer = p + src_size - ZXC_FILE_FOOTER_SIZE;
+    uint64_t uncompressed_size = zxc_le64(footer);
+
+    return (size_t)uncompressed_size;
 }

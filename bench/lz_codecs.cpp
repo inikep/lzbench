@@ -1689,99 +1689,109 @@ int64_t lzbench_zstd_LDM_compress(char *inbuf, size_t insize, char *outbuf, size
 
 char *lzbench_zxc_init(size_t insize, size_t level, size_t)
 {
-  zxc_cctx_t *ctx = (zxc_cctx_t *)malloc(sizeof(zxc_cctx_t));
-  if (!ctx)
-    return NULL;
+    zxc_cctx_t *ctx = (zxc_cctx_t *)malloc(sizeof(zxc_cctx_t));
+    if (!ctx)
+        return NULL;
 
-  if (zxc_cctx_init(ctx, ZXC_BLOCK_SIZE, 1, (int)level, 0) != 0)
-  {
-    free(ctx);
-    return NULL;
-  }
-  return (char *)ctx;
+    if (zxc_cctx_init(ctx, ZXC_BLOCK_SIZE, 1, (int)level, 0) != 0)
+    {
+        free(ctx);
+        return NULL;
+    }
+    return (char *)ctx;
 }
 
 void lzbench_zxc_deinit(char *workmem)
 {
-  zxc_cctx_t *ctx = (zxc_cctx_t *)workmem;
-  if (ctx)
-  {
-    zxc_cctx_free(ctx);
-    free(ctx);
-  }
+    zxc_cctx_t *ctx = (zxc_cctx_t *)workmem;
+    if (ctx)
+    {
+        zxc_cctx_free(ctx);
+        free(ctx);
+    }
 }
 
 int64_t lzbench_zxc_compress(char *inbuf, size_t insize, char *outbuf,
                              size_t outsize, codec_options_t *codec_options)
 {
-  const uint8_t *src = (const uint8_t *)inbuf;
-  uint8_t *dst = (uint8_t *)outbuf;
-  uint8_t *dst_start = dst;
-  const uint8_t *dst_end = dst + outsize;
+    const uint8_t *src = (const uint8_t *)inbuf;
+    uint8_t *dst = (uint8_t *)outbuf;
+    uint8_t *dst_start = dst;
+    const uint8_t *dst_end = dst + outsize;
 
-  zxc_cctx_t *ctx = (zxc_cctx_t *)codec_options->work_mem;
-  if (!ctx)
-    return 0;
+    zxc_cctx_t *ctx = (zxc_cctx_t *)codec_options->work_mem;
+    if (!ctx) return 0;
 
-  int h_len = zxc_write_file_header(dst, dst_end - dst);
-  if (h_len < 0)
-    return 0;
-  dst += h_len;
+    const int h_len = zxc_write_file_header(dst, dst_end - dst, ctx->checksum_enabled);
+    if (h_len < 0) return 0;
+    dst += h_len;
 
-  size_t pos = 0;
-  while (pos < insize)
-  {
-    size_t chunk_len =
-        (insize - pos > ZXC_BLOCK_SIZE) ? ZXC_BLOCK_SIZE : (insize - pos);
-    size_t rem_cap = dst_end - dst;
+    size_t pos = 0;
+    while (pos < insize)
+    {
+        const size_t chunk_len = (insize - pos > ZXC_BLOCK_SIZE) ? ZXC_BLOCK_SIZE : (insize - pos);
+        const size_t rem_cap = dst_end - dst;
 
-    int res =
-        zxc_compress_chunk_wrapper(ctx, src + pos, chunk_len, dst, rem_cap);
+        const int res = zxc_compress_chunk_wrapper(ctx, src + pos, chunk_len, dst, rem_cap);
+        if (res < 0) return 0;
 
-    if (res < 0)
-      return 0;
+        dst += res;
+        pos += chunk_len;
+    }
 
-    dst += res;
-    pos += chunk_len;
-  }
+    const size_t rem_cap = (size_t)(dst_end - dst);
+    zxc_block_header_t eof_bh = {.block_type = ZXC_BLOCK_EOF,
+                                .block_flags = 0,
+                                .reserved = 0,
+                                .comp_size = 0};
+    const int eof_size = zxc_write_block_header(dst, rem_cap, &eof_bh);
+    if (eof_size < 0) return 0;
 
-  return (int64_t)(dst - dst_start);
+    dst += ZXC_BLOCK_HEADER_SIZE;
+
+    zxc_write_file_footer(dst, (size_t)(dst_end - dst), insize, 0, 0);
+
+    dst += ZXC_FILE_FOOTER_SIZE;
+
+    return (int64_t)(dst - dst_start);
 }
 
 int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
                                size_t outsize, codec_options_t *codec_options)
 {
-  const uint8_t *src = (const uint8_t *)inbuf;
-  const uint8_t *src_end = src + insize;
-  uint8_t *dst = (uint8_t *)outbuf;
-  uint8_t *dst_start = dst;
-  const uint8_t *dst_end = dst + outsize;
+    const uint8_t *src = (const uint8_t *)inbuf;
+    const uint8_t *src_end = src + insize;
+    uint8_t *dst = (uint8_t *)outbuf;
+    uint8_t *dst_start = dst;
+    const uint8_t *dst_end = dst + outsize;
 
-  zxc_cctx_t *ctx = (zxc_cctx_t *)codec_options->work_mem;
-  if (!ctx)
-    return 0;
+    zxc_cctx_t *ctx = (zxc_cctx_t *)codec_options->work_mem;
+    if (!ctx) return 0;
 
-  if (zxc_read_file_header(src, insize, NULL) != 0)
-    return 0;
+    if (zxc_read_file_header(src, insize, NULL, NULL) != 0) return 0;
 
-  src += ZXC_FILE_HEADER_SIZE;
+    src += ZXC_FILE_HEADER_SIZE;
 
-  while (src < src_end)
-  {
-    zxc_block_header_t bh;
-    if (zxc_read_block_header(src, src_end - src, &bh) != 0)
-      return 0;
+    while (src < src_end)
+    {
+        zxc_block_header_t bh;
+        if (zxc_read_block_header(src, src_end - src, &bh) != 0) return 0;
 
-    int raw_written = zxc_decompress_chunk_wrapper(ctx, src, src_end - src, dst,
-                                                   dst_end - dst);
-    if (raw_written < 0)
-      return 0;
+        if (bh.block_type == ZXC_BLOCK_EOF) {
+            const uint8_t* footer = src + ZXC_BLOCK_HEADER_SIZE;
+            const uint64_t stored_size = zxc_le64(footer);
+            if (stored_size != (uint64_t)(dst - dst_start)) return 0;
 
-    src += ZXC_BLOCK_HEADER_SIZE + bh.comp_size;
-    src += (bh.block_flags & ZXC_BLOCK_FLAG_CHECKSUM) ? ZXC_BLOCK_CHECKSUM_SIZE : 0;
-    dst += raw_written;
-  }
+            break;
+        }
 
-  return (int64_t)(dst - dst_start);
+        const int raw_written = zxc_decompress_chunk_wrapper(ctx, src, src_end - src, dst, dst_end - dst);
+        if (raw_written < 0) return 0;
+        
+        src += ZXC_BLOCK_HEADER_SIZE + bh.comp_size;
+        dst += raw_written;
+    }
+
+    return (int64_t)(dst - dst_start);
 }
 #endif
