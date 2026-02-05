@@ -63,8 +63,9 @@ else
         DONT_BUILD_ZLING ?= 1
     endif
 
-    ifneq (,$(filter riscv64 riscv32,$(shell uname -m)))
+    ifneq (,$(filter riscv%,$(shell uname -m)))
         DONT_BUILD_TORNADO ?= 1
+        MOREFLAGS += -mno-strict-align
     endif
 
     # detect MacOS
