@@ -1,9 +1,8 @@
 /*
- * Copyright (c) 2025-2026, Bertrand Lebonnois
- * All rights reserved.
+ * ZXC - High-performance lossless compression
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree.
+ * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #include <stddef.h>
@@ -540,7 +539,7 @@ static int64_t zxc_stream_engine_run(FILE* f_in, FILE* f_out, const int n_thread
 
     uint32_t d_global_hash = 0;
 
-    size_t max_out = zxc_compress_bound(runtime_chunk_sz);
+    uint64_t max_out = zxc_compress_bound(runtime_chunk_sz);
     size_t raw_alloc_in = ((mode) ? runtime_chunk_sz : max_out) + ZXC_PAD_SIZE;
     size_t alloc_in = (raw_alloc_in + ZXC_ALIGNMENT_MASK) & ~ZXC_ALIGNMENT_MASK;
 

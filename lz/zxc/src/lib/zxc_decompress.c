@@ -1,9 +1,8 @@
 /*
- * Copyright (c) 2025-2026, Bertrand Lebonnois
- * All rights reserved.
+ * ZXC - High-performance lossless compression
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree.
+ * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #include "../../include/zxc_sans_io.h"
@@ -445,7 +444,11 @@ static int zxc_decode_block_num(const uint8_t* RESTRICT src, const size_t src_si
 #else
             for (int k = 0; k < ZXC_DEC_BATCH; k++) {
                 running_val += deltas[k];
+#ifdef ZXC_BIG_ENDIAN
+                zxc_store_le32(&batch_dst[k], running_val);
+#else
                 batch_dst[k] = running_val;
+#endif
             }
 #endif
             d_ptr += ZXC_DEC_BATCH * sizeof(uint32_t);
