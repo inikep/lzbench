@@ -42,10 +42,14 @@ extern "C" {
 #include <immintrin.h>
 #include <nmmintrin.h>
 #if defined(__AVX512F__) && defined(__AVX512BW__)
+#ifndef ZXC_USE_AVX512
 #define ZXC_USE_AVX512
 #endif
+#endif
 #if defined(__AVX2__)
+#ifndef ZXC_USE_AVX2
 #define ZXC_USE_AVX2
+#endif
 #endif
 #elif (defined(__ARM_NEON) || defined(__ARM_NEON__) || defined(_M_ARM64) || \
        defined(ZXC_USE_NEON32) || defined(ZXC_USE_NEON64))
