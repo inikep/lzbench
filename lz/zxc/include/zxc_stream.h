@@ -1,9 +1,8 @@
 /*
- * Copyright (c) 2025-2026, Bertrand Lebonnois
- * All rights reserved.
+ * ZXC - High-performance lossless compression
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree.
+ * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #ifndef ZXC_STREAM_H
@@ -11,6 +10,8 @@
 
 #include <stdint.h>
 #include <stdio.h>
+
+#include "zxc_export.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -43,8 +44,8 @@ extern "C" {
  *
  * @return          Total compressed bytes written, or -1 if an error occurred.
  */
-int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const int n_threads, const int level,
-                            const int checksum_enabled);
+ZXC_EXPORT int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const int n_threads,
+                                       const int level, const int checksum_enabled);
 
 /**
  * @brief Decompresses data from an input stream to an output stream.
@@ -61,8 +62,8 @@ int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const int n_threads, const 
  * @return          Total decompressed bytes written, or -1 if an error
  * occurred.
  */
-int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out, const int n_threads,
-                              const int checksum_enabled);
+ZXC_EXPORT int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out, const int n_threads,
+                                         const int checksum_enabled);
 
 /**
  * @brief Returns the decompressed size stored in a ZXC compressed file.
@@ -75,7 +76,7 @@ int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out, const int n_threads,
  * @return The original uncompressed size in bytes, or -1 if the file is invalid
  *         or an I/O error occurred.
  */
-int64_t zxc_stream_get_decompressed_size(FILE* f_in);
+ZXC_EXPORT int64_t zxc_stream_get_decompressed_size(FILE* f_in);
 
 /**
  * @brief Progress callback function type.
@@ -107,9 +108,9 @@ typedef void (*zxc_progress_callback_t)(uint64_t bytes_processed, uint64_t bytes
  *
  * @return          Total compressed bytes written, or -1 if an error occurred.
  */
-int64_t zxc_stream_compress_ex(FILE* f_in, FILE* f_out, const int n_threads, const int level,
-                               const int checksum_enabled, zxc_progress_callback_t progress_cb,
-                               void* user_data);
+ZXC_EXPORT int64_t zxc_stream_compress_ex(FILE* f_in, FILE* f_out, const int n_threads,
+                                          const int level, const int checksum_enabled,
+                                          zxc_progress_callback_t progress_cb, void* user_data);
 
 /**
  * @brief Decompresses data from an input stream to an output stream (with progress callback).
@@ -125,9 +126,9 @@ int64_t zxc_stream_compress_ex(FILE* f_in, FILE* f_out, const int n_threads, con
  *
  * @return          Total decompressed bytes written, or -1 if an error occurred.
  */
-int64_t zxc_stream_decompress_ex(FILE* f_in, FILE* f_out, const int n_threads,
-                                 const int checksum_enabled, zxc_progress_callback_t progress_cb,
-                                 void* user_data);
+ZXC_EXPORT int64_t zxc_stream_decompress_ex(FILE* f_in, FILE* f_out, const int n_threads,
+                                            const int checksum_enabled,
+                                            zxc_progress_callback_t progress_cb, void* user_data);
 
 #ifdef __cplusplus
 }

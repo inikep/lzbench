@@ -532,6 +532,7 @@ endif
 ifeq "$(DONT_BUILD_ZXC)" "1"
     DEFINES += -DBENCH_REMOVE_ZXC
 else
+    DEFINES += -DZXC_STATIC_DEFINE
     ZXC_DIR = lz/zxc/src/lib
     ZXC_FILES = $(ZXC_DIR)/zxc_common.o $(ZXC_DIR)/zxc_driver.o $(ZXC_DIR)/zxc_dispatch.o
     ZXC_FILES += $(ZXC_DIR)/zxc_compress_default.o $(ZXC_DIR)/zxc_decompress_default.o

@@ -1,9 +1,8 @@
 /*
- * Copyright (c) 2025-2026, Bertrand Lebonnois
- * All rights reserved.
+ * ZXC - High-performance lossless compression
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree.
+ * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #include "../../include/zxc_sans_io.h"
@@ -1124,9 +1123,16 @@ static int zxc_encode_block_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
             *p_curr++ = (uint8_t)buf_offsets[i];
         }
     } else {
-        // Write 2-byte offsets
-        ZXC_MEMCPY(p_curr, buf_offsets, seq_c * 2);
-        p_curr += seq_c * 2;
+        // Write 2-byte offsets in little-endian order
+#ifdef ZXC_BIG_ENDIAN
+        for (uint32_t i = 0; i < seq_c; i++) {
+            zxc_store_le16(p_curr, buf_offsets[i]);
+            p_curr += sizeof(uint16_t);
+        }
+#else
+        ZXC_MEMCPY(p_curr, buf_offsets, seq_c * sizeof(uint16_t));
+        p_curr += seq_c * sizeof(uint16_t);
+#endif
     }
     rem -= sz_off;
 
@@ -1288,9 +1294,16 @@ static int zxc_encode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     rem -= sz_lit;
 
     if (UNLIKELY(rem < sz_seq)) return -1;
-    // Sequential write of 64-bit records
+    // Write sequences in little-endian order
+#ifdef ZXC_BIG_ENDIAN
+    for (uint32_t i = 0; i < seq_c; i++) {
+        zxc_store_le32(p_curr, buf_sequences[i]);
+        p_curr += sizeof(uint32_t);
+    }
+#else
     ZXC_MEMCPY(p_curr, buf_sequences, sz_seq);
     p_curr += sz_seq;
+#endif
 
     // --- WRITE EXTRAS ---
     ZXC_MEMCPY(p_curr, buf_extras, sz_ext);

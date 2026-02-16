@@ -1,9 +1,8 @@
 /*
- * Copyright (c) 2025-2026, Bertrand Lebonnois
- * All rights reserved.
+ * ZXC - High-performance lossless compression
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree.
+ * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #include "../../include/zxc_buffer.h"
@@ -371,11 +370,11 @@ int zxc_bitpack_stream_32(const uint32_t* RESTRICT src, const size_t count, uint
  * COMPRESS BOUND CALCULATION
  * ============================================================================
  */
-size_t zxc_compress_bound(const size_t input_size) {
-    if (UNLIKELY(input_size > SIZE_MAX - (SIZE_MAX >> 10))) return 0;
-
-    size_t n = (input_size + ZXC_BLOCK_SIZE - 1) / ZXC_BLOCK_SIZE;
+uint64_t zxc_compress_bound(const size_t input_size) {
+    // Guard UINT64_MAX / SIZE_MAX would overflow.
+    if (UNLIKELY(input_size > (SIZE_MAX - (SIZE_MAX >> 8)))) return 0;
+    uint64_t n = ((uint64_t)input_size + ZXC_BLOCK_SIZE - 1) / ZXC_BLOCK_SIZE;
     if (n == 0) n = 1;
     return ZXC_FILE_HEADER_SIZE + (n * (ZXC_BLOCK_HEADER_SIZE + ZXC_BLOCK_CHECKSUM_SIZE + 64)) +
-           input_size + ZXC_BLOCK_HEADER_SIZE + ZXC_FILE_FOOTER_SIZE;
+           (uint64_t)input_size + ZXC_BLOCK_HEADER_SIZE + ZXC_FILE_FOOTER_SIZE;
 }

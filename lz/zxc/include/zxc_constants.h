@@ -1,9 +1,8 @@
 /*
- * Copyright (c) 2025-2026, Bertrand Lebonnois
- * All rights reserved.
+ * ZXC - High-performance lossless compression
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree.
+ * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #ifndef ZXC_CONSTANTS_H
@@ -21,8 +20,8 @@
  */
 
 #define ZXC_VERSION_MAJOR 0
-#define ZXC_VERSION_MINOR 6
-#define ZXC_VERSION_PATCH 1
+#define ZXC_VERSION_MINOR 7
+#define ZXC_VERSION_PATCH 2
 
 #define ZXC_STR_HELPER(x) #x
 #define ZXC_STR(x) ZXC_STR_HELPER(x)

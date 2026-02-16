@@ -1,15 +1,17 @@
 /*
- * Copyright (c) 2025-2026, Bertrand Lebonnois
- * All rights reserved.
+ * ZXC - High-performance lossless compression
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree.
+ * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
+ * SPDX-License-Identifier: BSD-3-Clause
  */
 
 #ifndef ZXC_BUFFER_H
 #define ZXC_BUFFER_H
 
 #include <stddef.h>
+#include <stdint.h>
+
+#include "zxc_export.h"
 
 /*
  * ============================================================================
@@ -28,7 +30,7 @@
  *
  * @return           Maximum required buffer size in bytes.
  */
-size_t zxc_compress_bound(const size_t input_size);
+ZXC_EXPORT uint64_t zxc_compress_bound(const size_t input_size);
 
 /**
  * @brief Compresses a data buffer using the ZXC algorithm.
@@ -48,8 +50,9 @@ size_t zxc_compress_bound(const size_t input_size);
  * @return The number of bytes written to dst, or 0 if the destination buffer
  * is too small or an error occurred.
  */
-size_t zxc_compress(const void* src, const size_t src_size, void* dst, const size_t dst_capacity,
-                    const int level, const int checksum_enabled);
+ZXC_EXPORT size_t zxc_compress(const void* src, const size_t src_size, void* dst,
+                               const size_t dst_capacity, const int level,
+                               const int checksum_enabled);
 
 /**
  * @brief Decompresses a ZXC compressed buffer.
@@ -68,8 +71,8 @@ size_t zxc_compress(const void* src, const size_t src_size, void* dst, const siz
  * @return The number of bytes written to dst, or 0 if decompression fails
  * (invalid header, corruption, or destination too small).
  */
-size_t zxc_decompress(const void* src, const size_t src_size, void* dst, const size_t dst_capacity,
-                      const int checksum_enabled);
+ZXC_EXPORT size_t zxc_decompress(const void* src, const size_t src_size, void* dst,
+                                 const size_t dst_capacity, const int checksum_enabled);
 
 /**
  * @brief Returns the decompressed size stored in a ZXC compressed buffer.
@@ -83,6 +86,6 @@ size_t zxc_decompress(const void* src, const size_t src_size, void* dst, const s
  * @return The original uncompressed size in bytes, or 0 if the buffer is invalid
  *         or too small to contain a valid ZXC archive.
  */
-size_t zxc_get_decompressed_size(const void* src, const size_t src_size);
+ZXC_EXPORT uint64_t zxc_get_decompressed_size(const void* src, const size_t src_size);
 
 #endif  // ZXC_BUFFER_H
