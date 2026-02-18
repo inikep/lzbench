@@ -5,6 +5,26 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+/**
+ * @file zxc_stream.h
+ * @brief Multi-threaded streaming compression and decompression API.
+ *
+ * This header provides the streaming driver that reads from a @c FILE* input and
+ * writes compressed (or decompressed) output to a @c FILE*.  Internally the
+ * driver uses an asynchronous Producer-Consumer pipeline via a ring buffer to
+ * separate I/O from CPU-intensive work:
+ *
+ * 1. **Reader thread**  - reads chunks from `f_in`.
+ * 2. **Worker threads** - compress/decompress chunks in parallel.
+ * 3. **Writer thread**  - orders the results and writes them to `f_out`.
+ *
+ * Extended variants (`_ex` suffix) accept an optional progress callback that
+ * is invoked from the writer thread after each block.
+ *
+ * @see zxc_buffer.h  for the simple one-shot buffer API.
+ * @see zxc_sans_io.h for low-level sans-I/O building blocks.
+ */
+
 #ifndef ZXC_STREAM_H
 #define ZXC_STREAM_H
 
@@ -17,13 +37,10 @@
 extern "C" {
 #endif
 
-/*
- * ============================================================================
- * ZXC Compression Library - Public Streaming Driver API
- * ============================================================================
- * This driver uses an asynchronous pipeline architecture (Producer-Consumer)
- * via a Ring Buffer to separate I/O operations from CPU-intensive compression
- * tasks.
+/**
+ * @defgroup stream_api Streaming API
+ * @brief Multi-threaded, FILE*-based compression and decompression.
+ * @{
  */
 
 /**
@@ -38,11 +55,12 @@ extern "C" {
  * @param[out] f_out     Output file stream (must be opened in "wb" mode).
  * @param[in] n_threads Number of worker threads to spawn (0 = auto-detect number of
  * CPU cores).
- * @param[in] level     Compression level (1-9).
+ * @param[in] level     Compression level (1-5, see @ref zxc_compression_level_t).
  * @param[in] checksum_enabled  If non-zero, enables checksum verification for data
  * integrity.
  *
- * @return          Total compressed bytes written, or -1 if an error occurred.
+ * @return          Total compressed bytes written, or a negative zxc_error_t code (e.g.,
+ * ZXC_ERROR_IO) if an error occurred.
  */
 ZXC_EXPORT int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const int n_threads,
                                        const int level, const int checksum_enabled);
@@ -59,8 +77,8 @@ ZXC_EXPORT int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const int n_thre
  * @param[in] checksum_enabled  If non-zero, enables checksum verification for data
  * integrity.
  *
- * @return          Total decompressed bytes written, or -1 if an error
- * occurred.
+ * @return          Total decompressed bytes written, or a negative zxc_error_t code (e.g.,
+ * ZXC_ERROR_BAD_HEADER) if an error occurred.
  */
 ZXC_EXPORT int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out, const int n_threads,
                                          const int checksum_enabled);
@@ -73,8 +91,8 @@ ZXC_EXPORT int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out, const int n_th
  *
  * @param[in] f_in  Input file stream (must be opened in "rb" mode).
  *
- * @return The original uncompressed size in bytes, or -1 if the file is invalid
- *         or an I/O error occurred.
+ * @return The original uncompressed size in bytes, or a negative zxc_error_t code (e.g.,
+ * ZXC_ERROR_BAD_MAGIC) if the file is invalid or an I/O error occurred.
  */
 ZXC_EXPORT int64_t zxc_stream_get_decompressed_size(FILE* f_in);
 
@@ -96,17 +114,18 @@ typedef void (*zxc_progress_callback_t)(uint64_t bytes_processed, uint64_t bytes
 /**
  * @brief Compresses data from an input stream to an output stream (with progress callback).
  *
- * Extended version of zxc_stream_compress that accepts an optional progress callback.
+ * Extended version of zxc_stream_compress() that accepts an optional progress callback.
  *
  * @param[in] f_in             Input file stream (must be opened in "rb" mode).
  * @param[out] f_out           Output file stream (must be opened in "wb" mode).
  * @param[in] n_threads        Number of worker threads to spawn (0 = auto-detect).
- * @param[in] level            Compression level (1-9).
+ * @param[in] level            Compression level (1-5, see @ref zxc_compression_level_t).
  * @param[in] checksum_enabled If non-zero, enables checksum verification.
  * @param[in] progress_cb      Optional progress callback (NULL to disable).
  * @param[in] user_data        User context pointer passed to progress callback.
  *
- * @return          Total compressed bytes written, or -1 if an error occurred.
+ * @return          Total compressed bytes written, or a negative zxc_error_t code if an error
+ * occurred.
  */
 ZXC_EXPORT int64_t zxc_stream_compress_ex(FILE* f_in, FILE* f_out, const int n_threads,
                                           const int level, const int checksum_enabled,
@@ -115,7 +134,7 @@ ZXC_EXPORT int64_t zxc_stream_compress_ex(FILE* f_in, FILE* f_out, const int n_t
 /**
  * @brief Decompresses data from an input stream to an output stream (with progress callback).
  *
- * Extended version of zxc_stream_decompress that accepts an optional progress callback.
+ * Extended version of zxc_stream_decompress() that accepts an optional progress callback.
  *
  * @param[in] f_in             Input file stream (must be opened in "rb" mode).
  * @param[out] f_out           Output file stream (must be opened in "wb" mode).
@@ -124,11 +143,14 @@ ZXC_EXPORT int64_t zxc_stream_compress_ex(FILE* f_in, FILE* f_out, const int n_t
  * @param[in] progress_cb      Optional progress callback (NULL to disable).
  * @param[in] user_data        User context pointer passed to progress callback.
  *
- * @return          Total decompressed bytes written, or -1 if an error occurred.
+ * @return          Total decompressed bytes written, or a negative zxc_error_t code if an error
+ * occurred.
  */
 ZXC_EXPORT int64_t zxc_stream_decompress_ex(FILE* f_in, FILE* f_out, const int n_threads,
                                             const int checksum_enabled,
                                             zxc_progress_callback_t progress_cb, void* user_data);
+
+/** @} */ /* end of stream_api */
 
 #ifdef __cplusplus
 }

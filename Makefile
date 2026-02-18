@@ -554,7 +554,9 @@ else
         endif
     endif
 
-    CMD_BUILD_ZXC = @$(MKDIR) $(dir $@) && $(CC) $(CFLAGS) $(ZXC_FLAGS) $< -c -o $@
+    CMD_BUILD_ZXC = @$(MKDIR) $(dir $@) && $(CC) $(CFLAGS) -I$(ZXC_DIR)/vendors $(ZXC_FLAGS) $< -c -o $@
+
+    $(ZXC_DIR)/%.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
 
     $(ZXC_DIR)/%_default.o: ZXC_FLAGS = -DZXC_FUNCTION_SUFFIX=_default
     $(ZXC_DIR)/%_default.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
@@ -798,7 +800,7 @@ $(LIZARD_FILES): %.o : %.c
 
 $(LZ_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include $< -c -o $@
+	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/zxc/src/lib/vendors $< -c -o $@
 
 $(LZHAM_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
