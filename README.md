@@ -9,7 +9,7 @@ lzbench is an in-memory benchmarking tool for open-source compressors. It integr
 | [![Build Status][AzurePipelinesMasterBadge]][AzurePipelinesLink] |
 
 [AzurePipelinesMasterBadge]: https://dev.azure.com/inikep/lzbench/_apis/build/status%2Finikep.lzbench?branchName=master "gcc and clang tests"
-[AzurePipelinesLink]: https://dev.azure.com/inikep/lzbench/_build/latest?definitionId=17&branchName=master
+[AzurePipelinesLink]: https://dev.azure.com/inikep/lzbench/_build/latest?definitionId=19&branchName=master
 
 The list of changes in lzbench is available in the [CHANGELOG](CHANGELOG).
 
@@ -53,49 +53,51 @@ Supported compressors
 -------------------------
 
  - [brieflz 1.3.0](https://github.com/jibsen/brieflz)
- - [brotli 1.1.0](https://github.com/google/brotli)
- - [bsc 3.3.9](https://github.com/IlyaGrebnov/libbsc)
- - [bzip2 1.0.8](http://www.bzip.org/downloads.html)
+ - [brotli 1.2.0](https://github.com/google/brotli)
+ - [bsc 3.3.11](https://github.com/IlyaGrebnov/libbsc)
+ - [bzip2 1.0.8](https://www.sourceware.org/bzip2/downloads.html)
  - [bzip3 1.5.2](https://github.com/kspalaiologos/bzip3)
  - [crush 1.0](https://sourceforge.net/projects/crush/)
+ - [density 0.16.6](https://github.com/g1mv/density)
  - [fastlz 0.5.0](https://github.com/ariya/FastLZ)
  - [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2)
- - [glza 0.8](https://encode.su/threads/2427-GLZA)
- - [kanzi 2.3](https://github.com/flanglet/kanzi-cpp)
+ - [glza 0.11.8](https://encode.su/threads/2427-GLZA)
+ - [kanzi 2.4](https://github.com/flanglet/kanzi-cpp)
  - [libdeflate v1.24](https://github.com/ebiggers/libdeflate)
  - [lizard v2.1](https://github.com/inikep/lizard)
  - [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4)
- - [lzav 4.22](https://github.com/avaneev/lzav)
+ - [lzav 5.7](https://github.com/avaneev/lzav)
  - [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html)
  - [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse)
  - [lzg 1.0.10](https://github.com/mbitsnbites/liblzg)
  - [lzham 1.0](https://github.com/richgel999/lzham_codec)
  - lzjb 2010
  - [lzlib 1.15](http://www.nongnu.org/lzip)
- - [lzma v24.09](http://7-zip.org)
+ - [lzma v25.01](http://7-zip.org)
  - [lzo 2.10](http://www.oberhumer.com/opensource/lzo)
  - [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE)
+ - [memlz 0.2 beta](https://github.com/rrrlasse/memlz)
  - [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) - if CUDA is available
- - [ppmd8 24.09](https://github.com/pps83/libppmd)
- - [quicklz 1.5.0](http://www.quicklz.com)
+ - [ppmd8 25.01](http://7-zip.org)
+ - [quicklz to 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/)
  - [slz 1.2.1](http://www.libslz.org/) - only a compressor, uses zlib for decompression
  - [snappy 1.2.2](https://github.com/google/snappy)
- - [tamp 1.3.1](https://github.com/BrianPugh/tamp)
- - [tornado 0.6a](http://freearc.org)
+ - [tamp v1.10.0](https://github.com/BrianPugh/tamp)
+ - [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29)
  - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
  - [xz 5.8.1](https://github.com/tukaani-project/xz)
  - [zlib 1.3.1](http://zlib.net)
- - [zlib-ng 2.2.3](https://github.com/zlib-ng/zlib-ng)
+ - [zlib-ng 2.2.5](https://github.com/zlib-ng/zlib-ng)
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
  - [zpaq 7.15](https://github.com/zpaq/zpaq)
  - [zstd 1.5.7](https://github.com/facebook/zstd)
+ - [zxc 0.7.2](https://github.com/hellobertrand/zxc)
 
 **Warning**: The compressors listed below have security issues and/or are
 no longer maintained. For information about the security of the various compressors,
 see the [CompFuzz Results](https://github.com/nemequ/compfuzz/wiki/Results) page.
 
  - [csc 2016-10-13](https://github.com/fusiyuan2010/CSC): May cause a segmentation fault when compiled with Apple LLVM version 7.3.0 (clang-703.0.31).
- - [density 0.14.2](https://github.com/g1mv/density/tree/c_archive): Contains bugs leading to shortened decompressed output.
  - [gipfeli 2016-07-13](https://github.com/google/gipfeli): Contains bugs causing decompression file mismatch when compiled with GCC 14.2 using -O3.
  - [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat): Contains decompression bugs and may cause a segmentation fault when compiled with GCC 4.9+ using -O3 optimization.
  - [lzrw 15-Jul-1991](https://en.wikipedia.org/wiki/LZRW): May trigger a segmentation fault when compiled with GCC 4.9+ using -O3.

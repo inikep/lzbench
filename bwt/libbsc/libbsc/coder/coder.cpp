@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -51,11 +51,30 @@ int bsc_coder_init(int features)
 
 static INLINE int bsc_coder_num_blocks(int n)
 {
-    if (n <       256 * 1024)   return 1;
-    if (n <  4 * 1024 * 1024)   return 2;
-    if (n < 16 * 1024 * 1024)   return 4;
+    struct entry { int blocks; int threshold; };
 
-    return 8;
+    static const struct entry break_points[] =
+    {
+        { 128, 128 * 128 * 65536 },
+        {  96,  96 * 96 * 65536 },
+        {  64,  64 * 64 * 65536 },
+        {  48,  48 * 48 * 65536 },
+        {  32,  32 * 32 * 65536 },
+        {  24,  24 * 24 * 65536 },
+        {  16,  16 * 16 * 65536 },
+        {  12,  12 * 12 * 65536 },
+        {   8,   8 * 8 * 65536 },
+        {   6,   6 * 6 * 65536 },
+        {   4,   4 * 4 * 65536 },
+        {   2,   2 * 2 * 65536 },
+    };
+
+    for (int i = 0; i < sizeof(break_points) / sizeof(break_points[0]); i += 1)
+    {
+        if (n >= break_points[i].threshold) { return break_points[i].blocks; }
+    }
+
+    return 1;
 }
 
 int bsc_coder_encode_block(const unsigned char * input, unsigned char * output, int inputSize, int outputSize, int coder)
@@ -162,7 +181,7 @@ int bsc_coder_compress_parallel(const unsigned char * input, unsigned char * out
         int nBlocks = bsc_coder_num_blocks(n);
         int result  = LIBBSC_NO_ERROR;
 
-        int numThreads = omp_get_max_threads();
+        int numThreads = omp_get_max_threads() / omp_get_num_threads();
         if (numThreads > nBlocks) numThreads = nBlocks;
 
         output[0] = nBlocks;
@@ -179,41 +198,26 @@ int bsc_coder_compress_parallel(const unsigned char * input, unsigned char * out
                     bsc_coder_split_blocks(input, n, nBlocks, compressedStart, compressedSize);
                 }
 
-                #pragma omp for schedule(dynamic)
+                #pragma omp for ordered schedule(dynamic, 1)
                 for (int blockId = 0; blockId < nBlocks; ++blockId)
                 {
                     int blockStart   = compressedStart[blockId];
                     int blockSize    = compressedSize[blockId];
+                    int outputPtr    = 1 + 8 * nBlocks;
 
                     compressionResult[blockId] = bsc_coder_encode_block(input + blockStart, buffer + blockStart, blockSize, blockSize, coder);
                     if (compressionResult[blockId] < LIBBSC_NO_ERROR) compressionResult[blockId] = blockSize;
 
                     memcpy(output + 1 + 8 * blockId + 0, &blockSize, sizeof(int));
                     memcpy(output + 1 + 8 * blockId + 4, &compressionResult[blockId], sizeof(int));
-                }
 
-                #pragma omp single
-                {
-                    result = 1 + 8 * nBlocks;
-                    for (int blockId = 0; blockId < nBlocks; ++blockId)
+                    #pragma omp ordered
                     {
-                        result += compressionResult[blockId];
+                        for (int p = 0; p < blockId; ++p) { outputPtr += compressionResult[p]; }
                     }
 
-                    if (result >= n) result = LIBBSC_NOT_COMPRESSIBLE;
-                }
-
-                if (result >= LIBBSC_NO_ERROR)
-                {
-                    #pragma omp for schedule(dynamic)
-                    for (int blockId = 0; blockId < nBlocks; ++blockId)
+                    if (outputPtr + compressionResult[blockId] < n)
                     {
-                        int blockStart   = compressedStart[blockId];
-                        int blockSize    = compressedSize[blockId];
-
-                        int outputPtr = 1 + 8 * nBlocks;
-                        for (int p = 0; p < blockId; ++p) outputPtr += compressionResult[p];
-
                         if (compressionResult[blockId] != blockSize)
                         {
                             memcpy(output + outputPtr, buffer + blockStart, compressionResult[blockId]);
@@ -222,6 +226,12 @@ int bsc_coder_compress_parallel(const unsigned char * input, unsigned char * out
                         {
                             memcpy(output + outputPtr, input + blockStart, compressionResult[blockId]);
                         }
+                    }
+
+                    if (blockId == nBlocks - 1)
+                    {
+                        result = outputPtr + compressionResult[blockId];
+                        if (result >= n) result = LIBBSC_NOT_COMPRESSIBLE;
                     }
                 }
             }
@@ -282,9 +292,12 @@ int bsc_coder_decompress(const unsigned char * input, unsigned char * output, in
 
 #ifdef LIBBSC_OPENMP
 
-    if (features & LIBBSC_FEATURE_MULTITHREADING)
+    int numThreads = omp_get_max_threads() / omp_get_num_threads();
+    if (numThreads > nBlocks) numThreads = nBlocks;
+
+    if ((numThreads > 1) && (features & LIBBSC_FEATURE_MULTITHREADING))
     {
-        #pragma omp parallel for schedule(dynamic)
+        #pragma omp parallel for schedule(dynamic, 1) num_threads(numThreads)
         for (int blockId = 0; blockId < nBlocks; ++blockId)
         {
             int inputPtr  = 0; int inputSize;

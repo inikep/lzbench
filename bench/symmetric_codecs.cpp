@@ -14,6 +14,9 @@
 
 #ifndef BENCH_REMOVE_BSC
 #include "bwt/libbsc/libbsc/libbsc.h"
+#if defined(_OPENMP)
+#include <omp.h> // omp_set_num_threads
+#endif
 
 char *lzbench_bsc_init(size_t insize, size_t level, size_t)
 {
@@ -24,11 +27,19 @@ char *lzbench_bsc_init(size_t insize, size_t level, size_t)
 
 int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    int features = LIBBSC_DEFAULT_FEATURES;
+    int features;
     int lzpHashSize = LIBBSC_DEFAULT_LZPHASHSIZE;
     int lzpMinLen = LIBBSC_DEFAULT_LZPMINLEN;
     int blockSorter = LIBBSC_DEFAULT_BLOCKSORTER;
     int coder = LIBBSC_DEFAULT_CODER;
+
+#if defined(_OPENMP)
+    if (codec_options->threads > 1) {
+        omp_set_num_threads(codec_options->threads);
+        features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING;
+    } else
+#endif
+        features = LIBBSC_FEATURE_FASTMODE;
 
     int level = codec_options->additional_param;
     blockSorter = level < 3 ? 1 : (int)level;
@@ -47,9 +58,15 @@ int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
 
 int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    int features = LIBBSC_DEFAULT_FEATURES;
-    int insize_bsc;
-    int outsize_bsc;
+    int features, insize_bsc, outsize_bsc;
+
+#if defined(_OPENMP)
+    if (codec_options->threads > 1) {
+        omp_set_num_threads(codec_options->threads);
+        features = LIBBSC_FEATURE_FASTMODE | LIBBSC_FEATURE_MULTITHREADING;
+    } else
+#endif
+        features = LIBBSC_FEATURE_FASTMODE;
 
     bsc_block_info((unsigned char *)inbuf, LIBBSC_HEADER_SIZE, &insize_bsc, &outsize_bsc, features);
     bsc_decompress((unsigned char *)inbuf, insize_bsc, (unsigned char *)outbuf, outsize_bsc, features);
@@ -321,3 +338,57 @@ int64_t lzbench_zpaq_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     return (int64_t)out.written();
 }
 #endif // BENCH_REMOVE_ZPAQ
+
+
+
+#ifndef BENCH_REMOVE_DENSITY
+extern "C"
+{
+    #include "misc/density/density.h"
+}
+
+char* lzbench_density_init(size_t insize, size_t level, size_t)
+{
+    switch ( level )
+    {
+        case 2:
+            return (char*) malloc(cheetah_safe_encode_buffer_size(insize));
+        case 3:
+            return (char*) malloc(lion_safe_encode_buffer_size(insize));
+        default:
+            return (char*) malloc(chameleon_safe_encode_buffer_size(insize));
+    }
+}
+
+void lzbench_density_deinit(char* workmem)
+{
+    free(workmem);
+}
+
+int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    switch ( codec_options->level )
+    {
+        case 2:
+            return cheetah_encode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+        case 3:
+            return lion_encode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+        default:
+            return chameleon_encode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+    }
+}
+
+int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    switch ( codec_options->level )
+    {
+        case 2:
+            return cheetah_decode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+        case 3:
+            return lion_decode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+        default:
+            return chameleon_decode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+    }
+}
+
+#endif // BENCH_REMOVE_DENSITY

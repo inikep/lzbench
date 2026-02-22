@@ -62,7 +62,7 @@ NVIDIA GPU acceleration:
 ------------------------
 
 1. libbsc uses NVIDIA CUDA technology, resulting in a performance boost on computers
-with NVIDIA GPU of compute capability 5.0 or higher. Lists of supported GPUs
+with NVIDIA GPU of compute capability 7.5 or higher. Lists of supported GPUs
 can be found on the NVIDIA website http://developer.nvidia.com/cuda-gpus.
 You also need to install latest graphics drivers that support CUDA.
 

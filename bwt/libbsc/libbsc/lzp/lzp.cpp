@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -43,11 +43,30 @@ See also the bsc and libbsc web site:
 
 static INLINE int bsc_lzp_num_blocks(int n)
 {
-    if (n <       256 * 1024)   return 1;
-    if (n <  4 * 1024 * 1024)   return 2;
-    if (n < 16 * 1024 * 1024)   return 4;
+    struct entry { int blocks; int threshold; };
 
-    return 8;
+    static const struct entry break_points[] =
+    {
+        { 128, 128 * 128 * 65536 },
+        {  96,  96 *  96 * 65536 },
+        {  64,  64 *  64 * 65536 },
+        {  48,  48 *  48 * 65536 },
+        {  32,  32 *  32 * 65536 },
+        {  24,  24 *  24 * 65536 },
+        {  16,  16 *  16 * 65536 },
+        {  12,  12 *  12 * 65536 },
+        {   8,   8 *   8 * 65536 },
+        {   6,   6 *   6 * 65536 },
+        {   4,   4 *   4 * 65536 },
+        {   2,   2 *   2 * 65536 },
+    };
+
+    for (int i = 0; i < sizeof(break_points) / sizeof(break_points[0]); i += 1)
+    {
+        if (n >= break_points[i].threshold) { return break_points[i].blocks; }
+    }
+
+    return 1;
 }
 
 #if !defined(LIBBSC_NO_UNALIGNED_ACCESS) && (defined(LIBBSC_x86_64) || defined(LIBBSC_AArch64))
@@ -69,19 +88,21 @@ template<class T> int bsc_lzp_encode_small(const unsigned char * RESTRICT input,
 
             int value;
             {
-                const unsigned int index0 = (((next8 >> (4 * 8)) >> 15) ^ (next8 >> (4 * 8)) ^ ((next8 >> (4 * 8)) >> 3)) & mask; value = lookup[index0]; lookup[index0] = (int)(input - inputStart + 0); 
+                unsigned long long mix = (((next8 >> 12) ^ next8) >> 3) ^ next8;
+
+                const unsigned int index0 = (mix >> (4 * 8)) & mask; value = lookup[index0]; lookup[index0] = (int)(input - inputStart + 0); 
                 if (value > 0 && (*(T *)(input + 0) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND1;
                 if (value > 0 && ((unsigned char)(next8 >> 3 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND1;
 
-                const unsigned int index1 = (((next8 >> (3 * 8)) >> 15) ^ (next8 >> (3 * 8)) ^ ((next8 >> (3 * 8)) >> 3)) & mask; value = lookup[index1]; lookup[index1] = (int)(input - inputStart + 1); 
+                const unsigned int index1 = (mix >> (3 * 8)) & mask; value = lookup[index1]; lookup[index1] = (int)(input - inputStart + 1); 
                 if (value > 0 && (*(T *)(input + 1) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND2;
                 if (value > 0 && ((unsigned char)(next8 >> 2 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND2;
 
-                const unsigned int index2 = (((next8 >> (2 * 8)) >> 15) ^ (next8 >> (2 * 8)) ^ ((next8 >> (2 * 8)) >> 3)) & mask; value = lookup[index2]; lookup[index2] = (int)(input - inputStart + 2); 
+                const unsigned int index2 = (mix >> (2 * 8)) & mask; value = lookup[index2]; lookup[index2] = (int)(input - inputStart + 2); 
                 if (value > 0 && (*(T *)(input + 2) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND3;
                 if (value > 0 && ((unsigned char)(next8 >> 1 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND3;
 
-                const unsigned int index3 = (((next8 >> (1 * 8)) >> 15) ^ (next8 >> (1 * 8)) ^ ((next8 >> (1 * 8)) >> 3)) & mask; value = lookup[index3]; lookup[index3] = (int)(input - inputStart + 3); 
+                const unsigned int index3 = (mix >> (1 * 8)) & mask; value = lookup[index3]; lookup[index3] = (int)(input - inputStart + 3); 
                 if (value > 0 && (*(T *)(input + 3) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND4;
                 if (value > 0 && ((unsigned char)(next8 >> 0 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND4;
 
@@ -163,19 +184,21 @@ template<class T> int bsc_lzp_encode_small2x(const unsigned char * RESTRICT inpu
 
             int value;
             {
-                const unsigned int index0 = (((next8 >> (4 * 8)) >> 15) ^ (next8 >> (4 * 8)) ^ ((next8 >> (4 * 8)) >> 3)) & mask; value = lookup[index0]; lookup[index0] = (int)(input - inputStart + 0); 
+                unsigned long long mix = (((next8 >> 12) ^ next8) >> 3) ^ next8;
+
+                const unsigned int index0 = (mix >> (4 * 8)) & mask; value = lookup[index0]; lookup[index0] = (int)(input - inputStart + 0); 
                 if (value > 0 && (*(T *)(input + sizeof(T) + 0) == *(T *)(inputStart + value + sizeof(T))) && (*(T *)(input + 0) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND1;
                 if (value > 0 && ((unsigned char)(next8 >> 3 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND1;
 
-                const unsigned int index1 = (((next8 >> (3 * 8)) >> 15) ^ (next8 >> (3 * 8)) ^ ((next8 >> (3 * 8)) >> 3)) & mask; value = lookup[index1]; lookup[index1] = (int)(input - inputStart + 1); 
+                const unsigned int index1 = (mix >> (3 * 8)) & mask; value = lookup[index1]; lookup[index1] = (int)(input - inputStart + 1); 
                 if (value > 0 && (*(T *)(input + sizeof(T) + 1) == *(T *)(inputStart + value + sizeof(T))) && (*(T *)(input + 1) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND2;
                 if (value > 0 && ((unsigned char)(next8 >> 2 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND2;
 
-                const unsigned int index2 = (((next8 >> (2 * 8)) >> 15) ^ (next8 >> (2 * 8)) ^ ((next8 >> (2 * 8)) >> 3)) & mask; value = lookup[index2]; lookup[index2] = (int)(input - inputStart + 2); 
+                const unsigned int index2 = (mix >> (2 * 8)) & mask; value = lookup[index2]; lookup[index2] = (int)(input - inputStart + 2); 
                 if (value > 0 && (*(T *)(input + sizeof(T) + 2) == *(T *)(inputStart + value + sizeof(T))) && (*(T *)(input + 2) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND3;
                 if (value > 0 && ((unsigned char)(next8 >> 1 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND3;
 
-                const unsigned int index3 = (((next8 >> (1 * 8)) >> 15) ^ (next8 >> (1 * 8)) ^ ((next8 >> (1 * 8)) >> 3)) & mask; value = lookup[index3]; lookup[index3] = (int)(input - inputStart + 3); 
+                const unsigned int index3 = (mix >> (1 * 8)) & mask; value = lookup[index3]; lookup[index3] = (int)(input - inputStart + 3); 
                 if (value > 0 && (*(T *)(input + sizeof(T) + 3) == *(T *)(inputStart + value + sizeof(T))) && (*(T *)(input + 3) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND4;
                 if (value > 0 && ((unsigned char)(next8 >> 0 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND4;
 
@@ -257,19 +280,21 @@ template<class T> int bsc_lzp_encode_medium(const unsigned char * RESTRICT input
 
             int value;
             {
-                const unsigned int index0 = (((next8 >> (4 * 8)) >> 15) ^ (next8 >> (4 * 8)) ^ ((next8 >> (4 * 8)) >> 3)) & mask; value = lookup[index0]; lookup[index0] = (int)(input - inputStart + 0); 
+                unsigned long long mix = (((next8 >> 12) ^ next8) >> 3) ^ next8;
+
+                const unsigned int index0 = (mix >> (4 * 8)) & mask; value = lookup[index0]; lookup[index0] = (int)(input - inputStart + 0); 
                 if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 0) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 0) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND1;
                 if (value > 0 && ((unsigned char)(next8 >> 3 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND1;
 
-                const unsigned int index1 = (((next8 >> (3 * 8)) >> 15) ^ (next8 >> (3 * 8)) ^ ((next8 >> (3 * 8)) >> 3)) & mask; value = lookup[index1]; lookup[index1] = (int)(input - inputStart + 1); 
+                const unsigned int index1 = (mix >> (3 * 8)) & mask; value = lookup[index1]; lookup[index1] = (int)(input - inputStart + 1); 
                 if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 1) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 1) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND2;
                 if (value > 0 && ((unsigned char)(next8 >> 2 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND2;
 
-                const unsigned int index2 = (((next8 >> (2 * 8)) >> 15) ^ (next8 >> (2 * 8)) ^ ((next8 >> (2 * 8)) >> 3)) & mask; value = lookup[index2]; lookup[index2] = (int)(input - inputStart + 2); 
+                const unsigned int index2 = (mix >> (2 * 8)) & mask; value = lookup[index2]; lookup[index2] = (int)(input - inputStart + 2); 
                 if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 2) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 2) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND3;
                 if (value > 0 && ((unsigned char)(next8 >> 1 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND3;
 
-                const unsigned int index3 = (((next8 >> (1 * 8)) >> 15) ^ (next8 >> (1 * 8)) ^ ((next8 >> (1 * 8)) >> 3)) & mask; value = lookup[index3]; lookup[index3] = (int)(input - inputStart + 3); 
+                const unsigned int index3 = (mix >> (1 * 8)) & mask; value = lookup[index3]; lookup[index3] = (int)(input - inputStart + 3); 
                 if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 3) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 3) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND4;
                 if (value > 0 && ((unsigned char)(next8 >> 0 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND4;
 
@@ -336,12 +361,13 @@ LIBBSC_LZP_BAD_MATCH_FOUND1:
 
 template<class T> int bsc_lzp_encode_large(const unsigned char * RESTRICT input, const unsigned char * inputEnd, unsigned char * RESTRICT output, unsigned char * outputEnd, int * RESTRICT lookup, int mask, int minLen)
 {
-    const unsigned char *   inputStart  = input;
-    const unsigned char *   outputStart = output;
-    const unsigned char *   outputEOB   = outputEnd - 8;
+    const unsigned char * inputStart     = input;
+    const unsigned char * outputStart    = output;
+    const unsigned char * outputEOB      = outputEnd - 8;
+    const unsigned char * inputMinLenEnd = inputEnd - minLen - 32;
 
     const unsigned char * heuristic      = input;
-    const unsigned char * inputMinLenEnd = inputEnd - minLen - 32;
+    unsigned long long    heuristic_v    = (input < inputMinLenEnd) ? *(unsigned long long *)heuristic : 0;
 
     for (int i = 0; i < 4; ++i) { *output++ = *input++; }
 
@@ -352,24 +378,26 @@ template<class T> int bsc_lzp_encode_large(const unsigned char * RESTRICT input,
 
             int value;
             {
-                const unsigned int index0 = (((next8 >> (4 * 8)) >> 15) ^ (next8 >> (4 * 8)) ^ ((next8 >> (4 * 8)) >> 3)) & mask; value = lookup[index0]; lookup[index0] = (int)(input - inputStart + 0); 
-                if (value > 0 && input > heuristic && (*(T *)(input + minLen - sizeof(T) + 0) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 0) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND1;
+                unsigned long long mix = (((next8 >> 12) ^ next8) >> 3) ^ next8;
+
+                const unsigned int index0 = (mix >> (4 * 8)) & mask; value = lookup[index0]; lookup[index0] = (int)(input - inputStart + 0);
+                if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 0) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 0) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND1;
                 if (value > 0 && ((unsigned char)(next8 >> 3 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND1;
 
-                const unsigned int index1 = (((next8 >> (3 * 8)) >> 15) ^ (next8 >> (3 * 8)) ^ ((next8 >> (3 * 8)) >> 3)) & mask; value = lookup[index1]; lookup[index1] = (int)(input - inputStart + 1); 
-                if (value > 0 && input > heuristic && (*(T *)(input + minLen - sizeof(T) + 1) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 1) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND2;
+                const unsigned int index1 = (mix >> (3 * 8)) & mask; value = lookup[index1]; lookup[index1] = (int)(input - inputStart + 1);
+                if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 1) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 1) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND2;
                 if (value > 0 && ((unsigned char)(next8 >> 2 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND2;
 
-                const unsigned int index2 = (((next8 >> (2 * 8)) >> 15) ^ (next8 >> (2 * 8)) ^ ((next8 >> (2 * 8)) >> 3)) & mask; value = lookup[index2]; lookup[index2] = (int)(input - inputStart + 2); 
-                if (value > 0 && input > heuristic && (*(T *)(input + minLen - sizeof(T) + 2) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 2) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND3;
+                const unsigned int index2 = (mix >> (2 * 8)) & mask; value = lookup[index2]; lookup[index2] = (int)(input - inputStart + 2);
+                if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 2) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 2) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND3;
                 if (value > 0 && ((unsigned char)(next8 >> 1 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND3;
 
-                const unsigned int index3 = (((next8 >> (1 * 8)) >> 15) ^ (next8 >> (1 * 8)) ^ ((next8 >> (1 * 8)) >> 3)) & mask; value = lookup[index3]; lookup[index3] = (int)(input - inputStart + 3); 
-                if (value > 0 && input > heuristic && (*(T *)(input + minLen - sizeof(T) + 3) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 3) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND4;
+                const unsigned int index3 = (mix >> (1 * 8)) & mask; value = lookup[index3]; lookup[index3] = (int)(input - inputStart + 3);
+                if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 3) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 3) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND4;
                 if (value > 0 && ((unsigned char)(next8 >> 0 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND4;
 
                 input += 4; output += 4;
-            
+
                 continue;
             }
 
@@ -384,6 +412,11 @@ LIBBSC_LZP_GOOD_MATCH_FOUND1:
             {
                 const unsigned char * RESTRICT reference = inputStart + value;
 
+                if (((heuristic - input) > 0) && (heuristic_v != *(unsigned long long *)(reference + (heuristic - input))))
+                {
+                    goto LIBBSC_LZP_MATCH_NOT_FOUND;
+                }
+
                 long long len = sizeof(T);
 
                 for (; input + len < inputMinLenEnd; len += sizeof(unsigned long long))
@@ -395,7 +428,7 @@ LIBBSC_LZP_GOOD_MATCH_FOUND1:
                     }
                 }
 
-                if (len < minLen) { heuristic = input + len; goto LIBBSC_LZP_MATCH_NOT_FOUND; }
+                if (len < minLen) { heuristic = input + len; heuristic_v = *(unsigned long long *)heuristic; goto LIBBSC_LZP_MATCH_NOT_FOUND; }
 
                 input += len; len -= minLen;
 
@@ -405,10 +438,119 @@ LIBBSC_LZP_GOOD_MATCH_FOUND1:
             }
 
 LIBBSC_LZP_MATCH_NOT_FOUND:
-            if ((*output++ = *input++) == LIBBSC_LZP_MATCH_FLAG) { *output++ = 255; }
+            input += 1; if (*output++ == LIBBSC_LZP_MATCH_FLAG) { *output++ = 255; } continue;
+LIBBSC_LZP_BAD_MATCH_FOUND4:
+            input += 4; output += 4; *output++ = 255; continue;
+LIBBSC_LZP_BAD_MATCH_FOUND3:
+            input += 3; output += 3; *output++ = 255; continue;
+LIBBSC_LZP_BAD_MATCH_FOUND2:
+            input += 2; output += 2; *output++ = 255; continue;
+LIBBSC_LZP_BAD_MATCH_FOUND1:
+            input += 1; output += 1; *output++ = 255; continue;
+        }        
+    }
+    
+    {
+        unsigned int context = input[-1] | (input[-2] << 8) | (input[-3] << 16) | (input[-4] << 24);
 
-            continue;
+        while ((input < inputEnd) && (output < outputEOB))
+        {
+            unsigned int index = ((context >> 15) ^ context ^ (context >> 3)) & mask;
+            int value = lookup[index]; lookup[index] = (int)(input - inputStart);
 
+            unsigned char next = *output++ = *input++; context = (context << 8) | next;
+            if (next == LIBBSC_LZP_MATCH_FLAG && value > 0) *output++ = 255;
+        }
+    }
+
+    return (output >= outputEOB) ? LIBBSC_NOT_COMPRESSIBLE : (int)(output - outputStart);
+}
+
+int bsc_lzp_encode_large_fast_path(const unsigned char * RESTRICT input, const unsigned char * inputEnd, unsigned char * RESTRICT output, unsigned char * outputEnd, int * RESTRICT lookup)
+{
+    typedef unsigned long long T;
+
+    const int mask      = (int)(1 << LIBBSC_DEFAULT_LZPHASHSIZE) - 1;
+    const int minLen    = LIBBSC_DEFAULT_LZPMINLEN;
+
+    const unsigned char * inputStart     = input;
+    const unsigned char * outputStart    = output;
+    const unsigned char * outputEOB      = outputEnd - 8;
+    const unsigned char * inputMinLenEnd = inputEnd - minLen - 32;
+
+    const unsigned char * heuristic      = input;
+    unsigned long long    heuristic_v    = (input < inputMinLenEnd) ? *(unsigned long long *)heuristic : 0;
+
+    for (int i = 0; i < 4; ++i) { *output++ = *input++; }
+
+    {
+        while ((input < inputMinLenEnd) && (output < outputEOB))
+        {
+            unsigned long long next8 = *(unsigned long long *)(input - 4); *(unsigned int *)(output) = (unsigned int)(next8 >> 32); next8 = bsc_byteswap_uint64(next8);
+
+            int value;
+            {
+                unsigned long long mix = (((next8 >> 12) ^ next8) >> 3) ^ next8;
+
+                const unsigned int index0 = (mix >> (4 * 8)) & mask; value = lookup[index0]; lookup[index0] = (int)(input - inputStart + 0);
+                if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 0) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 0) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND1;
+                if (value > 0 && ((unsigned char)(next8 >> 3 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND1;
+
+                const unsigned int index1 = (mix >> (3 * 8)) & mask; value = lookup[index1]; lookup[index1] = (int)(input - inputStart + 1);
+                if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 1) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 1) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND2;
+                if (value > 0 && ((unsigned char)(next8 >> 2 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND2;
+
+                const unsigned int index2 = (mix >> (2 * 8)) & mask; value = lookup[index2]; lookup[index2] = (int)(input - inputStart + 2);
+                if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 2) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 2) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND3;
+                if (value > 0 && ((unsigned char)(next8 >> 1 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND3;
+
+                const unsigned int index3 = (mix >> (1 * 8)) & mask; value = lookup[index3]; lookup[index3] = (int)(input - inputStart + 3);
+                if (value > 0 && (*(T *)(input + minLen - sizeof(T) + 3) == *(T *)(inputStart + value + minLen - sizeof(T))) && (*(T *)(input + 3) == *(T *)(inputStart + value))) goto LIBBSC_LZP_GOOD_MATCH_FOUND4;
+                if (value > 0 && ((unsigned char)(next8 >> 0 * 8) == LIBBSC_LZP_MATCH_FLAG)) goto LIBBSC_LZP_BAD_MATCH_FOUND4;
+
+                input += 4; output += 4;
+
+                continue;
+            }
+
+LIBBSC_LZP_GOOD_MATCH_FOUND4:
+            input += 1; output += 1;
+LIBBSC_LZP_GOOD_MATCH_FOUND3:
+            input += 1; output += 1;
+LIBBSC_LZP_GOOD_MATCH_FOUND2:
+            input += 1; output += 1;
+LIBBSC_LZP_GOOD_MATCH_FOUND1:
+
+            {
+                const unsigned char * RESTRICT reference = inputStart + value;
+
+                if (((heuristic - input) > 0) && (heuristic_v != *(unsigned long long *)(reference + (heuristic - input))))
+                {
+                    goto LIBBSC_LZP_MATCH_NOT_FOUND;
+                }
+
+                long long len = sizeof(T);
+
+                for (; input + len < inputMinLenEnd; len += sizeof(unsigned long long))
+                {
+                    unsigned long long m;
+                    if ((m = (*(unsigned long long *)(input + len)) ^ *(unsigned long long *)(reference + len)) != 0) 
+                    {
+                        len += bsc_bit_scan_forward64(m) / 8; break;
+                    }
+                }
+
+                if (len < minLen) { heuristic = input + len; heuristic_v = *(unsigned long long *)heuristic; goto LIBBSC_LZP_MATCH_NOT_FOUND; }
+
+                input += len; len -= minLen;
+
+                *output++ = LIBBSC_LZP_MATCH_FLAG; while (len >= 254) { len -= 254; *output++ = 254; if (output >= outputEOB) break; } *output++ = (unsigned char)(len); 
+            
+                continue;
+            }
+
+LIBBSC_LZP_MATCH_NOT_FOUND:
+            input += 1; if (*output++ == LIBBSC_LZP_MATCH_FLAG) { *output++ = 255; } continue;
 LIBBSC_LZP_BAD_MATCH_FOUND4:
             input += 4; output += 4; *output++ = 255; continue;
 LIBBSC_LZP_BAD_MATCH_FOUND3:
@@ -484,11 +626,7 @@ int bsc_lzp_encode_generic(const unsigned char * RESTRICT input, const unsigned 
 #endif
                     }
 
-                    if (len < minLen)
-                    {
-                        if (heuristic < input + len) heuristic = input + len;
-                        goto LIBBSC_LZP_MATCH_NOT_FOUND;
-                    }
+                    if (len < minLen) { heuristic = input + len; goto LIBBSC_LZP_MATCH_NOT_FOUND; }
 
 #ifndef LIBBSC_NO_UNALIGNED_ACCESS
                     len += sizeof(unsigned short) * (*(unsigned short *)(input + len) == *(unsigned short *)(reference + len));
@@ -546,7 +684,7 @@ int bsc_lzp_encode_block(const unsigned char * input, const unsigned char * inpu
     }
 
     int result = LIBBSC_NOT_ENOUGH_MEMORY;
-    if (int * lookup = (int *)bsc_zero_malloc((int)(1 << hashSize) * sizeof(int)))
+    if (int * lookup = (int *)bsc_zero_malloc(((size_t)1 << hashSize) * sizeof(int)))
     {
 #if !defined(LIBBSC_NO_UNALIGNED_ACCESS) && (defined(LIBBSC_x86_64) || defined(LIBBSC_AArch64))
         if (hashSize <= 17)
@@ -557,7 +695,12 @@ int bsc_lzp_encode_block(const unsigned char * input, const unsigned char * inpu
             result = (minLen <= 2 * (int)sizeof(unsigned int      ) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_medium <unsigned int      >(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1, minLen) : result;
             result = (minLen <= 2 * (int)sizeof(unsigned long long) && result == LIBBSC_NOT_ENOUGH_MEMORY) ? bsc_lzp_encode_medium <unsigned long long>(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1, minLen) : result;
 
-            result = result == LIBBSC_NOT_ENOUGH_MEMORY ? bsc_lzp_encode_large<unsigned long long>(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1, minLen) : result;
+            if (result == LIBBSC_NOT_ENOUGH_MEMORY)
+            {
+                result = hashSize == LIBBSC_DEFAULT_LZPHASHSIZE && minLen == LIBBSC_DEFAULT_LZPMINLEN
+                    ? bsc_lzp_encode_large_fast_path(input, inputEnd, output, outputEnd, lookup)
+                    : bsc_lzp_encode_large<unsigned long long>(input, inputEnd, output, outputEnd, lookup, (int)(1 << hashSize) - 1, minLen);
+            }
         }
 #endif
 
@@ -576,7 +719,7 @@ int bsc_lzp_decode_block(const unsigned char * RESTRICT input, const unsigned ch
         return LIBBSC_UNEXPECTED_EOB;
     }
 
-    if (int * RESTRICT lookup = (int *)bsc_zero_malloc((int)(1 << hashSize) * sizeof(int)))
+    if (int * RESTRICT lookup = (int *)bsc_zero_malloc(((size_t)1 << hashSize) * sizeof(int)))
     {
         unsigned int            mask        = (int)(1 << hashSize) - 1;
         const unsigned char *   outputStart = output;
@@ -595,17 +738,19 @@ int bsc_lzp_decode_block(const unsigned char * RESTRICT input, const unsigned ch
 
                 int value;
                 {
-                    const unsigned int index0 = (((next8 >> (4 * 8)) >> 15) ^ (next8 >> (4 * 8)) ^ ((next8 >> (4 * 8)) >> 3)) & mask;
-                    value = lookup[index0]; lookup[index0] = (int)(output - outputStart + 0); if (((unsigned char)(next8 >> 3 * 8) == LIBBSC_LZP_MATCH_FLAG) && (value > 0)) goto LIBBSC_LZP_MATCH_FOUND1;
+                    unsigned long long mix = (((next8 >> 12) ^ next8) >> 3) ^ next8;
 
-                    const unsigned int index1 = (((next8 >> (3 * 8)) >> 15) ^ (next8 >> (3 * 8)) ^ ((next8 >> (3 * 8)) >> 3)) & mask;
-                    value = lookup[index1]; lookup[index1] = (int)(output - outputStart + 1); if (((unsigned char)(next8 >> 2 * 8) == LIBBSC_LZP_MATCH_FLAG) && (value > 0)) goto LIBBSC_LZP_MATCH_FOUND2;
+                    const unsigned int index0 = (mix >> (4 * 8)) & mask; value = lookup[index0]; lookup[index0] = (int)(output - outputStart + 0);
+                    if (((unsigned char)(next8 >> 3 * 8) == LIBBSC_LZP_MATCH_FLAG) && (value > 0)) goto LIBBSC_LZP_MATCH_FOUND1;
 
-                    const unsigned int index2 = (((next8 >> (2 * 8)) >> 15) ^ (next8 >> (2 * 8)) ^ ((next8 >> (2 * 8)) >> 3)) & mask;
-                    value = lookup[index2]; lookup[index2] = (int)(output - outputStart + 2); if (((unsigned char)(next8 >> 1 * 8) == LIBBSC_LZP_MATCH_FLAG) && (value > 0)) goto LIBBSC_LZP_MATCH_FOUND3;
+                    const unsigned int index1 = (mix >> (3 * 8)) & mask; value = lookup[index1]; lookup[index1] = (int)(output - outputStart + 1);
+                    if (((unsigned char)(next8 >> 2 * 8) == LIBBSC_LZP_MATCH_FLAG) && (value > 0)) goto LIBBSC_LZP_MATCH_FOUND2;
 
-                    const unsigned int index3 = (((next8 >> (1 * 8)) >> 15) ^ (next8 >> (1 * 8)) ^ ((next8 >> (1 * 8)) >> 3)) & mask;
-                    value = lookup[index3]; lookup[index3] = (int)(output - outputStart + 3); if (((unsigned char)(next8 >> 0 * 8) == LIBBSC_LZP_MATCH_FLAG) && (value > 0)) goto LIBBSC_LZP_MATCH_FOUND4;
+                    const unsigned int index2 = (mix >> (2 * 8)) & mask; value = lookup[index2]; lookup[index2] = (int)(output - outputStart + 2);
+                    if (((unsigned char)(next8 >> 1 * 8) == LIBBSC_LZP_MATCH_FLAG) && (value > 0)) goto LIBBSC_LZP_MATCH_FOUND3;
+
+                    const unsigned int index3 = (mix >> (1 * 8)) & mask; value = lookup[index3]; lookup[index3] = (int)(output - outputStart + 3);
+                    if (((unsigned char)(next8 >> 0 * 8) == LIBBSC_LZP_MATCH_FLAG) && (value > 0)) goto LIBBSC_LZP_MATCH_FOUND4;
 
                     prev4 = next4; input += 4; output += 4;
 
@@ -730,7 +875,7 @@ int bsc_lzp_compress_parallel(const unsigned char * input, unsigned char * outpu
         int result    = LIBBSC_NO_ERROR;
         int chunkSize = n / nBlocks;
 
-        int numThreads = omp_get_max_threads();
+        int numThreads = omp_get_max_threads() / omp_get_num_threads();
         if (numThreads > nBlocks) numThreads = nBlocks;
 
         output[0] = nBlocks;
@@ -742,41 +887,26 @@ int bsc_lzp_compress_parallel(const unsigned char * input, unsigned char * outpu
             }
             else
             {
-                #pragma omp for schedule(dynamic)
+                #pragma omp for ordered schedule(dynamic, 1)
                 for (int blockId = 0; blockId < nBlocks; ++blockId)
                 {
                     int blockStart   = blockId * chunkSize;
                     int blockSize    = blockId != nBlocks - 1 ? chunkSize : n - blockStart;
+                    int outputPtr    = 1 + 8 * nBlocks;
 
                     compressionResult[blockId] = bsc_lzp_encode_block(input + blockStart, input + blockStart + blockSize, buffer + blockStart, buffer + blockStart + blockSize, hashSize, minLen);
                     if (compressionResult[blockId] < LIBBSC_NO_ERROR) compressionResult[blockId] = blockSize;
 
                     memcpy(output + 1 + 8 * blockId + 0, &blockSize, sizeof(int));
                     memcpy(output + 1 + 8 * blockId + 4, &compressionResult[blockId], sizeof(int));
-                }
 
-                #pragma omp single
-                {
-                    result = 1 + 8 * nBlocks;
-                    for (int blockId = 0; blockId < nBlocks; ++blockId)
+                    #pragma omp ordered
                     {
-                        result += compressionResult[blockId];
+                        for (int p = 0; p < blockId; ++p) { outputPtr += compressionResult[p]; }
                     }
 
-                    if (result >= n) result = LIBBSC_NOT_COMPRESSIBLE;
-                }
-
-                if (result >= LIBBSC_NO_ERROR)
-                {
-                    #pragma omp for schedule(dynamic)
-                    for (int blockId = 0; blockId < nBlocks; ++blockId)
+                    if (outputPtr + compressionResult[blockId] < n)
                     {
-                        int blockStart   = blockId * chunkSize;
-                        int blockSize    = blockId != nBlocks - 1 ? chunkSize : n - blockStart;
-
-                        int outputPtr = 1 + 8 * nBlocks;
-                        for (int p = 0; p < blockId; ++p) outputPtr += compressionResult[p];
-
                         if (compressionResult[blockId] != blockSize)
                         {
                             memcpy(output + outputPtr, buffer + blockStart, compressionResult[blockId]);
@@ -785,6 +915,12 @@ int bsc_lzp_compress_parallel(const unsigned char * input, unsigned char * outpu
                         {
                             memcpy(output + outputPtr, input + blockStart, compressionResult[blockId]);
                         }
+                    }
+
+                    if (blockId == nBlocks - 1)
+                    {
+                        result = outputPtr + compressionResult[blockId];
+                        if (result >= n) result = LIBBSC_NOT_COMPRESSIBLE;
                     }
                 }
             }
@@ -827,9 +963,12 @@ int bsc_lzp_decompress(const unsigned char * input, unsigned char * output, int 
 
 #ifdef LIBBSC_OPENMP
 
-    if (features & LIBBSC_FEATURE_MULTITHREADING)
+    int numThreads = omp_get_max_threads() / omp_get_num_threads();
+    if (numThreads > nBlocks) numThreads = nBlocks;
+
+    if ((numThreads > 1) && (features & LIBBSC_FEATURE_MULTITHREADING))
     {
-        #pragma omp parallel for schedule(dynamic)
+        #pragma omp parallel for schedule(dynamic, 1) num_threads(numThreads)
         for (int blockId = 0; blockId < nBlocks; ++blockId)
         {
             int inputPtr  = 0; int inputSize;

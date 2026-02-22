@@ -25,7 +25,7 @@ int64_t lzbench_glza_compress(char *inbuf, size_t insize, char *outbuf, size_t o
 
 int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    if (GLZAdecode(insize, (uint8_t *)inbuf, &outsize, (uint8_t *)outbuf, (FILE *)0) == 0) return(0);
+    if (GLZAdecode(insize, (uint8_t *)inbuf, &outsize, (uint8_t *)outbuf, (FILE *)0, NULL) == 0) return(0);
     return outsize;
 }
 

@@ -18,13 +18,25 @@ typedef struct
     int level;
     int additional_param;
     char* work_mem;
-//    int threads;
+    int threads;
 } codec_options_t;
 
 
 
 int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
 
+
+#ifndef BENCH_REMOVE_MEMLZ
+char* lzbench_memlz_init(size_t, size_t level, size_t);
+void lzbench_memlz_deinit(char* workmem);
+int64_t lzbench_memlz_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options);
+int64_t lzbench_memlz_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options);
+#else
+#define lzbench_memlz_init NULL
+#define lzbench_memlz_deinit NULL
+#define lzbench_memlz_compress NULL
+#define lzbench_memlz_decompress NULL
+#endif
 
 #ifndef BENCH_REMOVE_BRIEFLZ
     char* lzbench_brieflz_init(size_t insize, size_t level, size_t);
@@ -55,7 +67,6 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
     #define lzbench_brotli_compress NULL
     #define lzbench_brotli_decompress NULL
 #endif
-
 
 #ifndef BENCH_REMOVE_BSC
     char* lzbench_bsc_init(size_t insize, size_t level, size_t);
@@ -584,5 +595,20 @@ extern "C"
     #define lzbench_tamp_compress NULL
     #define lzbench_tamp_decompress NULL
 #endif
+
+#ifndef BENCH_REMOVE_ZXC
+char *lzbench_zxc_init(size_t insize, size_t level, size_t);
+void lzbench_zxc_deinit(char *workmem);
+int64_t lzbench_zxc_compress(char *inbuf, size_t insize, char *outbuf,
+                             size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
+                               size_t outsize, codec_options_t *codec_options);
+#else
+#define lzbench_zxc_init NULL
+#define lzbench_zxc_deinit NULL
+#define lzbench_zxc_compress NULL
+#define lzbench_zxc_decompress NULL
+#endif
+
 
 #endif // LZBENCH_COMPRESSORS_H

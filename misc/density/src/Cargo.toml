@@ -1,0 +1,36 @@
+[package]
+name = "density-rs"
+version = "0.16.6"
+edition = "2024"
+description = "Superfast compression library"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/g1mv/density"
+authors = ["Guillaume Voirin"]
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = "fat"
+debug-assertions = false
+codegen-units = 1
+panic = "unwind"
+incremental = false
+overflow-checks = false
+
+[dev-dependencies]
+divan = "0.1.21"
+snap = "1.1.1"
+lz4_flex = "0.11.5"
+
+[[bench]]
+name = "density"
+harness = false
+
+[[bench]]
+name = "snappy"
+harness = false
+
+[[bench]]
+name = "lz4"
+harness = false

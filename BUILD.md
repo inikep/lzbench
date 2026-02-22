@@ -88,13 +88,18 @@ of problems, particular compressor can be excluded from build by setting
 CUDA support
 -------------------------
 
+To enable CUDA use:
+
+	make ENABLE_CUDA=1
+
+The directory where the CUDA compiler and libraries are available can be passed to `make` via the `CUDA_BASE` variable (which is `/usr/local/cuda` by default), *e.g.*:
+
+	make ENABLE_CUDA=1 CUDA_BASE=/home/lzbench/cuda
+
 If CUDA is available, lzbench supports additional compressors:
 - [cudaMemcpy](https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__MEMORY.html#group__CUDART__MEMORY_1gc263dbe6574220cc776b45438fc351e8) - similar to the reference `memcpy` benchmark, using GPU memory
-- [nvcomp](https://github.com/NVIDIA/nvcomp) - LZ4 GPU-only compressor
-
-The directory where the CUDA compiler and libraries are available can be passed to `make` via the `CUDA_BASE` variable, *e.g.*:
-
-	make CUDA_BASE=/usr/local/cuda
+- [nvcomp_lz4](https://github.com/NVIDIA/nvcomp) - LZ4 GPU-only compressor
+- [bsc_cuda] - GPU modes for libbsc
 
 
 Compilation for various CPU architectures
@@ -104,7 +109,7 @@ Compilation for various CPU architectures
 - `arm/aarch64` works fine with all default codecs except LZSSE for `arm` (32-bit) in our tests
 - `ppc64le` (PowerPC 64-bit Little-endian) works fine with all default codecs
 - `ppc/ppc64` (PowerPC 32-bit and 64-bit Big-endian) - a lot compressors fail because of Big-endian architecture
-- `riscv32/riscv64` - we have reports it works fine with `DONT_BUILD_TORNADO=1`
+- `riscv32/riscv64` - we have reports it works fine with `DONT_BUILD_TORNADO=1`. For riscv64, if the environment includes the B extension (which comprises the Zba, Zbb, and Zbs extensions), you can improve performance by adding `MOREFLAGS="-march=rv64gc_zba_zbb_zbs"` during compilation
 - `mipsel/mips64el` - waiting for reports
 - `mips/mips64` - a lot compressors will fail because of Big-endian architecture
 - `loongarch64` - we have reports it works fine

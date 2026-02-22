@@ -65,13 +65,13 @@ Please see the file LICENSE for full copyright and license details.
 
 #if CUDA_DEVICE_ARCH == 750
     #define CUDA_SM_THREADS                 (1024)
-#elif CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 890 || CUDA_DEVICE_ARCH == 1010 || CUDA_DEVICE_ARCH == 1200 || CUDA_DEVICE_ARCH == 1210
+#elif CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 880 || CUDA_DEVICE_ARCH == 890 || CUDA_DEVICE_ARCH == 1010 || CUDA_DEVICE_ARCH == 1100 || CUDA_DEVICE_ARCH == 1200 || CUDA_DEVICE_ARCH == 1210
     #define CUDA_SM_THREADS                 (1536)
 #else
     #define CUDA_SM_THREADS                 (2048)
 #endif
 
-#if CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 890 || CUDA_DEVICE_ARCH == 1010 || CUDA_DEVICE_ARCH == 1200 || CUDA_DEVICE_ARCH == 1210
+#if CUDA_DEVICE_ARCH == 860 || CUDA_DEVICE_ARCH == 870 || CUDA_DEVICE_ARCH == 880 || CUDA_DEVICE_ARCH == 890 || CUDA_DEVICE_ARCH == 1010 || CUDA_DEVICE_ARCH == 1100 || CUDA_DEVICE_ARCH == 1200 || CUDA_DEVICE_ARCH == 1210
     #define CUDA_BLOCK_THREADS              (768)
 #else
     #define CUDA_BLOCK_THREADS              (512)
@@ -2283,7 +2283,7 @@ int64_t libcubwt_allocate_device_storage(void ** device_storage, int64_t max_len
             {
                 storage->device_L2_cache_bits = 0; while (cuda_device_L2_cache_size >>= 1) { storage->device_L2_cache_bits += 1; };
 
-                storage->cuda_block_threads = (cuda_device_capability == 860 || cuda_device_capability == 870 || cuda_device_capability == 890 || cuda_device_capability == 1010 || cuda_device_capability == 1200 || cuda_device_capability == 1210) ? 768u : 512u;
+                storage->cuda_block_threads = (cuda_device_capability == 860 || cuda_device_capability == 870 || cuda_device_capability == 880 || cuda_device_capability == 890 || cuda_device_capability == 1010 || cuda_device_capability == 1100 || cuda_device_capability == 1200 || cuda_device_capability == 1210) ? 768u : 512u;
             }
         }
                

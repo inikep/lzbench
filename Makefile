@@ -18,6 +18,7 @@
 
 # direct GNU Make to search the directories relative to the
 # parent directory of this file
+
 SOURCE_PATH=$(dir $(lastword $(MAKEFILE_LIST)))
 vpath
 vpath %.c $(SOURCE_PATH)
@@ -39,12 +40,13 @@ GCC_VERSION = $(shell echo | $(CC) -dM -E - | grep __VERSION__  | sed -e 's:\#de
 CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*version \([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 
 # LZSSE requires compiler with __SSE4_1__ support and 64-bit CPU
-ifneq ($(shell echo|$(CC) -dM -E - -march=native|egrep -c '__(SSE4_1|x86_64)__'), 2)
+ifneq ($(shell echo|$(CC) -dM -E - -march=native 2>/dev/null|egrep -c '__(SSE4_1|x86_64)__'), 2)
     DONT_BUILD_LZSSE ?= 1
 endif
 
-# detect thread model for MinGW (posix or win32)
-THREAD_MODEL := $(shell $(CXX) --version | grep -iEo 'posix|win32')
+# detect thread model for gcc or clang
+THREAD_MODEL := $(shell $(CXX) -v 2>&1 | grep '^Thread model:' | awk '{print $$3}')
+$(info Detected thread model: $(THREAD_MODEL))
 
 # detect Windows
 ifneq (,$(filter Windows%,$(OS)))
@@ -54,11 +56,16 @@ ifneq (,$(filter Windows%,$(OS)))
         LDFLAGS += -lshell32 -lole32 -loleaut32 -static
     endif
 else
+    THREAD_MODEL := $(or $(THREAD_MODEL),posix)
     ifeq ($(shell uname -p),powerpc)
-        # density and yappy don't work with big-endian PowerPC
-        DONT_BUILD_DENSITY ?= 1
+        # yappy doesn't work with big-endian PowerPC
         DONT_BUILD_YAPPY ?= 1
         DONT_BUILD_ZLING ?= 1
+    endif
+
+    ifneq (,$(filter riscv%,$(shell uname -m)))
+        DONT_BUILD_TORNADO ?= 1
+        MOREFLAGS += -mno-strict-align
     endif
 
     # detect MacOS
@@ -108,13 +115,104 @@ endif
 
 LZ_CODECS     = bench/lz_codecs.o
 BUGGY_CODECS  = bench/buggy_codecs.o
-LZBENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) bench/lzbench.o bench/symmetric_codecs.o bench/misc_codecs.o
+SYMMETRIC_CODECS = bench/symmetric_codecs.o
+BENCH_MAIN = bench/lzbench.o
+BENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) $(SYMMETRIC_CODECS) $(BENCH_MAIN) bench/misc_codecs.o
 
-ifneq "$(DISABLE_THREADING)" "1"
-    LZBENCH_FILES += bench/threadpool.o
-else
+ifeq "$(DISABLE_THREADING)" "1"
     DEFINES += -DDISABLE_THREADING
+    FASTLZMA2_FLAGS = -DFL2_SINGLETHREAD
+else
+    BENCH_FILES += bench/threadpool.o
+    ZSTD_FLAGS = -DZSTD_MULTITHREAD
+
+    OMP_TEST_CODE = \#include <omp.h>\nint main(){return 0;}\n
+    HAVE_OPENMP := $(shell printf '$(OMP_TEST_CODE)' | $(CXX) -x c++ - -fopenmp -o /dev/null 2>/dev/null && echo 1 || echo 0)
+
+    ifeq ($(HAVE_OPENMP),1)
+        $(info OpenMP found: compiling bsc with OMP multithreading)
+        BSC_FLAGS = -fopenmp -DLIBBSC_OPENMP_SUPPORT -DLIBSAIS_OPENMP
+        LDFLAGS += -fopenmp
+        SYMMETRIC_CXXFLAGS += -fopenmp
+        BENCH_CXXFLAGS += -fopenmp
+    else
+        $(info OpenMP not found: compiling bsc without multithreading)
+    endif
 endif
+
+# Try compiling a small test with __builtin_ctz
+# Efficient on CPUs with bit-manipulation support (e.g., RISC-V Zbb, x86 BMI1/TZCNT, ARM).
+HAVE_BUILTIN_CTZ := $(shell echo 'int main(void){return __builtin_ctz(8);}' \
+    | $(CC) $(CFLAGS) -x c -o /dev/null - 2>/dev/null && echo 1 || echo 0)
+
+# Detect RISC-V Vector (RVV) support in the compiler and header files.
+# Background: Snappy upstream recently added an RVV-accelerated path for
+# RISC-V.  The source code uses two different spellings:
+#   1. With __riscv_ prefix (new spec, e.g. __riscv_vsetvl_e8m1)
+#   2. Without prefix           (old spec, e.g. vsetvl_e8m1)
+#
+# Implementation notes:
+#  - A one-line C file is generated on-the-fly with printf.
+#  - The "pound" trick. This is the simplest and most effective way to handle '#'
+    # in Makefiles. 'pound' will hold a literal '#' character.
+
+pound := \#
+rvv_prefix=__riscv_
+# We use $(pound) to insert the '#' character. This happens *before* the shell
+SNAPPY_RVV=printf '%s\n' \
+        '$(pound)include <riscv_vector.h>' \
+        '$(pound)include <stdint.h>' \
+        '$(pound)include <stddef.h>' \
+        'int main() {' \
+        '    uint8_t val = 3;' \
+        '    size_t vl = $(rvv_prefix)vsetvl_e8m1(8);' \
+        '    vuint8m1_t v = $(rvv_prefix)vmv_v_x_u8m1(val, vl);' \
+        '    (void)v;' \
+        '    return 0;' \
+        '}' \
+    | $(CC)  $(CFLAGS) -x c -o /dev/null - 2>/dev/null \
+    && echo 1 || echo 0 
+
+#   1. With __riscv_ prefix (new spec, e.g. __riscv_vsetvl_e8m1)
+SNAPPY_RVV_1:=$(shell $(SNAPPY_RVV))
+#   2. Without prefix           (old spec, e.g. vsetvl_e8m1)
+rvv_prefix=
+SNAPPY_RVV_0_7:=$(shell $(SNAPPY_RVV))
+
+# Density and Rust related detection
+HOST_ARCH   := $(shell uname -m)
+TARGET_ARCH := $(firstword $(subst -, ,$(shell $(CXX) -dumpmachine)))
+HAVE_CARGO  := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
+
+ifeq ($(HAVE_CARGO),1)
+    CARGO_VERSION := $(shell cargo --version | awk '{print $$2}')
+    HAVE_EDITION_2024 := $(shell printf "%s\n1.82.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.82.0 && echo 1 || echo 0)
+endif
+
+ifneq ($(DONT_BUILD_DENSITY),1)
+    DENSITY_SRC_DIR=misc/density/src/
+    DONT_BUILD_DENSITY := 1
+
+    # Only build Density if native build, not 32-bit, not Windows
+    ifneq ($(HAVE_CARGO),1)
+        $(info Cargo not found – skipping Density build)
+    else ifneq ($(HAVE_EDITION_2024),1)
+        $(info Cargo $(CARGO_VERSION) does not support edition 2024 – skipping Density build)
+    else ifneq ($(HOST_ARCH),$(TARGET_ARCH)) # Skip cross-compilation
+    else ifeq ($(BUILD_ARCH),32-bit)         # Skip user requested 32-bit compilation
+    else ifneq (,$(filter Windows%,$(OS)))   # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
+    else
+        ifeq ($(BUILD_STATIC),1)
+            DENSITY_BUILD_TYPE=staticlib
+        else
+            DENSITY_BUILD_TYPE=cdylib
+        endif
+
+        LDFLAGS += -Wl,-rpath,$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
+        DONT_BUILD_DENSITY := 0
+    endif
+endif
+
 
 
 ifeq "$(DONT_BUILD_BRIEFLZ)" "1"
@@ -128,12 +226,12 @@ ifeq "$(DONT_BUILD_BROTLI)" "1"
     DEFINES += -DBENCH_REMOVE_BROTLI
 else
     BROTLI_FILES = lz/brotli/common/constants.o lz/brotli/common/context.o lz/brotli/common/dictionary.o lz/brotli/common/platform.o lz/brotli/common/transform.o
-    BROTLI_FILES += lz/brotli/dec/bit_reader.o lz/brotli/dec/decode.o lz/brotli/dec/huffman.o lz/brotli/dec/state.o
+    BROTLI_FILES += lz/brotli/dec/bit_reader.o lz/brotli/dec/decode.o lz/brotli/dec/huffman.o lz/brotli/dec/prefix.o lz/brotli/dec/state.o lz/brotli/dec/static_init.o
     BROTLI_FILES += lz/brotli/enc/backward_references.o lz/brotli/enc/block_splitter.o lz/brotli/enc/brotli_bit_stream.o lz/brotli/enc/encode.o lz/brotli/enc/encoder_dict.o
     BROTLI_FILES += lz/brotli/enc/entropy_encode.o lz/brotli/enc/fast_log.o lz/brotli/enc/histogram.o lz/brotli/enc/command.o lz/brotli/enc/literal_cost.o lz/brotli/enc/memory.o
-    BROTLI_FILES += lz/brotli/enc/metablock.o lz/brotli/enc/static_dict.o lz/brotli/enc/utf8_util.o lz/brotli/enc/compress_fragment.o lz/brotli/enc/compress_fragment_two_pass.o
-    BROTLI_FILES += lz/brotli/enc/cluster.o lz/brotli/enc/bit_cost.o lz/brotli/enc/backward_references_hq.o lz/brotli/enc/dictionary_hash.o lz/brotli/common/shared_dictionary.o
-    BROTLI_FILES += lz/brotli/enc/compound_dictionary.o
+    BROTLI_FILES += lz/brotli/enc/metablock.o lz/brotli/enc/static_dict.o lz/brotli/enc/static_dict_lut.o lz/brotli/enc/static_init.o lz/brotli/enc/utf8_util.o
+    BROTLI_FILES += lz/brotli/enc/compress_fragment.o lz/brotli/enc/compress_fragment_two_pass.o lz/brotli/enc/cluster.o lz/brotli/enc/bit_cost.o lz/brotli/enc/backward_references_hq.o
+    BROTLI_FILES += lz/brotli/enc/dictionary_hash.o lz/brotli/common/shared_dictionary.o lz/brotli/enc/compound_dictionary.o
 endif
 
 
@@ -237,10 +335,21 @@ endif
 ifeq "$(DONT_BUILD_LZHAM)" "1"
     DEFINES += -DBENCH_REMOVE_LZHAM
 else
-    LZHAM_FILES  = lz/lzham/lzham_assert.o lz/lzham/lzham_checksum.o lz/lzham/lzham_huffman_codes.o lz/lzham/lzham_lzbase.o
-    LZHAM_FILES += lz/lzham/lzham_lzcomp.o lz/lzham/lzham_lzcomp_internal.o lz/lzham/lzham_lzdecomp.o lz/lzham/lzham_lzdecompbase.o
-    LZHAM_FILES += lz/lzham/lzham_match_accel.o lz/lzham/lzham_mem.o lz/lzham/lzham_platform.o lz/lzham/lzham_lzcomp_state.o
-    LZHAM_FILES += lz/lzham/lzham_prefix_coding.o lz/lzham/lzham_symbol_codec.o lz/lzham/lzham_timer.o lz/lzham/lzham_vector.o lz/lzham/lzham_lib.o
+    LZHAM_FILES  = lz/lzham/lzhamdecomp/lzham_assert.o lz/lzham/lzhamdecomp/lzham_checksum.o lz/lzham/lzhamdecomp/lzham_huffman_codes.o
+    LZHAM_FILES += lz/lzham/lzhamdecomp/lzham_lzdecomp.o lz/lzham/lzhamdecomp/lzham_lzdecompbase.o lz/lzham/lzhamdecomp/lzham_mem.o
+    LZHAM_FILES += lz/lzham/lzhamdecomp/lzham_platform.o lz/lzham/lzhamdecomp/lzham_prefix_coding.o lz/lzham/lzhamdecomp/lzham_timer.o
+    LZHAM_FILES += lz/lzham/lzhamdecomp/lzham_symbol_codec.o lz/lzham/lzhamdecomp/lzham_vector.o lz/lzham/lzhamlib/lzham_lib.o
+    LZHAM_FILES += lz/lzham/lzhamcomp/lzham_lzbase.o lz/lzham/lzhamcomp/lzham_lzcomp.o lz/lzham/lzhamcomp/lzham_lzcomp_internal.o
+    LZHAM_FILES += lz/lzham/lzhamcomp/lzham_lzcomp_state.o lz/lzham/lzhamcomp/lzham_match_accel.o
+
+    ifneq "$(DISABLE_THREADING)" "1"
+        ifeq ($(THREAD_MODEL), win32)
+            LZHAM_FILES += lz/lzham/lzhamcomp/lzham_win32_threading.o
+        else
+            LZHAM_FILES += lz/lzham/lzhamcomp/lzham_pthreads_threading.o
+            LZHAM_FLAGS = -DTHREAD_MODEL_POSIX
+        endif
+    endif
 endif
 
 
@@ -255,7 +364,8 @@ ifeq "$(DONT_BUILD_LZMA)" "1"
     DEFINES += -DBENCH_REMOVE_LZMA
 else
     LZMA_FILES  = misc/7-zip/CpuArch.o misc/7-zip/LzFind.o misc/7-zip/LzFindOpt.o misc/7-zip/LzFindMt.o
-    LZMA_FILES += misc/7-zip/LzmaDec.o misc/7-zip/LzmaEnc.o misc/7-zip/Threads.o misc/7-zip/Alloc.o
+    LZMA_FILES += misc/7-zip/LzmaDec.o misc/7-zip/LzmaEnc.o misc/7-zip/Threads.o misc/7-zip/7zStream.o misc/7-zip/Alloc.o
+    LZMA_FILES += misc/7-zip/Lzma2Dec.o misc/7-zip/Lzma2DecMt.o misc/7-zip/Lzma2Enc.o misc/7-zip/MtCoder.o misc/7-zip/MtDec.o
 endif
 
 
@@ -285,7 +395,7 @@ endif
 ifeq "$(DONT_BUILD_QUICKLZ)" "1"
     DEFINES += -DBENCH_REMOVE_QUICKLZ
 else
-    QUICKLZ_FILES = lz/quicklz/quicklz151b7.o lz/quicklz/quicklz1.o lz/quicklz/quicklz2.o lz/quicklz/quicklz3.o
+    QUICKLZ_FILES = lz/quicklz/quicklz_lvl1.o lz/quicklz/quicklz_lvl2.o lz/quicklz/quicklz_lvl3.o
 endif
 
 
@@ -300,6 +410,16 @@ ifeq "$(DONT_BUILD_SNAPPY)" "1"
     DEFINES += -DBENCH_REMOVE_SNAPPY
 else
     SNAPPY_FILES = lz/snappy/snappy-sinksource.o lz/snappy/snappy-stubs-internal.o lz/snappy/snappy.o
+    ifeq ($(HAVE_BUILTIN_CTZ), 1)
+        SNAPPY_FLAGS += -DHAVE_BUILTIN_CTZ
+    endif
+    ifeq ($(SNAPPY_RVV_1),1)
+        SNAPPY_FLAGS += -DSNAPPY_RVV_1
+    endif
+
+    ifeq ($(SNAPPY_RVV_0_7),1)
+        SNAPPY_FLAGS += -DSNAPPY_RVV_0_7
+    endif
 endif
 
 
@@ -324,8 +444,18 @@ ifeq "$(DONT_BUILD_XZ)" "1"
 else
     XZ_FILES = lz/xz/src/liblzma/lzma/lzma_decoder.o lz/xz/src/liblzma/lzma/lzma_encoder.o lz/xz/src/liblzma/lzma/lzma_encoder_optimum_fast.o lz/xz/src/liblzma/lzma/lzma_encoder_optimum_normal.o lz/xz/src/liblzma/lzma/fastpos_table.o
     XZ_FILES += lz/xz/src/liblzma/lzma/lzma_encoder_presets.o lz/xz/src/liblzma/lz/lz_decoder.o lz/xz/src/liblzma/lz/lz_encoder.o lz/xz/src/liblzma/lz/lz_encoder_mf.o lz/xz/src/liblzma/common/common.o lz/xz/src/liblzma/rangecoder/price_table.o
-    XZ_FILES += lz/xz/src/liblzma/common/alone_encoder.o lz/xz/src/liblzma/common/alone_decoder.o lz/xz/src/liblzma/check/crc32_table.o
-    XZ_FLAGS = $(addprefix -I$(SOURCE_PATH),. lz/xz/src lz/xz/src/common lz/xz/src/liblzma/api lz/xz/src/liblzma/common lz/xz/src/liblzma/lzma lz/xz/src/liblzma/lz lz/xz/src/liblzma/check lz/xz/src/liblzma/rangecoder)
+    XZ_FILES += lz/xz/src/liblzma/common/block_decoder.o lz/xz/src/liblzma/common/block_util.o lz/xz/src/liblzma/common/outqueue.o
+    XZ_FILES += lz/xz/src/liblzma/common/stream_flags_common.o lz/xz/src/liblzma/common/index.o lz/xz/src/liblzma/check/check.o
+    XZ_FILES += lz/xz/src/liblzma/common/stream_encoder_mt.o lz/xz/src/liblzma/common/stream_decoder_mt.o
+    XZ_FILES += lz/xz/src/liblzma/common/filter_common.o lz/xz/src/liblzma/common/stream_flags_decoder.o
+    XZ_FILES += lz/xz/src/liblzma/common/stream_flags_encoder.o lz/xz/src/liblzma/common/block_buffer_encoder.o
+    XZ_FILES += lz/xz/src/liblzma/check/crc32_fast.o lz/xz/src/liblzma/common/block_header_encoder.o lz/xz/src/liblzma/common/vli_encoder.o
+    XZ_FILES += lz/xz/src/liblzma/common/vli_size.o lz/xz/src/liblzma/common/filter_flags_encoder.o lz/xz/src/liblzma/common/filter_encoder.o
+    XZ_FILES += lz/xz/src/liblzma/lzma/lzma2_encoder.o lz/xz/src/liblzma/common/easy_preset.o lz/xz/src/liblzma/common/block_encoder.o
+    XZ_FILES += lz/xz/src/liblzma/common/index_encoder.o lz/xz/src/liblzma/common/filter_decoder.o lz/xz/src/liblzma/lzma/lzma2_decoder.o
+    XZ_FILES += lz/xz/src/liblzma/common/block_header_decoder.o lz/xz/src/liblzma/common/vli_decoder.o lz/xz/src/liblzma/common/filter_flags_decoder.o
+    XZ_FILES += lz/xz/src/liblzma/common/index_hash.o
+    XZ_FLAGS = $(addprefix -I$(SOURCE_PATH),. lz/xz/src lz/xz/src/common lz/xz/src/liblzma/delta lz/xz/src/liblzma/simple lz/xz/src/liblzma/api lz/xz/src/liblzma/common lz/xz/src/liblzma/lzma lz/xz/src/liblzma/lz lz/xz/src/liblzma/check lz/xz/src/liblzma/rangecoder)
 endif
 
 
@@ -399,7 +529,45 @@ else
     MISC_FILES += lz/zstd/lib/decompress/huf_decompress_amd64.S
 endif
 
+ifeq "$(DONT_BUILD_ZXC)" "1"
+    DEFINES += -DBENCH_REMOVE_ZXC
+else
+    DEFINES += -DZXC_STATIC_DEFINE
+    ZXC_DIR = lz/zxc/src/lib
+    ZXC_FILES = $(ZXC_DIR)/zxc_common.o $(ZXC_DIR)/zxc_driver.o $(ZXC_DIR)/zxc_dispatch.o
+    ZXC_FILES += $(ZXC_DIR)/zxc_compress_default.o $(ZXC_DIR)/zxc_decompress_default.o
 
+    ifneq (,$(filter x86_64% amd64% i%86%,$(TARGET_ARCH)))
+        ifneq (,$(filter x86_64% amd64%,$(TARGET_ARCH)))
+            ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx2.o $(ZXC_DIR)/zxc_decompress_avx2.o
+            ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx512.o $(ZXC_DIR)/zxc_decompress_avx512.o
+        endif
+    endif
+
+    ifneq (,$(filter arm% aarch64%,$(TARGET_ARCH)))
+        ZXC_FILES += $(ZXC_DIR)/zxc_compress_neon.o $(ZXC_DIR)/zxc_decompress_neon.o
+        
+        ifneq (,$(filter arm64% aarch64%,$(TARGET_ARCH)))
+            NEON_FLAGS = -DZXC_USE_NEON64
+        else
+            NEON_FLAGS = -march=armv7-a -mfloat-abi=softfp -mfpu=neon -DZXC_USE_NEON32
+        endif
+    endif
+
+    CMD_BUILD_ZXC = @$(MKDIR) $(dir $@) && $(CC) $(CFLAGS) $(ZXC_FLAGS) $< -c -o $@
+
+    $(ZXC_DIR)/%_default.o: ZXC_FLAGS = -DZXC_FUNCTION_SUFFIX=_default
+    $(ZXC_DIR)/%_default.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
+
+    $(ZXC_DIR)/%_avx2.o: ZXC_FLAGS = -mavx2 -mbmi2 -DZXC_FUNCTION_SUFFIX=_avx2 -DZXC_USE_AVX2
+    $(ZXC_DIR)/%_avx2.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
+
+    $(ZXC_DIR)/%_avx512.o: ZXC_FLAGS = -mavx512f -mavx512bw -mbmi2 -DZXC_FUNCTION_SUFFIX=_avx512 -DZXC_USE_AVX512
+    $(ZXC_DIR)/%_avx512.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
+
+    $(ZXC_DIR)/%_neon.o: ZXC_FLAGS = $(NEON_FLAGS) -DZXC_FUNCTION_SUFFIX=_neon
+    $(ZXC_DIR)/%_neon.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
+endif
 
 # Symmetric codecs
 ifeq "$(DONT_BUILD_BSC)" "1"
@@ -486,13 +654,6 @@ endif
 
 ifeq "$(DONT_BUILD_DENSITY)" "1"
     DEFINES += -DBENCH_REMOVE_DENSITY
-else
-    BUGGY_FILES += lz/density/globals.o lz/density/buffers/buffer.o
-    BUGGY_FILES += lz/density/algorithms/cheetah/core/cheetah_decode.o lz/density/algorithms/cheetah/core/cheetah_encode.o
-    BUGGY_FILES += lz/density/algorithms/lion/forms/lion_form_model.o lz/density/algorithms/lion/core/lion_decode.o
-    BUGGY_FILES += lz/density/algorithms/lion/core/lion_encode.o lz/density/algorithms/dictionaries.o
-    BUGGY_FILES += lz/density/algorithms/chameleon/core/chameleon_decode.o lz/density/algorithms/chameleon/core/chameleon_encode.o
-    BUGGY_FILES += lz/density/algorithms/algorithms.o lz/density/structure/header.o
 endif
 
 
@@ -506,21 +667,21 @@ endif
 ifeq "$(DONT_BUILD_LZMAT)" "1"
     DEFINES += -DBENCH_REMOVE_LZMAT
 else
-    BUGGY_FILES += lz/lzmat/lzmat_dec.o lz/lzmat/lzmat_enc.o
+    BUGGY_C_FILES += lz/lzmat/lzmat_dec.o lz/lzmat/lzmat_enc.o
 endif
 
 
 ifeq "$(DONT_BUILD_LZRW)" "1"
     DEFINES += -DBENCH_REMOVE_LZRW
 else
-    BUGGY_FILES += lz/lzrw/lzrw1-a.o lz/lzrw/lzrw1.o lz/lzrw/lzrw2.o lz/lzrw/lzrw3.o lz/lzrw/lzrw3-a.o
+    BUGGY_C_FILES += lz/lzrw/lzrw1-a.o lz/lzrw/lzrw1.o lz/lzrw/lzrw2.o lz/lzrw/lzrw3.o lz/lzrw/lzrw3-a.o
 endif
 
 
 ifeq "$(DONT_BUILD_WFLZ)" "1"
     DEFINES += -DBENCH_REMOVE_WFLZ
 else
-    BUGGY_FILES += lz/wflz/wfLZ.o
+    BUGGY_C_FILES += lz/wflz/wfLZ.o
 endif
 
 
@@ -532,16 +693,17 @@ endif
 
 
 
-# CUDA-based codecs
-CUDA_BASE ?= /usr/local/cuda
-LIBCUDART=$(wildcard $(CUDA_BASE)/lib64/libcudart.so)
+ifeq "$(ENABLE_CUDA)" "1"
+  # CUDA-based codecs
+  CUDA_BASE ?= /usr/local/cuda
+  LIBCUDART=$(wildcard $(CUDA_BASE)/lib64/libcudart.so)
 
-ifeq "$(LIBCUDART)" ""
+  ifeq "$(LIBCUDART)" ""
     $(info CUDA Toolkit not found at $(CUDA_BASE), CUDA support will be disabled.)
     $(info Run "make CUDA_BASE=..." to use a different path.)
     CUDA_BASE =
     LIBCUDART =
-else
+  else
     DEFINES += -DBENCH_HAS_CUDA -I$(CUDA_BASE)/include
     LDFLAGS += -L$(CUDA_BASE)/lib64 -lcudart -Wl,-rpath=$(CUDA_BASE)/lib64
     CUDA_COMPILER = nvcc
@@ -549,30 +711,30 @@ else
     CUDA_ARCH = 50 52 60 61 70 75 80 86 89
     CUDA_CXXFLAGS = -x cu -std=c++14 -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
 
-ifneq "$(DONT_BUILD_NVCOMP)" "1"
+  ifneq "$(DONT_BUILD_NVCOMP)" "1"
     DEFINES += -DBENCH_HAS_NVCOMP
     NVCOMP_CPP_SRC = $(wildcard misc/nvcomp/src/*.cpp misc/nvcomp/src/lowlevel/*.cpp)
     NVCOMP_CPP_OBJ = $(NVCOMP_CPP_SRC:%=%.o)
     NVCOMP_CU_SRC  = $(wildcard misc/nvcomp/src/*.cu misc/nvcomp/src/lowlevel/*.cu)
     NVCOMP_CU_OBJ  = $(NVCOMP_CU_SRC:%=%.o)
     NVCOMP_FILES   = $(NVCOMP_CU_OBJ) $(NVCOMP_CPP_OBJ)
-endif
+  endif
 
-ifneq "$(DONT_BUILD_BSC)" "1"
+  ifneq "$(DONT_BUILD_BSC)" "1"
     BSC_FLAGS += -DLIBBSC_CUDA_SUPPORT
     BSC_CUDA_FILES = bwt/libbsc/libbsc/bwt/libcubwt/libcubwt.cu.o bwt/libbsc/libbsc/st/st.cu.o
-endif
-endif # ifneq "$(LIBCUDART)"
-
+  endif
+  endif # ifneq "$(LIBCUDART)"
+endif # ifeq "$(ENABLE_CUDA)"
 
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(LZBENCH_FILES) $(PPMD_FILES)
+lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(BENCH_FILES) $(PPMD_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
-bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h
+$(BENCH_MAIN): bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h DENSITY_LIB
 
 # disable the implicit rule for making a binary out of a single object file
 %: %.o
@@ -589,8 +751,12 @@ bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/code
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) $< -c -o $@
 
+$(BROTLI_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz/brotli/include $< -c -o $@
+
 # FIX for SEGFAULT on GCC 4.9+
-$(BUGGY_FILES): %.o : %.c
+$(BUGGY_C_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS_O2) $< -c -o $@
 
@@ -598,13 +764,33 @@ $(BUGGY_CC_FILES): %.o : %.cc
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) $< -c -o $@
 
+$(BENCH_MAIN): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) $(BENCH_CXXFLAGS) $< -c -o $@
+
+$(BUGGY_CODECS): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) -Ilz/libcsc $< -c -o $@
+
 $(BUGGY_CXX_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) $< -c -o $@
 
+$(BZIP3_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -DVERSION=\"1.5.1\" -Ibwt/bzip3/include $< -c -o $@
+
 $(CSC_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) -Ilz/libcsc $< -c -o $@
+
+$(FASTLZMA2_OBJ): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) $(FASTLZMA2_FLAGS) -DNO_XXHASH $< -c -o $@
+
+$(LIBDEFLATE_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz/libdeflate $< -c -o $@
 
 $(LIZARD_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
@@ -614,23 +800,11 @@ $(LZ_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include $< -c -o $@
 
-$(BUGGY_CODECS): %.o : %.cpp
+$(LZHAM_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz/libcsc $< -c -o $@
-
-$(BROTLI_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz/brotli/include $< -c -o $@
-
-$(LIBDEFLATE_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz/libdeflate $< -c -o $@
+	$(CXX) $(CFLAGS) $(LZHAM_FLAGS) -Ilz/lzham/include -Ilz/lzham/lzhamcomp -Ilz/lzham/lzhamdecomp $< -c -o $@
 
 $(LZO_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz $< -c -o $@
-
-$(UCL_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Ilz $< -c -o $@
 
@@ -638,13 +812,25 @@ $(LZSSE_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -std=c++0x -msse4.1 $< -c -o $@
 
-$(FASTLZMA2_OBJ): %.o : %.c
+$(SNAPPY_FILES): %.o : %.cc
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DFL2_SINGLETHREAD -DNO_XXHASH $< -c -o $@
+	$(CXX) $(CXXFLAGS) $(SNAPPY_FLAGS) $< -c -o $@
+
+$(SYMMETRIC_CODECS): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) $(SYMMETRIC_CXXFLAGS) $< -c -o $@
+
+lz/quicklz/quicklz_lvl%.o: lz/quicklz/quicklz151b7.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -DQLZ_COMPRESSION_LEVEL=$* $< -c -o $@
+
+$(UCL_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz $< -c -o $@
 
 $(XZ_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $(XZ_FLAGS) -DHAVE_CONFIG_H $< -c -o $@
+	$(CC) $(CFLAGS) $(XZ_FLAGS) -DHAVE_CHECK_CRC32 -DMYTHREAD_POSIX -DHAVE_CONFIG_H $< -c -o $@
 
 $(ZLIB_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
@@ -654,16 +840,16 @@ $(ZLIB_NG_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) -Ilz/zlib-ng $< -c -o $@
 
+$(ZSTD_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) $(ZSTD_FLAGS) $< -c -o $@
+
 $(ZPAQ_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -I misc/zpaq $< -c -o $@
 
 
-
-$(BZIP3_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DVERSION=\"1.5.1\" -Ibwt/bzip3/include $< -c -o $@
-
+# CUDA compressors
 $(NVCOMP_CU_OBJ): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
 	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -Imisc/nvcomp/include -Imisc/nvcomp/src -Imisc/nvcomp/src/lowlevel -c $< -o $@
@@ -684,6 +870,15 @@ $(BSC_CUDA_FILES): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
 	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) $(BSC_FLAGS) -c $< -o $@
 
+DENSITY_LIB:
+ifneq ($(DONT_BUILD_DENSITY),1)
+	@echo "Building Density..."
+	cd $(DENSITY_SRC_DIR) && \
+	RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" \
+	cargo rustc --crate-type=$(DENSITY_BUILD_TYPE) --release -- --print=native-static-libs
+endif
+
 clean:
 	rm -rf lzbench lzbench.exe
 	find . -type f -name "*.o" -exec rm -f {} +
+	rm -rf $(DENSITY_SRC_DIR)target/
