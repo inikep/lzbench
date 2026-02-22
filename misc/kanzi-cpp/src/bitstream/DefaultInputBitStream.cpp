@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <algorithm>
 #include "DefaultInputBitStream.hpp"
-#include "../util.hpp"
 
 using namespace kanzi;
 using namespace std;
@@ -31,7 +31,7 @@ DefaultInputBitStream::DefaultInputBitStream(InputStream& is, uint bufferSize) :
         throw invalid_argument("Invalid buffer size (must be a multiple of 8)");
 
     _bufferSize = bufferSize;
-    _buffer = new byte[_bufferSize];
+    _buffer = new kanzi::byte[_bufferSize];
     _availBits = 0;
     _maxPosition = -1;
     _position = 0;
@@ -46,7 +46,7 @@ DefaultInputBitStream::~DefaultInputBitStream()
     delete[] _buffer;
 }
 
-uint DefaultInputBitStream::readBits(byte bits[], uint count)
+uint DefaultInputBitStream::readBits(kanzi::byte bits[], uint count)
 {
     if (isClosed() == true)
         throw BitStreamException("Stream closed", BitStreamException::STREAM_CLOSED);
@@ -64,7 +64,7 @@ uint DefaultInputBitStream::readBits(byte bits[], uint count)
 
         // Empty _current
         while ((_availBits > 0) && (remaining >= 8)) {
-            bits[start] = byte(readBits(8));
+            bits[start] = kanzi::byte(readBits(8));
             start++;
             remaining -= 8;
         }
@@ -79,13 +79,14 @@ uint DefaultInputBitStream::readBits(byte bits[], uint count)
             remaining -= (availBytes << 3);
             _position = _maxPosition + 1;
 
-            if (readFromInputStream(_bufferSize) < int(_bufferSize))
-                break;
-
+            const int read = readFromInputStream(_bufferSize);
             availBytes = uint(_maxPosition + 1 - _position);
+
+            if (read < int(_bufferSize))
+                break;
         }
 
-        const uint r = (remaining >> 6) << 3;
+        const uint r = min((remaining >> 6) << 3, availBytes);
 
         if (r > 0) {
             memcpy(&bits[start], &_buffer[_position], r);
@@ -95,7 +96,7 @@ uint DefaultInputBitStream::readBits(byte bits[], uint count)
         }
     }
     else if (remaining >= 64) {
-        // Not byte aligned
+        // Not kanzi::byte aligned
         const uint a = _availBits;
         const uint r = 64 - a;
 
@@ -145,13 +146,13 @@ uint DefaultInputBitStream::readBits(byte bits[], uint count)
 
     // Last bytes
     while (remaining >= 8) {
-        bits[start] = byte(readBits(8));
+        bits[start] = kanzi::byte(readBits(8));
         start++;
         remaining -= 8;
     }
 
     if (remaining > 0)
-        bits[start] = byte(readBits(remaining) << (8 - remaining));
+        bits[start] = kanzi::byte(readBits(remaining) << (8 - remaining));
 
     return count;
 }
@@ -189,7 +190,7 @@ int DefaultInputBitStream::readFromInputStream(uint count)
         // Clear flags (required for future seeks when EOF is reached)
         _is.clear();
     }
-    catch (runtime_error& e) {
+    catch (const runtime_error& e) {
         // Catch IOException without depending on io package
         throw BitStreamException(e.what(), BitStreamException::INPUT_OUTPUT);
     }
@@ -215,7 +216,7 @@ bool DefaultInputBitStream::hasMoreToRead()
     try {
         readFromInputStream(_bufferSize);
     }
-    catch (BitStreamException&) {
+    catch (const BitStreamException&) {
         return false;
     }
 

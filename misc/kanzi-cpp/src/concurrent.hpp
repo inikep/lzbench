@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,14 +14,15 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _concurrent_
-#define _concurrent_
+#ifndef knz_concurrent
+#define knz_concurrent
 
 #include "types.hpp"
 
-#if __cplusplus >= 201103L || _MSC_VER >= 1700
+#if __cplusplus >= 201103L || (defined(_MSC_VER) && _MSC_VER >= 1700)
     // C++ 11 (or partial)
     #include <atomic>
+    #define HAVE_STD_ATOMICS 1
 
     #ifndef CONCURRENCY_DISABLED
         #ifdef __clang__
@@ -36,6 +37,8 @@ limitations under the License.
             #define CONCURRENCY_ENABLED
         #endif
     #endif
+#else
+    #define HAVE_STD_ATOMICS 0
 #endif
 
 
@@ -48,18 +51,24 @@ limitations under the License.
    #include <condition_variable>
    #include <future>
    #include <functional>
+   #if __cplusplus >= 201703L
+   #include <tuple>
+   #endif
    #include <stdexcept>
-#endif
 
-#ifdef __x86_64__
-   #ifdef __clang__
-       #define CPU_PAUSE() __builtin_ia32_pause()
-   #elif __GNUC__
-       #define CPU_PAUSE() __builtin_ia32_pause()
-   #elif _MSC_VER
-       #define CPU_PAUSE() _mm_pause()
+   #ifdef __x86_64__
+      #ifdef __clang__
+          #define CPU_PAUSE() __builtin_ia32_pause()
+      #elif __GNUC__
+          #define CPU_PAUSE() __builtin_ia32_pause()
+      #elif _MSC_VER
+          #include <immintrin.h>
+          #define CPU_PAUSE() _mm_pause()
+      #else
+         #define CPU_PAUSE() std::this_thread::yield();
+      #endif
    #else
-      #define CPU_PAUSE()
+      #define CPU_PAUSE() std::this_thread::yield();
    #endif
 #else
    #define CPU_PAUSE()
@@ -78,14 +87,16 @@ class Task {
 #ifdef CONCURRENCY_ENABLED
    class ThreadPool FINAL {
    public:
-       ThreadPool(uint32_t threads = 8);
+       ThreadPool(int threads = 8);
+
        template<class F, class... Args>
 #if __cplusplus >= 201703L // result_of deprecated from C++17
        std::future<typename std::invoke_result_t<F, Args...>> schedule(F&& f, Args&&... args);
 #else
        std::future<typename std::result_of<F(Args...)>::type> schedule(F&& f, Args&&... args);
 #endif
-       ~ThreadPool();
+
+       ~ThreadPool() noexcept;
 
    private:
        std::vector<std::thread> _workers;
@@ -96,14 +107,14 @@ class Task {
    };
 
 
-   inline ThreadPool::ThreadPool(uint32_t threads)
+   inline ThreadPool::ThreadPool(int threads)
        :   _stop(false)
    {
-       if ((threads == 0) || (threads > 1024))
+       if ((threads <= 0) || (threads > 1024))
            throw std::invalid_argument("The number of threads must be in [1..1024]");
 
        // Start and run threads
-       for (uint32_t i = 0; i < threads; i++)
+       for (int i = 0; i < threads; i++)
            _workers.emplace_back(
                [this]
                {
@@ -114,9 +125,9 @@ class Task {
                        {
                            std::unique_lock<std::mutex> lock(_mutex);
                            _condition.wait(lock,
-                               [this] { return (_stop == true) || (_tasks.size() > 0); });
+                               [this] { return _stop || !_tasks.empty(); });
 
-                           if (_stop == true)
+                           if (_stop && _tasks.empty())
                                return;
 
                            task = std::move(_tasks.front());
@@ -141,9 +152,17 @@ class Task {
        using return_type = typename std::result_of<F(Args...)>::type;
 #endif
 
-       auto task = std::make_shared< std::packaged_task<return_type()> >(
-               std::bind(std::forward<F>(f), std::forward<Args>(args)...)
-           );
+       #if __cplusplus >= 201703L
+       auto task = std::make_shared<std::packaged_task<return_type()>>(
+           [fn = std::forward<F>(f), params = std::make_tuple(std::forward<Args>(args)...)]() mutable -> return_type {
+               return std::apply(std::move(fn), std::move(params));
+           }
+       );
+       #else
+       auto task = std::make_shared<std::packaged_task<return_type()>>(
+           std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+       );
+       #endif
 
        std::future<return_type> res = task->get_future();
 
@@ -162,7 +181,7 @@ class Task {
 
 
    // the destructor joins all threads
-   inline ThreadPool::~ThreadPool()
+   inline ThreadPool::~ThreadPool() noexcept
    {
        {
            std::unique_lock<std::mutex> lock(_mutex);
@@ -184,7 +203,7 @@ class Task {
 
         ~BoundedConcurrentQueue() { }
 
-        T* get() { int idx = _index.fetch_add(1); return (idx >= _size) ? nullptr : &_data[idx]; }
+        T* get() { int idx = _index.fetch_add(1, std::memory_order_acq_rel); return (idx >= _size) ? nullptr : &_data[idx]; }
 
         void clear() { _index.store(_size); }
 
@@ -194,78 +213,56 @@ class Task {
         T* _data;
     };
 
-   #define ATOMIC_INT std::atomic_int
-   #define ATOMIC_BOOL std::atomic_bool
+#endif
+
+
+#if HAVE_STD_ATOMICS
+    typedef std::atomic_int atomic_int_t;
+
+    #define LOAD_ATOMIC(a)  ((a).load(std::memory_order_acquire))
+    #define STORE_ATOMIC(a, v) ((a).store((v), std::memory_order_release))
+    #define EXCHANGE_ATOMIC(a, v)  ((a).exchange((v), std::memory_order_acq_rel))
+    #define FETCH_ADD_ATOMIC(a, v) ((a).fetch_add((v), std::memory_order_acq_rel))
+    #define COMPARE_EXCHANGE_ATOMIC(obj, expected, desired) \
+                                    ((obj).compare_exchange_strong((expected), (desired), \
+                                    std::memory_order_release, std::memory_order_acquire))
 
 #else
-   #if defined(__APPLE__)
-        #define ATOMIC_INT std::atomic_int
-        #define ATOMIC_BOOL std::atomic_bool
-   #elif __cplusplus < 201103L
-        // ! Stubs for NON CONCURRENT USAGE !
-        // Used to compile and provide a non concurrent version AND
-        // when atomic.h is not available (VS C++)
-        const int memory_order_relaxed = 0;
-        const int memory_order_acquire = 2;
-        const int memory_order_release = 3;
-        #include <iostream>
 
-        class atomic_int {
-        private:
-            int _n;
+    typedef int atomic_int_t;
+    #define LOAD_ATOMIC(a) (a)
+    #define STORE_ATOMIC(a, v)  ((a) = (v))
+    #define EXCHANGE_ATOMIC(a, v)  exchange_atomic_int((a), (v))
+    #define FETCH_ADD_ATOMIC(a, v)  fetch_add_atomic_int((a), (v))
+    #define COMPARE_EXCHANGE_ATOMIC(obj, expected, desired) \
+                                    compare_exchange_fallback((obj), (expected), (desired))
 
-        public:
-            atomic_int(int n=0) { _n = n; }
-            atomic_int& operator=(int n) {
-                _n = n;
-                return *this;
-            }
-            int load(int mo = memory_order_relaxed) const { (void)mo; return _n; }
-            void store(int n, int mo = memory_order_release) { (void)mo; _n = n; }
-            atomic_int& operator++(int) {
-                _n++;
-                return *this;
-            }
-            atomic_int fetch_add(atomic_int) {
-               _n++;
-               return atomic_int(_n - 1);
-            }
-            bool compare_exchange_strong(int& expected, int desired) {
-               if (_n != expected)
-                   return false;
+    inline int exchange_atomic_int(int& a, int v)
+    {
+        int old = a;
+        a = v;
+        return old;
+    }
 
-               _n = desired;
-               return true;
-            }
-        };
+    inline int fetch_add_atomic_int(int& a, int v)
+    {
+        int old = a;
+        a += v;
+        return old;
+    }
 
-        class atomic_bool {
-        private:
-            bool _b;
-
-        public:
-            atomic_bool(bool b=false) { _b = b; }
-            atomic_bool& operator=(bool b) { _b = b; return *this; }
-            bool load(int mo = memory_order_relaxed) const { (void)mo; return _b; }
-            void store(bool b, int mo = memory_order_release) { (void)mo; _b = b; }
-            bool exchange(bool expected, int mo = memory_order_acquire) {
-                (void)mo;
-                bool b = _b;
-                _b = expected;
-                return b;
-            }
-        };
-
-        #define ATOMIC_INT atomic_int
-        #define ATOMIC_BOOL atomic_bool
-   #else
-        #define ATOMIC_INT std::atomic_int
-        #define ATOMIC_BOOL std::atomic_bool
-   #endif
-
-#endif //   (__cplusplus && __cplusplus < 201103L) || (_MSC_VER && _MSC_VER < 1700)
-
-
+    inline bool compare_exchange_fallback(int& obj, int& expected, int desired)
+    {
+        if (obj == expected) {
+            obj = desired;
+            return true;
+        } else {
+            expected = obj; // update expected on failure
+            return false;
+        }
+    }
 
 #endif
 
+
+#endif

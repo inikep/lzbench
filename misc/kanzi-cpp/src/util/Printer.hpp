@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _Printer_
-#define _Printer_
+#ifndef knz_Printer
+#define knz_Printer
 
 
 #ifdef CONCURRENCY_ENABLED
@@ -35,7 +35,7 @@ namespace kanzi
             try  {
                 _os->flush();
             }
-            catch (std::exception&) {
+            catch (const std::exception&) {
                 // Ignore: best effort
             }
          }
@@ -45,7 +45,7 @@ namespace kanzi
    #ifdef CONCURRENCY_ENABLED
                std::lock_guard<std::mutex> lock(_mtx);
    #endif
-               (*_os) << msg ;
+               (*_os) << msg;
             }
          }
 
@@ -63,7 +63,7 @@ namespace kanzi
    #ifdef CONCURRENCY_ENABLED
                std::lock_guard<std::mutex> lock(_mtx);
    #endif
-               (*_os) << msg ;
+               (*_os) << msg;
             }
          }
 

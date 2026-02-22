@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -73,11 +73,11 @@ int EntropyUtils::encodeAlphabet(OutputBitStream& obs, const uint alphabet[], in
     else {
         // Partial alphabet
         obs.writeBit(PARTIAL_ALPHABET);
-        byte masks[32] = { byte(0) };
+        kanzi::byte masks[32] = { kanzi::byte(0) };
 
         // Encode presence flags
         for (int i = 0; i < count; i++)
-            masks[alphabet[i] >> 3] |= byte(1 << (alphabet[i] & 7));
+            masks[alphabet[i] >> 3] |= kanzi::byte(1 << (alphabet[i] & 7));
 
         const int lastMask = alphabet[count - 1] >> 3;
         obs.writeBits(lastMask, 5);
@@ -102,7 +102,7 @@ int EntropyUtils::decodeAlphabet(InputBitStream& ibs, uint alphabet[])
 
     // Partial alphabet
     const int lastMask = int(ibs.readBits(5));
-    byte masks[32] = { byte(0) };
+    kanzi::byte masks[32] = { kanzi::byte(0) };
     int count = 0;
 
     // Decode presence flags
@@ -169,23 +169,9 @@ int EntropyUtils::normalizeFrequencies(uint freqs[], uint alphabet[], int length
         if (f == 0)
             continue;
 
-        const int64 sf = int64(f) * int64(scale);
-        uint scaledFreq;
-
-        if (sf <= int64(totalFreq)) {
-            // Quantum of frequency
-            scaledFreq = 1;
-        }
-        else {
-            // Find best frequency rounding value
-            scaledFreq = uint(sf / int64(totalFreq));
-            const int64 prod = int64(scaledFreq) * int64(totalFreq);
-            const int64 errCeiling = prod + int64(totalFreq) - sf;
-            const int64 errFloor = sf - prod;
-            scaledFreq += (errCeiling < errFloor ? 1 : 0);
-        }
-
         alphabet[alphabetSize++] = i;
+        const int64 sf = int64(f) * int64(scale);
+        const uint scaledFreq = sf <= int64(totalFreq) ? 1 : uint((sf + (int64(totalFreq) >> 1)) / int64(totalFreq));
         sumScaledFreq += scaledFreq;
         freqs[i] = scaledFreq;
         sumFreq += f;

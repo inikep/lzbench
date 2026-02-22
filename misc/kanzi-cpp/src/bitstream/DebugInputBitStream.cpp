@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -26,7 +26,7 @@ DebugInputBitStream::DebugInputBitStream(InputBitStream& ibs) : _delegate(ibs), 
     _mark = false;
     _show = false;
     _hexa = false;
-    _current = byte(0);
+    _current = kanzi::byte(0);
 }
 
 DebugInputBitStream::DebugInputBitStream(InputBitStream& ibs, ostream& os) : _delegate(ibs), _out(os), _width(80)
@@ -35,7 +35,7 @@ DebugInputBitStream::DebugInputBitStream(InputBitStream& ibs, ostream& os) : _de
     _mark = false;
     _show = false;
     _hexa = false;
-    _current = byte(0);
+    _current = kanzi::byte(0);
 }
 
 DebugInputBitStream::DebugInputBitStream(InputBitStream& ibs, ostream& os, int width) : _delegate(ibs), _out(os)
@@ -51,7 +51,7 @@ DebugInputBitStream::DebugInputBitStream(InputBitStream& ibs, ostream& os, int w
     _mark = false;
     _show = false;
     _hexa = false;
-    _current = byte(0);
+    _current = kanzi::byte(0);
 }
 
 DebugInputBitStream::~DebugInputBitStream()
@@ -64,7 +64,7 @@ int DebugInputBitStream::readBit()
 {
     int res = _delegate.readBit();
     _current <<= 1;
-    _current |= byte(res);
+    _current |= kanzi::byte(res);
     _out << ((res & 1) == 1 ? "1" : "0");
     _idx++;
 
@@ -96,7 +96,7 @@ uint64 DebugInputBitStream::readBits(uint count)
         int bit = (res >> (count - i)) & 1;
         _idx++;
         _current <<= 1;
-        _current |= byte(bit);
+        _current |= kanzi::byte(bit);
         _out << ((bit == 1) ? "1" : "0");
 
         if ((_mark == true) && (i == count))
@@ -120,7 +120,7 @@ uint64 DebugInputBitStream::readBits(uint count)
     return res;
 }
 
-uint DebugInputBitStream::readBits(byte bits[], uint count)
+uint DebugInputBitStream::readBits(kanzi::byte bits[], uint count)
 {
     count = _delegate.readBits(bits, count);
 
@@ -129,7 +129,7 @@ uint DebugInputBitStream::readBits(byte bits[], uint count)
             int bit = int(bits[i] >> j) & 1;
             _idx++;
             _current <<= 1;
-            _current |= byte(bit);
+            _current |= kanzi::byte(bit);
             _out << ((bit == 1) ? "1" : "0");
 
             if ((_mark == true) && (j == int(count)))
@@ -154,7 +154,7 @@ uint DebugInputBitStream::readBits(byte bits[], uint count)
     return count;
 }
 
-void DebugInputBitStream::printByte(byte b)
+void DebugInputBitStream::printByte(kanzi::byte b)
 {
     int val = int(b);
 

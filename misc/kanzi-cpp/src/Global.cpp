@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -166,7 +166,7 @@ int Global::log2(uint64 x)
 }
 
 // If withTotal is true, the last spot in each frequencies order 0 array is for the total
-void Global::computeHistogram(const byte block[], int length, uint freqs[], bool isOrder0, bool withTotal)
+void Global::computeHistogram(const kanzi::byte block[], int length, uint freqs[], bool isOrder0, bool withTotal)
 {
     const uint8* p = reinterpret_cast<const uint8*>(&block[0]);
 
@@ -339,9 +339,6 @@ void Global::computeJobsPerTask(int jobsPerTask[], int jobs, int tasks)
         jobsPerTask[n]++;
         r--;
         n++;
-
-        if (n == tasks)
-            n = 0;
     }
 }
 

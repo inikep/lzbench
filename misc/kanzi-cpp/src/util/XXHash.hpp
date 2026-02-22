@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _XXHash32_
-#define _XXHash32_
+#ifndef knz_XXHash32
+#define knz_XXHash32
 
 #include <ctime>
 
@@ -45,16 +45,16 @@ namespace kanzi
           static const uint32 PRIME32_5 = uint32(374761393);
 #endif 
 
-       int _seed;
+       uint32 _seed;
 
        uint32 round(uint32 acc, int32 val) const;
 
    public:
-       XXHash32() { _seed = int(time(nullptr)); }
-       XXHash32(int seed) : _seed(seed) {}
+       XXHash32() { _seed = uint32(time(nullptr)); }
+       XXHash32(uint32 seed) : _seed(seed) {}
        ~XXHash32(){}
 
-       void setSeed(int seed) { _seed = seed; }
+       void setSeed(uint32 seed) { _seed = seed; }
        uint32 hash(const byte data[], int length) const;
    };
 

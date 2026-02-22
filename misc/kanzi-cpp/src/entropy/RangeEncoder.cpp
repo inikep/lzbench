@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -127,7 +127,7 @@ bool RangeEncoder::encodeHeader(int alphabetSize, const uint alphabet[], const u
 }
 
 // Reset frequency stats for each chunk of data in the block
-int RangeEncoder::encode(const byte block[], uint blkptr, uint count)
+int RangeEncoder::encode(const kanzi::byte block[], uint blkptr, uint count)
 {
     if (count == 0)
         return 0;
@@ -165,7 +165,7 @@ int RangeEncoder::encode(const byte block[], uint blkptr, uint count)
     return count;
 }
 
-void RangeEncoder::encodeByte(byte b)
+void RangeEncoder::encodeByte(kanzi::byte b)
 {
     // Compute next low and range
     const int symbol = int(b);
@@ -192,7 +192,7 @@ void RangeEncoder::encodeByte(byte b)
 }
 
 // Compute chunk frequencies, cumulated frequencies and encode chunk header
-int RangeEncoder::rebuildStatistics(const byte block[], int start, int end, int lr)
+int RangeEncoder::rebuildStatistics(const kanzi::byte block[], int start, int end, int lr)
 {
     memset(_freqs, 0, sizeof(_freqs));
     Global::computeHistogram(&block[start], end - start, _freqs);

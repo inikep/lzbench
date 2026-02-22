@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _TPAQPredictor_
-#define _TPAQPredictor_
+#ifndef knz_TPAQPredictor
+#define knz_TPAQPredictor
 
 #include <cstring>
 #include "../Context.hpp"
@@ -74,16 +74,16 @@ namespace kanzi
        static const int BUFFER_SIZE;
        static const int HASH_SIZE;
        static const int HASH;
-       static const int MASK_80808080;
-       static const int MASK_F0F0F000;
-       static const int MASK_4F4FFFFF;
+       static const uint MASK_80808080;
+       static const uint MASK_F0F0F000;
+       static const uint MASK_4F4FFFFF;
 
        #define SSE0_RATE(T) ((T == true) ? 6 : 7)
 
        int _pr; // next predicted value (0-4095)
-       int _c0; // bitwise context: last 0-7 bits with a leading 1 (1-255)
-       int _c4; // last 4 whole bytes, last is in low 8 bits
-       int _c8; // last 8 to 4 whole bytes, last is in low 8 bits
+       uint _c0; // bitwise context: last 0-7 bits with a leading 1 (1-255)
+       uint _c4; // last 4 whole bytes, last is in low 8 bits
+       uint _c8; // last 8 to 4 whole bytes, last is in low 8 bits
        int _bpos; // number of bits in c0 (0-7)
        int _pos;
        int _binCount;
@@ -100,10 +100,10 @@ namespace kanzi
        uint8* _bigStatesMap;// hash table(context, prediction)
        uint8* _smallStatesMap0; // hash table(context, prediction)
        uint8* _smallStatesMap1; // hash table(context, prediction)
-       int _statesMask;
-       int _mixersMask;
-       int _hashMask;
-       int _bufferMask;
+       uint _statesMask;
+       uint _mixersMask;
+       uint _hashMask;
+       uint _bufferMask;
        uint8* _cp0; // context pointers
        uint8* _cp1;
        uint8* _cp2;
@@ -424,7 +424,7 @@ namespace kanzi
            _binCount += ((_c4 >> 7) & 1);
 
            // Select Neural Net
-           _mixer = &_mixers[(_matchLen != 0) ? (_c4 & _mixersMask) + 1 : _c4 & _mixersMask];
+           _mixer = &_mixers[(_c4 & _mixersMask) + (_matchLen != 0 ? 1 : 0)];
 
            // Add contexts to NN
            _ctx0 = (_c4 & 0xFF) << 8;
@@ -438,8 +438,10 @@ namespace kanzi
                _ctx5 = (_c8 & MASK_F0F0F000) | ((_c4 & MASK_F0F0F000) >> 4);
 
                if (T == true) {
-                  const int h1 = ((_c4 & MASK_80808080) == 0) ? _c4 & MASK_4F4FFFFF : _c4 & MASK_80808080;
-                  const int h2 = ((_c8 & MASK_80808080) == 0) ? _c8 & MASK_4F4FFFFF : _c8 & MASK_80808080;
+                  const uint h1 = ((_c4 & MASK_80808080) == 0) ?
+                      _c4 & MASK_4F4FFFFF : _c4 & MASK_80808080;
+                  const uint h2 = ((_c8 & MASK_80808080) == 0) ?
+                      _c8 & MASK_4F4FFFFF : _c8 & MASK_80808080;
                   _ctx6 = hash(h1 << 2, h2 >> 2);
                }
            }
@@ -547,7 +549,7 @@ namespace kanzi
        _matchPos = _hashes[_hash];
 
        // Detect match
-       if ((_matchPos != 0) && (_pos - _matchPos <= _bufferMask)) {
+       if ((_matchPos != 0) && (uint(_pos - _matchPos) <= _bufferMask)) {
            int r = _matchLen + 2;
 
            while (r <= MAX_LENGTH) {
@@ -583,7 +585,9 @@ namespace kanzi
    template <bool T>
    inline int TPAQPredictor<T>::getMatchContextPred()
    {
-       if (_c0 == (_matchVal >> _bpos)) {
+       const uint matchPrefix = uint(_matchVal) >> _bpos;
+
+       if (_c0 == matchPrefix) {
            return (((_matchVal >> (_bpos - 1)) & 1) != 0) ?
                MATCH_PRED[_matchLen - 1] : -MATCH_PRED[_matchLen - 1];
        }
@@ -593,4 +597,3 @@ namespace kanzi
    }
 }
 #endif
-

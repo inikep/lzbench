@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,56 +14,75 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _InfoPrinter_
-#define _InfoPrinter_
+#ifndef knz_InfoPrinter
+#define knz_InfoPrinter
 
+#include <map>
+#include <memory>
+#ifdef CONCURRENCY_ENABLED
+   #include <mutex>
+#endif
+#include <time.h>
+#include <vector>
+
+#include "../concurrent.hpp"
 #include "../Event.hpp"
 #include "../Listener.hpp"
 #include "../OutputStream.hpp"
 #include "../util/Clock.hpp"
 
-
 namespace kanzi
 {
 
    class BlockInfo {
-   public:
-       int64 _stage0Size;
-       int64 _stage1Size;
+      public:
+          int64 _stage0Size;
+          int64 _stage1Size;
+          WallTimer::TimeData _timeStamp1;
+          WallTimer::TimeData _timeStamp2;
+          WallTimer::TimeData _timeStamp3;
+
+       BlockInfo() : _stage0Size(0), _stage1Size(0) {}
    };
 
-   // An implementation of Listener to display block information (verbose option
-   // of the BlockCompressor/BlockDecompressor)
    class InfoPrinter : public Listener<Event> {
-   public:
-       enum Type {
-           ENCODING,
-           DECODING
-       };
+      public:
+          enum Type { COMPRESSION, DECOMPRESSION, INFO };
 
-       InfoPrinter(int infoLevel, InfoPrinter::Type type, OutputStream& os);
+          InfoPrinter(int infoLevel, InfoPrinter::Type type, OutputStream& os, int firstBlockId = 1);
+          ~InfoPrinter() {}
 
-       ~InfoPrinter() {
-          for (int i = 0; i < 1024; i++) {
-             if (_map[i] != nullptr)
-                delete _map[i];
-          }
-       }
+          void processEvent(const Event& evt);
 
-       void processEvent(const Event& evt);
+      private:
+#ifdef CONCURRENCY_ENABLED
+          // Ordered-phase handling
+          void processBlockEventOrdered(const Event& evt);
+#endif
 
-   private:
-       OutputStream& _os;
-       BlockInfo* _map[1024];
-       Event::Type _thresholds[6];
-       InfoPrinter::Type _type;
-       int _level;
-       Clock _clock12;
-       Clock _clock23;
-       Clock _clock34;
-	   
-       static uint hash(uint id) { return (id * 0x1E35A7BD) & 0x03FF; }
+          // Actual event processing + printing
+          void processEventOrdered(const Event& evt);
+
+          // Header-only info
+          void processHeaderInfo(const Event& evt);
+
+          OutputStream& _os;
+          InfoPrinter::Type _type;
+          int _level;
+          int _headerInfo;
+
+          // Per-block state
+          std::map<int, BlockInfo*> _blocks;
+
+          Event::Type _thresholds[6];
+#ifdef CONCURRENCY_ENABLED
+          std::mutex _mutex;
+#endif
+          std::map<int, std::vector<Event> > _pendingBlocks;
+          atomic_int_t _nextBlockId;
    };
+
 }
+
 #endif
 

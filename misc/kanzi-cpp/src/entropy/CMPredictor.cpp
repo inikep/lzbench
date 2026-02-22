@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -35,15 +35,12 @@ CMPredictor::CMPredictor()
         for (int j = 0; j <= 256; j++)
             _counter1[i][j] = 32768;
 
-        for (int j = 0; j < 16; j++) {
+        for (int j = 0; j <= 16; j++) {
             _counter2[2 * i][j] = j << 12;
             _counter2[2 * i + 1][j] = j << 12;
         }
-
-        _counter2[2 * i][16] = 65535;
-        _counter2[2 * i + 1][16] = 65535;
     }
 
     _pc1 = _counter1[_ctx];
-    _pc2 = &_counter2[_ctx | _runMask][8];
+    _pc2 = &_counter2[_ctx][8];
 }

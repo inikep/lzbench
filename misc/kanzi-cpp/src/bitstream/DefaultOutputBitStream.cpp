@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -31,7 +31,7 @@ DefaultOutputBitStream::DefaultOutputBitStream(OutputStream& os, uint bufferSize
 
     _availBits = 64;
     _bufferSize = bufferSize;
-    _buffer = new byte[_bufferSize];
+    _buffer = new kanzi::byte[_bufferSize];
     _position = 0;
     _current = 0;
     _written = 0;
@@ -39,7 +39,7 @@ DefaultOutputBitStream::DefaultOutputBitStream(OutputStream& os, uint bufferSize
     memset(&_buffer[0], 0, size_t(_bufferSize));
 }
 
-uint DefaultOutputBitStream::writeBits(const byte bits[], uint count)
+uint DefaultOutputBitStream::writeBits(const kanzi::byte bits[], uint count)
 {
     if (isClosed() == true)
         throw BitStreamException("Stream closed", BitStreamException::STREAM_CLOSED);
@@ -77,7 +77,7 @@ uint DefaultOutputBitStream::writeBits(const byte bits[], uint count)
         }
     }
     else if (remaining >= 64) {
-        // Not byte aligned
+        // Not kanzi::byte aligned
         const uint r = 64 - _availBits;
         const uint a = _availBits;
 
@@ -137,11 +137,11 @@ void DefaultOutputBitStream::_close()
     uint64 savedCurrent = _current;
 
     try {
-        // Push last bytes (the very last byte may be incomplete)
+        // Push last bytes (the very last kanzi::byte may be incomplete)
         uint shift = 56;
 
         while (_availBits < 64) {
-            _buffer[_position++] = byte(_current >> shift);
+            _buffer[_position++] = kanzi::byte(_current >> shift);
             shift -= 8;
             _availBits += 8;
         }
@@ -150,7 +150,7 @@ void DefaultOutputBitStream::_close()
         _availBits = 64;
         flush();
     }
-    catch (BitStreamException&) {
+    catch (const BitStreamException&) {
         // Revert fields to allow subsequent attempts in case of transient failure
         _position = savedPosition;
         _availBits = savedBitIndex;
@@ -164,7 +164,7 @@ void DefaultOutputBitStream::_close()
         if (_os.bad())
             throw BitStreamException("Write to bitstream failed.", BitStreamException::INPUT_OUTPUT);
     }
-    catch (ios_base::failure& e) {
+    catch (const ios_base::failure& e) {
         throw BitStreamException(e.what(), BitStreamException::INPUT_OUTPUT);
     }
 
@@ -177,7 +177,7 @@ void DefaultOutputBitStream::_close()
     // on writeBit() or writeBits()
     delete[] _buffer;
     _bufferSize = 8;
-    _buffer = new byte[_bufferSize];
+    _buffer = new kanzi::byte[_bufferSize];
     memset(&_buffer[0], 0, size_t(_bufferSize));
 }
 
@@ -198,7 +198,7 @@ void DefaultOutputBitStream::flush()
             _position = 0;
         }
     }
-    catch (ios_base::failure& e) {
+    catch (const ios_base::failure& e) {
         throw BitStreamException(e.what(), BitStreamException::INPUT_OUTPUT);
     }
 }
@@ -208,7 +208,7 @@ DefaultOutputBitStream::~DefaultOutputBitStream()
     try {
         _close();
     }
-    catch (exception&) {
+    catch (const exception&) {
         // Ignore and continue
     }
 

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _CompressedOutputStream_
-#define _CompressedOutputStream_
+#ifndef knz_CompressedOutputStream
+#define knz_CompressedOutputStream
 
 
 #include <string>
@@ -33,6 +33,9 @@ limitations under the License.
    #include <functional>
 #endif
 
+#ifdef CONCURRENCY_ENABLED
+#include <future>
+#endif
 
 namespace kanzi {
 
@@ -70,6 +73,27 @@ namespace kanzi {
            return *this;
        }
 
+#if __cplusplus >= 201103L
+       EncodingTaskResult(EncodingTaskResult&& other) noexcept
+           : _blockId(other._blockId)
+           , _error(other._error)
+           , _msg(std::move(other._msg)) // Transfer ownership of string buffer
+       {
+       }
+
+       // Move Assignment Operator
+       EncodingTaskResult& operator=(EncodingTaskResult&& other) noexcept
+       {
+           if (this != &other) {
+               _blockId = other._blockId;
+               _error = other._error;
+               _msg = std::move(other._msg); // Transfer ownership of string buffer
+           }
+
+           return *this;
+       }
+#endif
+
        ~EncodingTaskResult() {}
    };
 
@@ -83,14 +107,21 @@ namespace kanzi {
        DefaultOutputBitStream* _obs;
        XXHash32* _hasher32;
        XXHash64* _hasher64;
-       ATOMIC_INT* _processedBlockId;
+#ifdef CONCURRENCY_ENABLED
+       std::mutex* _blockMutex;
+       std::condition_variable* _blockCondition;
+#endif
+       atomic_int_t* _processedBlockId;
        std::vector<Listener<Event>*> _listeners;
        Context _ctx;
 
    public:
        EncodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuffer,
            DefaultOutputBitStream* obs, XXHash32* hasher32, XXHash64* hasher64,
-           ATOMIC_INT* processedBlockId, std::vector<Listener<Event>*>& listeners,
+#ifdef CONCURRENCY_ENABLED
+           std::mutex* blockMutex, std::condition_variable* blockCondition,
+#endif
+           atomic_int_t* processedBlockId, std::vector<Listener<Event>*>& listeners,
            const Context& ctx);
 
        ~EncodingTask(){}
@@ -166,17 +197,25 @@ namespace kanzi {
        short _entropyType;
        uint64 _transformType;
        DefaultOutputBitStream* _obs;
-       ATOMIC_BOOL _initialized;
-       ATOMIC_BOOL _closed;
-       ATOMIC_INT _blockId;
+       atomic_int_t _initialized;
+       atomic_int_t _closed;
+       atomic_int_t _blockId;
+       atomic_int_t _inputBlockId; // Counter for input blocks
        std::vector<Listener<Event>*> _listeners;
+       std::vector<int> _jobsPerTask;
        Context _ctx;
        bool _headless;
+
 #ifdef CONCURRENCY_ENABLED
        ThreadPool* _pool;
+       std::vector<std::future<EncodingTaskResult> > _futures; // Futures for async tasks
+       std::mutex _blockMutex;
+       std::condition_variable _blockCondition;
 #endif
 
-       void processBlock();
+       void processBuffer();
+
+       void submitBlock();
 
        static void notifyListeners(std::vector<Listener<Event>*>& listeners, const Event& evt);
    };
@@ -197,44 +236,5 @@ namespace kanzi {
        // NOOP: let the underlying output stream flush itself when needed
        return *this;
    }
-
-   inline std::ostream& CompressedOutputStream::put(char c)
-   {
-       try {
-           if (_buffers[_bufferId]->_index >= _bufferThreshold) {
-               // Current write buffer is full
-               const int nbTasks = (_nbInputBlocks == 0) || (_jobs < _nbInputBlocks) ? _jobs : _nbInputBlocks;
-
-               if (_bufferId + 1 < nbTasks) {
-                   _bufferId++;
-                   const int bSize = _blockSize + (_blockSize >> 6);
-                   const int bufSize = (bSize > 65536) ? bSize : 65536;
-
-                   if (_buffers[_bufferId]->_length == 0) {
-                       delete[] _buffers[_bufferId]->_array;
-                       _buffers[_bufferId]->_array = new byte[bufSize];
-                       _buffers[_bufferId]->_length = bufSize;
-                   }
-
-                   _buffers[_bufferId]->_index = 0;
-               }
-               else {
-                   if (_closed.load() == true)
-                       throw std::ios_base::failure("Stream closed");
-
-                   // If all buffers are full, time to encode
-                   processBlock();
-               }
-           }
-
-           _buffers[_bufferId]->_array[_buffers[_bufferId]->_index++] = byte(c);
-           return *this;
-       }
-       catch (std::exception& e) {
-           setstate(std::ios::badbit);
-           throw std::ios_base::failure(e.what());
-       }
-   }
 }
 #endif
-

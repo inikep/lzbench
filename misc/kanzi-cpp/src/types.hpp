@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,10 +14,36 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _types_
-#define _types_
+#ifndef knz_types
+#define knz_types
 
-    #ifdef _MSC_VER
+    #if defined(_MSC_VER) && _MSC_VER < 1600
+       // Visual Studio < 2010: no stdint.h
+       typedef unsigned char      uint8_t;
+       typedef signed char        int8_t;
+       typedef unsigned short     uint16_t;
+       typedef short              int16_t;
+       typedef unsigned int       uint32_t;
+       typedef int                int32_t;
+       typedef unsigned __int64   uint64_t;
+       typedef __int64            int64_t;
+    #else
+        #if __cplusplus >= 201103L
+            // C++11 or later
+            #include <cstdint>
+            #include <cstddef>
+        #else
+            // C++98 / C++03
+            #include <stdint.h>
+        #endif
+    #endif
+
+    #if defined(_MSC_VER)
+        #if _MSC_VER < 1900
+            // snprintf macro for MSVC < 2015
+            #define snprintf _snprintf
+        #endif
+
         #if !defined(__x86_64__)
             #define __x86_64__  _M_X64
         #endif
@@ -27,11 +53,11 @@ limitations under the License.
     #endif
 
 
-    #ifdef _MSC_VER
+    #if defined(_MSC_VER)
         #include <intrin.h>
         #define popcount __popcnt
     #else
-        #ifdef  __INTEL_COMPILER
+        #if defined(__INTEL_COMPILER)
             #include <intrin.h>
             #define popcount _popcnt32
         #else
@@ -132,10 +158,9 @@ limitations under the License.
     // the extra option /Zc:__cplusplus is added to the command line).
     // Otherwise, using the _MSVC_LANG macro returns the proper C++ version.
     #if __cplusplus >= 201103L
-       // C++ 11
+       // C++ 11 or higher
        #define FINAL final
        #define NOEXCEPT noexcept
-       #include <cstdint>
     #else
        #define FINAL
        #define NOEXCEPT throw()
@@ -159,53 +184,43 @@ limitations under the License.
              typedef unsigned __int64 uint64_t;
           #endif
        #else
-             typedef signed char int8_t;
-             typedef signed short int16_t;
-             typedef signed int int32_t;
-             typedef unsigned char uint8_t;
-             typedef unsigned short uint16_t;
-             typedef unsigned int uint32_t;
-
-             #if !defined(__APPLE__)
-                 typedef signed long int64_t;
-                 typedef unsigned long uint64_t;
+             // If stdint.h did not provide fixed-width types, define them here.
+             #ifndef INT64_MAX
+                 typedef signed char        int8_t;
+                 typedef signed short       int16_t;
+                 typedef signed int         int32_t;
+                 typedef unsigned char      uint8_t;
+                 typedef unsigned short     uint16_t;
+                 typedef unsigned int       uint32_t;
+                 typedef signed long long   int64_t;
+                 typedef unsigned long long uint64_t;
              #endif
        #endif
 
-
-      #if !defined(nullptr)
+       #if !defined(nullptr)
           #define nullptr NULL
-      #endif
+       #endif
     #endif
 
+
+    namespace kanzi
+    {
 #if __cplusplus >= 201703L
-    // byte is defined in C++17 and above
-    #include <cstddef>
-namespace kanzi
-{
-    typedef std::byte byte;
+        using byte = std::byte;
 #else
-namespace kanzi
-{
-    typedef uint8_t byte;
+        typedef uint8_t byte;
 #endif
+        typedef int8_t   int8;
+        typedef uint8_t  uint8;
+        typedef int16_t  int16;
+        typedef uint16_t uint16;
+        typedef int32_t  int32;
+        typedef uint32_t uint32;
+        typedef uint32_t uint;
 
-    typedef int8_t int8;
-    typedef uint8_t uint8;
-    typedef int16_t int16;
-    typedef int32_t int32;
-    typedef uint16_t uint16;
-    typedef uint32_t uint;
-    typedef uint32_t uint32;
-
-    #if defined(__APPLE__)
-        typedef signed long int64;
-        typedef unsigned long uint64;
-    #else
-        typedef int64_t int64;
+        typedef int64_t  int64;
         typedef uint64_t uint64;
-    #endif
-}
+    }
 
    #if defined(__MINGW32__)
       #define PATH_SEPARATOR '/'
@@ -216,11 +231,36 @@ namespace kanzi
    #endif
 
 
+   // Likely / unlikely macros
+   #if defined(__GNUC__) || defined(__clang__)
+       #ifndef KANZI_LIKELY
+           #define KANZI_LIKELY(x)   __builtin_expect(!!(x), 1)
+       #endif
+       #ifndef KANZI_UNLIKELY
+           #define KANZI_UNLIKELY(x) __builtin_expect(!!(x), 0)
+       #endif
+   #else
+       #ifndef KANZI_LIKELY
+           #define KANZI_LIKELY(x)   (x)
+       #endif
+       #ifndef KANZI_UNLIKELY
+           #define KANZI_UNLIKELY(x) (x)
+       #endif
+   #endif
+
+   // Force inline macro
+   #if defined(__GNUC__) || defined(__clang__)
+      #define KANZI_ALWAYS_INLINE inline __attribute__((always_inline))
+   #elif defined(_MSC_VER)
+      #define KANZI_ALWAYS_INLINE __forceinline
+   #else
+      #define KANZI_ALWAYS_INLINE inline
+   #endif
+
    #if defined(_MSC_VER)
-      #define ALIGNED_(x) __declspec(align(x))
+      #define KANZI_ALIGNED_(x) __declspec(align(x))
    #elif defined(__GNUC__)
-      #define ALIGNED_(x) __attribute__ ((aligned(x)))
+      #define KANZI_ALIGNED_(x) __attribute__ ((aligned(x)))
    #endif
 
 #endif
-

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,13 +14,12 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _ROLZCodec_
-#define _ROLZCodec_
+#ifndef knz_ROLZCodec
+#define knz_ROLZCodec
 
 #include "../Context.hpp"
 #include "../Memory.hpp"
 #include "../Transform.hpp"
-#include "../util.hpp"
 
 // Implementation of a Reduced Offset Lempel Ziv transform
 // More information about ROLZ at http://ezcodesample.com/rolz/rolz_article.html
@@ -289,17 +288,24 @@ namespace kanzi {
 
    inline int ROLZCodec::emitCopy(byte buf[], int dstIdx, int ref, int matchLen)
    {
-       if (dstIdx >= ref + matchLen) {
-           memcpy(&buf[dstIdx], &buf[ref], size_t(matchLen));
-           return dstIdx + matchLen;
+       const int res = dstIdx + matchLen;
+
+       if (dstIdx - ref >= 8) {
+           while (matchLen > 0) {
+               memcpy(&buf[dstIdx], &buf[ref], 8);
+               ref += 8;
+               dstIdx += 8;
+               matchLen -= 8;
+           }
+       }
+       else {
+           while (matchLen != 0) {
+              buf[dstIdx++] = buf[ref++];
+              matchLen--;
+           }
        }
 
-       while (matchLen != 0) {
-           buf[dstIdx++] = buf[ref++];
-           matchLen--;
-       }
-
-       return dstIdx;
+       return res;
    }
 
    inline void ROLZEncoder::encodeBit(int bit)
@@ -359,4 +365,3 @@ namespace kanzi {
    }
 }
 #endif
-

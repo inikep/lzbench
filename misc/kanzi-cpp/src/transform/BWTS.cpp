@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <sstream>
+
 #include "BWTS.hpp"
 #include "../Global.hpp"
 
@@ -23,15 +25,15 @@ using namespace std;
 const int BWTS::MAX_BLOCK_SIZE = 1024 * 1024 * 1024; // 1024 MB
 
 
-bool BWTS::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool BWTS::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
         return true;
 
-    if (!SliceArray<byte>::isValid(input))
+    if (!SliceArray<kanzi::byte>::isValid(input))
         throw invalid_argument("BWTS: Invalid input block");
 
-    if (!SliceArray<byte>::isValid(output))
+    if (!SliceArray<kanzi::byte>::isValid(output))
         throw invalid_argument("BWTS: Invalid output block");
 
     if (count > MAX_BLOCK_SIZE) {
@@ -49,8 +51,8 @@ bool BWTS::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
         return true;
     }
 
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
 
     // Lazy dynamic memory allocation
     if (_bufferSize < count) {
@@ -135,7 +137,7 @@ bool BWTS::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
     return true;
 }
 
-int BWTS::moveLyndonWordHead(int sa[], int isa[], const byte data[], int count,
+int BWTS::moveLyndonWordHead(int sa[], int isa[], const kanzi::byte data[], int count,
                              int start, int size, int rank) const
 {
     const int end = start + size;
@@ -170,15 +172,15 @@ int BWTS::moveLyndonWordHead(int sa[], int isa[], const byte data[], int count,
     return rank;
 }
 
-bool BWTS::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool BWTS::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
         return true;
 
-    if (!SliceArray<byte>::isValid(input))
+    if (!SliceArray<kanzi::byte>::isValid(input))
         throw invalid_argument("BWTS: Invalid input block");
 
-    if (!SliceArray<byte>::isValid(output))
+    if (!SliceArray<kanzi::byte>::isValid(output))
         throw invalid_argument("BWTS: Invalid output block");
 
     if (count < 2) {
@@ -210,8 +212,8 @@ bool BWTS::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
 
     // Aliasing
     int* lf = _buffer1;
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
 
     for (int i = 0; i < count; i++)
         lf[i] = buckets[int(src[i])]++;

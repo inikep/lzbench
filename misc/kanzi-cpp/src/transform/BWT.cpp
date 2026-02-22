@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,7 +14,9 @@ limitations under the License.
 */
 
 #include <cstring>
+#include <stdexcept>
 #include <vector>
+
 #include "BWT.hpp"
 #include "../Global.hpp"
 #include "../Memory.hpp"
@@ -87,15 +89,15 @@ bool BWT::setPrimaryIndex(int n, int primaryIndex)
     return true;
 }
 
-bool BWT::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool BWT::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
         return true;
 
-    if (!SliceArray<byte>::isValid(input))
+    if (!SliceArray<kanzi::byte>::isValid(input))
        throw invalid_argument("BWT: Invalid input block");
 
-    if (!SliceArray<byte>::isValid(output))
+    if (!SliceArray<kanzi::byte>::isValid(output))
         throw invalid_argument("BWT: Invalid output block");
 
     if (count > MAX_BLOCK_SIZE)
@@ -106,8 +108,8 @@ bool BWT::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
         return true;
     }
 
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
 
     // Lazy dynamic memory allocation
     if (_saSize < count) {
@@ -126,15 +128,15 @@ bool BWT::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
     return true;
 }
 
-bool BWT::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool BWT::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
         return true;
 
-    if (!SliceArray<byte>::isValid(input))
+    if (!SliceArray<kanzi::byte>::isValid(input))
         throw invalid_argument("BWT: Invalid input block");
 
-    if (!SliceArray<byte>::isValid(output))
+    if (!SliceArray<kanzi::byte>::isValid(output))
         throw invalid_argument("BWT: Invalid output block");
 
     if (count == 1) {
@@ -150,7 +152,7 @@ bool BWT::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
 }
 
 // When count <= BLOCK_SIZE_THRESHOLD2, mergeTPSI algo
-bool BWT::inverseMergeTPSI(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool BWT::inverseMergeTPSI(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
        return true;
@@ -179,8 +181,8 @@ bool BWT::inverseMergeTPSI(SliceArray<byte>& input, SliceArray<byte>& output, in
         sum += tmp;
     }
 
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
     memset(&_buffer[0], 0, size_t(_bufferSize) * sizeof(uint));
     const uint end1 = uint(pIdx);
     const uint end2 = uint(count);
@@ -206,7 +208,7 @@ bool BWT::inverseMergeTPSI(SliceArray<byte>& input, SliceArray<byte>& output, in
 
         while (n < count) {
             const int ptr = _buffer[t];
-            dst[n++] = byte(ptr);
+            dst[n++] = kanzi::byte(ptr);
             t = ptr >> 8;
         }
     }
@@ -231,19 +233,19 @@ bool BWT::inverseMergeTPSI(SliceArray<byte>& input, SliceArray<byte>& output, in
 
         // Last interval [7*chunk:count] smaller when 8*ckSize != count
         const int end = count - ckSize * 7;
-        byte* d0 = &dst[end + ckSize * 0];
-        byte* d1 = &dst[end + ckSize * 1];
-        byte* d2 = &dst[end + ckSize * 2];
-        byte* d3 = &dst[end + ckSize * 3];
-        byte* d4 = &dst[end + ckSize * 4];
-        byte* d5 = &dst[end + ckSize * 5];
-        byte* d6 = &dst[end + ckSize * 6];
-        byte* d7 = &dst[end + ckSize * 7];
+        kanzi::byte* d0 = &dst[end + ckSize * 0];
+        kanzi::byte* d1 = &dst[end + ckSize * 1];
+        kanzi::byte* d2 = &dst[end + ckSize * 2];
+        kanzi::byte* d3 = &dst[end + ckSize * 3];
+        kanzi::byte* d4 = &dst[end + ckSize * 4];
+        kanzi::byte* d5 = &dst[end + ckSize * 5];
+        kanzi::byte* d6 = &dst[end + ckSize * 6];
+        kanzi::byte* d7 = &dst[end + ckSize * 7];
         int n = -end;
         int ptr;
 
         #define S(t, d) ptr = _buffer[t]; \
-           d[n] = byte(ptr); \
+           d[n] = kanzi::byte(ptr); \
            t = ptr >> 8
 
         while (n < 0) {
@@ -276,7 +278,7 @@ bool BWT::inverseMergeTPSI(SliceArray<byte>& input, SliceArray<byte>& output, in
 }
 
 // When count > BLOCK_SIZE_THRESHOLD2, biPSIv2 algo
-bool BWT::inverseBiPSIv2(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool BWT::inverseBiPSIv2(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     // Lazy dynamic memory allocations
     if (_bufferSize < count + 1) {
@@ -287,15 +289,14 @@ bool BWT::inverseBiPSIv2(SliceArray<byte>& input, SliceArray<byte>& output, int 
         _buffer = new uint[_bufferSize];
     }
 
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
     const int pIdx = getPrimaryIndex(0);
 
     if ((pIdx < 0) || (pIdx > count))
         return false;
 
     uint* buckets = new uint[65536];
-    memset(&_buffer[0], 0, _bufferSize * sizeof(uint));
     memset(&buckets[0], 0, 65536 * sizeof(uint));
     uint freqs[256] = { 0 };
     Global::computeHistogram(&input._array[input._index], count, freqs);
@@ -431,7 +432,7 @@ bool BWT::inverseBiPSIv2(SliceArray<byte>& input, SliceArray<byte>& output, int 
 #endif
     }
 
-    dst[count - 1] = byte(lastc);
+    dst[count - 1] = kanzi::byte(lastc);
     delete[] fastBits;
     delete[] buckets;
     input._index += count;
@@ -440,7 +441,7 @@ bool BWT::inverseBiPSIv2(SliceArray<byte>& input, SliceArray<byte>& output, int 
 }
 
 template <class T>
-InverseBiPSIv2Task<T>::InverseBiPSIv2Task(uint* buf, uint* buckets, uint16* fastBits, byte* output,
+InverseBiPSIv2Task<T>::InverseBiPSIv2Task(uint* buf, uint* buckets, uint16* fastBits, kanzi::byte* output,
                                           int* primaryIndexes, int total, int start, int ckSize, int firstChunk, int lastChunk)
                                           : _data(buf)
                                           , _buckets(buckets)
@@ -465,14 +466,14 @@ T InverseBiPSIv2Task<T>::run()
 
     const uint shift = sh;
     int c = _firstChunk;
-    byte* d0 = &_dst[0 * _ckSize];
-    byte* d1 = &_dst[1 * _ckSize];
-    byte* d2 = &_dst[2 * _ckSize];
-    byte* d3 = &_dst[3 * _ckSize];
-    byte* d4 = &_dst[4 * _ckSize];
-    byte* d5 = &_dst[5 * _ckSize];
-    byte* d6 = &_dst[6 * _ckSize];
-    byte* d7 = &_dst[7 * _ckSize];
+    kanzi::byte* d0 = &_dst[0 * _ckSize];
+    kanzi::byte* d1 = &_dst[1 * _ckSize];
+    kanzi::byte* d2 = &_dst[2 * _ckSize];
+    kanzi::byte* d3 = &_dst[3 * _ckSize];
+    kanzi::byte* d4 = &_dst[4 * _ckSize];
+    kanzi::byte* d5 = &_dst[5 * _ckSize];
+    kanzi::byte* d6 = &_dst[6 * _ckSize];
+    kanzi::byte* d7 = &_dst[7 * _ckSize];
 
     if (_start + 7 * _ckSize <= _total) {
         for (; c + 8 <= _lastChunk; c += 8) {
@@ -552,22 +553,22 @@ T InverseBiPSIv2Task<T>::run()
                     } while (_buckets[s7] <= p7);
                 }
 
-                d0[i - 1] = byte(s0 >> 8);
-                d0[i] = byte(s0);
-                d1[i - 1] = byte(s1 >> 8);
-                d1[i] = byte(s1);
-                d2[i - 1] = byte(s2 >> 8);
-                d2[i] = byte(s2);
-                d3[i - 1] = byte(s3 >> 8);
-                d3[i] = byte(s3);
-                d4[i - 1] = byte(s4 >> 8);
-                d4[i] = byte(s4);
-                d5[i - 1] = byte(s5 >> 8);
-                d5[i] = byte(s5);
-                d6[i - 1] = byte(s6 >> 8);
-                d6[i] = byte(s6);
-                d7[i - 1] = byte(s7 >> 8);
-                d7[i] = byte(s7);
+                d0[i - 1] = kanzi::byte(s0 >> 8);
+                d0[i] = kanzi::byte(s0);
+                d1[i - 1] = kanzi::byte(s1 >> 8);
+                d1[i] = kanzi::byte(s1);
+                d2[i - 1] = kanzi::byte(s2 >> 8);
+                d2[i] = kanzi::byte(s2);
+                d3[i - 1] = kanzi::byte(s3 >> 8);
+                d3[i] = kanzi::byte(s3);
+                d4[i - 1] = kanzi::byte(s4 >> 8);
+                d4[i] = kanzi::byte(s4);
+                d5[i - 1] = kanzi::byte(s5 >> 8);
+                d5[i] = kanzi::byte(s5);
+                d6[i - 1] = kanzi::byte(s6 >> 8);
+                d6[i] = kanzi::byte(s6);
+                d7[i - 1] = kanzi::byte(s7 >> 8);
+                d7[i] = kanzi::byte(s7);
 
                 p0 = _data[p0];
                 p1 = _data[p1];
@@ -593,8 +594,8 @@ T InverseBiPSIv2Task<T>::run()
             while (_buckets[s] <= p)
                 s++;
 
-            _dst[i - 1] = byte(s >> 8);
-            _dst[i] = byte(s);
+            _dst[i - 1] = kanzi::byte(s >> 8);
+            _dst[i] = kanzi::byte(s);
             p = _data[p];
         }
 

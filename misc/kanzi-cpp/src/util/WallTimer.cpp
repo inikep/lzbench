@@ -13,16 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#pragma once
-#ifndef knz_OutputStream
-#define knz_OutputStream
+#include "WallTimer.hpp"
 
-#include <ostream>
-
-namespace kanzi
-{
-   // Maps to ostream
-   typedef std::ostream OutputStream;
-}
+#if defined(KNZ_USE_WINDOWS_QPC)
+    LARGE_INTEGER WallTimer::_frequency = {};
+    bool WallTimer::_initialized = false;
 #endif
-

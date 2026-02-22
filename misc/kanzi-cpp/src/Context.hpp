@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,117 +14,153 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _Context_
-#define _Context_
+#ifndef knz_Context
+#define knz_Context
 
 #include <map>
-#include <sstream>
 #include <string>
-#include "concurrent.hpp"
-#include "util/strings.hpp"
 
-namespace kanzi
-{
+#if __cplusplus >= 201703L
+    #include <variant>
+#endif
 
-   // Poor's man equivalent to std::variant used to support C++98 and up.
-   // union cannot be used due to the std:string field.
-   // The extra memory used does not matter for the application context since
-   // the map is small.
-   typedef struct ContextVal {
-       int64 lVal;
-       std::string sVal;
-       bool isString;
+#include "concurrent.hpp" // definition of CONCURRENCY_ENABLED
 
-       ContextVal(bool b, int64 val, const std::string& str) : lVal(val), sVal(str), isString(b) {}
-       ContextVal() { isString = false; lVal = 0; }
-   } ctxVal;
+namespace kanzi {
 
-   class Context
-   {
+   #if __cplusplus >= 201703L
+    // C++17+ version using std::variant
+    typedef std::variant<int64, std::string> ContextVal;
+
+   #else
+    // C++98 / C++03 / C++11 / C++14
+    struct ContextVal {
+        int64       lVal;
+        std::string sVal;
+        bool        isString;
+
+        ContextVal() : lVal(0), isString(false) {}
+        ContextVal(int64 v) : lVal(v), isString(false) {}
+        ContextVal(const std::string& s) : lVal(0), sVal(s), isString(true) {}
+    };
+   #endif
+
+
+   class Context {
    public:
 
-#ifdef CONCURRENCY_ENABLED
+   #ifdef CONCURRENCY_ENABLED
        Context(ThreadPool* p = nullptr) : _pool(p) {}
        Context(const Context& c) : _map(c._map), _pool(c._pool) {}
        Context(const Context& c, ThreadPool* p) : _map(c._map), _pool(p) {}
        Context& operator=(const Context& c) = default;
-#else
+   #else
        Context() {}
        Context(const Context& c) : _map(c._map) {}
-       Context& operator=(const Context& c) { _map = c._map; return *this; };
-#endif
+       Context& operator=(const Context& c) { _map = c._map; return *this; }
+   #endif
 
-       virtual ~Context() {}
+       ~Context() {}
+
        bool has(const std::string& key) const;
+
        int getInt(const std::string& key, int defValue = 0) const;
        int64 getLong(const std::string& key, int64 defValue = 0) const;
-       std::string getString(const std::string& key, const std::string& defValue = "") const;
+       std::string getString(const std::string& key,
+                             const std::string& defValue = "") const;
+
        void putInt(const std::string& key, int value);
        void putLong(const std::string& key, int64 value);
        void putString(const std::string& key, const std::string& value);
 
-#ifdef CONCURRENCY_ENABLED
+   #ifdef CONCURRENCY_ENABLED
        ThreadPool* getPool() const { return _pool; }
-#endif
+   #endif
 
    private:
        std::map<std::string, ContextVal> _map;
 
-#ifdef CONCURRENCY_ENABLED
+   #ifdef CONCURRENCY_ENABLED
        ThreadPool* _pool;
-#endif
+   #endif
    };
 
 
    inline bool Context::has(const std::string& key) const
    {
-      return _map.find(key) != _map.end();
+       return _map.find(key) != _map.end();
    }
 
 
    inline int Context::getInt(const std::string& key, int defValue) const
    {
-      return int(this->getLong(key, defValue));
+       return int(getLong(key, defValue));
    }
 
 
    inline int64 Context::getLong(const std::string& key, int64 defValue) const
    {
-      std::map<std::string, ContextVal>::const_iterator it = _map.find(key);
+       const std::map<std::string, ContextVal>::const_iterator it = _map.find(key);
 
-      if (it == _map.end())
+       if (it == _map.end())
           return defValue;
 
-      return it->second.isString == true ? defValue : it->second.lVal;
+   #if __cplusplus >= 201703L
+       if (std::holds_alternative<int64>(it->second))
+           return std::get<int64>(it->second);
+
+       return defValue;
+   #else
+       return it->second.isString ? defValue : it->second.lVal;
+   #endif
    }
 
 
-   inline std::string Context::getString(const std::string& key, const std::string& defValue) const
+   inline std::string Context::getString(const std::string& key,
+                                         const std::string& defValue) const
    {
-      std::map<std::string, ContextVal>::const_iterator it = _map.find(key);
+       const std::map<std::string, ContextVal>::const_iterator it = _map.find(key);
 
-      if (it == _map.end())
-          return defValue;
+       if (it == _map.end())
+           return defValue;
 
-      return it->second.isString == true ? it->second.sVal : defValue;
+   #if __cplusplus >= 201703L
+       if (std::holds_alternative<std::string>(it->second))
+           return std::get<std::string>(it->second);
+
+       return defValue;
+   #else
+       return it->second.isString ? it->second.sVal : defValue;
+   #endif
    }
 
 
    inline void Context::putInt(const std::string& key, int value)
    {
-      _map[key] = ctxVal(false, value, "");
+   #if __cplusplus >= 201703L
+       _map[key] = int64(value);
+   #else
+       _map[key] = ContextVal((int64)value);
+   #endif
    }
 
 
    inline void Context::putLong(const std::string& key, int64 value)
    {
-      _map[key] = ctxVal(false, value, "");
+   #if __cplusplus >= 201703L
+       _map[key] = value;
+   #else
+       _map[key] = ContextVal(value);
+   #endif
    }
-
 
    inline void Context::putString(const std::string& key, const std::string& value)
    {
-      _map[key] = ctxVal(true, 0, value);
+   #if __cplusplus >= 201703L
+       _map[key] = value;
+   #else
+       _map[key] = ContextVal(value);
+   #endif
    }
 
 }

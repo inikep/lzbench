@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _DefaultInputBitStream_
-#define _DefaultInputBitStream_
+#ifndef knz_DefaultInputBitStream
+#define knz_DefaultInputBitStream
 
 #include "../BitStreamException.hpp"
 #include "../InputBitStream.hpp"
@@ -96,20 +96,25 @@ namespace kanzi {
 
    inline uint64 DefaultInputBitStream::readBits(uint count)
    {
-       if ((count == 0) || (count > 64))
-           throw BitStreamException("Invalid bit count: " + TOSTR(count) + " (must be in [1..64])");
+      if ((count == 0) || (count > 64))
+          throw BitStreamException("Invalid bit count: " + TOSTR(count) + " (must be in [1..64])");
 
-       if (count <= _availBits) {
-           // Enough spots available in 'current'
-           _availBits -= count;
-           return (_current >> _availBits) & (uint64(-1) >> (64 - count));
-       }
+      if (count <= _availBits) {
+          _availBits -= count;
+          return (_current >> _availBits) & (uint64(-1) >> (64 - count));
+      }
 
-       // Not enough spots available in 'current'
-       count -= _availBits;
-       const uint64 res = _current & ((uint64(1) << _availBits) - 1);
-       _availBits = pullCurrent();
-       return (res << 1 << (count - 1)) | readBits(count); // handle count = 64 and _availBits < count (at EOS)
+      // Not enough spots available in 'current'
+      count -= _availBits;
+      uint64 res = _current & ((uint64(1) << _availBits) - 1);
+      _availBits = pullCurrent();
+
+      if (_availBits < count)
+          throw BitStreamException("No more data to read in the bitstream", BitStreamException::END_OF_STREAM);
+
+      _availBits -= count;
+      const uint64 tail = (_current >> _availBits) & (uint64(-1) >> (64 - count));
+      return (count == 64) ? tail : ((res << count) | tail);
    }
 
    // Pull 64 bits of current value from buffer.
@@ -136,7 +141,7 @@ namespace kanzi {
        }
 
        // Regular processing, buffer length is multiple of 8
-       _current = BigEndian::readLong64(&_buffer[_position]);
+       _current = uint64(BigEndian::readLong64(&_buffer[_position]));
        _position += 8;
        return 64;
    }

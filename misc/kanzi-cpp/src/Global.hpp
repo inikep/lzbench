@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _Global_
-#define _Global_
+#ifndef knz_Global
+#define knz_Global
 
 #include <set>
 #include <string>
@@ -94,9 +94,7 @@ namespace kanzi {
            unsigned long res;
            _BitScanReverse(&res, x);
            return int(res);
-       #elif defined(__GNUG__)
-           return 31 ^ __builtin_clz(x);
-       #elif defined(__clang__)
+       #elif defined(__GNUG__) || defined(__clang__)
            return 31 ^ __builtin_clz(x);
        #else
            int res = 0;
@@ -123,9 +121,7 @@ namespace kanzi {
            unsigned long res;
            _BitScanReverse64(&res, x);
            return int(res);
-       #elif defined(__GNUG__)
-           return 63 ^ __builtin_clzll(x);
-       #elif defined(__clang__)
+       #elif defined(__GNUG__) || defined(__clang__)
            return 63 ^ __builtin_clzll(x);
        #else
            int res = 0;
@@ -157,12 +153,10 @@ namespace kanzi {
            unsigned long res;
            _BitScanForward(&res, x);
            return int(res);
-       #elif defined(__GNUG__)
-           return __builtin_ctz(x);
-       #elif defined(__clang__)
+       #elif defined(__GNUG__) || defined(__clang__)
            return __builtin_ctz(x);
        #else
-           return _log2((x & (~x + 1)) - 1);
+           return _log2(x & (~x + 1));
        #endif
    }
 
@@ -174,12 +168,10 @@ namespace kanzi {
            unsigned long res;
            _BitScanForward64(&res, x);
            return int(res);
-       #elif defined(__GNUG__)
-           return __builtin_ctzll(x);
-       #elif defined(__clang__)
+       #elif defined(__GNUG__) || defined(__clang__)
            return __builtin_ctzll(x);
        #else
-           return _log2((x & (~x + 1)) - 1);
+           return _log2(x & (~x + 1));
        #endif
    }
 }

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -24,6 +24,7 @@ limitations under the License.
 #include "../bitstream/DefaultOutputBitStream.hpp"
 #include "../entropy/ANSRangeDecoder.hpp"
 #include "../entropy/ANSRangeEncoder.hpp"
+#include "../util/fixedbuf.hpp"
 
 using namespace kanzi;
 using namespace std;
@@ -44,11 +45,11 @@ ROLZCodec::ROLZCodec(uint logPosChecks)
 ROLZCodec::ROLZCodec(Context& ctx)
 {
     string transform = ctx.getString("transform", "NONE");
-    _delegate = (transform.find("ROLZX") != string::npos) ? static_cast<Transform<byte>*>(new ROLZCodec2(ctx)) :
-       static_cast<Transform<byte>*>(new ROLZCodec1(ctx));
+    _delegate = (transform.find("ROLZX") != string::npos) ? static_cast<Transform<kanzi::byte>*>(new ROLZCodec2(ctx)) :
+       static_cast<Transform<kanzi::byte>*>(new ROLZCodec1(ctx));
 }
 
-bool ROLZCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool ROLZCodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
         return true;
@@ -56,10 +57,10 @@ bool ROLZCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int c
     if (count < MIN_BLOCK_SIZE)
         return false;
 
-    if (!SliceArray<byte>::isValid(input))
+    if (!SliceArray<kanzi::byte>::isValid(input))
         throw invalid_argument("ROLZ codec: Invalid input block");
 
-    if (!SliceArray<byte>::isValid(output))
+    if (!SliceArray<kanzi::byte>::isValid(output))
         throw invalid_argument("ROLZ codec: Invalid output block");
 
     if (input._array == output._array)
@@ -71,18 +72,21 @@ bool ROLZCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int c
     return _delegate->forward(input, output, count);
 }
 
-bool ROLZCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool ROLZCodec::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
         return true;
 
-    if (!SliceArray<byte>::isValid(input))
+    if (!SliceArray<kanzi::byte>::isValid(input))
         throw invalid_argument("ROLZ codec: Invalid input block");
 
-    if (!SliceArray<byte>::isValid(output))
+    if (!SliceArray<kanzi::byte>::isValid(output))
         throw invalid_argument("ROLZ codec: Invalid output block");
 
     if (input._array == output._array)
+        return false;
+
+    if ((count < 5) || (input._index + count > input._length))
         return false;
 
     if (count > MAX_BLOCK_SIZE)
@@ -131,15 +135,15 @@ ROLZCodec1::ROLZCodec1(Context& ctx) :
 
 
 // return position index (_logPosChecks bits) + length (16 bits) or -1
-int ROLZCodec1::findMatch(const byte buf[], int pos, int end, uint32 hash32, const uint32* matches, const uint8* counter) const
+int ROLZCodec1::findMatch(const kanzi::byte buf[], int pos, int end, uint32 hash32, const uint32* matches, const uint8* counter) const
 {
     const int s = int(*counter);
     const int e = s - _posChecks;
     prefetchRead(matches);
-    const byte* curBuf = &buf[pos];
+    const kanzi::byte* curBuf = &buf[pos];
     int bestLen = 0;
     int bestIdx = -1;
-    const int maxMatch = min(ROLZCodec1::MAX_MATCH, end - pos) - 4;
+    const int maxMatch = min(ROLZCodec1::MAX_MATCH, end - pos) - 8;
 
     // Check all recorded positions
     for (int i = s; i > e; i--) {
@@ -157,14 +161,14 @@ int ROLZCodec1::findMatch(const byte buf[], int pos, int end, uint32 hash32, con
         int n = 0;
 
         while (n < maxMatch) {
-            const int32 diff = LittleEndian::readInt32(&buf[ref + n]) ^ LittleEndian::readInt32(&curBuf[n]);
+            const int64 diff = LittleEndian::readLong64(&buf[ref + n]) ^ LittleEndian::readLong64(&curBuf[n]);
 
             if (diff != 0) {
-                n += (Global::trailingZeros(uint32(diff)) >> 3);
+                n += (Global::trailingZeros(uint64(diff)) >> 3);
                 break;
             }
 
-            n += 4;
+            n += 8;
         }
 
         if (n > bestLen) {
@@ -176,22 +180,22 @@ int ROLZCodec1::findMatch(const byte buf[], int pos, int end, uint32 hash32, con
     return (bestLen < _minMatch) ? -1 : ((s - bestIdx) << 16) | (bestLen - _minMatch);
 }
 
-bool ROLZCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool ROLZCodec1::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (output._length < getMaxEncodedLength(count))
         return false;
 
     const int srcEnd = count - 4;
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
     BigEndian::writeInt32(&dst[0], count);
     int dstIdx = 5;
     int sizeChunk = min(count, ROLZCodec::CHUNK_SIZE);
     int startChunk = 0;
-    SliceArray<byte> litBuf(new byte[getMaxEncodedLength(sizeChunk)], getMaxEncodedLength(sizeChunk));
-    SliceArray<byte> lenBuf(new byte[sizeChunk / 5], sizeChunk / 5);
-    SliceArray<byte> mIdxBuf(new byte[sizeChunk / 4], sizeChunk / 4);
-    SliceArray<byte> tkBuf(new byte[sizeChunk / 4], sizeChunk / 4);
+    SliceArray<kanzi::byte> litBuf(new kanzi::byte[getMaxEncodedLength(sizeChunk)], getMaxEncodedLength(sizeChunk));
+    SliceArray<kanzi::byte> lenBuf(new kanzi::byte[sizeChunk / 5], sizeChunk / 5);
+    SliceArray<kanzi::byte> mIdxBuf(new kanzi::byte[sizeChunk / 4], sizeChunk / 4);
+    SliceArray<kanzi::byte> tkBuf(new kanzi::byte[sizeChunk / 4], sizeChunk / 4);
     memset(&_counters[0], 0, sizeof(_counters));
     bool success = true;
     const int litOrder = (count < (1 << 17)) ? 0 : 1;
@@ -237,7 +241,7 @@ bool ROLZCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
     }
 
     flags |= (_logPosChecks << 4);
-    dst[4] = byte(flags);
+    dst[4] = kanzi::byte(flags);
     const bool cond = _minMatch == MIN_MATCH3;
 	
     // Main loop
@@ -249,8 +253,8 @@ bool ROLZCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
         memset(&_matches[0], 0, sizeof(uint32) * size_t(ROLZCodec::HASH_SIZE << _logPosChecks));
         const int endChunk = min(startChunk + sizeChunk, srcEnd);
         sizeChunk = endChunk - startChunk;
-        const byte* buf = &src[startChunk];
-        const byte* ref = &src[startChunk - delta];
+        const kanzi::byte* buf = &src[startChunk];
+        const kanzi::byte* ref = &src[startChunk - delta];
         int srcIdx = 0;
         const int n = min(srcEnd - startChunk, 8);
 
@@ -302,11 +306,11 @@ bool ROLZCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
             const int mLen = match & 0xFFFF;
 
             if (mLen >= 7) {
-                tkBuf._array[tkBuf._index++] = byte(token | 0x07);
+                tkBuf._array[tkBuf._index++] = kanzi::byte(token | 0x07);
                 lenBuf._index += emitLength(&lenBuf._array[lenBuf._index], mLen - 7);
             }
             else {
-                tkBuf._array[tkBuf._index++] = byte(token | mLen);
+                tkBuf._array[tkBuf._index++] = kanzi::byte(token | mLen);
             }
 
             // Emit literals
@@ -317,7 +321,7 @@ bool ROLZCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
             }
 
             // Emit match index
-            mIdxBuf._array[mIdxBuf._index++] = byte(match >> 16);
+            mIdxBuf._array[mIdxBuf._index++] = kanzi::byte(match >> 16);
             srcIdx += (mLen + _minMatch);
             firstLitIdx = srcIdx;
             srcInc = 0;
@@ -329,7 +333,7 @@ bool ROLZCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
         if (tkBuf._index != 0) {
            // At least one match to emit
            const int token = (litLen < 31) ? litLen << 3 : 0xF8;
-           tkBuf._array[tkBuf._index++] = byte(token);
+           tkBuf._array[tkBuf._index++] = kanzi::byte(token);
         }
 
         lenBuf._index += (litLen >= 31 ? emitLength(&lenBuf._array[lenBuf._index], litLen - 31) : 0);
@@ -352,12 +356,12 @@ bool ROLZCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
             mEnc.encode(mIdxBuf._array, 0, mIdxBuf._index);
             mEnc.dispose();
         }
-        catch (BitStreamException& e) {
+        catch (const BitStreamException&) {
             delete[] litBuf._array;
             delete[] lenBuf._array;
             delete[] mIdxBuf._array;
             delete[] tkBuf._array;
-            throw e;
+            throw;
         }
 
         // Copy bitstream array to output
@@ -393,14 +397,13 @@ End:
     delete[] lenBuf._array;
     delete[] mIdxBuf._array;
     delete[] tkBuf._array;
-    return (input._index == count) && (output._index < count);
+    return (input._index == count) && (dstIdx < count);
 }
 
 
-bool ROLZCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool ROLZCodec1::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
-    byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    kanzi::byte* src = &input._array[input._index];
     const int end = BigEndian::readInt32(&src[0]);
 
     if ((end <= 4) || (end - 4 > output._length - output._index))
@@ -448,11 +451,11 @@ bool ROLZCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
     _posChecks = 1 << _logPosChecks;
     _maskChecks = uint8(_posChecks - 1);
 
-    byte* arena = new byte[sizeChunk + sizeChunk / 5 + 2 * sizeChunk / 4];
-    SliceArray<byte> litBuf(&arena[0], sizeChunk);
-    SliceArray<byte> mIdxBuf(&arena[sizeChunk], sizeChunk / 4);
-    SliceArray<byte> tkBuf(&arena[sizeChunk + sizeChunk / 4], sizeChunk / 4);
-    SliceArray<byte> lenBuf(&arena[sizeChunk + sizeChunk / 2], sizeChunk / 5);
+    kanzi::byte* arena = new kanzi::byte[sizeChunk + sizeChunk / 5 + 2 * sizeChunk / 4];
+    SliceArray<kanzi::byte> litBuf(&arena[0], sizeChunk);
+    SliceArray<kanzi::byte> mIdxBuf(&arena[sizeChunk], sizeChunk / 4);
+    SliceArray<kanzi::byte> tkBuf(&arena[sizeChunk + sizeChunk / 4], sizeChunk / 4);
+    SliceArray<kanzi::byte> lenBuf(&arena[sizeChunk + sizeChunk / 2], sizeChunk / 5);
     memset(&_counters[0], 0, sizeof(_counters));
     bool success = true;
     const int litBufSize = litBuf._length;
@@ -467,17 +470,19 @@ bool ROLZCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
         const int endChunk = min(startChunk + sizeChunk, dstEnd);
         sizeChunk = endChunk - startChunk;
         bool onlyLiterals = false;
+        int litLenDecoded = 0;
 
         try
         {
             // Decode literal, length and match index buffers
-            istreambuf<char> buffer(reinterpret_cast<char*>(&src[srcIdx]), max(min(count - srcIdx, sizeChunk + 16), 65536));
+            ifixedbuf buffer(reinterpret_cast<char*>(&src[srcIdx]), max(min(count - srcIdx, sizeChunk + 16), 65536));
             istream is(&buffer);
             DefaultInputBitStream ibs(is, 65536);
             const int litLen = int(ibs.readBits(32));
             const int tkLen = int(ibs.readBits(32));
             const int mLenLen = int(ibs.readBits(32));
             const int mIdxLen = int(ibs.readBits(32));
+            const int firstLitLen = min(sizeChunk, 8);
 
             if ((litLen < 0) || (tkLen < 0) || (mLenLen < 0) || (mIdxLen < 0)) {
                 input._index += srcIdx;
@@ -486,12 +491,16 @@ bool ROLZCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 goto End;
             }
 
-            if ((litLen > litBuf._length) || (tkLen > tkBuf._length) || (mLenLen > lenBuf._length) || (mIdxLen > mIdxBuf._length)) {
+            if ((litLen > litBuf._length) || (tkLen > tkBuf._length) || (mLenLen > lenBuf._length) ||
+                (mIdxLen > mIdxBuf._length) || (litLen < firstLitLen) || (litLen > sizeChunk) ||
+		((tkLen == 0) && (mIdxLen != 0)) || ((tkLen > 0) && (mIdxLen + 1 != tkLen))) {
                 input._index += srcIdx;
                 output._index += startChunk;
                 success = false;
                 goto End;
             }
+
+            litLenDecoded = litLen;
 
             ANSRangeDecoder litDec(ibs, litOrder);
             litDec.decode(litBuf._array, 0, litLen);
@@ -505,13 +514,18 @@ bool ROLZCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
             onlyLiterals = tkLen == 0;
             srcIdx += int((ibs.read() + 7) >> 3);
         }
-        catch (BitStreamException& e) {
+        catch (const BitStreamException&) {
             delete[] arena;
-            throw e;
+            throw;
         }
 
         if (onlyLiterals == true) {
             // Shortcut when no match
+            if (litLenDecoded != sizeChunk) {
+                success = false;
+                goto End;
+            }
+
             memcpy(&output._array[output._index], &litBuf._array[0], size_t(sizeChunk));
             startChunk = endChunk;
             output._index += sizeChunk;
@@ -519,8 +533,8 @@ bool ROLZCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
         }
 
         const bool cond = _minMatch == MIN_MATCH3;
-        byte* buf = &output._array[output._index];
-        const byte* refBuf = &output._array[output._index - delta];
+        kanzi::byte* buf = &output._array[output._index];
+        const kanzi::byte* refBuf = &output._array[output._index - delta];
         int dstIdx = 0;
         const int n = min(dstEnd - output._index, 8);
 
@@ -609,7 +623,7 @@ End:
            success = false;
         }
         else {
-           memcpy(&dst[output._index], &src[srcIdx], 4);
+           memcpy(&output._array[output._index], &src[srcIdx], 4);
            output._index += 4;
            srcIdx += 4;
         }
@@ -628,7 +642,7 @@ const int ROLZEncoder::LITERAL_FLAG = 1;
 const int ROLZEncoder::PSCALE = 0xFFFF;
 
 
-ROLZEncoder::ROLZEncoder(uint litLogSize, uint mLogSize, byte buf[], int& idx)
+ROLZEncoder::ROLZEncoder(uint litLogSize, uint mLogSize, kanzi::byte buf[], int& idx)
     : _idx(idx)
     , _low(0)
     , _high(TOP)
@@ -684,7 +698,7 @@ void ROLZEncoder::encode9Bits(int val)
 void ROLZEncoder::dispose()
 {
     for (int i = 0; i < 8; i++) {
-        _buf[_idx + i] = byte(_low >> 56);
+        _buf[_idx + i] = kanzi::byte(_low >> 56);
         _low <<= 8;
     }
 
@@ -700,7 +714,7 @@ const int ROLZDecoder::LITERAL_FLAG = 1;
 const int ROLZDecoder::PSCALE = 0xFFFF;
 
 
-ROLZDecoder::ROLZDecoder(uint litLogSize, uint mLogSize, byte buf[], int& idx)
+ROLZDecoder::ROLZDecoder(uint litLogSize, uint mLogSize, kanzi::byte buf[], int& idx)
     : _idx(idx)
     , _low(0)
     , _high(TOP)
@@ -802,16 +816,16 @@ ROLZCodec2::ROLZCodec2(Context& ctx) :
 }
 
 // return position index (_logPosChecks bits) + length (16 bits) or -1
-int ROLZCodec2::findMatch(const byte buf[], int pos, int end, uint32 key)
+int ROLZCodec2::findMatch(const kanzi::byte buf[], int pos, int end, uint32 key)
 {
     const int counter = _counters[key];
     uint32* matches = &_matches[key << _logPosChecks];
     prefetchRead(matches);
-    const byte* curBuf = &buf[pos];
+    const kanzi::byte* curBuf = &buf[pos];
     const uint32 hash32 = ROLZCodec::hash(curBuf);
     int bestLen = 0;
     int bestIdx = -1;
-    const int maxMatch = min(ROLZCodec2::MAX_MATCH, end - pos) - 4;
+    const int maxMatch = min(ROLZCodec2::MAX_MATCH, end - pos) - 8;
 
     // Check all recorded positions
     for (int i = counter; i > counter - _posChecks; i--) {
@@ -829,14 +843,14 @@ int ROLZCodec2::findMatch(const byte buf[], int pos, int end, uint32 key)
         int n = 0;
 
         while (n < maxMatch) {
-            const int32 diff = LittleEndian::readInt32(&buf[ref + n]) ^ LittleEndian::readInt32(&curBuf[n]);
+            const int64 diff = LittleEndian::readLong64(&buf[ref + n]) ^ LittleEndian::readLong64(&curBuf[n]);
 
             if (diff != 0) {
-                n += (Global::trailingZeros(uint32(diff)) >> 3);
+                n += (Global::trailingZeros(uint64(diff)) >> 3);
                 break;
             }
 
-            n += 4;
+            n += 8;
         }
 
         if (n > bestLen) {
@@ -854,14 +868,14 @@ int ROLZCodec2::findMatch(const byte buf[], int pos, int end, uint32 key)
     return (bestLen < _minMatch) ? -1 : (bestIdx << 16) | (bestLen - _minMatch);
 }
 
-bool ROLZCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool ROLZCodec2::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (output._length < getMaxEncodedLength(count))
         return false;
 
     const int srcEnd = count - 4;
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
     BigEndian::writeInt32(&dst[0], count);
     _minMatch = MIN_MATCH3;
     int flags = 0;
@@ -891,7 +905,7 @@ bool ROLZCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
 	
     const int dt = delta;
     const bool cond = _minMatch == MIN_MATCH3;
-    dst[4] = byte(flags);
+    dst[4] = kanzi::byte(flags);
     int srcIdx = 0;
     int dstIdx = 5;
     int sizeChunk = min(count, ROLZCodec::CHUNK_SIZE);
@@ -909,7 +923,7 @@ bool ROLZCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
 
         // First literals
         const int n = min(srcEnd - startChunk, 8);
-        re.setContext(LITERAL_CTX, byte(0));
+        re.setContext(LITERAL_CTX, kanzi::byte(0));
 
         for (int j = 0; j < n; j++) {
             re.encode9Bits((LITERAL_FLAG << 8) | int(src[srcIdx]));
@@ -952,7 +966,7 @@ bool ROLZCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
     return (input._index == count) && (output._index < count);
 }
 
-bool ROLZCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool ROLZCodec2::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
         return true;
@@ -960,7 +974,7 @@ bool ROLZCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
     if (input._array == output._array)
         return false;
 
-    byte* src = &input._array[input._index];
+    kanzi::byte* src = &input._array[input._index];
     const int dstEnd = BigEndian::readInt32(&src[0]);
 
     if ((dstEnd <= 0) || (dstEnd > output._length - output._index))
@@ -989,12 +1003,12 @@ bool ROLZCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
         const int endChunk = min(startChunk + sizeChunk, dstEnd);
         sizeChunk = endChunk - startChunk;
         rd.reset();
-        byte* dst = &output._array[output._index];
-        byte* refBuf = &output._array[output._index - delta];
+        kanzi::byte* dst = &output._array[output._index];
+        kanzi::byte* refBuf = &output._array[output._index - delta];
         int dstIdx = 0;
 
         // First literals
-        rd.setContext(LITERAL_CTX, byte(0));
+        rd.setContext(LITERAL_CTX, kanzi::byte(0));
         const int n = min(dstEnd - output._index, 8);
 
         for (int j = 0; j < n; j++) {
@@ -1006,7 +1020,7 @@ bool ROLZCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 return false;
             }
 
-            dst[dstIdx++] = byte(val);
+            dst[dstIdx++] = kanzi::byte(val);
         }
 
         // Next chunk
@@ -1018,7 +1032,7 @@ bool ROLZCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
             int val = rd.decode9Bits();
 
             if ((val >> 8) == LITERAL_FLAG) {
-                dst[dstIdx++] = byte(val);
+                dst[dstIdx++] = kanzi::byte(val);
             }
             else {
                 // Read one match length and index

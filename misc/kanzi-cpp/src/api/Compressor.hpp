@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,23 +14,50 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _Compressor_
-#define _Compressor_
+#ifndef knz_Compressor
+#define knz_Compressor
 
 #ifdef _WIN32
    #define CDECL __cdecl
+
+   #ifdef KANZI_EXPORTS
+      #define KANZI_API __declspec(dllexport)
+   #else
+      #define KANZI_API
+   #endif
 #else
    #define CDECL
+   #define KANZI_API
 #endif
 
 #include <stdio.h>
+
+#ifdef __cplusplus
+    #if __cplusplus >= 201103L
+       // C++ 11 or higher
+       #define KANZI_NOEXCEPT noexcept
+    #else
+       #define KANZI_NOEXCEPT
+    #endif
+#else
+   #define KANZI_NOEXCEPT
+#endif
+
+
+#define KANZI_COMP_VERSION_MAJOR 1
+#define KANZI_COMP_VERSION_MINOR 0
+#define KANZI_COMP_VERSION_PATCH 0
 
 
 #ifdef __cplusplus
    extern "C" {
 #endif
 
-   typedef unsigned char BYTE;
+   /**
+    *  Compression context: encapsulates compressor state (opaque: could change in future versions)
+    */
+   struct cContext;
+
 
    /**
     *  Compression parameters
@@ -39,45 +66,43 @@ limitations under the License.
        char transform[64];          /* name of transforms [None|PACK|BWT|BWTS|LZ|LZX|LZP|ROLZ|ROLZX]
                                                           [RLT|ZRLT|MTFT|RANK|SRT|TEXT|MM|EXE|UTF|DNA] */
        char entropy[16];            /* name of entropy codec [None|Huffman|ANS0|ANS1|Range|FPAQ|TPAQ|TPAQX|CM] */
-       unsigned int blockSize;      /* size of block in bytes */
+       size_t blockSize;            /* size of block in bytes */
        unsigned int jobs;           /* max number of concurrent tasks */
        int checksum;                /* 0, 32 or 64 to indicate size of block checksum */
        int headerless;              /* bool to indicate if the bitstream has a header (usually set to 0) */
    };
 
+
    /**
-    *  Compression context: encapsulates compressor state (opaque: could change in future versions)
+    * @return the version number of the library.
+    * Useful for checking for compatibility at runtime.
     */
-   struct cContext {
-       void* pCos;
-       unsigned int blockSize;
-       void* fos;
-   };
+   KANZI_API unsigned int CDECL getCompressorVersion(void) KANZI_NOEXCEPT;
 
 
-    /**
+   /**
     *  Initialize the compressor internal states.
     *
-    *  @param cParam [IN] - the compression parameters
+    *  @param cParam [IN|OUT] - the compression parameters, transform and enropy are validated and rewritten
     *  @param dst [IN] - the destination stream of compressed data
     *  @param ctx [IN|OUT] - pointer to the compression context created by the call
     *
-    *  @return 0 in case of success
+    *  @return 0 in case of success, else see error code in Error.hpp
     */
-   int CDECL initCompressor(struct cData* cParam, FILE* dst, struct cContext** ctx);
+   KANZI_API int CDECL initCompressor(struct cData* cParam, FILE* dst, struct cContext** ctx) KANZI_NOEXCEPT;
 
     /**
     *  Compress a block of data. The compressor must have been initialized.
     *
     *  @param ctx [IN] - the compression context created during initialization
     *  @param src [IN] - the source block of data to compress
-    *  @param inSize [IN|OUT] - the size of the source block to compress.
-                                Updated to reflect the number bytes written to the destination.
-    *  @param outSize [OUT] - the size of the compressed data
+    *  @param inSize [IN] - the size of the source block to compress.
+    *  @param outSize [IN|OUT] - the size of the compressed data
+                              Updated to reflect the number bytes written to the destination.
     *
-    *  @return 0 in case of success
+    *  @return 0 in case of success, else see error code in Error.hpp
     */
-   int CDECL compress(struct cContext* ctx, const BYTE* src, int* inSize, int* outSize);
+   KANZI_API int CDECL compress(struct cContext* ctx, const unsigned char* src, size_t inSize, size_t* outSize) KANZI_NOEXCEPT;
 
    /**
     *  Dispose the compressor and cleanup memory resources.
@@ -86,9 +111,9 @@ limitations under the License.
     *  @param outSize [IN|OUT] - the number of bytes written to the destination
     *                            (the compressor may flush internal data)
     *
-    *  @return 0 in case of success
+    *  @return 0 in case of success, else see error code in Error.hpp
     */
-   int CDECL disposeCompressor(struct cContext* ctx, int* outSize);
+   KANZI_API int CDECL disposeCompressor(struct cContext** ctx, size_t* outSize) KANZI_NOEXCEPT;
 
 #ifdef __cplusplus
    }

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -18,7 +18,6 @@ limitations under the License.
 #include "TextCodec.hpp"
 #include "../Global.hpp"
 #include "../Magic.hpp"
-#include "../util.hpp"
 
 using namespace kanzi;
 using namespace std;
@@ -28,28 +27,28 @@ const int TextCodec::MAX_DICT_SIZE = 1 << 19; // must be less than 1<<24
 const int TextCodec::MAX_WORD_LENGTH = 31; // must be less than 128
 const int TextCodec::MIN_BLOCK_SIZE = 1024;
 const int TextCodec::MAX_BLOCK_SIZE = 1 << 30; // 1 GB
-const byte TextCodec::ESCAPE_TOKEN1 = byte(0x0F); // dictionary word preceded by space symbol
-const byte TextCodec::ESCAPE_TOKEN2 = byte(0x0E); // toggle upper/lower case of first word char
-const byte TextCodec::MASK_1F = byte(0x1F);
-const byte TextCodec::MASK_3F = byte(0x3F);
-const byte TextCodec::MASK_20 = byte(0x20);
-const byte TextCodec::MASK_40 = byte(0x40);
-const byte TextCodec::MASK_80 = byte(0x80);
-const byte TextCodec::MASK_FLIP_CASE = byte(0x80);
+const kanzi::byte TextCodec::ESCAPE_TOKEN1 = kanzi::byte(0x0F); // dictionary word preceded by space symbol
+const kanzi::byte TextCodec::ESCAPE_TOKEN2 = kanzi::byte(0x0E); // toggle upper/lower case of first word char
+const kanzi::byte TextCodec::MASK_1F = kanzi::byte(0x1F);
+const kanzi::byte TextCodec::MASK_3F = kanzi::byte(0x3F);
+const kanzi::byte TextCodec::MASK_20 = kanzi::byte(0x20);
+const kanzi::byte TextCodec::MASK_40 = kanzi::byte(0x40);
+const kanzi::byte TextCodec::MASK_80 = kanzi::byte(0x80);
+const kanzi::byte TextCodec::MASK_FLIP_CASE = kanzi::byte(0x80);
 const int TextCodec::HASH1 = 0x7FEB352D;
 const int TextCodec::HASH2 = 0x846CA68B;
-const byte TextCodec::CR = byte(0x0D);
-const byte TextCodec::LF = byte(0x0A);
-const byte TextCodec::SP = byte(0x20);
+const kanzi::byte TextCodec::CR = kanzi::byte(0x0D);
+const kanzi::byte TextCodec::LF = kanzi::byte(0x0A);
+const kanzi::byte TextCodec::SP = kanzi::byte(0x20);
 const int TextCodec::THRESHOLD1 = 128;
 const int TextCodec::THRESHOLD2 = TextCodec::THRESHOLD1 * TextCodec::THRESHOLD1;
 const int TextCodec::THRESHOLD3 = 64;
 const int TextCodec::THRESHOLD4 = TextCodec::THRESHOLD3 * 128;
 const int TextCodec::LOG_HASHES_SIZE = 24; // 16 MB
-const byte TextCodec::MASK_NOT_TEXT = byte(0x80);
-const byte TextCodec::MASK_CRLF = byte(0x40);
-const byte TextCodec::MASK_XML_HTML = byte(0x20);
-const byte TextCodec::MASK_DT = byte(0x0F);
+const kanzi::byte TextCodec::MASK_NOT_TEXT = kanzi::byte(0x80);
+const kanzi::byte TextCodec::MASK_CRLF = kanzi::byte(0x40);
+const kanzi::byte TextCodec::MASK_XML_HTML = kanzi::byte(0x20);
+const kanzi::byte TextCodec::MASK_DT = kanzi::byte(0x0F);
 const int TextCodec::MASK_LENGTH = 0x0007FFFF; // 19 bits
 
 
@@ -276,10 +275,12 @@ byte TextCodec::computeStats(const byte block[], int count, uint freqs0[], bool 
     bool notText = nbBinChars > (count >> 2);
 
     if (notText == false) {
+        notText = nbTextChars < (count >> 2);
+
         if (strict == true) {
-            notText = ((nbTextChars < (count >> 2)) || (freqs0[0] >= uint(count / 100)) || ((nbASCII / 95) < (count / 100)));
+            notText |= ((freqs0[0] >= uint(count / 100)) || ((nbASCII / 95) < (count / 100)));
         } else {
-            notText = ((nbTextChars < (count >> 1)) || (freqs0[32] < uint(count / 50)));
+            notText |= (freqs0[32] < uint(count / 50));
         }
     }
 
@@ -472,6 +473,9 @@ bool TextCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int c
         throw invalid_argument("TextCodec: Invalid output block");
 
     if (input._array == output._array)
+        return false;
+
+    if ((count < 2) || (input._index + count > input._length))
         return false;
 
     return _delegate->inverse(input, output, count);
@@ -817,6 +821,9 @@ int TextCodec1::emitWordIndex(byte dst[], int val)
 
 bool TextCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
 {
+    if ((count < 2) || (input._index + count > input._length))
+       return false;
+
     reset(output._length);
     const byte* src = &input._array[input._index];
     byte* dst = &output._array[output._index];
@@ -825,7 +832,7 @@ bool TextCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
     int srcIdx = 1;
     int dstIdx = 0;
     const int srcEnd = count;
-    const int dstEnd = output._length;
+    const int dstEnd = output._length - output._index;
     int delimAnchor = TextCodec::isText(src[srcIdx]) ? srcIdx - 1 : srcIdx; // previous delimiter
     int words = _staticDictSize;
     bool wordRun = false;
@@ -938,7 +945,7 @@ bool TextCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
             }
 
             // Sanity check
-            if (dstIdx + length >= dstEnd) {
+            if (dstIdx + length > dstEnd) {
                 res = false;
                 break;
             }
@@ -1282,7 +1289,7 @@ int TextCodec2::emitSymbols(const byte src[], byte dst[], const int srcEnd, cons
                 break;
 
             default:
-                if (src[i] >= byte(128)) {
+                if (src[i] >= kanzi::byte(128)) {
                     if (dstIdx >= dstEnd)
                         return -1;
 
@@ -1307,42 +1314,45 @@ int TextCodec2::emitSymbols(const byte src[], byte dst[], const int srcEnd, cons
     return dstIdx;
 }
 
-int TextCodec2::emitWordIndex(byte dst[], int wIdx)
+int TextCodec2::emitWordIndex(kanzi::byte dst[], int wIdx)
 {
     // 0x80 is reserved to first symbol case flip
     wIdx++;
 
     if (wIdx >= TextCodec::THRESHOLD3) {
         if (wIdx >= TextCodec::THRESHOLD4) {
-            // 3 byte index (1111xxxx xxxxxxxx xxxxxxxx)
-            dst[0] = byte(0xF0 | (wIdx >> 16));
-            dst[1] = byte(wIdx >> 8);
-            dst[2] = byte(wIdx);
+            // 3 kanzi::byte index (1111xxxx xxxxxxxx xxxxxxxx)
+            dst[0] = kanzi::byte(0xF0 | (wIdx >> 16));
+            dst[1] = kanzi::byte(wIdx >> 8);
+            dst[2] = kanzi::byte(wIdx);
             return 3;
         }
 
-        // 2 byte index (110xxxxx xxxxxxxx)
-        dst[0] = byte(0xC0 | (wIdx >> 8));
-        dst[1] = byte(wIdx);
+        // 2 kanzi::byte index (110xxxxx xxxxxxxx)
+        dst[0] = kanzi::byte(0xC0 | (wIdx >> 8));
+        dst[1] = kanzi::byte(wIdx);
         return 2;
     }
 
-    // 1 byte index (10xxxxxx) with 0x80 excluded
-    dst[0] = byte(0x80 | wIdx);
+    // 1 kanzi::byte index (10xxxxxx) with 0x80 excluded
+    dst[0] = kanzi::byte(0x80 | wIdx);
     return 1;
 }
 
-bool TextCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool TextCodec2::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
+    if ((count < 2) || (input._index + count > input._length))
+        return false;
+
     reset(output._length);
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
-    _isCRLF = (src[0] & TextCodec::MASK_CRLF) != byte(0);
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
+    _isCRLF = (src[0] & TextCodec::MASK_CRLF) != kanzi::byte(0);
     const bool isCRLF = _isCRLF;
     int srcIdx = 1;
     int dstIdx = 0;
     const int srcEnd = count;
-    const int dstEnd = output._length;
+    const int dstEnd = output._length - output._index;
     int delimAnchor = TextCodec::isText(src[srcIdx]) ? srcIdx - 1 : srcIdx; // previous delimiter
     int words = _staticDictSize;
     bool wordRun = false;
@@ -1350,7 +1360,7 @@ bool TextCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
     const bool oldEncoding = _bsVersion < 6;
 
     while ((srcIdx < srcEnd) && (dstIdx < dstEnd)) {
-        byte cur = src[srcIdx];
+        kanzi::byte cur = src[srcIdx];
         const int8 cType = TextCodec::getType(cur);
 
         if (cType == 0) {
@@ -1409,7 +1419,7 @@ bool TextCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
         }
 
         srcIdx++;
-        byte flipMask = byte(0);
+        kanzi::byte flipMask = kanzi::byte(0);
 
         if (cur >= TextCodec::MASK_80) {
             // Word in dictionary
@@ -1420,7 +1430,7 @@ bool TextCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 flipMask = cur & TextCodec::MASK_20;
                 idx = int(cur & TextCodec::MASK_1F);
 
-                if ((cur & TextCodec::MASK_40) != byte(0)) {
+                if ((cur & TextCodec::MASK_40) != kanzi::byte(0)) {
                     const int idx2 = int(src[srcIdx++]);
 
                     if (idx2 >= 128) {
@@ -1446,7 +1456,7 @@ bool TextCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 }
 
                 // Read word index
-                // 10xxxxxx => 1 byte
+                // 10xxxxxx => 1 kanzi::byte
                 // 110xxxxx => 2 bytes
                 // 1111xxxx => 3 bytes
                 idx = int(cur) & 0x7F;
@@ -1500,7 +1510,7 @@ bool TextCodec2::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
             }
 
             // Sanity check
-            if (dstIdx + length >= dstEnd) {
+            if (dstIdx + length > dstEnd) {
                 res = false;
                 break;
             }

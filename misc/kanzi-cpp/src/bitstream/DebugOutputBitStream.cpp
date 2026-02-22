@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -24,7 +24,7 @@ DebugOutputBitStream::DebugOutputBitStream(OutputBitStream& obs) : _delegate(obs
     _mark = false;
     _hexa = false;
     _show = false;
-    _current = byte(0);
+    _current = kanzi::byte(0);
     _idx = 0;
 }
 
@@ -33,7 +33,7 @@ DebugOutputBitStream::DebugOutputBitStream(OutputBitStream& obs, OutputStream& o
     _mark = false;
     _hexa = false;
     _show = false;
-    _current = byte(0);
+    _current = kanzi::byte(0);
     _idx = 0;
 }
 
@@ -49,7 +49,7 @@ DebugOutputBitStream::DebugOutputBitStream(OutputBitStream& obs, OutputStream& o
     _mark = false;
     _hexa = false;
     _show = false;
-    _current = byte(0);
+    _current = kanzi::byte(0);
     _idx = 0;
 }
 
@@ -63,7 +63,7 @@ void DebugOutputBitStream::writeBit(int bit)
     bit &= 1;
     _out << ((bit == 1) ? "1" : "0");
     _current <<= 1;
-    _current |= byte(bit);
+    _current |= kanzi::byte(bit);
     _idx++;
 
     if (_mark == true)
@@ -93,7 +93,7 @@ uint DebugOutputBitStream::writeBits(uint64 bits, uint count)
     for (uint i = 1; i <= res; i++) {
         uint64 bit = (bits >> (res - i)) & 1;
         _current <<= 1;
-        _current |= byte(bit);
+        _current |= kanzi::byte(bit);
         _idx++;
         _out << ((bit == 1) ? "1" : "0");
 
@@ -118,7 +118,7 @@ uint DebugOutputBitStream::writeBits(uint64 bits, uint count)
     return res;
 }
 
-uint DebugOutputBitStream::writeBits(const byte bits[], uint count)
+uint DebugOutputBitStream::writeBits(const kanzi::byte bits[], uint count)
 {
     int res = _delegate.writeBits(bits, count);
     const int end = int(count >> 3);
@@ -127,7 +127,7 @@ uint DebugOutputBitStream::writeBits(const byte bits[], uint count)
         for (int j = 7; j >=0 ; j--) {
            uint64 bit = uint64(bits[i] >> j) & 1;
            _current <<= 1;
-           _current |= byte(bit);
+           _current |= kanzi::byte(bit);
            _idx++;
            _out << ((bit == 1) ? "1" : "0");
 
@@ -153,7 +153,7 @@ uint DebugOutputBitStream::writeBits(const byte bits[], uint count)
     return res;
 }
 
-void DebugOutputBitStream::printByte(byte b)
+void DebugOutputBitStream::printByte(kanzi::byte b)
 {
     int val = int(b);
 

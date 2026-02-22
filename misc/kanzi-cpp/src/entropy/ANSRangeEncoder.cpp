@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -126,10 +126,7 @@ bool ANSRangeEncoder::encodeHeader(int alphabetSize, const uint alphabet[], cons
         return true;
 
     const int chkSize = (alphabetSize >= 64) ? 8 : 6;
-    uint llr = 3;
-
-    while (uint(1 << llr) <= lr)
-        llr++;
+    const int llr = Global::_log2(lr) + 1;
 
     // Encode all frequencies (but the first one) by chunks
     for (int i = 1; i < alphabetSize; i += chkSize) {
@@ -157,7 +154,7 @@ bool ANSRangeEncoder::encodeHeader(int alphabetSize, const uint alphabet[], cons
 }
 
 // Dynamically compute the frequencies for every chunk of data in the block
-int ANSRangeEncoder::encode(const byte block[], uint blkptr, uint count)
+int ANSRangeEncoder::encode(const kanzi::byte block[], uint blkptr, uint count)
 {
     if (count <= 32) {
         _bitstream.writeBits(&block[blkptr], 8 * count);
@@ -174,7 +171,7 @@ int ANSRangeEncoder::encode(const byte block[], uint blkptr, uint count)
            delete[] _buffer;
 
         _bufferSize = size;
-        _buffer = new byte[_bufferSize];
+        _buffer = new kanzi::byte[_bufferSize];
     }
 
     while (startChunk < end) {
@@ -194,14 +191,14 @@ int ANSRangeEncoder::encode(const byte block[], uint blkptr, uint count)
     return count;
 }
 
-void ANSRangeEncoder::encodeChunk(const byte block[], int end)
+void ANSRangeEncoder::encodeChunk(const kanzi::byte block[], int end)
 {
     int st0 = ANS_TOP;
     int st1 = ANS_TOP;
     int st2 = ANS_TOP;
     int st3 = ANS_TOP;
-    byte* p = &_buffer[_bufferSize - 1];
-    const byte* p0 = p;
+    kanzi::byte* p = &_buffer[_bufferSize - 1];
+    const kanzi::byte* p0 = p;
     const int end4 = end & -4;
 
     for (int i = end - 1; i >= end4; i--)
@@ -264,7 +261,7 @@ void ANSRangeEncoder::encodeChunk(const byte block[], int end)
 }
 
 // Compute chunk frequencies, cumulated frequencies and encode chunk header
-int ANSRangeEncoder::rebuildStatistics(const byte block[], int end, uint lr)
+int ANSRangeEncoder::rebuildStatistics(const kanzi::byte block[], int end, uint lr)
 {
     const int dim = 255 * _order + 1;
     memset(_freqs, 0, size_t(257 * dim) * sizeof(uint));

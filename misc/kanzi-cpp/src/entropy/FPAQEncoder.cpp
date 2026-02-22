@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -55,21 +55,21 @@ bool FPAQEncoder::reset()
     return true;
 }
 
-int FPAQEncoder::encode(const byte block[], uint blkptr, uint count)
+int FPAQEncoder::encode(const kanzi::byte block[], uint blkptr, uint count)
 {
     if (count >= MAX_BLOCK_SIZE)
         throw invalid_argument("Invalid block size parameter (max is 1<<30)");
 
     uint startChunk = blkptr;
     const uint end = blkptr + count;
+    const size_t bufSize = max(DEFAULT_CHUNK_SIZE + (DEFAULT_CHUNK_SIZE >> 3), 1024u);
+
+    if (_buf.size() < bufSize)
+        _buf.resize(bufSize);
 
     // Split block into chunks, encode chunk and write bit array to bitstream
     while (startChunk < end) {
         const uint chunkSize = min(DEFAULT_CHUNK_SIZE, end - startChunk);
-        const size_t bufSize = max(chunkSize + (chunkSize >> 3), 1024u);
-
-        if (_buf.size() < bufSize)
-            _buf.resize(bufSize);
 
         _index = 0;
         const uint endChunk = startChunk + chunkSize;

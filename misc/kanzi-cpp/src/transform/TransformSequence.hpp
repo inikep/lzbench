@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _TransformSequence_
-#define _TransformSequence_
+#ifndef knz_TransformSequence
+#define knz_TransformSequence
 
 #include <cstring>
 #include <stdexcept>
@@ -115,7 +115,7 @@ namespace kanzi {
            // Check that the output buffer has enough room. If not, allocate a new one.
            if (out->_length < requiredSize) {
                delete[] out->_array;
-               out->_array = new byte[requiredSize];
+               out->_array = new T[requiredSize];
                out->_length = requiredSize;
            }
 
@@ -140,10 +140,20 @@ namespace kanzi {
        }
 
        if ((swaps & 1) == 0) {
-           if ((output._index + count > output._length) || (in->_index + count > in->_length))
+           if ((output._index + count > output._length) || (in->_index + count > in->_length)) {
                _skipFlags = SKIP_MASK;
-           else
-               std::memcpy(&output._array[output._index], &in->_array[in->_index], size_t(count));
+           }
+           else {
+                const byte* inPtr  = &in->_array[in->_index];
+                byte* outPtr = &output._array[output._index];
+
+               if ((inPtr + count >= outPtr) && (outPtr + count >= inPtr)) {
+                   std::memmove(&output._array[output._index], &in->_array[in->_index], size_t(count));
+               }
+               else {
+                   std::memcpy(&output._array[output._index], &in->_array[in->_index], size_t(count));
+               }
+           }
        }
 
        input._index += blockSize;
@@ -167,7 +177,16 @@ namespace kanzi {
            return true;
 
        if (_skipFlags == SKIP_MASK) {
-           std::memcpy(&output._array[output._index], &input._array[input._index], size_t(count));
+            const byte* inPtr  = &input._array[input._index];
+            byte* outPtr = &output._array[output._index];
+
+           if ((inPtr + count >= outPtr) && (outPtr + count >= inPtr)) {
+               std::memmove(&output._array[output._index], &input._array[input._index], size_t(count));
+           }
+           else {
+               std::memcpy(&output._array[output._index], &input._array[input._index], size_t(count));
+           }
+
            input._index += count;
            output._index += count;
            return true;
@@ -190,7 +209,7 @@ namespace kanzi {
            // Check that the output buffer has enough room. If not, allocate a new one.
            if (out->_length < output._length) {
                delete[] out->_array;
-               out->_array = new byte[output._length];
+               out->_array = new T[output._length];
                out->_length = output._length;
            }
 
@@ -214,8 +233,17 @@ namespace kanzi {
        if ((res == true) && ((swaps & 1) == 0)) {
            if ((output._index + count > output._length) || (input._index + count > input._length))
                res = false;
-           else
-               std::memcpy(&output._array[output._index], &input._array[input._index], size_t(count));
+           else {
+                const byte* inPtr  = &in->_array[in->_index];
+                byte* outPtr = &output._array[output._index];
+
+               if ((inPtr + count >= outPtr) && (outPtr + count >= inPtr)) {
+                   std::memmove(&output._array[output._index], &input._array[input._index], size_t(count));
+               }
+               else {
+                   std::memcpy(&output._array[output._index], &input._array[input._index], size_t(count));
+               }
+	   }
        }
 
        input._index += blockSize;

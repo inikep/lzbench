@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _DivSufSort_
-#define _DivSufSort_
+#ifndef knz_DivSufSort
+#define knz_DivSufSort
 
 #include "../types.hpp"
 
@@ -226,8 +226,7 @@ namespace kanzi
 
    inline int DivSufSort::ssIlg(int n)
    {
-       return ((n & 0xFF00) != 0) ? 8 + LOG_TABLE[(n >> 8) & 0xFF]
-                                  : LOG_TABLE[n & 0xFF];
+       return (n > 255) ? 8 + LOG_TABLE[n >> 8] : LOG_TABLE[n & 0xFF];
    }
 
 

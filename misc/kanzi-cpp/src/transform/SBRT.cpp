@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -43,20 +43,20 @@ SBRT::SBRT(int mode, Context&) :
         throw std::invalid_argument("Invalid mode parameter");
 }
 
-bool SBRT::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool SBRT::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
         return true;
 
-    if (!SliceArray<byte>::isValid(input))
+    if (!SliceArray<kanzi::byte>::isValid(input))
         throw std::invalid_argument("SBRT: Invalid input block");
 
-    if (!SliceArray<byte>::isValid(output))
+    if (!SliceArray<kanzi::byte>::isValid(output))
         throw std::invalid_argument("SBRT: Invalid output block");
 
     // Aliasing
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
     int p[256] = { 0 };
     int q[256] = { 0 };
     uint8 s2r[256];
@@ -70,7 +70,7 @@ bool SBRT::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
     for (int i = 0; i < count; i++) {
         const uint8 c = uint8(src[i]);
         int r = int(s2r[c]);
-        dst[i] = byte(r);
+        dst[i] = kanzi::byte(r);
         const int qc = ((i & _mask1) + (p[c] & _mask2)) >> _shift;
         p[c] = i;
         q[c] = qc;
@@ -91,20 +91,20 @@ bool SBRT::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
     return true;
 }
 
-bool SBRT::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool SBRT::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
         return true;
 
-    if (!SliceArray<byte>::isValid(input))
+    if (!SliceArray<kanzi::byte>::isValid(input))
         throw std::invalid_argument("SBRT: Invalid input block");
 
-    if (!SliceArray<byte>::isValid(output))
+    if (!SliceArray<kanzi::byte>::isValid(output))
         throw std::invalid_argument("SBRT: Invalid output block");
 
     // Aliasing
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
     int p[256] = { 0 };
     int q[256] = { 0 };
     uint8 r2s[256];
@@ -115,7 +115,7 @@ bool SBRT::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
     for (int i = 0; i < count; i++) {
         int r = int(src[i]);
         const int c = int(r2s[r]);
-        dst[i] = byte(r2s[r]);
+        dst[i] = kanzi::byte(r2s[r]);
         const int qc = ((i & _mask1) + (p[c] & _mask2)) >> _shift;
         p[c] = i;
         q[c] = qc;
