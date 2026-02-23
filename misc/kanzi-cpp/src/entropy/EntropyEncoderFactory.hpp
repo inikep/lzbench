@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _EntropyEncoderFactory_
-#define _EntropyEncoderFactory_
+#ifndef knz_EntropyEncoderFactory
+#define knz_EntropyEncoderFactory
 
 #include <algorithm>
 #include "../Context.hpp"

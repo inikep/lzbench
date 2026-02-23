@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -23,11 +23,11 @@ limitations under the License.
 using namespace std;
 using namespace kanzi;
 
-uint64 compress1(byte block[], uint length)
+uint64 compress1(kanzi::byte block[], uint length)
 {
     cout << "Test - Regular (RLT+TEXT&HUFFMAN)" << endl;
     uint blockSize = (length / (1 + (rand() & 3))) & -16;
-    byte* buf = new byte[length];
+    kanzi::byte* buf = new kanzi::byte[length];
     memcpy(&buf[0], &block[0], size_t(length));
     stringbuf buffer;
     iostream ios(&buffer);
@@ -51,14 +51,12 @@ uint64 compress1(byte block[], uint length)
     delete cos;
     delete cis;
 
-    if (memcmp(&buf[0], &block[0], length) != 0)
-       return 3;
-
+    uint64 res = (memcmp(&buf[0], &block[0], length) != 0) ? 3 : read ^ written;
     delete[] buf;
-    return read ^ written;
+    return res;
 }
 
-uint64 compress2(byte block[], uint length)
+uint64 compress2(kanzi::byte block[], uint length)
 {
     int jobs;
     srand((uint)time(nullptr));
@@ -79,7 +77,7 @@ uint64 compress2(byte block[], uint length)
 
     cout << " (LZX&ANS0)" << endl;
 
-    byte* buf = new byte[length];
+    kanzi::byte* buf = new kanzi::byte[length];
     memcpy(&buf[0], &block[0], size_t(length));
     stringbuf buffer;
     iostream ios(&buffer);
@@ -103,18 +101,16 @@ uint64 compress2(byte block[], uint length)
     delete cos;
     delete cis;
 
-    if (memcmp(&buf[0], &block[0], length) != 0)
-       return 3;
-
+    uint64 res = (memcmp(&buf[0], &block[0], length) != 0) ? 3 : read ^ written;
     delete[] buf;
-    return read ^ written;
+    return res;
 }
 
-uint64 compress3(byte block[], uint length)
+uint64 compress3(kanzi::byte block[], uint length)
 {
     cout << "Test - incompressible data (LZP+RLT&FPAQ)" << endl;
     uint blockSize = (length / (1 + (rand() & 3))) & -16;
-    byte* buf = new byte[length];
+    kanzi::byte* buf = new kanzi::byte[length];
     memcpy(&buf[0], &block[0], size_t(length));
     stringbuf buffer;
     iostream ios(&buffer);
@@ -138,14 +134,12 @@ uint64 compress3(byte block[], uint length)
     delete cos;
     delete cis;
 
-    if (memcmp(&buf[0], &block[0], length) != 0)
-       return 3;
-
+    uint64 res = (memcmp(&buf[0], &block[0], length) != 0) ? 3 : read ^ written;
     delete[] buf;
-    return read ^ written;
+    return res;
 }
 
-uint64 compress4(byte block[], uint length)
+uint64 compress4(kanzi::byte block[], uint length)
 {
     CompressedOutputStream* cos = nullptr;
     uint64 res;
@@ -161,7 +155,7 @@ uint64 compress4(byte block[], uint length)
         cout << "Failure: no exception thrown in write after close" << endl;
         res = 1;
     }
-    catch (ios_base::failure& e) {
+    catch (const ios_base::failure& e) {
         cout << "OK, Exception " << e.what() << endl;
         res = 0;
     }
@@ -170,7 +164,7 @@ uint64 compress4(byte block[], uint length)
     return res;
 }
 
-uint64 compress5(byte block[], uint length)
+uint64 compress5(kanzi::byte block[], uint length)
 {
     CompressedOutputStream* cos = nullptr;
     CompressedInputStream* cis = nullptr;
@@ -198,7 +192,7 @@ uint64 compress5(byte block[], uint length)
         cout << "Failure: no exception thrown in read after close" << endl;
         res = 1;
     }
-    catch (ios_base::failure& e) {
+    catch (const ios_base::failure& e) {
         cout << "OK, Exception " << e.what() << endl;
         res = 0;
     }
@@ -213,8 +207,8 @@ int testCorrectness(int, const char*[])
     // Test correctness
     cout << "Correctness Test" << endl;
     const int length0 = 65536;
-    byte* incompressible = new byte[length0 << 6];
-    byte* values = new byte[length0 << 6];
+    kanzi::byte* incompressible = new kanzi::byte[length0 << 6];
+    kanzi::byte* values = new kanzi::byte[length0 << 6];
     bool res = true;
     srand((uint)time(nullptr));
 
@@ -222,8 +216,8 @@ int testCorrectness(int, const char*[])
         const int length = length0 << (test % 7);
 
         for (int i = 0; i < length; i++) {
-            incompressible[i] = byte(rand());
-            values[i] = byte(rand() % (4 * test + 1));
+            incompressible[i] = kanzi::byte(rand());
+            values[i] = kanzi::byte(rand() % (4 * test + 1));
         }
 
         cout << endl;
@@ -303,11 +297,11 @@ int TestCompressedStream_main(int argc, const char* argv[])
         //testSeek("/tmp/enwik8.knz");
         return testCorrectness(argc, argv);
     }
-    catch (IOException& e) {
+    catch (const IOException& e) {
         cout << "Exception: " << e.what() << endl;
         return e.error();
     }
-    catch (runtime_error& e) {
+    catch (const runtime_error& e) {
         cout << "Exception: " << e.what() << endl;
         return 255;
     }

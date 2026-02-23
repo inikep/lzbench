@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -15,8 +15,8 @@ limitations under the License.
 
 
 #pragma once
-#ifndef _RangeDecoder_
-#define _RangeDecoder_
+#ifndef knz_RangeDecoder
+#define knz_RangeDecoder
 
 #include "../EntropyDecoder.hpp"
 

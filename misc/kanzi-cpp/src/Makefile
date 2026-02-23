@@ -1,30 +1,55 @@
+#CC=clang
 #CXX=clang++
-LDFLAGS=-lpthread
 OBJ_DIR = obj
 TEST_OBJ_DIR=$(OBJ_DIR)/test
 APP=kanzi
+APP_STATIC=$(APP)_static
+APP_DYNAMIC=$(APP)_dynamic
+
+ifeq ($(TCMALLOC_ENABLED), 1)
+	LDFLAGS += -lpthread -ltcmalloc_minimal
+else
+	LDFLAGS += -lpthread
+endif
 
 ifeq ($(CONCURRENCY_DISABLED), 1)
 	CONCURRENCY_FLAG = -DCONCURRENCY_DISABLED
 endif
 
-ifeq ($(OS), Windows_NT)
-	CXXFLAGS=-c -std=c++11 -Wall -Wextra -O3 -fomit-frame-pointer -fPIC -DNDEBUG -pedantic -march=native -fno-rtti $(CONCURRENCY_FLAG)
-	LDFLAGS=-lpthread -static
-	#LDFLAGS=-static-libgcc -static-libstdc++ -Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic
+ifndef CXX_STD
+    CXX_STD = c++17
+endif
+
+ifndef C_STD
+    C_STD = c11
+endif
+
+ifeq ($(OS),Windows_NT)
+    DETECTED_OS := Windows
+else
+    DETECTED_OS := $(shell uname -s)
+endif
+
+CFLAGS += -c -std=$(C_STD) -Wall -Wextra -O3 -fPIC -pedantic -march=native
+
+ifeq ($(DETECTED_OS),Windows)
+	CXXFLAGS += -c -std=$(CXX_STD) -Wall -Wextra -O3 -fomit-frame-pointer -fPIC -DNDEBUG -pedantic -march=native -fno-rtti $(CONCURRENCY_FLAG)
 else
 	ARCH ?= $(shell uname -m)
 
-	ifeq ($(ARCH), x86_64)
-		CXXFLAGS=-c -std=c++14 -Wall -Wextra -O3 -fomit-frame-pointer -fPIC -DNDEBUG -pedantic -march=native -fno-rtti $(CONCURRENCY_FLAG)
+	# Check for both x86_64 (Linux) and amd64 (FreeBSD)
+	ifneq ($(filter x86_64 amd64,$(ARCH)),)
+		#CXXFLAGS += -c -std=$(CXX_STD) -fsanitize=undefined -ftrapv -D_FORTIFY_SOURCE=3 -D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST -fstrict-aliasing -Wall -Wextra -O3 -fomit-frame-pointer -fPIC -DNDEBUG -pedantic -march=native -fno-rtti $(CONCURRENCY_FLAG)
+		CXXFLAGS += -c -std=$(CXX_STD) -fstrict-aliasing -Wall -Wextra -O3 -fomit-frame-pointer -fPIC -DNDEBUG -pedantic -march=native -fno-rtti $(CONCURRENCY_FLAG)
 	else
-		#CXXFLAGS=-c -std=c++17 -fsanitize=signed-integer-overflow -ftrapv -D_FORTIFY_SOURCE=3 -Wall -Wextra -O3 -fPIC -DNDEBUG -pedantic -fno-rtti $(CONCURRENCY_FLAG)
-		CXXFLAGS=-c -std=c++17 -fstrict-aliasing -Wall -Wextra -O3 -fPIC -DNDEBUG -pedantic -fno-rtti $(CONCURRENCY_FLAG)
+		#CXXFLAGS += -c -std=$(CXX_STD) -fsanitize=signed-integer-overflow -ftrapv -D_FORTIFY_SOURCE=3 -Wall -Wextra -O3 -fPIC -DNDEBUG -pedantic -fno-rtti $(CONCURRENCY_FLAG)
+		CXXFLAGS += -c -std=$(CXX_STD) -fstrict-aliasing -Wall -Wextra -Wpedantic -Wdeprecated -O3 -fPIC -DNDEBUG -pedantic -fno-rtti $(CONCURRENCY_FLAG)
 	endif
 endif	
 
 LIB_COMMON_SOURCES=Global.cpp \
 	Event.cpp \
+	util/WallTimer.cpp \
 	entropy/EntropyUtils.cpp \
 	entropy/HuffmanCommon.cpp \
 	entropy/CMPredictor.cpp \
@@ -77,7 +102,8 @@ TEST_SOURCES=test/TestEntropyCodec.cpp \
 	test/TestBWT.cpp \
 	test/TestCompressedStream.cpp \
 	test/TestDefaultBitStream.cpp \
-	test/TestTransforms.cpp
+	test/TestTransforms.cpp \
+	test/TestAPI.c
 
 APP_SOURCES=app/Kanzi.cpp \
 	app/InfoPrinter.cpp \
@@ -98,16 +124,23 @@ APP_OBJECTS=$(foreach src,$(APP_SOURCES),$(call OBJ,$(src)))
 OBJECTS=$(LIB_OBJECTS) $(APP_OBJECTS) $(TEST_OBJECTS)
 RPTS=$(SOURCES:.cpp=.optrpt)
 
-	
+
 STATIC_LIB_SUFFIX := .a
 SHARED_LIB_SUFFIX := .so
 PROG_SUFFIX       :=
+# Default to -shared (Linux/GNU)
+SHARED_OPTION     := -shared
 
-# Compiling for Windows with MinGW?
-ifeq ($(OS),Windows_NT)
+# Detect Windows or macOS
+ifeq ($(DETECTED_OS),Windows)
     STATIC_LIB_SUFFIX := .lib
     SHARED_LIB_SUFFIX := .dll
     PROG_SUFFIX       := .exe
+    SHARED_OPTION     := -shared
+else ifeq ($(DETECTED_OS),Darwin)
+    # macOS Specifics
+    SHARED_LIB_SUFFIX := .dylib
+    SHARED_OPTION     := -dynamiclib
 endif
 
 STATIC_LIB := lib$(APP)$(STATIC_LIB_SUFFIX)
@@ -135,16 +168,19 @@ $(STATIC_DECOMP_LIB):$(LIB_DECOMP_OBJECTS)
 
 # Create shared libraries
 $(SHARED_LIB):$(LIB_OBJECTS)
-	$(CXX) -o ../lib/$@ $(LDFLAGS) -shared $+
+	$(CXX) -o ../lib/$@ $(LDFLAGS) $(SHARED_OPTION) $+
 
 $(SHARED_COMP_LIB):$(LIB_COMP_OBJECTS)
-	$(CXX) -o ../lib/$@ $(LDFLAGS) -shared $+
+	$(CXX) -o ../lib/$@ $(LDFLAGS) $(SHARED_OPTION) $+
 
 $(SHARED_DECOMP_LIB):$(LIB_DECOMP_OBJECTS)
-	$(CXX) -o ../lib/$@ $(LDFLAGS) -shared $+
+	$(CXX) -o ../lib/$@ $(LDFLAGS) $(SHARED_OPTION) $+
 
 
 # Targets for test executables
+testAPI: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestAPI.o
+	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
+
 testBWT: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestBWT.o
 	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
 
@@ -160,23 +196,48 @@ testDefaultBitStream: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestDefaultBitStream.o
 testCompressedStream: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestCompressedStream.o
 	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
 
-test: testBWT testTransforms testEntropyCodec testDefaultBitStream testCompressedStream
+test: testAPI testBWT testTransforms testEntropyCodec testDefaultBitStream testCompressedStream
 
-# Target for the main application
+# Default executable target
 kanzi: $(LIB_OBJECTS) $(APP_OBJECTS)
 	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
 
-all: lib test $(APP)
-
-# Install / uninstall (may require sudo or admin rights)
-ifeq ($(OS),Windows_NT)
-	INSTALL_DIR="C:\Program Files"
+# Statically linked executable
+ifeq ($(DETECTED_OS),Darwin)
+# macOS does not support -static => disable static target
+kanzi_static:
+	@echo "Static linking is not supported on macOS"
 else
-	INSTALL_DIR=/usr/local
+kanzi_static: LDFLAGS += -static-libstdc++ -static-libgcc
+kanzi_static: $(LIB_OBJECTS) $(APP_OBJECTS)
+	$(CXX) $^ -o ../bin/kanzi_static$(PROG_SUFFIX) $(LDFLAGS)
 endif
 
+# Dynamically linked executable
+kanzi_dynamic: LDFLAGS := $(filter-out -static,$(LDFLAGS))
+kanzi_dynamic: $(LIB_OBJECTS) $(APP_OBJECTS)
+	$(CXX) $^ -o ../bin/kanzi_dynamic$(PROG_SUFFIX) $(LDFLAGS)
+
+all: lib test $(APP_STATIC) $(APP_DYNAMIC)
+
+# Install / uninstall (may require sudo or admin rights)
+ifeq ($(DETECTED_OS),Windows)
+INSTALL_DIR=C:/Program\ Files
+else
+INSTALL_DIR=/usr/local
+endif
+
+print-vars:
+	@echo "OS=$(DETECTED_OS)"
+	@echo "APP=$(APP)"
+	@echo "CXX=$(CXX)"
+	@echo "CXXFLAGS=$(CXXFLAGS)"
+	@echo "LDFLAGS=$(LDFLAGS)"
+	@echo "INSTALL_DIR=$(INSTALL_DIR)"
+
+
 install: $(STATIC_LIB) $(SHARED_LIB) $(APP)
-ifeq ($(OS),Windows_NT)
+ifeq ($(DETECTED_OS),Windows)
 	copy /Y ..\bin\$(APP)$(PROG_SUFFIX) $(INSTALL_DIR)
 else
 	install -d $(INSTALL_DIR)/lib
@@ -202,36 +263,47 @@ endif
 
 # Uninstall may require sudo or admin rights
 uninstall:
-ifeq ($(OS),Windows_NT)
+ifeq ($(DETECTED_OS),Windows)
 	del /Q $(INSTALL_DIR)\$(APP)$(PROG_SUFFIX)
 else
-	rm -f -r $(INSTALL_DIR)/include/kanzi
+	rm -f -r $(INSTALL_DIR)/include/$(APP)
 	rm -f $(INSTALL_DIR)/lib/$(STATIC_LIB)
 	rm -f $(INSTALL_DIR)/lib/$(SHARED_LIB)
+	rm -f $(INSTALL_DIR)/bin/$(APP_STATIC)$(PROG_SUFFIX)
+	rm -f $(INSTALL_DIR)/bin/$(APP_DYNAMIC)$(PROG_SUFFIX)
 	rm -f $(INSTALL_DIR)/bin/$(APP)$(PROG_SUFFIX)
 endif
 
 clean:
-ifeq ($(OS),Windows_NT)
-	del /S $(OBJ_DIR)\*.o ..\bin\$(APP)$(PROG_SUFFIX) ..\bin\test*$(PROG_SUFFIX) \
+ifeq ($(DETECTED_OS),Windows)
+	del /S $(OBJ_DIR)\*.o
+	..\bin\$(APP)$(PROG_SUFFIX) \
+	..\bin\$(APP_STATIC)$(PROG_SUFFIX) \
+	..\bin\$(APP_DYNAMIC)$(PROG_SUFFIX) ..\bin\test*$(PROG_SUFFIX) \
 	..\lib\$(STATIC_LIB) ..\lib\$(SHARED_LIB) \
 	..\lib\$(STATIC_COMP_LIB) ..\lib\$(STATIC_DECOMP_LIB) \
 	..\lib\$(SHARED_COMP_LIB) ..\lib\$(SHARED_DECOMP_LIB)
 else
 	rm -f ../bin/test*$(PROG_SUFFIX) $(OBJECTS) $(RPTS) \
-	../bin/$(APP)$(PROG_SUFFIX) ../lib/$(STATIC_LIB) ../lib/$(SHARED_LIB) \
+	../bin/$(APP)$(PROG_SUFFIX) \
+	../bin/$(APP_STATIC)$(PROG_SUFFIX) \
+	../bin/$(APP_DYNAMIC)$(PROG_SUFFIX) \
+	../lib/$(STATIC_LIB) ../lib/$(SHARED_LIB) \
 	../lib/$(STATIC_COMP_LIB) ../lib/$(STATIC_DECOMP_LIB) \
 	../lib/$(SHARED_COMP_LIB) ../lib/$(SHARED_DECOMP_LIB)
 	rm -rf $(OBJ_DIR)
 endif
 
-ifeq ($(OS),Windows_NT)
-   MKDIR = if not exist $(subst /,\,$(dir $@)) mkdir $(subst /,\,$(dir $@))
+ifeq ($(DETECTED_OS),Windows)
+MKDIR = if not exist $(subst /,\,$(dir $@)) mkdir $(subst /,\,$(dir $@))
 else
-   MKDIR = mkdir -p $(dir $@)
+MKDIR = mkdir -p $(dir $@)
 endif
 
 $(OBJ_DIR)/%.o: %.cpp
 	@$(MKDIR)
 	$(CXX) $(CXXFLAGS) $< -o $@
 
+$(OBJ_DIR)/%.o: %.c
+	@$(MKDIR)
+	$(CC) $(CFLAGS) $< -o $@

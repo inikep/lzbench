@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -63,9 +63,9 @@ ExpGolombEncoder::ExpGolombEncoder(OutputBitStream& bitstream, bool sgn)
 {
 }
 
-int ExpGolombEncoder::encode(const byte block[], uint blkptr, uint len)
+int ExpGolombEncoder::encode(const kanzi::byte block[], uint blkptr, uint len)
 {
-    const byte* buf = &block[blkptr];
+    const kanzi::byte* buf = &block[blkptr];
     const uint len8 = len & uint(-8);
 
     for (uint i = 0; i < len8; i += 8) {

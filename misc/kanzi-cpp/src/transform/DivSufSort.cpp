@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -22,7 +22,7 @@ using namespace kanzi;
 
 
 const int DivSufSort::SS_INSERTIONSORT_THRESHOLD = 16;
-const int DivSufSort::SS_BLOCKSIZE = 4096;
+const int DivSufSort::SS_BLOCKSIZE = 8192;
 const int DivSufSort::SS_MISORT_STACKSIZE = 16;
 const int DivSufSort::SS_SMERGE_STACKSIZE = 32;
 const int DivSufSort::TR_STACKSIZE = 64;
@@ -90,7 +90,7 @@ void DivSufSort::reset()
     memset(&_bucketB[0], 0, sizeof(int) * 65536);
 }
 
-bool DivSufSort::computeSuffixArray(const byte input[], int sa[], int length)
+bool DivSufSort::computeSuffixArray(const kanzi::byte input[], int sa[], int length)
 {
     _buffer = reinterpret_cast<const uint8*>(&input[0]);
     _sa = sa;
@@ -168,7 +168,7 @@ void DivSufSort::constructSuffixArray(int bucketA[], int bucketB[], int n, int m
     }
 }
 
-bool DivSufSort::computeBWT(const byte input[], byte output[], int bwt[], int length, int indexes[], int idxCount)
+bool DivSufSort::computeBWT(const kanzi::byte input[], kanzi::byte output[], int bwt[], int length, int indexes[], int idxCount)
 {
     _buffer = reinterpret_cast<const uint8*>(&input[0]);
     _sa = bwt;
@@ -186,10 +186,10 @@ bool DivSufSort::computeBWT(const byte input[], byte output[], int bwt[], int le
     output[0] = input[length - 1];
 
     for (int i = 0; i < pIdx; i++)
-        output[i + 1] = byte(bwt[i]);
+        output[i + 1] = kanzi::byte(bwt[i]);
 
     for (int i = pIdx + 1; i < length; i++)
-        output[i] = byte(bwt[i]);
+        output[i] = kanzi::byte(bwt[i]);
 
     return true;
 }
@@ -486,9 +486,7 @@ void DivSufSort::ssSort(const int pa, int first, int last, int buf, int bufSize,
         limit = ssIsqrt(last - first);
 
         if (bufSize < limit) {
-            if (limit > SS_BLOCKSIZE)
-                limit = SS_BLOCKSIZE;
-
+            limit = limit > SS_BLOCKSIZE ? SS_BLOCKSIZE : limit;
             middle = last - limit;
             buf = middle;
             bufSize = limit;
@@ -554,7 +552,6 @@ void DivSufSort::ssSort(const int pa, int first, int last, int buf, int bufSize,
 
 int DivSufSort::ssCompare(int pa, int pb, int p2, const int depth) const
 {
-    prefetchRead(&_sa[p2]);
     int u1 = depth + pa;
     int u2 = depth + _sa[p2];
     const int u1n = pb + 2;
@@ -579,8 +576,6 @@ int DivSufSort::ssCompare(int pa, int pb, int p2, const int depth) const
 
 int DivSufSort::ssCompare(const int sa1[], const int sa2[], const int depth) const
 {
-    prefetchRead(&sa1[0]);
-    prefetchRead(&sa2[2]);
     int u1 = depth + sa1[0];
     int u2 = depth + sa2[0];
     const int u1n = sa1[1] + 2;
@@ -1103,9 +1098,7 @@ void DivSufSort::ssInsertionSort(const int pa, int first, int last, int depth)
                 break;
         }
 
-        if (r == 0)
-            _sa[j] = ~_sa[j];
-
+        _sa[j] = r == 0 ? ~_sa[j] : _sa[j];
         _sa[j - 1] = t - pa;
     }
 }

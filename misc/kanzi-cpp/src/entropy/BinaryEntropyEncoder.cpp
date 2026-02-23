@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -54,7 +54,7 @@ BinaryEntropyEncoder::~BinaryEntropyEncoder()
         delete _predictor;
 }
 
-int BinaryEntropyEncoder::encode(const byte block[], uint blkptr, uint count)
+int BinaryEntropyEncoder::encode(const kanzi::byte block[], uint blkptr, uint count)
 {
     if (count >= MAX_BLOCK_SIZE)
         throw invalid_argument("Invalid block size parameter (max is 1<<30)");
@@ -76,7 +76,7 @@ int BinaryEntropyEncoder::encode(const byte block[], uint blkptr, uint count)
             delete[] _sba._array;
 
         _sba._length = int(bufSize);
-        _sba._array = new byte[_sba._length];
+        _sba._array = new kanzi::byte[_sba._length];
     }
 
     // Split block into chunks, encode chunk and write bit array to bitstream
@@ -126,7 +126,7 @@ void BinaryEntropyEncoder::flush()
 }
 
 // no inline
-void BinaryEntropyEncoder::encodeByte(byte val)
+void BinaryEntropyEncoder::encodeByte(kanzi::byte val)
 {
     encodeBit(int(val) & 0x80, _predictor->get());
     encodeBit(int(val) & 0x40, _predictor->get());

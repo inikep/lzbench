@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -23,10 +23,7 @@ limitations under the License.
 #include "../entropy/EntropyEncoderFactory.hpp"
 #include "../entropy/EntropyUtils.hpp"
 #include "../transform/TransformFactory.hpp"
-
-#ifdef CONCURRENCY_ENABLED
-#include <future>
-#endif
+#include "../util/fixedbuf.hpp"
 
 using namespace kanzi;
 using namespace std;
@@ -35,8 +32,8 @@ using namespace std;
 const int CompressedOutputStream::BITSTREAM_TYPE = 0x4B414E5A; // "KANZ"
 const int CompressedOutputStream::BITSTREAM_FORMAT_VERSION = 6;
 const int CompressedOutputStream::DEFAULT_BUFFER_SIZE = 256 * 1024;
-const byte CompressedOutputStream::COPY_BLOCK_MASK = byte(0x80);
-const byte CompressedOutputStream::TRANSFORMS_MASK = byte(0x10);
+const kanzi::byte CompressedOutputStream::COPY_BLOCK_MASK = kanzi::byte(0x80);
+const kanzi::byte CompressedOutputStream::TRANSFORMS_MASK = kanzi::byte(0x10);
 const int CompressedOutputStream::MIN_BITSTREAM_BLOCK_SIZE = 1024;
 const int CompressedOutputStream::MAX_BITSTREAM_BLOCK_SIZE = 1024 * 1024 * 1024;
 const int CompressedOutputStream::SMALL_BLOCK_SIZE = 15;
@@ -86,6 +83,7 @@ CompressedOutputStream::CompressedOutputStream(OutputStream& os,
         throw invalid_argument("The block size must be a multiple of 16");
 
     _blockId = 0;
+    _inputBlockId = 0;
     _bufferId = 0;
     _blockSize = blockSize;
     _bufferThreshold = blockSize;
@@ -93,11 +91,11 @@ CompressedOutputStream::CompressedOutputStream(OutputStream& os,
     const int nbBlocks = (_inputSize == 0) ? 0 : int((_inputSize + int64(blockSize - 1)) / int64(blockSize));
     _nbInputBlocks = min(nbBlocks, MAX_CONCURRENCY - 1);
     _headless = headerless;
-    _initialized = false;
-    _closed = false;
+    _initialized = 0;
+    _closed = 0;
     _obs = new DefaultOutputBitStream(os, DEFAULT_BUFFER_SIZE);
     _entropyType = EntropyEncoderFactory::getType(entropy.c_str());
-    _transformType = TransformFactory<byte>::getType(transform.c_str());
+    _transformType = TransformFactory<kanzi::byte>::getType(transform.c_str());
 
     if (checksum == 0) {
        _hasher32 = nullptr;
@@ -116,22 +114,36 @@ CompressedOutputStream::CompressedOutputStream(OutputStream& os,
     }
 
     _jobs = tasks;
-    _buffers = new SliceArray<byte>*[2 * _jobs];
     _ctx.putInt("blockSize", _blockSize);
     _ctx.putInt("checksum", checksum);
     _ctx.putString("entropy", entropy);
     _ctx.putString("transform", transform);
     _ctx.putInt("bsVersion", BITSTREAM_FORMAT_VERSION);
 
-    // Allocate first buffer and add padding for incompressible blocks
-    const int bufSize = max(_blockSize + (_blockSize >> 3), DEFAULT_BUFFER_SIZE);
-    _buffers[0] = new SliceArray<byte>(new byte[bufSize], bufSize, 0);
-    _buffers[_jobs] = new SliceArray<byte>(nullptr, 0, 0);
+#ifdef CONCURRENCY_ENABLED
+    _futures.resize(_jobs);
+#endif
 
-    for (int i = 1; i < _jobs; i++) {
-       _buffers[i] = new SliceArray<byte>(nullptr, 0, 0);
-       _buffers[i + _jobs] = new SliceArray<byte>(nullptr, 0, 0);
+    _jobsPerTask.resize(_jobs);
+
+    // Assign optimal number of tasks and jobs per task (if the number of blocks is available)
+    if (_jobs > 1) {
+        // Limit the number of tasks if there are fewer blocks that _jobs
+        // It allows more jobs per task and reduces memory usage.
+        int nbTasks = (_nbInputBlocks != 0) ? min(_nbInputBlocks, _jobs) : _jobs;
+        Global::computeJobsPerTask(&_jobsPerTask[0], _jobs, nbTasks);
     }
+    else {
+        _jobsPerTask[0] = 1;
+    }
+
+    // Allocate first buffer and add padding for incompressible blocks
+    _buffers = new SliceArray<kanzi::byte>*[2 * _jobs];
+    const int bufSize = max(_blockSize + (_blockSize >> 3), DEFAULT_BUFFER_SIZE);
+    _buffers[0] = new SliceArray<kanzi::byte>(new kanzi::byte[bufSize], bufSize, 0);
+
+    for (int i = 1; i < 2 * _jobs; i++)
+       _buffers[i] = new SliceArray<kanzi::byte>(nullptr, 0, 0);
 }
 
 CompressedOutputStream::CompressedOutputStream(OutputStream& os, Context& ctx, bool headerless)
@@ -175,17 +187,19 @@ CompressedOutputStream::CompressedOutputStream(OutputStream& os, Context& ctx, b
     _nbInputBlocks = min(nbBlocks, MAX_CONCURRENCY - 1);
     _jobs = tasks;
     _blockId = 0;
+    _inputBlockId = 0;
     _bufferId = 0;
     _blockSize = blockSize;
     _bufferThreshold = blockSize;
-    _initialized = false;
-    _closed = false;
+    _initialized = 0;
+    _closed = 0;
     _headless = headerless;
     _obs = new DefaultOutputBitStream(os, DEFAULT_BUFFER_SIZE);
+    _ctx.putInt("bsVersion", BITSTREAM_FORMAT_VERSION);
     string entropyCodec = ctx.getString("entropy");
     string transform = ctx.getString("transform");
     _entropyType = EntropyEncoderFactory::getType(entropyCodec.c_str());
-    _transformType = TransformFactory<byte>::getType(transform.c_str());
+    _transformType = TransformFactory<kanzi::byte>::getType(transform.c_str());
     int checksum = ctx.getInt("checksum", 0);
 
     if (checksum == 0) {
@@ -204,18 +218,31 @@ CompressedOutputStream::CompressedOutputStream(OutputStream& os, Context& ctx, b
         throw invalid_argument("The block checksum size must be 0, 32 or 64");
     }
 
-    _ctx.putInt("bsVersion", BITSTREAM_FORMAT_VERSION);
-    _buffers = new SliceArray<byte>*[2 * _jobs];
+#ifdef CONCURRENCY_ENABLED
+    _futures.resize(_jobs);
+#endif
+
+    _jobsPerTask.resize(_jobs);
+
+    // Assign optimal number of tasks and jobs per task (if the number of blocks is available)
+    if (_jobs > 1) {
+        // Limit the number of tasks if there are fewer blocks that _jobs
+        // It allows more jobs per task and reduces memory usage.
+        int nbTasks = (_nbInputBlocks != 0) ? min(_nbInputBlocks, _jobs) : _jobs;
+        Global::computeJobsPerTask(&_jobsPerTask[0], _jobs, nbTasks);
+    }
+    else {
+        _jobsPerTask[0] = 1;
+    }
+
+    _buffers = new SliceArray<kanzi::byte>*[2 * _jobs];
 
     // Allocate first buffer and add padding for incompressible blocks
     const int bufSize = max(_blockSize + (_blockSize >> 3), DEFAULT_BUFFER_SIZE);
-    _buffers[0] = new SliceArray<byte>(new byte[bufSize], bufSize, 0);
-    _buffers[_jobs] = new SliceArray<byte>(nullptr, 0, 0);
+    _buffers[0] = new SliceArray<kanzi::byte>(new kanzi::byte[bufSize], bufSize, 0);
 
-    for (int i = 1; i < _jobs; i++) {
-       _buffers[i] = new SliceArray<byte>(nullptr, 0, 0);
-       _buffers[i + _jobs] = new SliceArray<byte>(nullptr, 0, 0);
-    }
+    for (int i = 1; i < 2 * _jobs; i++)
+       _buffers[i] = new SliceArray<kanzi::byte>(nullptr, 0, 0);
 }
 
 CompressedOutputStream::~CompressedOutputStream()
@@ -223,7 +250,7 @@ CompressedOutputStream::~CompressedOutputStream()
     try {
         close();
     }
-    catch (exception&) {
+    catch (const exception&) {
         // Ignore and continue
     }
 
@@ -250,7 +277,7 @@ CompressedOutputStream::~CompressedOutputStream()
 
 void CompressedOutputStream::writeHeader()
 {
-    if ((_headless == true) || (_initialized.exchange(true, memory_order_acquire)))
+    if ((_headless == true) || (EXCHANGE_ATOMIC(_initialized, 1) == 1))
         return;
 
     if (_obs->writeBits(BITSTREAM_TYPE, 32) != 32)
@@ -334,82 +361,74 @@ bool CompressedOutputStream::removeListener(Listener<Event>& bl)
 
 ostream& CompressedOutputStream::write(const char* data, streamsize length)
 {
+    int off = 0;
     int remaining = int(length);
 
     if (remaining < 0)
-        throw IOException("Invalid buffer size");
-
-    int off = 0;
+       throw IOException("Invalid buffer size");
 
     while (remaining > 0) {
-        // Limit to number of available bytes in current buffer
         const int lenChunk = min(remaining, _bufferThreshold - _buffers[_bufferId]->_index);
 
         if (lenChunk > 0) {
-            // Process a chunk of in-buffer data. No access to bitstream required
             memcpy(&_buffers[_bufferId]->_array[_buffers[_bufferId]->_index], &data[off], lenChunk);
             _buffers[_bufferId]->_index += lenChunk;
             off += lenChunk;
             remaining -= lenChunk;
 
             if (_buffers[_bufferId]->_index >= _bufferThreshold) {
-                // Current write buffer is full
-                const int nbTasks = _nbInputBlocks == 0 ? _jobs : min(_nbInputBlocks, _jobs);
-
-                if (_bufferId + 1 < nbTasks) {
-                    _bufferId++;
-                    const int bufSize = max(_blockSize + (_blockSize >> 3), DEFAULT_BUFFER_SIZE);
-
-                    if (_buffers[_bufferId]->_length == 0) {
-                        if (_buffers[_bufferId]->_array != nullptr)
-                           delete[] _buffers[_bufferId]->_array;
-
-                        _buffers[_bufferId]->_array = new byte[bufSize];
-                        _buffers[_bufferId]->_length = bufSize;
-                    }
-
-                    _buffers[_bufferId]->_index = 0;
-                }
-                else {
-                    // If all buffers are full, time to encode
-                    processBlock();
-                }
+                processBuffer();
             }
-
-            if (remaining == 0)
-                break;
         }
-
-        put(data[off]);
-        off++;
-        remaining--;
+        else {
+            // Handle full buffer / closed stream
+            processBuffer();
+        }
     }
 
     return *this;
 }
 
+
 void CompressedOutputStream::close()
 {
-    if (_closed.exchange(true, memory_order_acquire))
+    if (LOAD_ATOMIC(_closed) == 1)
         return;
 
-    processBlock();
+    string errMsg;
 
     try {
-        // Write end block of size 0
-        _obs->writeBits(uint64(0), 5); // write length-3 (5 bits max)
-        _obs->writeBits(uint64(0), 3); // write 0 (3 bits)
+        // Submit the last partial block (if any)
+        submitBlock();
+
+#ifdef CONCURRENCY_ENABLED
+        // Wait for ALL pending tasks to complete
+        for (int i = 0; i < _jobs; i++) {
+            if (_futures[i].valid()) {
+                EncodingTaskResult res = _futures[i].get();
+
+                if (res._error != 0)
+                    throw IOException(res._msg, res._error);
+            }
+        }
+#endif
+
+        // Write last block: length-3 (0) and 0 bits
+        _obs->writeBits(uint64(0), 5);
+        _obs->writeBits(uint64(0), 3);
         _obs->close();
     }
-    catch (exception& e) {
+    catch (const exception& e) {
         setstate(ios::badbit);
-        throw ios_base::failure(e.what());
+        errMsg = e.what();
     }
 
-    setstate(ios::eofbit);
+    STORE_ATOMIC(_closed, 1);
+
+    // Force subsequent writes to trigger submitBlock immediately
     _bufferThreshold = 0;
 
-    // Release resources, force error on any subsequent write attempt
+    // Release resources
     for (int i = 0; i < 2 * _jobs; i++) {
         if (_buffers[i]->_array != nullptr)
            delete[] _buffers[i]->_array;
@@ -418,133 +437,149 @@ void CompressedOutputStream::close()
         _buffers[i]->_length = 0;
         _buffers[i]->_index = 0;
     }
+
+    if (errMsg != "")
+       throw IOException(errMsg, Error::ERR_WRITE_FILE);
+
+    setstate(ios::eofbit);
 }
 
-void CompressedOutputStream::processBlock()
+
+void CompressedOutputStream::processBuffer()
 {
-    writeHeader();
+    submitBlock();
+    _bufferId = (_bufferId + 1) % _jobs;
 
-    // All buffers empty, nothing to do
-    if (_buffers[0]->_index == 0)
-        return;
-
-    // Protect against future concurrent modification of the list of block listeners
-    vector<Listener<Event>*> blockListeners(_listeners);
-    vector<EncodingTask<EncodingTaskResult>*> tasks;
-
-    try {
-        int firstBlockId = _blockId.load(memory_order_relaxed);
-        int nbTasks = _jobs;
-        int jobsPerTask[MAX_CONCURRENCY];
-
-        // Assign optimal number of tasks and jobs per task (if the number of blocks is available)
-        if (nbTasks > 1) {
-            // Limit the number of tasks if there are fewer blocks that _jobs
-            // It allows more jobs per task and reduces memory usage.
-            if (_nbInputBlocks != 0)
-                nbTasks = min(_nbInputBlocks, _jobs);
-
-            Global::computeJobsPerTask(jobsPerTask, _jobs, nbTasks);
-        }
-        else {
-            jobsPerTask[0] = _jobs;
-        }
-
-        // Create as many tasks as non-empty buffers to encode
-        for (int taskId = 0; taskId < nbTasks; taskId++) {
-            const int dataLength = _buffers[taskId]->_index;
-
-            if (dataLength == 0)
-                break;
-
-            Context copyCtx(_ctx);
-            copyCtx.putInt("jobs", jobsPerTask[taskId]);
-            copyCtx.putLong("tType", _transformType);
-            copyCtx.putInt("eType", _entropyType);
-            copyCtx.putInt("blockId", firstBlockId + taskId + 1);
-            copyCtx.putInt("size", dataLength); // "size" is the actual block size, "blockSize" the provided one
-            _buffers[taskId]->_index = 0;
-
-            EncodingTask<EncodingTaskResult>* task = new EncodingTask<EncodingTaskResult>(_buffers[taskId],
-                _buffers[_jobs + taskId],
-                _obs, _hasher32, _hasher64,
-                &_blockId, blockListeners, copyCtx);
-            tasks.push_back(task);
-        }
-
-        if (tasks.size() == 1) {
-            // Synchronous call
-            EncodingTask<EncodingTaskResult>* task = tasks.back();
-            tasks.pop_back();
-            EncodingTaskResult res = task->run();
-
-            if (res._error != 0)
-                throw IOException(res._msg, res._error); // deallocate in catch block
-
-            delete task;
-        }
 #ifdef CONCURRENCY_ENABLED
-        else {
-            vector<future<EncodingTaskResult> > futures;
+    if (_futures[_bufferId].valid()) {
+        EncodingTaskResult res = _futures[_bufferId].get();
 
-            // Register task futures and launch tasks in parallel
-            for (uint i = 0; i < tasks.size(); i++) {
-                if (_pool == nullptr)
-                    futures.push_back(async(launch::async, &EncodingTask<EncodingTaskResult>::run, tasks[i]));
-                else
-                    futures.push_back(_pool->schedule(&EncodingTask<EncodingTaskResult>::run, tasks[i]));
-            }
-
-            int error = 0;
-            string msg;
-
-            // Wait for tasks completion and check results
-            for (uint i = 0; i < tasks.size(); i++) {
-                EncodingTaskResult res = futures[i].get();
-
-                if (error != 0)
-                    continue;
-
-                // Capture first error but continue getting results from other tasks
-                // instead of exiting early, otherwise it is possible that the error
-                // management code is going to deallocate memory used by other tasks
-                // before they are completed.
-                error = res._error;
-                msg = res._msg;
-            }
-
-            if (error != 0)
-               throw IOException(msg, error); // deallocate in catch block
-        }
-
-        for (vector<EncodingTask<EncodingTaskResult>*>::iterator it = tasks.begin(); it != tasks.end(); ++it)
-            delete *it;
-
-        tasks.clear();
+        if (res._error != 0)
+            throw IOException(res._msg, res._error);
+    }
 #endif
 
-        _bufferId = 0;
-    }
-    catch (IOException&) {
-        for (vector<EncodingTask<EncodingTaskResult>*>::iterator it = tasks.begin(); it != tasks.end(); ++it)
-            delete *it;
+    const int bSize = _blockSize + (_blockSize >> 6);
+    const int bufSize = max(bSize, 65536);
 
-        tasks.clear();
-        throw; // rethrow
-    }
-    catch (BitStreamException& e) {
-        for (vector<EncodingTask<EncodingTaskResult>*>::iterator it = tasks.begin(); it != tasks.end(); ++it)
-            delete *it;
+    if (_buffers[_bufferId]->_length == 0) {
+        if (_buffers[_bufferId]->_array != nullptr)
+            delete[] _buffers[_bufferId]->_array;
 
-        tasks.clear();
-        throw IOException(e.what(), e.error());
+        _buffers[_bufferId]->_array = new kanzi::byte[bufSize];
+        _buffers[_bufferId]->_length = bufSize;
     }
-    catch (exception& e) {
-        for (vector<EncodingTask<EncodingTaskResult>*>::iterator it = tasks.begin(); it != tasks.end(); ++it)
-            delete *it;
 
-        tasks.clear();
-        throw IOException(e.what(), Error::ERR_UNKNOWN);
+    _buffers[_bufferId]->_index = 0;
+}
+
+
+void CompressedOutputStream::submitBlock()
+{
+    if (LOAD_ATOMIC(_closed) == 1)
+        throw IOException("Stream closed", Error::ERR_WRITE_FILE);
+
+    writeHeader(); // Ensure header is written before first block processing
+
+    const int dataLength = _buffers[_bufferId]->_index;
+
+    if (dataLength == 0)
+        return;
+
+    // Increment input block counter (1-based for the Task logic)
+    _inputBlockId++;
+
+    Context copyCtx(_ctx);
+    copyCtx.putLong("tType", _transformType);
+    copyCtx.putInt("eType", _entropyType);
+    copyCtx.putInt("blockId", _inputBlockId);
+    copyCtx.putInt("size", dataLength);
+    copyCtx.putInt("jobs", _jobsPerTask[_bufferId]);
+
+    // Prepare the buffer for processing
+    _buffers[_bufferId]->_index = 0;
+
+    // Create the task
+    // Note: Input is _buffers[_bufferId], Output is _buffers[_jobs + _bufferId]
+    EncodingTask<EncodingTaskResult>* task = new EncodingTask<EncodingTaskResult>(
+        _buffers[_bufferId],
+        _buffers[_jobs + _bufferId],
+        _obs, _hasher32, _hasher64,
+#ifdef CONCURRENCY_ENABLED
+        &_blockMutex, &_blockCondition,
+#endif
+        &_blockId, _listeners, copyCtx);
+
+#ifdef CONCURRENCY_ENABLED
+    std::shared_ptr<EncodingTask<EncodingTaskResult>> safeTask(task);
+
+    auto taskWrapper = [safeTask]() {
+        return safeTask->run();
+    };
+
+    if (_pool == nullptr) {
+        _futures[_bufferId] = std::async(taskWrapper);
+    }
+    else {
+        // REQUIRES: Pool size > Number of concurrent tasks to avoid deadlock
+        _futures[_bufferId] = _pool->schedule(taskWrapper);
+    }
+#else
+    // Synchronous fallback
+    try {
+        EncodingTaskResult res = task->run();
+
+        if (res._error != 0)
+           throw IOException(res._msg, res._error);
+    } catch (...) {
+        delete task;
+        throw;
+    }
+
+    delete task;
+#endif
+}
+
+ostream& CompressedOutputStream::put(char c)
+{
+    try {
+        if (_buffers[_bufferId]->_index >= _bufferThreshold) {
+            // Submit current buffer
+            submitBlock();
+
+            // Rotate to next buffer
+            _bufferId = (_bufferId + 1) % _jobs;
+
+            // If concurrent, wait if the target buffer is still busy
+#ifdef CONCURRENCY_ENABLED
+            if (_futures[_bufferId].valid()) {
+                EncodingTaskResult res = _futures[_bufferId].get();
+
+                if (res._error != 0)
+                    throw IOException(res._msg, res._error);
+            }
+#endif
+
+            // Allocation / Reset logic
+            const int bufSize = max(_blockSize + (_blockSize >> 6), 65536);
+
+            if (_buffers[_bufferId]->_length == 0) {
+                 if (_buffers[_bufferId]->_array != nullptr)
+                     delete[] _buffers[_bufferId]->_array;
+
+                _buffers[_bufferId]->_array = new kanzi::byte[bufSize];
+                _buffers[_bufferId]->_length = bufSize;
+            }
+
+            _buffers[_bufferId]->_index = 0;
+        }
+
+        _buffers[_bufferId]->_array[_buffers[_bufferId]->_index++] = kanzi::byte(c);
+        return *this;
+    }
+    catch (const exception& e) {
+        setstate(std::ios::badbit);
+        throw std::ios_base::failure(e.what());
     }
 }
 
@@ -555,9 +590,12 @@ void CompressedOutputStream::notifyListeners(vector<Listener<Event>*>& listeners
 }
 
 template <class T>
-EncodingTask<T>::EncodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuffer,
+EncodingTask<T>::EncodingTask(SliceArray<kanzi::byte>* iBuffer, SliceArray<kanzi::byte>* oBuffer,
     DefaultOutputBitStream* obs, XXHash32* hasher32, XXHash64* hasher64,
-    ATOMIC_INT* processedBlockId, vector<Listener<Event>*>& listeners,
+#ifdef CONCURRENCY_ENABLED
+    std::mutex* blockMutex, std::condition_variable* blockCondition,
+#endif
+    atomic_int_t* processedBlockId, vector<Listener<Event>*>& listeners,
     const Context& ctx)
     : _obs(obs)
     , _listeners(listeners)
@@ -567,6 +605,10 @@ EncodingTask<T>::EncodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuff
     _buffer = oBuffer;
     _hasher32 = hasher32;
     _hasher64 = hasher64;
+#ifdef CONCURRENCY_ENABLED
+    _blockMutex = blockMutex;
+    _blockCondition = blockCondition;
+#endif
     _processedBlockId = processedBlockId;
 }
 
@@ -576,28 +618,65 @@ EncodingTask<T>::EncodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuff
 //  case 4 transforms or less
 //      | 0b0001xxxx => transform sequence skip flags (1 means skip)
 //  case more than 4 transforms
-//      | 0b0yy00000 0bxxxxxxxx => transform sequence skip flags in next byte (1 means skip)
+//      | 0b0yy00000 0bxxxxxxxx => transform sequence skip flags in next kanzi::byte (1 means skip)
 template <class T>
 T EncodingTask<T>::run()
 {
     const int blockId = _ctx.getInt("blockId");
     const int blockLength = _ctx.getInt("size");
-    TransformSequence<byte>* transform = nullptr;
+    TransformSequence<kanzi::byte>* transform = nullptr;
     EntropyEncoder* ee = nullptr;
+#ifdef CONCURRENCY_ENABLED
+    auto storeProcessedBlockId = [this](int value) {
+        {
+            std::lock_guard<std::mutex> lock(*_blockMutex);
+            STORE_ATOMIC(*_processedBlockId, value);
+        }
+
+        _blockCondition->notify_all();
+    };
+
+    auto fetchAddProcessedBlockId = [this]() {
+        {
+            std::lock_guard<std::mutex> lock(*_blockMutex);
+            FETCH_ADD_ATOMIC(*_processedBlockId, 1);
+        }
+
+        _blockCondition->notify_all();
+    };
+
+    auto compareExchangeProcessedBlockId = [this](int expected, int desired) {
+        bool updated = false;
+        {
+            std::lock_guard<std::mutex> lock(*_blockMutex);
+            updated = COMPARE_EXCHANGE_ATOMIC(*_processedBlockId, expected, desired);
+        }
+
+        if (updated == true)
+            _blockCondition->notify_all();
+
+        return updated;
+    };
+#endif
 
     try {
         if (blockLength == 0) {
             // Last block (only block with 0 length)
-            (*_processedBlockId)++;
+#ifdef CONCURRENCY_ENABLED
+            fetchAddProcessedBlockId();
+#else
+            FETCH_ADD_ATOMIC(*_processedBlockId, 1);
+#endif
             return T(blockId, 0, "Success");
         }
 
-        byte mode = byte(0);
+        kanzi::byte mode = kanzi::byte(0);
         int postTransformLength = blockLength;
         uint64 checksum = 0;
         uint64 tType = _ctx.getLong("tType");
         short eType = short(_ctx.getInt("eType"));
         Event::HashType hashType = Event::NO_HASH;
+        WallTimer timer;
 
         // Compute block checksum
         if (_hasher32 != nullptr) {
@@ -612,12 +691,12 @@ T EncodingTask<T>::run()
         if (_listeners.size() > 0) {
             // Notify before transform
             Event evt(Event::BEFORE_TRANSFORM, blockId,
-                int64(blockLength), clock(), checksum, hashType);
+                int64(blockLength), timer.getCurrentTime(), checksum, hashType);
             CompressedOutputStream::notifyListeners(_listeners, evt);
         }
 
         if (blockLength <= CompressedOutputStream::SMALL_BLOCK_SIZE) {
-            tType = TransformFactory<byte>::NONE_TYPE;
+            tType = TransformFactory<kanzi::byte>::NONE_TYPE;
             eType = EntropyEncoderFactory::NONE_TYPE;
             mode |= CompressedOutputStream::COPY_BLOCK_MASK;
         }
@@ -636,7 +715,7 @@ T EncodingTask<T>::run()
                 }
 
                 if (skip == true) {
-                    tType = TransformFactory<byte>::NONE_TYPE;
+                    tType = TransformFactory<kanzi::byte>::NONE_TYPE;
                     eType = EntropyEncoderFactory::NONE_TYPE;
                     mode |= CompressedOutputStream::COPY_BLOCK_MASK;
                 }
@@ -644,7 +723,7 @@ T EncodingTask<T>::run()
         }
 
         _ctx.putInt("size", blockLength);
-        transform = TransformFactory<byte>::newTransform(_ctx, tType);
+        transform = TransformFactory<kanzi::byte>::newTransform(_ctx, tType);
         const int requiredSize = transform->getMaxEncodedLength(blockLength);
 
         if (blockLength >= 4) {
@@ -662,7 +741,7 @@ T EncodingTask<T>::run()
             if (_buffer->_array != nullptr)
                delete[] _buffer->_array;
 
-            _buffer->_array = new byte[requiredSize];
+            _buffer->_array = new kanzi::byte[requiredSize];
             _buffer->_length = requiredSize;
         }
 
@@ -671,13 +750,17 @@ T EncodingTask<T>::run()
         _buffer->_index = 0;
         transform->forward(*_data, *_buffer, blockLength);
         const int nbTransforms = transform->getNbTransforms();
-        const byte skipFlags = transform->getSkipFlags();
+        const kanzi::byte skipFlags = transform->getSkipFlags();
         delete transform;
         transform = nullptr;
         postTransformLength = _buffer->_index;
 
         if (postTransformLength < 0) {
-            _processedBlockId->store(CompressedOutputStream::CANCEL_TASKS_ID, memory_order_release);
+#ifdef CONCURRENCY_ENABLED
+            storeProcessedBlockId(CompressedOutputStream::CANCEL_TASKS_ID);
+#else
+            STORE_ATOMIC(*_processedBlockId, CompressedOutputStream::CANCEL_TASKS_ID);
+#endif
             return T(blockId, Error::ERR_WRITE_FILE, "Invalid transform size");
         }
 
@@ -685,17 +768,21 @@ T EncodingTask<T>::run()
         const int dataSize = (postTransformLength < 256) ? 1 : (Global::_log2(uint32(postTransformLength)) >> 3) + 1;
 
         if (dataSize > 4) {
-            _processedBlockId->store(CompressedOutputStream::CANCEL_TASKS_ID, memory_order_release);
+#ifdef CONCURRENCY_ENABLED
+            storeProcessedBlockId(CompressedOutputStream::CANCEL_TASKS_ID);
+#else
+            STORE_ATOMIC(*_processedBlockId, CompressedOutputStream::CANCEL_TASKS_ID);
+#endif
             return T(blockId, Error::ERR_WRITE_FILE, "Invalid block data length");
         }
 
         // Record size of 'block size' - 1 in bytes
-        mode |= byte(((dataSize - 1) & 0x03) << 5);
+        mode |= kanzi::byte(((dataSize - 1) & 0x03) << 5);
 
         if (_listeners.size() > 0) {
             // Notify after transform
             Event evt(Event::AFTER_TRANSFORM, blockId,
-                int64(postTransformLength), clock(), checksum, hashType);
+                int64(postTransformLength), timer.getCurrentTime(), checksum, hashType);
             CompressedOutputStream::notifyListeners(_listeners, evt);
         }
 
@@ -707,17 +794,17 @@ T EncodingTask<T>::run()
             // entropy coder may expand size.
             delete[] _data->_array;
             _data->_length = bufSize;
-            _data->_array = new byte[_data->_length];
+            _data->_array = new kanzi::byte[_data->_length];
         }
 
         _data->_index = 0;
-        ostreambuf<char> buf(reinterpret_cast<char*>(&_data->_array[_data->_index]), streamsize(_data->_length));
+        ofixedbuf buf(reinterpret_cast<char*>(&_data->_array[_data->_index]), streamsize(_data->_length));
         ostream os(&buf);
         DefaultOutputBitStream obs(os);
 
         // Write block 'header' (mode + compressed length)
-        if (((mode & CompressedOutputStream::COPY_BLOCK_MASK) != byte(0)) || (nbTransforms <= 4)) {
-            mode |= byte(skipFlags >> 4);
+        if (((mode & CompressedOutputStream::COPY_BLOCK_MASK) != kanzi::byte(0)) || (nbTransforms <= 4)) {
+            mode |= kanzi::byte(skipFlags >> 4);
             obs.writeBits(uint64(mode), 8);
         }
         else {
@@ -737,7 +824,7 @@ T EncodingTask<T>::run()
         if (_listeners.size() > 0) {
             // Notify before entropy
             Event evt(Event::BEFORE_ENTROPY, blockId,
-                int64(postTransformLength), clock(), checksum, hashType);
+                int64(postTransformLength), timer.getCurrentTime(), checksum, hashType);
             CompressedOutputStream::notifyListeners(_listeners, evt);
         }
 
@@ -748,7 +835,11 @@ T EncodingTask<T>::run()
         // Entropy encode block
         if (ee->encode(_buffer->_array, 0, postTransformLength) != postTransformLength) {
             delete ee;
-            _processedBlockId->store(CompressedOutputStream::CANCEL_TASKS_ID, memory_order_release);
+#ifdef CONCURRENCY_ENABLED
+            storeProcessedBlockId(CompressedOutputStream::CANCEL_TASKS_ID);
+#else
+            STORE_ATOMIC(*_processedBlockId, CompressedOutputStream::CANCEL_TASKS_ID);
+#endif
             return T(blockId, Error::ERR_PROCESS_BLOCK, "Entropy coding failed");
         }
 
@@ -758,10 +849,23 @@ T EncodingTask<T>::run()
         ee = nullptr;
         obs.close();
         uint64 written = obs.written();
+        const uint lw = (written < 8) ? 3 : uint(Global::log2(uint32(written >> 3)) + 4);
 
+#ifdef CONCURRENCY_ENABLED
+        {
+            std::unique_lock<std::mutex> lock(*_blockMutex);
+            _blockCondition->wait(lock, [this, blockId]() {
+                const int taskId = LOAD_ATOMIC(*_processedBlockId);
+                return (taskId == CompressedOutputStream::CANCEL_TASKS_ID) || (taskId == blockId - 1);
+            });
+        }
+
+        if (LOAD_ATOMIC(*_processedBlockId) == CompressedOutputStream::CANCEL_TASKS_ID)
+            return T(blockId, 0, "Canceled");
+#else
         // Lock free synchronization
         while (true) {
-            const int taskId = _processedBlockId->load(memory_order_acquire);
+            const int taskId = LOAD_ATOMIC(*_processedBlockId);
 
             if (taskId == CompressedOutputStream::CANCEL_TASKS_ID)
                 return T(blockId, 0, "Canceled");
@@ -772,33 +876,15 @@ T EncodingTask<T>::run()
             // Back-off improves performance
             CPU_PAUSE();
         }
-
-        if (_listeners.size() > 0) {
-            // Notify after entropy
-            Event evt1(Event::AFTER_ENTROPY, blockId,
-                int64((written + 7) >> 3), clock(), checksum, hashType);
-            CompressedOutputStream::notifyListeners(_listeners, evt1);
-
-#if !defined(_MSC_VER) || _MSC_VER > 1500
-            if (_ctx.getInt("verbosity", 0) > 4) {
-                string oName = _ctx.getString("outputName");
-
-                if (oName.length() == 4) {
-                    std::transform(oName.begin(), oName.end(), oName.begin(), ::toupper);
-                }
-
-                const int64 blockOffset = (oName != "NONE") ? _obs->tell() : _obs->written();
-                Event evt2(Event::BLOCK_INFO, blockId,
-                   int64((written + 7) >> 3), clock(), checksum, hashType, blockOffset, uint8(skipFlags));
-                CompressedOutputStream::notifyListeners(_listeners, evt2);
-            }
 #endif
-        }
 
         // Emit block size in bits (max size pre-entropy is 1 GB = 1 << 30 bytes)
-        const uint lw = (written < 8) ? 3 : uint(Global::log2(uint32(written >> 3)) + 4);
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+        const int64 blockOffset = _obs->tell();
+#endif
         _obs->writeBits(lw - 3, 5); // write length-3 (5 bits max)
         _obs->writeBits(written, lw);
+        int64 ww = int64((written + 7) >> 3);
 
         // Emit data to shared bitstream
         for (uint n = 0; written > 0; ) {
@@ -810,14 +896,42 @@ T EncodingTask<T>::run()
 
         // After completion of the entropy coding, increment the block id.
         // It unblocks the task processing the next block (if any).
-        _processedBlockId->store(blockId, memory_order_release);
+#ifdef CONCURRENCY_ENABLED
+        storeProcessedBlockId(blockId);
+#else
+        STORE_ATOMIC(*_processedBlockId, blockId);
+#endif
+
+        if (_listeners.size() > 0) {
+            // Notify after entropy
+            Event evt1(Event::AFTER_ENTROPY, blockId, ww, timer.getCurrentTime(), checksum, hashType);
+            CompressedOutputStream::notifyListeners(_listeners, evt1);
+
+#if !defined(_MSC_VER) || _MSC_VER > 1500
+            if (_ctx.getInt("verbosity", 0) > 4) {
+                string oName = _ctx.getString("outputName");
+
+                if (oName.length() == 4) {
+                    std::transform(oName.begin(), oName.end(), oName.begin(), ::toupper);
+                }
+
+                Event evt2(Event::BLOCK_INFO, blockId,
+                   int64((written + 7) >> 3), timer.getCurrentTime(), checksum, hashType, blockOffset, uint8(skipFlags));
+                CompressedOutputStream::notifyListeners(_listeners, evt2);
+            }
+#endif
+        }
 
         return T(blockId, 0, "Success");
     }
-    catch (exception& e) {
+    catch (const exception& e) {
         // Make sure to unfreeze next block
-        if (_processedBlockId->load(memory_order_acquire) == blockId - 1)
-            _processedBlockId->store(blockId, memory_order_release);
+	int curBlockId = blockId - 1;
+#ifdef CONCURRENCY_ENABLED
+	compareExchangeProcessedBlockId(curBlockId, blockId);
+#else
+	COMPARE_EXCHANGE_ATOMIC(*_processedBlockId, curBlockId, blockId);
+#endif
 
         if (transform != nullptr)
             delete transform;

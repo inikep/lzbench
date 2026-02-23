@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -128,48 +128,48 @@ int testEntropyCodecCorrectness(const string& name)
         cout << endl
              << endl
              << "Test " << ii << endl;
-        byte val[256];
+        kanzi::byte val[256];
         int size = 40;
 
         if (ii == 3) {
-            byte val2[] = { (byte)0, (byte)0, (byte)32, (byte)15, (byte)-4, (byte)16, (byte)0, (byte)16, (byte)0, (byte)7, (byte)-1, (byte)-4, (byte)-32, (byte)0, (byte)31, (byte)-1 };
+            kanzi::byte val2[] = { (kanzi::byte)0, (kanzi::byte)0, (kanzi::byte)32, (kanzi::byte)15, (kanzi::byte)-4, (kanzi::byte)16, (kanzi::byte)0, (kanzi::byte)16, (kanzi::byte)0, (kanzi::byte)7, (kanzi::byte)-1, (kanzi::byte)-4, (kanzi::byte)-32, (kanzi::byte)0, (kanzi::byte)31, (kanzi::byte)-1 };
             size = 16;
             memcpy(val, &val2[0], size);
         }
         else if (ii == 2) {
-            byte val2[] = { (byte)0x3d, (byte)0x4d, (byte)0x54, (byte)0x47, (byte)0x5a, (byte)0x36, (byte)0x39, (byte)0x26, (byte)0x72, (byte)0x6f, (byte)0x6c, (byte)0x65, (byte)0x3d, (byte)0x70, (byte)0x72, (byte)0x65 };
+            kanzi::byte val2[] = { (kanzi::byte)0x3d, (kanzi::byte)0x4d, (kanzi::byte)0x54, (kanzi::byte)0x47, (kanzi::byte)0x5a, (kanzi::byte)0x36, (kanzi::byte)0x39, (kanzi::byte)0x26, (kanzi::byte)0x72, (kanzi::byte)0x6f, (kanzi::byte)0x6c, (kanzi::byte)0x65, (kanzi::byte)0x3d, (kanzi::byte)0x70, (kanzi::byte)0x72, (kanzi::byte)0x65 };
             size = 16;
             memcpy(val, &val2[0], size);
         }
         else if (ii == 1) {
             for (int i = 0; i < size; i++)
-                val[i] = byte(2); // all identical
+                val[i] = kanzi::byte(2); // all identical
         }
         else if (ii == 4) {
             for (int i = 0; i < size; i++)
-                val[i] = byte(2 + (i & 1)); // 2 symbols
+                val[i] = kanzi::byte(2 + (i & 1)); // 2 symbols
         }
         else if (ii == 5) {
             size = 1;
-            val[0] = byte(42);
+            val[0] = kanzi::byte(42);
         }
         else if (ii == 6) {
             size = 2;
-            val[0] = byte(42);
-            val[1] = byte(42);
+            val[0] = kanzi::byte(42);
+            val[1] = kanzi::byte(42);
         }
         else if (ii == 7) {
             for (int i = 0; i < 44; i++)
-                val[i] = byte(i & 7);
+                val[i] = kanzi::byte(i & 7);
         }
         else {
             size = 256;
 
             for (int i = 0; i < 256; i++)
-                val[i] = byte(64 + 4 * ii + (rand() % (8*ii + 1)));
+                val[i] = kanzi::byte(64 + 4 * ii + (rand() % (8*ii + 1)));
         }
 
-        byte* values = &val[0];
+        kanzi::byte* values = &val[0];
         cout << "Original:" << endl;
 
         for (int i = 0; i < size; i++)
@@ -205,7 +205,7 @@ int testEntropyCodecCorrectness(const string& name)
              << endl
              << "Decoded:" << endl;
         bool ok = true;
-        byte* values2 = new byte[size];
+        kanzi::byte* values2 = new kanzi::byte[size];
         ed->decode(values2, 0, size);
         ed->dispose();
         delete ed;
@@ -239,8 +239,8 @@ int testEntropyCodecSpeed(const string& name)
     int res = 0;
 
     srand((uint)time(nullptr));
-    byte values1[500000];
-    byte values2[500000];
+    kanzi::byte values1[500000];
+    kanzi::byte values2[500000];
 
     for (int jj = 0; jj < 3; jj++) {
         cout << endl
@@ -257,7 +257,7 @@ int testEntropyCodecSpeed(const string& name)
                 int n0 = n;
                 int len = max(min(repeats[idx], size - n), 1);
                 idx = (idx + 1) & 0x0F;
-                byte b = (byte)(rand() % 255);
+                kanzi::byte b = (kanzi::byte)(rand() % 255);
 
                 for (int j = n0; j < n0 + len; j++) {
                     values1[j] = b;
@@ -391,7 +391,7 @@ int TestEntropyCodec_main(int argc, const char* argv[])
                res |= testEntropyCodecSpeed(*it);
         }
     }
-    catch (exception& e) {
+    catch (const exception& e) {
         cout << e.what() << endl;
         res = 123;
     }

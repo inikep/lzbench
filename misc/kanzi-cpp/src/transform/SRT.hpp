@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _SRT_
-#define _SRT_
+#ifndef knz_SRT
+#define knz_SRT
 
 #include "../Context.hpp"
 #include "../Transform.hpp"
@@ -42,8 +42,7 @@ namespace kanzi {
 
        static int encodeHeader(const uint freqs[], byte dst[]);
 
-       static int decodeHeader(const byte src[], uint freqs[]);
+       static int decodeHeader(const byte src[], int srcEnd, uint freqs[]);
    };
 }
 #endif
-

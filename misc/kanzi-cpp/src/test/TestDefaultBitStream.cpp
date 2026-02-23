@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -23,7 +23,6 @@ limitations under the License.
 #include "../bitstream/DefaultInputBitStream.hpp"
 #include "../bitstream/DefaultOutputBitStream.hpp"
 #include "../BitStreamException.hpp"
-#include "../util.hpp"
 #include "../io/IOException.hpp"
 
 using namespace std;
@@ -31,7 +30,7 @@ using namespace kanzi;
 
 int testBitStreamCorrectnessAligned1()
 {
-    // Test correctness (byte aligned)
+    // Test correctness (kanzi::byte aligned)
     cout << "Correctness Test - write long - byte aligned" << endl;
     const int length = 100;
     int* values = new int[length];
@@ -132,7 +131,7 @@ int testBitStreamCorrectnessAligned1()
 
 int testBitStreamCorrectnessMisaligned1()
 {
-    // Test correctness (not byte aligned)
+    // Test correctness (not kanzi::byte aligned)
     cout << "Correctness Test - write long - not byte aligned" << endl;
     const int length = 100;
     int* values = new int[length];
@@ -193,7 +192,7 @@ int testBitStreamCorrectnessMisaligned1()
             try {
                 cout << "\nTrying to write to closed stream" << endl;
                 dbs.writeBit(1);
-            } catch (BitStreamException& e) {
+            } catch (const BitStreamException& e) {
                 cout << "\nException: " << e.what() << endl;
             }
         }
@@ -244,7 +243,7 @@ int testBitStreamCorrectnessMisaligned1()
             try {
                 cout << "\nTrying to read from closed stream" << endl;
                 ibs.readBit();
-            } catch (BitStreamException& e) {
+            } catch (const BitStreamException& e) {
                 cout << "\nException: " << e.what() << endl;
             }
         }
@@ -313,11 +312,11 @@ int testBitStreamSpeed1(const string& fileName)
 
 int testBitStreamCorrectnessAligned2()
 {
-    // Test correctness (byte aligned)
+    // Test correctness (kanzi::byte aligned)
     cout << "Correctness Test - write array - byte aligned" << endl;
     const int length = 100;
-    byte* input = new byte[length];
-    byte* output = new byte[length];
+    kanzi::byte* input = new kanzi::byte[length];
+    kanzi::byte* output = new kanzi::byte[length];
     int res = 0;
     srand((uint)time(nullptr));
     cout << "\nInitial" << endl;
@@ -330,7 +329,7 @@ int testBitStreamCorrectnessAligned2()
         dbs.showByte(true);
 
         for (int i = 0; i < length; i++) {
-            input[i] = (byte) rand();
+            input[i] = (kanzi::byte) rand();
             cout << (int(input[i]) & 0xFF) << " ";
 
             if ((i % 20) == 19)
@@ -351,7 +350,7 @@ int testBitStreamCorrectnessAligned2()
             try {
                 cout << "\nTrying to write to closed stream" << endl;
                 dbs.writeBit(1);
-            } catch (BitStreamException& e) {
+            } catch (const BitStreamException& e) {
                 cout << "\nException: " << e.what() << endl;
             }
         }
@@ -402,7 +401,7 @@ int testBitStreamCorrectnessAligned2()
             try {
                 cout << "\nTrying to read from closed stream" << endl;
                 ibs.readBit();
-            } catch (BitStreamException& e) {
+            } catch (const BitStreamException& e) {
                 cout << "\nException: " << e.what() << endl;
             }
         }
@@ -415,11 +414,11 @@ int testBitStreamCorrectnessAligned2()
 
 int testBitStreamCorrectnessMisaligned2()
 {
-    // Test correctness (not byte aligned)
+    // Test correctness (not kanzi::byte aligned)
     cout << "Correctness Test - write array - not byte aligned" << endl;
     const int length = 100;
-    byte* input = new byte[length];
-    byte* output = new byte[length];
+    kanzi::byte* input = new kanzi::byte[length];
+    kanzi::byte* output = new kanzi::byte[length];
     int res = 0;
     srand((uint)time(nullptr));
     cout << "\nInitial" << endl;
@@ -432,7 +431,7 @@ int testBitStreamCorrectnessMisaligned2()
         dbs.showByte(true);
 
         for (int i = 0; i < length; i++) {
-            input[i] = (byte) rand();
+            input[i] = (kanzi::byte) rand();
             cout << (int(input[i]) & 0xFF) << " ";
 
             if ((i % 20) == 19)
@@ -500,13 +499,13 @@ int testBitStreamCorrectnessMisaligned2()
 int testSeek(const string& name)
 {
 #if !defined(_MSC_VER) || _MSC_VER > 1500
-    // Test correctness (not byte aligned)
+    // Test correctness (not kanzi::byte aligned)
     cout << endl << "Seek Test" << endl << endl;
-    byte input[256];
-    byte output[256];
+    kanzi::byte input[256];
+    kanzi::byte output[256];
 
     for (int i = 0; i < 256; i++)
-       input[i] = byte(i);
+       input[i] = kanzi::byte(i);
 
     cout << "Test OutputBitStream" << endl;
     ofstream ofs(name.c_str(), ios_base::out | ios_base::binary);
@@ -528,7 +527,7 @@ int testSeek(const string& name)
     cout << "Test InputBitStream" << endl;
 
     for (int i = 0; i < 256; i++)
-        input[i] = byte(i);
+        input[i] = kanzi::byte(i);
 
     ofstream ofs2(name.c_str(), ios_base::out | ios_base::binary);
     ofs2.write(reinterpret_cast<const char*>(input), 256);
@@ -539,7 +538,7 @@ int testSeek(const string& name)
     ibs.readBits(&output[0], 8 * 16);
 
     for (int i = 0; i < 16; i++) {
-       if (output[i] != byte(i)) {
+       if (output[i] != kanzi::byte(i)) {
           cout << "Read failure" << endl;
           remove(name.c_str());
           return 1;
@@ -578,7 +577,7 @@ int testSeek(const string& name)
        }
 
        for (int j = 0; j < 10; j++) {
-          if (output[pos + j] != byte(pos + j)) {
+          if (output[pos + j] != kanzi::byte(pos + j)) {
              cout << "Read failure" << endl;
              remove(name.c_str());
              return 5;
@@ -600,17 +599,17 @@ int testBitStreamSpeed2(const string& fileName)
     // Test speed
     cout << "\nSpeed Test2" << endl;
 
-    byte values[] = { (byte)3, (byte)1, (byte)4, (byte)1, (byte)5,(byte) 9, (byte)2, (byte)6,
-        (byte)5, (byte)3, (byte)5, (byte)8, (byte)9, (byte)7, (byte)9, (byte)3,
-        (byte)31, (byte)14, (byte)41, (byte)15, (byte)59, (byte)92, (byte)26, (byte)65,
-        (byte)53, (byte)35, (byte)58, (byte)89, (byte)97, (byte)79, (byte)93, (byte)32 };
+    kanzi::byte values[] = { (kanzi::byte)3, (kanzi::byte)1, (kanzi::byte)4, (kanzi::byte)1, (kanzi::byte)5,(kanzi::byte) 9, (kanzi::byte)2, (kanzi::byte)6,
+        (kanzi::byte)5, (kanzi::byte)3, (kanzi::byte)5, (kanzi::byte)8, (kanzi::byte)9, (kanzi::byte)7, (kanzi::byte)9, (kanzi::byte)3,
+        (kanzi::byte)31, (kanzi::byte)14, (kanzi::byte)41, (kanzi::byte)15, (kanzi::byte)59, (kanzi::byte)92, (kanzi::byte)26, (kanzi::byte)65,
+        (kanzi::byte)53, (kanzi::byte)35, (kanzi::byte)58, (kanzi::byte)89, (kanzi::byte)97, (kanzi::byte)79, (kanzi::byte)93, (kanzi::byte)32 };
 
     int iter = 150;
     uint64 written = 0;
     uint64 read = 0;
     double delta1 = 0, delta2 = 0;
-    byte* input = new byte[3250000*32];
-    byte* output = new byte[3250000*32];
+    kanzi::byte* input = new kanzi::byte[3250000*32];
+    kanzi::byte* output = new kanzi::byte[3250000*32];
 
     for (int i = 0; i < 3250000; i++) {
         memcpy(&input[i*32], &values[0], 32);
@@ -692,14 +691,13 @@ int TestDefaultBitStream_main(int argc, const char* argv[])
           res |= testBitStreamSpeed1(fileName);
           res |= testBitStreamSpeed2(fileName);
        }
-    } catch (kanzi::IOException& e) {
+    } catch (const kanzi::IOException& e) {
        cout << "Exception: " << e.what() << endl;
        res = 99;
-    } catch (BitStreamException& e) {
+    } catch (const BitStreamException& e) {
        cout << "Exception: " << e.what() << endl;
        res = 99;
     }
 
     return res;
 }
-

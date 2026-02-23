@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -29,11 +29,11 @@ const int TPAQPredictor<true>::HASH_SIZE = 16 * 1024 * 1024;
 template<>
 const int TPAQPredictor<true>::HASH = 0x7FEB352D;
 template<>
-const int TPAQPredictor<true>::MASK_80808080 = 0x80808080;
+const uint TPAQPredictor<true>::MASK_80808080 = 0x80808080u;
 template<>
-const int TPAQPredictor<true>::MASK_F0F0F000 = 0xF0F0F000;
+const uint TPAQPredictor<true>::MASK_F0F0F000 = 0xF0F0F000u;
 template<>
-const int TPAQPredictor<true>::MASK_4F4FFFFF = 0x4F4FFFFF;
+const uint TPAQPredictor<true>::MASK_4F4FFFFF = 0x4F4FFFFFu;
 template<>
 const int TPAQPredictor<false>::MAX_LENGTH = 88;
 template<>
@@ -43,11 +43,11 @@ const int TPAQPredictor<false>::HASH_SIZE = 16 * 1024 * 1024;
 template<>
 const int TPAQPredictor<false>::HASH = 0x7FEB352D;
 template<>
-const int TPAQPredictor<false>::MASK_80808080 = 0x80808080;
+const uint TPAQPredictor<false>::MASK_80808080 = 0x80808080u;
 template<>
-const int TPAQPredictor<false>::MASK_F0F0F000 = 0xF0F0F000;
+const uint TPAQPredictor<false>::MASK_F0F0F000 = 0xF0F0F000u;
 template<>
-const int TPAQPredictor<false>::MASK_4F4FFFFF = 0x4F4FFFFF;
+const uint TPAQPredictor<false>::MASK_4F4FFFFF = 0x4F4FFFFFu;
 
 
 TPAQMixer::TPAQMixer()
@@ -58,4 +58,3 @@ TPAQMixer::TPAQMixer()
     _p0 = _p1 = _p2 = _p3 = _p4 = _p5 = _p6 = _p7 = 0;
     _learnRate = BEGIN_LEARN_RATE;
 }
-

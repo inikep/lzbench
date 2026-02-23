@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _FPAQEncoder_
-#define _FPAQEncoder_
+#ifndef knz_FPAQEncoder
+#define knz_FPAQEncoder
 
 #include <vector>
 
@@ -44,7 +44,7 @@ namespace kanzi
        bool _disposed;
        OutputBitStream& _bitstream;
        std::vector<byte> _buf;
-       int _index;
+       uint _index;
        uint16 _probs[4][256]; // probability of bit=1
 
 

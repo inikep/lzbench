@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _DefaultOutputBitStream_
-#define _DefaultOutputBitStream_
+#ifndef knz_DefaultOutputBitStream
+#define knz_DefaultOutputBitStream
 
 #include "../BitStreamException.hpp"
 #include "../OutputStream.hpp"
@@ -95,23 +95,23 @@ namespace kanzi
    // Write 'count' (in [1..64]) bits. Trigger exception if stream is closed
    inline uint DefaultOutputBitStream::writeBits(uint64 value, uint count)
    {
-       if (count > 64)
-           throw BitStreamException("Invalid bit count: " + TOSTR(count) + " (must be in [1..64])");
+       if ((count == 0) || (count > 64))
+           return 0;
  
-       _current |= ((value << (64 - count)) >> (64 - _availBits));
-
-       if (count >= _availBits) {
+       if (count < _availBits) {
+           _availBits -= count;
+           _current |= (value << _availBits);
+       }
+       else {
            // Not enough spots available in 'current'
            const uint remaining = count - _availBits;
+           _current |= (_availBits == 0 ? 0 : (value >> remaining) & (~uint64(0) >> (64 - _availBits)));
            pushCurrent();
 
            if (remaining != 0) {
                _availBits -= remaining;
                _current = value << _availBits;
            }
-       }
-       else {
-           _availBits -= count;
        }
 
        return count;
@@ -120,7 +120,7 @@ namespace kanzi
    // Push 64 bits of current value into buffer.
    inline void DefaultOutputBitStream::pushCurrent()
    {
-       BigEndian::writeLong64(&_buffer[_position], _current);
+       BigEndian::writeLong64(&_buffer[_position], int64(_current));
        _availBits = 64;
        _current = 0;
        _position += 8;
@@ -151,10 +151,10 @@ namespace kanzi
 
        // Flush buffer
        // Round down to byte alignment
-       const uint a = _availBits & -8;
+       const uint a = _availBits - (_availBits & 7);
 
-       for (uint i = 56; i >= a; i -= 8) {
-          _buffer[_position++] = byte(_current >> i);
+       for (int i = 56; i >= int(a); i -= 8) {
+          _buffer[_position++] = byte(_current >> uint(i));
 
           if (_position >= _bufferSize)
              flush();
@@ -170,4 +170,3 @@ namespace kanzi
 
 }
 #endif
-

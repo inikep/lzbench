@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstring>
+#include <stdexcept>
 #include <vector>
+
 #include "UTFCodec.hpp"
 #include "../Global.hpp"
 #include "../types.hpp"
@@ -43,7 +45,7 @@ const int UTFCodec::LEN_SEQ[256] = {
    4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 };
 
-bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool UTFCodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
         return true;
@@ -51,17 +53,17 @@ bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
     if (count < MIN_BLOCK_SIZE)
         return false;
 
-    if (!SliceArray<byte>::isValid(input))
+    if (!SliceArray<kanzi::byte>::isValid(input))
         throw invalid_argument("UTFCodec: Invalid input block");
 
-    if (!SliceArray<byte>::isValid(output))
+    if (!SliceArray<kanzi::byte>::isValid(output))
         throw invalid_argument("UTFCodec: Invalid output block");
 
     if (output._length - output._index < getMaxEncodedLength(count))
         return false;
 
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
     bool mustValidate = true;
 
     if (_pCtx != nullptr) {
@@ -111,8 +113,8 @@ bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
         res = s != 0;
 
         // Validation of longer sequences
-        // Third byte in [0x80..0xBF]
-        res &= ((s != 3) || ((src[i + 2] & byte(0xC0)) == byte(0x80)));
+        // Third kanzi::byte in [0x80..0xBF]
+        res &= ((s != 3) || ((src[i + 2] & kanzi::byte(0xC0)) == kanzi::byte(0x80)));
         // Third and fourth bytes in [0x80..0xBF]
         res &= ((s != 4) || ((((uint16(src[i + 2]) << 8) | uint16(src[i + 3])) & 0xC0C0) == 0x8080));
 
@@ -152,8 +154,8 @@ bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
     int dstIdx = 2;
 
     // Emit map length then map data
-    dst[dstIdx++] = byte(n >> 8);
-    dst[dstIdx++] = byte(n);
+    dst[dstIdx++] = kanzi::byte(n >> 8);
+    dst[dstIdx++] = kanzi::byte(n);
 
     int estimate = dstIdx + 6;
 
@@ -161,9 +163,9 @@ bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
         estimate += int((i < 128) ? v[i].freq : 2 * v[i].freq);
         const uint32 s = v[i].val;
         aliasMap[s] = (i < 128) ? i : 0x10080 | ((i << 1) & 0xFF00) | (i & 0x7F);
-        dst[dstIdx] = byte(s >> 16);
-        dst[dstIdx + 1] = byte(s >> 8);
-        dst[dstIdx + 2] = byte(s);
+        dst[dstIdx] = kanzi::byte(s >> 16);
+        dst[dstIdx + 1] = kanzi::byte(s >> 8);
+        dst[dstIdx + 2] = kanzi::byte(s);
         dstIdx += 3;
     }
 
@@ -185,13 +187,13 @@ bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
         uint32 val;
         srcIdx += pack(&src[srcIdx], val);
         const uint32 alias = aliasMap[val];
-        dst[dstIdx++] = byte(alias);
-        dst[dstIdx] = byte(alias >> 8);
+        dst[dstIdx++] = kanzi::byte(alias);
+        dst[dstIdx] = kanzi::byte(alias >> 8);
         dstIdx += (alias >> 16);
     }
 
-    dst[0] = byte(start);
-    dst[1] = byte(srcIdx - (count - 4));
+    dst[0] = kanzi::byte(start);
+    dst[1] = kanzi::byte(srcIdx - (count - 4));
 
     // Emit last (possibly invalid) symbols (due to block truncation)
     while (srcIdx < count)
@@ -203,7 +205,7 @@ bool UTFCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int co
     return dstIdx < maxTarget;
 }
 
-bool UTFCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
+bool UTFCodec::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
         return true;
@@ -211,20 +213,23 @@ bool UTFCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int co
     if (count < 4)
         return false;
 
-    if (!SliceArray<byte>::isValid(input))
+    if (!SliceArray<kanzi::byte>::isValid(input))
         throw invalid_argument("UTFCodec: Invalid input block");
 
-    if (!SliceArray<byte>::isValid(output))
+    if (!SliceArray<kanzi::byte>::isValid(output))
         throw invalid_argument("UTFCodec: Invalid output block");
 
-    const byte* src = &input._array[input._index];
-    byte* dst = &output._array[output._index];
+    if (input._index + count > input._length)
+        return false;
+
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
     const int start = int(src[0]) & 0x03;
     const int adjust = int(src[1]) & 0x03; // adjust end of regular processing
     const int n = (int(src[2]) << 8) + int(src[3]);
 
     // Protect against invalid map size value
-    if ((n == 0) || (n >= 32768) || (3 * n >= count))
+    if ((n == 0) || (n >= 32768) || (3 * n > count - 4))
         return false;
 
     struct symb {
@@ -237,8 +242,11 @@ bool UTFCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int co
 
     // Build inverse mapping
     for (int i = 0; i < n; i++) {
+        if (srcIdx + 3 > count)
+            return false;
+
         int s = (uint32(src[srcIdx]) << 16) | (uint32(src[srcIdx + 1]) << 8) | uint32(src[srcIdx + 2]);
-        const int sl = unpack(s, (byte*)&m[i].val);
+        const int sl = unpack(s, reinterpret_cast<kanzi::byte*>(&m[i].val));
 
         if (sl == 0)
             return false;
@@ -249,27 +257,39 @@ bool UTFCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int co
 
     int dstIdx = 0;
     const int srcEnd = count - 4 + adjust;
-    const int dstEnd = output._length - 4;
+    const int dstCap = output._length - output._index;
+    const int dstEnd = dstCap - 4;
 
     if (dstEnd < 0)
+        return false;
+
+    if ((srcEnd > count) || (srcIdx + start > srcEnd) || (dstIdx + start > dstCap))
         return false;
 
     for (int i = 0; i < start; i++)
         dst[dstIdx++] = src[srcIdx++];
 
     // Emit data
-    while ((srcIdx < srcEnd) && (dstIdx < dstEnd)) {
+    while (srcIdx < srcEnd) {
         uint alias = uint(src[srcIdx++]);
+        alias = alias >= 128 ? (uint(src[srcIdx++]) << 7) + (alias & 0x7F) : alias;
 
-        if (alias >= 128)
-            alias = (uint(src[srcIdx++]) << 7) + (alias & 0x7F);
+        if (alias >= uint(n))
+            return false;
 
         const symb& s = m[alias];
+
+        if (dstIdx + int(s.len) > dstCap)
+            return false;
+
         memcpy(&dst[dstIdx], &s.val, 4);
         dstIdx += s.len;
     }
 
-    if ((srcIdx >= srcEnd) && (dstIdx < dstEnd + adjust)) {
+    if ((srcIdx == srcEnd) && (dstIdx < dstEnd + adjust)) {
+        if ((srcIdx + 4 - adjust > count) || (dstIdx + 4 - adjust > dstCap))
+            return false;
+
         for (int i = 0; i < 4 - adjust; i++)
             dst[dstIdx++] = src[srcIdx++];
     }
@@ -281,8 +301,8 @@ bool UTFCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int co
 
 // A quick partial validation
 // A more complete validation is done during processing for the remaining cases
-// (rules for 3 and 4 byte sequences)
-bool UTFCodec::validate(const byte block[], int count)
+// (rules for 3 and 4 kanzi::byte sequences)
+bool UTFCodec::validate(const kanzi::byte block[], int count)
 {
     uint freqs0[256] = { 0 };
     uint* freqs1 = new uint[65536];
@@ -335,7 +355,7 @@ bool UTFCodec::validate(const byte block[], int count)
     // U+40000..U+FFFFF        F1..F3 80..BF 80..BF 80..BF
     // U+100000..U+10FFFF      F4 80..8F 80..BF 80..BF
 
-    // Check rules for 1 byte
+    // Check rules for 1 kanzi::byte
     uint sum = freqs0[0xC0] + freqs0[0xC1];
     uint sum2 = 0;
 

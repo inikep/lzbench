@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _AdaptiveProbMap_
-#define _AdaptiveProbMap_
+#ifndef knz_AdaptiveProbMap
+#define knz_AdaptiveProbMap
 
 #include "../Global.hpp"
 
@@ -91,15 +91,20 @@ namespace kanzi {
    inline LogisticAdaptiveProbMap<FAST, RATE>::LogisticAdaptiveProbMap(int n)
    {
        const int mult = (FAST == false) ? 33 : 32;
-       const int size = (n == 0) ? mult : n * mult;
-       _data = new uint16[size];
        _index = 0;
 
-       for (int j = 0; j < mult; j++)
-           _data[j] = uint16(Global::squash((j - 16) * 128) << 4);
+       if (n == 0) {
+           _data = new uint16[mult];
+       }
+       else {
+           _data = new uint16[n * mult];
 
-       for (int i = 1; i < n; i++)
-           memcpy(&_data[i * mult], &_data[0], mult * sizeof(uint16));
+           for (int j = 0; j < mult; j++)
+               _data[j] = uint16(Global::squash((j - 16) * 128) << 4);
+
+           for (int i = 1; i < n; i++)
+               memcpy(&_data[i * mult], &_data[0], mult * sizeof(uint16));
+       }
    }
 
    // Return improved prediction given current bit, prediction and context

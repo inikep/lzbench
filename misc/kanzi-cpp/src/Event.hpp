@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,12 +14,14 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _Event_
-#define _Event_
+#ifndef knz_Event
+#define knz_Event
 
 #include <string>
 #include <time.h>
 #include "types.hpp"
+#include "util/WallTimer.hpp"
+
 
 namespace kanzi
 {
@@ -45,34 +47,46 @@ namespace kanzi
               SIZE_64
           };
 
-          Event(Type type, int id, const std::string& msg, clock_t evtTime = 0);
+          typedef struct HeaderInfo {
+              std::string inputName;
+              int bsVersion;
+              int checksumSize;
+              int blockSize;
+              std::string entropyType;
+              std::string transformType;
+              int64 originalSize;
+              int64 fileSize;
+          } HeaderInfo;
 
-          Event(Type type, int id, int64 size, clock_t evtTime, uint64 hash = 0,
+          Event(Type type, int id, const std::string& msg, WallTimer::TimeData evtTime);
+          Event(Type type, int id, int64 size, WallTimer::TimeData evtTime, uint64 hash = 0,
                 HashType hashType = NO_HASH, int64 offset = -1, uint8 skipFlags = 0);
+          Event(Type type, int id, const HeaderInfo& info, WallTimer::TimeData evtTime);
 
-          virtual ~Event() {}
+          Event(const Event& other);
+          Event& operator=(const Event& other);
+
+#if defined(__cplusplus) && (__cplusplus >= 201103L)
+          Event(Event&& other) noexcept;
+          Event& operator=(Event&& other) noexcept;
+#endif
+
+          virtual ~Event() { if (_info != nullptr) delete _info; }
 
           int getId() const { return _id; }
-
           int64 getSize() const { return _size; }
-
           Event::Type getType() const { return _type; }
-
-          std::string getTypeAsString() const;
-
-          clock_t getTime() const { return _time; }
-
+          WallTimer::TimeData getTime() const { return _time; }
           uint64 getHash() const { return _hashType != NO_HASH ? _hash : 0; }
-
           int64 getOffset() const { return _offset; }
-
           HashType getHashType() const { return _hashType; }
-
+          HeaderInfo* getInfo() const { return _info; }
           std::string toString() const;
+          std::string getTypeAsString() const;
 
       private:
           Event::Type _type;
-          clock_t _time;
+          WallTimer::TimeData _time;
           std::string _msg;
           int _id;
           int64 _size;
@@ -80,7 +94,8 @@ namespace kanzi
           uint64 _hash;
           HashType _hashType;
           uint8 _skipFlags;
+          HeaderInfo* _info;
       };
 }
-#endif
 
+#endif

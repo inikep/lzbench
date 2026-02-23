@@ -171,11 +171,11 @@ int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, s
 
 #ifndef BENCH_REMOVE_KANZI
 #include "misc/kanzi-cpp/src/types.hpp"
-#include "misc/kanzi-cpp/src/util.hpp"
 #include "misc/kanzi-cpp/src/InputStream.hpp"
 #include "misc/kanzi-cpp/src/OutputStream.hpp"
 #include "misc/kanzi-cpp/src/io/CompressedInputStream.hpp"
 #include "misc/kanzi-cpp/src/io/CompressedOutputStream.hpp"
+#include "misc/kanzi-cpp/src/util/fixedbuf.hpp"
 
 int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
@@ -238,7 +238,7 @@ int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t 
         return -1;
     }
 
-    ostreambuf<char> buf(outbuf, outsize);
+    ofixedbuf buf(outbuf, outsize);
     std::iostream os(&buf);
     kanzi::CompressedOutputStream cos(os, codec_options->threads, entropy, transform, szBlock);
     cos.write(inbuf, insize);
@@ -248,7 +248,7 @@ int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    istreambuf<char> buf(inbuf, insize);
+    ifixedbuf buf(inbuf, insize);
     std::iostream is(&buf);
     kanzi::CompressedInputStream cis(is, codec_options->threads);
     cis.read(outbuf, outsize);

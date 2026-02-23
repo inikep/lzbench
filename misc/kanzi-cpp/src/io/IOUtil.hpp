@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,15 +14,19 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _IOUtil_
-#define _IOUtil_
+#ifndef knz_IOUtil
+#define knz_IOUtil
 
 #include <algorithm>
+#include <errno.h>
 #include <sstream>
 #include <vector>
 #include <sys/stat.h>
 #include <string.h>
 
+#if __cplusplus >= 201703L
+#include <filesystem>
+#endif
 
 #include "../types.hpp"
 
@@ -33,26 +37,16 @@ limitations under the License.
 #include <dirent.h>
 #endif
 
+// Note stat64/lstat64 are deprecated on MacOS/Linux
+// Use _FILE_OFFSET_BITS and stat/lstat instead
 
-#ifdef _MSC_VER
+#ifdef _WIN32
    #define STAT _stat64
-#else
-   #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__APPLE__) || defined(__MINGW32__)
-      #define STAT stat
-   #else
-      #define STAT stat64
-   #endif
-#endif
-
-
-#ifdef _MSC_VER
    #define LSTAT _stat64
 #else
-   #if defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__) || defined(__DragonFly__) || defined(__APPLE__) || defined(__MINGW32__)
-      #define LSTAT stat
-   #else
-      #define LSTAT lstat64
-   #endif
+   #define _FILE_OFFSET_BITS 64
+   #define STAT stat
+   #define LSTAT lstat
 #endif
 
 #if defined(__MINGW32__)
@@ -94,10 +88,11 @@ namespace kanzi
    struct FileListConfig
    {
       bool _recursive;
-      bool _ignoreLinks;
+      bool _ignoreLinks; // Do not follow links
       bool _continueOnErrors;
-      bool _ignoreDotFiles;
+      bool _ignoreDotFiles; // Do not process dot files
    };
+
 
 
    static inline void createFileList(std::string& target, std::vector<FileData>& files, const FileListConfig& cfg,
@@ -109,12 +104,19 @@ namespace kanzi
        // Note: old version of Windows/Visual Studio require a trailing '/' to stat network folders !
        // In this scenario, "//PC/share" does not work but "//PC/share/" does
    #ifndef _MSC_VER
-       if (target[target.size() - 1] == PATH_SEPARATOR)
+       if ((target.size() > 1) && (target[target.size() - 1] == PATH_SEPARATOR))
            target.resize(target.size() - 1);
    #endif
 
+       if (cfg._ignoreDotFiles == true) {
+           size_t idx = target.rfind(PATH_SEPARATOR);
+
+           if ((idx != std::string::npos) && (idx < target.length() - 1) && (target[idx + 1] == '.'))
+               return;
+       }
+
        struct STAT buffer;
-       int res = cfg._ignoreLinks == true ? LSTAT(target.c_str(), &buffer) : STAT(target.c_str(), &buffer);
+       int res = cfg._ignoreLinks ? LSTAT(target.c_str(), &buffer) : STAT(target.c_str(), &buffer);
 
        if (res != 0) {
            std::stringstream ss;
@@ -125,26 +127,21 @@ namespace kanzi
               return;
        }
 
-       if ((buffer.st_mode & S_IFMT) == S_IFREG) {
-           // Target is regular file
-           if (cfg._ignoreDotFiles == true) {
-              size_t idx = target.rfind(PATH_SEPARATOR);
-
-              if ((idx != std::string::npos) && (idx < target.length() - 1) && (target[idx + 1] == '.'))
-                  return;
-           }
-
-           if ((cfg._ignoreLinks == false) || (buffer.st_mode & S_IFMT) != S_IFLNK)
-   #if __cplusplus >= 201103L
-               files.emplace_back(target, buffer.st_size, buffer.st_mtime);
+    #ifdef _WIN32
+       if (S_ISREG(buffer.st_mode)) {
    #else
-               files.push_back(FileData(target, buffer.st_size, buffer.st_mtime));
+       if (S_ISREG(buffer.st_mode) || (!cfg._ignoreLinks && S_ISLNK(buffer.st_mode))) {
+   #endif
+   #if __cplusplus >= 201103L
+           files.emplace_back(target, buffer.st_size, buffer.st_mtime);
+   #else
+           files.push_back(FileData(target, buffer.st_size, buffer.st_mtime));
    #endif
 
            return;
        }
 
-       if ((buffer.st_mode & S_IFMT) != S_IFDIR) {
+       if (!S_ISDIR(buffer.st_mode)) {
            // Target is neither regular file nor directory, ignore
            return;
        }
@@ -169,8 +166,7 @@ namespace kanzi
                   continue;
 
                std::string fullpath = target + dirName;
-               res = cfg._ignoreLinks == true ? LSTAT(fullpath.c_str(), &buffer) :
-                  STAT(fullpath.c_str(), &buffer);
+               res = cfg._ignoreLinks ? LSTAT(fullpath.c_str(), &buffer) : STAT(fullpath.c_str(), &buffer);
 
                if (res != 0) {
                    std::stringstream ss;
@@ -183,7 +179,11 @@ namespace kanzi
                    }
                }
 
-               if ((buffer.st_mode & S_IFMT) == S_IFREG) {
+            #ifdef _WIN32
+               if (S_ISREG(buffer.st_mode)) {
+            #else
+               if (S_ISREG(buffer.st_mode) || (!cfg._ignoreLinks && S_ISLNK(buffer.st_mode))) {
+            #endif
                   // Target is regular file
                   if (cfg._ignoreDotFiles == true) {
                      size_t idx = fullpath.rfind(PATH_SEPARATOR);
@@ -192,14 +192,13 @@ namespace kanzi
                         continue;
                   }
 
-                  if ((cfg._ignoreLinks == false) || (buffer.st_mode & S_IFMT) != S_IFLNK)
    #if __cplusplus >= 201103L
-                     files.emplace_back(fullpath, buffer.st_size, buffer.st_mtime);
+                  files.emplace_back(fullpath, buffer.st_size, buffer.st_mtime);
    #else
-                     files.push_back(FileData(fullpath, buffer.st_size, buffer.st_mtime));
+                  files.push_back(FileData(fullpath, buffer.st_size, buffer.st_mtime));
    #endif
                }
-               else if ((cfg._recursive) && ((buffer.st_mode & S_IFMT) == S_IFDIR)) {
+               else if (cfg._recursive && S_ISDIR(buffer.st_mode)) {
                   if (cfg._ignoreDotFiles == true) {
                      size_t idx = fullpath.rfind(PATH_SEPARATOR);
 
@@ -227,15 +226,12 @@ namespace kanzi
 
        bool operator() (const FileData& f1, const FileData& f2) const
        {
-           if (_sortBySize == false)
-              return f1.fullPath() < f2.fullPath();
-
            // First, compare parent directory paths
            if (f1._path != f2._path)
               return f1._path < f2._path;
 
            // Then compare file sizes (decreasing order)
-           return f1._size > f2._size;
+           return _sortBySize ? f1._size > f2._size : f1._name < f2._name;
        }
    };
 
@@ -305,6 +301,11 @@ namespace kanzi
 
    static inline bool samePaths(const std::string& f1, const std::string& f2)
    {
+#if __cplusplus >= 201703L
+      // Simpler and safer code with C++17
+      std::error_code ec;
+      return std::filesystem::equivalent(f1, f2, ec);
+#else
       if (f1.compare(f2) == 0)
          return true;
 
@@ -353,6 +354,7 @@ namespace kanzi
          return false;
 
       return true;
+#endif
    }
 
 }

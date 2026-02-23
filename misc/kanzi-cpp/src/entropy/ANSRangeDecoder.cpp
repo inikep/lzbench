@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstring>
 #include <sstream>
 #include "../BitStreamException.hpp"
+#include "../Global.hpp"
 #include "ANSRangeDecoder.hpp"
 #include "EntropyUtils.hpp"
 
@@ -79,7 +80,7 @@ int ANSRangeDecoder::decodeHeader(uint frequencies[], uint alphabet[])
 {
     _logRange = int(8 + _bitstream.readBits(3));
 
-    if ((_logRange < 8) || (_logRange > 16)) {
+    if (_logRange > 16) {
         stringstream ss;
         ss << "Invalid bitstream: range = " << _logRange << " (must be in [8..16])";
         throw BitStreamException(ss.str(), BitStreamException::INVALID_STREAM);
@@ -97,10 +98,7 @@ int ANSRangeDecoder::decodeHeader(uint frequencies[], uint alphabet[])
     }
 
     const uint scale = 1 << _logRange;
-    int llr = 3;
-
-    while (uint(1 << llr) <= _logRange)
-        llr++;
+    const int llr = Global::_log2(_logRange) + 1;
 
     for (int k = 0; k < dim; k++) {
         const int alphabetSize = EntropyUtils::decodeAlphabet(_bitstream, alphabet);
@@ -175,7 +173,7 @@ int ANSRangeDecoder::decodeHeader(uint frequencies[], uint alphabet[])
     return res;
 }
 
-int ANSRangeDecoder::decode(byte block[], uint blkptr, uint count)
+int ANSRangeDecoder::decode(kanzi::byte block[], uint blkptr, uint count)
 {
     if (count <= 32) {
         _bitstream.readBits(&block[blkptr], 8 * count);
@@ -189,7 +187,7 @@ int ANSRangeDecoder::decode(byte block[], uint blkptr, uint count)
             delete[] _buffer;
 
         _bufferSize = minBufSize;
-        _buffer = new byte[_bufferSize];
+        _buffer = new kanzi::byte[_bufferSize];
     }
 
     const uint end = blkptr + count;
@@ -217,12 +215,12 @@ int ANSRangeDecoder::decode(byte block[], uint blkptr, uint count)
     return count;
 }
 
-bool ANSRangeDecoder::decodeChunk(byte block[], uint count)
+bool ANSRangeDecoder::decodeChunk(kanzi::byte block[], uint count)
 {
     // Read chunk size
     const uint sz = uint(EntropyUtils::readVarInt(_bitstream));
 
-    if (sz >= MAX_CHUNK_SIZE)
+    if ((sz >= MAX_CHUNK_SIZE) || (sz > _bufferSize - 2))
        return false;
 
     // Read initial ANS states
@@ -237,7 +235,7 @@ bool ANSRangeDecoder::decodeChunk(byte block[], uint count)
     // Read encoded data from bitstream
     memset(_buffer, 0, _bufferSize);
     _bitstream.readBits(&_buffer[0], 8 * sz);
-    byte* p = &_buffer[0];
+    kanzi::byte* p = &_buffer[0];
 
     const int mask = (1 << _logRange) - 1;
     const int count4 = count & -4;
@@ -245,16 +243,16 @@ bool ANSRangeDecoder::decodeChunk(byte block[], uint count)
     if (_order == 0) {
         for (int i = 0; i < count4; i += 4) {
             const uint8 cur3 = _f2s[st3 & mask];
-            block[i] = byte(cur3);
+            block[i] = kanzi::byte(cur3);
             st3 = decodeSymbol(p, st3, _symbols[cur3], mask);
             const uint8 cur2 = _f2s[st2 & mask];
-            block[i + 1] = byte(cur2);
+            block[i + 1] = kanzi::byte(cur2);
             st2 = decodeSymbol(p, st2, _symbols[cur2], mask);
             const uint8 cur1 = _f2s[st1 & mask];
-            block[i + 2] = byte(cur1);
+            block[i + 2] = kanzi::byte(cur1);
             st1 = decodeSymbol(p, st1, _symbols[cur1], mask);
             const uint8 cur0 = _f2s[st0 & mask];
-            block[i + 3] = byte(cur0);
+            block[i + 3] = kanzi::byte(cur0);
             st0 = decodeSymbol(p, st0, _symbols[cur0], mask);
         }
     }
@@ -275,10 +273,10 @@ bool ANSRangeDecoder::decodeChunk(byte block[], uint count)
             st2 = decodeSymbol(p, st2, _symbols[(prv2 << 8) | cur2], mask);
             st1 = decodeSymbol(p, st1, _symbols[(prv1 << 8) | cur1], mask);
             st0 = decodeSymbol(p, st0, _symbols[(prv0 << 8) | cur0], mask);
-            block[i3] = byte(cur3);
-            block[i2] = byte(cur2);
-            block[i1] = byte(cur1);
-            block[i0] = byte(cur0);
+            block[i3] = kanzi::byte(cur3);
+            block[i2] = kanzi::byte(cur2);
+            block[i1] = kanzi::byte(cur1);
+            block[i0] = kanzi::byte(cur0);
             prv3 = cur3;
             prv2 = cur2;
             prv1 = cur1;

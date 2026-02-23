@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -47,6 +47,7 @@ bool FPAQDecoder::reset()
     _high = TOP;
     _current = 0;
     _ctx = 1;
+    _index = 0;
 
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 256; j++)
@@ -57,7 +58,7 @@ bool FPAQDecoder::reset()
     return true;
 }
 
-int FPAQDecoder::decode(byte block[], uint blkptr, uint count)
+int FPAQDecoder::decode(kanzi::byte block[], uint blkptr, uint count)
 {
     if (count >= MAX_BLOCK_SIZE)
         throw invalid_argument("Invalid block size parameter (max is 1<<30)");
@@ -73,7 +74,7 @@ int FPAQDecoder::decode(byte block[], uint blkptr, uint count)
         if (szBytes >= 2 * count)
             return 0;
 
-        const size_t bufSize = max(szBytes + (szBytes >> 2), 8192u);
+        const size_t bufSize = max(szBytes + (szBytes >> 3), 8192u);
 
         if (_buf.size() < bufSize)
             _buf.resize(bufSize);
@@ -99,7 +100,7 @@ int FPAQDecoder::decode(byte block[], uint blkptr, uint count)
             decodeBit(_p[_ctx]);
             decodeBit(_p[_ctx]);
             decodeBit(_p[_ctx]);
-            block[i] = byte(_ctx);
+            block[i] = kanzi::byte(_ctx);
             _p = _probs[(_ctx & 0xFF) >> 6];
         }
 

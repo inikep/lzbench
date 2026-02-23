@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -14,8 +14,8 @@ limitations under the License.
 */
 
 #pragma once
-#ifndef _LZCodec_
-#define _LZCodec_
+#ifndef knz_LZCodec
+#define knz_LZCodec
 
 #include "../Context.hpp"
 #include "../Global.hpp"
@@ -229,15 +229,15 @@ namespace kanzi {
     {
         int n = 0;
 
-        while (n + 4 <= maxMatch) {
-            const int32 diff = LittleEndian::readInt32(&src[srcIdx + n]) ^ LittleEndian::readInt32(&src[ref + n]);
+        while (n + 8 <= maxMatch) {
+            const int64 diff = LittleEndian::readLong64(&src[srcIdx + n]) ^ LittleEndian::readLong64(&src[ref + n]);
 
             if (diff != 0) {
-                n += (Global::trailingZeros(uint32(diff)) >> 3);
+                n += (Global::trailingZeros(uint64(diff)) >> 3);
                 break;
             }
 
-            n += 4;
+            n += 8;
         }
 
         return n;

@@ -1,5 +1,5 @@
 /*
-Copyright 2011-2025 Frederic Langlet
+Copyright 2011-2026 Frederic Langlet
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 you may obtain a copy of the License at
@@ -54,7 +54,7 @@ BinaryEntropyDecoder::~BinaryEntropyDecoder()
         delete _predictor;
 }
 
-int BinaryEntropyDecoder::decode(byte block[], uint blkptr, uint count)
+int BinaryEntropyDecoder::decode(kanzi::byte block[], uint blkptr, uint count)
 {
     if (count >= MAX_BLOCK_SIZE)
         throw invalid_argument("Invalid block size parameter (max is 1<<30)");
@@ -76,7 +76,7 @@ int BinaryEntropyDecoder::decode(byte block[], uint blkptr, uint count)
             delete[] _sba._array;
 
         _sba._length = int(bufSize);
-        _sba._array = new byte[_sba._length];
+        _sba._array = new kanzi::byte[_sba._length];
     }
 
     // Split block into chunks, read bit array from bitstream and decode chunk
@@ -96,7 +96,7 @@ int BinaryEntropyDecoder::decode(byte block[], uint blkptr, uint count)
         const uint endChunk = startChunk + chunkSize;
 
         for (uint i = startChunk; i < endChunk; i++) {
-            block[i] = byte((decodeBit(_predictor->get()) << 7)
+            block[i] = kanzi::byte((decodeBit(_predictor->get()) << 7)
                           | (decodeBit(_predictor->get()) << 6)
                           | (decodeBit(_predictor->get()) << 5)
                           | (decodeBit(_predictor->get()) << 4)
@@ -124,9 +124,9 @@ void BinaryEntropyDecoder::read()
 }
 
 // no inline
-byte BinaryEntropyDecoder::decodeByte()
+kanzi::byte BinaryEntropyDecoder::decodeByte()
 {
-    return byte((decodeBit(_predictor->get()) << 7)
+    return kanzi::byte((decodeBit(_predictor->get()) << 7)
         | (decodeBit(_predictor->get()) << 6)
         | (decodeBit(_predictor->get()) << 5)
         | (decodeBit(_predictor->get()) << 4)
