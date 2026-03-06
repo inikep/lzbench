@@ -81,6 +81,7 @@ static unsigned __stdcall zxc_win_thread_entry(void* p) {
 
 static int pthread_create(pthread_t* thread, const void* attr, void* (*start_routine)(void*),
                           void* arg) {
+    (void)attr;
     zxc_win_thread_arg_t* wrapper = malloc(sizeof(zxc_win_thread_arg_t));
     if (UNLIKELY(!wrapper)) return ZXC_ERROR_MEMORY;
     wrapper->func = start_routine;
@@ -95,6 +96,7 @@ static int pthread_create(pthread_t* thread, const void* attr, void* (*start_rou
 }
 
 static int pthread_join(pthread_t thread, void** retval) {
+    (void)retval;
     WaitForSingleObject(thread, INFINITE);
     CloseHandle(thread);
     return 0;

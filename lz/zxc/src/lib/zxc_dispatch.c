@@ -177,9 +177,9 @@ typedef int (*zxc_compress_func_t)(zxc_cctx_t* RESTRICT, const uint8_t* RESTRICT
                                    uint8_t* RESTRICT, const size_t);
 
 /** @brief Lazily-resolved pointer to the best decompression variant. */
-static ZXC_ATOMIC zxc_decompress_func_t zxc_decompress_ptr = NULL;
+static ZXC_ATOMIC zxc_decompress_func_t zxc_decompress_ptr = (zxc_decompress_func_t)0;
 /** @brief Lazily-resolved pointer to the best compression variant. */
-static ZXC_ATOMIC zxc_compress_func_t zxc_compress_ptr = NULL;
+static ZXC_ATOMIC zxc_compress_func_t zxc_compress_ptr = (zxc_compress_func_t)0;
 
 /**
  * @brief First-call initialiser for the decompression dispatcher.
