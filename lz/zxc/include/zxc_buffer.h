@@ -5,6 +5,32 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+/**
+ * @file zxc_buffer.h
+ * @brief Buffer-based (single-shot) compression and decompression API.
+ *
+ * This header exposes the simplest way to use ZXC: pass an entire input buffer
+ * and receive the result in a single output buffer.  All functions in this
+ * header are single-threaded and blocking.
+ *
+ * @par Typical usage
+ * @code
+ * // Compress
+ * size_t bound = zxc_compress_bound(src_size);
+ * void *dst    = malloc(bound);
+ * int64_t csize = zxc_compress(src, src_size, dst, bound,
+ *                              ZXC_LEVEL_DEFAULT, 1);
+ *
+ * // Decompress
+ * uint64_t orig = zxc_get_decompressed_size(dst, csize);
+ * void *out     = malloc(orig);
+ * int64_t dsize = zxc_decompress(dst, csize, out, orig, 1);
+ * @endcode
+ *
+ * @see zxc_stream.h  for the streaming (multi-threaded) API.
+ * @see zxc_sans_io.h for the low-level sans-I/O building blocks.
+ */
+
 #ifndef ZXC_BUFFER_H
 #define ZXC_BUFFER_H
 
@@ -13,10 +39,10 @@
 
 #include "zxc_export.h"
 
-/*
- * ============================================================================
- * ZXC Compression Library - Public API (Buffer-Based)
- * ============================================================================
+/**
+ * @defgroup buffer_api Buffer API
+ * @brief Single-shot, buffer-based compression and decompression.
+ * @{
  */
 
 /**
@@ -37,7 +63,7 @@ ZXC_EXPORT uint64_t zxc_compress_bound(const size_t input_size);
  *
  * This version uses standard size_t types and void pointers.
  * It executes in a single thread (blocking operation).
- * It writes the ZXC file header followed by compressed blocks
+ * It writes the ZXC file header followed by compressed blocks.
  *
  * @param[in] src          Pointer to the source buffer.
  * @param[in] src_size     Size of the source data in bytes.
@@ -47,12 +73,12 @@ ZXC_EXPORT uint64_t zxc_compress_bound(const size_t input_size);
  * @param[in] checksum_enabled Flag indicating whether to verify the checksum of the
  * data (1 to enable, 0 to disable).
  *
- * @return The number of bytes written to dst, or 0 if the destination buffer
- * is too small or an error occurred.
+ * @return The number of bytes written to dst (>0 on success),
+ *         or a negative zxc_error_t code (e.g., ZXC_ERROR_DST_TOO_SMALL) on failure.
  */
-ZXC_EXPORT size_t zxc_compress(const void* src, const size_t src_size, void* dst,
-                               const size_t dst_capacity, const int level,
-                               const int checksum_enabled);
+ZXC_EXPORT int64_t zxc_compress(const void* src, const size_t src_size, void* dst,
+                                const size_t dst_capacity, const int level,
+                                const int checksum_enabled);
 
 /**
  * @brief Decompresses a ZXC compressed buffer.
@@ -68,11 +94,11 @@ ZXC_EXPORT size_t zxc_compress(const void* src, const size_t src_size, void* dst
  * @param[in] checksum_enabled Flag indicating whether to verify the checksum of the
  * data (1 to enable, 0 to disable).
  *
- * @return The number of bytes written to dst, or 0 if decompression fails
- * (invalid header, corruption, or destination too small).
+ * @return The number of bytes written to dst (>0 on success),
+ *         or a negative zxc_error_t code (e.g., ZXC_ERROR_CORRUPT_DATA) on failure.
  */
-ZXC_EXPORT size_t zxc_decompress(const void* src, const size_t src_size, void* dst,
-                                 const size_t dst_capacity, const int checksum_enabled);
+ZXC_EXPORT int64_t zxc_decompress(const void* src, const size_t src_size, void* dst,
+                                  const size_t dst_capacity, const int checksum_enabled);
 
 /**
  * @brief Returns the decompressed size stored in a ZXC compressed buffer.
@@ -87,5 +113,7 @@ ZXC_EXPORT size_t zxc_decompress(const void* src, const size_t src_size, void* d
  *         or too small to contain a valid ZXC archive.
  */
 ZXC_EXPORT uint64_t zxc_get_decompressed_size(const void* src, const size_t src_size);
+
+/** @} */ /* end of buffer_api */
 
 #endif  // ZXC_BUFFER_H
