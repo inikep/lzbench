@@ -19,6 +19,10 @@
 
 #include "zxc_export.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @defgroup error Error Handling
  * @brief Error codes returned by ZXC library functions.
@@ -58,8 +62,10 @@ typedef enum {
     ZXC_ERROR_IO = -11,         /**< Read/write/seek failure on file. */
     ZXC_ERROR_NULL_INPUT = -12, /**< Required input pointer is NULL. */
 
-    /* Block type errors */
+    /* Block errors */
     ZXC_ERROR_BAD_BLOCK_TYPE = -13, /**< Unknown or unexpected block type. */
+    ZXC_ERROR_BAD_BLOCK_SIZE = -14, /**< Invalid block size. */
+
 } zxc_error_t;
 
 /**
@@ -72,5 +78,9 @@ typedef enum {
 ZXC_EXPORT const char* zxc_error_name(const int code);
 
 /** @} */ /* end of error */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* ZXC_ERROR_H */
