@@ -234,6 +234,52 @@ static void test_compress_two_blocks(void)
     fclose(f);
 }
 
+static void test_compress_invalid_calls(void)
+{
+    printf("TEST: compress invalid runtime params...\n");
+
+    struct cData p = make_params();
+    struct cContext* ctx = NULL;
+    FILE* f = portable_fmemopen(NULL, 4096, "wb");
+    uint8_t data[32];
+    size_t outSize = 123;
+    size_t flushed = 0;
+
+    ASSERT(f != NULL, "fmemopen failed");
+    fill_buffer(data, sizeof(data));
+    ASSERT(initCompressor(&p, f, &ctx) == 0, "init failed");
+
+    ASSERT(compress(NULL, data, sizeof(data), &outSize) != 0,
+        "compress should fail on NULL ctx");
+    ASSERT(compress(ctx, data, sizeof(data), NULL) != 0,
+        "compress should fail on NULL outSize");
+    ASSERT(compress(ctx, NULL, 1, &outSize) != 0,
+        "compress should fail on NULL src with non-zero size");
+
+    outSize = 7;
+    ASSERT(compress(ctx, NULL, 0, &outSize) == 0,
+        "compress should accept NULL src with zero size");
+    ASSERT(outSize == 0, "compress should not report output for zero-size input");
+
+    ASSERT(disposeCompressor(&ctx, &flushed) == 0, "dispose failed");
+    fclose(f);
+}
+
+static void test_dispose_compressor_invalid(void)
+{
+    printf("TEST: disposeCompressor invalid params...\n");
+
+    struct cContext* ctx = NULL;
+    size_t outSize = 0;
+
+    ASSERT(disposeCompressor(NULL, &outSize) != 0,
+        "dispose should fail on NULL ctx pointer");
+    ASSERT(disposeCompressor(&ctx, &outSize) != 0,
+        "dispose should fail on NULL ctx");
+    ASSERT(disposeCompressor(&ctx, NULL) != 0,
+        "dispose should fail on NULL outSize");
+}
+
 
 // Utilities
 static void write_file(const char* path, const unsigned char* data, size_t len)
@@ -242,6 +288,119 @@ static void write_file(const char* path, const unsigned char* data, size_t len)
     ASSERT(f != NULL, "failed to write file");
     fwrite(data, 1, len, f);
     fclose(f);
+}
+
+static void compress_to_file(const char* path, const unsigned char* data, size_t len,
+    int headerless)
+{
+    FILE* f = fopen(path, "wb");
+    struct cData params;
+    struct cContext* ctx = NULL;
+    size_t inSize = len;
+    size_t outSize = 0;
+    size_t flushed = 0;
+
+    ASSERT(f != NULL, "failed to open output file");
+    memset(&params, 0, sizeof(params));
+    strcpy(params.transform, "LZ");
+    strcpy(params.entropy, "ANS0");
+    params.blockSize = 1 << 15;
+    params.jobs = 1;
+    params.checksum = 0;
+    params.headerless = headerless;
+
+    ASSERT(initCompressor(&params, f, &ctx) == 0, "failed to init compressor");
+    ASSERT(compress(ctx, data, inSize, &outSize) == 0, "failed to compress sample");
+    ASSERT(disposeCompressor(&ctx, &flushed) == 0, "failed to dispose compressor");
+    fclose(f);
+}
+
+static void test_init_decompressor_invalid(void)
+{
+    printf("TEST: initDecompressor invalid params...\n");
+
+    struct dContext* ctx = NULL;
+    struct dData p;
+    FILE* f = portable_fmemopen(NULL, 4096, "rb");
+    int rc;
+
+    ASSERT(f != NULL, "fmemopen failed");
+    memset(&p, 0, sizeof(p));
+    p.bufferSize = 1024;
+    p.jobs = 1;
+    p.headerless = 0;
+
+    rc = initDecompressor(NULL, f, &ctx);
+    ASSERT(rc != 0, "initDecompressor should fail on NULL params");
+
+    rc = initDecompressor(&p, NULL, &ctx);
+    ASSERT(rc != 0, "initDecompressor should fail on NULL FILE");
+
+    rc = initDecompressor(&p, f, NULL);
+    ASSERT(rc != 0, "initDecompressor should fail on NULL ctx");
+
+    p.bufferSize = ((size_t)2 * 1024 * 1024 * 1024) + 1;
+    rc = initDecompressor(&p, f, &ctx);
+    ASSERT(rc != 0, "initDecompressor should fail on huge buffer");
+
+    fclose(f);
+}
+
+static void test_decompress_invalid_calls(void)
+{
+    printf("TEST: decompress invalid runtime params...\n");
+
+    const unsigned char input[] = "runtime validation sample";
+    const char* f_name = "tmp_api_invalid.bin";
+    FILE* fdec;
+    struct dData params;
+    struct dContext* ctx = NULL;
+    unsigned char out[64];
+    size_t inSize = 0;
+    size_t outSize = sizeof(out);
+
+    compress_to_file(f_name, input, strlen((const char*)input), 0);
+
+    fdec = fopen(f_name, "rb");
+    ASSERT(fdec != NULL, "failed to open file for reading");
+
+    memset(&params, 0, sizeof(params));
+    params.bufferSize = sizeof(out);
+    params.jobs = 1;
+    params.headerless = 0;
+
+    ASSERT(initDecompressor(&params, fdec, &ctx) == 0, "failed to init decompressor");
+    ASSERT(decompress(NULL, out, &inSize, &outSize) != 0,
+        "decompress should fail on NULL ctx");
+
+    outSize = params.bufferSize + 1;
+    ASSERT(decompress(ctx, out, &inSize, &outSize) != 0,
+        "decompress should fail when output buffer exceeds configured size");
+
+    outSize = 1;
+    ASSERT(decompress(ctx, NULL, &inSize, &outSize) != 0,
+        "decompress should fail on NULL dst");
+
+    outSize = 0;
+    inSize = 123;
+    ASSERT(decompress(ctx, out, &inSize, &outSize) == 0,
+        "decompress should accept zero-sized output");
+
+    ASSERT(disposeDecompressor(&ctx) == 0, "failed to dispose decompressor");
+    fclose(fdec);
+    remove(f_name);
+}
+
+static void test_dispose_decompressor_invalid(void)
+{
+    printf("TEST: disposeDecompressor invalid params...\n");
+
+    struct dContext* ctx = NULL;
+
+    ASSERT(disposeDecompressor(NULL) != 0,
+        "disposeDecompressor should fail on NULL ctx pointer");
+    ASSERT(disposeDecompressor(&ctx) != 0,
+        "disposeDecompressor should fail on NULL ctx");
 }
 
 // Simple decompression of known data
@@ -489,8 +648,13 @@ int main(void)
     test_compress_small();
     test_compress_too_big();
     test_compress_two_blocks();
+    test_compress_invalid_calls();
+    test_dispose_compressor_invalid();
 
     // Decompressor
+    test_init_decompressor_invalid();
+    test_decompress_invalid_calls();
+    test_dispose_decompressor_invalid();
     test_basic_decompression();
     test_large_multi_block();
     test_headerless();

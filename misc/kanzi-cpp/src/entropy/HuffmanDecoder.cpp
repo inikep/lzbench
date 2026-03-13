@@ -190,7 +190,7 @@ int HuffmanDecoder::decodeV6(kanzi::byte block[], uint blkptr, uint count)
                     return -1;
 
                 if (decodeChunk(&block[startChunk], sizeChunk) == false)
-                    break;
+                    return -1;
             }
         }
 

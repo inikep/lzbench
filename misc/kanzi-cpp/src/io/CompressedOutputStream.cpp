@@ -518,7 +518,7 @@ void CompressedOutputStream::submitBlock()
     };
 
     if (_pool == nullptr) {
-        _futures[_bufferId] = std::async(taskWrapper);
+        _futures[_bufferId] = std::async(std::launch::async, taskWrapper);
     }
     else {
         // REQUIRES: Pool size > Number of concurrent tasks to avoid deadlock
@@ -643,19 +643,6 @@ T EncodingTask<T>::run()
         }
 
         _blockCondition->notify_all();
-    };
-
-    auto compareExchangeProcessedBlockId = [this](int expected, int desired) {
-        bool updated = false;
-        {
-            std::lock_guard<std::mutex> lock(*_blockMutex);
-            updated = COMPARE_EXCHANGE_ATOMIC(*_processedBlockId, expected, desired);
-        }
-
-        if (updated == true)
-            _blockCondition->notify_all();
-
-        return updated;
     };
 #endif
 
@@ -925,12 +912,11 @@ T EncodingTask<T>::run()
         return T(blockId, 0, "Success");
     }
     catch (const exception& e) {
-        // Make sure to unfreeze next block
-	int curBlockId = blockId - 1;
+        // Cancel any in-flight task waiting on this block.
 #ifdef CONCURRENCY_ENABLED
-	compareExchangeProcessedBlockId(curBlockId, blockId);
+        storeProcessedBlockId(CompressedOutputStream::CANCEL_TASKS_ID);
 #else
-	COMPARE_EXCHANGE_ATOMIC(*_processedBlockId, curBlockId, blockId);
+        STORE_ATOMIC(*_processedBlockId, CompressedOutputStream::CANCEL_TASKS_ID);
 #endif
 
         if (transform != nullptr)

@@ -768,11 +768,11 @@ T FileCompressTask<T>::run()
             }
             catch (const exception& e) {
                 CLEANUP_COMP_IS
-                CLEANUP_COMP_OS
                 const uint64 w = _cos->getWritten();
                 delete[] buf;
                 delete _cos;
                 _cos = nullptr;
+                CLEANUP_COMP_OS
                 stringstream sserr;
                 sserr << "Failed to read block from file '" << inputName << "': ";
                 sserr << e.what() << endl;
@@ -809,8 +809,39 @@ T FileCompressTask<T>::run()
         return T(Error::ERR_UNKNOWN, read, w, sserr.str());
     }
 
-    // Close streams to ensure all data are flushed
-    dispose();
+    // Close compressed stream to ensure all data are flushed
+    try {
+        if (_cos != nullptr)
+            _cos->close();
+    }
+    catch (const IOException& ioe) {
+        const uint64 w = (_cos != nullptr) ? _cos->getWritten() : 0;
+
+        if (_cos != nullptr) {
+            delete _cos;
+            _cos = nullptr;
+        }
+
+        CLEANUP_COMP_OS
+        CLEANUP_COMP_IS
+        delete[] buf;
+        return T(ioe.error(), read, w, ioe.what());
+    }
+    catch (const exception& e) {
+        const uint64 w = (_cos != nullptr) ? _cos->getWritten() : 0;
+
+        if (_cos != nullptr) {
+            delete _cos;
+            _cos = nullptr;
+        }
+
+        CLEANUP_COMP_OS
+        CLEANUP_COMP_IS
+        delete[] buf;
+        stringstream sserr;
+        sserr << "Compression failure: " << e.what();
+        return T(Error::ERR_UNKNOWN, read, w, sserr.str());
+    }
 
     uint64 encoded = _cos->getWritten();
 

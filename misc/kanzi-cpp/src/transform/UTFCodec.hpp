@@ -40,11 +40,11 @@ namespace kanzi
     // UTF8 encoder/decoder
     class UTFCodec FINAL : public Transform<byte> {
     public:
-        UTFCodec() { _pCtx = nullptr; }
+        UTFCodec() : _pCtx(nullptr), _aliasMap(nullptr) {}
 
-        UTFCodec(Context& ctx) : _pCtx(&ctx) {}
+        UTFCodec(Context& ctx) : _pCtx(&ctx), _aliasMap(nullptr) {}
 
-        ~UTFCodec() {}
+        ~UTFCodec() { delete[] _aliasMap; }
 
         bool forward(SliceArray<byte>& source, SliceArray<byte>& destination, int length);
 
@@ -58,6 +58,7 @@ namespace kanzi
         static const int LEN_SEQ[256];
 
         Context* _pCtx;
+        uint32* _aliasMap;
        
         static bool validate(const byte block[], int count);
 
@@ -153,4 +154,3 @@ namespace kanzi
     }
 }
 #endif
-

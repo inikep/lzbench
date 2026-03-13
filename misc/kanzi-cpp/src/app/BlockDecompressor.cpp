@@ -104,6 +104,11 @@ int BlockDecompressor::decompress(uint64& inputSize)
         _ctx.putInt("from", 1);
         _ctx.putInt("to", 1);
         _ctx.putInt("jobs", 1);
+
+	if (isStdIn == true) {
+            cerr << "STDIN not allowed in 'info' mode" << endl;
+            return Error::ERR_OPEN_FILE;
+        }
     }
 
     if (isStdIn == false) {
@@ -242,11 +247,13 @@ int BlockDecompressor::decompress(uint64& inputSize)
         else {
             iName = files[0].fullPath();
             _ctx.putLong("fileSize", files[0]._size);
+            string upperIName = iName;
+            transform(upperIName.begin(), upperIName.end(), upperIName.begin(), safeToUpper);
 
             if (oName.length() == 0) {
                 oName = iName;
 
-                if ((upperInputName.length() >= 4) && (upperInputName.substr(upperInputName.length() - 4) == ".KNZ"))
+                if ((upperIName.length() >= 4) && (upperIName.substr(upperIName.length() - 4) == ".KNZ"))
                     oName.resize(oName.length() - 4);
                 else
                     oName = oName + ".bak";
@@ -660,19 +667,19 @@ T FileDecompressTask<T>::run()
                     read += decoded;
                 }
             }
-            catch (const exception& e) {
-                dispose();
-                const uint64 d = _cis->getRead();
-                delete _cis;
-                _cis = nullptr;
+                catch (const exception& e) {
+                    dispose();
+                    const uint64 d = _cis->getRead();
+                    delete _cis;
+                    _cis = nullptr;
                 CLEANUP_DECOMP_IS
                 CLEANUP_DECOMP_OS
-                delete[] buf;
-                stringstream sserr;
-                sserr << "Failed to write decompressed block to file '" << outputName << "': " << e.what();
-                return T(Error::ERR_READ_FILE, d, sserr.str());
-            }
-        } while (_cis->eof() == 0);
+                    delete[] buf;
+                    stringstream sserr;
+                    sserr << "Failed to write decompressed block to file '" << outputName << "': " << e.what();
+                    return T(Error::ERR_WRITE_FILE, d, sserr.str());
+                }
+            } while (_cis->eof() == 0);
     }
     catch (const IOException& e) {
         dispose();
