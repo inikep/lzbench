@@ -102,6 +102,8 @@ TEST_SOURCES=test/TestEntropyCodec.cpp \
 	test/TestBWT.cpp \
 	test/TestCompressedStream.cpp \
 	test/TestDefaultBitStream.cpp \
+	test/TestFactories.cpp \
+	test/TestMalformedStream.cpp \
 	test/TestTransforms.cpp \
 	test/TestAPI.c
 
@@ -193,10 +195,16 @@ testEntropyCodec: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestEntropyCodec.o
 testDefaultBitStream: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestDefaultBitStream.o
 	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
 
+testFactories: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestFactories.o
+	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
+
+testMalformedStream: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestMalformedStream.o
+	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
+
 testCompressedStream: $(LIB_OBJECTS) $(TEST_OBJ_DIR)/TestCompressedStream.o
 	$(CXX) $^ -o ../bin/$@ $(LDFLAGS)
 
-test: testAPI testBWT testTransforms testEntropyCodec testDefaultBitStream testCompressedStream
+test: testAPI testBWT testTransforms testEntropyCodec testDefaultBitStream testFactories testMalformedStream testCompressedStream
 
 # Default executable target
 kanzi: $(LIB_OBJECTS) $(APP_OBJECTS)
@@ -225,6 +233,7 @@ ifeq ($(DETECTED_OS),Windows)
 INSTALL_DIR=C:/Program\ Files
 else
 INSTALL_DIR=/usr/local
+MAN_DIR=$(INSTALL_DIR)/share/man/man1
 endif
 
 print-vars:
@@ -259,6 +268,16 @@ else
 	install -m 644 ./util/*.hpp $(INSTALL_DIR)/include/kanzi/util
 	install -d $(INSTALL_DIR)/bin
 	install -m577 ../bin/$(APP)$(PROG_SUFFIX) $(INSTALL_DIR)/bin
+	install -d $(MAN_DIR)
+	if [ -f ../kanzi.1.gz ]; then \
+		install -m 644 ../kanzi.1.gz $(MAN_DIR)/$(APP).1.gz; \
+	elif [ -f ../kanzi.1 ]; then \
+		gzip -n -c ../kanzi.1 > $(MAN_DIR)/$(APP).1.gz; \
+		chmod 644 $(MAN_DIR)/$(APP).1.gz; \
+	else \
+		echo "Error: missing ../kanzi.1.gz or ../kanzi.1"; \
+		exit 1; \
+	fi
 endif
 
 # Uninstall may require sudo or admin rights
@@ -272,6 +291,7 @@ else
 	rm -f $(INSTALL_DIR)/bin/$(APP_STATIC)$(PROG_SUFFIX)
 	rm -f $(INSTALL_DIR)/bin/$(APP_DYNAMIC)$(PROG_SUFFIX)
 	rm -f $(INSTALL_DIR)/bin/$(APP)$(PROG_SUFFIX)
+	rm -f $(MAN_DIR)/$(APP).1.gz
 endif
 
 clean:

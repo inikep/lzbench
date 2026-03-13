@@ -46,7 +46,7 @@ namespace kanzi {
        // Required encoding output buffer size
        int getMaxEncodedLength(int srcLen) const
        {
-           return srcLen + 32 /* max header size */;
+           return srcLen + 1 + 32; // mode + 8 indexes
        }
 
    private:

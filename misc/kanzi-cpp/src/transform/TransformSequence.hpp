@@ -103,6 +103,7 @@ namespace kanzi {
 
        SliceArray<T>* in = &input;
        SliceArray<T>* out = &output;
+       SliceArray<T> buffer(nullptr, 0, 0);
        const int blockSize = count;
        const int requiredSize = getMaxEncodedLength(blockSize);
        int swaps = 0;
@@ -114,9 +115,14 @@ namespace kanzi {
 
            // Check that the output buffer has enough room. If not, allocate a new one.
            if (out->_length < requiredSize) {
-               delete[] out->_array;
-               out->_array = new T[requiredSize];
-               out->_length = requiredSize;
+               if ((out == &input) || (out == &output))
+                   out = &buffer;
+
+               if (out->_length < requiredSize) {
+                   delete[] out->_array;
+                   out->_array = new T[requiredSize];
+                   out->_length = requiredSize;
+               }
            }
 
            const int savedIIdx = in->_index;
@@ -158,6 +164,7 @@ namespace kanzi {
 
        input._index += blockSize;
        output._index += count;
+       delete[] buffer._array;
        return _skipFlags != SKIP_MASK;
    }
 
@@ -196,6 +203,7 @@ namespace kanzi {
        bool res = true;
        SliceArray<T>* in = &input;
        SliceArray<T>* out = &output;
+       SliceArray<T> buffer(nullptr, 0, 0);
        int swaps = 0;
 
        // Process transforms sequentially in reverse order
@@ -208,9 +216,14 @@ namespace kanzi {
 
            // Check that the output buffer has enough room. If not, allocate a new one.
            if (out->_length < output._length) {
-               delete[] out->_array;
-               out->_array = new T[output._length];
-               out->_length = output._length;
+               if ((out == &input) || (out == &output))
+                   out = &buffer;
+
+               if (out->_length < output._length) {
+                   delete[] out->_array;
+                   out->_array = new T[output._length];
+                   out->_length = output._length;
+               }
            }
 
            const int savedIIdx = in->_index;
@@ -248,6 +261,7 @@ namespace kanzi {
 
        input._index += blockSize;
        output._index += count;
+       delete[] buffer._array;
        return res;
    }
 
@@ -270,4 +284,3 @@ namespace kanzi {
    }
 }
 #endif
-

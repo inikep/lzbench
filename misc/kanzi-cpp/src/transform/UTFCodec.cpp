@@ -76,9 +76,8 @@ bool UTFCodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& 
     }
 
     int start = 0;
-    const uint32 bom = 0xEFBBBF;
 
-    if (memcmp(&src[0], &bom, 3) == 0) {
+    if ((count >= 3) && (src[0] == kanzi::byte(0xEF)) && (src[1] == kanzi::byte(0xBB)) && (src[2] == kanzi::byte(0xBF))) {
         // Byte Order Mark (BOM)
         start = 3;
     }
@@ -100,8 +99,10 @@ bool UTFCodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& 
     // 001 -> 11 bits
     // 010 -> 16 bits
     // 1xx -> 21 bits
-    uint32* aliasMap = new uint32[1 << 22];
-    memset(aliasMap, 0, size_t(1 << 22) * sizeof(uint32));
+    if (_aliasMap == nullptr)
+        _aliasMap = new uint32[1 << 22];
+
+    memset(_aliasMap, 0, size_t(1 << 22) * sizeof(uint32));
     vector<sdUTF> v;
     v.reserve(max(count >> 9, 256));
     int n = 0;
@@ -119,7 +120,7 @@ bool UTFCodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& 
         res &= ((s != 4) || ((((uint16(src[i + 2]) << 8) | uint16(src[i + 3])) & 0xC0C0) == 0x8080));
 
         // Add to map ?
-        if (aliasMap[val] == 0) {
+        if (_aliasMap[val] == 0) {
             n++;
             res &= (n < 32768);
 
@@ -134,19 +135,18 @@ bool UTFCodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& 
         if (res == false)
            break;
 
-        aliasMap[val]++;
+        _aliasMap[val]++;
         i += s;
     }
 
     const int maxTarget = count - (count / 10);
 
     if ((res == false) || (n == 0) || ((3 * n + 6) >= maxTarget)) {
-        delete[] aliasMap;
         return false;
     }
 
     for (int i = 0; i < n; i++)
-        v[i].freq = aliasMap[v[i].val];
+        v[i].freq = _aliasMap[v[i].val];
 
     // Sort ranks by decreasing frequencies;
     sort(v.begin(), v.end());
@@ -162,7 +162,7 @@ bool UTFCodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& 
     for (int i = 0; i < n; i++) {
         estimate += int((i < 128) ? v[i].freq : 2 * v[i].freq);
         const uint32 s = v[i].val;
-        aliasMap[s] = (i < 128) ? i : 0x10080 | ((i << 1) & 0xFF00) | (i & 0x7F);
+        _aliasMap[s] = (i < 128) ? i : 0x10080 | ((i << 1) & 0xFF00) | (i & 0x7F);
         dst[dstIdx] = kanzi::byte(s >> 16);
         dst[dstIdx + 1] = kanzi::byte(s >> 8);
         dst[dstIdx + 2] = kanzi::byte(s);
@@ -171,7 +171,6 @@ bool UTFCodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& 
 
     if (estimate >= maxTarget) {
         // Not worth it
-        delete[] aliasMap;
         return false;
     }
 
@@ -186,7 +185,7 @@ bool UTFCodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& 
     while (srcIdx < count - 4) {
         uint32 val;
         srcIdx += pack(&src[srcIdx], val);
-        const uint32 alias = aliasMap[val];
+        const uint32 alias = _aliasMap[val];
         dst[dstIdx++] = kanzi::byte(alias);
         dst[dstIdx] = kanzi::byte(alias >> 8);
         dstIdx += (alias >> 16);
@@ -199,7 +198,6 @@ bool UTFCodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& 
     while (srcIdx < count)
         dst[dstIdx++] = src[srcIdx++];
 
-    delete[] aliasMap;
     input._index += srcIdx;
     output._index += dstIdx;
     return dstIdx < maxTarget;

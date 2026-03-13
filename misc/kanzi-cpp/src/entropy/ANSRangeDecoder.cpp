@@ -206,7 +206,7 @@ int ANSRangeDecoder::decode(kanzi::byte block[], uint blkptr, uint count)
             memset(&block[startChunk], alphabet[0], size_t(sizeChunk));
         } else {
             if (decodeChunk(&block[startChunk], sizeChunk) == false)
-                break;
+                return -1;
         }
 
         startChunk += sizeChunk;

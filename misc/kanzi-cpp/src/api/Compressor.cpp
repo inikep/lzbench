@@ -17,6 +17,7 @@ limitations under the License.
 #include "Compressor.hpp"
 #include "../types.hpp"
 #include "../Error.hpp"
+#include "../io/IOException.hpp"
 #include "../io/CompressedOutputStream.hpp"
 #include "../transform/TransformFactory.hpp"
 #include "../entropy/EntropyEncoderFactory.hpp"
@@ -274,6 +275,9 @@ KANZI_API int CDECL compress(struct cContext* pCtx, const unsigned char* src, si
         res = pCos->good() ? 0 : Error::ERR_WRITE_FILE;
         *outSize = int(pCos->getWritten() - w);
     }
+    catch (const IOException& ioe) {
+        return ioe.error();
+    }
     catch (const exception&) {
         return Error::ERR_UNKNOWN;
     }
@@ -307,6 +311,20 @@ KANZI_API int CDECL disposeCompressor(struct cContext** ppCtx, size_t* outSize) 
         pCtx->fos = nullptr;
         delete pCtx;
         *ppCtx = nullptr;
+    }
+    catch (const IOException& ioe) {
+        if (pCos != nullptr) {
+            delete pCos;
+            pCos = nullptr;
+            pCtx->pCos = nullptr;
+        }
+
+        if (pCtx->fos != nullptr)
+            delete static_cast<FileOutputStream*>(pCtx->fos);
+
+        delete pCtx;
+        *ppCtx = nullptr;
+        return ioe.error();
     }
     catch (const exception&) {
         if (pCos != nullptr) {

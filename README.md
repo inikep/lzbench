@@ -62,7 +62,7 @@ Supported compressors
  - [fastlz 0.5.0](https://github.com/ariya/FastLZ)
  - [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2)
  - [glza 0.12](https://encode.su/threads/2427-GLZA)
- - [kanzi 2.4](https://github.com/flanglet/kanzi-cpp)
+ - [kanzi 2.5.1](https://github.com/flanglet/kanzi-cpp)
  - [libdeflate v1.24](https://github.com/ebiggers/libdeflate)
  - [lizard v2.1](https://github.com/inikep/lizard)
  - [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4)

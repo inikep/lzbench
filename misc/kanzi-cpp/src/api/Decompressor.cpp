@@ -16,9 +16,10 @@ limitations under the License.
 #include "Decompressor.hpp"
 #include "../types.hpp"
 #include "../Error.hpp"
+#include "../io/IOException.hpp"
 #include "../io/CompressedInputStream.hpp"
 #include "../transform/TransformFactory.hpp"
-#include "../entropy/EntropyEncoderFactory.hpp"
+#include "../entropy/EntropyDecoderFactory.hpp"
 
 
 #ifdef _MSC_VER
@@ -131,7 +132,7 @@ KANZI_API int CDECL initDecompressor(struct dData* pData, FILE* src, struct dCon
         if (pData->headerless != 0) {
            // Headerless mode: process params
            string transform = TransformFactory<kanzi::byte>::getName(TransformFactory<kanzi::byte>::getType(pData->transform));
-           string entropy = EntropyEncoderFactory::getName(EntropyEncoderFactory::getType(pData->entropy));
+           string entropy = EntropyDecoderFactory::getName(EntropyDecoderFactory::getType(pData->entropy));
 
            // Validate sizes
            if ((transform.length() >= sizeof(pData->transform)) ||
@@ -225,6 +226,10 @@ KANZI_API int CDECL decompress(struct dContext* pCtx, unsigned char* dst,
 
         *outSize = size_t(pCis->gcount());
     }
+    catch (const IOException& ioe) {
+        *outSize = 0;
+        return ioe.error();
+    }
     catch (const exception&) {
         *outSize = 0;
         return Error::ERR_UNKNOWN;
@@ -247,6 +252,7 @@ KANZI_API int CDECL disposeDecompressor(struct dContext** ppCtx) KANZI_NOEXCEPT
             pCis->close();
             delete pCis;
             pCis = nullptr;
+            pCtx->pCis = nullptr;
         }
 
         if (pCtx->fis != nullptr)
@@ -256,13 +262,31 @@ KANZI_API int CDECL disposeDecompressor(struct dContext** ppCtx) KANZI_NOEXCEPT
         delete pCtx;
         *ppCtx = nullptr;
     }
-    catch (const exception&) {
-        if (pCis != nullptr)
+    catch (const IOException& ioe) {
+        if (pCis != nullptr) {
             delete pCis;
+            pCis = nullptr;
+            pCtx->pCis = nullptr;
+        }
 
         if (pCtx->fis != nullptr)
             delete (FileInputStream*)pCtx->fis;
 
+        pCtx->fis = nullptr;
+        delete pCtx;
+        *ppCtx = nullptr;
+        return ioe.error();
+    }
+    catch (const exception&) {
+        if (pCis != nullptr) {
+            delete pCis;
+            pCtx->pCis = nullptr;
+        }
+
+        if (pCtx->fis != nullptr)
+            delete (FileInputStream*)pCtx->fis;
+
+        pCtx->fis = nullptr;
         delete pCtx;
         *ppCtx = nullptr;
         return Error::ERR_UNKNOWN;

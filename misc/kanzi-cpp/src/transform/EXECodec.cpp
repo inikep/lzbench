@@ -44,7 +44,7 @@ const int EXECodec::ARM_CB_ADDR_MASK = 0x00FFFFE0; // 18 bit addr mask
 const int EXECodec::ARM_CB_ADDR_SGN_MASK = 1 << 18;
 const int EXECodec::ARM_CB_OPCODE_MASK = 0x7F000000;
 const int EXECodec::ARM_OPCODE_CBZ = 0x34000000;  // 8 bit opcode
-const int EXECodec::ARM_OPCODE_CBNZ = 0x3500000; // 8 bit opcode
+const int EXECodec::ARM_OPCODE_CBNZ = 0x35000000; // 8 bit opcode
 const int EXECodec::WIN_PE = 0x00004550;
 const uint16 EXECodec::WIN_X86_ARCH = 0x014C;
 const uint16 EXECodec::WIN_AMD64_ARCH = 0x8664;
@@ -345,16 +345,24 @@ bool EXECodec::inverseX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
 
             if ((src[srcIdx] & X86_MASK_JCC) != X86_INSTRUCTION_JCC) {
                 // Not a relative jump
-                if ((src[srcIdx] == X86_ESCAPE) && (++srcIdx >= codeEnd))
-                    return false;
+                if (src[srcIdx] == X86_ESCAPE) {
+                    srcIdx++;
+
+                    if (srcIdx >= codeEnd)
+                        return false;
+                }
 
                 dst[dstIdx++] = src[srcIdx++];
                 continue;
             }
         } else if ((src[srcIdx] & X86_MASK_JUMP) != X86_INSTRUCTION_JUMP) {
             // Not a relative call
-            if ((src[srcIdx] == X86_ESCAPE) && (++srcIdx >= codeEnd))
-                return false;
+            if (src[srcIdx] == X86_ESCAPE) {
+                srcIdx++;
+
+                if (srcIdx >= codeEnd)
+                    return false;
+            }
 
             dst[dstIdx++] = src[srcIdx++];
             continue;
