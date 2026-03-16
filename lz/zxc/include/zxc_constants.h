@@ -27,7 +27,7 @@
 /** @brief Minor version number. */
 #define ZXC_VERSION_MINOR 9
 /** @brief Patch version number. */
-#define ZXC_VERSION_PATCH 0
+#define ZXC_VERSION_PATCH 1
 
 /** @cond INTERNAL */
 #define ZXC_STR_HELPER(x) #x
