@@ -347,7 +347,7 @@ static ZXC_ALWAYS_INLINE __m512i zxc_mm512_prefix_sum_epi32(__m512i v) {
 static int zxc_decode_block_num(const uint8_t* RESTRICT src, const size_t src_size,
                                 uint8_t* RESTRICT dst, const size_t dst_capacity) {
     zxc_num_header_t nh;
-    if (UNLIKELY(zxc_read_num_header(src, src_size, &nh) != 0)) return ZXC_ERROR_BAD_HEADER;
+    if (UNLIKELY(zxc_read_num_header(src, src_size, &nh) != ZXC_OK)) return ZXC_ERROR_BAD_HEADER;
 
     size_t offset = ZXC_NUM_HEADER_BINARY_SIZE;
     uint8_t* d_ptr = dst;
@@ -483,8 +483,8 @@ static int zxc_decode_block_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     zxc_gnr_header_t gh;
     zxc_section_desc_t desc[ZXC_GLO_SECTIONS];
 
-    const int res = zxc_read_glo_header_and_desc(src, src_size, &gh, desc);
-    if (UNLIKELY(res != 0)) return ZXC_ERROR_BAD_HEADER;
+    if (UNLIKELY(zxc_read_glo_header_and_desc(src, src_size, &gh, desc) != ZXC_OK))
+        return ZXC_ERROR_BAD_HEADER;
 
     const uint8_t* p_data =
         src + ZXC_GLO_HEADER_BINARY_SIZE + ZXC_GLO_SECTIONS * ZXC_SECTION_DESC_BINARY_SIZE;
@@ -593,16 +593,16 @@ static int zxc_decode_block_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     const size_t expected_off_size =
         (gh.enc_off == 1) ? (size_t)gh.n_sequences : (size_t)gh.n_sequences * 2;
 
-    if (UNLIKELY(sz_tokens < gh.n_sequences || sz_offsets < expected_off_size))
-        return ZXC_ERROR_CORRUPT_DATA;
-
     const uint8_t* t_ptr = p_curr;
     const uint8_t* o_ptr = t_ptr + sz_tokens;
     const uint8_t* e_ptr = o_ptr + sz_offsets;
     const uint8_t* const e_end = e_ptr + sz_extras;  // For vbyte overflow detection
 
-    // Validate streams don't overflow source buffer
-    if (UNLIKELY(e_end != src + src_size)) return ZXC_ERROR_CORRUPT_DATA;
+    // Validate streams don't overflow source buffer +
+    // Validate stream sizes match sequence count (early rejection of malformed data)
+    if (UNLIKELY((e_end != src + src_size) || sz_tokens < gh.n_sequences ||
+                 sz_offsets < expected_off_size))
+        return ZXC_ERROR_CORRUPT_DATA;
 
     uint8_t* d_ptr = dst;
     const uint8_t* const d_end = dst + dst_capacity;
@@ -1125,8 +1125,8 @@ static int zxc_decode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     zxc_gnr_header_t gh;
     zxc_section_desc_t desc[ZXC_GHI_SECTIONS];
 
-    const int res = zxc_read_ghi_header_and_desc(src, src_size, &gh, desc);
-    if (UNLIKELY(res != 0)) return ZXC_ERROR_BAD_HEADER;
+    if (UNLIKELY(zxc_read_ghi_header_and_desc(src, src_size, &gh, desc) != ZXC_OK))
+        return ZXC_ERROR_BAD_HEADER;
 
     const uint8_t* p_curr =
         src + ZXC_GHI_HEADER_BINARY_SIZE + ZXC_GHI_SECTIONS * ZXC_SECTION_DESC_BINARY_SIZE;
@@ -1143,8 +1143,10 @@ static int zxc_decode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     const uint8_t* extras_ptr = p_curr + sz_seqs;
     const uint8_t* const extras_end = extras_ptr + sz_exts;
 
-    // Validate streams don't overflow source buffer
-    if (UNLIKELY(extras_end != src + src_size)) return ZXC_ERROR_CORRUPT_DATA;
+    // Validate streams don't overflow source buffer +
+    // Validate sequence stream size matches sequence count
+    if (UNLIKELY((extras_end != src + src_size) || (sz_seqs < (size_t)gh.n_sequences * 4)))
+        return ZXC_ERROR_CORRUPT_DATA;
 
     uint8_t* d_ptr = dst;
     const uint8_t* const d_end = dst + dst_capacity;

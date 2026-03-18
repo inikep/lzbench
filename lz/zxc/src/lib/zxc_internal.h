@@ -34,6 +34,7 @@
 #include <string.h>
 
 #include "../../include/zxc_buffer.h"
+#include "../../include/zxc_constants.h"
 #include "../../include/zxc_sans_io.h"
 #include "rapidhash.h"
 
@@ -280,10 +281,6 @@ extern "C" {
 #define ZXC_MAGIC_WORD 0x9CB02EF5U
 /** @brief Current on-disk file format version. */
 #define ZXC_FILE_FORMAT_VERSION 5
-/** @brief Block size unit (4 KB). */
-#define ZXC_BLOCK_UNIT (4 * 1024)
-/** @brief Default block size processed per thread (256 KB). */
-#define ZXC_BLOCK_SIZE (64 * ZXC_BLOCK_UNIT)
 /** @brief Size of stdio I/O buffers (1 MB). */
 #define ZXC_IO_BUFFER_SIZE (1024 * 1024)
 /** @brief Maximum number of threads allowed for streaming operations. */
@@ -408,7 +405,7 @@ extern "C" {
 #define ZXC_LZ_MAX_DIST (ZXC_LZ_WINDOW_SIZE - 1)
 /**
  * @brief Number of bits reserved for epoch tracking in compressed pointers.
- * Derived from chunk size: 2^18 = ZXC_BLOCK_SIZE => 32 - 18 = 14 bits.
+ * Derived from chunk size: 2^18 = ZXC_BLOCK_SIZE_DEFAULT => 32 - 18 = 14 bits.
  */
 #define ZXC_EPOCH_BITS 14
 /** @brief Mask to extract the offset bits from a compressed pointer. */
@@ -424,6 +421,31 @@ extern "C" {
 #define ZXC_HASH_PRIME1 0x9E3779B97F4A7C15ULL
 /** @brief Hash prime 2. */
 #define ZXC_HASH_PRIME2 0xD2D84A61D2D84A61ULL
+/** @} */
+
+/** @name Block Size Helpers
+ *  @brief Runtime helpers for variable block sizes.
+ *  @{ */
+
+/**
+ * @brief Integer log-base-2 for a 32-bit value.
+ * @param v Must be a power of two (undefined for zero).
+ * @return Floor of log2(v).
+ */
+static ZXC_ALWAYS_INLINE uint32_t zxc_log2_u32(uint32_t v) {
+    uint32_t r = 0;
+    while (v >>= 1) r++;
+    return r;
+}
+
+/**
+ * @brief Validates a block size.
+ * Must be a power of two in [ZXC_BLOCK_SIZE_MIN, ZXC_BLOCK_SIZE_MAX].
+ * @return 1 if valid, 0 otherwise.
+ */
+static ZXC_ALWAYS_INLINE int zxc_validate_block_size(const size_t bs) {
+    return bs >= ZXC_BLOCK_SIZE_MIN && bs <= ZXC_BLOCK_SIZE_MAX && (bs & (bs - 1)) == 0;
+}
 /** @} */
 
 /** @} */ /* end of File Format Constants */

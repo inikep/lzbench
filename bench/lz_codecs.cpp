@@ -1685,113 +1685,66 @@ int64_t lzbench_zstd_LDM_compress(char *inbuf, size_t insize, char *outbuf, size
 
 #ifndef BENCH_REMOVE_ZXC
 #include "zxc/include/zxc.h"
-#include "zxc/src/lib/zxc_internal.h"
+
+typedef struct {
+    zxc_cctx *cctx;
+    zxc_dctx *dctx;
+    int level;
+} zxc_bench_t;
 
 char *lzbench_zxc_init(size_t insize, size_t level, size_t)
 {
-    zxc_cctx_t *ctx = (zxc_cctx_t *)malloc(sizeof(zxc_cctx_t));
-    if (!ctx)
+    zxc_bench_t *bench = (zxc_bench_t *)malloc(sizeof(zxc_bench_t));
+    if (!bench)
         return NULL;
 
-    if (zxc_cctx_init(ctx, ZXC_BLOCK_SIZE, 1, (int)level, 0) != 0)
+    bench->level = (int)level;
+
+    zxc_compress_opts_t copts = {0};
+    copts.level = (int)level;
+
+    bench->cctx = zxc_create_cctx(&copts);
+    bench->dctx = zxc_create_dctx();
+
+    if (!bench->cctx || !bench->dctx)
     {
-        free(ctx);
+        if (bench->cctx) zxc_free_cctx(bench->cctx);
+        if (bench->dctx) zxc_free_dctx(bench->dctx);
+        free(bench);
         return NULL;
     }
-    return (char *)ctx;
+    return (char *)bench;
 }
 
 void lzbench_zxc_deinit(char *workmem)
 {
-    zxc_cctx_t *ctx = (zxc_cctx_t *)workmem;
-    if (ctx)
-    {
-        zxc_cctx_free(ctx);
-        free(ctx);
-    }
+    zxc_bench_t *bench = (zxc_bench_t *)workmem;
+    if (!bench)
+        return;
+    if (bench->cctx) zxc_free_cctx(bench->cctx);
+    if (bench->dctx) zxc_free_dctx(bench->dctx);
+    free(bench);
 }
 
 int64_t lzbench_zxc_compress(char *inbuf, size_t insize, char *outbuf,
                              size_t outsize, codec_options_t *codec_options)
 {
-    const uint8_t *src = (const uint8_t *)inbuf;
-    uint8_t *dst = (uint8_t *)outbuf;
-    uint8_t *dst_start = dst;
-    const uint8_t *dst_end = dst + outsize;
+    zxc_bench_t *bench = (zxc_bench_t *)codec_options->work_mem;
+    if (!bench || !bench->cctx) return 0;
 
-    zxc_cctx_t *ctx = (zxc_cctx_t *)codec_options->work_mem;
-    if (!ctx) return 0;
-
-    const int h_len = zxc_write_file_header(dst, dst_end - dst, ctx->checksum_enabled);
-    if (h_len < 0) return 0;
-    dst += h_len;
-
-    size_t pos = 0;
-    while (pos < insize)
-    {
-        const size_t chunk_len = (insize - pos > ZXC_BLOCK_SIZE) ? ZXC_BLOCK_SIZE : (insize - pos);
-        const size_t rem_cap = dst_end - dst;
-
-        const int res = zxc_compress_chunk_wrapper(ctx, src + pos, chunk_len, dst, rem_cap);
-        if (res < 0) return 0;
-
-        dst += res;
-        pos += chunk_len;
-    }
-
-    const size_t rem_cap = (size_t)(dst_end - dst);
-    zxc_block_header_t eof_bh = {.block_type = ZXC_BLOCK_EOF,
-                                .block_flags = 0,
-                                .reserved = 0,
-                                .comp_size = 0};
-    const int eof_size = zxc_write_block_header(dst, rem_cap, &eof_bh);
-    if (eof_size < 0) return 0;
-
-    dst += ZXC_BLOCK_HEADER_SIZE;
-
-    zxc_write_file_footer(dst, (size_t)(dst_end - dst), insize, 0, 0);
-
-    dst += ZXC_FILE_FOOTER_SIZE;
-
-    return (int64_t)(dst - dst_start);
+    int64_t res = zxc_compress_cctx(bench->cctx, inbuf, insize,
+                                     outbuf, outsize, NULL);
+    return (res > 0) ? res : 0;
 }
 
 int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
                                size_t outsize, codec_options_t *codec_options)
 {
-    const uint8_t *src = (const uint8_t *)inbuf;
-    const uint8_t *src_end = src + insize;
-    uint8_t *dst = (uint8_t *)outbuf;
-    uint8_t *dst_start = dst;
-    const uint8_t *dst_end = dst + outsize;
+    zxc_bench_t *bench = (zxc_bench_t *)codec_options->work_mem;
+    if (!bench || !bench->dctx) return 0;
 
-    zxc_cctx_t *ctx = (zxc_cctx_t *)codec_options->work_mem;
-    if (!ctx) return 0;
-
-    if (zxc_read_file_header(src, insize, NULL, NULL) != 0) return 0;
-
-    src += ZXC_FILE_HEADER_SIZE;
-
-    while (src < src_end)
-    {
-        zxc_block_header_t bh;
-        if (zxc_read_block_header(src, src_end - src, &bh) != 0) return 0;
-
-        if (bh.block_type == ZXC_BLOCK_EOF) {
-            const uint8_t* footer = src + ZXC_BLOCK_HEADER_SIZE;
-            const uint64_t stored_size = zxc_le64(footer);
-            if (stored_size != (uint64_t)(dst - dst_start)) return 0;
-
-            break;
-        }
-
-        const int raw_written = zxc_decompress_chunk_wrapper(ctx, src, src_end - src, dst, dst_end - dst);
-        if (raw_written < 0) return 0;
-        
-        src += ZXC_BLOCK_HEADER_SIZE + bh.comp_size;
-        dst += raw_written;
-    }
-
-    return (int64_t)(dst - dst_start);
+    int64_t res = zxc_decompress_dctx(bench->dctx, inbuf, insize,
+                                       outbuf, outsize, NULL);
+    return (res > 0) ? res : 0;
 }
 #endif

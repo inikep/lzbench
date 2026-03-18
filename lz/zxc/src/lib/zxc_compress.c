@@ -169,7 +169,7 @@ typedef struct {
 static ZXC_ALWAYS_INLINE zxc_match_t zxc_lz77_find_best_match(
     const uint8_t* src, const uint8_t* ip, const uint8_t* iend, const uint8_t* mflimit,
     const uint8_t* anchor, uint32_t* RESTRICT hash_table, uint16_t* RESTRICT chain_table,
-    uint32_t epoch_mark, const int level, const zxc_lz77_params_t p) {
+    uint32_t epoch_mark, uint32_t offset_mask, const int level, const zxc_lz77_params_t p) {
     const int use_hash5 = (level >= 3);
     // Track the best match found so far.
     //  ref is the pointer to the start of the match in the history buffer,
@@ -202,8 +202,8 @@ static ZXC_ALWAYS_INLINE zxc_match_t zxc_lz77_find_best_match(
     // stored position; otherwise treat this bucket as empty (index 0).
     // Branchless optimization:
     // Create a mask that is 0xFFFFFFFF if epochs match, 0 otherwise.
-    const uint32_t epoch_mask = -((int32_t)((raw_head & ~ZXC_OFFSET_MASK) == epoch_mark));
-    uint32_t match_idx = (raw_head & ZXC_OFFSET_MASK) & epoch_mask;
+    const uint32_t epoch_mask = -((int32_t)((raw_head & ~offset_mask) == epoch_mark));
+    uint32_t match_idx = (raw_head & offset_mask) & epoch_mask;
 
     // Decide whether to skip the head entry of the hash chain.
     const int skip_head = (match_idx != 0) & (stored_tag != cur_tag);
@@ -381,7 +381,7 @@ static ZXC_ALWAYS_INLINE zxc_match_t zxc_lz77_find_best_match(
         const uint32_t next_head = hash_table[2 * h2];
         const uint32_t next_stored_tag = hash_table[2 * h2 + 1];
         uint32_t next_idx =
-            (next_head & ~ZXC_OFFSET_MASK) == epoch_mark ? (next_head & ZXC_OFFSET_MASK) : 0;
+            (next_head & ~offset_mask) == epoch_mark ? (next_head & offset_mask) : 0;
         const int skip_lazy_head = (next_idx > 0 && next_stored_tag != next_val);
         uint32_t max_lazy = 0;
         int lazy_att = p.lazy_attempts;
@@ -420,8 +420,7 @@ static ZXC_ALWAYS_INLINE zxc_match_t zxc_lz77_find_best_match(
             const uint32_t h3 = zxc_hash_func(val3_8, use_hash5);
             const uint32_t head3 = hash_table[2 * h3];
             const uint32_t tag3 = hash_table[2 * h3 + 1];
-            uint32_t idx3 =
-                (head3 & ~ZXC_OFFSET_MASK) == epoch_mark ? (head3 & ZXC_OFFSET_MASK) : 0;
+            uint32_t idx3 = (head3 & ~offset_mask) == epoch_mark ? (head3 & offset_mask) : 0;
             const int skip_head3 = (idx3 > 0 && tag3 != val3);
             int is_first3 = 1;
             uint32_t max_lazy3 = 0;
@@ -629,7 +628,8 @@ static int zxc_encode_block_num(const zxc_cctx_t* RESTRICT ctx, const uint8_t* R
 
         const uint8_t bits = zxc_highbit32(max_d);
         const size_t packed = ((frames * bits) + ZXC_BITS_PER_BYTE - 1) / ZXC_BITS_PER_BYTE;
-        if (UNLIKELY(rem < ZXC_NUM_CHUNK_HEADER_SIZE + packed)) return ZXC_ERROR_DST_TOO_SMALL;
+        if (UNLIKELY(rem < ZXC_NUM_CHUNK_HEADER_SIZE + packed + sizeof(uint32_t)))
+            return ZXC_ERROR_DST_TOO_SMALL;
 
         zxc_store_le16(p_curr, (uint16_t)frames);
         zxc_store_le16(p_curr + 2, bits);
@@ -709,11 +709,11 @@ static int zxc_encode_block_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     const zxc_lz77_params_t lzp = zxc_get_lz77_params(level);
 
     ctx->epoch++;
-    if (UNLIKELY(ctx->epoch >= ZXC_MAX_EPOCH)) {
+    if (UNLIKELY(ctx->epoch >= ctx->max_epoch)) {
         ZXC_MEMSET(ctx->hash_table, 0, 2 * ZXC_LZ_HASH_SIZE * sizeof(uint32_t));
         ctx->epoch = 1;
     }
-    const uint32_t epoch_mark = ctx->epoch << (32 - ZXC_EPOCH_BITS);
+    const uint32_t epoch_mark = ctx->epoch << ctx->offset_bits;
     const uint8_t *ip = src, *iend = src + src_sz, *anchor = ip, *mflimit = iend - 12;
 
     uint32_t* const hash_table = ctx->hash_table;
@@ -735,8 +735,9 @@ static int zxc_encode_block_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
 
         ZXC_PREFETCH_READ(ip + step * 4 + ZXC_CACHE_LINE_SIZE);
 
-        const zxc_match_t m = zxc_lz77_find_best_match(src, ip, iend, mflimit, anchor, hash_table,
-                                                       chain_table, epoch_mark, level, lzp);
+        const zxc_match_t m =
+            zxc_lz77_find_best_match(src, ip, iend, mflimit, anchor, hash_table, chain_table,
+                                     epoch_mark, ctx->offset_mask, level, lzp);
 
         if (m.ref) {
             ip -= m.backtrack;
@@ -778,8 +779,8 @@ static int zxc_encode_block_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
                     const uint32_t h_u =
                         zxc_hash_func(val_u8, 1);  // Only for level > 4, uses hash5
                     const uint32_t prev_head = hash_table[2 * h_u];
-                    const uint32_t prev_idx = (prev_head & ~ZXC_OFFSET_MASK) == epoch_mark
-                                                  ? (prev_head & ZXC_OFFSET_MASK)
+                    const uint32_t prev_idx = (prev_head & ~ctx->offset_mask) == epoch_mark
+                                                  ? (prev_head & ctx->offset_mask)
                                                   : 0;
                     hash_table[2 * h_u] = epoch_mark | pos_u;
                     hash_table[2 * h_u + 1] = val_u;
@@ -1202,11 +1203,11 @@ static int zxc_encode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     const zxc_lz77_params_t lzp = zxc_get_lz77_params(level);
 
     ctx->epoch++;
-    if (UNLIKELY(ctx->epoch >= ZXC_MAX_EPOCH)) {
+    if (UNLIKELY(ctx->epoch >= ctx->max_epoch)) {
         ZXC_MEMSET(ctx->hash_table, 0, 2 * ZXC_LZ_HASH_SIZE * sizeof(uint32_t));
         ctx->epoch = 1;
     }
-    const uint32_t epoch_mark = ctx->epoch << (32 - ZXC_EPOCH_BITS);
+    const uint32_t epoch_mark = ctx->epoch << ctx->offset_bits;
     const uint8_t *ip = src, *iend = src + src_sz, *anchor = ip, *mflimit = iend - 12;
 
     uint32_t* const hash_table = ctx->hash_table;
@@ -1227,8 +1228,9 @@ static int zxc_encode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
 
         ZXC_PREFETCH_READ(ip + step * 4 + 64);
 
-        const zxc_match_t m = zxc_lz77_find_best_match(src, ip, iend, mflimit, anchor, hash_table,
-                                                       chain_table, epoch_mark, level, lzp);
+        const zxc_match_t m =
+            zxc_lz77_find_best_match(src, ip, iend, mflimit, anchor, hash_table, chain_table,
+                                     epoch_mark, ctx->offset_mask, level, lzp);
 
         if (m.ref) {
             ip -= m.backtrack;

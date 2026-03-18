@@ -98,6 +98,12 @@ typedef struct {
     size_t work_buf_cap;   /**< Capacity of the work buffer. */
     int checksum_enabled;  /**< 1 if checksum calculation/verification is enabled. */
     int compression_level; /**< Compression level. */
+
+    /* Block-size derived parameters (computed once at init). */
+    size_t chunk_size;    /**< Effective block size in bytes. */
+    uint32_t offset_bits; /**< log2(chunk_size) - governs epoch_mark shift. */
+    uint32_t offset_mask; /**< (1U << offset_bits) - 1 */
+    uint32_t max_epoch;   /**< 1U << (32 - offset_bits) */
 } zxc_cctx_t;
 
 /**
@@ -143,7 +149,7 @@ ZXC_EXPORT void zxc_cctx_free(zxc_cctx_t* ctx);
  *         or ZXC_ERROR_DST_TOO_SMALL if the destination capacity is insufficient.
  */
 ZXC_EXPORT int zxc_write_file_header(uint8_t* dst, const size_t dst_capacity,
-                                     const int has_checksum);
+                                     const size_t chunk_size, const int has_checksum);
 
 /**
  * @brief Validates and reads the ZXC file header from a source buffer.

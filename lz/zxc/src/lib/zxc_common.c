@@ -75,8 +75,14 @@ int zxc_cctx_init(zxc_cctx_t* RESTRICT ctx, const size_t chunk_size, const int m
                   const int level, const int checksum_enabled) {
     ZXC_MEMSET(ctx, 0, sizeof(zxc_cctx_t));
 
-    ctx->compression_level = level;
     ctx->checksum_enabled = checksum_enabled;
+
+    /* Compute block-size derived parameters. */
+    ctx->chunk_size = chunk_size;
+    const uint32_t offset_bits = zxc_log2_u32((uint32_t)chunk_size);
+    ctx->offset_bits = offset_bits;
+    ctx->offset_mask = (1U << offset_bits) - 1;
+    ctx->max_epoch = 1U << (32 - offset_bits);
 
     if (mode == 0) return ZXC_OK;
 
@@ -120,6 +126,7 @@ int zxc_cctx_init(zxc_cctx_t* RESTRICT ctx, const size_t chunk_size, const int m
     ctx->buf_extras = (uint8_t*)(mem + off_extras);
     ctx->literals = (uint8_t*)(mem + off_lit);
 
+    ctx->compression_level = level;
     ctx->epoch = 1;
 
     ZXC_MEMSET(ctx->hash_table, 0, sz_hash);
@@ -181,17 +188,15 @@ void zxc_cctx_free(zxc_cctx_t* ctx) {
  * @return Number of bytes written (@ref ZXC_FILE_HEADER_SIZE) on success,
  *         or a negative @ref zxc_error_t code.
  */
-int zxc_write_file_header(uint8_t* RESTRICT dst, const size_t dst_capacity,
+int zxc_write_file_header(uint8_t* RESTRICT dst, const size_t dst_capacity, const size_t chunk_size,
                           const int has_checksum) {
     if (UNLIKELY(dst_capacity < ZXC_FILE_HEADER_SIZE)) return ZXC_ERROR_DST_TOO_SMALL;
 
     zxc_store_le32(dst, ZXC_MAGIC_WORD);
     dst[4] = ZXC_FILE_FORMAT_VERSION;
 
-    // Dual-scale chunk size encoding
-    // Large scale multiplier is 64 KB, fine scale is 4 KB (ratio: 64 / 4 = 16)
-    const uint32_t units = (uint32_t)(ZXC_BLOCK_SIZE / ZXC_BLOCK_UNIT);
-    dst[5] = units <= 127 ? (uint8_t)units : (uint8_t)((units / 16) | 0x80);
+    // Block size stored as log2 exponent (e.g. 18 = 256 KB)
+    dst[5] = (uint8_t)zxc_log2_u32((uint32_t)chunk_size);
 
     // Flags are at offset 6
     dst[6] = has_checksum ? (ZXC_FILE_FLAG_HAS_CHECKSUM | ZXC_CHECKSUM_RAPIDHASH) : 0;
@@ -233,13 +238,18 @@ int zxc_read_file_header(const uint8_t* RESTRICT src, const size_t src_size,
     if (UNLIKELY(zxc_le16(src + 14) != zxc_hash16(temp))) return ZXC_ERROR_BAD_HEADER;
 
     if (out_block_size) {
-        // Read Dual-Scale Chunk Size Code
         const uint8_t code = src[5];
-        const size_t scale = (code & 0x80) ? (16 * ZXC_BLOCK_UNIT) : ZXC_BLOCK_UNIT;
-        size_t value = code & 0x7F;
-        if (UNLIKELY(value == 0)) value = 1;
-
-        *out_block_size = value * scale;
+        size_t block_size;
+        if (LIKELY(code >= ZXC_BLOCK_SIZE_MIN_LOG2 && code <= ZXC_BLOCK_SIZE_MAX_LOG2)) {
+            // Exponent encoding: block_size = 2^code  (4 KB - 2 MB)
+            block_size = (size_t)1U << code;
+        } else if (code == 64) {
+            // Legacy: hardcoded 256 KB default
+            block_size = ZXC_BLOCK_SIZE_DEFAULT;
+        } else {
+            return ZXC_ERROR_BAD_BLOCK_SIZE;
+        }
+        *out_block_size = block_size;
     }
     // Flags are at offset 6
     if (out_has_checksum) *out_has_checksum = (src[6] & ZXC_FILE_FLAG_HAS_CHECKSUM) ? 1 : 0;
@@ -294,6 +304,7 @@ int zxc_read_block_header(const uint8_t* RESTRICT src, const size_t src_size,
     bh->reserved = src[2];
     bh->comp_size = zxc_le32(src + 3);
     bh->header_crc = src[7];
+
     return ZXC_OK;
 }
 
@@ -339,6 +350,7 @@ int zxc_write_num_header(uint8_t* RESTRICT dst, const size_t rem,
     zxc_store_le16(dst + 8, nh->frame_size);
     zxc_store_le16(dst + 10, 0);
     zxc_store_le32(dst + 12, 0);
+
     return ZXC_NUM_HEADER_BINARY_SIZE;
 }
 
@@ -356,6 +368,7 @@ int zxc_read_num_header(const uint8_t* RESTRICT src, const size_t src_size,
 
     nh->n_values = zxc_le64(src);
     nh->frame_size = zxc_le16(src + 8);
+
     return ZXC_OK;
 }
 
@@ -519,10 +532,12 @@ int zxc_bitpack_stream_32(const uint32_t* RESTRICT src, const size_t count, uint
                           const size_t dst_cap, const uint8_t bits) {
     const size_t out_bytes = ((count * bits) + ZXC_BITS_PER_BYTE - 1) / ZXC_BITS_PER_BYTE;
 
-    if (UNLIKELY(dst_cap < out_bytes)) return ZXC_ERROR_DST_TOO_SMALL;
+    // +4 bytes: packing may write past out_bytes when the last value straddles a byte boundary.
+    const size_t safe_bytes = out_bytes + sizeof(uint32_t);
+    if (UNLIKELY(dst_cap < safe_bytes)) return ZXC_ERROR_DST_TOO_SMALL;
 
     size_t bit_pos = 0;
-    ZXC_MEMSET(dst, 0, out_bytes);
+    ZXC_MEMSET(dst, 0, safe_bytes);
 
     // Create a mask for the input bits to prevent overflow
     // If bits is 32, the shift (1ULL << 32) is undefined behavior on 32-bit types,
@@ -568,7 +583,7 @@ int zxc_bitpack_stream_32(const uint32_t* RESTRICT src, const size_t count, uint
 uint64_t zxc_compress_bound(const size_t input_size) {
     // Guard UINT64_MAX / SIZE_MAX would overflow.
     if (UNLIKELY(input_size > (SIZE_MAX - (SIZE_MAX >> 8)))) return 0;
-    uint64_t n = ((uint64_t)input_size + ZXC_BLOCK_SIZE - 1) / ZXC_BLOCK_SIZE;
+    uint64_t n = ((uint64_t)input_size + ZXC_BLOCK_SIZE_DEFAULT - 1) / ZXC_BLOCK_SIZE_DEFAULT;
     if (n == 0) n = 1;
     return ZXC_FILE_HEADER_SIZE + (n * (ZXC_BLOCK_HEADER_SIZE + ZXC_BLOCK_CHECKSUM_SIZE + 64)) +
            (uint64_t)input_size + ZXC_BLOCK_HEADER_SIZE + ZXC_FILE_FOOTER_SIZE;
@@ -617,6 +632,8 @@ const char* zxc_error_name(const int code) {
             return "ZXC_ERROR_NULL_INPUT";
         case ZXC_ERROR_BAD_BLOCK_TYPE:
             return "ZXC_ERROR_BAD_BLOCK_TYPE";
+        case ZXC_ERROR_BAD_BLOCK_SIZE:
+            return "ZXC_ERROR_BAD_BLOCK_SIZE";
         default:
             return "ZXC_UNKNOWN_ERROR";
     }
