@@ -45,8 +45,9 @@
  * depending on implementation).
  * @return The value of the consumed bits as a 32-bit unsigned integer.
  */
-static ZXC_ALWAYS_INLINE uint32_t zxc_br_consume_fast(zxc_bit_reader_t* br, uint8_t n) {
-#if defined(__BMI2__) && (defined(__x86_64__) || defined(_M_X64))
+static ZXC_ALWAYS_INLINE uint32_t zxc_br_consume_fast(zxc_bit_reader_t* RESTRICT br,
+                                                      const uint8_t n) {
+#if !defined(ZXC_DISABLE_SIMD) && defined(__BMI2__) && (defined(__x86_64__) || defined(_M_X64))
     // BMI2 Optimization: _bzhi_u64(x, n) copies the lower n bits of x to dst and
     // clears the rest. It is equivalent to x & ((1ULL << n) - 1) but executes in
     // a single cycle without dependency chains.
@@ -67,11 +68,11 @@ static ZXC_ALWAYS_INLINE uint32_t zxc_br_consume_fast(zxc_bit_reader_t* br, uint
  * the total length (1-5 bytes).
  *
  * Format:
- * - 1 byte (0xxxxxxx): 7 bits (val < 128)
- * - 2 bytes (10xxxxxx ...): 14 bits (val < 16384)
- * - 3 bytes (110xxxxx ...): 21 bits (val < 2M)
- * - 4 bytes (1110xxxx ...): 28 bits (val < 256M)
- * - 5 bytes (11110xxx ...): 32 bits (Full Range)
+ * - 1 byte  (0xxxxxxx):  7-bit payload (val < 2^7  = 128)
+ * - 2 bytes (10xxxxxx): 14-bit payload (val < 2^14 = 16384)
+ * - 3 bytes (110xxxxx): 21-bit payload (val < 2^21 = 2097152)
+ * - 4 bytes (1110xxxx): 28-bit payload (val < 2^28 = 268435456)
+ * - 5 bytes (11110xxx): 32-bit payload (full uint32_t range)
  *
  * @param[in,out] ptr Pointer to a pointer to the current position in the stream.
  * @param[in] end Pointer to the end of the readable stream (for bounds checking).
@@ -84,13 +85,13 @@ static ZXC_ALWAYS_INLINE uint32_t zxc_read_varint(const uint8_t** ptr, const uin
 
     const uint32_t b0 = p[0];
 
-    // 1 Byte: 0xxxxxxx (7 bits) -> val < 128
-    if (LIKELY(b0 < 128)) {
+    // 1 Byte: 0xxxxxxx (7 bits) -> val < 128 (2^7)
+    if (LIKELY(b0 < 0x80)) {
         *ptr = p + 1;
         return b0;
     }
 
-    // 2 Bytes: 10xxxxxx xxxxxxxx (14 bits)
+    // 2 Bytes: 10xxxxxx xxxxxxxx (14 bits) -> val < 16384 (2^14)
     if (LIKELY(b0 < 0xC0)) {
         if (UNLIKELY(p + 1 >= end)) {
             *ptr = end;
@@ -100,7 +101,7 @@ static ZXC_ALWAYS_INLINE uint32_t zxc_read_varint(const uint8_t** ptr, const uin
         return (b0 & 0x3F) | ((uint32_t)p[1] << 6);
     }
 
-    // 3 Bytes: 110xxxxx xxxxxxxx xxxxxxxx (21 bits)
+    // 3 Bytes: 110xxxxx xxxxxxxx xxxxxxxx (21 bits) -> val < 2097152 (2^21)
     if (LIKELY(b0 < 0xE0)) {
         if (UNLIKELY(p + 2 >= end)) {
             *ptr = end;
@@ -110,7 +111,7 @@ static ZXC_ALWAYS_INLINE uint32_t zxc_read_varint(const uint8_t** ptr, const uin
         return (b0 & 0x1F) | ((uint32_t)p[1] << 5) | ((uint32_t)p[2] << 13);
     }
 
-    // 4 Bytes: 1110xxxx ... (28 bits)
+    // 4 Bytes: 1110xxxx ... (28 bits) -> val < 268435456 (2^28)
     if (UNLIKELY(b0 < 0xF0)) {
         if (UNLIKELY(p + 3 >= end)) {
             *ptr = end;
@@ -121,7 +122,7 @@ static ZXC_ALWAYS_INLINE uint32_t zxc_read_varint(const uint8_t** ptr, const uin
                ((uint32_t)p[3] << 20);
     }
 
-    // 5 Bytes: 11110xxx ... (32 bits)
+    // 5 Bytes: 11110xxx ... (32 bits) -> val < 4294967296 (2^32)
     if (UNLIKELY(p + 4 >= end)) {
         *ptr = end;
         return 0;
@@ -368,7 +369,7 @@ static int zxc_decode_block_num(const uint8_t* RESTRICT src, const size_t src_si
 
         if (UNLIKELY(nvals > vals_remaining || src_size < offset + psize ||
                      (size_t)(d_end - d_ptr) < (size_t)nvals * sizeof(uint32_t) ||
-                     bits > (sizeof(uint32_t) * ZXC_BITS_PER_BYTE)))
+                     bits > (sizeof(uint32_t) * CHAR_BIT)))
             return ZXC_ERROR_CORRUPT_DATA;
 
         zxc_bit_reader_t br;
@@ -390,9 +391,9 @@ static int zxc_decode_block_num(const uint8_t* RESTRICT src, const size_t src_si
             uint32_t* batch_dst = (uint32_t*)d_ptr;
 
 #if defined(ZXC_USE_AVX512)
+            __m512i v_run = _mm512_set1_epi32(running_val);  // Broadcast initial running total
             for (int k = 0; k < ZXC_NUM_DEC_BATCH; k += 16) {
                 __m512i v_deltas = _mm512_load_si512((void*)&deltas[k]);  // Load 16 deltas
-                __m512i v_run = _mm512_set1_epi32(running_val);  // Broadcast current running total
 
                 __m512i v_sum = zxc_mm512_prefix_sum_epi32(v_deltas);  // Compute local prefix sums
                 v_sum = _mm512_add_epi32(v_sum, v_run);                // Add base running total
@@ -400,24 +401,34 @@ static int zxc_decode_block_num(const uint8_t* RESTRICT src, const size_t src_si
                 _mm512_storeu_si512((void*)&batch_dst[k],
                                     v_sum);  // Store decoded values
 
-                // Extract the last value (15th element) to update running_val for next
-                // batch
-                __m128i v_last128 = _mm512_extracti32x4_epi32(v_sum, 3);
-                running_val = (uint32_t)_mm_cvtsi128_si32(_mm_shuffle_epi32(v_last128, 0xFF));
+                // Broadcast 15th element of v_sum to v_run directly within ZMM registers
+                // 1. Align upper 128-bit lane down to all lanes
+                __m512i v_last128 = _mm512_shuffle_i32x4(v_sum, v_sum, 0xFF);
+                // 2. Broadcast the 3rd element of those lanes
+                v_run = _mm512_shuffle_epi32(v_last128, 0xFF);
             }
+            // Extract final running_val back to GPR for scalar fallback
+            running_val = (uint32_t)_mm_cvtsi128_si32(_mm512_castsi512_si128(v_run));
 
 #elif defined(ZXC_USE_AVX2)
+            __m256i v_run = _mm256_set1_epi32(running_val);  // Broadcast initial running total
             for (int k = 0; k < ZXC_NUM_DEC_BATCH; k += 8) {
                 __m256i v_deltas = _mm256_load_si256((const __m256i*)&deltas[k]);  // Load 8 deltas
-                __m256i v_run = _mm256_set1_epi32(running_val);  // Broadcast running total
 
                 __m256i v_sum = zxc_mm256_prefix_sum_epi32(v_deltas);  // Compute local prefix sums
                 v_sum = _mm256_add_epi32(v_sum, v_run);                // Add base
 
                 _mm256_storeu_si256((__m256i*)&batch_dst[k],
-                                    v_sum);                   // Store decoded values
-                running_val = ((uint32_t*)&batch_dst[k])[7];  // Update running_val
+                                    v_sum);  // Store decoded values
+
+                // Compute v_run directly from vector register without memory readback
+                // Duplicate upper 128-bits into both lanes
+                __m256i last_val = _mm256_permute2x128_si256(v_sum, v_sum, 0x11);
+                // Broadcast 4th element to all elements
+                v_run = _mm256_shuffle_epi32(last_val, 0xFF);
             }
+            // Extract final running_val back to GPR for scalar fallback
+            running_val = (uint32_t)_mm_cvtsi128_si32(_mm256_castsi256_si128(v_run));
 
 #elif defined(ZXC_USE_NEON64) || defined(ZXC_USE_NEON32)
             uint32x4_t v_run = vdupq_n_u32(running_val);  // Broadcast running total
@@ -429,9 +440,16 @@ static int zxc_decode_block_num(const uint8_t* RESTRICT src, const size_t src_si
 
                 vst1q_u32(&batch_dst[k], v_sum);  // Store decoded values
 
+#if defined(ZXC_USE_NEON64)
+                v_run = vdupq_laneq_u32(v_sum, 3);  // Update vector directly (no GPR transit)
+#else
                 running_val = vgetq_lane_u32(v_sum, 3);  // Extract last element
                 v_run = vdupq_n_u32(running_val);        // Update vector for next iter
+#endif
             }
+#if defined(ZXC_USE_NEON64)
+            running_val = vgetq_lane_u32(v_run, 0);  // Extract once at the end of the batch
+#endif
 
 #else
             for (int k = 0; k < ZXC_NUM_DEC_BATCH; k++) {
@@ -497,7 +515,7 @@ static int zxc_decode_block_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
 
     size_t lit_stream_size = (size_t)(desc[0].sizes & ZXC_SECTION_SIZE_MASK);
 
-    if (gh.enc_lit == 1) {
+    if (gh.enc_lit == ZXC_SECTION_ENCODING_RLE) {
         const size_t required_size = (size_t)(desc[0].sizes >> 32);
 
         if (required_size > 0) {
@@ -631,147 +649,93 @@ static int zxc_decode_block_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     // After threshold, all offsets are guaranteed valid (can't exceed written bytes)
     size_t written = 0;
 
-// Macro for copy literal + match (uses 32-byte wild copies)
+// --- Factored sub-macros for literal copy + match copy ---
+// Used by DECODE_SEQ_SAFE and DECODE_SEQ_FAST to avoid duplication.
+
+// Copy literals from l_ptr to d_ptr using 32-byte wild copies
+#define DECODE_COPY_LITERALS(ll)              \
+    do {                                      \
+        const uint8_t* src_lit = l_ptr;       \
+        uint8_t* dst_lit = d_ptr;             \
+        zxc_copy32(dst_lit, src_lit);         \
+        if (UNLIKELY(ll > ZXC_PAD_SIZE)) {    \
+            dst_lit += ZXC_PAD_SIZE;          \
+            src_lit += ZXC_PAD_SIZE;          \
+            size_t rem = ll - ZXC_PAD_SIZE;   \
+            while (rem > ZXC_PAD_SIZE) {      \
+                zxc_copy32(dst_lit, src_lit); \
+                dst_lit += ZXC_PAD_SIZE;      \
+                src_lit += ZXC_PAD_SIZE;      \
+                rem -= ZXC_PAD_SIZE;          \
+            }                                 \
+            zxc_copy32(dst_lit, src_lit);     \
+        }                                     \
+        l_ptr += ll;                          \
+        d_ptr += ll;                          \
+    } while (0)
+
+// Copy match from d_ptr - off to d_ptr, handling overlap cases
+#define DECODE_COPY_MATCH(ml, off)                                   \
+    do {                                                             \
+        const uint8_t* match_src = d_ptr - off;                      \
+        if (LIKELY(off >= ZXC_PAD_SIZE)) {                           \
+            zxc_copy32(d_ptr, match_src);                            \
+            if (UNLIKELY(ml > ZXC_PAD_SIZE)) {                       \
+                uint8_t* out = d_ptr + ZXC_PAD_SIZE;                 \
+                const uint8_t* ref = match_src + ZXC_PAD_SIZE;       \
+                size_t rem = ml - ZXC_PAD_SIZE;                      \
+                while (rem > ZXC_PAD_SIZE) {                         \
+                    zxc_copy32(out, ref);                            \
+                    out += ZXC_PAD_SIZE;                             \
+                    ref += ZXC_PAD_SIZE;                             \
+                    rem -= ZXC_PAD_SIZE;                             \
+                }                                                    \
+                zxc_copy32(out, ref);                                \
+            }                                                        \
+            d_ptr += ml;                                             \
+        } else if (off >= (ZXC_PAD_SIZE / 2)) {                      \
+            zxc_copy16(d_ptr, match_src);                            \
+            if (UNLIKELY(ml > (ZXC_PAD_SIZE / 2))) {                 \
+                uint8_t* out = d_ptr + (ZXC_PAD_SIZE / 2);           \
+                const uint8_t* ref = match_src + (ZXC_PAD_SIZE / 2); \
+                size_t rem = ml - (ZXC_PAD_SIZE / 2);                \
+                while (rem > (ZXC_PAD_SIZE / 2)) {                   \
+                    zxc_copy16(out, ref);                            \
+                    out += (ZXC_PAD_SIZE / 2);                       \
+                    ref += (ZXC_PAD_SIZE / 2);                       \
+                    rem -= (ZXC_PAD_SIZE / 2);                       \
+                }                                                    \
+                zxc_copy16(out, ref);                                \
+            }                                                        \
+            d_ptr += ml;                                             \
+        } else if (off == 1) {                                       \
+            ZXC_MEMSET(d_ptr, match_src[0], ml);                     \
+            d_ptr += ml;                                             \
+        } else {                                                     \
+            size_t copied = 0;                                       \
+            while (copied < ml) {                                    \
+                zxc_copy_overlap16(d_ptr + copied, off);             \
+                copied += (ZXC_PAD_SIZE / 2);                        \
+            }                                                        \
+            d_ptr += ml;                                             \
+        }                                                            \
+    } while (0)
+
 // SAFE version: validates offset against written bytes
-#define DECODE_SEQ_SAFE(ll, ml, off)                                     \
-    do {                                                                 \
-        {                                                                \
-            const uint8_t* src_lit = l_ptr;                              \
-            uint8_t* dst_lit = d_ptr;                                    \
-            zxc_copy32(dst_lit, src_lit);                                \
-            if (UNLIKELY(ll > ZXC_PAD_SIZE)) {                           \
-                dst_lit += ZXC_PAD_SIZE;                                 \
-                src_lit += ZXC_PAD_SIZE;                                 \
-                size_t rem = ll - ZXC_PAD_SIZE;                          \
-                while (rem > ZXC_PAD_SIZE) {                             \
-                    zxc_copy32(dst_lit, src_lit);                        \
-                    dst_lit += ZXC_PAD_SIZE;                             \
-                    src_lit += ZXC_PAD_SIZE;                             \
-                    rem -= ZXC_PAD_SIZE;                                 \
-                }                                                        \
-                zxc_copy32(dst_lit, src_lit);                            \
-            }                                                            \
-            l_ptr += ll;                                                 \
-            d_ptr += ll;                                                 \
-            written += ll;                                               \
-        }                                                                \
-        {                                                                \
-            if (UNLIKELY(off > written)) return ZXC_ERROR_BAD_OFFSET;    \
-            const uint8_t* match_src = d_ptr - off;                      \
-            if (LIKELY(off >= ZXC_PAD_SIZE)) {                           \
-                zxc_copy32(d_ptr, match_src);                            \
-                if (UNLIKELY(ml > ZXC_PAD_SIZE)) {                       \
-                    uint8_t* out = d_ptr + ZXC_PAD_SIZE;                 \
-                    const uint8_t* ref = match_src + ZXC_PAD_SIZE;       \
-                    size_t rem = ml - ZXC_PAD_SIZE;                      \
-                    while (rem > ZXC_PAD_SIZE) {                         \
-                        zxc_copy32(out, ref);                            \
-                        out += ZXC_PAD_SIZE;                             \
-                        ref += ZXC_PAD_SIZE;                             \
-                        rem -= ZXC_PAD_SIZE;                             \
-                    }                                                    \
-                    zxc_copy32(out, ref);                                \
-                }                                                        \
-                d_ptr += ml;                                             \
-                written += ml;                                           \
-            } else if (off >= (ZXC_PAD_SIZE / 2)) {                      \
-                zxc_copy16(d_ptr, match_src);                            \
-                if (UNLIKELY(ml > (ZXC_PAD_SIZE / 2))) {                 \
-                    uint8_t* out = d_ptr + (ZXC_PAD_SIZE / 2);           \
-                    const uint8_t* ref = match_src + (ZXC_PAD_SIZE / 2); \
-                    size_t rem = ml - (ZXC_PAD_SIZE / 2);                \
-                    while (rem > (ZXC_PAD_SIZE / 2)) {                   \
-                        zxc_copy16(out, ref);                            \
-                        out += (ZXC_PAD_SIZE / 2);                       \
-                        ref += (ZXC_PAD_SIZE / 2);                       \
-                        rem -= (ZXC_PAD_SIZE / 2);                       \
-                    }                                                    \
-                    zxc_copy16(out, ref);                                \
-                }                                                        \
-                d_ptr += ml;                                             \
-                written += ml;                                           \
-            } else if (off == 1) {                                       \
-                ZXC_MEMSET(d_ptr, match_src[0], ml);                     \
-                d_ptr += ml;                                             \
-                written += ml;                                           \
-            } else {                                                     \
-                size_t copied = 0;                                       \
-                while (copied < ml) {                                    \
-                    zxc_copy_overlap16(d_ptr + copied, off);             \
-                    copied += (ZXC_PAD_SIZE / 2);                        \
-                }                                                        \
-                d_ptr += ml;                                             \
-                written += ml;                                           \
-            }                                                            \
-        }                                                                \
+#define DECODE_SEQ_SAFE(ll, ml, off)                              \
+    do {                                                          \
+        DECODE_COPY_LITERALS(ll);                                 \
+        written += ll;                                            \
+        if (UNLIKELY(off > written)) return ZXC_ERROR_BAD_OFFSET; \
+        DECODE_COPY_MATCH(ml, off);                               \
+        written += ml;                                            \
     } while (0)
 
 // FAST version: no offset validation (for use after written >= 256 or 65536)
-#define DECODE_SEQ_FAST(ll, ml, off)                                     \
-    do {                                                                 \
-        {                                                                \
-            const uint8_t* src_lit = l_ptr;                              \
-            uint8_t* dst_lit = d_ptr;                                    \
-            zxc_copy32(dst_lit, src_lit);                                \
-            if (UNLIKELY(ll > ZXC_PAD_SIZE)) {                           \
-                dst_lit += ZXC_PAD_SIZE;                                 \
-                src_lit += ZXC_PAD_SIZE;                                 \
-                size_t rem = ll - ZXC_PAD_SIZE;                          \
-                while (rem > ZXC_PAD_SIZE) {                             \
-                    zxc_copy32(dst_lit, src_lit);                        \
-                    dst_lit += ZXC_PAD_SIZE;                             \
-                    src_lit += ZXC_PAD_SIZE;                             \
-                    rem -= ZXC_PAD_SIZE;                                 \
-                }                                                        \
-                zxc_copy32(dst_lit, src_lit);                            \
-            }                                                            \
-            l_ptr += ll;                                                 \
-            d_ptr += ll;                                                 \
-        }                                                                \
-        {                                                                \
-            const uint8_t* match_src = d_ptr - off;                      \
-            if (LIKELY(off >= ZXC_PAD_SIZE)) {                           \
-                zxc_copy32(d_ptr, match_src);                            \
-                if (UNLIKELY(ml > ZXC_PAD_SIZE)) {                       \
-                    uint8_t* out = d_ptr + ZXC_PAD_SIZE;                 \
-                    const uint8_t* ref = match_src + ZXC_PAD_SIZE;       \
-                    size_t rem = ml - ZXC_PAD_SIZE;                      \
-                    while (rem > ZXC_PAD_SIZE) {                         \
-                        zxc_copy32(out, ref);                            \
-                        out += ZXC_PAD_SIZE;                             \
-                        ref += ZXC_PAD_SIZE;                             \
-                        rem -= ZXC_PAD_SIZE;                             \
-                    }                                                    \
-                    zxc_copy32(out, ref);                                \
-                }                                                        \
-                d_ptr += ml;                                             \
-            } else if (off >= (ZXC_PAD_SIZE / 2)) {                      \
-                zxc_copy16(d_ptr, match_src);                            \
-                if (UNLIKELY(ml > (ZXC_PAD_SIZE / 2))) {                 \
-                    uint8_t* out = d_ptr + (ZXC_PAD_SIZE / 2);           \
-                    const uint8_t* ref = match_src + (ZXC_PAD_SIZE / 2); \
-                    size_t rem = ml - (ZXC_PAD_SIZE / 2);                \
-                    while (rem > (ZXC_PAD_SIZE / 2)) {                   \
-                        zxc_copy16(out, ref);                            \
-                        out += (ZXC_PAD_SIZE / 2);                       \
-                        ref += (ZXC_PAD_SIZE / 2);                       \
-                        rem -= (ZXC_PAD_SIZE / 2);                       \
-                    }                                                    \
-                    zxc_copy16(out, ref);                                \
-                }                                                        \
-                d_ptr += ml;                                             \
-            } else if (off == 1) {                                       \
-                ZXC_MEMSET(d_ptr, match_src[0], ml);                     \
-                d_ptr += ml;                                             \
-            } else {                                                     \
-                size_t copied = 0;                                       \
-                while (copied < ml) {                                    \
-                    zxc_copy_overlap16(d_ptr + copied, off);             \
-                    copied += (ZXC_PAD_SIZE / 2);                        \
-                }                                                        \
-                d_ptr += ml;                                             \
-            }                                                            \
-        }                                                                \
+#define DECODE_SEQ_FAST(ll, ml, off) \
+    do {                             \
+        DECODE_COPY_LITERALS(ll);    \
+        DECODE_COPY_MATCH(ml, off);  \
     } while (0)
 
     // --- SAFE Loop: offset validation until threshold (4x unroll) ---
@@ -808,60 +772,60 @@ static int zxc_decode_block_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
         uint32_t ml1 = (tokens & 0x00F);
         if (UNLIKELY(ll1 == ZXC_TOKEN_LL_MASK)) {
             ll1 += zxc_read_varint(&e_ptr, e_end);
-            if (UNLIKELY(l_ptr + ll1 > l_end || d_ptr + ll1 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll1 > l_end || d_ptr + ll1 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         if (UNLIKELY(ml1 == ZXC_TOKEN_ML_MASK)) {
             ml1 += zxc_read_varint(&e_ptr, e_end);
-            ml1 += ZXC_LZ_MIN_MATCH_LEN;
-            if (UNLIKELY(d_ptr + ll1 + ml1 > d_end)) return ZXC_ERROR_OVERFLOW;
-        } else {
-            ml1 += ZXC_LZ_MIN_MATCH_LEN;
+            if (UNLIKELY(d_ptr + ll1 + ml1 + ZXC_LZ_MIN_MATCH_LEN + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
+        ml1 += ZXC_LZ_MIN_MATCH_LEN;
         DECODE_SEQ_SAFE(ll1, ml1, off1);
 
         uint32_t ll2 = (tokens & 0x0F000) >> 12;
         uint32_t ml2 = (tokens & 0x00F00) >> 8;
         if (UNLIKELY(ll2 == ZXC_TOKEN_LL_MASK)) {
             ll2 += zxc_read_varint(&e_ptr, e_end);
-            if (UNLIKELY(l_ptr + ll2 > l_end || d_ptr + ll2 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll2 > l_end || d_ptr + ll2 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         if (UNLIKELY(ml2 == ZXC_TOKEN_ML_MASK)) {
             ml2 += zxc_read_varint(&e_ptr, e_end);
-            ml2 += ZXC_LZ_MIN_MATCH_LEN;
-            if (UNLIKELY(d_ptr + ll2 + ml2 > d_end)) return ZXC_ERROR_OVERFLOW;
-        } else {
-            ml2 += ZXC_LZ_MIN_MATCH_LEN;
+            if (UNLIKELY(d_ptr + ll2 + ml2 + ZXC_LZ_MIN_MATCH_LEN + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
+        ml2 += ZXC_LZ_MIN_MATCH_LEN;
         DECODE_SEQ_SAFE(ll2, ml2, off2);
 
         uint32_t ll3 = (tokens & 0x0F00000) >> 20;
         uint32_t ml3 = (tokens & 0x00F0000) >> 16;
         if (UNLIKELY(ll3 == ZXC_TOKEN_LL_MASK)) {
             ll3 += zxc_read_varint(&e_ptr, e_end);
-            if (UNLIKELY(l_ptr + ll3 > l_end || d_ptr + ll3 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll3 > l_end || d_ptr + ll3 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         if (UNLIKELY(ml3 == ZXC_TOKEN_ML_MASK)) {
             ml3 += zxc_read_varint(&e_ptr, e_end);
-            ml3 += ZXC_LZ_MIN_MATCH_LEN;
-            if (UNLIKELY(d_ptr + ll3 + ml3 > d_end)) return ZXC_ERROR_OVERFLOW;
-        } else {
-            ml3 += ZXC_LZ_MIN_MATCH_LEN;
+            if (UNLIKELY(d_ptr + ll3 + ml3 + ZXC_LZ_MIN_MATCH_LEN + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
+        ml3 += ZXC_LZ_MIN_MATCH_LEN;
         DECODE_SEQ_SAFE(ll3, ml3, off3);
 
         uint32_t ll4 = (tokens >> 28);
         uint32_t ml4 = (tokens >> 24) & 0x0F;
         if (UNLIKELY(ll4 == ZXC_TOKEN_LL_MASK)) {
             ll4 += zxc_read_varint(&e_ptr, e_end);
-            if (UNLIKELY(l_ptr + ll4 > l_end || d_ptr + ll4 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll4 > l_end || d_ptr + ll4 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         if (UNLIKELY(ml4 == ZXC_TOKEN_ML_MASK)) {
             ml4 += zxc_read_varint(&e_ptr, e_end);
-            ml4 += ZXC_LZ_MIN_MATCH_LEN;
-            if (UNLIKELY(d_ptr + ll4 + ml4 > d_end)) return ZXC_ERROR_OVERFLOW;
-        } else {
-            ml4 += ZXC_LZ_MIN_MATCH_LEN;
+            if (UNLIKELY(d_ptr + ll4 + ml4 + ZXC_LZ_MIN_MATCH_LEN + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
+        ml4 += ZXC_LZ_MIN_MATCH_LEN;
         DECODE_SEQ_SAFE(ll4, ml4, off4);
 
         n_seq -= 4;
@@ -896,60 +860,60 @@ static int zxc_decode_block_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
         uint32_t ml1 = (tokens & 0x00F);
         if (UNLIKELY(ll1 == ZXC_TOKEN_LL_MASK)) {
             ll1 += zxc_read_varint(&e_ptr, e_end);
-            if (UNLIKELY(l_ptr + ll1 > l_end || d_ptr + ll1 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll1 > l_end || d_ptr + ll1 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         if (UNLIKELY(ml1 == ZXC_TOKEN_ML_MASK)) {
             ml1 += zxc_read_varint(&e_ptr, e_end);
-            ml1 += ZXC_LZ_MIN_MATCH_LEN;
-            if (UNLIKELY(d_ptr + ll1 + ml1 > d_end)) return ZXC_ERROR_OVERFLOW;
-        } else {
-            ml1 += ZXC_LZ_MIN_MATCH_LEN;
+            if (UNLIKELY(d_ptr + ll1 + ml1 + ZXC_LZ_MIN_MATCH_LEN + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
+        ml1 += ZXC_LZ_MIN_MATCH_LEN;
         DECODE_SEQ_FAST(ll1, ml1, off1);
 
         uint32_t ll2 = (tokens & 0x0F000) >> 12;
         uint32_t ml2 = (tokens & 0x00F00) >> 8;
         if (UNLIKELY(ll2 == ZXC_TOKEN_LL_MASK)) {
             ll2 += zxc_read_varint(&e_ptr, e_end);
-            if (UNLIKELY(l_ptr + ll2 > l_end || d_ptr + ll2 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll2 > l_end || d_ptr + ll2 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         if (UNLIKELY(ml2 == ZXC_TOKEN_ML_MASK)) {
             ml2 += zxc_read_varint(&e_ptr, e_end);
-            ml2 += ZXC_LZ_MIN_MATCH_LEN;
-            if (UNLIKELY(d_ptr + ll2 + ml2 > d_end)) return ZXC_ERROR_OVERFLOW;
-        } else {
-            ml2 += ZXC_LZ_MIN_MATCH_LEN;
+            if (UNLIKELY(d_ptr + ll2 + ml2 + ZXC_LZ_MIN_MATCH_LEN + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
+        ml2 += ZXC_LZ_MIN_MATCH_LEN;
         DECODE_SEQ_FAST(ll2, ml2, off2);
 
         uint32_t ll3 = (tokens & 0x0F00000) >> 20;
         uint32_t ml3 = (tokens & 0x00F0000) >> 16;
         if (UNLIKELY(ll3 == ZXC_TOKEN_LL_MASK)) {
             ll3 += zxc_read_varint(&e_ptr, e_end);
-            if (UNLIKELY(l_ptr + ll3 > l_end || d_ptr + ll3 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll3 > l_end || d_ptr + ll3 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         if (UNLIKELY(ml3 == ZXC_TOKEN_ML_MASK)) {
             ml3 += zxc_read_varint(&e_ptr, e_end);
-            ml3 += ZXC_LZ_MIN_MATCH_LEN;
-            if (UNLIKELY(d_ptr + ll3 + ml3 > d_end)) return ZXC_ERROR_OVERFLOW;
-        } else {
-            ml3 += ZXC_LZ_MIN_MATCH_LEN;
+            if (UNLIKELY(d_ptr + ll3 + ml3 + ZXC_LZ_MIN_MATCH_LEN + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
+        ml3 += ZXC_LZ_MIN_MATCH_LEN;
         DECODE_SEQ_FAST(ll3, ml3, off3);
 
         uint32_t ll4 = (tokens >> 28);
         uint32_t ml4 = (tokens >> 24) & 0x0F;
         if (UNLIKELY(ll4 == ZXC_TOKEN_LL_MASK)) {
             ll4 += zxc_read_varint(&e_ptr, e_end);
-            if (UNLIKELY(l_ptr + ll4 > l_end || d_ptr + ll4 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll4 > l_end || d_ptr + ll4 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         if (UNLIKELY(ml4 == ZXC_TOKEN_ML_MASK)) {
             ml4 += zxc_read_varint(&e_ptr, e_end);
-            ml4 += ZXC_LZ_MIN_MATCH_LEN;
-            if (UNLIKELY(d_ptr + ll4 + ml4 > d_end)) return ZXC_ERROR_OVERFLOW;
-        } else {
-            ml4 += ZXC_LZ_MIN_MATCH_LEN;
+            if (UNLIKELY(d_ptr + ll4 + ml4 + ZXC_LZ_MIN_MATCH_LEN + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
+        ml4 += ZXC_LZ_MIN_MATCH_LEN;
         DECODE_SEQ_FAST(ll4, ml4, off4);
 
         n_seq -= 4;
@@ -957,6 +921,8 @@ static int zxc_decode_block_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
 
 #undef DECODE_SEQ_SAFE
 #undef DECODE_SEQ_FAST
+#undef DECODE_COPY_LITERALS
+#undef DECODE_COPY_MATCH
 
     // Validate vbyte reads didn't overflow
     if (UNLIKELY(e_ptr > e_end)) return ZXC_ERROR_CORRUPT_DATA;
@@ -1172,155 +1138,169 @@ static int zxc_decode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     // After threshold, all offsets are guaranteed valid (can't exceed written bytes)
     size_t written = 0;
 
-// Macro for copy literal + match (uses 32-byte wild copies)
-// SAFE version: validates offset against written bytes
-#define DECODE_SEQ_SAFE(ll, ml, off)                                     \
-    do {                                                                 \
-        {                                                                \
-            const uint8_t* src_lit = l_ptr;                              \
-            uint8_t* dst_lit = d_ptr;                                    \
-            zxc_copy32(dst_lit, src_lit);                                \
-            if (UNLIKELY(ll > ZXC_PAD_SIZE)) {                           \
-                dst_lit += ZXC_PAD_SIZE;                                 \
-                src_lit += ZXC_PAD_SIZE;                                 \
-                size_t rem = ll - ZXC_PAD_SIZE;                          \
-                while (rem > ZXC_PAD_SIZE) {                             \
-                    zxc_copy32(dst_lit, src_lit);                        \
-                    dst_lit += ZXC_PAD_SIZE;                             \
-                    src_lit += ZXC_PAD_SIZE;                             \
-                    rem -= ZXC_PAD_SIZE;                                 \
-                }                                                        \
-                zxc_copy32(dst_lit, src_lit);                            \
-            }                                                            \
-            l_ptr += ll;                                                 \
-            d_ptr += ll;                                                 \
-            written += ll;                                               \
-        }                                                                \
-        {                                                                \
-            if (UNLIKELY(off > written)) return ZXC_ERROR_BAD_OFFSET;    \
-            const uint8_t* match_src = d_ptr - off;                      \
-            if (LIKELY(off >= ZXC_PAD_SIZE)) {                           \
-                zxc_copy32(d_ptr, match_src);                            \
-                if (UNLIKELY(ml > ZXC_PAD_SIZE)) {                       \
-                    uint8_t* out = d_ptr + ZXC_PAD_SIZE;                 \
-                    const uint8_t* ref = match_src + ZXC_PAD_SIZE;       \
-                    size_t rem = ml - ZXC_PAD_SIZE;                      \
-                    while (rem > ZXC_PAD_SIZE) {                         \
-                        zxc_copy32(out, ref);                            \
-                        out += ZXC_PAD_SIZE;                             \
-                        ref += ZXC_PAD_SIZE;                             \
-                        rem -= ZXC_PAD_SIZE;                             \
-                    }                                                    \
-                    zxc_copy32(out, ref);                                \
-                }                                                        \
-                d_ptr += ml;                                             \
-                written += ml;                                           \
-            } else if (off >= (ZXC_PAD_SIZE / 2)) {                      \
-                zxc_copy16(d_ptr, match_src);                            \
-                if (UNLIKELY(ml > (ZXC_PAD_SIZE / 2))) {                 \
-                    uint8_t* out = d_ptr + (ZXC_PAD_SIZE / 2);           \
-                    const uint8_t* ref = match_src + (ZXC_PAD_SIZE / 2); \
-                    size_t rem = ml - (ZXC_PAD_SIZE / 2);                \
-                    while (rem > (ZXC_PAD_SIZE / 2)) {                   \
-                        zxc_copy16(out, ref);                            \
-                        out += (ZXC_PAD_SIZE / 2);                       \
-                        ref += (ZXC_PAD_SIZE / 2);                       \
-                        rem -= (ZXC_PAD_SIZE / 2);                       \
-                    }                                                    \
-                    zxc_copy16(out, ref);                                \
-                }                                                        \
-                d_ptr += ml;                                             \
-                written += ml;                                           \
-            } else if (off == 1) {                                       \
-                ZXC_MEMSET(d_ptr, match_src[0], ml);                     \
-                d_ptr += ml;                                             \
-                written += ml;                                           \
-            } else {                                                     \
-                size_t copied = 0;                                       \
-                while (copied < ml) {                                    \
-                    zxc_copy_overlap16(d_ptr + copied, off);             \
-                    copied += (ZXC_PAD_SIZE / 2);                        \
-                }                                                        \
-                d_ptr += ml;                                             \
-                written += ml;                                           \
-            }                                                            \
-        }                                                                \
+    // --- Factored sub-macros for literal copy + match copy ---
+    // Used by DECODE_SEQ_SAFE and DECODE_SEQ_FAST to avoid duplication.
+
+#define DECODE_COPY_LITERALS(ll)              \
+    do {                                      \
+        const uint8_t* src_lit = l_ptr;       \
+        uint8_t* dst_lit = d_ptr;             \
+        zxc_copy32(dst_lit, src_lit);         \
+        if (UNLIKELY(ll > ZXC_PAD_SIZE)) {    \
+            dst_lit += ZXC_PAD_SIZE;          \
+            src_lit += ZXC_PAD_SIZE;          \
+            size_t rem = ll - ZXC_PAD_SIZE;   \
+            while (rem > ZXC_PAD_SIZE) {      \
+                zxc_copy32(dst_lit, src_lit); \
+                dst_lit += ZXC_PAD_SIZE;      \
+                src_lit += ZXC_PAD_SIZE;      \
+                rem -= ZXC_PAD_SIZE;          \
+            }                                 \
+            zxc_copy32(dst_lit, src_lit);     \
+        }                                     \
+        l_ptr += ll;                          \
+        d_ptr += ll;                          \
     } while (0)
 
-// FAST version: no offset validation (for use after written >= 256 or 65536)
-#define DECODE_SEQ_FAST(ll, ml, off)                                     \
-    do {                                                                 \
-        {                                                                \
-            const uint8_t* src_lit = l_ptr;                              \
-            uint8_t* dst_lit = d_ptr;                                    \
-            zxc_copy32(dst_lit, src_lit);                                \
-            if (UNLIKELY(ll > ZXC_PAD_SIZE)) {                           \
-                dst_lit += ZXC_PAD_SIZE;                                 \
-                src_lit += ZXC_PAD_SIZE;                                 \
-                size_t rem = ll - ZXC_PAD_SIZE;                          \
-                while (rem > ZXC_PAD_SIZE) {                             \
-                    zxc_copy32(dst_lit, src_lit);                        \
-                    dst_lit += ZXC_PAD_SIZE;                             \
-                    src_lit += ZXC_PAD_SIZE;                             \
-                    rem -= ZXC_PAD_SIZE;                                 \
-                }                                                        \
-                zxc_copy32(dst_lit, src_lit);                            \
-            }                                                            \
-            l_ptr += ll;                                                 \
-            d_ptr += ll;                                                 \
-        }                                                                \
-        {                                                                \
-            const uint8_t* match_src = d_ptr - off;                      \
-            if (LIKELY(off >= ZXC_PAD_SIZE)) {                           \
-                zxc_copy32(d_ptr, match_src);                            \
-                if (UNLIKELY(ml > ZXC_PAD_SIZE)) {                       \
-                    uint8_t* out = d_ptr + ZXC_PAD_SIZE;                 \
-                    const uint8_t* ref = match_src + ZXC_PAD_SIZE;       \
-                    size_t rem = ml - ZXC_PAD_SIZE;                      \
-                    while (rem > ZXC_PAD_SIZE) {                         \
-                        zxc_copy32(out, ref);                            \
-                        out += ZXC_PAD_SIZE;                             \
-                        ref += ZXC_PAD_SIZE;                             \
-                        rem -= ZXC_PAD_SIZE;                             \
-                    }                                                    \
-                    zxc_copy32(out, ref);                                \
-                }                                                        \
-                d_ptr += ml;                                             \
-            } else if (off >= (ZXC_PAD_SIZE / 2)) {                      \
-                zxc_copy16(d_ptr, match_src);                            \
-                if (UNLIKELY(ml > (ZXC_PAD_SIZE / 2))) {                 \
-                    uint8_t* out = d_ptr + (ZXC_PAD_SIZE / 2);           \
-                    const uint8_t* ref = match_src + (ZXC_PAD_SIZE / 2); \
-                    size_t rem = ml - (ZXC_PAD_SIZE / 2);                \
-                    while (rem > (ZXC_PAD_SIZE / 2)) {                   \
-                        zxc_copy16(out, ref);                            \
-                        out += (ZXC_PAD_SIZE / 2);                       \
-                        ref += (ZXC_PAD_SIZE / 2);                       \
-                        rem -= (ZXC_PAD_SIZE / 2);                       \
-                    }                                                    \
-                    zxc_copy16(out, ref);                                \
-                }                                                        \
-                d_ptr += ml;                                             \
-            } else if (off == 1) {                                       \
-                ZXC_MEMSET(d_ptr, match_src[0], ml);                     \
-                d_ptr += ml;                                             \
-            } else {                                                     \
-                size_t copied = 0;                                       \
-                while (copied < ml) {                                    \
-                    zxc_copy_overlap16(d_ptr + copied, off);             \
-                    copied += (ZXC_PAD_SIZE / 2);                        \
-                }                                                        \
-                d_ptr += ml;                                             \
-            }                                                            \
-        }                                                                \
+#define DECODE_COPY_MATCH(ml, off)                                   \
+    do {                                                             \
+        const uint8_t* match_src = d_ptr - off;                      \
+        if (LIKELY(off >= ZXC_PAD_SIZE)) {                           \
+            zxc_copy32(d_ptr, match_src);                            \
+            if (UNLIKELY(ml > ZXC_PAD_SIZE)) {                       \
+                uint8_t* out = d_ptr + ZXC_PAD_SIZE;                 \
+                const uint8_t* ref = match_src + ZXC_PAD_SIZE;       \
+                size_t rem = ml - ZXC_PAD_SIZE;                      \
+                while (rem > ZXC_PAD_SIZE) {                         \
+                    zxc_copy32(out, ref);                            \
+                    out += ZXC_PAD_SIZE;                             \
+                    ref += ZXC_PAD_SIZE;                             \
+                    rem -= ZXC_PAD_SIZE;                             \
+                }                                                    \
+                zxc_copy32(out, ref);                                \
+            }                                                        \
+            d_ptr += ml;                                             \
+        } else if (off >= (ZXC_PAD_SIZE / 2)) {                      \
+            zxc_copy16(d_ptr, match_src);                            \
+            if (UNLIKELY(ml > (ZXC_PAD_SIZE / 2))) {                 \
+                uint8_t* out = d_ptr + (ZXC_PAD_SIZE / 2);           \
+                const uint8_t* ref = match_src + (ZXC_PAD_SIZE / 2); \
+                size_t rem = ml - (ZXC_PAD_SIZE / 2);                \
+                while (rem > (ZXC_PAD_SIZE / 2)) {                   \
+                    zxc_copy16(out, ref);                            \
+                    out += (ZXC_PAD_SIZE / 2);                       \
+                    ref += (ZXC_PAD_SIZE / 2);                       \
+                    rem -= (ZXC_PAD_SIZE / 2);                       \
+                }                                                    \
+                zxc_copy16(out, ref);                                \
+            }                                                        \
+            d_ptr += ml;                                             \
+        } else if (off == 1) {                                       \
+            ZXC_MEMSET(d_ptr, match_src[0], ml);                     \
+            d_ptr += ml;                                             \
+        } else {                                                     \
+            size_t copied = 0;                                       \
+            while (copied < ml) {                                    \
+                zxc_copy_overlap16(d_ptr + copied, off);             \
+                copied += (ZXC_PAD_SIZE / 2);                        \
+            }                                                        \
+            d_ptr += ml;                                             \
+        }                                                            \
     } while (0)
 
-    // --- SAFE Loop: offset validation until threshold ---
+#define DECODE_SEQ_SAFE(ll, ml, off)                              \
+    do {                                                          \
+        DECODE_COPY_LITERALS(ll);                                 \
+        written += ll;                                            \
+        if (UNLIKELY(off > written)) return ZXC_ERROR_BAD_OFFSET; \
+        DECODE_COPY_MATCH(ml, off);                               \
+        written += ml;                                            \
+    } while (0)
+
+#define DECODE_SEQ_FAST(ll, ml, off) \
+    do {                             \
+        DECODE_COPY_LITERALS(ll);    \
+        DECODE_COPY_MATCH(ml, off);  \
+    } while (0)
+
+    // --- SAFE Loop: offset validation until threshold (4x unroll) ---
     // Since offset is 16-bit, threshold is 65536.
     // For 1-byte offsets (enc_off==1): validate until 256 bytes written
     // For 2-byte offsets (enc_off==0): validate until 65536 bytes written
     const size_t bounds_threshold = (gh.enc_off == 1) ? (1U << 8) : (1U << 16);
 
+    while (n_seq >= 4 && d_ptr < d_end_safe && l_ptr < l_end_safe_4x &&
+           written < bounds_threshold) {
+        uint32_t s1 = zxc_le32(seq_ptr);
+        uint32_t s2 = zxc_le32(seq_ptr + 4);
+        uint32_t s3 = zxc_le32(seq_ptr + 8);
+        uint32_t s4 = zxc_le32(seq_ptr + 12);
+        seq_ptr += 16;
+
+        uint32_t ll1 = (uint32_t)(s1 >> 24);
+        if (UNLIKELY(ll1 == ZXC_SEQ_LL_MASK)) {
+            ll1 += zxc_read_varint(&extras_ptr, extras_end);
+            if (UNLIKELY(l_ptr + ll1 > l_end || d_ptr + ll1 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
+        }
+        uint32_t m1b = (uint32_t)((s1 >> 16) & 0xFF);
+        uint32_t ml1 = m1b + ZXC_LZ_MIN_MATCH_LEN;
+        if (UNLIKELY(m1b == ZXC_SEQ_ML_MASK)) {
+            ml1 += zxc_read_varint(&extras_ptr, extras_end);
+            if (UNLIKELY(d_ptr + ll1 + ml1 + ZXC_PAD_SIZE > d_end)) return ZXC_ERROR_OVERFLOW;
+        }
+        uint32_t off1 = (uint32_t)(s1 & 0xFFFF) + ZXC_LZ_OFFSET_BIAS;
+        DECODE_SEQ_SAFE(ll1, ml1, off1);
+
+        uint32_t ll2 = (uint32_t)(s2 >> 24);
+        if (UNLIKELY(ll2 == ZXC_SEQ_LL_MASK)) {
+            ll2 += zxc_read_varint(&extras_ptr, extras_end);
+            if (UNLIKELY(l_ptr + ll2 > l_end || d_ptr + ll2 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
+        }
+        uint32_t m2b = (uint32_t)((s2 >> 16) & 0xFF);
+        uint32_t ml2 = m2b + ZXC_LZ_MIN_MATCH_LEN;
+        if (UNLIKELY(m2b == ZXC_SEQ_ML_MASK)) {
+            ml2 += zxc_read_varint(&extras_ptr, extras_end);
+            if (UNLIKELY(d_ptr + ll2 + ml2 + ZXC_PAD_SIZE > d_end)) return ZXC_ERROR_OVERFLOW;
+        }
+        uint32_t off2 = (uint32_t)(s2 & 0xFFFF) + ZXC_LZ_OFFSET_BIAS;
+        DECODE_SEQ_SAFE(ll2, ml2, off2);
+
+        uint32_t ll3 = (uint32_t)(s3 >> 24);
+        if (UNLIKELY(ll3 == ZXC_SEQ_LL_MASK)) {
+            ll3 += zxc_read_varint(&extras_ptr, extras_end);
+            if (UNLIKELY(l_ptr + ll3 > l_end || d_ptr + ll3 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
+        }
+        uint32_t m3b = (uint32_t)((s3 >> 16) & 0xFF);
+        uint32_t ml3 = m3b + ZXC_LZ_MIN_MATCH_LEN;
+        if (UNLIKELY(m3b == ZXC_SEQ_ML_MASK)) {
+            ml3 += zxc_read_varint(&extras_ptr, extras_end);
+            if (UNLIKELY(d_ptr + ll3 + ml3 + ZXC_PAD_SIZE > d_end)) return ZXC_ERROR_OVERFLOW;
+        }
+        uint32_t off3 = (uint32_t)(s3 & 0xFFFF) + ZXC_LZ_OFFSET_BIAS;
+        DECODE_SEQ_SAFE(ll3, ml3, off3);
+
+        uint32_t ll4 = (uint32_t)(s4 >> 24);
+        if (UNLIKELY(ll4 == ZXC_SEQ_LL_MASK)) {
+            ll4 += zxc_read_varint(&extras_ptr, extras_end);
+            if (UNLIKELY(l_ptr + ll4 > l_end || d_ptr + ll4 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
+        }
+        uint32_t m4b = (uint32_t)((s4 >> 16) & 0xFF);
+        uint32_t ml4 = m4b + ZXC_LZ_MIN_MATCH_LEN;
+        if (UNLIKELY(m4b == ZXC_SEQ_ML_MASK)) {
+            ml4 += zxc_read_varint(&extras_ptr, extras_end);
+            if (UNLIKELY(d_ptr + ll4 + ml4 + ZXC_PAD_SIZE > d_end)) return ZXC_ERROR_OVERFLOW;
+        }
+        uint32_t off4 = (uint32_t)(s4 & 0xFFFF) + ZXC_LZ_OFFSET_BIAS;
+        DECODE_SEQ_SAFE(ll4, ml4, off4);
+
+        n_seq -= 4;
+    }
+
+    // --- SAFE Loop tail: remaining sequences with offset validation (1x) ---
     while (n_seq > 0 && d_ptr < d_end_safe && written < bounds_threshold) {
         uint32_t seq = zxc_le32(seq_ptr);
         seq_ptr += 4;
@@ -1369,16 +1349,20 @@ static int zxc_decode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
         uint32_t s4 = zxc_le32(seq_ptr + 12);
         seq_ptr += 16;
 
+        // Prefetch ahead in literal and extras streams to hide memory latency
+        ZXC_PREFETCH_READ(l_ptr + ZXC_CACHE_LINE_SIZE);
+
         uint32_t ll1 = (uint32_t)(s1 >> 24);
         if (UNLIKELY(ll1 == ZXC_SEQ_LL_MASK)) {
             ll1 += zxc_read_varint(&extras_ptr, extras_end);
-            if (UNLIKELY(l_ptr + ll1 > l_end || d_ptr + ll1 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll1 > l_end || d_ptr + ll1 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         uint32_t m1b = (uint32_t)((s1 >> 16) & 0xFF);
         uint32_t ml1 = m1b + ZXC_LZ_MIN_MATCH_LEN;
         if (UNLIKELY(m1b == ZXC_SEQ_ML_MASK)) {
             ml1 += zxc_read_varint(&extras_ptr, extras_end);
-            if (UNLIKELY(d_ptr + ll1 + ml1 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(d_ptr + ll1 + ml1 + ZXC_PAD_SIZE > d_end)) return ZXC_ERROR_OVERFLOW;
         }
         uint32_t off1 = (uint32_t)(s1 & 0xFFFF) + ZXC_LZ_OFFSET_BIAS;
         DECODE_SEQ_FAST(ll1, ml1, off1);
@@ -1386,13 +1370,14 @@ static int zxc_decode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
         uint32_t ll2 = (uint32_t)(s2 >> 24);
         if (UNLIKELY(ll2 == ZXC_SEQ_LL_MASK)) {
             ll2 += zxc_read_varint(&extras_ptr, extras_end);
-            if (UNLIKELY(l_ptr + ll2 > l_end || d_ptr + ll2 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll2 > l_end || d_ptr + ll2 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         uint32_t m2b = (uint32_t)((s2 >> 16) & 0xFF);
         uint32_t ml2 = m2b + ZXC_LZ_MIN_MATCH_LEN;
         if (UNLIKELY(m2b == ZXC_SEQ_ML_MASK)) {
             ml2 += zxc_read_varint(&extras_ptr, extras_end);
-            if (UNLIKELY(d_ptr + ll2 + ml2 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(d_ptr + ll2 + ml2 + ZXC_PAD_SIZE > d_end)) return ZXC_ERROR_OVERFLOW;
         }
         uint32_t off2 = (uint32_t)(s2 & 0xFFFF) + ZXC_LZ_OFFSET_BIAS;
         DECODE_SEQ_FAST(ll2, ml2, off2);
@@ -1400,13 +1385,14 @@ static int zxc_decode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
         uint32_t ll3 = (uint32_t)(s3 >> 24);
         if (UNLIKELY(ll3 == ZXC_SEQ_LL_MASK)) {
             ll3 += zxc_read_varint(&extras_ptr, extras_end);
-            if (UNLIKELY(l_ptr + ll3 > l_end || d_ptr + ll3 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll3 > l_end || d_ptr + ll3 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         uint32_t m3b = (uint32_t)((s3 >> 16) & 0xFF);
         uint32_t ml3 = m3b + ZXC_LZ_MIN_MATCH_LEN;
         if (UNLIKELY(m3b == ZXC_SEQ_ML_MASK)) {
             ml3 += zxc_read_varint(&extras_ptr, extras_end);
-            if (UNLIKELY(d_ptr + ll3 + ml3 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(d_ptr + ll3 + ml3 + ZXC_PAD_SIZE > d_end)) return ZXC_ERROR_OVERFLOW;
         }
         uint32_t off3 = (uint32_t)(s3 & 0xFFFF) + ZXC_LZ_OFFSET_BIAS;
         DECODE_SEQ_FAST(ll3, ml3, off3);
@@ -1414,13 +1400,14 @@ static int zxc_decode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
         uint32_t ll4 = (uint32_t)(s4 >> 24);
         if (UNLIKELY(ll4 == ZXC_SEQ_LL_MASK)) {
             ll4 += zxc_read_varint(&extras_ptr, extras_end);
-            if (UNLIKELY(l_ptr + ll4 > l_end || d_ptr + ll4 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(l_ptr + ll4 > l_end || d_ptr + ll4 + ZXC_PAD_SIZE > d_end))
+                return ZXC_ERROR_OVERFLOW;
         }
         uint32_t m4b = (uint32_t)((s4 >> 16) & 0xFF);
         uint32_t ml4 = m4b + ZXC_LZ_MIN_MATCH_LEN;
         if (UNLIKELY(m4b == ZXC_SEQ_ML_MASK)) {
             ml4 += zxc_read_varint(&extras_ptr, extras_end);
-            if (UNLIKELY(d_ptr + ll4 + ml4 > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY(d_ptr + ll4 + ml4 + ZXC_PAD_SIZE > d_end)) return ZXC_ERROR_OVERFLOW;
         }
         uint32_t off4 = (uint32_t)(s4 & 0xFFFF) + ZXC_LZ_OFFSET_BIAS;
         DECODE_SEQ_FAST(ll4, ml4, off4);
@@ -1430,6 +1417,8 @@ static int zxc_decode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
 
 #undef DECODE_SEQ_SAFE
 #undef DECODE_SEQ_FAST
+#undef DECODE_COPY_LITERALS
+#undef DECODE_COPY_MATCH
 
     // --- Remaining 1 sequence (Fast Path) ---
     while (n_seq > 0 && d_ptr < d_end_safe && l_ptr < l_end_safe_1x) {
