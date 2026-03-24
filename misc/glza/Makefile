@@ -1,4 +1,4 @@
-PROG = glza
+PROG = GLZA
 CC = gcc
 CFLAGS = -O3 -DPRINTON -D_FILE_OFFSET_BITS=64
 LDFLAGS = -lm -static -pthread
