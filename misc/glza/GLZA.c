@@ -1,6 +1,6 @@
 /***********************************************************************
 
-Copyright 2014-2025 Kennon Conrad
+Copyright 2014-2026 Kennon Conrad
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,10 +31,9 @@ struct param_data params;
 
 void print_usage() {
   fprintf(stderr, "ERROR - Invalid format\n");
-  fprintf(stderr, " Use GLZA c|d [-c#] [-d0] [-l0] [-m#] [-o#] [-p#] [-r#] [-t1|2] [-v1|2] [-w0] [-x] [-C0|1] [-D#]\n");
+  fprintf(stderr, " Use GLZA c|d [-d0] [-l0] [-m#] [-o#] [-p#] [-r#] [-t1|2] [-v1|2] [-w0] [-x] [-C0|1] [-D#]\n");
   fprintf(stderr, "   <infile> <outfile>\n");
   fprintf(stderr, " where:\n");
-  fprintf(stderr, "   -c#   sets the cost of a new grammar rule in bits\n");
   fprintf(stderr, "   -d0   disables delta transformation\n");
   fprintf(stderr, "   -l0   disables capital letter lock transformation\n");
   fprintf(stderr, "   -m0|1 overrides the program's decision on whether to use MTF queues\n");
@@ -68,7 +67,6 @@ int main(int argc, char* argv[])
   clock_gettime(CLOCK_MONOTONIC, &start_time);
   user_set_order = 0;
   params.user_set_profit_ratio_power = 0;
-  params.user_set_production_cost = 0;
   params.user_set_RAM_size = 0;
   params.cap_encoded = 0;
   params.cap_lock_disabled = 0;
@@ -98,71 +96,55 @@ int main(int argc, char* argv[])
         params.cap_encoded = 1;
       else
         params.cap_encoded = 2;
-    }
-    else if (*(argv[arg_num] + 1) == 'D') {
+    } else if (*(argv[arg_num] + 1) == 'D') {
       params.max_rules = (uint32_t)atoi(argv[arg_num++] + 2);
       if (params.max_rules > 0xC00000)
         params.max_rules = 0xC00000;
-    }
-    else if (*(argv[arg_num] + 1) == 'c') {
-      params.production_cost = (double)atof(argv[arg_num++] + 2);
-      params.user_set_production_cost = 1;
-    }
-    else if (*(argv[arg_num] + 1) == 'd') {
+    } else if (*(argv[arg_num] + 1) == 'd') {
       if (*(argv[arg_num] + 2) == '0')
         params.delta_disabled = 1;
       arg_num++;
-    }
-    else if (*(argv[arg_num] + 1) == 'l') {
+    } else if (*(argv[arg_num] + 1) == 'l') {
       if (*(argv[arg_num] + 2) == '0')
         params.cap_lock_disabled = 1;
       arg_num++;
-    }
-    else if (*(argv[arg_num] + 1) == 'm') {
+    } else if (*(argv[arg_num] + 1) == 'm') {
       if (*(argv[arg_num] + 2) == '0')
         params.use_mtf = 0;
       else if (*(argv[arg_num] + 2) == '1')
         params.use_mtf = 1;
       arg_num++;
-    }
-    else if (*(argv[arg_num] + 1) == 'o') {
+    } else if (*(argv[arg_num] + 1) == 'o') {
       params.order = (double)atof(argv[arg_num++] + 2);
       user_set_order = 1;
-    }
-    else if (*(argv[arg_num] + 1) == 'p') {
+    } else if (*(argv[arg_num] + 1) == 'p') {
       params.profit_ratio_power = (double)atof(argv[arg_num++] + 2);
       params.user_set_profit_ratio_power = 1;
-    }
-    else if (*(argv[arg_num] + 1) == 'r') {
+    } else if (*(argv[arg_num] + 1) == 'r') {
       params.user_set_RAM_size = 1;
       params.RAM_usage = (double)atof(argv[arg_num++] + 2);
       if (params.RAM_usage < 60.0) {
         fprintf(stderr,"ERROR: -r value must be >= 60.0 (MB)\n");
         exit(EXIT_FAILURE);
       }
-    }
-    else if (*(argv[arg_num] + 1) == 't') {
+    } else if (*(argv[arg_num] + 1) == 't') {
       if (*(argv[arg_num++] + 2) != '2')
         params.two_threads = 0;
-    }
-    else if (*(argv[arg_num] + 1) == 'v') {
+    } else if (*(argv[arg_num] + 1) == 'v') {
       if (*(argv[arg_num] + 2) == '1')
         params.print_dictionary = 1;
       else if (*(argv[arg_num] + 2) == '2')
         params.print_dictionary = 2;
       arg_num++;
-    }
-    else if (*(argv[arg_num] + 1) == 'w') {
+    } else if (*(argv[arg_num] + 1) == 'w') {
       if (*(argv[arg_num] + 2) == '0')
         params.create_words = 0;
       arg_num++;
-    }
-    else if (*(argv[arg_num] + 1) == 'x') {
+    } else if (*(argv[arg_num] + 1) == 'x') {
       params.fast_mode = 0;
       arg_num++;
-    }
-    else {
-      fprintf(stderr, "ERROR - Invalid format '-%c'.  Only -c<value>, -d<value>, -l0, -m<value>, -o<value>, -p<value>,\n",
+    } else {
+      fprintf(stderr, "ERROR - Invalid format '-%c'.  Only -d<value>, -l0, -m<value>, -o<value>, -p<value>,\n",
           *(argv[arg_num] + 1));
       fprintf(stderr, "    -r<value>, -t<value>, -v<value>, -w<value> -x -C<value> and -D<value> allowed.\n");
       exit(EXIT_FAILURE);
@@ -173,7 +155,7 @@ int main(int argc, char* argv[])
     }
   }
 
-  if (user_set_order != 0)
+  if ((user_set_order != 0) && (params.order != 0.0))
     params.fast_mode = 0;
 
   if (argc != arg_num + 2) {
@@ -215,8 +197,7 @@ int main(int argc, char* argv[])
       exit(EXIT_FAILURE);
     fprintf(stderr, "Compressed %lu bytes -> %lu bytes (%.4f bpB)",
         (long unsigned int)insize, (long unsigned int)outsize, 8.0 * (float)outsize / (float)insize);
-  }
-  else {
+  } else {
     if (insize == 0)
       outsize = 0;
     else {
