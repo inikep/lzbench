@@ -325,6 +325,7 @@ jobs:
         SELECTED_CXX: g++
         MORE_OPTIONS: ""
         ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/i686-15.1.0-release-posix-dwarf-ucrt-rt_v12-rev0.7z
+        ARTIFACT_SLUG: mingw32-i686-posix
       mingw32-gcc 15.1.0 x86 32-bit (Windows threads) [Windows]:
         toolchain: 'mingw32'
         arch: '32-bit'
@@ -332,6 +333,7 @@ jobs:
         SELECTED_CXX: g++
         MORE_OPTIONS: ""
         ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/i686-15.1.0-release-win32-dwarf-ucrt-rt_v12-rev0.7z
+        ARTIFACT_SLUG: mingw32-i686-win32
 
       mingw64-gcc 15.1.0 x86 64-bit (POSIX threads) [Windows]:
         toolchain: 'mingw64'
@@ -340,6 +342,7 @@ jobs:
         SELECTED_CXX: g++
         MORE_OPTIONS: ""
         ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
+        ARTIFACT_SLUG: mingw64-x86_64-posix
       mingw64-gcc 15.1.0 x86 64-bit (Windows threads) [Windows]:
         toolchain: 'mingw64'
         arch: '64-bit'
@@ -347,6 +350,7 @@ jobs:
         SELECTED_CXX: g++
         MORE_OPTIONS: ""
         ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-win32-seh-ucrt-rt_v12-rev0.7z
+        ARTIFACT_SLUG: mingw64-x86_64-win32
 
   steps:
   - powershell: |
@@ -367,6 +371,12 @@ jobs:
       file lzbench.exe
       lzbench.exe
     displayName: 'Build with $(toolchain)'
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish lzbench.exe'
+    inputs:
+      targetPath: '$(Build.SourcesDirectory)\lzbench.exe'
+      artifactName: 'lzbench-$(ARTIFACT_SLUG)'
 
   - script: |
       echo Running a build for $(toolchain) for $(arch) architecture
