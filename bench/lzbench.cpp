@@ -1069,7 +1069,7 @@ int main( int argc, char** argv)
         return 1;
     }
 
-    memset(params, 0, sizeof(lzbench_params_t));
+    memset((void*)params, 0, sizeof(lzbench_params_t));
     params->timetype = FASTEST;
     params->textformat = TEXT;
     params->show_speed = 1;

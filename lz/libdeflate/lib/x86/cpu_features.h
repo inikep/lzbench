@@ -165,8 +165,13 @@ static inline u32 get_x86_cpu_features(void) { return 0; }
 #  define HAVE_AVXVNNI(features)	((features) & X86_CPU_FEATURE_AVXVNNI)
 #endif
 
+/*
+ * Clang 22+ rejects "evex512" / "no-evex512" in the target attribute and drops
+ * the whole attribute, breaking libdeflate's AVX-512 multiversioned functions.
+ */
 #if (GCC_PREREQ(14, 0) || CLANG_PREREQ(18, 0, 18000000)) \
-	&& !defined(__EVEX512__) /* avoid subtracting the evex512 feature */
+	&& !defined(__EVEX512__) /* avoid subtracting the evex512 feature */ \
+	&& !(defined(__clang__) && __clang_major__ >= 22)
 #  define EVEX512	",evex512"	/* needed to override potential -mno-evex512 */
 #  define NO_EVEX512	",no-evex512"
 #else
