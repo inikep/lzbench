@@ -38,33 +38,49 @@ jobs:
         SELECTED_CXX: clang++
 
       # clang-6 and newer compilers
-      clang-20 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
-        UBUNTU_CODE_NAME: jammy
+      clang-22 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-22 main'
+        SELECTED_CC: clang-22
+        SELECTED_CXX: clang++-22
+        PACKAGES: 'clang-22 llvm-22-dev libomp-22-dev'
+
+      clang-21 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-21 main'
+        SELECTED_CC: clang-21
+        SELECTED_CXX: clang++-21
+        PACKAGES: 'clang-21 llvm-21-dev libomp-21-dev'
+
+      clang-20 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-20 main'
         SELECTED_CC: clang-20
         SELECTED_CXX: clang++-20
         PACKAGES: 'clang-20 llvm-20-dev libomp-20-dev'
 
-      clang-19 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
-        UBUNTU_CODE_NAME: jammy
+      clang-19 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-19 main'
         SELECTED_CC: clang-19
         SELECTED_CXX: clang++-19
         PACKAGES: 'clang-19 llvm-19-dev libomp-19-dev'
 
-      clang-18 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
-        UBUNTU_CODE_NAME: jammy
+      clang-18 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-18 main'
         SELECTED_CC: clang-18
         SELECTED_CXX: clang++-18
         PACKAGES: 'clang-18 llvm-18-dev libomp-18-dev'
 
-      clang-17 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
-        UBUNTU_CODE_NAME: jammy
+      clang-17 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-17 main'
         SELECTED_CC: clang-17
         SELECTED_CXX: clang++-17
