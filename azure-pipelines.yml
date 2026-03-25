@@ -128,6 +128,12 @@ jobs:
 
 
       # gcc-9 and newer compilers
+      gcc-15 x86 64-bit [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: gcc-15
+        SELECTED_CXX: g++-15
+        PACKAGES: 'g++-15'
+
       gcc-14 x86 64-bit [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-14
@@ -141,32 +147,32 @@ jobs:
         PACKAGES: 'g++-14 g++-14-multilib gcc-multilib'
         MORE_OPTIONS: 'BUILD_ARCH=32-bit'
 
-      gcc-13 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
+      gcc-13 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-13
         SELECTED_CXX: g++-13
         PACKAGES: 'g++-13'
 
-      gcc-12 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
+      gcc-12 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-12
         SELECTED_CXX: g++-12
         PACKAGES: 'g++-12'
 
-      gcc-11 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
+      gcc-11 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-11
         SELECTED_CXX: g++-11
         PACKAGES: 'g++-11'
 
-      gcc-10 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
+      gcc-10 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-10
         SELECTED_CXX: g++-10
         PACKAGES: 'g++-10'
 
-      gcc-9 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
+      gcc-9 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-9
         SELECTED_CXX: g++-9
         PACKAGES: 'g++-9'
