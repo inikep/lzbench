@@ -61,8 +61,8 @@ Supported compressors
  - [density 0.16.6](https://github.com/g1mv/density)
  - [fastlz 0.5.0](https://github.com/ariya/FastLZ)
  - [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2)
- - [glza 0.11.8](https://encode.su/threads/2427-GLZA)
  - [kanzi 2.5.1](https://github.com/flanglet/kanzi-cpp)
+ - [glza 0.12](https://encode.su/threads/2427-GLZA)
  - [libdeflate v1.24](https://github.com/ebiggers/libdeflate)
  - [lizard v2.1](https://github.com/inikep/lizard)
  - [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4)
@@ -91,7 +91,7 @@ Supported compressors
  - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
  - [zpaq 7.15](https://github.com/zpaq/zpaq)
  - [zstd 1.5.7](https://github.com/facebook/zstd)
- - [zxc 0.7.2](https://github.com/hellobertrand/zxc)
+ - [zxc 0.9.1](https://github.com/hellobertrand/zxc)
 
 **Warning**: The compressors listed below have security issues and/or are
 no longer maintained. For information about the security of the various compressors,

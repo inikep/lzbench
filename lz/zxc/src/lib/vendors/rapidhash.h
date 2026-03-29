@@ -28,7 +28,7 @@
  */
 
  #pragma once
-
+ 
 /*
  *  Includes.
  */
@@ -40,11 +40,11 @@
  #   pragma intrinsic(_umul128)
  # endif
  #endif
-
+ 
  /*
   *  C/C++ macros.
   */
-
+ 
  #ifdef _MSC_VER
  # define RAPIDHASH_ALWAYS_INLINE __forceinline
  #elif defined(__GNUC__)
@@ -52,7 +52,7 @@
  #else
  # define RAPIDHASH_ALWAYS_INLINE inline
  #endif
-
+ 
  #ifdef __cplusplus
  # define RAPIDHASH_NOEXCEPT noexcept
  # define RAPIDHASH_CONSTEXPR constexpr
@@ -86,7 +86,7 @@
   #elif defined(RAPIDHASH_COMPACT)
   # error "cannot define RAPIDHASH_COMPACT and RAPIDHASH_UNROLLED simultaneously."
   #endif
-
+ 
  /*
   *  Protection macro, alters behaviour of rapid_mum multiplication function.
   *
@@ -98,7 +98,7 @@
  #elif defined(RAPIDHASH_FAST)
  # error "cannot define RAPIDHASH_PROTECTED and RAPIDHASH_FAST simultaneously."
  #endif
-
+ 
  /*
   *  Likely and unlikely macros.
   */
@@ -109,7 +109,7 @@
  # define _likely_(x) (x)
  # define _unlikely_(x) (x)
  #endif
-
+ 
  /*
   *  Endianness macros.
   */
@@ -123,7 +123,7 @@
  #   define RAPIDHASH_LITTLE_ENDIAN
  # endif
  #endif
-
+ 
  /*
   *  Default secret parameters.
   */
@@ -136,7 +136,7 @@
      0xe7037ed1a0b428dbull,
      0x90ed1765281c388cull,
      0xaaaaaaaaaaaaaaaaull};
-
+ 
  /*
   *  64*64 -> 128bit multiply function.
   *
@@ -195,7 +195,7 @@
    #endif
  #endif
  }
-
+ 
  /*
   *  Multiply and xor mix function.
   *
@@ -206,7 +206,7 @@
   *  Returns 64-bit xor between high and low 64 bits of C.
   */
   RAPIDHASH_INLINE_CONSTEXPR uint64_t rapid_mix(uint64_t A, uint64_t B) RAPIDHASH_NOEXCEPT { rapid_mum(&A,&B); return A^B; }
-
+ 
  /*
   *  Read functions.
   */
@@ -229,7 +229,7 @@
    return (((v >> 24) & 0xff)| ((v >>  8) & 0xff00)| ((v <<  8) & 0xff0000)| ((v << 24) & 0xff000000));
  }
  #endif
-
+ 
  /*
   *  rapidhash main function.
   *
@@ -267,8 +267,8 @@ RAPIDHASH_INLINE_CONSTEXPR uint64_t rapidhash_internal(const void *key, size_t l
       uint64_t see1 = seed, see2 = seed;
       uint64_t see3 = seed, see4 = seed;
       uint64_t see5 = seed, see6 = seed;
-# ifdef RAPIDHASH_COMPACT
-do {
+#ifdef RAPIDHASH_COMPACT
+      do {
         seed = rapid_mix(rapid_read64(p) ^ secret[0], rapid_read64(p + 8) ^ seed);
         see1 = rapid_mix(rapid_read64(p + 16) ^ secret[1], rapid_read64(p + 24) ^ see1);
         see2 = rapid_mix(rapid_read64(p + 32) ^ secret[2], rapid_read64(p + 40) ^ see2);
@@ -279,9 +279,8 @@ do {
         p += 112;
         i -= 112;
       } while(i > 112);
-
-# else
-while (i > 224) {
+#else
+      while (i > 224) {
         seed = rapid_mix(rapid_read64(p) ^ secret[0], rapid_read64(p + 8) ^ seed);
         see1 = rapid_mix(rapid_read64(p + 16) ^ secret[1], rapid_read64(p + 24) ^ see1);
         see2 = rapid_mix(rapid_read64(p + 32) ^ secret[2], rapid_read64(p + 40) ^ see2);
@@ -310,7 +309,7 @@ while (i > 224) {
         p += 112;
         i -= 112;
       }
-# endif
+#endif
       seed ^= see1;
       see2 ^= see3;
       see4 ^= see5;
@@ -472,7 +471,7 @@ while (i > 224) {
     rapid_mum(&a, &b);
     return rapid_mix(a ^ secret[7], b ^ secret[1] ^ i);
   }
-
+ 
 /*
  *  rapidhash seeded hash function.
  *
@@ -487,7 +486,7 @@ while (i > 224) {
 RAPIDHASH_INLINE_CONSTEXPR uint64_t rapidhash_withSeed(const void *key, size_t len, uint64_t seed) RAPIDHASH_NOEXCEPT {
   return rapidhash_internal(key, len, seed, rapid_secret);
 }
-
+ 
 /*
  *  rapidhash general purpose hash function.
  *
@@ -520,7 +519,7 @@ RAPIDHASH_INLINE_CONSTEXPR uint64_t rapidhash(const void *key, size_t len) RAPID
  RAPIDHASH_INLINE_CONSTEXPR uint64_t rapidhashMicro_withSeed(const void *key, size_t len, uint64_t seed) RAPIDHASH_NOEXCEPT {
   return rapidhashMicro_internal(key, len, seed, rapid_secret);
 }
-
+ 
 /*
  *  rapidhashMicro hash function.
  *
@@ -549,7 +548,7 @@ RAPIDHASH_INLINE_CONSTEXPR uint64_t rapidhashMicro(const void *key, size_t len) 
  RAPIDHASH_INLINE_CONSTEXPR uint64_t rapidhashNano_withSeed(const void *key, size_t len, uint64_t seed) RAPIDHASH_NOEXCEPT {
   return rapidhashNano_internal(key, len, seed, rapid_secret);
 }
-
+ 
 /*
  *  rapidhashNano hash function.
  *

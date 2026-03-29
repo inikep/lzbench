@@ -667,7 +667,7 @@ T FileDecompressTask<T>::run()
                     read += decoded;
                 }
             }
-                catch (const exception& e) {
+            catch (const exception& e) {
                     dispose();
                     const uint64 d = _cis->getRead();
                     delete _cis;

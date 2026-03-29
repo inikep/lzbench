@@ -36,39 +36,62 @@ jobs:
         imageName: 'macOS-14'
         SELECTED_CC: clang
         SELECTED_CXX: clang++
+        ARTIFACT_SLUG: clang-arm64-macos
 
       # clang-6 and newer compilers
-      clang-20 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
-        UBUNTU_CODE_NAME: jammy
+      clang-22 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-22 main'
+        SELECTED_CC: clang-22
+        SELECTED_CXX: clang++-22
+        PACKAGES: 'clang-22 llvm-22-dev libomp-22-dev'
+        ARTIFACT_SLUG: clang-22-x86_64
+
+      clang-21 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
+        SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-21 main'
+        SELECTED_CC: clang-21
+        SELECTED_CXX: clang++-21
+        PACKAGES: 'clang-21 llvm-21-dev libomp-21-dev'
+        ARTIFACT_SLUG: clang-21-x86_64
+
+      clang-20 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-20 main'
         SELECTED_CC: clang-20
         SELECTED_CXX: clang++-20
         PACKAGES: 'clang-20 llvm-20-dev libomp-20-dev'
+        ARTIFACT_SLUG: clang-20-x86_64
 
-      clang-19 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
-        UBUNTU_CODE_NAME: jammy
+      clang-19 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-19 main'
         SELECTED_CC: clang-19
         SELECTED_CXX: clang++-19
         PACKAGES: 'clang-19 llvm-19-dev libomp-19-dev'
+        ARTIFACT_SLUG: clang-19-x86_64
 
-      clang-18 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
-        UBUNTU_CODE_NAME: jammy
+      clang-18 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-18 main'
         SELECTED_CC: clang-18
         SELECTED_CXX: clang++-18
         PACKAGES: 'clang-18 llvm-18-dev libomp-18-dev'
+        ARTIFACT_SLUG: clang-18-x86_64
 
-      clang-17 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
-        UBUNTU_CODE_NAME: jammy
+      clang-17 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        UBUNTU_CODE_NAME: noble
         SOURCE_LINE: 'deb https://apt.llvm.org/$(UBUNTU_CODE_NAME)/ llvm-toolchain-$(UBUNTU_CODE_NAME)-17 main'
         SELECTED_CC: clang-17
         SELECTED_CXX: clang++-17
         PACKAGES: 'clang-17 llvm-17-dev libomp-17-dev'
+        ARTIFACT_SLUG: clang-17-x86_64
 
       clang-16 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -77,6 +100,7 @@ jobs:
         SELECTED_CC: clang-16
         SELECTED_CXX: clang++-16
         PACKAGES: 'clang-16 llvm-16-dev libomp-16-dev'
+        ARTIFACT_SLUG: clang-16-x86_64
 
       clang-15 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -85,6 +109,7 @@ jobs:
         SELECTED_CC: clang-15
         SELECTED_CXX: clang++-15
         PACKAGES: 'clang-15 llvm-15-dev libomp-15-dev'
+        ARTIFACT_SLUG: clang-15-x86_64
 
       clang-14 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -93,6 +118,7 @@ jobs:
         SELECTED_CC: clang-14
         SELECTED_CXX: clang++-14
         PACKAGES: 'clang-14 llvm-14-dev libomp-14-dev'
+        ARTIFACT_SLUG: clang-14-x86_64
 
       clang-13 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -101,6 +127,7 @@ jobs:
         SELECTED_CC: clang-13
         SELECTED_CXX: clang++-13
         PACKAGES: 'clang-13 llvm-13-dev libomp-13-dev'
+        ARTIFACT_SLUG: clang-13-x86_64
 
       clang-12 [Ubuntu 22.04 Jammy]:
         imageName: 'ubuntu-22.04'
@@ -109,14 +136,23 @@ jobs:
         SELECTED_CC: clang-12
         SELECTED_CXX: clang++-12
         PACKAGES: 'clang-12 llvm-12-dev libomp-12-dev'
+        ARTIFACT_SLUG: clang-12-x86_64
 
 
       # gcc-9 and newer compilers
+      gcc-15 x86 64-bit [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: gcc-15
+        SELECTED_CXX: g++-15
+        PACKAGES: 'g++-15'
+        ARTIFACT_SLUG: gcc-15-x86_64
+
       gcc-14 x86 64-bit [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-14
         SELECTED_CXX: g++-14
         PACKAGES: 'g++-14'
+        ARTIFACT_SLUG: gcc-14-x86_64
 
       gcc-14 x86 32-bit [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
@@ -124,36 +160,42 @@ jobs:
         SELECTED_CXX: g++-14
         PACKAGES: 'g++-14 g++-14-multilib gcc-multilib'
         MORE_OPTIONS: 'BUILD_ARCH=32-bit'
+        ARTIFACT_SLUG: gcc-14-i686
 
-      gcc-13 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
+      gcc-13 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-13
         SELECTED_CXX: g++-13
         PACKAGES: 'g++-13'
+        ARTIFACT_SLUG: gcc-13-x86_64
 
-      gcc-12 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
+      gcc-12 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-12
         SELECTED_CXX: g++-12
         PACKAGES: 'g++-12'
+        ARTIFACT_SLUG: gcc-12-x86_64
 
-      gcc-11 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
+      gcc-11 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-11
         SELECTED_CXX: g++-11
         PACKAGES: 'g++-11'
+        ARTIFACT_SLUG: gcc-11-x86_64
 
-      gcc-10 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
+      gcc-10 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-10
         SELECTED_CXX: g++-10
         PACKAGES: 'g++-10'
+        ARTIFACT_SLUG: gcc-10-x86_64
 
-      gcc-9 [Ubuntu 22.04 Jammy]:
-        imageName: 'ubuntu-22.04'
+      gcc-9 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-9
         SELECTED_CXX: g++-9
         PACKAGES: 'g++-9'
+        ARTIFACT_SLUG: gcc-9-x86_64
 
       gcc ARM 64-bit [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
@@ -162,6 +204,7 @@ jobs:
         PACKAGES: 'qemu-system-arm qemu-user-static gcc-aarch64-linux-gnu g++-aarch64-linux-gnu'
         MORE_OPTIONS: 'BUILD_STATIC=1'
         QEMU_INTERPRETER: 'qemu-aarch64-static -L /usr/aarch64-linux-gnu'
+        ARTIFACT_SLUG: aarch64-linux-gnu-gcc
 
       gcc ARM 32-bit [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
@@ -170,6 +213,7 @@ jobs:
         PACKAGES: 'qemu-system-arm qemu-user-static gcc-arm-linux-gnueabi g++-arm-linux-gnueabi'
         MORE_OPTIONS: 'BUILD_STATIC=1'
         QEMU_INTERPRETER: 'qemu-arm-static -L /usr/arm-linux-gnueabi'
+        ARTIFACT_SLUG: arm-linux-gnueabi-gcc
 
       gcc PowerPC 64-bit Little-endian (powerpc64le) [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
@@ -178,6 +222,7 @@ jobs:
         PACKAGES: 'qemu-system-ppc64le qemu-user-static gcc-powerpc64le-linux-gnu g++-powerpc64le-linux-gnu'
         MORE_OPTIONS: 'BUILD_STATIC=1'
         QEMU_INTERPRETER: 'qemu-ppc64le-static -L /usr/powerpc64le-linux-gnu'
+        ARTIFACT_SLUG: powerpc64le-linux-gnu-gcc
 
 
   steps:
@@ -278,6 +323,12 @@ jobs:
 
     displayName: '*** Build'
 
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish lzbench'
+    inputs:
+      targetPath: '$(Build.SourcesDirectory)/lzbench'
+      artifactName: 'lzbench-$(ARTIFACT_SLUG)'
+
   - script: |
       $QEMU_INTERPRETER ./lzbench -eall ./lzbench || exit 1
 
@@ -303,6 +354,7 @@ jobs:
         SELECTED_CXX: g++
         MORE_OPTIONS: ""
         ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/i686-15.1.0-release-posix-dwarf-ucrt-rt_v12-rev0.7z
+        ARTIFACT_SLUG: mingw32-i686-posix
       mingw32-gcc 15.1.0 x86 32-bit (Windows threads) [Windows]:
         toolchain: 'mingw32'
         arch: '32-bit'
@@ -310,6 +362,7 @@ jobs:
         SELECTED_CXX: g++
         MORE_OPTIONS: ""
         ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/i686-15.1.0-release-win32-dwarf-ucrt-rt_v12-rev0.7z
+        ARTIFACT_SLUG: mingw32-i686-win32
 
       mingw64-gcc 15.1.0 x86 64-bit (POSIX threads) [Windows]:
         toolchain: 'mingw64'
@@ -318,6 +371,7 @@ jobs:
         SELECTED_CXX: g++
         MORE_OPTIONS: ""
         ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-posix-seh-ucrt-rt_v12-rev0.7z
+        ARTIFACT_SLUG: mingw64-x86_64-posix
       mingw64-gcc 15.1.0 x86 64-bit (Windows threads) [Windows]:
         toolchain: 'mingw64'
         arch: '64-bit'
@@ -325,6 +379,7 @@ jobs:
         SELECTED_CXX: g++
         MORE_OPTIONS: ""
         ARCHIVE: https://github.com/niXman/mingw-builds-binaries/releases/download/15.1.0-rt_v12-rev0/x86_64-15.1.0-release-win32-seh-ucrt-rt_v12-rev0.7z
+        ARTIFACT_SLUG: mingw64-x86_64-win32
 
   steps:
   - powershell: |
@@ -345,6 +400,12 @@ jobs:
       file lzbench.exe
       lzbench.exe
     displayName: 'Build with $(toolchain)'
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish lzbench.exe'
+    inputs:
+      targetPath: '$(Build.SourcesDirectory)\lzbench.exe'
+      artifactName: 'lzbench-$(ARTIFACT_SLUG)'
 
   - script: |
       echo Running a build for $(toolchain) for $(arch) architecture

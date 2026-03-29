@@ -10,6 +10,7 @@
 
 #include "zxc_buffer.h"     // IWYU pragma: keep
 #include "zxc_constants.h"  // IWYU pragma: keep
+#include "zxc_error.h"      // IWYU pragma: keep
 #include "zxc_stream.h"     // IWYU pragma: keep
 
 #endif  // ZXC_H

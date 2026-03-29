@@ -4,6 +4,9 @@
 # To order static or dynamic linking set `BUILD_STATIC` to 1, or 0 respectively:
 #	make BUILD_STATIC=1
 #
+# For debug:
+#	make BUILD_TYPE=debug
+#
 # For 32-bit compilation:
 #	make BUILD_ARCH=32-bit
 #
@@ -554,7 +557,9 @@ else
         endif
     endif
 
-    CMD_BUILD_ZXC = @$(MKDIR) $(dir $@) && $(CC) $(CFLAGS) $(ZXC_FLAGS) $< -c -o $@
+    CMD_BUILD_ZXC = @$(MKDIR) $(dir $@) && $(CC) $(CFLAGS) -I$(ZXC_DIR)/vendors $(ZXC_FLAGS) $< -c -o $@
+
+    $(ZXC_DIR)/%.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
 
     $(ZXC_DIR)/%_default.o: ZXC_FLAGS = -DZXC_FUNCTION_SUFFIX=_default
     $(ZXC_DIR)/%_default.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
@@ -730,7 +735,7 @@ endif # ifeq "$(ENABLE_CUDA)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(BENCH_FILES) $(PPMD_FILES)
+lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -798,7 +803,7 @@ $(LIZARD_FILES): %.o : %.c
 
 $(LZ_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include $< -c -o $@
+	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/zxc/src/lib/vendors $< -c -o $@
 
 $(LZHAM_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)

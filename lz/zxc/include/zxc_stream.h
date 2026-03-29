@@ -5,9 +5,27 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+/**
+ * @file zxc_stream.h
+ * @brief Multi-threaded streaming compression and decompression API.
+ *
+ * This header provides the streaming driver that reads from a @c FILE* input and
+ * writes compressed (or decompressed) output to a @c FILE*.  Internally the
+ * driver uses an asynchronous Producer-Consumer pipeline via a ring buffer to
+ * separate I/O from CPU-intensive work:
+ *
+ * 1. **Reader thread**  - reads chunks from `f_in`.
+ * 2. **Worker threads** - compress/decompress chunks in parallel.
+ * 3. **Writer thread**  - orders the results and writes them to `f_out`.
+ *
+ * @see zxc_buffer.h  for the simple one-shot buffer API.
+ * @see zxc_sans_io.h for low-level sans-I/O building blocks.
+ */
+
 #ifndef ZXC_STREAM_H
 #define ZXC_STREAM_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
@@ -17,66 +35,11 @@
 extern "C" {
 #endif
 
-/*
- * ============================================================================
- * ZXC Compression Library - Public Streaming Driver API
- * ============================================================================
- * This driver uses an asynchronous pipeline architecture (Producer-Consumer)
- * via a Ring Buffer to separate I/O operations from CPU-intensive compression
- * tasks.
- */
-
 /**
- * @brief Compresses data from an input stream to an output stream.
- *
- * This function sets up a multi-threaded pipeline:
- * 1. Reader Thread: Reads chunks from f_in.
- * 2. Worker Threads: Compress chunks in parallel (LZ77 + Bitpacking).
- * 3. Writer Thread: Orders the processed chunks and writes them to f_out.
- *
- * @param[in] f_in      Input file stream (must be opened in "rb" mode).
- * @param[out] f_out     Output file stream (must be opened in "wb" mode).
- * @param[in] n_threads Number of worker threads to spawn (0 = auto-detect number of
- * CPU cores).
- * @param[in] level     Compression level (1-9).
- * @param[in] checksum_enabled  If non-zero, enables checksum verification for data
- * integrity.
- *
- * @return          Total compressed bytes written, or -1 if an error occurred.
+ * @defgroup stream_api Streaming API
+ * @brief Multi-threaded, FILE*-based compression and decompression.
+ * @{
  */
-ZXC_EXPORT int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const int n_threads,
-                                       const int level, const int checksum_enabled);
-
-/**
- * @brief Decompresses data from an input stream to an output stream.
- *
- * Uses the same pipeline architecture as compression to maximize throughput.
- *
- * @param[in] f_in      Input file stream (must be opened in "rb" mode).
- * @param[out] f_out     Output file stream (must be opened in "wb" mode).
- * @param[in] n_threads Number of worker threads to spawn (0 = auto-detect number of
- * CPU cores).
- * @param[in] checksum_enabled  If non-zero, enables checksum verification for data
- * integrity.
- *
- * @return          Total decompressed bytes written, or -1 if an error
- * occurred.
- */
-ZXC_EXPORT int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out, const int n_threads,
-                                         const int checksum_enabled);
-
-/**
- * @brief Returns the decompressed size stored in a ZXC compressed file.
- *
- * This function reads the file footer to extract the original uncompressed size
- * without performing any decompression. The file position is restored after reading.
- *
- * @param[in] f_in  Input file stream (must be opened in "rb" mode).
- *
- * @return The original uncompressed size in bytes, or -1 if the file is invalid
- *         or an I/O error occurred.
- */
-ZXC_EXPORT int64_t zxc_stream_get_decompressed_size(FILE* f_in);
 
 /**
  * @brief Progress callback function type.
@@ -94,41 +57,90 @@ typedef void (*zxc_progress_callback_t)(uint64_t bytes_processed, uint64_t bytes
                                         const void* user_data);
 
 /**
- * @brief Compresses data from an input stream to an output stream (with progress callback).
+ * @brief Options for streaming compression.
  *
- * Extended version of zxc_stream_compress that accepts an optional progress callback.
+ * Zero-initialise for safe defaults: level 0 maps to ZXC_LEVEL_DEFAULT (3),
+ * block_size 0 maps to ZXC_BLOCK_SIZE_DEFAULT (256 KB), n_threads 0 means
+ * auto-detect, and all other fields are disabled.
  *
- * @param[in] f_in             Input file stream (must be opened in "rb" mode).
- * @param[out] f_out           Output file stream (must be opened in "wb" mode).
- * @param[in] n_threads        Number of worker threads to spawn (0 = auto-detect).
- * @param[in] level            Compression level (1-9).
- * @param[in] checksum_enabled If non-zero, enables checksum verification.
- * @param[in] progress_cb      Optional progress callback (NULL to disable).
- * @param[in] user_data        User context pointer passed to progress callback.
- *
- * @return          Total compressed bytes written, or -1 if an error occurred.
+ * @code
+ * zxc_compress_opts_t opts = { .level = ZXC_LEVEL_COMPACT };
+ * zxc_stream_compress(f_in, f_out, &opts);
+ * @endcode
  */
-ZXC_EXPORT int64_t zxc_stream_compress_ex(FILE* f_in, FILE* f_out, const int n_threads,
-                                          const int level, const int checksum_enabled,
-                                          zxc_progress_callback_t progress_cb, void* user_data);
+typedef struct {
+    int n_threads;        /**< Worker thread count (0 = auto-detect CPU cores). */
+    int level;            /**< Compression level 1-5 (0 = default, ZXC_LEVEL_DEFAULT). */
+    size_t block_size;    /**< Block size in bytes (0 = default 256 KB). Must be power of 2, [4KB -
+                             2MB]. */
+    int checksum_enabled; /**< 1 to enable per-block and global checksums, 0 to disable. */
+    zxc_progress_callback_t progress_cb; /**< Optional progress callback (NULL to disable). */
+    void* user_data;                     /**< User context pointer passed to progress_cb. */
+} zxc_compress_opts_t;
 
 /**
- * @brief Decompresses data from an input stream to an output stream (with progress callback).
+ * @brief Options for streaming decompression.
  *
- * Extended version of zxc_stream_decompress that accepts an optional progress callback.
+ * Zero-initialise for safe defaults.
  *
- * @param[in] f_in             Input file stream (must be opened in "rb" mode).
- * @param[out] f_out           Output file stream (must be opened in "wb" mode).
- * @param[in] n_threads        Number of worker threads to spawn (0 = auto-detect).
- * @param[in] checksum_enabled If non-zero, enables checksum verification.
- * @param[in] progress_cb      Optional progress callback (NULL to disable).
- * @param[in] user_data        User context pointer passed to progress callback.
- *
- * @return          Total decompressed bytes written, or -1 if an error occurred.
+ * @code
+ * zxc_decompress_opts_t opts = { .checksum = 1 };
+ * zxc_stream_decompress(f_in, f_out, &opts);
+ * @endcode
  */
-ZXC_EXPORT int64_t zxc_stream_decompress_ex(FILE* f_in, FILE* f_out, const int n_threads,
-                                            const int checksum_enabled,
-                                            zxc_progress_callback_t progress_cb, void* user_data);
+typedef struct {
+    int n_threads;        /**< Worker thread count (0 = auto-detect CPU cores). */
+    int checksum_enabled; /**< 1 to verify per-block and global checksums, 0 to skip. */
+    zxc_progress_callback_t progress_cb; /**< Optional progress callback (NULL to disable). */
+    void* user_data;                     /**< User context pointer passed to progress_cb. */
+} zxc_decompress_opts_t;
+
+/**
+ * @brief Compresses data from an input stream to an output stream.
+ *
+ * This function sets up a multi-threaded pipeline:
+ * 1. Reader Thread: Reads chunks from f_in.
+ * 2. Worker Threads: Compress chunks in parallel (LZ77 + Bitpacking).
+ * 3. Writer Thread: Orders the processed chunks and writes them to f_out.
+ *
+ * @param[in] f_in   Input file stream (must be opened in "rb" mode).
+ * @param[out] f_out  Output file stream (must be opened in "wb" mode).
+ * @param[in] opts   Compression options (NULL uses all defaults).
+ *
+ * @return Total compressed bytes written, or a negative zxc_error_t code (e.g.,
+ * ZXC_ERROR_IO) if an error occurred.
+ */
+ZXC_EXPORT int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const zxc_compress_opts_t* opts);
+
+/**
+ * @brief Decompresses data from an input stream to an output stream.
+ *
+ * Uses the same pipeline architecture as compression to maximize throughput.
+ *
+ * @param[in] f_in   Input file stream (must be opened in "rb" mode).
+ * @param[out] f_out  Output file stream (must be opened in "wb" mode).
+ * @param[in] opts   Decompression options (NULL uses all defaults).
+ *
+ * @return Total decompressed bytes written, or a negative zxc_error_t code (e.g.,
+ * ZXC_ERROR_BAD_HEADER) if an error occurred.
+ */
+ZXC_EXPORT int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out,
+                                         const zxc_decompress_opts_t* opts);
+
+/**
+ * @brief Returns the decompressed size stored in a ZXC compressed file.
+ *
+ * This function reads the file footer to extract the original uncompressed size
+ * without performing any decompression. The file position is restored after reading.
+ *
+ * @param[in] f_in  Input file stream (must be opened in "rb" mode).
+ *
+ * @return The original uncompressed size in bytes, or a negative zxc_error_t code (e.g.,
+ * ZXC_ERROR_BAD_MAGIC) if the file is invalid or an I/O error occurred.
+ */
+ZXC_EXPORT int64_t zxc_stream_get_decompressed_size(FILE* f_in);
+
+/** @} */ /* end of stream_api */
 
 #ifdef __cplusplus
 }

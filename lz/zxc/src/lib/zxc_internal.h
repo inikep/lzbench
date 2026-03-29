@@ -5,6 +5,24 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+/**
+ * @file zxc_internal.h
+ * @brief Internal definitions, constants, SIMD helpers, and utility functions.
+ *
+ * This header is **not** part of the public API.  It is shared across the
+ * library's translation units and contains:
+ * - Platform detection and SIMD intrinsic includes.
+ * - Compiler-abstraction macros (LIKELY, PREFETCH, MEMCPY, ALIGN, ...).
+ * - Endianness detection and byte-swap helpers.
+ * - File-format constants (magic word, header sizes, block sizes, ...).
+ * - Inline helpers for hashing, endian-safe loads/stores, bit manipulation,
+ *   ZigZag encoding, aligned allocation, and bitstream reading.
+ * - Internal function prototypes for chunk-level compression/decompression.
+ *
+ * @warning Do not include this header from user code; use the public headers
+ *          zxc_buffer.h, zxc_stream.h, or zxc_sans_io.h instead.
+ */
+
 #ifndef ZXC_INTERNAL_H
 #define ZXC_INTERNAL_H
 
@@ -15,14 +33,29 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../../include/rapidhash.h"
 #include "../../include/zxc_buffer.h"
+#include "../../include/zxc_constants.h"
 #include "../../include/zxc_sans_io.h"
+#include "rapidhash.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+/**
+ * @defgroup internal Internal Helpers
+ * @brief Platform abstractions, constants, and utility functions (private).
+ * @{
+ */
+
+/**
+ * @name Atomic Qualifier
+ * @brief Provides a portable atomic / volatile qualifier.
+ *
+ * If C11 atomics are available, @c ZXC_ATOMIC expands to @c _Atomic;
+ * otherwise it falls back to @c volatile.
+ * @{
+ */
 #if !defined(__cplusplus) && defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && \
     !defined(__STDC_NO_ATOMICS__)
 #include <stdatomic.h>
@@ -32,11 +65,19 @@ extern "C" {
 #define ZXC_ATOMIC volatile
 #define ZXC_USE_C11_ATOMICS 0
 #endif
+/** @} */ /* end of Atomic Qualifier */
 
-/*
- * ============================================================================
- * SIMD INTRINSICS & COMPILER MACROS
- * ============================================================================
+/**
+ * @name SIMD Intrinsics & Compiler Macros
+ * @brief Auto-detected SIMD feature macros for x86 (SSE/AVX) and ARM (NEON).
+ *
+ * Depending on the target architecture and compiler flags the following macros
+ * may be defined:
+ * - @c ZXC_USE_AVX512 - AVX-512F + AVX-512BW available.
+ * - @c ZXC_USE_AVX2   - AVX2 available.
+ * - @c ZXC_USE_NEON64 - AArch64 NEON available.
+ * - @c ZXC_USE_NEON32 - ARMv7 NEON available.
+ * @{
  */
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
 #include <immintrin.h>
@@ -67,22 +108,64 @@ extern "C" {
 #endif
 #endif
 #endif
+/** @} */ /* end of SIMD Intrinsics */
 
-/*
- * ============================================================================
- * LIKELY/UNLIKELY, PREFETCH, MEMCPY/MEMSET, ALIGN, ALWAYS_INLINE, ENDIANNESS
- * ============================================================================
+/**
+ * @name Compiler Abstractions
+ * @brief Portable wrappers for branch hints, prefetch, memory ops, alignment,
+ *        and forced inlining.
+ * @{
  */
 
 #if defined(__GNUC__) || defined(__clang__)
+/** @def LIKELY
+ * @brief Branch prediction hint: expression is likely true.
+ * @param x Expression to evaluate.
+ */
 #define LIKELY(x) (__builtin_expect(!!(x), 1))
+
+/** @def UNLIKELY
+ * @brief Branch prediction hint: expression is unlikely to be true.
+ * @param x Expression to evaluate.
+ */
 #define UNLIKELY(x) (__builtin_expect(!!(x), 0))
+
+/** @def RESTRICT
+ * @brief Pointer aliasing hint (maps to __restrict__).
+ */
 #define RESTRICT __restrict__
+
+/** @def ZXC_PREFETCH_READ
+ * @brief Prefetch data for reading.
+ * @param ptr Pointer to data to prefetch.
+ */
 #define ZXC_PREFETCH_READ(ptr) __builtin_prefetch((const void*)(ptr), 0, 3)
+
+/** @def ZXC_PREFETCH_WRITE
+ * @brief Prefetch data for writing.
+ * @param ptr Pointer to data to prefetch.
+ */
 #define ZXC_PREFETCH_WRITE(ptr) __builtin_prefetch((const void*)(ptr), 1, 3)
+
+/** @def ZXC_MEMCPY
+ * @brief Optimized memory copy using compiler built-in.
+ */
 #define ZXC_MEMCPY(dst, src, n) __builtin_memcpy(dst, src, n)
+
+/** @def ZXC_MEMSET
+ * @brief Optimized memory set using compiler built-in.
+ */
 #define ZXC_MEMSET(dst, val, n) __builtin_memset(dst, val, n)
+
+/** @def ZXC_ALIGN
+ * @brief Specifies memory alignment for a variable or structure.
+ * @param x Alignment boundary in bytes (must be a power of 2).
+ */
 #define ZXC_ALIGN(x) __attribute__((aligned(x)))
+
+/** @def ZXC_ALWAYS_INLINE
+ * @brief Forces a function to be inlined at all optimization levels.
+ */
 #define ZXC_ALWAYS_INLINE inline __attribute__((always_inline))
 
 #elif defined(_MSC_VER)
@@ -101,7 +184,16 @@ extern "C" {
 #pragma intrinsic(memcpy, memset)
 #define ZXC_MEMCPY(dst, src, n) memcpy(dst, src, n)
 #define ZXC_MEMSET(dst, val, n) memset(dst, val, n)
+
+/** @def ZXC_ALIGN
+ * @brief Specifies memory alignment for a variable or structure (MSVC).
+ * @param x Alignment boundary in bytes (must be a power of 2).
+ */
 #define ZXC_ALIGN(x) __declspec(align(x))
+
+/** @def ZXC_ALWAYS_INLINE
+ * @brief Forces a function to be inlined at all optimization levels (MSVC).
+ */
 #define ZXC_ALWAYS_INLINE __forceinline
 #pragma intrinsic(_BitScanReverse)
 #else
@@ -112,17 +204,35 @@ extern "C" {
 #define ZXC_PREFETCH_WRITE(ptr)
 #define ZXC_MEMCPY(dst, src, n) memcpy(dst, src, n)
 #define ZXC_MEMSET(dst, val, n) memset(dst, val, n)
+
+/** @def ZXC_ALWAYS_INLINE
+ * @brief Forces a function to be inlined (fallback for non-GCC/Clang/MSVC compilers).
+ */
 #define ZXC_ALWAYS_INLINE inline
+
 #if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L
 #include <stdalign.h>
+/** @def ZXC_ALIGN
+ * @brief Specifies memory alignment using C11 _Alignas.
+ * @param x Alignment boundary in bytes (must be a power of 2).
+ */
 #define ZXC_ALIGN(x) _Alignas(x)
 #else
+/** @def ZXC_ALIGN
+ * @brief No-op alignment macro for compilers without alignment support.
+ * @param x Ignored (alignment not supported).
+ */
 #define ZXC_ALIGN(x)
 #endif
 #endif
+/** @} */ /* end of Compiler Abstractions */
 
-/*
- * Endianness detection
+/**
+ * @name Endianness Detection
+ * @brief Compile-time detection of host byte order.
+ *
+ * Defines exactly one of @c ZXC_LITTLE_ENDIAN or @c ZXC_BIG_ENDIAN.
+ * @{
  */
 #ifndef ZXC_LITTLE_ENDIAN
 #if defined(_WIN32) || defined(__LITTLE_ENDIAN__) || \
@@ -135,9 +245,12 @@ extern "C" {
 #define ZXC_LITTLE_ENDIAN
 #endif
 #endif
+/** @} */ /* end of Endianness Detection */
 
-/*
- * Byte-swap helpers (used on big-endian only).
+/**
+ * @name Byte-Swap Helpers
+ * @brief 16/32/64-bit byte-swap macros (only defined under @c ZXC_BIG_ENDIAN).
+ * @{
  */
 #ifdef ZXC_BIG_ENDIAN
 #if defined(__GNUC__) || defined(__clang__)
@@ -156,104 +269,198 @@ extern "C" {
     ((uint64_t)(((uint64_t)ZXC_BSWAP32((uint32_t)(x)) << 32) | ZXC_BSWAP32((uint32_t)((x) >> 32))))
 #endif
 #endif
+/** @} */ /* end of Byte-Swap Helpers */
 
-/*
- * ============================================================================
- * CONSTANTS & FILE FORMAT
- * ============================================================================
+/**
+ * @name File Format Constants
+ * @brief Magic words, header sizes, block sizes, and related constants.
+ * @{
  */
 
-#define ZXC_MAGIC_WORD 0x9CB02EF5U            // Magic word identifying ZXC files
-#define ZXC_FILE_FORMAT_VERSION 4             // Current file format version
-#define ZXC_BLOCK_UNIT (4 * 1024)             // Block size unit (4KB)
-#define ZXC_BLOCK_SIZE (64 * ZXC_BLOCK_UNIT)  // Size of data blocks processed by threads (256KB)
-#define ZXC_IO_BUFFER_SIZE (1024 * 1024)      // Size of stdio buffers
-#define ZXC_PAD_SIZE 32                       // Padding size for buffer overruns
-#define ZXC_BITS_PER_BYTE 8                   // Number of bits per byte
-#define ZXC_CACHE_LINE_SIZE 64                // Cache line size
-#define ZXC_ALIGNMENT_MASK (ZXC_CACHE_LINE_SIZE - 1)  // Alignment mask
-#define ZXC_VBYTE_MAX_LEN 5                           // Maximum length of variable byte encoding
-#define ZXC_VBYTE_ALLOC_LEN 3  // Max length for allocation (sufficient for < 2MB blocks)
+/** @brief Magic word identifying ZXC files (little-endian 0x9CB02EF5). */
+#define ZXC_MAGIC_WORD 0x9CB02EF5U
+/** @brief Current on-disk file format version. */
+#define ZXC_FILE_FORMAT_VERSION 5
+/** @brief Size of stdio I/O buffers (1 MB). */
+#define ZXC_IO_BUFFER_SIZE (1024 * 1024)
+/** @brief Maximum number of threads allowed for streaming operations. */
+#define ZXC_MAX_THREADS 1024
+/** @brief Safety padding appended to buffers to tolerate overruns. */
+#define ZXC_PAD_SIZE 32
+/** @brief Number of bits per byte (constant 8). */
+#define ZXC_BITS_PER_BYTE 8
+/** @brief Assumed CPU cache line size for alignment. */
+#define ZXC_CACHE_LINE_SIZE 64
+/** @brief Bitmask for cache-line alignment checks. */
+#define ZXC_ALIGNMENT_MASK (ZXC_CACHE_LINE_SIZE - 1)
+/** @brief Maximum byte length of a variable-byte encoded integer. */
+#define ZXC_VBYTE_MAX_LEN 5
+/** @brief Allocation-safe max vbyte length (sufficient for < 2 MB blocks). */
+#define ZXC_VBYTE_ALLOC_LEN 3
 
-// File Header Parsing
-#define ZXC_FILE_HEADER_SIZE \
-    16  // Magic (4) + Version (1) + Chunk (1) + Flags (1) + Reserved (7) + CRC (2)
-#define ZXC_FILE_FLAG_HAS_CHECKSUM 0x80U   // Flag in Flags byte (Bit 7)
-#define ZXC_FILE_CHECKSUM_ALGO_MASK 0x0FU  // Algorithm ID (Bits 0-3)
+/** @brief File header size: Magic(4)+Version(1)+Chunk(1)+Flags(1)+Reserved(7)+CRC(2). */
+#define ZXC_FILE_HEADER_SIZE 16
+/** @brief Bit flag in the Flags byte indicating checksum presence (bit 7). */
+#define ZXC_FILE_FLAG_HAS_CHECKSUM 0x80U
+/** @brief Mask for the checksum algorithm id (bits 0-3). */
+#define ZXC_FILE_CHECKSUM_ALGO_MASK 0x0FU
 
-#define ZXC_BLOCK_HEADER_SIZE 8    // Type (1) + Flags (1) + Reserved (1) + CRC (1) + Comp Size (4)
-#define ZXC_BLOCK_CHECKSUM_SIZE 4  // Size of checksum field in bytes
-#define ZXC_NUM_HEADER_BINARY_SIZE 16  // Num Header: N Values (8) + Frame Size (2) + Reserved (6)
-#define ZXC_GLO_HEADER_BINARY_SIZE \
-    16  // GLO Header: N Sequences (4) + N Literals (4) + 4 x 1-byte Encoding Types
-#define ZXC_GHI_HEADER_BINARY_SIZE \
-    16  // GHI Header: N Sequences (4) + N Literals (4) + 4 x 1-byte Encoding Types
+/** @brief Block header size: Type(1)+Flags(1)+Reserved(1)+CRC(1)+CompSize(4). */
+#define ZXC_BLOCK_HEADER_SIZE 8
+/** @brief Size of the per-block checksum field in bytes. */
+#define ZXC_BLOCK_CHECKSUM_SIZE 4
+/** @brief Binary size of a NUM block sub-header. */
+#define ZXC_NUM_HEADER_BINARY_SIZE 16
+/** @brief Binary size of a GLO block sub-header. */
+#define ZXC_GLO_HEADER_BINARY_SIZE 16
+/** @brief Binary size of a GHI block sub-header. */
+#define ZXC_GHI_HEADER_BINARY_SIZE 16
 
-// Section Descriptor Sizes
-#define ZXC_SECTION_DESC_BINARY_SIZE 8     // Section Desc: Comp Size (4) + Raw Size (4)
-#define ZXC_SECTION_SIZE_MASK 0xFFFFFFFFU  // Mask to extract 32-bit size from descriptor
-#define ZXC_GLO_SECTIONS 4                 // Number of sections in GLO blocks
-#define ZXC_GHI_SECTIONS 3                 // Number of sections in GHI blocks
+/** @brief Binary size of a NUM chunk sub-frame header (nvals + bits + base + psize). */
+#define ZXC_NUM_CHUNK_HEADER_SIZE 16
+/** @brief Number of numeric values to decode in a single SIMD batch (NUM block). */
+#define ZXC_NUM_DEC_BATCH 32
+/** @brief Maximum number of frames that can be processed in a single compression operation (NUM
+ * block). */
+#define ZXC_NUM_FRAME_SIZE 128
 
-// Checksum Algorithms
-#define ZXC_CHECKSUM_RAPIDHASH 0x00U  // Default: rapidhash algorithm
+/** @brief Binary size of a section descriptor (comp_size + raw_size). */
+#define ZXC_SECTION_DESC_BINARY_SIZE 8
+/** @brief 32-bit mask for extracting sizes from a section descriptor. */
+#define ZXC_SECTION_SIZE_MASK 0xFFFFFFFFU
+/** @brief Number of sections in a GLO block. */
+#define ZXC_GLO_SECTIONS 4
+/** @brief Number of sections in a GHI block. */
+#define ZXC_GHI_SECTIONS 3
 
-#define ZXC_GLOBAL_CHECKSUM_SIZE 4  // Size of the global checksum (appended after EOF)
-#define ZXC_FILE_FOOTER_SIZE 12     // Footer Size (8 bytes src size + 4 bytes global checksum)
+/** @brief Checksum algorithm id for rapidhash (default). */
+#define ZXC_CHECKSUM_RAPIDHASH 0x00U
 
-// Token Format Constants
-// Sequence Format Constants (GLO Token - 4-bit LL, 4-bit ML, 16-bit Offset)
-#define ZXC_TOKEN_LIT_BITS 4  // Number of bits for Literal Length in token
-#define ZXC_TOKEN_ML_BITS 4   // Number of bits for Match Length in token
-#define ZXC_TOKEN_LL_MASK \
-    ((1U << ZXC_TOKEN_LIT_BITS) - 1)  // Mask to extract Literal Length from token
-#define ZXC_TOKEN_ML_MASK \
-    ((1U << ZXC_TOKEN_ML_BITS) - 1)  // Mask to extract Match Length from token
+/** @brief Size of the global checksum appended after EOF block (4 bytes). */
+#define ZXC_GLOBAL_CHECKSUM_SIZE 4
+/** @brief File footer size: original_size(8) + global_checksum(4). */
+#define ZXC_FILE_FOOTER_SIZE 12
 
-// Sequence Format Constants (GHI Token - 8-bit LL, 8-bit ML, 16-bit Offset)
-#define ZXC_SEQ_LL_BITS 8    // Number of bits for Literal Length in sequence
-#define ZXC_SEQ_ML_BITS 8    // Number of bits for Match Length in sequence
-#define ZXC_SEQ_OFF_BITS 16  // Number of bits for Offset in sequence
-#define ZXC_SEQ_LL_MASK \
-    ((1U << ZXC_SEQ_LL_BITS) - 1)  // Mask to extract Literal Length from sequence
-#define ZXC_SEQ_ML_MASK ((1U << ZXC_SEQ_ML_BITS) - 1)  // Mask to extract Match Length from sequence
-#define ZXC_SEQ_OFF_MASK ((1U << ZXC_SEQ_OFF_BITS) - 1)  // Mask to extract Offset from sequence
+/** @name GLO Token Constants
+ *  @brief 4-bit literal length / 4-bit match length / 16-bit offset.
+ *  @{ */
+/** @brief Bits for Literal Length in a GLO token. */
+#define ZXC_TOKEN_LIT_BITS 4
+/** @brief Bits for Match Length in a GLO token. */
+#define ZXC_TOKEN_ML_BITS 4
+/** @brief Mask to extract Literal Length from a GLO token. */
+#define ZXC_TOKEN_LL_MASK ((1U << ZXC_TOKEN_LIT_BITS) - 1)
+/** @brief Mask to extract Match Length from a GLO token. */
+#define ZXC_TOKEN_ML_MASK ((1U << ZXC_TOKEN_ML_BITS) - 1)
+/** @} */
 
-// Literal Stream Encoding Constants
-#define ZXC_LIT_RLE_FLAG 0x80U  // Flag bit for RLE run in literal stream (128)
-#define ZXC_LIT_LEN_MASK \
-    (ZXC_LIT_RLE_FLAG - 1)  // Mask to extract length from RLE/Literal token (127)
+/** @name GHI Sequence Constants
+ *  @brief 8-bit literal length / 8-bit match length / 16-bit offset.
+ *  @{ */
+/** @brief Bits for Literal Length in a GHI sequence. */
+#define ZXC_SEQ_LL_BITS 8
+/** @brief Bits for Match Length in a GHI sequence. */
+#define ZXC_SEQ_ML_BITS 8
+/** @brief Bits for Offset in a GHI sequence. */
+#define ZXC_SEQ_OFF_BITS 16
+/** @brief Mask to extract Literal Length from a GHI sequence. */
+#define ZXC_SEQ_LL_MASK ((1U << ZXC_SEQ_LL_BITS) - 1)
+/** @brief Mask to extract Match Length from a GHI sequence. */
+#define ZXC_SEQ_ML_MASK ((1U << ZXC_SEQ_ML_BITS) - 1)
+/** @brief Mask to extract Offset from a GHI sequence. */
+#define ZXC_SEQ_OFF_MASK ((1U << ZXC_SEQ_OFF_BITS) - 1)
+/** @} */
 
-// LZ77 Constants
-// The hash table uses 13 bits for addressing, resulting in 8192 (2^13) entries.
-// The hash table uses 2x entries (load factor < 0.5) to reduce collisions.
-// Each hash table entry stores: (epoch << 18) | offset.
-// Total memory footprint: 64KB (8192 entries * 2 * 4 bytes each).
-#define ZXC_LZ_HASH_BITS 13                        // (2*(2^13) * 4 bytes = 64KB)
-#define ZXC_LZ_HASH_SIZE (1U << ZXC_LZ_HASH_BITS)  // Hash table size
-#define ZXC_LZ_WINDOW_SIZE (1U << 16)              // 64KB sliding window
-// Note: sliding window of 64KB allows chain_table to use uint16_t for valid offsets (since any
-// match > 64KB is invalid).
-#define ZXC_LZ_MIN_MATCH_LEN 5                    // Minimum match length
-#define ZXC_LZ_MAX_DIST (ZXC_LZ_WINDOW_SIZE - 1)  // Maximum offset distance
+/** @name Literal Stream Encoding
+ *  @{ */
+/** @brief Flag bit indicating an RLE run in the literal stream (0x80). */
+#define ZXC_LIT_RLE_FLAG 0x80U
+/** @brief Mask to extract the run/literal length (lower 7 bits). */
+#define ZXC_LIT_LEN_MASK (ZXC_LIT_RLE_FLAG - 1)
+/** @} */
 
-// Hash prime constants
-#define ZXC_HASH_PRIME1 0x9E3779B1U
-#define ZXC_HASH_PRIME2 0x85BA2D97U
-#define ZXC_HASH_PRIME3 0xB0F57EE3U
-#define ZXC_HASH_PRIME4 0x27D4EB2FU
+/** @name LZ77 Constants
+ *  @brief Hash table geometry, sliding window, and match parameters.
+ *
+ *  The hash table uses 14 bits for addressing (16 384 entries), doubled to
+ *  keep the load factor below 0.5.  Each entry stores
+ *  `(epoch << 18) | offset`, totalling 64 KB of memory.
+ *  The 64 KB sliding window allows `chain_table` to use `uint16_t`.
+ *  @{ */
+/** @brief Address bits for the LZ77 hash table (2^14 = 16 384 max). */
+#define ZXC_LZ_HASH_BITS 14
+/** @brief Marsaglia multiplicative hash constant for 4-byte hashing. */
+#define ZXC_LZ_HASH_PRIME1 0x2D35182DU
+/** @brief Marsaglia/Vigna xorshift* multiplier for 5-byte hashing. */
+#define ZXC_LZ_HASH_PRIME2 0x2545F4914F6CDD1DULL
+/** @brief Maximum number of entries in the hash table. */
+#define ZXC_LZ_HASH_SIZE (1U << ZXC_LZ_HASH_BITS)
+/** @brief Sliding window size (64 KB). */
+#define ZXC_LZ_WINDOW_SIZE (1U << 16)
+/** @brief Minimum match length for an LZ77 match. */
+#define ZXC_LZ_MIN_MATCH_LEN 5
+/** @brief Base bias added to encoded offsets (stored = actual - bias). */
+#define ZXC_LZ_OFFSET_BIAS 1
+/** @brief Maximum allowed offset distance. */
+#define ZXC_LZ_MAX_DIST (ZXC_LZ_WINDOW_SIZE - 1)
+/**
+ * @brief Number of bits reserved for epoch tracking in compressed pointers.
+ * Derived from chunk size: 2^18 = ZXC_BLOCK_SIZE_DEFAULT => 32 - 18 = 14 bits.
+ */
+#define ZXC_EPOCH_BITS 14
+/** @brief Mask to extract the offset bits from a compressed pointer. */
+#define ZXC_OFFSET_MASK ((1U << (32 - ZXC_EPOCH_BITS)) - 1)
+/** @brief Maximum number of epochs supported by the compression system. */
+#define ZXC_MAX_EPOCH (1U << ZXC_EPOCH_BITS)
+/** @} */
+
+/** @name Hash Prime Constants
+ *  @brief Mixing primes used by internal hash functions.
+ *  @{ */
+/** @brief Hash prime 1. */
+#define ZXC_HASH_PRIME1 0x9E3779B97F4A7C15ULL
+/** @brief Hash prime 2. */
+#define ZXC_HASH_PRIME2 0xD2D84A61D2D84A61ULL
+/** @} */
+
+/** @name Block Size Helpers
+ *  @brief Runtime helpers for variable block sizes.
+ *  @{ */
+
+/**
+ * @brief Integer log-base-2 for a 32-bit value.
+ * @param v Must be a power of two (undefined for zero).
+ * @return Floor of log2(v).
+ */
+static ZXC_ALWAYS_INLINE uint32_t zxc_log2_u32(uint32_t v) {
+    uint32_t r = 0;
+    while (v >>= 1) r++;
+    return r;
+}
+
+/**
+ * @brief Validates a block size.
+ * Must be a power of two in [ZXC_BLOCK_SIZE_MIN, ZXC_BLOCK_SIZE_MAX].
+ * @return 1 if valid, 0 otherwise.
+ */
+static ZXC_ALWAYS_INLINE int zxc_validate_block_size(const size_t bs) {
+    return bs >= ZXC_BLOCK_SIZE_MIN && bs <= ZXC_BLOCK_SIZE_MAX && (bs & (bs - 1)) == 0;
+}
+/** @} */
+
+/** @} */ /* end of File Format Constants */
 
 /**
  * @struct zxc_lz77_params_t
  * @brief Search parameters for LZ77 compression levels.
  */
 typedef struct {
-    int search_depth;     // Max matches to check in hash chain
-    int sufficient_len;   // Stop searching if match >= this length
-    int use_lazy;         // Use lazy matching (check next position)
-    int lazy_attempts;    // Max matches to check for lazy matching
-    uint32_t step_base;   // Base step for literal advancement
-    uint32_t step_shift;  // Shift for distance-based stepping
+    int search_depth;    /**< Maximum number of matches to check in hash chain. */
+    int sufficient_len;  /**< Stop searching if match length >= this value. */
+    int use_lazy;        /**< Enable lazy matching (check next position for better match). */
+    int lazy_attempts;   /**< Maximum matches to check during lazy matching. */
+    uint32_t step_base;  /**< Base step size for literal advancement. */
+    uint32_t step_shift; /**< Shift amount for distance-based stepping. */
 } zxc_lz77_params_t;
 
 /**
@@ -272,8 +479,8 @@ static ZXC_ALWAYS_INLINE zxc_lz77_params_t zxc_get_lz77_params(const int level) 
         {4, 16, 0, 0, 4, 4},  // fallback
         {4, 16, 0, 0, 4, 4},  // level 1
         {6, 24, 0, 0, 3, 6},  // level 2
-        {4, 32, 1, 8, 1, 4},  // level 3
-        {4, 32, 1, 8, 1, 5}   // level 4
+        {3, 18, 1, 4, 1, 4},  // level 3
+        {3, 18, 1, 4, 1, 5}   // level 4
     };
     return table[level < 1 ? 1 : level];
 }
@@ -358,14 +565,9 @@ typedef struct {
  *
  * Used to track the compressed and uncompressed sizes of sub-components
  * (e.g., a literal stream or offset stream) within a block.
- *
- * @var zxc_section_desc_t::comp_size
- * The size of the section on disk (compressed).
- * @var zxc_section_desc_t::raw_size
- * The size of the section in memory (decompressed).
  */
 typedef struct {
-    uint64_t sizes;  // comp_size (low 32) | raw_size (high 32)
+    uint64_t sizes; /**< Packed sizes: compressed size (low 32 bits) | raw size (high 32 bits). */
 } zxc_section_desc_t;
 
 /**
@@ -385,27 +587,18 @@ typedef struct {
 } zxc_num_header_t;
 
 /**
- * @typedef zxc_bit_reader_t
+ * @struct zxc_bit_reader_t
  * @brief Internal bit reader structure for ZXC compression/decompression.
  *
  * This structure maintains the state of the bit stream reading operation.
  * It buffers bits from the input byte stream into an accumulator to allow
  * reading variable-length bit sequences.
- *
- * @field ptr Pointer to the current position in the input byte stream. This
- * pointer advances as bytes are loaded into the accumulator.
- * @field end Pointer to the end of the input byte stream. Used to prevent
- * reading past the bounds of the input buffer.
- * @field accum Bit accumulator holding buffered bits. A 64-bit buffer that
- * holds the bits currently loaded from the stream but not yet consumed.
- * @field bits Number of valid bits currently in the accumulator. Indicates how
- * many bits are available in @c accum to be read.
  */
 typedef struct {
-    const uint8_t* ptr;
-    const uint8_t* end;
-    uint64_t accum;
-    int bits;
+    const uint8_t* ptr; /**< Pointer to the current position in the input byte stream. */
+    const uint8_t* end; /**< Pointer to the end of the input byte stream. */
+    uint64_t accum;     /**< Bit accumulator holding buffered bits (64-bit buffer). */
+    int bits;           /**< Number of valid bits currently in the accumulator. */
 } zxc_bit_reader_t;
 
 /**
@@ -546,16 +739,18 @@ static ZXC_ALWAYS_INLINE void zxc_store_le64(void* p, const uint64_t v) {
 /**
  * @brief Computes the 1-byte checksum for block headers.
  *
+ * Implementation based on Marsaglia's Xorshift (PRNG) principles.
+ *
  * @param[in] p Pointer to the input data to be hashed (8 bytes)
  * @return uint8_t The computed hash value.
  */
 static ZXC_ALWAYS_INLINE uint8_t zxc_hash8(const uint8_t* p) {
     const uint64_t v = zxc_le64(p);
-    uint64_t h = v * ZXC_HASH_PRIME1;
-    h ^= (h >> 32);
-    h *= ZXC_HASH_PRIME2;
-    h ^= (h >> 32);
-    return (uint8_t)h;
+    uint64_t h = v ^ ZXC_HASH_PRIME1;
+    h ^= h << 13;
+    h ^= h >> 7;
+    h ^= h << 17;
+    return (uint8_t)((h >> 32) ^ h);
 }
 
 /**
@@ -563,24 +758,20 @@ static ZXC_ALWAYS_INLINE uint8_t zxc_hash8(const uint8_t* p) {
  *
  * This function generates a hash value by reading data from the given pointer.
  * The result is a 16-bit hash.
+ * Implementation based on Marsaglia's Xorshift (PRNG) principles.
  *
  * @param[in] p Pointer to the input data to be hashed (16 bytes)
  * @return uint16_t The computed hash value.
  */
 static ZXC_ALWAYS_INLINE uint16_t zxc_hash16(const uint8_t* p) {
-    const uint32_t v0 = zxc_le32(p);
-    const uint32_t v1 = zxc_le32(p + 4);
-    const uint32_t v2 = zxc_le32(p + 8);
-    const uint32_t v3 = zxc_le32(p + 12);
-
-    uint32_t h = (v0 * ZXC_HASH_PRIME1);
-    h ^= (v1 * ZXC_HASH_PRIME2);
-    h ^= (v2 * ZXC_HASH_PRIME3);
-    h ^= (v3 * ZXC_HASH_PRIME4);
-
-    h = (h << 13) | (h >> 19);
-    h *= ZXC_HASH_PRIME1;
-    return (uint16_t)((h ^ (h >> 16)) & 0xFFFF);
+    const uint64_t h1 = zxc_le64(p);
+    const uint64_t h2 = zxc_le64(p + 8);
+    uint64_t h = h1 ^ h2 ^ ZXC_HASH_PRIME2;
+    h ^= h << 13;
+    h ^= h >> 7;
+    h ^= h << 17;
+    uint32_t res = (uint32_t)((h >> 32) ^ h);
+    return (uint16_t)((res >> 16) ^ res);
 }
 
 /**
@@ -883,7 +1074,7 @@ static ZXC_ALWAYS_INLINE void zxc_br_init(zxc_bit_reader_t* RESTRICT br,
  */
 static ZXC_ALWAYS_INLINE void zxc_br_ensure(zxc_bit_reader_t* RESTRICT br, const int needed) {
     if (UNLIKELY(br->bits < needed)) {
-        int safe_bits = (br->bits < 0) ? 0 : br->bits;
+        const int safe_bits = (br->bits < 0) ? 0 : br->bits;
         br->bits = safe_bits;
 
         // Mask out garbage bits (retain only valid existing bits)
@@ -896,19 +1087,21 @@ static ZXC_ALWAYS_INLINE void zxc_br_ensure(zxc_bit_reader_t* RESTRICT br, const
         // Calculate how many bytes we can read
         // We want to fill up to the accumulation capability (64 bits for uint64_t)
         // Bytes needed = (capacity_bits - safe_bits) / 8
-        int bytes_needed = ((int)(sizeof(uint64_t) * 8) - safe_bits) >> 3;
+        const int bytes_needed = ((int)(sizeof(uint64_t) * 8) - safe_bits) >> 3;
 
-        // Bounds check: don't read past end
-        size_t bytes_left = (size_t)(br->end - br->ptr);
-        if (UNLIKELY(bytes_left < (size_t)bytes_needed)) {
+        // Bounds check: zxc_le64 always reads 8 bytes, so we need at least 8
+        const size_t bytes_left = (size_t)(br->end - br->ptr);
+        if (UNLIKELY(bytes_left < sizeof(uint64_t))) {
             // Partial read (slow path / end of stream)
-            uint64_t raw = zxc_le_partial(br->ptr, bytes_left);
+            const size_t to_read =
+                (bytes_left < (size_t)bytes_needed) ? bytes_left : (size_t)bytes_needed;
+            const uint64_t raw = zxc_le_partial(br->ptr, to_read);
             br->accum |= (raw << safe_bits);
-            br->ptr += bytes_left;
-            br->bits = safe_bits + (int)bytes_left * 8;
+            br->ptr += to_read;
+            br->bits = safe_bits + (int)to_read * 8;
         } else {
-            // Fast path: standard read
-            uint64_t raw = zxc_le64(br->ptr);
+            // Fast path: full 8-byte read is safe
+            const uint64_t raw = zxc_le64(br->ptr);
             br->accum |= (raw << safe_bits);
             br->ptr += bytes_needed;
             br->bits = safe_bits + bytes_needed * 8;
@@ -990,7 +1183,7 @@ int zxc_write_glo_header_and_desc(uint8_t* RESTRICT dst, const size_t rem,
  * @param[out] gh Pointer to the generic header structure to populate.
  * @param[out] desc Array of 4 section descriptors to populate.
  *
- * @return int Returns 0 on success, or a negative error code on failure.
+ * @return int Returns ZXC_OK on success, or a negative zxc_error_t code on failure.
  */
 int zxc_read_glo_header_and_desc(const uint8_t* RESTRICT src, const size_t len,
                                  zxc_gnr_header_t* RESTRICT gh,
@@ -1022,7 +1215,7 @@ int zxc_write_ghi_header_and_desc(uint8_t* RESTRICT dst, const size_t rem,
  * @param[out] desc Array of 3 zxc_section_desc_t structures to store the parsed section
  * descriptors.
  *
- * @return int Returns 0 on success, or a negative error code on failure.
+ * @return int Returns ZXC_OK on success, or a negative zxc_error_t code on failure.
  */
 int zxc_read_ghi_header_and_desc(const uint8_t* RESTRICT src, const size_t len,
                                  zxc_gnr_header_t* RESTRICT gh,
@@ -1044,7 +1237,7 @@ int zxc_read_ghi_header_and_desc(const uint8_t* RESTRICT src, const size_t len,
  * @param[in] dst_cap Capacity of the destination buffer (maximum bytes that can be
  * written).
  *
- * @return int    Returns 0 on success, or a negative error code on failure.
+ * @return int    Returns ZXC_OK on success, or a negative zxc_error_t code on failure.
  *                Specific error codes depend on the underlying ZXC
  * implementation.
  */
@@ -1072,6 +1265,8 @@ int zxc_decompress_chunk_wrapper(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRI
  */
 int zxc_compress_chunk_wrapper(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT chunk,
                                const size_t src_sz, uint8_t* RESTRICT dst, const size_t dst_cap);
+
+/** @} */ /* end of internal */
 
 #ifdef __cplusplus
 }
