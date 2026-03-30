@@ -694,10 +694,6 @@ void CompressedInputStream::close()
         std::lock_guard<std::mutex> lock(_blockMutex);
         STORE_ATOMIC(_blockId, CANCEL_TASKS_ID);
     }
-    _blockCondition.notify_all();
-#else
-    STORE_ATOMIC(_blockId, CANCEL_TASKS_ID);
-#endif
 
     _blockCondition.notify_all();
 
