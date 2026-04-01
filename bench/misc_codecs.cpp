@@ -98,7 +98,7 @@ int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     TampDecompressor decompressor;
     size_t compressed_consumed_size;
 
-    tamp_decompressor_init(&decompressor, NULL, (unsigned char *)codec_options->work_mem);
+    tamp_decompressor_init(&decompressor, NULL, (unsigned char *)codec_options->work_mem, codec_options->level);
 
     tamp_decompressor_decompress(
         &decompressor,
