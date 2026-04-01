@@ -82,7 +82,7 @@ Supported compressors
  - [quicklz to 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/)
  - [slz 1.2.1](http://www.libslz.org/) - only a compressor, uses zlib for decompression
  - [snappy 1.2.2](https://github.com/google/snappy)
- - [tamp v1.10.0](https://github.com/BrianPugh/tamp)
+ - [tamp 2.1.0](https://github.com/BrianPugh/tamp)
  - [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29)
  - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
  - [xz 5.8.1](https://github.com/tukaani-project/xz)
