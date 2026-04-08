@@ -77,7 +77,7 @@ public:
 #elif defined(KNZ_USE_WINDOWS_QPC)
         QueryPerformanceCounter(&now.value);
 #elif defined(KNZ_USE_POSIX_GETTIMEOFDAY)
-        gettimeofday(&now.value, nullptr);
+        gettimeofday(&now.value, 0);
 #endif
         return now;
     }

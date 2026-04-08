@@ -57,7 +57,9 @@ inline std::string& rtrim(std::string& s)
     static const char* whitespaces = " \t\f\v\n\r";
     std::size_t pos = s.find_last_not_of(whitespaces);
 
-    if (pos != std::string::npos)
+    if (pos == std::string::npos)
+       s.clear();
+    else
        s.erase(pos + 1);
 
     return s;
@@ -69,7 +71,9 @@ inline std::string& ltrim(std::string& s)
     static const char* whitespaces = " \t\f\v\n\r";
     std::size_t pos = s.find_first_not_of(whitespaces);
 
-    if (pos != std::string::npos)
+    if (pos == std::string::npos)
+       s.clear();
+    else
        s.erase(0, pos);
 
     return s;

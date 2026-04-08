@@ -60,7 +60,6 @@ const int EXECodec::MAC_LC_SEGMENT64 = 0x19;
 const int EXECodec::MIN_BLOCK_SIZE = 4096;
 const int EXECodec::MAX_BLOCK_SIZE = (1 << (26 + 2)) - 1; // max offset << 2
 
-
 bool EXECodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
 {
     if (count == 0)
@@ -119,11 +118,12 @@ bool EXECodec::forwardX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
     int dstIdx = 9;
     int matches = 0;
     const int dstEnd = output._length - 5;
+    bool boundaryReached = false;
 
-    if ((dstIdx + codeStart > output._length) || (srcIdx + codeStart > input._length))
+    if ((codeStart < 0) || (codeStart > count) || (dstIdx + codeStart > output._length))
         return false;
 
-    if (codeEnd > input._length)
+    if ((codeEnd < codeStart) || (codeEnd > count))
         return false;
 
     if (codeStart > 0) {
@@ -133,6 +133,11 @@ bool EXECodec::forwardX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
 
     while ((srcIdx < codeEnd) && (dstIdx < dstEnd)) {
         if (src[srcIdx] == X86_TWO_BYTE_PREFIX) {
+            if (srcIdx + 1 >= codeEnd) {
+                boundaryReached = true;
+                break;
+            }
+
             dst[dstIdx++] = src[srcIdx++];
 
             if ((src[srcIdx] & X86_MASK_JCC) != X86_INSTRUCTION_JCC) {
@@ -143,6 +148,11 @@ bool EXECodec::forwardX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
                 dst[dstIdx++] = src[srcIdx++];
                 continue;
             }
+
+            if (srcIdx + 4 >= codeEnd) {
+                boundaryReached = true;
+                break;
+            }
         } else if ((src[srcIdx] & X86_MASK_JUMP) != X86_INSTRUCTION_JUMP) {
             // Not a relative call
             if (src[srcIdx] == X86_ESCAPE)
@@ -150,6 +160,9 @@ bool EXECodec::forwardX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
 
             dst[dstIdx++] = src[srcIdx++];
             continue;
+        } else if (srcIdx + 4 >= codeEnd) {
+            boundaryReached = true;
+            break;
         }
 
         // Current instruction is a jump/call.
@@ -171,7 +184,7 @@ bool EXECodec::forwardX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
         matches++;
     }
 
-    if ((srcIdx < codeEnd) || (matches < 16))
+    if ((matches < 16) || ((srcIdx < codeEnd) && (boundaryReached == false)))
         return false;
 
     if (dstIdx + (count - srcIdx) > dstEnd)
@@ -201,10 +214,10 @@ bool EXECodec::forwardARM(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
     int matches = 0;
     const int dstEnd = output._length - 8;
 
-    if ((dstIdx + codeStart > output._length) || (srcIdx + codeStart > input._length))
+    if ((codeStart < 0) || (codeStart > count) || (dstIdx + codeStart > output._length))
         return false;
 
-    if (codeEnd > input._length)
+    if ((codeEnd < codeStart) || (codeEnd > count))
         return false;
 
     if (codeStart > 0) {
@@ -551,7 +564,7 @@ kanzi::byte EXECodec::detectType(const kanzi::byte src[], int count, int& codeSt
         return NOT_EXE | kanzi::byte(dt);
 
     // Ad-hoc thresholds
-    if ((jumpsX86 >= (count / 200)) && (histo[255] >= uint(count / 50)))
+    if (jumpsX86 >= (count / 200))
         return X86;
 
     if (jumpsARM64 >= (count / 200))

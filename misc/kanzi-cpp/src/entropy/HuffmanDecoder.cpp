@@ -334,6 +334,7 @@ int HuffmanDecoder::decodeV5(kanzi::byte block[], uint blkptr, uint count)
 
     while (startChunk < end) {
         const uint endChunk = min(startChunk + _chunkSize, end);
+        const uint sizeChunk = endChunk - startChunk;
 
         // For each chunk, read code lengths, rebuild codes, rebuild decoding table
         const int alphabetSize = readLengths();
@@ -358,7 +359,7 @@ int HuffmanDecoder::decodeV5(kanzi::byte block[], uint blkptr, uint count)
         // Read chunk size
         const int szBits = EntropyUtils::readVarInt(_bitstream);
 
-        if (szBits < 0)
+        if ((szBits < 0) || (szBits > int(sizeChunk) * HuffmanCommon::MAX_SYMBOL_SIZE))
             return -1;
 
         // Read compressed data from bitstream

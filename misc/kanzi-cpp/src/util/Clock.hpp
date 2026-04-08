@@ -17,17 +17,15 @@ limitations under the License.
 #ifndef knz_Clock
 #define knz_Clock
 
-
-#if __cplusplus >= 201103L || _MSC_VER >= 1700
-
-#include <chrono>
+#include "WallTimer.hpp"
 
 namespace kanzi
 {
    class Clock {
    private:
-           std::chrono::steady_clock::time_point _start;
-           std::chrono::steady_clock::time_point _stop;
+           WallTimer _timer;
+           WallTimer::TimeData _start;
+           WallTimer::TimeData _stop;
 
    public:
            Clock()
@@ -38,59 +36,20 @@ namespace kanzi
 
            void start()
            {
-                   _start = std::chrono::steady_clock::now();
+                   _start = _timer.getCurrentTime();
            }
 
            void stop()
            {
-                   _stop = std::chrono::steady_clock::now();
+                   _stop = _timer.getCurrentTime();
            }
 
            double elapsed() const
            {
                    // In millisec
-                   return double(std::chrono::duration_cast<std::chrono::milliseconds>(_stop - _start).count());
+                   return WallTimer::calculateDifference(_start, _stop);
            }
    };
 }
-#else
-
-#include <ctime>
-
-namespace kanzi
-{
-
-   class Clock {
-   private:
-           clock_t _start;
-           clock_t _stop;
-
-   public:
-           Clock()
-           {
-               start();
-               _stop = _start;
-           }
-
-           void start()
-           {
-              _start = clock();
-           }
-
-           void stop()
-           {
-              _stop = clock();
-           }
-
-           double elapsed() const
-           {
-              // In millisec
-              return (_stop <= _start) ? 0.0 : double(_stop - _start) / CLOCKS_PER_SEC * 1000.0;
-           }
-   };
-   
-}
-#endif
 
 #endif
-
