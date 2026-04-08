@@ -164,7 +164,7 @@ namespace kanzi
        flush();
        _os.clear();
        _os.seekp(std::streampos(pos >> 3));
-       return true;
+       return _os.fail() == false;
    }
 #endif
 

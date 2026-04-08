@@ -297,9 +297,9 @@ bool LZXCodec<T>::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
         // LLL : <= 7 --> LLL == literal length (if 7, remainder encoded outside of token)
         // MMM : <= 7 --> MMM == match length (if 7, remainder encoded outside of token)
         // MM  : <= 3 --> MM  == match length (if 3, remainder encoded outside of token)
-        // FF = 01    --> 1 kanzi::byte dist
-        // FF = 10    --> 2 kanzi::byte dist
-        // FF = 11    --> 3 kanzi::byte dist
+        // FF = 01    --> 1 byte dist
+        // FF = 10    --> 2 byte dist
+        // FF = 11    --> 3 byte dist
         // FFF = 000  --> dist == repd0
         // FFF = 001  --> dist == repd1
         const int dist = srcIdx - ref;

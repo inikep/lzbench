@@ -173,6 +173,9 @@ namespace kanzi {
        _is.clear();
        _is.seekg(std::streampos(pos >> 3));
 
+       if (_is.fail())
+           return false;
+
        if ((pos & 7) != 0)
            readBits(pos & 7);
 
@@ -182,4 +185,3 @@ namespace kanzi {
 
 }
 #endif
-

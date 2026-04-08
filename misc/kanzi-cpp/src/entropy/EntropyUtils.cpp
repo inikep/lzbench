@@ -17,6 +17,7 @@ limitations under the License.
 #include <deque>
 #include <sstream>
 #include "EntropyUtils.hpp"
+#include "../BitStreamException.hpp"
 
 using namespace kanzi;
 using namespace std;
@@ -261,16 +262,23 @@ uint32 EntropyUtils::readVarInt(InputBitStream& ibs)
 {
     uint32 value = uint32(ibs.readBits(8));
     uint32 res = value & 0x7F;
-    int shift = 7;
 
-    while (value >= 128) {
+    for (int shift = 7; value >= 128; shift += 7) {
         value = uint32(ibs.readBits(8));
+
+        if (shift == 28) {
+            // uint32 varint: last byte may only carry 4 payload bits and
+            // must terminate the sequence.
+            if ((value >= 128) || ((value & 0x70) != 0)) {
+                throw BitStreamException("Invalid variable-length integer in bitstream",
+                    BitStreamException::INVALID_STREAM);
+            }
+
+            res |= ((value & 0x0F) << shift);
+            return res;
+        }
+
         res |= ((value & 0x7F) << shift);
-
-        if (shift == 28)
-            break;
-
-        shift += 7;
     }
 
     return res;

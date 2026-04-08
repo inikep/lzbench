@@ -210,7 +210,7 @@ bool DefaultInputBitStream::hasMoreToRead()
     if (isClosed() == true)
         return false;
 
-    if ((_position < _maxPosition) || (_availBits > 0))
+    if ((_position <= _maxPosition) || (_availBits > 0))
         return true;
 
     try {

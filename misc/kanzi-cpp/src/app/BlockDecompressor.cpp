@@ -261,7 +261,7 @@ int BlockDecompressor::decompress(uint64& inputSize)
             else if ((inputIsDir == true) && (specialOutput == false)) {
                 oName = formattedOutName + iName.substr(formattedInName.size());
 
-                if ((upperInputName.length() >= 4) && (upperInputName.substr(upperInputName.length() - 4) == ".KNZ"))
+                if ((upperIName.length() >= 4) && (upperIName.substr(upperIName.length() - 4) == ".KNZ"))
                     oName.resize(oName.length() - 4);
                 else
                     oName = oName + ".bak";
@@ -667,7 +667,7 @@ T FileDecompressTask<T>::run()
                     read += decoded;
                 }
             }
-            catch (const exception& e) {
+                catch (const exception& e) {
                     dispose();
                     const uint64 d = _cis->getRead();
                     delete _cis;

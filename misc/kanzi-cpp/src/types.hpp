@@ -157,7 +157,7 @@ limitations under the License.
     // __cplusplus always defaults to 199711L (aka C++98) !!! (unless
     // the extra option /Zc:__cplusplus is added to the command line).
     // Otherwise, using the _MSVC_LANG macro returns the proper C++ version.
-    #if __cplusplus >= 201103L
+    #if (__cplusplus >= 201103L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 201103L)
        // C++ 11 or higher
        #define FINAL final
        #define NOEXCEPT noexcept
@@ -197,7 +197,12 @@ limitations under the License.
              #endif
        #endif
 
-       #if !defined(nullptr)
+       #if !defined(nullptr) && \
+           ((defined(_MSC_VER) && (_MSC_VER < 1600)) || \
+            (defined(__GNUC__) && !defined(__clang__) && \
+             ((__GNUC__ < 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ < 6)))) || \
+            (defined(__clang__) && \
+             ((__clang_major__ < 3) || ((__clang_major__ == 3) && (__clang_minor__ < 1)))))
           #define nullptr NULL
        #endif
     #endif

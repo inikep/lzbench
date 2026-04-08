@@ -43,7 +43,7 @@ namespace kanzi
          void print(const char* msg, bool print) {
             if ((print == true) && (msg != nullptr)) {
    #ifdef CONCURRENCY_ENABLED
-               std::lock_guard<std::mutex> lock(_mtx);
+               std::lock_guard<std::mutex> lock(getMutex());
    #endif
                (*_os) << msg;
             }
@@ -52,7 +52,7 @@ namespace kanzi
          void println(const char* msg, bool print) {
             if ((print == true) && (msg != nullptr)) {
    #ifdef CONCURRENCY_ENABLED
-               std::lock_guard<std::mutex> lock(_mtx);
+               std::lock_guard<std::mutex> lock(getMutex());
    #endif
                (*_os) << msg << std::endl;
             }
@@ -61,7 +61,7 @@ namespace kanzi
          void print(const std::string& msg, bool print) {
             if (print == true) {
    #ifdef CONCURRENCY_ENABLED
-               std::lock_guard<std::mutex> lock(_mtx);
+               std::lock_guard<std::mutex> lock(getMutex());
    #endif
                (*_os) << msg;
             }
@@ -70,7 +70,7 @@ namespace kanzi
          void println(const std::string& msg, bool print) {
             if (print == true) {
    #ifdef CONCURRENCY_ENABLED
-               std::lock_guard<std::mutex> lock(_mtx);
+               std::lock_guard<std::mutex> lock(getMutex());
    #endif
                (*_os) << msg << std::endl;
             }
@@ -79,11 +79,13 @@ namespace kanzi
 
    private:
    #ifdef CONCURRENCY_ENABLED
-         static std::mutex _mtx;
+         static std::mutex& getMutex() {
+            static std::mutex mtx;
+            return mtx;
+         }
    #endif
          std::ostream* _os;
    };
 
 }
 #endif
-

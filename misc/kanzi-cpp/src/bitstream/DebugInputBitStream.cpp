@@ -124,30 +124,28 @@ uint DebugInputBitStream::readBits(kanzi::byte bits[], uint count)
 {
     count = _delegate.readBits(bits, count);
 
-    for (uint i = 0; i < (count >> 3); i++) {
-        for (int j = 7; j >= 0; j--) {
-            int bit = int(bits[i] >> j) & 1;
-            _idx++;
-            _current <<= 1;
-            _current |= kanzi::byte(bit);
-            _out << ((bit == 1) ? "1" : "0");
+    for (uint i = 0; i < count; i++) {
+        const int bit = int(bits[i >> 3] >> (7 - (i & 7))) & 1;
+        _idx++;
+        _current <<= 1;
+        _current |= kanzi::byte(bit);
+        _out << ((bit == 1) ? "1" : "0");
 
-            if ((_mark == true) && (j == int(count)))
-                _out << "r";
+        if ((_mark == true) && (i + 1 == count))
+            _out << "r";
 
-            if ((_width != -1) && (_idx % _width == 0)) {
-                if (showByte())
-                    printByte(_current);
+        if ((_width != -1) && (_idx % _width == 0)) {
+            if (showByte())
+                printByte(_current);
 
-                _out << endl;
-                _idx = 0;
-            }
-            else if ((_idx & 7) == 0) {
-                if (showByte())
-                    printByte(_current);
-                else
-                    _out << " ";
-            }
+            _out << endl;
+            _idx = 0;
+        }
+        else if ((_idx & 7) == 0) {
+            if (showByte())
+                printByte(_current);
+            else
+                _out << " ";
         }
     }
 
@@ -175,5 +173,4 @@ void DebugInputBitStream::printByte(kanzi::byte b)
 
     _out << val << "] ";
 }
-
 

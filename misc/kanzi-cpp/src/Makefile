@@ -47,6 +47,14 @@ else
 	endif
 endif	
 
+ifeq ($(DETECTED_OS),FreeBSD)
+    STATIC_LINK_FLAGS := -static
+else ifeq ($(DETECTED_OS),Darwin)
+    STATIC_LINK_FLAGS :=
+else
+    STATIC_LINK_FLAGS := -static-libstdc++ -static-libgcc
+endif
+
 LIB_COMMON_SOURCES=Global.cpp \
 	Event.cpp \
 	util/WallTimer.cpp \
@@ -152,6 +160,8 @@ STATIC_DECOMP_LIB := lib$(APP)decomp$(STATIC_LIB_SUFFIX)
 SHARED_COMP_LIB := lib$(APP)comp$(SHARED_LIB_SUFFIX)
 SHARED_DECOMP_LIB := lib$(APP)decomp$(SHARED_LIB_SUFFIX)
 
+all: lib test $(APP_STATIC) $(APP_DYNAMIC)
+
 libcomp: $(STATIC_COMP_LIB) $(SHARED_COMP_LIB)
 
 libdecomp: $(STATIC_DECOMP_LIB) $(SHARED_DECOMP_LIB)
@@ -216,7 +226,8 @@ ifeq ($(DETECTED_OS),Darwin)
 kanzi_static:
 	@echo "Static linking is not supported on macOS"
 else
-kanzi_static: LDFLAGS += -static-libstdc++ -static-libgcc
+# Only add the flags if we aren't on macOS
+kanzi_static: LDFLAGS += $(STATIC_LINK_FLAGS)
 kanzi_static: $(LIB_OBJECTS) $(APP_OBJECTS)
 	$(CXX) $^ -o ../bin/kanzi_static$(PROG_SUFFIX) $(LDFLAGS)
 endif
@@ -226,7 +237,6 @@ kanzi_dynamic: LDFLAGS := $(filter-out -static,$(LDFLAGS))
 kanzi_dynamic: $(LIB_OBJECTS) $(APP_OBJECTS)
 	$(CXX) $^ -o ../bin/kanzi_dynamic$(PROG_SUFFIX) $(LDFLAGS)
 
-all: lib test $(APP_STATIC) $(APP_DYNAMIC)
 
 # Install / uninstall (may require sudo or admin rights)
 ifeq ($(DETECTED_OS),Windows)
@@ -269,13 +279,13 @@ else
 	install -d $(INSTALL_DIR)/bin
 	install -m577 ../bin/$(APP)$(PROG_SUFFIX) $(INSTALL_DIR)/bin
 	install -d $(MAN_DIR)
-	if [ -f ../kanzi.1.gz ]; then \
-		install -m 644 ../kanzi.1.gz $(MAN_DIR)/$(APP).1.gz; \
-	elif [ -f ../kanzi.1 ]; then \
-		gzip -n -c ../kanzi.1 > $(MAN_DIR)/$(APP).1.gz; \
+	if [ -f ../doc/kanzi.1.gz ]; then \
+		install -m 644 ../doc/kanzi.1.gz $(MAN_DIR)/$(APP).1.gz; \
+	elif [ -f ../doc/kanzi.1 ]; then \
+		gzip -n -c ../doc/kanzi.1 > $(MAN_DIR)/$(APP).1.gz; \
 		chmod 644 $(MAN_DIR)/$(APP).1.gz; \
 	else \
-		echo "Error: missing ../kanzi.1.gz or ../kanzi.1"; \
+		echo "Error: missing ../doc/kanzi.1.gz or ../doc/kanzi.1"; \
 		exit 1; \
 	fi
 endif
