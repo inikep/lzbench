@@ -179,7 +179,7 @@ int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, s
 
 int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-  std::string entropy;
+    std::string entropy;
     std::string transform;
     kanzi::uint szBlock;
 
@@ -241,7 +241,17 @@ int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t 
     ofixedbuf buf(outbuf, outsize);
     std::iostream os(&buf);
     kanzi::CompressedOutputStream cos(os, codec_options->threads, entropy, transform, szBlock);
-    cos.write(inbuf, insize);
+    const size_t max_io_size = size_t(1) << 30;
+    size_t remaining = insize;
+    char* next = inbuf;
+
+    while (remaining > 0) {
+        const size_t chunk = std::min(remaining, max_io_size);
+        cos.write(next, static_cast<std::streamsize>(chunk));
+        next += chunk;
+        remaining -= chunk;
+    }
+
     cos.close();
     return cos.getWritten();
 }
@@ -251,9 +261,21 @@ int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_
     ifixedbuf buf(inbuf, insize);
     std::iostream is(&buf);
     kanzi::CompressedInputStream cis(is, codec_options->threads);
-    cis.read(outbuf, outsize);
+    const size_t max_io_size = size_t(1) << 30;
+    size_t total = 0;
+
+    while (total < outsize) {
+        const size_t chunk = std::min(outsize - total, max_io_size);
+        cis.read(outbuf + total, static_cast<std::streamsize>(chunk));
+        const size_t decoded = static_cast<size_t>(cis.gcount());
+        total += decoded;
+
+        if (decoded != chunk)
+            break;
+    }
+
     cis.close();
-    return outsize; //cis.getRead();
+    return total;
 }
 #endif // BENCH_REMOVE_KANZI
 
