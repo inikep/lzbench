@@ -115,6 +115,10 @@ namespace kanzi {
        std::vector<Listener<Event>*> _listeners;
        Context _ctx;
 
+       void storeProcessedBlockId(int value);
+
+       void fetchAddProcessedBlockId();
+
    public:
        EncodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuffer,
            DefaultOutputBitStream* obs, XXHash32* hasher32, XXHash64* hasher64,

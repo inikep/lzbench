@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+#include <cstring>
 #include "Decompressor.hpp"
 #include "../types.hpp"
 #include "../Error.hpp"
@@ -122,6 +123,12 @@ KANZI_API int CDECL initDecompressor(struct dData* pData, FILE* src, struct dCon
         if (fd == -1)
            return Error::ERR_CREATE_DECOMPRESSOR;
 
+        if ((pData->headerless != 0) &&
+            ((memchr(pData->transform, 0, sizeof(pData->transform)) == nullptr) ||
+             (memchr(pData->entropy, 0, sizeof(pData->entropy)) == nullptr))) {
+            return Error::ERR_INVALID_PARAM;
+        }
+
         // Create decompression stream and context
         *pCtx = nullptr;
         fis = new FileInputStream(fd);
@@ -168,16 +175,19 @@ KANZI_API int CDECL initDecompressor(struct dData* pData, FILE* src, struct dCon
     }
     catch (const exception&) {
         if (dctx != nullptr) {
-            // pCis is managed by dctx, but might not be assigned yet
-            if (dctx->pCis)
+            if (dctx->pCis != nullptr) {
                delete dctx->pCis;
+               dctx->pCis = nullptr;
+            }
 
             delete dctx;
+            dctx = nullptr;
         }
 
-        // fis is usually owned by pCis, but if pCis wasn't created, we delete it
-        if (fis != nullptr && (dctx == nullptr || dctx->pCis == nullptr))
+        if (fis != nullptr) {
            delete fis;
+           fis = nullptr;
+        }
 
         return Error::ERR_CREATE_DECOMPRESSOR;
     }

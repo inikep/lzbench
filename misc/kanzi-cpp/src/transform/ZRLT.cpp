@@ -116,8 +116,14 @@ bool ZRLT::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outp
 
 bool ZRLT::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int length)
 {
+    if (length < 0)
+       return false;
+
     if (length == 0)
         return true;
+
+    if (length > input._length - input._index)
+        return false;
 
     if (!SliceArray<kanzi::byte>::isValid(input))
         throw invalid_argument("ZRLT: Invalid input block");
@@ -129,8 +135,8 @@ bool ZRLT::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outp
     kanzi::byte* dst = &output._array[output._index];
     uint srcIdx = 0;
     uint dstIdx = 0;
-    const uint srcEnd = length;
-    const uint dstEnd = output._length;
+    const uint srcEnd = uint(length);
+    const uint dstEnd = uint(output._length - output._index);
     uint runLength = 0;
 
     while (true) {
@@ -165,11 +171,14 @@ bool ZRLT::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outp
         }
 
         // Regular data processing
+        if (dstIdx >= dstEnd)
+            return false;
+
         if (val == 0xFF) {
             srcIdx++;
 
             if (srcIdx >= srcEnd)
-                goto End;
+                return false;
 
             dst[dstIdx] = kanzi::byte(0xFE + int(src[srcIdx]));
         }

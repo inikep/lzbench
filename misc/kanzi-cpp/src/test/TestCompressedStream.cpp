@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdio>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include "../io/CompressedInputStream.hpp"
 #include "../io/CompressedOutputStream.hpp"
 #include "../io/IOException.hpp"
@@ -202,6 +203,43 @@ uint64 compress5(kanzi::byte block[], uint length)
     return res;
 }
 
+uint64 compress6(kanzi::byte block[])
+{
+    CompressedOutputStream* cos = nullptr;
+    CompressedInputStream* cis = nullptr;
+    uint64 res;
+
+    try {
+        cout << "Test - large read request does not overflow streamsize" << endl;
+        stringbuf buffer;
+        iostream ios(&buffer);
+        cos = new CompressedOutputStream(ios, 1, "HUFFMAN", "TEXT");
+        cos->write((const char*)block, 1);
+        cos->close();
+        ios.seekg(0);
+        cis = new CompressedInputStream(ios, 1);
+        char decoded[1] = { 0 };
+        const streamsize requested = streamsize(numeric_limits<int>::max()) + streamsize(1);
+        cis->read(decoded, requested);
+
+        if ((cis->gcount() != 1) || (decoded[0] != char(block[0]))) {
+            cout << "Failure: invalid read result for large request" << endl;
+            res = 1;
+        }
+        else {
+            res = 0;
+        }
+    }
+    catch (const ios_base::failure& e) {
+        cout << "Failure: unexpected exception " << e.what() << endl;
+        res = 1;
+    }
+
+    delete cos;
+    delete cis;
+    return res;
+}
+
 int testCorrectness(int, const char*[])
 {
     // Test correctness
@@ -238,6 +276,9 @@ int testCorrectness(int, const char*[])
             cout << ((cres == 0) ? "Success" : "Failure") << endl;
             res &= (cres == 0);
             cres = compress5(values, length);
+            cout << ((cres == 0) ? "Success" : "Failure") << endl;
+            res &= (cres == 0);
+            cres = compress6(values);
             cout << ((cres == 0) ? "Success" : "Failure") << endl;
             res &= (cres == 0);
         }

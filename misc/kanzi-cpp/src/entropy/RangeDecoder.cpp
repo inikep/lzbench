@@ -188,7 +188,19 @@ kanzi::byte RangeDecoder::decodeByte()
 {
     // Compute next low and range
     _range >>= _shift;
-    const int symbol = _f2s[int((_code - _low) / _range)];
+    if (_range == 0) {
+        throw BitStreamException("Invalid bitstream: incorrect range in range decoder",
+            BitStreamException::INVALID_STREAM);
+    }
+
+    const uint64 cum = (_code - _low) / _range;
+
+    if (cum >= (uint64(1) << _shift)) {
+        throw BitStreamException("Invalid bitstream: incorrect cumulative frequency in range decoder",
+            BitStreamException::INVALID_STREAM);
+    }
+
+    const int symbol = _f2s[int(cum)];
     const uint64 cumFreq = _cumFreqs[symbol];
     const uint64 freq = _cumFreqs[symbol + 1] - cumFreq;
     _low += (cumFreq * _range);

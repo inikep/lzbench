@@ -158,6 +158,8 @@ namespace kanzi
        std::vector<Listener<Event>*> _listeners;
        Context _ctx;
 
+       void storeProcessedBlockId(int value);
+
    public:
        DecodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuffer,
            int blockSize, DefaultInputBitStream* ibs, XXHash32* hasher32, XXHash64* hasher64,

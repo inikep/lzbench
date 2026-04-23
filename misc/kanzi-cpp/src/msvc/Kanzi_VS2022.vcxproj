@@ -1,0 +1,322 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{A7FB6DB8-D93B-4287-8ED8-0E39A52509B3}</ProjectGuid>
+    <RootNamespace>Kanzi</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>Kanzi</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>14.0.25431.1</_ProjectFileVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <TargetName>Kanzi64</TargetName>
+    <CodeAnalysisRuleSet>NativeMinimumRules.ruleset</CodeAnalysisRuleSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <TargetName>Kanzi64</TargetName>
+    <CodeAnalysisRuleSet>NativeRecommendedRules.ruleset</CodeAnalysisRuleSet>
+    <EnableClangTidyCodeAnalysis>true</EnableClangTidyCodeAnalysis>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <OmitFramePointers>false</OmitFramePointers>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <LinkTimeCodeGeneration />
+      <TargetMachine>MachineX64</TargetMachine>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <OmitFramePointers>false</OmitFramePointers>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_SCL_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/Zc:__cplusplus </AdditionalOptions>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <LinkTimeCodeGeneration>
+      </LinkTimeCodeGeneration>
+      <LargeAddressAware>true</LargeAddressAware>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>None</DebugInformationFormat>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <MinimalRebuild />
+      <EnableEnhancedInstructionSet>StreamingSIMDExtensions</EnableEnhancedInstructionSet>
+      <CompileAs>CompileAsCpp</CompileAs>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <TargetMachine>MachineX86</TargetMachine>
+      <AdditionalOptions />
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <EnableParallelCodeGeneration>true</EnableParallelCodeGeneration>
+      <FloatingPointModel>Fast</FloatingPointModel>
+      <OmitFramePointers>true</OmitFramePointers>
+      <CompileAs>CompileAsCpp</CompileAs>
+      <EnableEnhancedInstructionSet>AdvancedVectorExtensions</EnableEnhancedInstructionSet>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
+      <AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+      <StructMemberAlignment>Default</StructMemberAlignment>
+    </ClCompile>
+    <Link>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <LargeAddressAware>true</LargeAddressAware>
+      <AdditionalDependencies />
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="api\Compressor.cpp" />
+    <ClCompile Include="api\Decompressor.cpp" />
+    <ClCompile Include="app\BlockCompressor.cpp">
+      <ShowIncludes Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ShowIncludes>
+    </ClCompile>
+    <ClCompile Include="app\BlockDecompressor.cpp" />
+    <ClCompile Include="app\InfoPrinter.cpp" />
+    <ClCompile Include="app\Kanzi.cpp" />
+    <ClCompile Include="bitstream\DebugInputBitStream.cpp" />
+    <ClCompile Include="bitstream\DebugOutputBitStream.cpp" />
+    <ClCompile Include="bitstream\DefaultInputBitStream.cpp" />
+    <ClCompile Include="bitstream\DefaultOutputBitStream.cpp" />
+    <ClCompile Include="entropy\ANSRangeDecoder.cpp" />
+    <ClCompile Include="entropy\ANSRangeEncoder.cpp" />
+    <ClCompile Include="entropy\BinaryEntropyDecoder.cpp" />
+    <ClCompile Include="entropy\BinaryEntropyEncoder.cpp" />
+    <ClCompile Include="entropy\CMPredictor.cpp" />
+    <ClCompile Include="entropy\EntropyUtils.cpp" />
+    <ClCompile Include="entropy\ExpGolombDecoder.cpp" />
+    <ClCompile Include="entropy\ExpGolombEncoder.cpp" />
+    <ClCompile Include="entropy\FPAQDecoder.cpp" />
+    <ClCompile Include="entropy\FPAQEncoder.cpp" />
+    <ClCompile Include="entropy\HuffmanCommon.cpp" />
+    <ClCompile Include="entropy\HuffmanDecoder.cpp" />
+    <ClCompile Include="entropy\HuffmanEncoder.cpp" />
+    <ClCompile Include="entropy\RangeDecoder.cpp" />
+    <ClCompile Include="entropy\RangeEncoder.cpp" />
+    <ClCompile Include="entropy\TPAQPredictor.cpp" />
+    <ClCompile Include="Event.cpp" />
+    <ClCompile Include="Global.cpp" />
+    <ClCompile Include="io\CompressedInputStream.cpp" />
+    <ClCompile Include="io\CompressedOutputStream.cpp" />
+    <ClCompile Include="test\TestBWT.cpp" />
+    <ClCompile Include="test\TestCompressedStream.cpp" />
+    <ClCompile Include="test\TestDefaultBitStream.cpp" />
+    <ClCompile Include="test\TestEntropyCodec.cpp" />
+    <ClCompile Include="test\TestTransforms.cpp" />
+    <ClCompile Include="transform\AliasCodec.cpp" />
+    <ClCompile Include="transform\BWT.cpp" />
+    <ClCompile Include="transform\BWTBlockCodec.cpp" />
+    <ClCompile Include="transform\BWTS.cpp" />
+    <ClCompile Include="transform\DivSufSort.cpp" />
+    <ClCompile Include="transform\EXECodec.cpp" />
+    <ClCompile Include="transform\FSDCodec.cpp" />
+    <ClCompile Include="transform\LZCodec.cpp" />
+    <ClCompile Include="transform\RLT.cpp" />
+    <ClCompile Include="transform\ROLZCodec.cpp" />
+    <ClCompile Include="transform\SBRT.cpp" />
+    <ClCompile Include="transform\SRT.cpp" />
+    <ClCompile Include="transform\TextCodec.cpp" />
+    <ClCompile Include="transform\UTFCodec.cpp" />
+    <ClCompile Include="transform\ZRLT.cpp" />
+    <ClCompile Include="util\WallTimer.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="api\Compressor.hpp" />
+    <ClInclude Include="api\Decompressor.hpp" />
+    <ClInclude Include="app\BlockCompressor.hpp" />
+    <ClInclude Include="app\BlockDecompressor.hpp" />
+    <ClInclude Include="app\InfoPrinter.hpp" />
+    <ClInclude Include="Context.hpp" />
+    <ClInclude Include="entropy\EntropyDecoderFactory.hpp" />
+    <ClInclude Include="entropy\EntropyEncoderFactory.hpp" />
+    <ClInclude Include="entropy\FPAQDecoder.hpp" />
+    <ClInclude Include="entropy\FPAQEncoder.hpp" />
+    <ClInclude Include="Memory.hpp" />
+    <ClInclude Include="BitStreamException.hpp"/>
+    <ClInclude Include="bitstream\DebugInputBitStream.hpp" />
+    <ClInclude Include="bitstream\DebugOutputBitStream.hpp" />
+    <ClInclude Include="bitstream\DefaultInputBitStream.hpp" />
+    <ClInclude Include="bitstream\DefaultOutputBitStream.hpp" />
+    <ClInclude Include="concurrent.hpp" />
+    <ClInclude Include="EntropyDecoder.hpp" />
+    <ClInclude Include="EntropyEncoder.hpp" />
+    <ClInclude Include="entropy\AdaptiveProbMap.hpp" />
+    <ClInclude Include="entropy\ANSRangeDecoder.hpp" />
+    <ClInclude Include="entropy\ANSRangeEncoder.hpp" />
+    <ClInclude Include="entropy\BinaryEntropyDecoder.hpp" />
+    <ClInclude Include="entropy\BinaryEntropyEncoder.hpp" />
+    <ClInclude Include="entropy\CMPredictor.hpp" />
+    <ClInclude Include="entropy\EntropyUtils.hpp" />
+    <ClInclude Include="entropy\ExpGolombDecoder.hpp" />
+    <ClInclude Include="entropy\ExpGolombEncoder.hpp" />
+    <ClInclude Include="entropy\HuffmanCommon.hpp" />
+    <ClInclude Include="entropy\HuffmanDecoder.hpp" />
+    <ClInclude Include="entropy\HuffmanEncoder.hpp" />
+    <ClInclude Include="entropy\NullEntropyDecoder.hpp" />
+    <ClInclude Include="entropy\NullEntropyEncoder.hpp" />
+    <ClInclude Include="entropy\RangeDecoder.hpp" />
+    <ClInclude Include="entropy\RangeEncoder.hpp" />
+    <ClInclude Include="entropy\TPAQPredictor.hpp" />
+    <ClInclude Include="Error.hpp" />
+    <ClInclude Include="Event.hpp" />
+    <ClInclude Include="Global.hpp" />
+    <ClInclude Include="InputBitStream.hpp" />
+    <ClInclude Include="InputStream.hpp" />
+    <ClInclude Include="io\CompressedInputStream.hpp" />
+    <ClInclude Include="io\CompressedOutputStream.hpp" />
+    <ClInclude Include="io\IOException.hpp" />
+    <ClInclude Include="io\IOUtil.hpp" />
+    <ClInclude Include="io\NullOutputStream.hpp" />
+    <ClInclude Include="Listener.hpp" />
+    <ClInclude Include="msvc_dirent.hpp" />
+    <ClInclude Include="OutputBitStream.hpp" />
+    <ClInclude Include="OutputStream.hpp" />
+    <ClInclude Include="Predictor.hpp" />
+    <ClInclude Include="SliceArray.hpp" />
+    <ClInclude Include="Transform.hpp" />
+    <ClInclude Include="transform\AliasCodec.hpp" />
+    <ClInclude Include="transform\BWT.hpp" />
+    <ClInclude Include="transform\BWTBlockCodec.hpp" />
+    <ClInclude Include="transform\BWTS.hpp" />
+    <ClInclude Include="transform\DivSufSort.hpp" />
+    <ClInclude Include="transform\EXECodec.hpp" />
+    <ClInclude Include="transform\FSDCodec.hpp" />
+    <ClInclude Include="transform\LZCodec.hpp" />
+    <ClInclude Include="transform\NullTransform.hpp" />
+    <ClInclude Include="transform\RLT.hpp" />
+    <ClInclude Include="transform\ROLZCodec.hpp" />
+    <ClInclude Include="transform\SBRT.hpp" />
+    <ClInclude Include="transform\SRT.hpp" />
+    <ClInclude Include="transform\TextCodec.hpp" />
+    <ClInclude Include="transform\TransformFactory.hpp" />
+    <ClInclude Include="transform\TransformSequence.hpp" />
+    <ClInclude Include="transform\UTFCodec.hpp" />
+    <ClInclude Include="transform\ZRLT.hpp" />
+    <ClInclude Include="types.hpp" />
+    <ClInclude Include="util\Clock.hpp" />
+    <ClInclude Include="util\fixedbuf.hpp" />
+    <ClInclude Include="util\Printer.hpp" />
+    <ClInclude Include="util\strings.hpp" />
+    <ClInclude Include="util\WallTimer.hpp" />
+    <ClInclude Include="util\XXHash.hpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

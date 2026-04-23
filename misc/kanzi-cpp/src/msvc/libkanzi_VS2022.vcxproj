@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>15.0</VCProjectVersion>
+    <ProjectGuid>{3E5CE550-982F-42A4-B631-0C65582F1EAF}</ProjectGuid>
+    <RootNamespace>libkanzi</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v141</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <TargetExt>.lib</TargetExt>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <TargetExt>.lib</TargetExt>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <PrecompiledHeaderFile />
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <OmitFramePointers>true</OmitFramePointers>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PrecompiledHeaderFile />
+      <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/Zc:__cplusplus %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies />
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\BitStreamException.hpp" />
+    <ClInclude Include="..\src\bitstream\DebugInputBitStream.hpp" />
+    <ClInclude Include="..\src\bitstream\DebugOutputBitStream.hpp" />
+    <ClInclude Include="..\src\bitstream\DefaultInputBitStream.hpp" />
+    <ClInclude Include="..\src\bitstream\DefaultOutputBitStream.hpp" />
+    <ClInclude Include="..\src\concurrent.hpp" />
+    <ClInclude Include="..\src\EntropyDecoder.hpp" />
+    <ClInclude Include="..\src\EntropyEncoder.hpp" />
+    <ClInclude Include="..\src\entropy\AdaptiveProbMap.hpp" />
+    <ClInclude Include="..\src\entropy\ANSRangeDecoder.hpp" />
+    <ClInclude Include="..\src\entropy\ANSRangeEncoder.hpp" />
+    <ClInclude Include="..\src\entropy\BinaryEntropyDecoder.hpp" />
+    <ClInclude Include="..\src\entropy\BinaryEntropyEncoder.hpp" />
+    <ClInclude Include="..\src\entropy\CMPredictor.hpp" />
+    <ClInclude Include="..\src\entropy\EntropyCodecFactory.hpp" />
+    <ClInclude Include="..\src\entropy\EntropyUtils.hpp" />
+    <ClInclude Include="..\src\entropy\ExpGolombDecoder.hpp" />
+    <ClInclude Include="..\src\entropy\ExpGolombEncoder.hpp" />
+    <ClInclude Include="..\src\entropy\FPAQDecoder.hpp" />
+    <ClInclude Include="..\src\entropy\FPAQEncoder.hpp" />
+    <ClInclude Include="..\src\entropy\HuffmanCommon.hpp" />
+    <ClInclude Include="..\src\entropy\HuffmanDecoder.hpp" />
+    <ClInclude Include="..\src\entropy\HuffmanEncoder.hpp" />
+    <ClInclude Include="..\src\entropy\NullEntropyDecoder.hpp" />
+    <ClInclude Include="..\src\entropy\NullEntropyEncoder.hpp" />
+    <ClInclude Include="..\src\entropy\RangeDecoder.hpp" />
+    <ClInclude Include="..\src\entropy\RangeEncoder.hpp" />
+    <ClInclude Include="..\src\entropy\TPAQPredictor.hpp" />
+    <ClInclude Include="..\src\Error.hpp" />
+    <ClInclude Include="..\src\Event.hpp" />
+    <ClInclude Include="..\src\Global.hpp" />
+    <ClInclude Include="..\src\InputBitStream.hpp" />
+    <ClInclude Include="..\src\InputStream.hpp" />
+    <ClInclude Include="..\src\io\CompressedInputStream.hpp" />
+    <ClInclude Include="..\src\io\CompressedOutputStream.hpp" />
+    <ClInclude Include="..\src\io\IOException.hpp" />
+    <ClInclude Include="..\src\io\IOUtil.hpp" />
+    <ClInclude Include="..\src\io\NullOutputStream.hpp" />
+    <ClInclude Include="..\src\Listener.hpp" />
+    <ClInclude Include="..\src\Memory.hpp" />
+    <ClInclude Include="..\src\msvc_dirent.hpp" />
+    <ClInclude Include="..\src\NullPointerException.hpp" />
+    <ClInclude Include="..\src\OutputBitStream.hpp" />
+    <ClInclude Include="..\src\OutputStream.hpp" />
+    <ClInclude Include="..\src\Predictor.hpp" />
+    <ClInclude Include="..\src\SliceArray.hpp" />
+    <ClInclude Include="..\src\Transform.hpp" />
+    <ClInclude Include="..\src\transform\AliasCodec.hpp" />
+    <ClInclude Include="..\src\transform\BWT.hpp" />
+    <ClInclude Include="..\src\transform\BWTBlockCodec.hpp" />
+    <ClInclude Include="..\src\transform\BWTS.hpp" />
+    <ClInclude Include="..\src\transform\DivSufSort.hpp" />
+    <ClInclude Include="..\src\transform\EXECodec.hpp" />
+    <ClInclude Include="..\src\transform\FSDCodec.hpp" />
+    <ClInclude Include="..\src\transform\LZCodec.hpp" />
+    <ClInclude Include="..\src\transform\NullTransform.hpp" />
+    <ClInclude Include="..\src\transform\RLT.hpp" />
+    <ClInclude Include="..\src\transform\ROLZCodec.hpp" />
+    <ClInclude Include="..\src\transform\SBRT.hpp" />
+    <ClInclude Include="..\src\transform\SRT.hpp" />
+    <ClInclude Include="..\src\transform\TextCodec.hpp" />
+    <ClInclude Include="..\src\transform\TransformFactory.hpp" />
+    <ClInclude Include="..\src\transform\TransformSequence.hpp" />
+    <ClInclude Include="..\src\transform\UTFCodec.hpp" />
+    <ClInclude Include="..\src\transform\ZRLT.hpp" />
+    <ClInclude Include="..\src\types.hpp" />
+    <ClInclude Include="..\src\api\Compressor.hpp" />
+    <ClInclude Include="..\src\api\Decompressor.hpp" />
+    <ClInclude Include="..\src\util\Clock.hpp" />
+    <ClInclude Include="..\src\util\fixedbuf.hpp" />
+    <ClInclude Include="..\src\util\Printer.hpp" />
+    <ClInclude Include="..\src\util\strings.hpp" />
+    <ClInclude Include="..\src\util\WallTimer.hpp" />
+    <ClInclude Include="..\src\util\XXHash.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\src\bitstream\DebugInputBitStream.cpp" />
+    <ClCompile Include="..\src\bitstream\DebugOutputBitStream.cpp" />
+    <ClCompile Include="..\src\bitstream\DefaultInputBitStream.cpp" />
+    <ClCompile Include="..\src\bitstream\DefaultOutputBitStream.cpp" />
+    <ClCompile Include="..\src\entropy\ANSRangeDecoder.cpp" />
+    <ClCompile Include="..\src\entropy\ANSRangeEncoder.cpp" />
+    <ClCompile Include="..\src\entropy\BinaryEntropyDecoder.cpp" />
+    <ClCompile Include="..\src\entropy\BinaryEntropyEncoder.cpp" />
+    <ClCompile Include="..\src\entropy\CMPredictor.cpp" />
+    <ClCompile Include="..\src\entropy\EntropyUtils.cpp" />
+    <ClCompile Include="..\src\entropy\ExpGolombDecoder.cpp" />
+    <ClCompile Include="..\src\entropy\ExpGolombEncoder.cpp" />
+    <ClCompile Include="..\src\entropy\FPAQDecoder.cpp" />
+    <ClCompile Include="..\src\entropy\FPAQEncoder.cpp" />
+    <ClCompile Include="..\src\entropy\HuffmanCommon.cpp" />
+    <ClCompile Include="..\src\entropy\HuffmanDecoder.cpp" />
+    <ClCompile Include="..\src\entropy\HuffmanEncoder.cpp" />
+    <ClCompile Include="..\src\entropy\RangeDecoder.cpp" />
+    <ClCompile Include="..\src\entropy\RangeEncoder.cpp" />
+    <ClCompile Include="..\src\entropy\TPAQPredictor.cpp" />
+    <ClCompile Include="..\src\Event.cpp" />
+    <ClCompile Include="..\src\Global.cpp" />
+    <ClCompile Include="..\src\io\CompressedInputStream.cpp" />
+    <ClCompile Include="..\src\io\CompressedOutputStream.cpp" />
+    <ClCompile Include="..\src\transform\AliasCodec.cpp" />
+    <ClCompile Include="..\src\transform\BWT.cpp" />
+    <ClCompile Include="..\src\transform\BWTBlockCodec.cpp" />
+    <ClCompile Include="..\src\transform\BWTS.cpp" />
+    <ClCompile Include="..\src\transform\DivSufSort.cpp" />
+    <ClCompile Include="..\src\transform\EXECodec.cpp" />
+    <ClCompile Include="..\src\transform\FSDCodec.cpp" />
+    <ClCompile Include="..\src\transform\LZCodec.cpp" />
+    <ClCompile Include="..\src\transform\RLT.cpp" />
+    <ClCompile Include="..\src\transform\ROLZCodec.cpp" />
+    <ClCompile Include="..\src\transform\SBRT.cpp" />
+    <ClCompile Include="..\src\transform\SRT.cpp" />
+    <ClCompile Include="..\src\transform\TextCodec.cpp" />
+    <ClCompile Include="..\src\transform\UTFCodec.cpp" />
+    <ClCompile Include="..\src\transform\ZRLT.cpp" />
+    <ClCompile Include="..\src\util\WallTimer.cpp" />
+    <ClCompile Include="..\src\api\Compressor.cpp" />
+    <ClCompile Include="..\src\api\Decompressor.cpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -18,6 +18,8 @@
         }                                                       \
     } while (0)
 
+#define KANZI_ERR_INVALID_PARAM 18
+
 
 #ifndef PORTABLE_FMEMOPEN_H
 #define PORTABLE_FMEMOPEN_H
@@ -113,6 +115,18 @@ static void test_init_invalid(void)
 
     rc = initCompressor(&p, f, NULL);
     ASSERT(rc != 0, "init should fail on NULL ctx");
+
+    p = make_params();
+    memset(p.transform, 'A', sizeof(p.transform));
+    rc = initCompressor(&p, f, &ctx);
+    ASSERT(rc == KANZI_ERR_INVALID_PARAM,
+        "init should reject unterminated transform");
+
+    p = make_params();
+    memset(p.entropy, 'B', sizeof(p.entropy));
+    rc = initCompressor(&p, f, &ctx);
+    ASSERT(rc == KANZI_ERR_INVALID_PARAM,
+        "init should reject unterminated entropy");
 
     fclose(f);
 }
@@ -342,6 +356,28 @@ static void test_init_decompressor_invalid(void)
     p.bufferSize = ((size_t)2 * 1024 * 1024 * 1024) + 1;
     rc = initDecompressor(&p, f, &ctx);
     ASSERT(rc != 0, "initDecompressor should fail on huge buffer");
+
+    memset(&p, 0, sizeof(p));
+    p.bufferSize = 1024;
+    p.jobs = 1;
+    p.headerless = 1;
+    p.blockSize = 1024;
+    strcpy(p.entropy, "ANS0");
+    memset(p.transform, 'A', sizeof(p.transform));
+    rc = initDecompressor(&p, f, &ctx);
+    ASSERT(rc == KANZI_ERR_INVALID_PARAM,
+        "initDecompressor should reject unterminated transform");
+
+    memset(&p, 0, sizeof(p));
+    p.bufferSize = 1024;
+    p.jobs = 1;
+    p.headerless = 1;
+    p.blockSize = 1024;
+    strcpy(p.transform, "LZ");
+    memset(p.entropy, 'B', sizeof(p.entropy));
+    rc = initDecompressor(&p, f, &ctx);
+    ASSERT(rc == KANZI_ERR_INVALID_PARAM,
+        "initDecompressor should reject unterminated entropy");
 
     fclose(f);
 }

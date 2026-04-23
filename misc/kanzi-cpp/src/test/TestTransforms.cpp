@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 #include "../types.hpp"
 #include "../transform/AliasCodec.hpp"
+#include "../transform/EXECodec.hpp"
 #include "../transform/FSDCodec.hpp"
 #include "../transform/LZCodec.hpp"
 #include "../transform/NullTransform.hpp"
@@ -31,6 +32,366 @@ limitations under the License.
 
 using namespace std;
 using namespace kanzi;
+
+static void writeInt16LE(kanzi::byte buf[], int value)
+{
+    buf[0] = kanzi::byte(value);
+    buf[1] = kanzi::byte(value >> 8);
+}
+
+static void writeInt32LE(kanzi::byte buf[], int value)
+{
+    buf[0] = kanzi::byte(value);
+    buf[1] = kanzi::byte(value >> 8);
+    buf[2] = kanzi::byte(value >> 16);
+    buf[3] = kanzi::byte(value >> 24);
+}
+
+static vector<kanzi::byte> createPEBlock(int arch)
+{
+    const int size = 8192;
+    const int codeStart = 512;
+    const int codeLen = 4096;
+    const int posPE = 0x80;
+    vector<kanzi::byte> data(size, kanzi::byte(0x90));
+    data[0] = kanzi::byte('M');
+    data[1] = kanzi::byte('Z');
+    writeInt32LE(&data[60], posPE);
+    data[posPE] = kanzi::byte('P');
+    data[posPE + 1] = kanzi::byte('E');
+    data[posPE + 2] = kanzi::byte(0);
+    data[posPE + 3] = kanzi::byte(0);
+    writeInt16LE(&data[posPE + 4], arch);
+    writeInt32LE(&data[posPE + 28], codeLen);
+    writeInt32LE(&data[posPE + 44], codeStart);
+    return data;
+}
+
+static void setPECodeLength(vector<kanzi::byte>& data, int codeLen)
+{
+    writeInt32LE(&data[0x80 + 28], codeLen);
+}
+
+static vector<kanzi::byte> createELF64Block(int arch)
+{
+    const int size = 8192;
+    const int codeStart = 512;
+    const int codeLen = 4096;
+    const int posSection = 0x100;
+    vector<kanzi::byte> data(size, kanzi::byte(0));
+    data[0] = kanzi::byte(0x7F);
+    data[1] = kanzi::byte('E');
+    data[2] = kanzi::byte('L');
+    data[3] = kanzi::byte('F');
+    data[4] = kanzi::byte(2);
+    data[5] = kanzi::byte(1);
+    writeInt16LE(&data[18], arch);
+    writeInt16LE(&data[0x3A], 0x40);
+    writeInt16LE(&data[0x3C], 1);
+    writeInt32LE(&data[0x28], posSection);
+    writeInt32LE(&data[posSection + 4], 1);
+    writeInt32LE(&data[posSection + 0x18], codeStart);
+    writeInt32LE(&data[posSection + 0x20], codeLen);
+    return data;
+}
+
+static void fillX86Code(vector<kanzi::byte>& data, int codeStart, int codeLen)
+{
+    for (int i = codeStart; i + 5 <= codeStart + codeLen; i += 5) {
+        data[i] = kanzi::byte(0xE8);
+        data[i + 1] = kanzi::byte(0);
+        data[i + 2] = kanzi::byte(0);
+        data[i + 3] = kanzi::byte(0);
+        data[i + 4] = kanzi::byte(0);
+    }
+}
+
+static void fillARM64Code(vector<kanzi::byte>& data, int codeStart, int codeLen)
+{
+    for (int i = codeStart; i + 4 <= codeStart + codeLen; i += 4)
+        writeInt32LE(&data[i], 0x14000000);
+}
+
+static void fillX86ExpandedCode(vector<kanzi::byte>& data, int codeStart, int codeLen)
+{
+    for (int i = codeStart; i + 8 <= codeStart + codeLen; i += 8) {
+        const bool escaped = (((i - codeStart) >> 3) < 24);
+        data[i] = kanzi::byte(0xE8);
+        data[i + 1] = kanzi::byte(0);
+        data[i + 2] = kanzi::byte(0);
+        data[i + 3] = kanzi::byte(0);
+        data[i + 4] = kanzi::byte(0);
+        data[i + 5] = escaped ? kanzi::byte(0x9B) : kanzi::byte(0x90);
+        data[i + 6] = kanzi::byte(0x90);
+        data[i + 7] = kanzi::byte(0x90);
+    }
+}
+
+static void addX86BoundaryJCC(vector<kanzi::byte>& data, int codeStart, int codeLen)
+{
+    const int idx = codeStart + codeLen - 5;
+    data[idx] = kanzi::byte(0x0F);
+    data[idx + 1] = kanzi::byte(0x85);
+    data[idx + 2] = kanzi::byte(0);
+    data[idx + 3] = kanzi::byte(0);
+    data[idx + 4] = kanzi::byte(0);
+    data[idx + 5] = kanzi::byte(0);
+}
+
+static vector<kanzi::byte> createX86BoundaryBlock()
+{
+    vector<kanzi::byte> data = createPEBlock(0x014C);
+    const int codeStart = 512;
+    const int codeLen = 85;
+    setPECodeLength(data, codeLen);
+    fillX86Code(data, codeStart, 16 * 5);
+    addX86BoundaryJCC(data, codeStart, codeLen);
+    return data;
+}
+
+static int testEXERoundTrip(const string& name, vector<kanzi::byte>& data)
+{
+    cout << endl
+         << "Correctness for " << name << endl;
+    Context ctx;
+    EXECodec codec(ctx);
+    vector<kanzi::byte> encoded(codec.getMaxEncodedLength(int(data.size())), kanzi::byte(0));
+    vector<kanzi::byte> decoded(data.size(), kanzi::byte(0));
+    SliceArray<kanzi::byte> input(&data[0], int(data.size()), 0);
+    SliceArray<kanzi::byte> output(&encoded[0], int(encoded.size()), 0);
+    SliceArray<kanzi::byte> reverse(&decoded[0], int(decoded.size()), 0);
+
+    if (codec.forward(input, output, int(data.size())) == false) {
+        cout << "Encoding error" << endl;
+        return 1;
+    }
+
+    const int encodedSize = output._index;
+    input._index = 0;
+    output._index = 0;
+
+    if (codec.inverse(output, reverse, encodedSize) == false) {
+        cout << "Decoding error" << endl;
+        return 1;
+    }
+
+    if ((reverse._index != int(data.size())) || (memcmp(&data[0], &decoded[0], data.size()) != 0)) {
+        cout << "Round-trip mismatch" << endl;
+        return 1;
+    }
+
+    vector<kanzi::byte> small(encodedSize - 10, kanzi::byte(0));
+    SliceArray<kanzi::byte> tooSmall(&small[0], int(small.size()), 0);
+    output._index = 0;
+
+    if (codec.inverse(output, tooSmall, encodedSize) != false) {
+        cout << "Undersized output buffer should fail" << endl;
+        return 1;
+    }
+
+    cout << "Identical" << endl;
+    return 0;
+}
+
+static int testEXECodec()
+{
+    vector<kanzi::byte> x86 = createPEBlock(0x014C);
+    fillX86Code(x86, 512, 4096);
+
+    if (testEXERoundTrip("EXE-X86", x86) != 0)
+        return 1;
+
+    vector<kanzi::byte> arm64 = createELF64Block(0x00B7);
+    fillARM64Code(arm64, 512, 4096);
+
+    if (testEXERoundTrip("EXE-ARM64", arm64) != 0)
+        return 1;
+
+    {
+        cout << endl
+             << "Correctness for EXE-X86-Expanded" << endl;
+        Context ctx;
+        EXECodec codec(ctx);
+        vector<kanzi::byte> expanded = createPEBlock(0x014C);
+        fillX86ExpandedCode(expanded, 512, 4096);
+        vector<kanzi::byte> encoded(codec.getMaxEncodedLength(int(expanded.size())), kanzi::byte(0));
+        vector<kanzi::byte> decoded(expanded.size(), kanzi::byte(0));
+        SliceArray<kanzi::byte> input(&expanded[0], int(expanded.size()), 0);
+        SliceArray<kanzi::byte> output(&encoded[0], int(encoded.size()), 0);
+        SliceArray<kanzi::byte> reverse(&decoded[0], int(decoded.size()), 0);
+
+        if (codec.forward(input, output, int(expanded.size())) == false) {
+            cout << "Encoding error" << endl;
+            return 1;
+        }
+
+        if (output._index <= int(expanded.size()) + 9) {
+            cout << "Expected encoded block expansion beyond header" << endl;
+            return 1;
+        }
+
+        const int encodedSize = output._index;
+        output._index = 0;
+        reverse._index = 0;
+
+        if (codec.inverse(output, reverse, encodedSize) == false) {
+            cout << "Decoding error" << endl;
+            return 1;
+        }
+
+        if ((reverse._index != int(expanded.size())) ||
+            (memcmp(&expanded[0], &decoded[0], expanded.size()) != 0)) {
+            cout << "Round-trip mismatch" << endl;
+            return 1;
+        }
+
+        cout << "Identical" << endl;
+    }
+
+    vector<kanzi::byte> boundary = createX86BoundaryBlock();
+
+    if (testEXERoundTrip("EXE-X86-Boundary-JCC", boundary) != 0)
+        return 1;
+
+    {
+        cout << endl
+             << "Correctness for EXE-X86-Legacy-Boundary-JCC" << endl;
+        Context ctx;
+        EXECodec codec(ctx);
+        vector<kanzi::byte> legacy = createX86BoundaryBlock();
+        vector<kanzi::byte> encoded(codec.getMaxEncodedLength(int(legacy.size())), kanzi::byte(0));
+        vector<kanzi::byte> decoded(legacy.size(), kanzi::byte(0));
+        SliceArray<kanzi::byte> input(&legacy[0], int(legacy.size()), 0);
+        SliceArray<kanzi::byte> output(&encoded[0], int(encoded.size()), 0);
+        SliceArray<kanzi::byte> reverse(&decoded[0], int(decoded.size()), 0);
+
+        if (codec.forward(input, output, int(legacy.size())) == false) {
+            cout << "Encoding error" << endl;
+            return 1;
+        }
+
+        const int encodedSize = output._index;
+        const int codeEnd = LittleEndian::readInt32(&encoded[5]);
+
+        if ((codeEnd >= encodedSize) || (encoded[codeEnd] != kanzi::byte(0x0F))) {
+            cout << "Unexpected boundary layout" << endl;
+            return 1;
+        }
+
+        writeInt32LE(&encoded[5], codeEnd + 1);
+        output._index = 0;
+        reverse._index = 0;
+
+        if (codec.inverse(output, reverse, encodedSize) == false) {
+            cout << "Decoding error" << endl;
+            return 1;
+        }
+
+        if ((reverse._index != int(legacy.size())) ||
+            (memcmp(&legacy[0], &decoded[0], legacy.size()) != 0)) {
+            cout << "Round-trip mismatch" << endl;
+            return 1;
+        }
+
+        cout << "Identical" << endl;
+    }
+
+    return 0;
+}
+
+static int testZRLTMalformed()
+{
+    cout << endl
+         << "Malformed ZRLT" << endl;
+    Context ctx;
+    ZRLT codec(ctx);
+
+    {
+        kanzi::byte encoded[1] = { kanzi::byte(2) };
+        kanzi::byte decoded[5];
+        memset(decoded, 0x7E, sizeof(decoded));
+        SliceArray<kanzi::byte> input(encoded, 1, 0);
+        SliceArray<kanzi::byte> output(decoded, 4, 3);
+
+        if (codec.inverse(input, output, 1) == false) {
+            cout << "Valid offset decode failed" << endl;
+            return 1;
+        }
+
+        if ((output._index != 4) || (decoded[3] != kanzi::byte(1)) ||
+            (decoded[4] != kanzi::byte(0x7E))) {
+            cout << "Valid offset decode corrupted output" << endl;
+            return 1;
+        }
+    }
+
+    {
+        kanzi::byte encoded[2] = { kanzi::byte(2), kanzi::byte(2) };
+        kanzi::byte decoded[5];
+        memset(decoded, 0x7E, sizeof(decoded));
+        SliceArray<kanzi::byte> input(encoded, 2, 0);
+        SliceArray<kanzi::byte> output(decoded, 4, 3);
+
+        if (codec.inverse(input, output, 2) != false) {
+            cout << "Oversized offset decode should fail" << endl;
+            return 1;
+        }
+
+        if (decoded[4] != kanzi::byte(0x7E)) {
+            cout << "Oversized offset decode wrote past logical output" << endl;
+            return 1;
+        }
+    }
+
+    {
+        kanzi::byte encoded[1] = { kanzi::byte(2) };
+        kanzi::byte decoded[1] = { kanzi::byte(0) };
+        SliceArray<kanzi::byte> input(encoded, 1, 0);
+        SliceArray<kanzi::byte> output(decoded, 1, 0);
+
+        if (codec.inverse(input, output, 2) != false) {
+            cout << "Oversized encoded length should fail" << endl;
+            return 1;
+        }
+    }
+
+    {
+        kanzi::byte encoded[1] = { kanzi::byte(0xFF) };
+        kanzi::byte decoded[1] = { kanzi::byte(0x7E) };
+        SliceArray<kanzi::byte> input(encoded, 1, 0);
+        SliceArray<kanzi::byte> output(decoded, 1, 0);
+
+        if (codec.inverse(input, output, 1) != false) {
+            cout << "Truncated escape should fail" << endl;
+            return 1;
+        }
+
+        if (decoded[0] != kanzi::byte(0x7E)) {
+            cout << "Truncated escape wrote output" << endl;
+            return 1;
+        }
+    }
+
+    {
+        kanzi::byte encoded[1] = { kanzi::byte(0) };
+        kanzi::byte decoded[1] = { kanzi::byte(0x7E) };
+        SliceArray<kanzi::byte> input(encoded, 1, 0);
+        SliceArray<kanzi::byte> output(decoded, 0, 0);
+
+        if (codec.inverse(input, output, 1) != false) {
+            cout << "Oversized zero run should fail" << endl;
+            return 1;
+        }
+
+        if (decoded[0] != kanzi::byte(0x7E)) {
+            cout << "Oversized zero run wrote output" << endl;
+            return 1;
+        }
+    }
+
+    cout << "Malformed ZRLT tests passed" << endl;
+    return 0;
+}
 
 static Transform<kanzi::byte>* getByteTransform(string name, Context& ctx)
 {
@@ -525,6 +886,16 @@ int TestTransforms_main(int argc, const char* argv[])
     int res = 0;
 
     try {
+        res = testEXECodec();
+
+        if (res != 0)
+            return res;
+
+        res = testZRLTMalformed();
+
+        if (res != 0)
+            return res;
+
         vector<string> codecs;
         bool doPerf = true;
 
@@ -594,4 +965,3 @@ int TestTransforms_main(int argc, const char* argv[])
     cout << ((res == 0) ? "Success" : "Failure") << endl;
     return res;
 }
-

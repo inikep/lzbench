@@ -14,6 +14,7 @@ limitations under the License.
 */
 
 #include <sys/stat.h>
+#include <cstring>
 #include "Compressor.hpp"
 #include "../types.hpp"
 #include "../Error.hpp"
@@ -193,6 +194,11 @@ KANZI_API int CDECL initCompressor(struct cData* pData, FILE* dst, struct cConte
 
         if (fd == -1)
            return Error::ERR_CREATE_COMPRESSOR;
+
+        if ((memchr(pData->transform, 0, sizeof(pData->transform)) == nullptr) ||
+            (memchr(pData->entropy, 0, sizeof(pData->entropy)) == nullptr)) {
+            return Error::ERR_INVALID_PARAM;
+        }
 
         string transform = TransformFactory<kanzi::byte>::getName(TransformFactory<kanzi::byte>::getType(pData->transform));
         string entropy = EntropyEncoderFactory::getName(EntropyEncoderFactory::getType(pData->entropy));
