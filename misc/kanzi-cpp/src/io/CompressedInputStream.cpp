@@ -427,10 +427,10 @@ int CompressedInputStream::_get(int inc)
 
 istream& CompressedInputStream::read(char* data, streamsize length)
 {
-    int remaining = int(length);
-
-    if (remaining < 0)
+    if (length < 0)
         throw ios_base::failure("Invalid buffer size");
+
+    streamsize remaining = length;
 
     _gcount = 0;
 
@@ -487,11 +487,11 @@ istream& CompressedInputStream::read(char* data, streamsize length)
 
         }
 
-        const int lenChunk = min(remaining, int(_available));
+        const streamsize lenChunk = min(remaining, streamsize(_available));
 
         if (lenChunk > 0) {
-            memcpy(&data[_gcount], &_buffers[_bufferId]->_array[_buffers[_bufferId]->_index], lenChunk);
-            _buffers[_bufferId]->_index += lenChunk;
+            memcpy(&data[_gcount], &_buffers[_bufferId]->_array[_buffers[_bufferId]->_index], size_t(lenChunk));
+            _buffers[_bufferId]->_index += int(lenChunk);
             _gcount += lenChunk;
             remaining -= lenChunk;
             _available -= lenChunk;
@@ -765,6 +765,21 @@ DecodingTask<T>::DecodingTask(SliceArray<kanzi::byte>* iBuffer, SliceArray<kanzi
     _processedBlockId = processedBlockId;
 }
 
+template <class T>
+void DecodingTask<T>::storeProcessedBlockId(int value)
+{
+#ifdef CONCURRENCY_ENABLED
+    {
+        std::lock_guard<std::mutex> lock(*_blockMutex);
+        STORE_ATOMIC(*_processedBlockId, value);
+    }
+
+    _blockCondition->notify_all();
+#else
+    STORE_ATOMIC(*_processedBlockId, value);
+#endif
+}
+
 // Decode mode + transformed entropy coded data
 // mode | 0b1yy0xxxx => copy block
 //      | 0b0yy00000 => size(size(block))-1
@@ -779,18 +794,6 @@ T DecodingTask<T>::run()
     bool streamPerTask = _ctx.getInt("tasks") > 1;
     uint64 tType = _ctx.getLong("tType");
     short eType = short(_ctx.getInt("eType"));
-    auto storeProcessedBlockId = [this](int value) {
-#ifdef CONCURRENCY_ENABLED
-        {
-            std::lock_guard<std::mutex> lock(*_blockMutex);
-            STORE_ATOMIC(*_processedBlockId, value);
-        }
-
-        _blockCondition->notify_all();
-#else
-        STORE_ATOMIC(*_processedBlockId, value);
-#endif
-    };
 
 #ifdef CONCURRENCY_ENABLED
     {

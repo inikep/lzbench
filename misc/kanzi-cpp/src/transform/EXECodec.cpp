@@ -96,31 +96,34 @@ bool EXECodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& 
     }
 
     mode &= ~MASK_DT;
-
-    if (_pCtx != nullptr)
-        _pCtx->putInt("dataType", Global::EXE);
+    bool res = false;
 
     if (mode == X86)
-        return forwardX86(input, output, count, codeStart, codeEnd);
+        res = forwardX86(input, output, count, codeStart, codeEnd);
+    else if (mode == ARM64)
+        res = forwardARM(input, output, count, codeStart, codeEnd);
+    else
+        return false;
 
-    if (mode == ARM64)
-        return forwardARM(input, output, count, codeStart, codeEnd);
+    if ((_pCtx != nullptr) && (res == true))
+        _pCtx->putInt("dataType", Global::EXE);
 
-    return false;
+    return res;
 }
 
 bool EXECodec::forwardX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count, int codeStart, int codeEnd)
 {
     const kanzi::byte* src = &input._array[input._index];
     kanzi::byte* dst = &output._array[output._index];
+    const int dstCapacity = output._length - output._index;
     dst[0] = X86;
     int srcIdx = codeStart;
     int dstIdx = 9;
     int matches = 0;
-    const int dstEnd = output._length - 5;
+    const int dstEnd = dstCapacity - 5;
     bool boundaryReached = false;
 
-    if ((codeStart < 0) || (codeStart > count) || (dstIdx + codeStart > output._length))
+    if ((codeStart < 0) || (codeStart > count) || (dstIdx + codeStart > dstCapacity))
         return false;
 
     if ((codeEnd < codeStart) || (codeEnd > count))
@@ -136,6 +139,13 @@ bool EXECodec::forwardX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
             if (srcIdx + 1 >= codeEnd) {
                 boundaryReached = true;
                 break;
+            }
+
+            if ((src[srcIdx + 1] & X86_MASK_JCC) == X86_INSTRUCTION_JCC) {
+                if (srcIdx + 5 >= codeEnd) {
+                    boundaryReached = true;
+                    break;
+                }
             }
 
             dst[dstIdx++] = src[srcIdx++];
@@ -208,13 +218,14 @@ bool EXECodec::forwardARM(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
 {
     const kanzi::byte* src = &input._array[input._index];
     kanzi::byte* dst = &output._array[output._index];
+    const int dstCapacity = output._length - output._index;
     dst[0] = ARM64;
     int srcIdx = codeStart;
     int dstIdx = 9;
     int matches = 0;
-    const int dstEnd = output._length - 8;
+    const int dstEnd = dstCapacity - 8;
 
-    if ((codeStart < 0) || (codeStart > count) || (dstIdx + codeStart > output._length))
+    if ((codeStart < 0) || (codeStart > count) || (dstIdx + codeStart > dstCapacity))
         return false;
 
     if ((codeEnd < codeStart) || (codeEnd > count))
@@ -225,7 +236,7 @@ bool EXECodec::forwardARM(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
         dstIdx += codeStart;
     }
 
-    while ((srcIdx < codeEnd) && (dstIdx < dstEnd)) {
+    while ((srcIdx + 4 <= codeEnd) && (dstIdx < dstEnd)) {
         const int instr = LittleEndian::readInt32(&src[srcIdx]);
         const int opcode1 = instr & ARM_B_OPCODE_MASK;
         //const int opcode2 = instr & ARM_CB_OPCODE_MASK;
@@ -280,7 +291,7 @@ bool EXECodec::forwardARM(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
         matches++;
     }
 
-    if ((srcIdx < codeEnd) || (matches < 16))
+    if ((matches < 16) || ((srcIdx + 4 <= codeEnd) && (dstIdx >= dstEnd)))
         return false;
 
     if (dstIdx + (count - srcIdx) > dstEnd)
@@ -313,9 +324,6 @@ bool EXECodec::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& 
 
     if (!SliceArray<kanzi::byte>::isValid(output))
         throw std::invalid_argument("EXECodec: Invalid output block");
-
-    if (output._length - output._index < count - 9)
-        return false;
 
     kanzi::byte mode = input._array[input._index];
 
@@ -351,7 +359,17 @@ bool EXECodec::inverseX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
 
     while (srcIdx < codeEnd) {
         if (src[srcIdx] == X86_TWO_BYTE_PREFIX) {
-            if (srcIdx + 1 >= codeEnd)
+            if (srcIdx + 1 >= codeEnd) {
+                // Accept legacy streams where a trailing 0x0F was emitted in
+                // the code section and the remaining bytes were copied as tail.
+                if (dstIdx >= dstEnd)
+                    return false;
+
+                dst[dstIdx++] = src[srcIdx++];
+                break;
+            }
+
+            if (dstIdx >= dstEnd)
                 return false;
 
             dst[dstIdx++] = src[srcIdx++];
@@ -365,6 +383,9 @@ bool EXECodec::inverseX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
                         return false;
                 }
 
+                if (dstIdx >= dstEnd)
+                    return false;
+
                 dst[dstIdx++] = src[srcIdx++];
                 continue;
             }
@@ -377,11 +398,17 @@ bool EXECodec::inverseX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
                     return false;
             }
 
+            if (dstIdx >= dstEnd)
+                return false;
+
             dst[dstIdx++] = src[srcIdx++];
             continue;
         }
 
         if (srcIdx + 4 >= codeEnd)
+            return false;
+
+        if (dstIdx + 5 > dstEnd)
             return false;
 
         // Current instruction is a jump/call. Decode absolute address
@@ -392,6 +419,9 @@ bool EXECodec::inverseX86(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
         srcIdx += 4;
         dstIdx += 4;
     }
+
+    if (dstIdx + (count - srcIdx) > dstEnd)
+        return false;
 
     if (srcIdx < count) {
        memcpy(&dst[dstIdx], &src[srcIdx], size_t(count - srcIdx));
@@ -426,6 +456,9 @@ bool EXECodec::inverseARM(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
 
     while (srcIdx < codeEnd) {
         if (srcIdx + 4 > codeEnd)
+            return false;
+
+        if (dstIdx + 4 > dstEnd)
             return false;
 
         const int instr = LittleEndian::readInt32(&src[srcIdx]);
@@ -469,6 +502,9 @@ bool EXECodec::inverseARM(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte
         srcIdx += 4;
         dstIdx += 4;
     }
+
+    if (dstIdx + (count - srcIdx) > dstEnd)
+        return false;
 
     if (srcIdx < count) {
        memcpy(&dst[dstIdx], &src[srcIdx], size_t(count - srcIdx));

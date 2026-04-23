@@ -35,6 +35,7 @@ limitations under the License.
         #else
             // C++98 / C++03
             #include <stdint.h>
+            #include <stddef.h>
         #endif
     #endif
 
@@ -197,12 +198,7 @@ limitations under the License.
              #endif
        #endif
 
-       #if !defined(nullptr) && \
-           ((defined(_MSC_VER) && (_MSC_VER < 1600)) || \
-            (defined(__GNUC__) && !defined(__clang__) && \
-             ((__GNUC__ < 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ < 6)))) || \
-            (defined(__clang__) && \
-             ((__clang_major__ < 3) || ((__clang_major__ == 3) && (__clang_minor__ < 1)))))
+       #if !defined(nullptr)
           #define nullptr NULL
        #endif
     #endif
