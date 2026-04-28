@@ -6,6 +6,9 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#ifndef MAP_POPULATE
+#define MAP_POPULATE 0
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #ifndef MAP_HUGE_2MB
