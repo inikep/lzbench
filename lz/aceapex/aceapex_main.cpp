@@ -3,16 +3,18 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#ifndef _WIN32
 #include <unistd.h>
 #include <fcntl.h>
-#ifndef _WIN32
 #include <sys/mman.h>
 #ifndef MAP_POPULATE
 #define MAP_POPULATE 0
 #endif
 #endif
+#ifndef _WIN32
 #include <sys/stat.h>
 #include <sys/types.h>
+#endif
 #ifndef MAP_HUGE_2MB
 #define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
 #endif
@@ -635,16 +637,19 @@ static void entropy_encode(
  
 static int do_compress(const char* in_path, const char* out_path, int threads, int level=2) {
     double t_fread=now_sec();
+#ifdef _WIN32
+    FILE* fin_w=fopen(in_path,"rb");
+    if(!fin_w){fprintf(stderr,"Cannot open: %s\n",in_path);return 1;}
+    fseek(fin_w,0,SEEK_END); size_t src_size=(size_t)ftell(fin_w); fseek(fin_w,0,SEEK_SET);
+    uint8_t* src=(uint8_t*)malloc(src_size);
+    if(!src){fprintf(stderr,"malloc failed\n");fclose(fin_w);return 1;}
+    fread(src,1,src_size,fin_w); fclose(fin_w);
+    bool src_is_mmap=false;
+#else
     int fin_fd=open(in_path,O_RDONLY);
     if (fin_fd<0) { fprintf(stderr,"Cannot open: %s\n",in_path); return 1; }
     struct stat fin_st; fstat(fin_fd,&fin_st);
     size_t src_size=(size_t)fin_st.st_size;
-#ifdef _WIN32
-    uint8_t* src=(uint8_t*)malloc(src_size);
-    if(!src){fprintf(stderr,"malloc failed\n");return 1;}
-    FILE*ff=fdopen(fin_fd,"rb"); fread(src,1,src_size,ff); fclose(ff);
-    bool src_is_mmap=false;
-#else
     uint8_t* src=(uint8_t*)mmap(nullptr,src_size,PROT_READ,MAP_SHARED|MAP_POPULATE,fin_fd,0);
     close(fin_fd);
     if (src==MAP_FAILED) { fprintf(stderr,"mmap failed\n"); return 1; }
