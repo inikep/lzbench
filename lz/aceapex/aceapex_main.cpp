@@ -413,7 +413,7 @@ static void* dec_worker(void* arg) {
         const BlockOffsets& bo = a->boffs[b];
         size_t bstart = b * a->block_size;
         size_t bsize  = a->dst_size > bstart ?
-                        std::min(a->block_size, a->dst_size - bstart) : 0;
+                        std::min<size_t>((size_t)a->block_size, a->dst_size - bstart) : 0;
         if (bsize > 0)
             decompress_streams(
                 a->dst + bstart, bsize,
@@ -509,12 +509,12 @@ static double parallel_decode(
     int nthreads = 0)
 {
     if (nthreads <= 0) nthreads = 8;
-    size_t nt = std::min((size_t)nthreads, num_blocks);
+    size_t nt = std::min<size_t>((size_t)nthreads, num_blocks);
     std::vector<DecArgs> dargs(nt);
     size_t blocks_per_thread = (num_blocks + nt - 1) / nt;
     for(size_t t=0;t<nt;t++) {
         size_t bstart = t * blocks_per_thread;
-        size_t bend   = std::min(bstart + blocks_per_thread, num_blocks);
+        size_t bend   = std::min<size_t>(bstart + blocks_per_thread, num_blocks);
         dargs[t]={lit,off,len,cmd,boffs,dst,dst_size,bstart,bend,block_size};
     }
     double t0=now_sec();
@@ -533,7 +533,7 @@ static void fse_chunked_decomp(const uint8_t* src, size_t orig_sz, uint8_t* dst)
     const uint8_t* p = src + 8 + nc * 8;
     size_t off = 0;
     for (size_t i = 0; i < nc; i++) {
-        size_t raw = std::min(CHUNK, orig_sz - off);
+        size_t raw = std::min<size_t>(CHUNK, orig_sz - off);
         if (cs[i] >> 63) { memcpy(dst+off, p, raw); p += raw; }
         else { ZSTD_decompress(dst+off, raw, p, cs[i]); p += cs[i]; }
         off += raw;
@@ -609,7 +609,7 @@ static void entropy_encode(
         size_t total=hdrsz;
         for(size_t i=0;i<nc;i++){
             size_t off=i*CHUNK;
-            size_t isz=std::min(CHUNK,e->isz-off);
+            size_t isz=std::min<size_t>(CHUNK,e->isz-off);
             size_t b=ZSTD_compressBound(isz)+4;
             size_t r=ZSTD_compress(p,b,e->in+off,isz,1);
             if(!r||ZSTD_isError(r)){memcpy(p,e->in+off,isz);csizes[i]=isz|(uint64_t(1)<<63);total+=isz;p+=isz;}

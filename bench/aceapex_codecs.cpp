@@ -149,7 +149,7 @@ int64_t lzbench_aceapex_stream_compress(char* inbuf, size_t insize,
     size_t history_len=0, total_read=0, co=0;
 
     for(size_t ci=0;ci<num_chunks;ci++) {
-        size_t to_read=std::min(ACE_CHUNK,insize-total_read);
+        size_t to_read=std::min<size_t>(ACE_CHUNK,insize-total_read);
         memcpy(window+history_len,(uint8_t*)inbuf+total_read,to_read);
         size_t wlen=history_len+to_read; total_read+=to_read;
 
@@ -184,7 +184,7 @@ int64_t lzbench_aceapex_stream_compress(char* inbuf, size_t insize,
         free(zl);free(zo);free(zn);free(zc);
         free(res.lit_buf);free(res.off_buf);free(res.len_buf);free(res.cmd_buf);
 
-        size_t keep=std::min(ACE_HISTORY,wlen);
+        size_t keep=std::min<size_t>(ACE_HISTORY,wlen);
         memmove(window,window+wlen-keep,keep);
         history_len=keep; ht->cur_epoch++;
     }
@@ -254,7 +254,7 @@ int64_t lzbench_aceapex3_compress(char* inbuf, size_t insize, char* outbuf, size
     uint8_t* window=(uint8_t*)malloc(V3H+V3C);
     size_t hl=0,tr=0;
     for(uint32_t ci=0;ci<nc;ci++){
-        size_t rd=std::min(V3C,insize-tr);
+        size_t rd=std::min<size_t>(V3C,insize-tr);
         memcpy(window+hl,(uint8_t*)inbuf+tr,rd); size_t wl=hl+rd; tr+=rd;
         size_t bsz=rd*2+65536;
         BlockResult r; r.lit_buf=(uint8_t*)malloc(bsz);r.off_buf=(uint8_t*)malloc(bsz);
@@ -273,7 +273,7 @@ int64_t lzbench_aceapex3_compress(char* inbuf, size_t insize, char* outbuf, size
         memcpy(op,zl,zls);op+=zls;memcpy(op,zo,zos);op+=zos;
         memcpy(op,zn,zns);op+=zns;memcpy(op,zc,zcs);op+=zcs;
         free(zl);free(zo);free(zn);free(zc);
-        size_t keep=std::min(V3H,wl); memmove(window,window+wl-keep,keep); hl=keep; ht->cur_epoch++;
+        size_t keep=std::min<size_t>(V3H,wl); memmove(window,window+wl-keep,keep); hl=keep; ht->cur_epoch++;
     }
     free(window);free(ht->pos);free(ht->epoch);free(ht->chain);free(ht);
     return (int64_t)(op-(uint8_t*)outbuf);
@@ -319,7 +319,7 @@ int64_t lzbench_aceapex3_decompress(char* inbuf, size_t insize, char* outbuf, si
     std::vector<pthread_t> pts(nth);
     size_t ci=0;
     while(ci<fh.num_chunks) {
-        size_t batch=std::min((size_t)nth,fh.num_chunks-ci);
+        size_t batch=std::min<size_t>((size_t)nth,fh.num_chunks-ci);
         for(size_t t=0;t<batch;t++) pthread_create(&pts[t],nullptr,v3_dec_worker,&jobs[ci+t]);
         for(size_t t=0;t<batch;t++) pthread_join(pts[t],nullptr);
         ci+=batch;
