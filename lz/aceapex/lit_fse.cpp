@@ -23,7 +23,7 @@ struct FseJob { const uint8_t*in; size_t isz; uint8_t*out; size_t osz; };
 static void* fse_worker(void* a){
     FseJob* j=(FseJob*)a;
     size_t r=LIT_compress(j->out,LIT_compressBound(j->isz),j->in,j->isz);
-    if(LIT_isError(r)||r==0){ memcpy(j->out,j->in,j->isz); j->osz=j->isz|(size_t(1)<<62); }
+    if(LIT_isError(r)||r==0){ memcpy(j->out,j->in,j->isz); j->osz=j->isz|(uint64_t(1)<<62); }
     else j->osz=r;
     return nullptr;
 }
@@ -51,7 +51,7 @@ static uint8_t* fse_comp(const uint8_t* src,size_t sz,size_t& out_sz,int nc=16){
     for(int i=0;i<nc;i++) pthread_join(pts[i],nullptr);
     size_t hdr=8+nc*16;
     size_t total=hdr;
-    for(int i=0;i<nc;i++) total+=(jobs[i].osz&~(size_t(1)<<62));
+    for(int i=0;i<nc;i++) total+=(jobs[i].osz&~(uint64_t(1)<<62));
     uint8_t* res=(uint8_t*)malloc(total);
     *(uint32_t*)res=(uint32_t)nc; *(uint32_t*)(res+4)=0;
     uint64_t* rsz=(uint64_t*)(res+8);
@@ -59,7 +59,7 @@ static uint8_t* fse_comp(const uint8_t* src,size_t sz,size_t& out_sz,int nc=16){
     uint8_t* p=res+hdr;
     for(int i=0;i<nc;i++){
         rsz[i]=jobs[i].isz;
-        size_t actual=jobs[i].osz&~(size_t(1)<<62);
+        size_t actual=jobs[i].osz&~(uint64_t(1)<<62);
         csz2[i]=(jobs[i].osz>>62)&1 ? actual|(uint64_t(1)<<63) : actual;
         memcpy(p,bufs[i],actual); p+=actual; free(bufs[i]);
     }
