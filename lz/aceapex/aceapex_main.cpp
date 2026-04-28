@@ -696,7 +696,7 @@ static int do_compress(const char* in_path, const char* out_path, int threads, i
     fprintf(stderr,"  Compressed: %14zu bytes\n",total_z);
     fprintf(stderr,"  Ratio:  %.5fx\n",(double)src_size/total_z);
     double t3=now_sec();
-    double t_sha=t3-t_total_c-t_lz-t_lit-t_fse; // approx
+    (void)(t3-t_total_c-t_lz-t_lit-t_fse);
     double real_enc=now_sec()-t_total_c;
     fprintf(stderr,"  Phase LZ77:    %.3fs\n",t_lz);
     fprintf(stderr,"  Phase lit/zstd:%.3fs\n",t_lit);

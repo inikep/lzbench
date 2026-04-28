@@ -1,5 +1,8 @@
 // ACEAPEX lzbench integration
-// Add to bench/lz_codecs.cpp
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
 
 #include "codecs.h"
 #include <stdlib.h>
@@ -170,7 +173,7 @@ int64_t lzbench_aceapex_stream_compress(char* inbuf, size_t insize,
         boffs[ci].cmd_off=co+zls+zos+zns; boffs[ci].cmd_sz=zcs;
         co+=zls+zos+zns+zcs;
 
-        if((op-(uint8_t*)outbuf+zls+zos+zns+zcs)>(ptrdiff_t)outsize){
+        if((size_t)(op-(uint8_t*)outbuf)+zls+zos+zns+zcs>outsize){
             free(zl);free(zo);free(zn);free(zc);
             free(res.lit_buf);free(res.off_buf);free(res.len_buf);free(res.cmd_buf);
             free(window);free(ht->pos);free(ht->epoch);free(ht->chain);free(ht);
@@ -323,3 +326,4 @@ int64_t lzbench_aceapex3_decompress(char* inbuf, size_t insize, char* outbuf, si
     }
     return (int64_t)fh.orig_size;
 }
+#pragma GCC diagnostic pop
