@@ -131,7 +131,7 @@ static void compress_block(const uint8_t* src, size_t src_size,
  
     ht->cur_epoch++;
     if (ht->cur_epoch == 0) {
-        memset(ht->epoch, 0, sizeof(ht->epoch)); ht->cur_epoch = 1;
+        memset(ht->epoch, 0, (ht->hash_mask+1)*sizeof(uint32_t)); ht->cur_epoch = 1;
     }
  
     size_t lit_i=0, off_i=0, len_i=0, cmd_i=0, pos=bstart;
