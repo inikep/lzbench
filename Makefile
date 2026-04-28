@@ -116,7 +116,8 @@ ifeq ($(detected_OS), Darwin)
 endif
 
 
-LZ_CODECS     = bench/lz_codecs.o
+ACEAPEX_FLAGS = -Ilz/aceapex -Ibench
+LZ_CODECS     = bench/lz_codecs.o bench/aceapex_codecs.o
 BUGGY_CODECS  = bench/buggy_codecs.o
 SYMMETRIC_CODECS = bench/symmetric_codecs.o
 BENCH_MAIN = bench/lzbench.o
@@ -807,7 +808,7 @@ $(LIZARD_FILES): %.o : %.c
 
 $(LZ_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/zxc/src/lib/vendors $< -c -o $@
+	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/zxc/src/lib/vendors $(ACEAPEX_FLAGS) $< -c -o $@
 
 $(LZHAM_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
@@ -891,3 +892,4 @@ clean:
 	rm -rf lzbench lzbench.exe
 	find . -type f -name "*.o" -exec rm -f {} +
 	rm -rf $(DENSITY_SRC_DIR)target/
+

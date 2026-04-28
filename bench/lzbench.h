@@ -259,6 +259,9 @@ static const compressor_desc_t comp_desc[] =
     { "zstdLDM",    "zstd 1.5.7 --long",       1,  22,    0, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstd_fast",  "zstd 1.5.7 --fast",      -5,  -1,    0, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
     { "zxc",        "zxc 0.10.0",              1,   5,    0, BENCH_POOL_MT,  lzbench_zxc_compress,        lzbench_zxc_decompress,        lzbench_zxc_init,        lzbench_zxc_deinit },
+    { "aceapex",    "aceapex 1.0",             1,   2,    0, FULL_THREADING, lzbench_aceapex_compress,     lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
+    { "aceapex_s",   "aceapex_s 2.0",           1,   2,    0, FULL_THREADING, lzbench_aceapex_stream_compress, lzbench_aceapex_stream_decompress, lzbench_aceapex_stream_init, lzbench_aceapex_deinit },
+    { "aceapex3",    "aceapex3 1.0",            0,   2,    0, FULL_THREADING, lzbench_aceapex3_compress,    lzbench_aceapex3_decompress,   lzbench_aceapex3_init,   lzbench_aceapex_deinit },
 };
 
 const long int LZBENCH_COMPRESSOR_COUNT = sizeof(comp_desc)/sizeof(comp_desc[0]);
