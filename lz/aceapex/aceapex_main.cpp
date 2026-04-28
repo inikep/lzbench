@@ -724,7 +724,11 @@ static int do_compress(const char* in_path, const char* out_path, int threads, i
     fprintf(stderr,"  Encode: %.2f MB/s  (%.3fs)\n",src_size/real_enc/1e6,real_enc);
     fprintf(stderr,"  XXH3:   %s\n",sha_hex);
  
+    #ifdef _WIN32
+    free((void*)src);
+#else
     if(src_is_mmap) munmap((void*)src,src_size); else free((void*)src);
+#endif
     free(raw_lit); free(raw_off); free(raw_len); free(raw_cmd);
     free(zlit); free(zoff); free(zlen); free(zcmd);
     return 0;
