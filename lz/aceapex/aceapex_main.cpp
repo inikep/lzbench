@@ -5,9 +5,11 @@
 #include <time.h>
 #include <unistd.h>
 #include <fcntl.h>
+#ifndef _WIN32
 #include <sys/mman.h>
 #ifndef MAP_POPULATE
 #define MAP_POPULATE 0
+#endif
 #endif
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -637,11 +639,18 @@ static int do_compress(const char* in_path, const char* out_path, int threads, i
     if (fin_fd<0) { fprintf(stderr,"Cannot open: %s\n",in_path); return 1; }
     struct stat fin_st; fstat(fin_fd,&fin_st);
     size_t src_size=(size_t)fin_st.st_size;
+#ifdef _WIN32
+    uint8_t* src=(uint8_t*)malloc(src_size);
+    if(!src){fprintf(stderr,"malloc failed\n");return 1;}
+    FILE*ff=fdopen(fin_fd,"rb"); fread(src,1,src_size,ff); fclose(ff);
+    bool src_is_mmap=false;
+#else
     uint8_t* src=(uint8_t*)mmap(nullptr,src_size,PROT_READ,MAP_SHARED|MAP_POPULATE,fin_fd,0);
     close(fin_fd);
     if (src==MAP_FAILED) { fprintf(stderr,"mmap failed\n"); return 1; }
-    t_fread=now_sec()-t_fread;
     bool src_is_mmap=true;
+#endif
+    t_fread=now_sec()-t_fread;
     // Запускаем SHA256 параллельно с encode
     struct ShaArg { const uint8_t* d; size_t n; uint8_t out[32]; };
     ShaArg sha_arg={src,src_size,{}};
