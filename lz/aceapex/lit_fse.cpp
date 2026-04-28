@@ -4,7 +4,7 @@
 #include <vector>
 #include <pthread.h>
 #include <algorithm>
-#include <zstd.h>
+#include "../zstd/lib/zstd.h"
 
 static size_t LIT_compress(void* dst, size_t dstCap, const void* src, size_t srcSize) {
     return ZSTD_compress(dst, dstCap, src, srcSize, 1);

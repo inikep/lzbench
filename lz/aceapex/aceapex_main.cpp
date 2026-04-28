@@ -22,7 +22,7 @@
 #include <atomic>
 #include <vector>
 #include <algorithm>
-#include <zstd.h>
+#include "../zstd/lib/zstd.h"
 #define XXH_STATIC_LINKING_ONLY
 #define XXH_IMPLEMENTATION
 #include "xxhash.h"
