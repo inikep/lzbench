@@ -220,7 +220,7 @@ int64_t lzbench_aceapex_stream_decompress(char* inbuf, size_t insize,
         uint8_t* o=(uint8_t*)malloc(os); fse_chunked_decomp(zo,os,o);
         uint8_t* n=(uint8_t*)malloc(ns); fse_chunked_decomp(zn,ns,n);
         uint8_t* c=(uint8_t*)malloc(cs); fse_chunked_decomp(zc,cs,c);
-        size_t bsize=std::min((size_t)hdr.block_size,hdr.orig_size-out_pos);
+        size_t bsize=(size_t)std::min<uint64_t>((uint64_t)hdr.block_size,hdr.orig_size-out_pos);
         decompress_streams((uint8_t*)outbuf+out_pos,bsize,l,ls,o,os,n,ns,c,cs);
         out_pos+=bsize; free(l);free(o);free(n);free(c);
     }
@@ -310,8 +310,8 @@ int64_t lzbench_aceapex3_decompress(char* inbuf, size_t insize, char* outbuf, si
         if(ch.magic!=0x434B4E48) return -1;
         jobs[ci]={p,p+ch.lit_size,p+ch.lit_size+ch.off_size,
                   p+ch.lit_size+ch.off_size+ch.len_size,
-                  ch.lit_size,ch.off_size,ch.len_size,ch.cmd_size,
-                  (uint8_t*)outbuf+out_pos,ch.raw_size};
+                  (size_t)ch.lit_size,(size_t)ch.off_size,(size_t)ch.len_size,(size_t)ch.cmd_size,
+                  (uint8_t*)outbuf+out_pos,(size_t)ch.raw_size};
         p+=ch.lit_size+ch.off_size+ch.len_size+ch.cmd_size;
         out_pos+=ch.raw_size;
     }
