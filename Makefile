@@ -116,11 +116,11 @@ ifeq ($(detected_OS), Darwin)
 endif
 
 
-LZ_CODECS     =
+LZ_CODECS     = bench/lz_codecs.o
 BUGGY_CODECS  = bench/buggy_codecs.o
 SYMMETRIC_CODECS = bench/symmetric_codecs.o
 BENCH_MAIN = bench/lzbench.o
-BENCH_FILES = bench/lz_codecs.o $(LZ_CODECS) $(BUGGY_CODECS) $(SYMMETRIC_CODECS) $(BENCH_MAIN) bench/misc_codecs.o
+BENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) $(SYMMETRIC_CODECS) $(BENCH_MAIN) bench/misc_codecs.o
 
 ifeq "$(DISABLE_THREADING)" "1"
     DEFINES += -DDISABLE_THREADING
@@ -806,10 +806,6 @@ $(LIZARD_FILES): %.o : %.c
 	$(CC) $(CFLAGS_O2) $< -c -o $@
 
 $(LZ_CODECS): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/zxc/src/lib/vendors $< -c -o $@
-
-bench/lz_codecs.o: bench/lz_codecs.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -Ilz -Ilz/aceapex -Ibench -Ilz/brotli/include -Ilz/zxc/src/lib/vendors $< -c -o $@
 
