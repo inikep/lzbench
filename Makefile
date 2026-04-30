@@ -217,6 +217,12 @@ ifneq ($(DONT_BUILD_DENSITY),1)
 endif
 
 
+ifeq "$(DONT_BUILD_ACEAPEX)" "1"
+    DEFINES += -DBENCH_REMOVE_ACEAPEX
+else
+    ACEAPEX_FILES = lz/aceapex/aceapex_lzbench.o
+endif
+
 
 ifeq "$(DONT_BUILD_BRIEFLZ)" "1"
     DEFINES += -DBENCH_REMOVE_BRIEFLZ
@@ -549,7 +555,6 @@ else
 
     ifneq (,$(filter arm% aarch64%,$(TARGET_ARCH)))
         ZXC_FILES += $(ZXC_DIR)/zxc_compress_neon.o $(ZXC_DIR)/zxc_decompress_neon.o
-        
         ifneq (,$(filter arm64% aarch64%,$(TARGET_ARCH)))
             NEON_FLAGS = -DZXC_USE_NEON64
         else
@@ -739,7 +744,7 @@ endif # ifeq "$(ENABLE_CUDA)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(CSC_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES)
+lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -759,6 +764,10 @@ $(BENCH_MAIN): bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs
 .cpp.o:
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) $< -c -o $@
+
+$(ACEAPEX_FILES): %.o : %.cpp
+	@$(MKDIR) $(dir $@)
+	$(CXX) $(CXXFLAGS) -Ilz/aceapex -Ibench $< -c -o $@
 
 $(BROTLI_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
