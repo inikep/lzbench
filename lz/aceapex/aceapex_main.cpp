@@ -24,7 +24,9 @@
 #include <algorithm>
 #include "../zstd/lib/zstd.h"
 #define XXH_STATIC_LINKING_ONLY
+#ifndef ACEAPEX_NO_XXH
 #define XXH_IMPLEMENTATION
+#endif
 #include "xxhash.h"
 #define OUR_CHECKSUM(buf,sz) XXH3_64bits(buf,sz)
 #include "lit_fse.cpp"

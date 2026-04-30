@@ -4,7 +4,7 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
 
-#include "codecs.h"
+#include "../../bench/codecs.h"
 #include <stdlib.h>
 #include <string.h>
 #include <vector>
@@ -12,6 +12,8 @@
 // Forward declarations from aceapex_main.cpp
 // We include it directly
 #define ACEAPEX_NO_MAIN
+#define XXH_STATIC_LINKING_ONLY
+#define XXH_IMPLEMENTATION
 #include "../lz/aceapex/aceapex_main.cpp"
 
 struct AcepxState {
