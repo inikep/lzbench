@@ -441,23 +441,23 @@ static void* zxc_async_writer(void* arg) {
         while (job->status != JOB_STATUS_PROCESSED && !ctx->io_error)
             pthread_cond_wait(&ctx->cond_writer, &ctx->lock);
 
-        if (job->result_sz == (size_t)-1) {
-            pthread_mutex_unlock(&ctx->lock);
-            break;
-        }
+        const size_t result_sz = job->result_sz;
+        const size_t in_sz = job->in_sz;
         pthread_mutex_unlock(&ctx->lock);
 
-        if (args->f && job->result_sz > 0) {
-            if (fwrite(job->out_buf, 1, job->result_sz, args->f) != job->result_sz) {
+        if (result_sz == (size_t)-1) break;
+
+        if (args->f && result_sz > 0) {
+            if (fwrite(job->out_buf, 1, result_sz, args->f) != result_sz) {
                 pthread_mutex_lock(&ctx->lock);
                 ctx->io_error = 1;
                 pthread_cond_signal(&ctx->cond_reader);
                 pthread_mutex_unlock(&ctx->lock);
             } else if (ctx->checksum_enabled && ctx->compression_mode == 1) {
                 // Update Global Hash (Rotation + XOR)
-                if (LIKELY(job->result_sz >= ZXC_GLOBAL_CHECKSUM_SIZE)) {
+                if (LIKELY(result_sz >= ZXC_GLOBAL_CHECKSUM_SIZE)) {
                     uint32_t block_hash =
-                        zxc_le32(job->out_buf + job->result_sz - ZXC_GLOBAL_CHECKSUM_SIZE);
+                        zxc_le32(job->out_buf + result_sz - ZXC_GLOBAL_CHECKSUM_SIZE);
                     args->global_hash = zxc_hash_combine_rotate(args->global_hash, block_hash);
                 }
             }
@@ -469,7 +469,7 @@ static void* zxc_async_writer(void* arg) {
             pthread_mutex_unlock(&ctx->lock);
             break;
         }
-        args->total_bytes += (int64_t)job->result_sz;
+        args->total_bytes += (int64_t)result_sz;
 
         /* Seekable: record compressed block size */
         if (args->seek_comp && ctx->compression_mode == 1) {
@@ -479,8 +479,8 @@ static void* zxc_async_writer(void* arg) {
                     (uint32_t*)realloc(args->seek_comp, args->seek_cap * sizeof(uint32_t));
                 // LCOV_EXCL_START
                 if (UNLIKELY(!nc)) {
-                    ctx->io_error = 1;
                     pthread_mutex_lock(&ctx->lock);
+                    ctx->io_error = 1;
                     job->status = JOB_STATUS_FREE;
                     pthread_cond_signal(&ctx->cond_reader);
                     pthread_mutex_unlock(&ctx->lock);
@@ -489,13 +489,13 @@ static void* zxc_async_writer(void* arg) {
                 // LCOV_EXCL_STOP
                 args->seek_comp = nc;
             }
-            args->seek_comp[args->seek_count++] = (uint32_t)job->result_sz;
+            args->seek_comp[args->seek_count++] = (uint32_t)result_sz;
         }
 
         // Update progress callback
         if (ctx->progress_cb) {
             // LCOV_EXCL_START
-            args->bytes_processed += ctx->compression_mode == 1 ? job->in_sz : job->result_sz;
+            args->bytes_processed += ctx->compression_mode == 1 ? in_sz : result_sz;
             ctx->progress_cb(args->bytes_processed, ctx->total_input_bytes,
                              ctx->progress_user_data);
             // LCOV_EXCL_STOP
@@ -809,7 +809,7 @@ static int64_t zxc_stream_engine_run(FILE* f_in, FILE* f_out, const int n_thread
     pthread_mutex_lock(&ctx.lock);
     while (end_job->status != JOB_STATUS_FREE && !ctx.io_error)
         pthread_cond_wait(&ctx.cond_reader, &ctx.lock);
-    end_job->result_sz = -1;
+    end_job->result_sz = (size_t)-1;
     end_job->status = JOB_STATUS_PROCESSED;
     pthread_cond_broadcast(&ctx.cond_writer);
     pthread_mutex_unlock(&ctx.lock);

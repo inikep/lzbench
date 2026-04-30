@@ -1,7 +1,7 @@
 v2.x.y (work in progress)
 - updated tamp to 2.1.0 (thanks to @tansy)
 - added memlz 0.2 beta (thanks to @rrrlasse)
-- added zxc 0.10.0 (thanks to @hellobertrand)
+- added zxc 0.11.0 (thanks to @hellobertrand)
 - updated brotli to 1.2.0 (thanks to @data-man)
 - updated glza to v0.12 (thanks to @tansy)
 - updated kanzi to 2.5.1 (thanks to @flanglet)

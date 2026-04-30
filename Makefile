@@ -543,18 +543,19 @@ ifeq "$(DONT_BUILD_ZXC)" "1"
 else
     DEFINES += -DZXC_STATIC_DEFINE
     ZXC_DIR = lz/zxc/src/lib
-    ZXC_FILES = $(ZXC_DIR)/zxc_common.o $(ZXC_DIR)/zxc_driver.o $(ZXC_DIR)/zxc_dispatch.o $(ZXC_DIR)/zxc_seekable.o
-    ZXC_FILES += $(ZXC_DIR)/zxc_compress_default.o $(ZXC_DIR)/zxc_decompress_default.o
+    ZXC_FILES = $(ZXC_DIR)/zxc_common.o $(ZXC_DIR)/zxc_driver.o $(ZXC_DIR)/zxc_dispatch.o $(ZXC_DIR)/zxc_pstream.o $(ZXC_DIR)/zxc_seekable.o
+    ZXC_FILES += $(ZXC_DIR)/zxc_compress_default.o $(ZXC_DIR)/zxc_decompress_default.o $(ZXC_DIR)/zxc_huffman_default.o
 
     ifneq (,$(filter x86_64% amd64% i%86%,$(TARGET_ARCH)))
         ifneq (,$(filter x86_64% amd64%,$(TARGET_ARCH)))
-            ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx2.o $(ZXC_DIR)/zxc_decompress_avx2.o
-            ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx512.o $(ZXC_DIR)/zxc_decompress_avx512.o
+            ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx2.o $(ZXC_DIR)/zxc_decompress_avx2.o $(ZXC_DIR)/zxc_huffman_avx2.o
+            ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx512.o $(ZXC_DIR)/zxc_decompress_avx512.o $(ZXC_DIR)/zxc_huffman_avx512.o
         endif
     endif
 
     ifneq (,$(filter arm% aarch64%,$(TARGET_ARCH)))
-        ZXC_FILES += $(ZXC_DIR)/zxc_compress_neon.o $(ZXC_DIR)/zxc_decompress_neon.o
+        ZXC_FILES += $(ZXC_DIR)/zxc_compress_neon.o $(ZXC_DIR)/zxc_decompress_neon.o $(ZXC_DIR)/zxc_huffman_neon.o
+
         ifneq (,$(filter arm64% aarch64%,$(TARGET_ARCH)))
             NEON_FLAGS = -DZXC_USE_NEON64
         else

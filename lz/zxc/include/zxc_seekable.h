@@ -31,9 +31,6 @@
  * int64_t n = zxc_seekable_decompress_range(s, out, out_cap, offset, len);
  * zxc_seekable_free(s);
  * @endcode
- *
- * @see zxc_buffer.h  for the standard one-shot API.
- * @see zxc_stream.h  for multi-threaded streaming.
  */
 
 #ifndef ZXC_SEEKABLE_H

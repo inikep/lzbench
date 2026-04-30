@@ -20,9 +20,6 @@
  * -# Compress or decompress individual blocks via the chunk wrappers.
  * -# Write the footer with zxc_write_file_footer().
  * -# Release the context with zxc_cctx_free().
- *
- * @see zxc_buffer.h  for the simple one-shot API.
- * @see zxc_stream.h  for the multi-threaded streaming API.
  */
 
 #ifndef ZXC_SANS_IO_H
@@ -93,12 +90,17 @@ typedef struct {
     uint8_t* literals;       /**< Buffer for literal bytes. */
 
     /* Cold zone: configuration / scratch / resizeable. */
-    uint8_t* lit_buffer;   /**< Scratch buffer for literals (RLE). */
-    size_t lit_buffer_cap; /**< Current capacity of the scratch buffer. */
-    uint8_t* work_buf;     /**< Padded scratch buffer for buffer-API decompression. */
-    size_t work_buf_cap;   /**< Capacity of the work buffer. */
-    int checksum_enabled;  /**< 1 if checksum calculation/verification is enabled. */
-    int compression_level; /**< Compression level. */
+    uint8_t* lit_buffer;    /**< Scratch buffer for literals (RLE). */
+    size_t lit_buffer_cap;  /**< Current capacity of the scratch buffer. */
+    uint8_t* work_buf;      /**< Padded scratch buffer for buffer-API decompression. */
+    size_t work_buf_cap;    /**< Capacity of the work buffer. */
+    uint8_t* opt_scratch;   /**< Optimal-parser DP scratch (level >= 6 only,
+                                 lazy-allocated, packs dp/parent_len/parent_off/actions).
+                                 Also reused as transient scratch for the
+                                 length-limited Huffman code-length builder. */
+    size_t opt_scratch_cap; /**< Current capacity of opt_scratch in bytes. */
+    int checksum_enabled;   /**< 1 if checksum calculation/verification is enabled. */
+    int compression_level;  /**< Compression level. */
 
     /* Block-size derived parameters (computed once at init). */
     size_t chunk_size;    /**< Effective block size in bytes. */

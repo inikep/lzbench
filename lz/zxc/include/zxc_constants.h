@@ -25,7 +25,7 @@
 /** @brief Major version number. */
 #define ZXC_VERSION_MAJOR 0
 /** @brief Minor version number. */
-#define ZXC_VERSION_MINOR 10
+#define ZXC_VERSION_MINOR 11
 /** @brief Patch version number. */
 #define ZXC_VERSION_PATCH 0
 
@@ -56,8 +56,8 @@
 #define ZXC_BLOCK_SIZE_MIN_LOG2 12
 /** @brief log2(ZXC_BLOCK_SIZE_MAX) - exponent code for maximum block size. */
 #define ZXC_BLOCK_SIZE_MAX_LOG2 21
-/** @brief Default block size (256 KB). */
-#define ZXC_BLOCK_SIZE_DEFAULT (256 * 1024)
+/** @brief Default block size (512 KB). */
+#define ZXC_BLOCK_SIZE_DEFAULT (512 * 1024)
 /** @brief Minimum allowed block size (4 KB = 2^12). */
 #define ZXC_BLOCK_SIZE_MIN (1U << ZXC_BLOCK_SIZE_MIN_LOG2)
 /** @brief Maximum allowed block size (2 MB = 2^21). */
@@ -84,7 +84,8 @@ typedef enum {
     ZXC_LEVEL_FAST = 2,     /**< Fast compression, good for real-time applications. */
     ZXC_LEVEL_DEFAULT = 3,  /**< Recommended: ratio > LZ4, decode speed > LZ4. */
     ZXC_LEVEL_BALANCED = 4, /**< Good ratio, good decode speed. */
-    ZXC_LEVEL_COMPACT = 5   /**< High density. Best for storage/firmware/assets. */
+    ZXC_LEVEL_COMPACT = 5,  /**< High density. Best for storage/firmware/assets. */
+    ZXC_LEVEL_DENSITY = 6   /**< Maximum density: Huffman-coded literals on top of COMPACT. */
 } zxc_compression_level_t;
 
 /** @} */ /* end of levels */
