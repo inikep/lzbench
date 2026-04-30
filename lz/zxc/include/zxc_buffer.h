@@ -29,7 +29,7 @@
  * @endcode
  *
  * @see zxc_stream.h  for the streaming (multi-threaded) API.
- * @see zxc_sans_io.h for the low-level sans-I/O building blocks.
+ * @see zxc_pstream.h for single-threaded push-based streaming.
  */
 
 #ifndef ZXC_BUFFER_H
@@ -39,7 +39,7 @@
 #include <stdint.h>
 
 #include "zxc_export.h"
-#include "zxc_stream.h" /* zxc_compress_opts_t, zxc_decompress_opts_t */
+#include "zxc_opts.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,7 +67,7 @@ ZXC_EXPORT int zxc_min_level(void);
 /**
  * @brief Returns the maximum supported compression level.
  *
- * Currently returns @ref ZXC_LEVEL_COMPACT (5).
+ * Currently returns @ref ZXC_LEVEL_DENSITY (6).
  *
  * @return Maximum compression level value.
  */
@@ -218,6 +218,25 @@ typedef struct zxc_dctx_s zxc_dctx;
 ZXC_EXPORT uint64_t zxc_compress_block_bound(size_t input_size);
 
 /**
+ * @brief Returns the minimum destination capacity required by
+ *        zxc_decompress_block() for a block of @p uncompressed_size bytes.
+ *
+ * The decoder uses speculative (wild-copy) writes on its fast path and
+ * therefore needs a tail pad beyond the declared uncompressed size.
+ * Passing exactly @c uncompressed_size as @c dst_capacity forces the slow
+ * tail path and may trigger @ref ZXC_ERROR_OVERFLOW on some inputs.
+ *
+ * Use this helper to size the destination buffer. The returned value is
+ * guaranteed to enable the fastest decode path without aliasing or
+ * overrun checks tripping.
+ *
+ * @param[in] uncompressed_size Original uncompressed block size in bytes.
+ * @return Minimum @c dst_capacity to pass to zxc_decompress_block(),
+ *         or 0 if @p uncompressed_size would overflow.
+ */
+ZXC_EXPORT uint64_t zxc_decompress_block_bound(const size_t uncompressed_size);
+
+/**
  * @brief Compresses a single block without file framing.
  *
  * Output format: @c block_header(8B) + payload + optional @c checksum(4B).
@@ -256,6 +275,59 @@ ZXC_EXPORT int64_t zxc_compress_block(zxc_cctx* cctx, const void* src, size_t sr
  */
 ZXC_EXPORT int64_t zxc_decompress_block(zxc_dctx* dctx, const void* src, size_t src_size, void* dst,
                                         size_t dst_capacity, const zxc_decompress_opts_t* opts);
+
+/**
+ * @brief Decompresses a single block with a strict-sized destination buffer.
+ *
+ * Identical semantics to zxc_decompress_block() but accepts
+ * @p dst_capacity == @c uncompressed_size (no trailing @c ZXC_DECOMPRESS_TAIL_PAD
+ * required). Intended for integrations whose destination buffer cannot be
+ * oversized (for example, in-place page-aligned decoding).
+ *
+ * This path is slightly slower than zxc_decompress_block() on the same input
+ * because it avoids the wild-copy overshoot that the fast decoder relies on.
+ * Output is bit-identical to zxc_decompress_block().
+ *
+ * NUM and RAW blocks transparently forward to zxc_decompress_block(); only
+ * GLO/GHI use the strict-tail decoder path.
+ *
+ * @param[in,out] dctx         Reusable decompression context.
+ * @param[in]     src          Compressed block data.
+ * @param[in]     src_size     Compressed data size in bytes.
+ * @param[out]    dst          Destination buffer for decompressed data.
+ * @param[in]     dst_capacity Capacity of the destination buffer (may equal
+ *                             the original uncompressed size exactly).
+ * @param[in]     opts         Decompression options (NULL for defaults).
+ *                             Only @c checksum_enabled is used.
+ *
+ * @return Decompressed size in bytes (> 0) on success,
+ *         or a negative @ref zxc_error_t code on failure.
+ */
+ZXC_EXPORT int64_t zxc_decompress_block_safe(zxc_dctx* dctx, const void* src, const size_t src_size,
+                                             void* dst, const size_t dst_capacity,
+                                             const zxc_decompress_opts_t* opts);
+
+/**
+ * @brief Estimates the peak memory used by compression for a given block & level.
+ *
+ * Returns the total bytes reserved by @ref zxc_compress_block for a block of
+ * @p src_size bytes: all per-chunk working buffers (chain table, literals,
+ * sequence/token/offset/extras buffers) plus the fixed hash tables and
+ * cache-line alignment padding. At @p level >= 6 the value also includes the
+ * `opt_scratch` region (~8.125 x @p src_size bytes) used by the price-based
+ * optimal parser. That region is lazy-allocated on the first level-6 call
+ * and reused across blocks for the lifetime of the cctx. Scales roughly
+ * linearly with @p src_size.
+ *
+ * Intended for integrators that need an accurate memory-budget figure.
+ *
+ * @param[in] src_size Uncompressed block size in bytes.
+ * @param[in] level    Compression level (1..6). Levels <= 5 share the same
+ *                     persistent cctx footprint; level 6 adds the optimal-
+ *                     parser scratch.
+ * @return Estimated peak cctx memory usage in bytes, or 0 if @p src_size is 0.
+ */
+ZXC_EXPORT uint64_t zxc_estimate_cctx_size(size_t src_size, int level);
 
 /** @} */ /* end of block_api */
 

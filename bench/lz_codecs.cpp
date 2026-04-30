@@ -1732,11 +1732,11 @@ char *lzbench_zxc_init(size_t insize, size_t level, size_t)
      *               32768  (32KB)   1 << 15
      *               65536  (64KB)   1 << 16
      *              131072  (128KB)  1 << 17
-     *              262144  (256KB)  1 << 18  (default)
-     *              524288  (512KB)  1 << 19
+     *              262144  (256KB)  1 << 18
+     *              524288  (512KB)  1 << 19  (default)
      *             1048576  (1MB)    1 << 20
      *             2097152  (2MB)    1 << 21
-     * Set to 0 to use the default (256KB). */
+     * Set to 0 to use the default (512KB). */
     copts.block_size = 0;
 
     bench->cctx = zxc_create_cctx(&copts);
