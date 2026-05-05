@@ -167,6 +167,9 @@ static const compressor_desc_t comp_desc[] =
      //                                       last_level,       mt_mode,
      // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func
     { "memcpy",     "memcpy",                  0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
+    { "aceapex",    "aceapex 1.0",             1,   2,    0, FULL_THREADING, lzbench_aceapex_compress,     lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
+    { "aceapex_s",  "aceapex_s 2.0",            1,   2,    0, FULL_THREADING, lzbench_aceapex_stream_compress, lzbench_aceapex_stream_decompress, lzbench_aceapex_stream_init, lzbench_aceapex_deinit },
+    { "aceapex3",   "aceapex3 1.0",             0,   2,    0, FULL_THREADING, lzbench_aceapex3_compress,    lzbench_aceapex3_decompress,   lzbench_aceapex3_init,   lzbench_aceapex_deinit },
     { "brieflz",    "brieflz 1.3.0",           1,   9,    0,  BENCH_POOL_MT, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
     { "brotli",     "brotli 1.2.0",            0,  11,    0,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli22",   "brotli 1.2.0 -d22",       0,  11,   22,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
@@ -259,6 +262,7 @@ static const compressor_desc_t comp_desc[] =
     { "zstdLDM",    "zstd 1.5.7 --long",       1,  22,    0, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstd_fast",  "zstd 1.5.7 --fast",      -5,  -1,    0, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
     { "zxc",        "zxc 0.10.0",              1,   5,    0, BENCH_POOL_MT,  lzbench_zxc_compress,        lzbench_zxc_decompress,        lzbench_zxc_init,        lzbench_zxc_deinit },
+
 };
 
 const long int LZBENCH_COMPRESSOR_COUNT = sizeof(comp_desc)/sizeof(comp_desc[0]);
