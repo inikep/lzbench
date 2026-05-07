@@ -62,7 +62,8 @@ int64_t aceapex_compress(
 
 int64_t aceapex_decompress(
     const void* src, size_t src_size,
-    void*       dst, size_t dst_capacity)
+    void*       dst, size_t dst_capacity,
+    int         threads)
 {
     const uint8_t* p=(const uint8_t*)src;
     AetHeader hdr; memcpy(&hdr,p,sizeof(hdr));
@@ -91,7 +92,7 @@ int64_t aceapex_decompress(
     fse_chunked_decomp(zo,os,o); fse_chunked_decomp(zn,ns,n); fse_chunked_decomp(zc,cs,c);
     free(zl);free(zo);free(zn);free(zc);
     parallel_decode(l,o,n,c,boffs.data(),hdr.num_blocks,
-                    (uint8_t*)dst,hdr.orig_size,hdr.block_size);
+                    (uint8_t*)dst,hdr.orig_size,hdr.block_size,threads);
     free(l);free(o);free(n);free(c);
     return (int64_t)hdr.orig_size;
 }

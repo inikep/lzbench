@@ -30,7 +30,9 @@ int64_t lzbench_aceapex_compress(char* inbuf, size_t insize,
 int64_t lzbench_aceapex_decompress(char* inbuf, size_t insize,
                                     char* outbuf, size_t outsize,
                                     codec_options_t* opts) {
-    int64_t r = aceapex_decompress(inbuf, insize, outbuf, outsize);
+    AcepxState* s = (AcepxState*)opts->work_mem;
+    int thr = opts->threads > 0 ? opts->threads : (s ? s->threads : 1);
+    int64_t r = aceapex_decompress(inbuf, insize, outbuf, outsize, thr);
     return r >= 0 ? (int64_t)outsize : -1;
 }
 
