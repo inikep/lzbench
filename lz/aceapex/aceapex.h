@@ -20,7 +20,8 @@ int64_t aceapex_compress(
 /* One-shot decompression */
 int64_t aceapex_decompress(
     const void* src, size_t src_size,
-    void*       dst, size_t dst_capacity
+    void*       dst, size_t dst_capacity,
+    int         threads
 );
 
 /* Bound for output buffer */
