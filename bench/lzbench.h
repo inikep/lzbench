@@ -27,7 +27,7 @@
 #define LZBENCH_PRINT(level, fmt, ...) if (params->verbose >= level) printf(fmt, __VA_ARGS__)
 #define LZBENCH_STDERR(level, fmt, ...) if (params->verbose >= level) { fprintf(stderr, fmt, __VA_ARGS__); fflush(stderr); }
 
-#define MAX(a,b) ((a)>(b))?(a):(b)
+#define MAX(a,b) (((a)>(b))?(a):(b))
 #ifndef MIN
     #define MIN(a,b) ((a)<(b)?(a):(b))
 #endif
