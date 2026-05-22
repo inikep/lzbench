@@ -106,7 +106,9 @@ typedef struct {
 } zxc_outbuf_t;
 
 /* Opaque streaming contexts. */
+/** @brief Opaque push-model compression stream (see @ref zxc_cstream_create). */
 typedef struct zxc_cstream_s zxc_cstream;
+/** @brief Opaque push-model decompression stream (see @ref zxc_dstream_create). */
 typedef struct zxc_dstream_s zxc_dstream;
 
 /* ===== Compression =================================================== */

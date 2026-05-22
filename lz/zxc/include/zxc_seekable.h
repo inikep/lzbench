@@ -19,17 +19,29 @@
  * backward to validate the SEK block header.
  * Standard (non-seekable) decompressors ignore the seek table entirely.
  *
+ * This header is freestanding: it depends only on @c <stddef.h>, @c <stdint.h>
+ * and the rest of the ZXC public API. It does not pull in @c <stdio.h>, so it
+ * is includable from kernel-space or other freestanding environments.
+ * The @c FILE*-based @ref zxc_seekable_open_file entry point lives in the
+ * companion header @c zxc_seekable_file.h.
+ *
  * @par Creating a seekable archive
  * @code
  * zxc_compress_opts_t opts = { .level = 3, .seekable = 1 };
  * int64_t csize = zxc_compress(src, src_size, dst, dst_cap, &opts);
  * @endcode
  *
- * @par Random-access decompression
+ * @par Random-access decompression (buffer-backed)
  * @code
  * zxc_seekable* s = zxc_seekable_open(compressed, csize);
  * int64_t n = zxc_seekable_decompress_range(s, out, out_cap, offset, len);
  * zxc_seekable_free(s);
+ * @endcode
+ *
+ * @par Random-access decompression (custom storage)
+ * @code
+ * zxc_reader_t r = { .read_at = my_read_at, .ctx = my_state, .size = total };
+ * zxc_seekable* s = zxc_seekable_open_reader(&r);
  * @endcode
  */
 
@@ -38,7 +50,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 
 #include "zxc_export.h"
 
@@ -59,7 +70,8 @@ extern "C" {
 /**
  * @brief Opaque handle for a seekable ZXC archive.
  *
- * Created by zxc_seekable_open() or zxc_seekable_open_file().
+ * Created by zxc_seekable_open(), zxc_seekable_open_reader(), or
+ * zxc_seekable_open_file() (see @c zxc_seekable_file.h).
  * Must be freed with zxc_seekable_free().
  */
 typedef struct zxc_seekable_s zxc_seekable;
@@ -78,16 +90,54 @@ typedef struct zxc_seekable_s zxc_seekable;
 ZXC_EXPORT zxc_seekable* zxc_seekable_open(const void* src, const size_t src_size);
 
 /**
- * @brief Opens a seekable archive from a FILE*.
+ * @brief Storage-agnostic reader interface for seekable archives.
  *
- * The file must be seekable (not stdin/pipe).  The current file position
- * is saved and restored after parsing the seek table.  The FILE* must
- * remain open for the lifetime of the handle.
+ * Lets the caller plug any backend (mmap, HTTP range requests, S3, a custom
+ * VFS, kernel @c vfs_read, etc.) behind the seekable reader.  The reader
+ * exposes positional reads only; no seeking state is implied.
  *
- * @param[in] f  File opened in "rb" mode.
+ * @par Thread safety
+ * @c read_at MUST be safe to call concurrently from multiple threads when the
+ * resulting handle is used with zxc_seekable_decompress_range_mt().  The
+ * single-threaded path makes no concurrent calls.
+ *
+ * @par Lifetime
+ * Both @c ctx and the backing storage must remain valid for the lifetime of
+ * the returned zxc_seekable handle (until zxc_seekable_free()).
+ */
+typedef struct {
+    /**
+     * @brief Reads exactly @c len bytes at @c offset into @c dst.
+     *
+     * @param[in,out] ctx     Opaque user context (forwarded from zxc_reader_t::ctx).
+     * @param[out]    dst     Destination buffer.
+     * @param[in]     len     Number of bytes to read.
+     * @param[in]     offset  Byte offset from the start of the archive.
+     * @return Number of bytes read (@c == @c len on success), or a negative
+     *         @ref zxc_error_t code on failure.  Short reads are treated as
+     *         errors by the seekable reader.
+     */
+    int64_t (*read_at)(void* ctx, void* dst, size_t len, uint64_t offset);
+
+    /** @brief Opaque user context passed unchanged to @c read_at. */
+    void* ctx;
+
+    /** @brief Total size of the compressed archive in bytes. */
+    uint64_t size;
+} zxc_reader_t;
+
+/**
+ * @brief Opens a seekable archive through a user-supplied reader.
+ *
+ * The reader is invoked to fetch the file header, footer, and seek table at
+ * open time, then again on every block read during decompression.  Use this
+ * entry point to back the seekable API with any storage that supports
+ * positional reads (e.g. mmap, HTTP, S3, a kernel file descriptor).
+ *
+ * @param[in] r  Reader interface (must remain valid for the handle lifetime).
  * @return Handle on success, or @c NULL on error.
  */
-ZXC_EXPORT zxc_seekable* zxc_seekable_open_file(FILE* f);
+ZXC_EXPORT zxc_seekable* zxc_seekable_open_reader(const zxc_reader_t* r);
 
 /**
  * @brief Returns the total number of blocks in the seekable archive.
@@ -178,6 +228,25 @@ ZXC_EXPORT int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst,
  * @param[in] s  Handle to free.
  */
 ZXC_EXPORT void zxc_seekable_free(zxc_seekable* s);
+
+/**
+ * @brief Attach a pre-trained dictionary to a seekable handle.
+ *
+ * The dictionary content and table are copied internally; the caller may free
+ * them after this call returns. Must be called before any
+ * zxc_seekable_decompress_range() call.
+ *
+ * @param[in] s         Seekable handle.
+ * @param[in] dict      Dictionary content.
+ * @param[in] dict_size Size in bytes (max ZXC_DICT_SIZE_MAX).
+ * @param[in] dict_huf  Shared literal Huffman table (128 bytes, see
+ *                      zxc_dict_huf()), or NULL if the archive was compressed
+ *                      without one. Must match the compression-time pair: the
+ *                      archive's dict_id binds (dict, table).
+ * @return @ref ZXC_OK on success, or a negative @ref zxc_error_t code.
+ */
+ZXC_EXPORT int zxc_seekable_set_dict(zxc_seekable* s, const void* dict, size_t dict_size,
+                                     const void* dict_huf);
 
 /* ========================================================================= */
 /*  Seek Table Writer (low-level)                                            */

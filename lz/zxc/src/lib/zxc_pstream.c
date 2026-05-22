@@ -24,13 +24,9 @@
 
 #include "../../include/zxc_pstream.h"
 
-#include <stdlib.h>
-#include <string.h>
-
 #include "../../include/zxc_buffer.h"
 #include "../../include/zxc_constants.h"
 #include "../../include/zxc_error.h"
-#include "../../include/zxc_sans_io.h"
 #include "zxc_internal.h"
 
 /* ===================================================================== */
@@ -181,7 +177,7 @@ static int cs_compress_one_block(zxc_cstream* cs) {
     // LCOV_EXCL_START
     if (UNLIKELY(bound == 0 || bound > SIZE_MAX)) return ZXC_ERROR_OVERFLOW;
     if (UNLIKELY(bound > cs->pending_cap)) {
-        uint8_t* nb = (uint8_t*)realloc(cs->pending, (size_t)bound);
+        uint8_t* nb = (uint8_t*)ZXC_REALLOC(cs->pending, (size_t)bound);
         if (UNLIKELY(!nb)) return ZXC_ERROR_MEMORY;
         cs->pending = nb;
         cs->pending_cap = (size_t)bound;
@@ -245,7 +241,7 @@ static int cs_drain_pending(zxc_cstream* cs, zxc_outbuf_t* out) {
  *         failure / invalid option values.
  */
 zxc_cstream* zxc_cstream_create(const zxc_compress_opts_t* opts) {
-    zxc_cstream* cs = (zxc_cstream*)calloc(1, sizeof(*cs));
+    zxc_cstream* cs = (zxc_cstream*)ZXC_CALLOC(1, sizeof(*cs));
     if (UNLIKELY(!cs)) return NULL;  // LCOV_EXCL_LINE
 
     if (opts) cs->opts = *opts;
@@ -261,25 +257,25 @@ zxc_cstream* zxc_cstream_create(const zxc_compress_opts_t* opts) {
     cs->cctx = zxc_create_cctx(&cs->opts);
     // LCOV_EXCL_START
     if (UNLIKELY(!cs->cctx)) {
-        free(cs);
+        ZXC_FREE(cs);
         return NULL;
     }
-    cs->in_block = (uint8_t*)malloc(cs->block_size);
+    cs->in_block = (uint8_t*)ZXC_MALLOC(cs->block_size);
     if (UNLIKELY(!cs->in_block)) {
         zxc_free_cctx(cs->cctx);
-        free(cs);
+        ZXC_FREE(cs);
         return NULL;
     }
     // LCOV_EXCL_STOP
     /* Pre-size pending so the file header path never needs realloc. */
     cs->pending_cap =
         ZXC_FILE_HEADER_SIZE > ZXC_FILE_FOOTER_SIZE ? ZXC_FILE_HEADER_SIZE : ZXC_FILE_FOOTER_SIZE;
-    cs->pending = (uint8_t*)malloc(cs->pending_cap);
+    cs->pending = (uint8_t*)ZXC_MALLOC(cs->pending_cap);
     // LCOV_EXCL_START
     if (UNLIKELY(!cs->pending)) {
-        free(cs->in_block);
+        ZXC_FREE(cs->in_block);
         zxc_free_cctx(cs->cctx);
-        free(cs);
+        ZXC_FREE(cs);
         return NULL;
     }
     // LCOV_EXCL_STOP
@@ -295,7 +291,7 @@ zxc_cstream* zxc_cstream_create(const zxc_compress_opts_t* opts) {
  */
 static int cs_stage_file_header(zxc_cstream* cs) {
     const int w = zxc_write_file_header(cs->pending, cs->pending_cap, cs->block_size,
-                                        cs->opts.checksum_enabled);
+                                        cs->opts.checksum_enabled, 0);
     if (UNLIKELY(w < 0)) return w;  // LCOV_EXCL_LINE
     cs->pending_len = (size_t)w;
     cs->pending_pos = 0;
@@ -314,7 +310,7 @@ static int cs_stage_file_header(zxc_cstream* cs) {
 static int cs_stage_eof(zxc_cstream* cs) {
     // LCOV_EXCL_START
     if (UNLIKELY(ZXC_BLOCK_HEADER_SIZE > cs->pending_cap)) {
-        uint8_t* nb = (uint8_t*)realloc(cs->pending, ZXC_BLOCK_HEADER_SIZE);
+        uint8_t* nb = (uint8_t*)ZXC_REALLOC(cs->pending, ZXC_BLOCK_HEADER_SIZE);
         if (UNLIKELY(!nb)) return ZXC_ERROR_MEMORY;
         cs->pending = nb;
         cs->pending_cap = ZXC_BLOCK_HEADER_SIZE;
@@ -346,7 +342,7 @@ static int cs_stage_eof(zxc_cstream* cs) {
 static int cs_stage_footer(zxc_cstream* cs) {
     // LCOV_EXCL_START
     if (UNLIKELY(ZXC_FILE_FOOTER_SIZE > cs->pending_cap)) {
-        uint8_t* nb = (uint8_t*)realloc(cs->pending, ZXC_FILE_FOOTER_SIZE);
+        uint8_t* nb = (uint8_t*)ZXC_REALLOC(cs->pending, ZXC_FILE_FOOTER_SIZE);
         if (UNLIKELY(!nb)) return ZXC_ERROR_MEMORY;
         cs->pending = nb;
         cs->pending_cap = ZXC_FILE_FOOTER_SIZE;
@@ -369,10 +365,10 @@ static int cs_stage_footer(zxc_cstream* cs) {
  */
 void zxc_cstream_free(zxc_cstream* cs) {
     if (!cs) return;
-    free(cs->pending);
-    free(cs->in_block);
+    ZXC_FREE(cs->pending);
+    ZXC_FREE(cs->in_block);
     zxc_free_cctx(cs->cctx);
-    free(cs);
+    ZXC_FREE(cs);
 }
 
 /**
@@ -663,7 +659,7 @@ typedef enum {
  *      (= header size + comp_size + checksum size).
  * @var zxc_dstream_s::decoded
  *      Heap buffer holding the decoded output of one block (sized for the
- *      wild-copy fast path: @c block_size + @ref ZXC_PAD_SIZE).
+ *      wild-copy fast path: @c block_size + @ref ZXC_DECOMPRESS_TAIL_PAD).
  * @var zxc_dstream_s::decoded_cap
  *      Allocated capacity of @c decoded.
  * @var zxc_dstream_s::decoded_size
@@ -795,7 +791,7 @@ static int ds_pull_payload(zxc_dstream* ds, zxc_inbuf_t* in) {
  * @return New stream owned by the caller, or @c NULL on allocation failure.
  */
 zxc_dstream* zxc_dstream_create(const zxc_decompress_opts_t* opts) {
-    zxc_dstream* ds = (zxc_dstream*)calloc(1, sizeof(*ds));
+    zxc_dstream* ds = (zxc_dstream*)ZXC_CALLOC(1, sizeof(*ds));
     if (UNLIKELY(!ds)) return NULL;  // LCOV_EXCL_LINE
     if (opts) ds->opts = *opts;
     ds->opts.n_threads = 0;
@@ -815,10 +811,10 @@ zxc_dstream* zxc_dstream_create(const zxc_decompress_opts_t* opts) {
  */
 void zxc_dstream_free(zxc_dstream* ds) {
     if (!ds) return;
-    free(ds->payload);
-    free(ds->decoded);
+    ZXC_FREE(ds->payload);
+    ZXC_FREE(ds->decoded);
     if (ds->inner_initialized) zxc_cctx_free(&ds->inner);
-    free(ds);
+    ZXC_FREE(ds);
 }
 
 /**
@@ -892,8 +888,9 @@ static int ds_drain_decoded(zxc_dstream* ds, zxc_outbuf_t* out, size_t* produced
  * Pulls the 16-byte file header into @c scratch, parses it via
  * @ref zxc_read_file_header, and lazily allocates the @c payload and
  * @c decoded buffers (sized from the negotiated @c block_size).  The
- * @c decoded buffer is over-allocated by @ref ZXC_PAD_SIZE bytes to absorb
- * wild-copy overflow from the inner decoder.  Initialises the underlying
+ * @c decoded buffer is over-allocated by @ref ZXC_DECOMPRESS_TAIL_PAD bytes to
+ * absorb wild-copy overflow and give the decoder's 4x ML bounds checks their
+ * required tail headroom.  Initialises the underlying
  * decompression context and transitions to @c DS_NEED_BLOCK_HEADER.
  *
  * @param[in,out] ds Decompression stream.
@@ -906,7 +903,7 @@ static int ds_handle_need_file_header(zxc_dstream* ds, zxc_inbuf_t* in) {
 
     size_t bs = 0;
     int has_csum = 0;
-    const int rc = zxc_read_file_header(ds->scratch, ds->scratch_used, &bs, &has_csum);
+    const int rc = zxc_read_file_header(ds->scratch, ds->scratch_used, &bs, &has_csum, NULL);
     if (UNLIKELY(rc != ZXC_OK)) return ds_set_error(ds, rc);  // LCOV_EXCL_LINE
     ds->block_size = bs;
     ds->file_has_checksum = has_csum;
@@ -917,19 +914,15 @@ static int ds_handle_need_file_header(zxc_dstream* ds, zxc_inbuf_t* in) {
     if (UNLIKELY(pb == 0 || pb > SIZE_MAX)) return ds_set_error(ds, ZXC_ERROR_OVERFLOW);
     // LCOV_EXCL_STOP
     ds->payload_cap = (size_t)pb;
-    ds->payload = (uint8_t*)malloc(ds->payload_cap);
+    ds->payload = (uint8_t*)ZXC_MALLOC(ds->payload_cap);
 
-    /* Decoded buffer is sized for the wild-copy fast path: block_size +
-     * ZXC_PAD_SIZE; same pattern as the buffer API uses internally.  Real
-     * decoded payload lives in [0..decoded_size); the trailing PAD bytes
-     * hold wild-copy overflow we never emit. */
-    ds->decoded_cap = ds->block_size + ZXC_PAD_SIZE;
-    ds->decoded = (uint8_t*)malloc(ds->decoded_cap);
+    ds->decoded_cap = ds->block_size + ZXC_DECOMPRESS_TAIL_PAD;
+    ds->decoded = (uint8_t*)ZXC_MALLOC(ds->decoded_cap);
     // LCOV_EXCL_START
     if (UNLIKELY(!ds->payload || !ds->decoded)) return ds_set_error(ds, ZXC_ERROR_MEMORY);
 
     if (UNLIKELY(zxc_cctx_init(&ds->inner, ds->block_size, 0, 0,
-                               ds->file_has_checksum && ds->opts.checksum_enabled) != ZXC_OK)) {
+                               ds->file_has_checksum && ds->opts.checksum_enabled, 0) != ZXC_OK)) {
         return ds_set_error(ds, ZXC_ERROR_MEMORY);
     }
     // LCOV_EXCL_STOP
@@ -985,7 +978,7 @@ static int ds_handle_need_block_header(zxc_dstream* ds, zxc_inbuf_t* in) {
     // LCOV_EXCL_START
     if (UNLIKELY(ds->payload_need > ds->payload_cap)) {
         /* grow */
-        uint8_t* nb = (uint8_t*)realloc(ds->payload, ds->payload_need);
+        uint8_t* nb = (uint8_t*)ZXC_REALLOC(ds->payload, ds->payload_need);
         if (UNLIKELY(!nb)) return ds_set_error(ds, ZXC_ERROR_MEMORY);
         ds->payload = nb;
         ds->payload_cap = ds->payload_need;

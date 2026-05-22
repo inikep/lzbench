@@ -7,19 +7,33 @@
 
 /**
  * @file zxc_stream.h
- * @brief Multi-threaded streaming compression and decompression API.
+ * @brief @c FILE*-flavored variants of the ZXC API.
  *
- * This header provides the streaming driver that reads from a @c FILE* input and
- * writes compressed (or decompressed) output to a @c FILE*.  Internally the
- * driver uses an asynchronous Producer-Consumer pipeline via a ring buffer to
- * separate I/O from CPU-intensive work:
+ * Groups the public entry points that depend on @c <stdio.h> so they can be
+ * cleanly excluded from kernel / freestanding builds (which include
+ * @c zxc_buffer.h, @c zxc_pstream.h, and the storage-agnostic part of
+ * @c zxc_seekable.h instead).
  *
- * 1. **Reader thread**  - reads chunks from `f_in`.
- * 2. **Worker threads** - compress/decompress chunks in parallel.
- * 3. **Writer thread**  - orders the results and writes them to `f_out`.
+ * Two subsystems live here:
  *
- * @see zxc_buffer.h  for the simple one-shot buffer API.
- * @see zxc_pstream.h for single-threaded push-based streaming.
+ * 1. **Multi-threaded streaming driver**: reads from a @c FILE* input and
+ *    writes compressed (or decompressed) output to a @c FILE*.  Internally
+ *    the driver uses an asynchronous Producer-Consumer pipeline via a ring
+ *    buffer to separate I/O from CPU-intensive work:
+ *      - Reader thread: reads chunks from @c f_in.
+ *      - Worker threads: compress/decompress chunks in parallel.
+ *      - Writer thread: orders the results and writes them to @c f_out.
+ *    Functions: @ref zxc_stream_compress, @ref zxc_stream_decompress,
+ *    @ref zxc_stream_get_decompressed_size.
+ *
+ * 2. **Seekable @c FILE* open helper**: thin wrapper that adapts a
+ *    @c FILE* into a thread-safe @c pread / @c ReadFile-backed
+ *    @ref zxc_reader_t and delegates to @ref zxc_seekable_open_reader.
+ *    Function: @ref zxc_seekable_open_file.
+ *
+ * @see zxc_buffer.h   for the simple one-shot buffer API.
+ * @see zxc_pstream.h  for single-threaded push-based streaming.
+ * @see zxc_seekable.h for the storage-agnostic seekable reader.
  */
 
 #ifndef ZXC_STREAM_H
@@ -30,6 +44,7 @@
 
 #include "zxc_export.h"
 #include "zxc_opts.h"
+#include "zxc_seekable.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -85,6 +100,28 @@ ZXC_EXPORT int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out,
  * ZXC_ERROR_BAD_MAGIC) if the file is invalid or an I/O error occurred.
  */
 ZXC_EXPORT int64_t zxc_stream_get_decompressed_size(FILE* f_in);
+
+/* ========================================================================= */
+/*  Seekable FILE* open helper                                               */
+/* ========================================================================= */
+
+/**
+ * @brief Opens a seekable archive from a @c FILE*.
+ *
+ * Internally builds a @ref zxc_reader_t that performs thread-safe positional
+ * reads (@c pread on POSIX, @c ReadFile + @c OVERLAPPED on Windows) on the
+ * file descriptor extracted from @p f, then delegates to
+ * @ref zxc_seekable_open_reader.  The current file position is saved and
+ * restored.  The @c FILE* must remain open for the lifetime of the handle.
+ *
+ * Lives here (next to the other @c FILE*-based entry points) rather than in
+ * @c zxc_seekable.h so the latter remains freestanding (kernel-includable).
+ *
+ * @param[in] f  File opened in @c "rb" mode (must be seekable, not a pipe).
+ * @return Handle on success (free with @ref zxc_seekable_free), or @c NULL
+ *         on error.
+ */
+ZXC_EXPORT zxc_seekable* zxc_seekable_open_file(FILE* f);
 
 /** @} */ /* end of stream_api */
 

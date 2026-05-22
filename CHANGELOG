@@ -1,3 +1,6 @@
+v2.x.y
+- updated zxc to 0.12.0
+
 v2.3 (Jun 15, 2026)
 - improvement: Reorganized compressor alias groups by type — ALL is now a composite of LZ /
                SYMMETRIC / MISC; BWT/PPM codecs (bsc, bzip2, bzip3, ppmd8) moved to SYMMETRIC,

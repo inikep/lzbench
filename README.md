@@ -101,7 +101,7 @@ Notes column says otherwise.
 | [zling 2018-10-12](https://github.com/richox/libzling) | 2018-10-12 | Disabled on big-endian PowerPC; not recommended for production use (per author) |
 | [zpaq 7.15](https://github.com/zpaq/zpaq) | 2016-08-17 | Slower on non-x86 — built with `-DNOJIT` (x86-only JIT, portable interpreter elsewhere) |
 | [zstd 1.5.7](https://github.com/facebook/zstd) | 2025-02-19 | |
-| [zxc 0.11.0](https://github.com/hellobertrand/zxc) | 2026-05-13 | |
+| [zxc 0.12.0](https://github.com/hellobertrand/zxc) | 2026-05-13 | |
 
 **Warning**: The compressors listed below have security issues and/or are no longer maintained.
 

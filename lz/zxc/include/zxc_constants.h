@@ -25,7 +25,7 @@
 /** @brief Major version number. */
 #define ZXC_VERSION_MAJOR 0
 /** @brief Minor version number. */
-#define ZXC_VERSION_MINOR 11
+#define ZXC_VERSION_MINOR 12
 /** @brief Patch version number. */
 #define ZXC_VERSION_PATCH 0
 
@@ -63,6 +63,48 @@
 /** @brief Maximum allowed block size (2 MB = 2^21). */
 #define ZXC_BLOCK_SIZE_MAX (1U << ZXC_BLOCK_SIZE_MAX_LOG2)
 /** @} */ /* end of block_size */
+
+/**
+ * @defgroup dictionary Dictionary
+ * @brief Constants for pre-trained dictionary support.
+ * @{
+ */
+/** @brief Maximum dictionary content size in bytes (64 KB - 1).
+ *
+ * Bounded to a 16-bit value (65535) by two constraints that both cap at the
+ * same number: the `.zxd` header stores the content size in a 16-bit field, and
+ * LZ77 match offsets are 16-bit (max distance 65535). */
+#define ZXC_DICT_SIZE_MAX ((1U << 16) - 1U)
+/** @brief Size of the .zxd dictionary file header in bytes. */
+#define ZXC_DICT_HEADER_SIZE 16
+/** @brief Size in bytes of a packed literal Huffman code-lengths table
+ *         (256 symbols, 4 bits each): the shared table carried by a .zxd
+ *         file and, internally, the per-block lengths header. See
+ *         zxc_train_dict_huf() / zxc_dict_huf(). */
+#define ZXC_HUF_TABLE_SIZE 128
+/** @} */ /* end of dictionary */
+
+/**
+ * @defgroup threading Threading Limits
+ * @brief Bounds on thread-count parameters accepted by the streaming APIs.
+ * @{
+ */
+/** @brief Maximum value accepted for `num_threads` in `zxc_stream_compress`
+ *  / `zxc_stream_decompress`. Passing a higher value returns `ZXC_ERROR_INVALID_OPTION`. */
+#define ZXC_MAX_THREADS 512
+/** @} */ /* end of threading */
+
+/**
+ * @defgroup file_format File Format Constants
+ * @brief On-disk byte sizes of the archive header and footer.
+ *
+ * @{
+ */
+/** @brief File header size: Magic(4) + Version(1) + Chunk(1) + Flags(1) + Reserved(7) + CRC(2). */
+#define ZXC_FILE_HEADER_SIZE 16
+/** @brief File footer size: original_size(8) + global_checksum(4). */
+#define ZXC_FILE_FOOTER_SIZE 12
+/** @} */ /* end of file_format */
 
 /**
  * @defgroup levels Compression Levels

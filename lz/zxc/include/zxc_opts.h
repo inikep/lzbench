@@ -25,6 +25,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "zxc_export.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -63,6 +65,12 @@ typedef struct {
                           of 2, [4KB - 2MB]. */
     int checksum_enabled; /**< 1 to enable per-block and global checksums, 0 to disable. */
     int seekable;         /**< 1 to append a seek table for random-access decompression. */
+    const void* dict;     /**< Pre-trained dictionary content (NULL = none). */
+    size_t dict_size;     /**< Dictionary size in bytes (0 = none, max ZXC_DICT_SIZE_MAX). */
+    const void* dict_huf; /**< Optional shared literal Huffman table: 128-byte packed
+                               code-lengths header from zxc_train_dict_huf() /
+                               zxc_dict_huf() (NULL = none; ignored without dict).
+                               Becomes part of the archive's dict_id binding. */
     zxc_progress_callback_t progress_cb; /**< Optional progress callback (NULL to disable). */
     void* user_data;                     /**< User context pointer passed to progress_cb. */
 } zxc_compress_opts_t;
@@ -80,9 +88,30 @@ typedef struct {
 typedef struct {
     int n_threads;        /**< Worker thread count (0 = auto-detect CPU cores). */
     int checksum_enabled; /**< 1 to verify per-block and global checksums, 0 to skip. */
+    const void* dict;     /**< Pre-trained dictionary content (NULL = none). */
+    size_t dict_size;     /**< Dictionary size in bytes (0 = none). */
+    const void* dict_huf; /**< Optional shared literal Huffman table: 128-byte packed
+                               code-lengths header matching the one used at
+                               compression time (NULL = none; ignored without dict). */
     zxc_progress_callback_t progress_cb; /**< Optional progress callback (NULL to disable). */
     void* user_data;                     /**< User context pointer passed to progress_cb. */
 } zxc_decompress_opts_t;
+
+/**
+ * @brief Returns `sizeof(zxc_compress_opts_t)` as compiled into the library.
+ *
+ * Layout guard for bindings that mirror the options structs by hand (raw FFI
+ * declarations, byte-offset serialization) instead of compiling against this
+ * header: comparing the mirrored size against this value at load time turns a
+ * silent layout drift (undefined behaviour) into an immediate, explicit error.
+ */
+ZXC_EXPORT size_t zxc_compress_opts_size(void);
+
+/**
+ * @brief Returns `sizeof(zxc_decompress_opts_t)` as compiled into the library.
+ * @see zxc_compress_opts_size
+ */
+ZXC_EXPORT size_t zxc_decompress_opts_size(void);
 
 #ifdef __cplusplus
 }

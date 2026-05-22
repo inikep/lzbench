@@ -66,6 +66,11 @@ typedef enum {
     ZXC_ERROR_BAD_BLOCK_TYPE = -13, /**< Unknown or unexpected block type. */
     ZXC_ERROR_BAD_BLOCK_SIZE = -14, /**< Invalid block size. */
 
+    /* Dictionary errors */
+    ZXC_ERROR_DICT_REQUIRED = -15,  /**< File requires a dictionary but none was provided. */
+    ZXC_ERROR_DICT_MISMATCH = -16,  /**< Provided dictionary ID does not match the file header. */
+    ZXC_ERROR_DICT_TOO_LARGE = -17, /**< Dictionary exceeds maximum allowed size. */
+
 } zxc_error_t;
 
 /**

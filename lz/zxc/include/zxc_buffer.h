@@ -167,6 +167,18 @@ ZXC_EXPORT int64_t zxc_decompress(const void* src, const size_t src_size, void* 
  */
 ZXC_EXPORT uint64_t zxc_get_decompressed_size(const void* src, const size_t src_size);
 
+/**
+ * @brief Returns the dictionary ID stored in a ZXC compressed buffer.
+ *
+ * Reads the file header flag and dict_id field without decompressing.
+ * Returns 0 if the file does not require a dictionary or the buffer is invalid.
+ *
+ * @param[in] src       Pointer to the compressed data buffer.
+ * @param[in] src_size  Size of the compressed data in bytes.
+ * @return Dictionary ID, or 0 if no dictionary is required.
+ */
+ZXC_EXPORT uint32_t zxc_get_dict_id(const void* src, size_t src_size);
+
 /* ========================================================================= */
 /*  Block-Level API (no file framing)                                        */
 /* ========================================================================= */
@@ -202,7 +214,9 @@ ZXC_EXPORT uint64_t zxc_get_decompressed_size(const void* src, const size_t src_
  */
 
 /* Forward declarations for context types (defined below). */
+/** @brief Opaque reusable compression context (see @ref zxc_create_cctx). */
 typedef struct zxc_cctx_s zxc_cctx;
+/** @brief Opaque reusable decompression context (see @ref zxc_create_dctx). */
 typedef struct zxc_dctx_s zxc_dctx;
 
 /**
@@ -212,8 +226,11 @@ typedef struct zxc_dctx_s zxc_dctx;
  * EOF block, or footer overhead.  Use this to size the destination
  * buffer for zxc_compress_block().
  *
- * @param[in] input_size Size of the uncompressed block in bytes.
- * @return Upper bound on compressed block size, or 0 on overflow.
+ * @param[in] input_size Size of the uncompressed block in bytes
+ *                       (must be <= @ref ZXC_BLOCK_SIZE_MAX).
+ * @return Upper bound on compressed block size, or 0 if @p input_size is
+ *         out of range for the Block API
+ *         (@p input_size > @ref ZXC_BLOCK_SIZE_MAX) or would overflow.
  */
 ZXC_EXPORT uint64_t zxc_compress_block_bound(size_t input_size);
 
@@ -230,9 +247,11 @@ ZXC_EXPORT uint64_t zxc_compress_block_bound(size_t input_size);
  * guaranteed to enable the fastest decode path without aliasing or
  * overrun checks tripping.
  *
- * @param[in] uncompressed_size Original uncompressed block size in bytes.
- * @return Minimum @c dst_capacity to pass to zxc_decompress_block(),
- *         or 0 if @p uncompressed_size would overflow.
+ * @param[in] uncompressed_size Original uncompressed block size in bytes
+ *                              (must be <= @ref ZXC_BLOCK_SIZE_MAX).
+ * @return Minimum @c dst_capacity to pass to zxc_decompress_block(), or 0 if
+ *         @p uncompressed_size is out of range for the Block API
+ *         (@p uncompressed_size > @ref ZXC_BLOCK_SIZE_MAX) or would overflow.
  */
 ZXC_EXPORT uint64_t zxc_decompress_block_bound(const size_t uncompressed_size);
 
@@ -242,9 +261,15 @@ ZXC_EXPORT uint64_t zxc_decompress_block_bound(const size_t uncompressed_size);
  * Output format: @c block_header(8B) + payload + optional @c checksum(4B).
  * The output can be decompressed with zxc_decompress_block().
  *
+ * The Block API processes a single format-conformant block at a time:
+ * @p src_size must not exceed @ref ZXC_BLOCK_SIZE_MAX (2 MiB). For larger
+ * payloads, use the frame API (zxc_compress) or the streaming API
+ * (zxc_cstream_*), both of which chunk transparently into compliant blocks.
+ *
  * @param[in,out] cctx         Reusable compression context.
  * @param[in]     src          Source data.
- * @param[in]     src_size     Source data size in bytes.
+ * @param[in]     src_size     Source data size in bytes
+ *                             (must be in [1, @ref ZXC_BLOCK_SIZE_MAX]).
  * @param[out]    dst          Destination buffer.
  * @param[in]     dst_capacity Capacity of the destination buffer
  *                             (use zxc_compress_block_bound() to size).
@@ -254,6 +279,8 @@ ZXC_EXPORT uint64_t zxc_decompress_block_bound(const size_t uncompressed_size);
  *
  * @return Compressed block size in bytes (> 0) on success,
  *         or a negative @ref zxc_error_t code on failure.
+ *         Returns @ref ZXC_ERROR_BAD_BLOCK_SIZE if
+ *         @p src_size > @ref ZXC_BLOCK_SIZE_MAX.
  */
 ZXC_EXPORT int64_t zxc_compress_block(zxc_cctx* cctx, const void* src, size_t src_size, void* dst,
                                       size_t dst_capacity, const zxc_compress_opts_t* opts);
@@ -261,17 +288,27 @@ ZXC_EXPORT int64_t zxc_compress_block(zxc_cctx* cctx, const void* src, size_t sr
 /**
  * @brief Decompresses a single block produced by zxc_compress_block().
  *
+ * The Block API decompresses a single format-conformant block at a time:
+ * @p dst_capacity must not exceed @ref ZXC_BLOCK_SIZE_MAX +
+ * @ref ZXC_DECOMPRESS_TAIL_PAD (the size returned by
+ * zxc_decompress_block_bound() for the maximum block size). For payloads
+ * produced by the frame or streaming APIs, use zxc_decompress instead.
+ *
  * @param[in,out] dctx         Reusable decompression context.
  * @param[in]     src          Compressed block data.
  * @param[in]     src_size     Compressed data size in bytes.
  * @param[out]    dst          Destination buffer for decompressed data.
  * @param[in]     dst_capacity Capacity of the destination buffer (must be
- *                             at least the original uncompressed size).
+ *                             at least the original uncompressed size,
+ *                             and at most @ref ZXC_BLOCK_SIZE_MAX +
+ *                             @ref ZXC_DECOMPRESS_TAIL_PAD).
  * @param[in]     opts         Decompression options (NULL for defaults).
  *                             Only @c checksum_enabled is used.
  *
  * @return Decompressed size in bytes (> 0) on success,
  *         or a negative @ref zxc_error_t code on failure.
+ *         Returns @ref ZXC_ERROR_BAD_BLOCK_SIZE if @p dst_capacity exceeds
+ *         the per-block limit.
  */
 ZXC_EXPORT int64_t zxc_decompress_block(zxc_dctx* dctx, const void* src, size_t src_size, void* dst,
                                         size_t dst_capacity, const zxc_decompress_opts_t* opts);
@@ -288,20 +325,29 @@ ZXC_EXPORT int64_t zxc_decompress_block(zxc_dctx* dctx, const void* src, size_t 
  * because it avoids the wild-copy overshoot that the fast decoder relies on.
  * Output is bit-identical to zxc_decompress_block().
  *
- * NUM and RAW blocks transparently forward to zxc_decompress_block(); only
+ * RAW blocks transparently forward to zxc_decompress_block(); only
  * GLO/GHI use the strict-tail decoder path.
+ *
+ * Strict-tail variant: @p dst_capacity is the exact uncompressed size with
+ * no tail-pad margin, so the upper limit is @ref ZXC_BLOCK_SIZE_MAX (not
+ * @c MAX+TAIL_PAD as for zxc_decompress_block).
  *
  * @param[in,out] dctx         Reusable decompression context.
  * @param[in]     src          Compressed block data.
  * @param[in]     src_size     Compressed data size in bytes.
  * @param[out]    dst          Destination buffer for decompressed data.
- * @param[in]     dst_capacity Capacity of the destination buffer (may equal
- *                             the original uncompressed size exactly).
+ * @param[in]     dst_capacity Capacity of the destination buffer (must be
+ *                             at least the original uncompressed size,
+ *                             and at most @ref ZXC_BLOCK_SIZE_MAX; unlike
+ *                             zxc_decompress_block, no trailing tail-pad
+ *                             margin is required).
  * @param[in]     opts         Decompression options (NULL for defaults).
  *                             Only @c checksum_enabled is used.
  *
  * @return Decompressed size in bytes (> 0) on success,
  *         or a negative @ref zxc_error_t code on failure.
+ *         Returns @ref ZXC_ERROR_BAD_BLOCK_SIZE if
+ *         @p dst_capacity > @ref ZXC_BLOCK_SIZE_MAX.
  */
 ZXC_EXPORT int64_t zxc_decompress_block_safe(zxc_dctx* dctx, const void* src, const size_t src_size,
                                              void* dst, const size_t dst_capacity,
@@ -433,6 +479,133 @@ ZXC_EXPORT void zxc_free_dctx(zxc_dctx* dctx);
 ZXC_EXPORT int64_t zxc_decompress_dctx(zxc_dctx* dctx, const void* src, size_t src_size, void* dst,
                                        size_t dst_capacity, const zxc_decompress_opts_t* opts);
 
+/* ========================================================================= */
+/*  Static Context API (caller-allocated workspace)                          */
+/* ========================================================================= */
+
+/**
+ * @defgroup static_context_api Static Context API
+ * @brief Caller-allocated, fixed-footprint compression / decompression
+ *        contexts.
+ *
+ * Mirrors the dynamic Reusable Context API but places the entire context
+ * (handle + persistent buffers) inside a single buffer allocated and owned
+ * by the caller.  This pattern is mandatory for environments where the
+ * library cannot call into the host allocator on the hot path: Linux
+ * kernel filesystems (one workspace per mount, served via @c vmalloc /
+ * @c kmalloc up front), embedded targets without a heap (`.bss` or
+ * stack-allocated workspace), sandboxed runtimes with a fixed memory
+ * budget, etc.
+ *
+ * The trade-off vs the dynamic API: the workspace is pinned to a single @c block_size and @c level
+ * at init time; subsequent compress/decompress calls cannot enlarge the footprint, so a workload
+ * that needs to mix block sizes must size the workspace for the maximum block_size up front.
+ *
+ * @par Typical usage
+ * @code
+ * size_t ws_sz = zxc_static_cctx_workspace_size(64 * 1024, ZXC_LEVEL_DEFAULT);
+ * void *ws = aligned_alloc(64, ws_sz);                   // or kmalloc, vmalloc, .bss
+ * zxc_compress_opts_t opts = { .level = ZXC_LEVEL_DEFAULT, .block_size = 64 * 1024 };
+ * zxc_cctx *cctx = zxc_init_static_cctx(ws, ws_sz, &opts);
+ *
+ * for (each block) zxc_compress_cctx(cctx, src, n, dst, cap, NULL);
+ *
+ * // zxc_free_cctx is a no-op on a static cctx; the caller owns @c ws.
+ * free(ws);
+ * @endcode
+ * @{
+ */
+
+/**
+ * @brief Returns the exact byte count required by a static compression
+ *        workspace for the given @p block_size and @p level.
+ *
+ * The value is the sum of the opaque @ref zxc_cctx wrapper plus every
+ * persistent sub-buffer the library would partition (hash tables, chain
+ * table, sequence buffers, literal scratch, plus the optimal-parser
+ * scratch at @ref ZXC_LEVEL_DENSITY). Round up to your allocator's
+ * alignment before calling @c posix_memalign / @c aligned_alloc, the
+ * workspace must be at least cache-line aligned.
+ *
+ * @param[in] block_size  Block size in bytes (must satisfy the regular
+ *                        block-size constraints: power of two in
+ *                        [@ref ZXC_BLOCK_SIZE_MIN, @ref ZXC_BLOCK_SIZE_MAX]).
+ * @param[in] level       Compression level (1..6); higher levels at
+ *                        @ref ZXC_LEVEL_DENSITY add the optimal-parser
+ *                        scratch (~8.125 x block_size).
+ * @return Workspace size in bytes, or 0 if either argument is invalid.
+ */
+ZXC_EXPORT size_t zxc_static_cctx_workspace_size(const size_t block_size, const int level);
+
+/**
+ * @brief Initialises a compression context inside a caller-supplied
+ *        workspace.
+ *
+ * @p workspace_size must be at least @ref zxc_static_cctx_workspace_size
+ * for the same @c block_size and @c level.  The workspace must remain
+ * valid for the lifetime of the returned handle and must be cache-line
+ * (64-byte) aligned.  The caller owns the workspace; @ref zxc_free_cctx
+ * is a no-op on the returned handle.
+ *
+ * @par Locked parameters
+ * The @c block_size, @c level, and @c checksum_enabled fields of @p opts
+ * are pinned at init time.  Subsequent @ref zxc_compress_cctx calls that
+ * pass options requesting a different @c block_size return
+ * @ref ZXC_ERROR_BAD_BLOCK_SIZE without re-initialising.  A different
+ * @c level / @c checksum_enabled is honoured per-call without
+ * re-partitioning.
+ *
+ * @param[in,out] workspace       Caller-allocated buffer, cache-line aligned.
+ * @param[in]     workspace_size  Capacity of @p workspace in bytes.
+ * @param[in]     opts            Must be non-NULL: @c block_size and
+ *                                @c level must be set explicitly to size
+ *                                the workspace correctly.
+ * @return Handle pointing inside @p workspace on success, or @c NULL if
+ *         the workspace is too small or the options are invalid.
+ */
+ZXC_EXPORT zxc_cctx* zxc_init_static_cctx(void* workspace, const size_t workspace_size,
+                                          const zxc_compress_opts_t* opts);
+
+/**
+ * @brief Returns the exact byte count required by a static decompression
+ *        workspace for the given @p block_size.
+ *
+ * Unlike the compression variant, this size is independent of the source
+ * archive's level: @c lit_buffer is always provisioned worst-case because
+ * the decoder cannot predict the per-block literal encoding until it sees
+ * each block header.
+ *
+ * @param[in] block_size  Maximum block size the decoder will encounter
+ *                        (must satisfy the regular block-size constraints).
+ * @return Workspace size in bytes, or 0 if @p block_size is invalid.
+ */
+ZXC_EXPORT size_t zxc_static_dctx_workspace_size(const size_t block_size);
+
+/**
+ * @brief Initialises a decompression context inside a caller-supplied
+ *        workspace.
+ *
+ * @p workspace_size must be at least @ref zxc_static_dctx_workspace_size
+ * for the same @p block_size.  The workspace must remain valid for the
+ * lifetime of the returned handle and must be cache-line aligned.  The
+ * caller owns the workspace; @ref zxc_free_dctx is a no-op on the
+ * returned handle.
+ *
+ * @par Locked block size
+ * @p block_size is pinned at init time: feeding the returned handle an
+ * archive whose header declares a different @c block_size returns
+ * @ref ZXC_ERROR_BAD_BLOCK_SIZE.
+ *
+ * @param[in,out] workspace       Caller-allocated buffer, cache-line aligned.
+ * @param[in]     workspace_size  Capacity of @p workspace in bytes.
+ * @param[in]     block_size      Block size the decoder will accept.
+ * @return Handle pointing inside @p workspace on success, or @c NULL if
+ *         the workspace is too small or @p block_size is invalid.
+ */
+ZXC_EXPORT zxc_dctx* zxc_init_static_dctx(void* workspace, const size_t workspace_size,
+                                          const size_t block_size);
+
+/** @} */ /* end of static_context_api */
 /** @} */ /* end of context_api */
 /** @} */ /* end of buffer_api */
 
