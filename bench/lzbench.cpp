@@ -66,16 +66,6 @@ std::vector<std::string> split(const std::string &text, char sep)
     return tokens;
 }
 
-static size_t codec_max_chunk_size(const compressor_desc_t* desc)
-{
-#ifndef BENCH_REMOVE_BSC
-    if (desc->compress == lzbench_bsc_compress || desc->compress == lzbench_bsc_cuda_compress) {
-        return (size_t)1 << 30;
-    }
-#endif
-    return 0;
-}
-
 static std::vector<size_t> limit_chunk_sizes(const std::vector<size_t>& chunk_sizes, size_t max_chunk_size, size_t* max_effective_chunk_size)
 {
     std::vector<size_t> limited_chunk_sizes;
@@ -519,13 +509,13 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
     const std::vector<size_t> *effective_chunk_sizes = &chunk_sizes;
     std::vector<size_t> codec_chunk_sizes;
     size_t effective_max_chunk_size = max_chunk_size;
-    const size_t max_codec_chunk_size = codec_max_chunk_size(desc);
+    const size_t max_codec_input_size = desc->max_input_size;
 
     if (!(desc->mt_mode & BENCH_POOL_MT)) numThreads = 1;  // No support for lzbench's external thread pool
     if (!(desc->mt_mode & INTERNAL_MT)) codec_threads = 1; // No support for internal (built-in) multithreading
 
-    if (max_codec_chunk_size > 0 && effective_max_chunk_size > max_codec_chunk_size) {
-        codec_chunk_sizes = limit_chunk_sizes(chunk_sizes, max_codec_chunk_size, &effective_max_chunk_size);
+    if (max_codec_input_size > 0 && effective_max_chunk_size > max_codec_input_size) {
+        codec_chunk_sizes = limit_chunk_sizes(chunk_sizes, max_codec_input_size, &effective_max_chunk_size);
         effective_chunk_sizes = &codec_chunk_sizes;
     }
 

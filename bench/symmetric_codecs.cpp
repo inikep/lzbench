@@ -18,8 +18,6 @@
 #include <omp.h> // omp_set_num_threads
 #endif
 
-static const size_t LZBENCH_BSC_MAX_BLOCK_SIZE = (size_t)1 << 30;
-
 char *lzbench_bsc_init(size_t insize, size_t level, size_t)
 {
     int features = LIBBSC_DEFAULT_FEATURES | LIBBSC_FEATURE_CUDA;
@@ -29,7 +27,7 @@ char *lzbench_bsc_init(size_t insize, size_t level, size_t)
 
 int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    if (insize > LZBENCH_BSC_MAX_BLOCK_SIZE || outsize < insize + LIBBSC_HEADER_SIZE) return LIBBSC_BAD_PARAMETER;
+    if (insize > LZBENCH_BSC_MAX_INPUT_SIZE || outsize < insize + LIBBSC_HEADER_SIZE) return LIBBSC_BAD_PARAMETER;
 
     int features;
     int lzpHashSize = LIBBSC_DEFAULT_LZPHASHSIZE;
@@ -86,7 +84,7 @@ int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    if (insize > LZBENCH_BSC_MAX_BLOCK_SIZE || outsize < insize + LIBBSC_HEADER_SIZE) return LIBBSC_BAD_PARAMETER;
+    if (insize > LZBENCH_BSC_MAX_INPUT_SIZE || outsize < insize + LIBBSC_HEADER_SIZE) return LIBBSC_BAD_PARAMETER;
 
     int features = LIBBSC_DEFAULT_FEATURES | LIBBSC_FEATURE_CUDA;
     int lzpHashSize = LIBBSC_DEFAULT_LZPHASHSIZE;
