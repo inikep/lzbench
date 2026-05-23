@@ -85,6 +85,16 @@ static std::vector<size_t> limit_chunk_sizes(const std::vector<size_t>& chunk_si
     return limited_chunk_sizes;
 }
 
+static size_t max_limited_chunk_overhead(size_t insize) {
+    size_t overhead = 0;
+
+    for (int i = 0; i < LZBENCH_COMPRESSOR_COUNT; i++)
+        if (comp_desc[i].max_input_size > 0) {
+            overhead = MAX(overhead, insize / comp_desc[i].max_input_size);
+        }
+
+    return overhead;
+}
 
 void print_header(lzbench_params_t *params)
 {
@@ -799,7 +809,9 @@ void lzbench_process_mem_blocks(lzbench_params_t *params, size_t max_chunk_size,
         }
     }
 
-    comprsize = GET_COMPRESS_BOUND(insize) + chunk_sizes.size() * PAD_SIZE;
+    comprsize =
+        GET_COMPRESS_BOUND(insize) +
+        (chunk_sizes.size() + max_limited_chunk_overhead(insize)) * PAD_SIZE;
     compbuf = (uint8_t*)alloc_and_touch(comprsize, false);
     decomp = (uint8_t*)alloc_and_touch(insize + PAD_SIZE, true);
 
