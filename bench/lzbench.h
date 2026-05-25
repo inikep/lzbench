@@ -259,7 +259,7 @@ static const compressor_desc_t comp_desc[] =
     { "zstd24LDM",  "zstd 1.5.7 --long -d24", 16,  22,   24, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstdLDM",    "zstd 1.5.7 --long",       1,  22,    0, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstd_fast",  "zstd 1.5.7 --fast",      -5,  -1,    0, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zstd_tuned", "zstd 1.5.7 tuned",         1,  150,    0, FULL_THREADING, lzbench_zstd_tuned_compress,  lzbench_zstd_decompress,       lzbench_zstd_tuned_init, lzbench_zstd_deinit },
+    { "zstd_tuned", "zstd 1.5.7 tuned",         1,   4,    0, FULL_THREADING, lzbench_zstd_tuned_compress,  lzbench_zstd_decompress,       lzbench_zstd_tuned_init, lzbench_zstd_deinit },
     { "zxc",        "zxc 0.11.0",              1,   6,    0, BENCH_POOL_MT,  lzbench_zxc_compress,        lzbench_zxc_decompress,        lzbench_zxc_init,        lzbench_zxc_deinit },
 };
 
