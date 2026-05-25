@@ -553,6 +553,8 @@ extern "C"
     int64_t lzbench_zstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     char* lzbench_zstd_LDM_init(size_t insize, size_t level, size_t);
     int64_t lzbench_zstd_LDM_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    char* lzbench_zstd_tuned_init(size_t insize, size_t level, size_t);
+    int64_t lzbench_zstd_tuned_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
 #else
     #define lzbench_zstd_init NULL
     #define lzbench_zstd_deinit NULL
@@ -560,6 +562,8 @@ extern "C"
     #define lzbench_zstd_decompress NULL
     #define lzbench_zstd_LDM_init NULL
     #define lzbench_zstd_LDM_compress NULL
+    #define lzbench_zstd_tuned_init NULL
+    #define lzbench_zstd_tuned_compress NULL
 #endif
 
 
