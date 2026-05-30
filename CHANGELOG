@@ -1,4 +1,5 @@
 v2.x.y (work in progress)
+- updated libdeflate to v1.25 (thanks to @tansy)
 - added aceapex 1.0 (thanks to @yasha1971-coder)
 - added memlz 0.2 beta (thanks to @rrrlasse)
 - added zxc 0.11.0 (thanks to @hellobertrand)
