@@ -22,6 +22,8 @@ typedef struct
 } codec_options_t;
 
 
+static const size_t LZBENCH_BSC_MAX_INPUT_SIZE = (size_t)1 << 30;
+
 
 int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
 
