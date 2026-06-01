@@ -287,6 +287,12 @@ static const Lizard_parameters Lizard_defaultParameters[LIZARD_MAX_CLEVEL+1-LIZA
 	{                     24,                     0,   18,   0,     0,  5,  MM_LONGOFF,     0,  0, Lizard_parser_noChain,        Lizard_coderwords_LIZv1 }, // level 53 noChain LIZv1 windowLog=24
 	/*                  windowLog, contentLog, hashLog, hashLog3, searchNum, searchLength, minMatchLongOff, sufficientLength, fullSearch, parserType,                   decompressType */
 	{ LIZARD_WINDOWLOG_LIZv1,                     0,   18,   0,     1,  5,  MM_LONGOFF,     0,  0, Lizard_parser_fastBig,        Lizard_coderwords_LIZv1 }, // level 54 fastBig LIZv1 hashLog=18
+	/*                  windowLog, contentLog, hashLog, hashLog3, searchNum, searchLength, minMatchLongOff, sufficientLength, fullSearch, parserType,                   decompressType */
+	{                     23,                     0,   18,   0,     1,  5,  MM_LONGOFF,     0,  0, Lizard_parser_fastBig,        Lizard_coderwords_LIZv1 }, // level 55 fastBig LIZv1 hashLog=18 wLog=23
+	{                     24,                     0,   18,   0,     1,  5,  MM_LONGOFF,     0,  0, Lizard_parser_fastBig,        Lizard_coderwords_LIZv1 }, // level 56 fastBig LIZv1 hashLog=18 wLog=24
+	/*                  windowLog, contentLog, hashLog, hashLog3, searchNum, searchLength, minMatchLongOff, sufficientLength, fullSearch, parserType,                   decompressType */
+	{ LIZARD_WINDOWLOG_LIZv1,                     0,   18,   0,     0,  5,  MM_LONGOFF,     0,  0, Lizard_parser_fast,           Lizard_coderwords_LIZv1 }, // level 57 fast LIZv1 hashLog=18
+	{ LIZARD_WINDOWLOG_LIZv1,                     0,   18,   0,     1,  5,  MM_LONGOFF,     0,  0, Lizard_parser_fast,           Lizard_coderwords_LIZv1 }, // level 58 fast LIZv1 hashLog=18 searchNum=1
 #endif
 //  {                     10,                       10,                   10,   0,     0,  4,           0,     0,  0, Lizard_fast          }, // min values
 //  {                     24,                       24,                   28,  24, 1<<24,  7,           0, 1<<24,  2, Lizard_optimal_price }, // max values

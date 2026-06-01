@@ -85,7 +85,7 @@ typedef struct Lizard_stream_s Lizard_stream_t;
 
 #define LIZARD_MIN_CLEVEL      10  /* minimum compression level */
 #ifndef LIZARD_NO_HUFFMAN
-    #define LIZARD_MAX_CLEVEL      54  /* maximum compression level */
+    #define LIZARD_MAX_CLEVEL      58  /* maximum compression level */
 #else
     #define LIZARD_MAX_CLEVEL      29  /* maximum compression level */
 #endif
