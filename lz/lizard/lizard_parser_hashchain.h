@@ -222,7 +222,7 @@ _Search2:
         else ml2 = ml;
 
         if (ml2 == ml) { /* No better match */
-            if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml, ref)) return 0;
+            if (Lizard_encodeSequence(ctx, &ip, &anchor, ml, ref)) return 0;
             continue;
         }
 
@@ -255,7 +255,7 @@ _Search3:
             if (ip+new_ml > start2 + ml2 - GET_MINMATCH((U32)(start2 - ref2))) {
                 new_ml = (int)(start2 - ip) + ml2 - GET_MINMATCH((U32)(start2 - ref2));
                 if (new_ml < GET_MINMATCH((U32)(ip - ref))) { // match2 doesn't fit
-                    if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml, ref)) return 0;
+                    if (Lizard_encodeSequence(ctx, &ip, &anchor, ml, ref)) return 0;
                     continue;
                 }
             }
@@ -276,9 +276,9 @@ _Search3:
             /* ip & ref are known; Now for ml */
             if (start2 < ip+ml)  ml = (int)(start2 - ip);
             /* Now, encode 2 sequences */
-            if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml, ref)) return 0;
+            if (Lizard_encodeSequence(ctx, &ip, &anchor, ml, ref)) return 0;
             ip = start2;
-            if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml2, ref2)) return 0;
+            if (Lizard_encodeSequence(ctx, &ip, &anchor, ml2, ref2)) return 0;
             continue;
         }
 
@@ -296,7 +296,7 @@ _Search3:
                     }
                 }
 
-                if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml, ref)) return 0;
+                if (Lizard_encodeSequence(ctx, &ip, &anchor, ml, ref)) return 0;
                 ip  = start3;
                 ref = ref3;
                 ml  = ml3;
@@ -324,7 +324,7 @@ _Search3:
                 if (ip + ml > start2 + ml2 - GET_MINMATCH((U32)(start2 - ref2))) {
                     ml = (int)(start2 - ip) + ml2 - GET_MINMATCH((U32)(start2 - ref2));
                     if (ml < GET_MINMATCH((U32)(ip - ref))) { // match2 doesn't fit, remove it
-                        if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml, ref)) return 0;
+                        if (Lizard_encodeSequence(ctx, &ip, &anchor, ml, ref)) return 0;
                         ip  = start3;
                         ref = ref3;
                         ml  = ml3;
@@ -345,7 +345,7 @@ _Search3:
                 ml = (int)(start2 - ip);
             }
         }
-        if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml, ref)) return 0;
+        if (Lizard_encodeSequence(ctx, &ip, &anchor, ml, ref)) return 0;
 
         ip = start2;
         ref = ref2;
@@ -360,7 +360,7 @@ _Search3:
 
     /* Encode Last Literals */
     ip = iend;
-    if (Lizard_encodeLastLiterals_LZ4(ctx, &ip, &anchor)) goto _output_error;
+    if (Lizard_encodeLastLiterals(ctx, &ip, &anchor)) goto _output_error;
 
     /* End */
     return 1;

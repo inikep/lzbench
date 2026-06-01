@@ -278,6 +278,10 @@ static const Lizard_parameters Lizard_defaultParameters[LIZARD_MAX_CLEVEL+1-LIZA
     { LIZARD_WINDOWLOG_LIZv1,  LIZARD_CHAINLOG_LIZv1+1,                   23,  16,     8,  4,  MM_LONGOFF,    64,  1, Lizard_parser_optimalPriceBT, Lizard_coderwords_LIZv1 }, // level 47
     { LIZARD_WINDOWLOG_LIZv1,  LIZARD_CHAINLOG_LIZv1+1,                   23,  16,   128,  4,  MM_LONGOFF,    64,  1, Lizard_parser_optimalPriceBT, Lizard_coderwords_LIZv1 }, // level 48
     {                     24,                       25,                   23,  24, 1<<10,  4,  MM_LONGOFF, 1<<10,  1, Lizard_parser_optimalPriceBT, Lizard_coderwords_LIZv1 }, // level 49
+	/*                  windowLog, contentLog, hashLog, hashLog3, searchNum, searchLength, minMatchLongOff, sufficientLength, fullSearch, parserType,                   decompressType */
+	{   LIZARD_WINDOWLOG_LIZv1,   18,   17,   0,     2,  5,  MM_LONGOFF,     0,  0, Lizard_parser_lowestPrice,    Lizard_coderwords_LIZv1 }, // level 50 — lizard_rapid
+	/*                  windowLog, contentLog, hashLog, hashLog3, searchNum, searchLength, minMatchLongOff, sufficientLength, fullSearch, parserType,                   decompressType */
+	{ LIZARD_WINDOWLOG_LIZv1,                     0,   18,   0,     0,  5,  MM_LONGOFF,     0,  0, Lizard_parser_noChain,        Lizard_coderwords_LIZv1 }, // level 51 noChain LIZv1
 #endif
 //  {                     10,                       10,                   10,   0,     0,  4,           0,     0,  0, Lizard_fast          }, // min values
 //  {                     24,                       24,                   28,  24, 1<<24,  7,           0, 1<<24,  2, Lizard_optimal_price }, // max values
