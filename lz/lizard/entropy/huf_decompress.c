@@ -456,7 +456,12 @@ size_t HUF_decompress4X1 (void* dst, size_t dstSize, const void* cSrc, size_t cS
 /* double-symbols decoding */
 /* *************************/
 
-typedef struct { U16 sequence; BYTE nbBits; BYTE length; } HUF_DEltX2;  /* double-symbols decoding */
+typedef U32 HUF_DEltX2;  /* double-symbols decoding: bits 0-15=sequence, 16-23=nbBits, 24-31=length */
+
+#define HUF_DEltX2_SEQUENCE(d) ((U16)(d))
+#define HUF_DEltX2_NBBITS(d)   ((BYTE)((d) >> 16))
+#define HUF_DEltX2_LENGTH(d)   ((BYTE)((d) >> 24))
+#define HUF_DEltX2_PACK(seq, nb, len) ((U32)(seq) | ((U32)(nb) << 16) | ((U32)(len) << 24))
 typedef struct { BYTE symbol; BYTE weight; } sortedSymbol_t;
 typedef U32 rankValCol_t[HUF_TABLELOG_MAX + 1];
 typedef rankValCol_t rankVal_t[HUF_TABLELOG_MAX];
@@ -478,9 +483,7 @@ static void HUF_fillDTableX2Level2(HUF_DEltX2* DTable, U32 sizeLog, const U32 co
     /* fill skipped values */
     if (minWeight>1) {
         U32 i, skipSize = rankVal[minWeight];
-        MEM_writeLE16(&(DElt.sequence), baseSeq);
-        DElt.nbBits   = (BYTE)(consumed);
-        DElt.length   = 1;
+        DElt = HUF_DEltX2_PACK(baseSeq, consumed, 1);
         for (i = 0; i < skipSize; i++)
             DTable[i] = DElt;
     }
@@ -495,9 +498,7 @@ static void HUF_fillDTableX2Level2(HUF_DEltX2* DTable, U32 sizeLog, const U32 co
             U32 i = start;
             const U32 end = start + length;
 
-            MEM_writeLE16(&(DElt.sequence), (U16)(baseSeq + (symbol << 8)));
-            DElt.nbBits = (BYTE)(nbBits + consumed);
-            DElt.length = 2;
+            DElt = HUF_DEltX2_PACK((U16)(baseSeq + (symbol << 8)), (BYTE)(nbBits + consumed), 2);
             do { DTable[i++] = DElt; } while (i<end);   /* since length >= 1 */
 
             rankVal[weight] += length;
@@ -535,10 +536,7 @@ static void HUF_fillDTableX2(HUF_DEltX2* DTable, const U32 targetLog,
                            sortedList+sortedRank, sortedListSize-sortedRank,
                            nbBitsBaseline, symbol);
         } else {
-            HUF_DEltX2 DElt;
-            MEM_writeLE16(&(DElt.sequence), symbol);
-            DElt.nbBits = (BYTE)(nbBits);
-            DElt.length = 1;
+            HUF_DEltX2 DElt = HUF_DEltX2_PACK(symbol, (BYTE)nbBits, 1);
             {   U32 const end = start + length;
                 U32 u;
                 for (u = start; u < end; u++) DTable[u] = DElt;
@@ -659,22 +657,23 @@ FORCE_INLINE_TEMPLATE U32
 HUF_decodeSymbolX2(void* op, BIT_DStream_t* DStream, const HUF_DEltX2* dt, const U32 dtLog)
 {
     size_t const val = BIT_lookBitsFast(DStream, dtLog);   /* note : dtLog >= 1 */
-    memcpy(op, dt+val, 2);
-    BIT_skipBits(DStream, dt[val].nbBits);
-    return dt[val].length;
+    U32 const entry = dt[val];
+    MEM_writeLE16(op, HUF_DEltX2_SEQUENCE(entry));
+    BIT_skipBits(DStream, HUF_DEltX2_NBBITS(entry));
+    return HUF_DEltX2_LENGTH(entry);
 }
 
 FORCE_INLINE_TEMPLATE U32
 HUF_decodeLastSymbolX2(void* op, BIT_DStream_t* DStream, const HUF_DEltX2* dt, const U32 dtLog)
 {
     size_t const val = BIT_lookBitsFast(DStream, dtLog);   /* note : dtLog >= 1 */
-    memcpy(op, dt+val, 1);
-    if (dt[val].length==1) BIT_skipBits(DStream, dt[val].nbBits);
+    U32 const entry = dt[val];
+    *(BYTE*)op = (BYTE)HUF_DEltX2_SEQUENCE(entry);
+    if (HUF_DEltX2_LENGTH(entry)==1) BIT_skipBits(DStream, HUF_DEltX2_NBBITS(entry));
     else {
         if (DStream->bitsConsumed < (sizeof(DStream->bitContainer)*8)) {
-            BIT_skipBits(DStream, dt[val].nbBits);
+            BIT_skipBits(DStream, HUF_DEltX2_NBBITS(entry));
             if (DStream->bitsConsumed > (sizeof(DStream->bitContainer)*8))
-                /* ugly hack; works only because it's the last symbol. Note : can't easily extract nbBits from just this symbol */
                 DStream->bitsConsumed = (sizeof(DStream->bitContainer)*8);
     }   }
     return 1;
