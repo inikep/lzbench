@@ -27,6 +27,8 @@ char *lzbench_bsc_init(size_t insize, size_t level, size_t)
 
 int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
+    if (insize > LZBENCH_BSC_MAX_INPUT_SIZE || outsize < insize + LIBBSC_HEADER_SIZE) return LIBBSC_BAD_PARAMETER;
+
     int features;
     int lzpHashSize = LIBBSC_DEFAULT_LZPHASHSIZE;
     int lzpMinLen = LIBBSC_DEFAULT_LZPMINLEN;
@@ -68,16 +70,22 @@ int64_t lzbench_bsc_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 #endif
         features = LIBBSC_FEATURE_FASTMODE;
 
-    bsc_block_info((unsigned char *)inbuf, LIBBSC_HEADER_SIZE, &insize_bsc, &outsize_bsc, features);
-    bsc_decompress((unsigned char *)inbuf, insize_bsc, (unsigned char *)outbuf, outsize_bsc, features);
+    int res = bsc_block_info((unsigned char *)inbuf, LIBBSC_HEADER_SIZE, &insize_bsc, &outsize_bsc, features);
+    if (res != LIBBSC_NO_ERROR) return res;
+    if ((size_t)insize_bsc > insize || (size_t)outsize_bsc > outsize) return LIBBSC_BAD_PARAMETER;
 
-    return outsize;
+    res = bsc_decompress((unsigned char *)inbuf, insize_bsc, (unsigned char *)outbuf, outsize_bsc, features);
+    if (res != LIBBSC_NO_ERROR) return res;
+
+    return outsize_bsc;
 }
 
 #ifdef BENCH_HAS_CUDA
 
 int64_t lzbench_bsc_cuda_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
+    if (insize > LZBENCH_BSC_MAX_INPUT_SIZE || outsize < insize + LIBBSC_HEADER_SIZE) return LIBBSC_BAD_PARAMETER;
+
     int features = LIBBSC_DEFAULT_FEATURES | LIBBSC_FEATURE_CUDA;
     int lzpHashSize = LIBBSC_DEFAULT_LZPHASHSIZE;
     int lzpMinLen = LIBBSC_DEFAULT_LZPMINLEN;
@@ -105,10 +113,14 @@ int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, si
     int insize_bsc;
     int outsize_bsc;
 
-    bsc_block_info((unsigned char *)inbuf, LIBBSC_HEADER_SIZE, &insize_bsc, &outsize_bsc, features);
-    bsc_decompress((unsigned char *)inbuf, insize_bsc, (unsigned char *)outbuf, outsize_bsc, features);
+    int res = bsc_block_info((unsigned char *)inbuf, LIBBSC_HEADER_SIZE, &insize_bsc, &outsize_bsc, features);
+    if (res != LIBBSC_NO_ERROR) return res;
+    if ((size_t)insize_bsc > insize || (size_t)outsize_bsc > outsize) return LIBBSC_BAD_PARAMETER;
 
-    return outsize;
+    res = bsc_decompress((unsigned char *)inbuf, insize_bsc, (unsigned char *)outbuf, outsize_bsc, features);
+    if (res != LIBBSC_NO_ERROR) return res;
+
+    return outsize_bsc;
 }
 
 #endif // BENCH_HAS_CUDA

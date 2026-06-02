@@ -140,6 +140,13 @@ jobs:
 
 
       # gcc-9 and newer compilers
+      gcc-16 x86 64-bit [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: gcc-16
+        SELECTED_CXX: g++-16
+        PACKAGES: 'g++-16'
+        ARTIFACT_SLUG: gcc-16-x86_64
+
       gcc-15 x86 64-bit [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-15

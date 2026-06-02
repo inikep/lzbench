@@ -15,6 +15,15 @@ When updating an existing codec, please follow these steps:
 - Refer to example commit: [Update zlib-ng to 2.2.5](https://github.com/inikep/lzbench/commit/5eed568).
 
 ## 3. Adding New Codecs
+Before proposing a new codec for inclusion, please make sure it is a good fit for lzbench:
+
+- The codec must be open source, with source code that can be included in or built with lzbench.
+- The codec should have a license that allows redistribution and benchmarking as part of this project.
+- The codec should preferably be written in C or C++, or provide a C-compatible API that can be called from the existing benchmark harness.
+- The codec should support in-memory compression and decompression APIs so lzbench can verify that decompressed output matches the original input.
+- The codec should be stable and should not crash frequently on valid inputs.
+- The codec should be significant in at least one benchmark dimension, such as compression speed, decompression speed, compression ratio, memory usage, or another useful trade-off. A codec that is worse than existing codecs in every measurement is unlikely to be a good candidate for inclusion.
+
 When adding a new codec, please follow these steps:
 
 - Create a new subdirectory with the codec files (e.g., `xxxx`) in `lz`, `bwt`, or `misc` directory.

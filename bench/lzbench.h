@@ -146,6 +146,7 @@ typedef struct
     compress_func decompress;
     init_func init;
     deinit_func deinit;
+    size_t max_input_size;
 } compressor_desc_t;
 
 
@@ -165,29 +166,29 @@ typedef struct
 static const compressor_desc_t comp_desc[] =
 {
      //                                       last_level,       mt_mode,
-     // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func
+     // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func,             max_input_size
     { "memcpy",     "memcpy",                  0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
     { "aceapex",    "aceapex 1.0",             1,   2,    0, FULL_THREADING, lzbench_aceapex_compress,     lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
     { "brieflz",    "brieflz 1.3.0",           1,   9,    0,  BENCH_POOL_MT, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
     { "brotli",     "brotli 1.2.0",            0,  11,    0,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli22",   "brotli 1.2.0 -d22",       0,  11,   22,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli24",   "brotli 1.2.0 -d24",       0,  11,   24,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
-    { "bsc0",       "bsc 3.3.11 -m0 -e2",      0,   0,    0,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc1",       "bsc 3.3.11 -m0 -e1",      0,   0,    1,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc2",       "bsc 3.3.11 -m0 -e0",      0,   0,    2,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc3",       "bsc 3.3.11 -m3 -e1",      0,   0,    3,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc4",       "bsc 3.3.11 -m4 -e1",      0,   0,    4,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc5",       "bsc 3.3.11 -m5 -e1",      0,   0,    5,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc6",       "bsc 3.3.11 -m6 -e1",      0,   0,    6,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL },
-    { "bsc_cuda0",  "bsc 3.3.11 -G -m0 -e2",   0,   0,    0,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
-    { "bsc_cuda1",  "bsc 3.3.11 -G -m0 -e1",   0,   0,    1,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
-    { "bsc_cuda2",  "bsc 3.3.11 -G -m0 -e0",   0,   0,    2,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
-    { "bsc_cuda3",  "bsc 3.3.11 -G -m3 -e1",   0,   0,    3,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
-    { "bsc_cuda4",  "bsc 3.3.11 -G -m4 -e1",   0,   0,    4,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
-    { "bsc_cuda5",  "bsc 3.3.11 -G -m5 -e1",   0,   0,    5,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
-    { "bsc_cuda6",  "bsc 3.3.11 -G -m6 -e1",   0,   0,    6,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
-    { "bsc_cuda7",  "bsc 3.3.11 -G -m7 -e0",   0,   0,    7,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
-    { "bsc_cuda8",  "bsc 3.3.11 -G -m8 -e0",   0,   0,    8,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL },
+    { "bsc0",       "bsc 3.3.11 -m0 -e2",      0,   0,    0,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc1",       "bsc 3.3.11 -m0 -e1",      0,   0,    1,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc2",       "bsc 3.3.11 -m0 -e0",      0,   0,    2,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc3",       "bsc 3.3.11 -m3 -e1",      0,   0,    3,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc4",       "bsc 3.3.11 -m4 -e1",      0,   0,    4,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc5",       "bsc 3.3.11 -m5 -e1",      0,   0,    5,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc6",       "bsc 3.3.11 -m6 -e1",      0,   0,    6,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda0",  "bsc 3.3.11 -G -m0 -e2",   0,   0,    0,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda1",  "bsc 3.3.11 -G -m0 -e1",   0,   0,    1,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda2",  "bsc 3.3.11 -G -m0 -e0",   0,   0,    2,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda3",  "bsc 3.3.11 -G -m3 -e1",   0,   0,    3,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda4",  "bsc 3.3.11 -G -m4 -e1",   0,   0,    4,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda5",  "bsc 3.3.11 -G -m5 -e1",   0,   0,    5,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda6",  "bsc 3.3.11 -G -m6 -e1",   0,   0,    6,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda7",  "bsc 3.3.11 -G -m7 -e0",   0,   0,    7,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda8",  "bsc 3.3.11 -G -m8 -e0",   0,   0,    8,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
     { "bzip2",      "bzip2 1.0.8",             1,   9,    0,  BENCH_POOL_MT, lzbench_bzip2_compress,      lzbench_bzip2_decompress,      NULL,                    NULL },
     { "bzip3",      "bzip3 1.5.2",             1,  10,    0,  BENCH_POOL_MT, lzbench_bzip3_compress,      lzbench_bzip3_decompress,      NULL,                    NULL },
     { "crush",      "crush 1.0",               0,   2,    0,   NO_THREADING, lzbench_crush_compress,      lzbench_crush_decompress,      NULL,                    NULL },
@@ -199,8 +200,8 @@ static const compressor_desc_t comp_desc[] =
     { "gipfeli",    "gipfeli 2016-07-13",      0,   0,    0,  BENCH_POOL_MT, lzbench_gipfeli_compress,    lzbench_gipfeli_decompress,    NULL,                    NULL },
     { "glza",       "glza 0.12",               0,   0,    0,   NO_THREADING, lzbench_glza_compress,       lzbench_glza_decompress,       NULL,                    NULL },
     { "kanzi",      "kanzi 2.5.3",             1,   9,    0, FULL_THREADING, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
-    { "libdeflate", "libdeflate 1.24",         1,  12,    0,  BENCH_POOL_MT, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
-    { "lizard",     "lizard 2.1",             10,  62,    0,  BENCH_POOL_MT, lzbench_lizard_compress,     lzbench_lizard_decompress,     NULL,                    NULL },
+    { "libdeflate", "libdeflate 1.25",         1,  12,    0,  BENCH_POOL_MT, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
+    { "lizard",     "lizard 2.1",             10,  49,    0,  BENCH_POOL_MT, lzbench_lizard_compress,     lzbench_lizard_decompress,     NULL,                    NULL },
     { "lz4",        "lz4 1.10.0",              0,   0,    0,  BENCH_POOL_MT, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
     { "lz4fast",    "lz4 1.10.0 --fast",       1,  99,    0,  BENCH_POOL_MT, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
     { "lz4hc",      "lz4hc 1.10.0",            1,  12,    0,  BENCH_POOL_MT, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },

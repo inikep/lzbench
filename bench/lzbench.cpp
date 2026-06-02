@@ -66,6 +66,35 @@ std::vector<std::string> split(const std::string &text, char sep)
     return tokens;
 }
 
+static std::vector<size_t> limit_chunk_sizes(const std::vector<size_t>& chunk_sizes, size_t max_chunk_size, size_t* max_effective_chunk_size)
+{
+    std::vector<size_t> limited_chunk_sizes;
+    size_t effective_max_chunk_size = 0;
+
+    for (size_t chunk_size : chunk_sizes) {
+        size_t remaining = chunk_size;
+        while (remaining > 0) {
+            size_t part = MIN(remaining, max_chunk_size);
+            limited_chunk_sizes.push_back(part);
+            if (part > effective_max_chunk_size) effective_max_chunk_size = part;
+            remaining -= part;
+        }
+    }
+
+    if (max_effective_chunk_size) *max_effective_chunk_size = effective_max_chunk_size;
+    return limited_chunk_sizes;
+}
+
+static size_t max_limited_chunk_overhead(size_t insize) {
+    size_t overhead = 0;
+
+    for (int i = 0; i < LZBENCH_COMPRESSOR_COUNT; i++)
+        if (comp_desc[i].max_input_size > 0) {
+            overhead = MAX(overhead, insize / comp_desc[i].max_input_size);
+        }
+
+    return overhead;
+}
 
 void print_header(lzbench_params_t *params)
 {
@@ -487,9 +516,23 @@ inline int64_t lzbench_decompress(lzbench_params_t *params, const std::vector<si
 void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_params_t *params, size_t max_chunk_size, const std::vector<size_t> &chunk_sizes, const compressor_desc_t* desc, int level, uint8_t *inbuf, size_t insize, uint8_t *compbuf, size_t comprsize, uint8_t *decomp, bench_rate_t rate, int param1)
 {
     int codec_threads = params->codec_threads;
+    const std::vector<size_t> *effective_chunk_sizes = &chunk_sizes;
+    std::vector<size_t> codec_chunk_sizes;
+    size_t effective_max_chunk_size = max_chunk_size;
+    const size_t max_codec_input_size = desc->max_input_size;
 
     if (!(desc->mt_mode & BENCH_POOL_MT)) numThreads = 1;  // No support for lzbench's external thread pool
     if (!(desc->mt_mode & INTERNAL_MT)) codec_threads = 1; // No support for internal (built-in) multithreading
+
+    if (max_codec_input_size > 0 && effective_max_chunk_size > max_codec_input_size) {
+        codec_chunk_sizes = limit_chunk_sizes(chunk_sizes, max_codec_input_size, &effective_max_chunk_size);
+        effective_chunk_sizes = &codec_chunk_sizes;
+    }
+
+    if (numThreads > 1 && effective_chunk_sizes->size() > pool.chunkSizes.size()) {
+        pool.chunkSizes.resize(effective_chunk_sizes->size());
+        pool.compSizes.resize(effective_chunk_sizes->size());
+    }
 
     float speed;
     int i, total_c_iters, total_d_iters;
@@ -504,7 +547,7 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
     std::vector<char*> workmems(numThreads, nullptr);
 
 
-    LZBENCH_PRINT(5, "*** trying %s insize=%zu comprsize=%zu chunk_size=%zu\n", desc->name, insize, comprsize, max_chunk_size);
+    LZBENCH_PRINT(5, "*** trying %s insize=%zu comprsize=%zu chunk_size=%zu\n", desc->name, insize, comprsize, effective_max_chunk_size);
 
     if (!desc->compress || !desc->decompress) return;
     if (level < desc->first_level || level > desc->last_level) {
@@ -515,7 +558,7 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
     if (desc->init) {
         for (int i = 0; i < numThreads; i++) {
             if (desc->init) {
-                workmems[i] = desc->init(max_chunk_size, param1, param2);
+                workmems[i] = desc->init(effective_max_chunk_size, param1, param2);
             }
         }
     }
@@ -524,7 +567,7 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
 
     if (params->cspeed > 0)
     {
-        size_t part = MIN(100*1024, max_chunk_size);
+        size_t part = MIN(100*1024, effective_max_chunk_size);
         GetTime(start_ticks);
         int64_t clen = desc->compress((char*)inbuf, part, (char*)compbuf, GET_COMPRESS_BOUND(part), &codec_options);
         GetTime(end_ticks);
@@ -536,7 +579,7 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
         }
     }
 
-    LZBENCH_PRINT(5, "%s chunk_sizes=%d\n", desc->name, (int)chunk_sizes.size());
+    LZBENCH_PRINT(5, "%s chunk_sizes=%d\n", desc->name, (int)effective_chunk_sizes->size());
 
     total_c_iters = 0;
     GetTime(timer_ticks);
@@ -552,12 +595,12 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
 
 #ifndef DISABLE_THREADING
             if (numThreads > 1) {
-                complen = lzbench_compress_mt(pool, params, chunk_sizes, desc->compress, compr_sizes, inbuf, compbuf, comprsize, &codec_options, workmems);
+                complen = lzbench_compress_mt(pool, params, *effective_chunk_sizes, desc->compress, compr_sizes, inbuf, compbuf, comprsize, &codec_options, workmems);
             }
             else
 #endif // #ifndef DISABLE_THREADING
             {
-                complen = lzbench_compress(params, chunk_sizes, desc->compress, compr_sizes, inbuf, compbuf, comprsize, &codec_options);
+                complen = lzbench_compress(params, *effective_chunk_sizes, desc->compress, compr_sizes, inbuf, compbuf, comprsize, &codec_options);
             }
             if (complen == 0) {
                comp_error = true;
@@ -600,12 +643,12 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
             GetTime(start_ticks);
 #ifndef DISABLE_THREADING
             if (numThreads > 1) {
-                decomplen = lzbench_decompress_mt(pool, params, chunk_sizes, desc->decompress, compr_sizes, compbuf, decomp, &codec_options, workmems);
+                decomplen = lzbench_decompress_mt(pool, params, *effective_chunk_sizes, desc->decompress, compr_sizes, compbuf, decomp, &codec_options, workmems);
             }
             else
 #endif // #ifndef DISABLE_THREADING
             {
-                decomplen = lzbench_decompress(params, chunk_sizes, desc->decompress, compr_sizes, compbuf, decomp, &codec_options);
+                decomplen = lzbench_decompress(params, *effective_chunk_sizes, desc->decompress, compr_sizes, compbuf, decomp, &codec_options);
             }
             GetTime(end_ticks);
             nanosec = GetDiffTime(rate, start_ticks, end_ticks);
@@ -766,7 +809,9 @@ void lzbench_process_mem_blocks(lzbench_params_t *params, size_t max_chunk_size,
         }
     }
 
-    comprsize = GET_COMPRESS_BOUND(insize) + chunk_sizes.size() * PAD_SIZE;
+    comprsize =
+        GET_COMPRESS_BOUND(insize) +
+        (chunk_sizes.size() + max_limited_chunk_overhead(insize)) * PAD_SIZE;
     compbuf = (uint8_t*)alloc_and_touch(comprsize, false);
     decomp = (uint8_t*)alloc_and_touch(insize + PAD_SIZE, true);
 
