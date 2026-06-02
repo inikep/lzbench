@@ -293,6 +293,11 @@ static const Lizard_parameters Lizard_defaultParameters[LIZARD_MAX_CLEVEL+1-LIZA
 	/*                  windowLog, contentLog, hashLog, hashLog3, searchNum, searchLength, minMatchLongOff, sufficientLength, fullSearch, parserType,                   decompressType */
 	{ LIZARD_WINDOWLOG_LIZv1,                     0,   18,   0,     0,  5,  MM_LONGOFF,     0,  0, Lizard_parser_fast,           Lizard_coderwords_LIZv1 }, // level 57 fast LIZv1 hashLog=18
 	{ LIZARD_WINDOWLOG_LIZv1,                     0,   18,   0,     1,  5,  MM_LONGOFF,     0,  0, Lizard_parser_fast,           Lizard_coderwords_LIZv1 }, // level 58 fast LIZv1 hashLog=18 searchNum=1
+	/*                  windowLog, contentLog, hashLog, hashLog3, searchNum, searchLength, minMatchLongOff, sufficientLength, fullSearch, parserType,                   decompressType */
+	{ LIZARD_WINDOWLOG_LIZv1,                     0,   14,   0,     0,  5,  MM_LONGOFF,     0,  0, Lizard_parser_noChain,        Lizard_coderwords_LIZv1 }, // level 59 noChain LIZv1 hashLog=14
+	{ LIZARD_WINDOWLOG_LIZv1,                     0,   15,   0,     0,  5,  MM_LONGOFF,     0,  0, Lizard_parser_noChain,        Lizard_coderwords_LIZv1 }, // level 60 noChain LIZv1 hashLog=15
+	{ LIZARD_WINDOWLOG_LIZv1,                     0,   16,   0,     0,  5,  MM_LONGOFF,     0,  0, Lizard_parser_noChain,        Lizard_coderwords_LIZv1 }, // level 61 noChain LIZv1 hashLog=16
+	{ LIZARD_WINDOWLOG_LIZv1,                     0,   17,   0,     0,  5,  MM_LONGOFF,     0,  0, Lizard_parser_noChain,        Lizard_coderwords_LIZv1 }, // level 62 noChain LIZv1 hashLog=17
 #endif
 //  {                     10,                       10,                   10,   0,     0,  4,           0,     0,  0, Lizard_fast          }, // min values
 //  {                     24,                       24,                   28,  24, 1<<24,  7,           0, 1<<24,  2, Lizard_optimal_price }, // max values
