@@ -228,7 +228,7 @@ _Search:
         }
 
 _Encode:
-        if (Lizard_encodeSequence_LIZv1(ctx, &ip, &anchor, ml, ref)) goto _output_error;
+        if (Lizard_encodeSequence(ctx, &ip, &anchor, ml, ref)) goto _output_error;
 
         if (ml2)
         {
@@ -240,7 +240,7 @@ _Encode:
 
     /* Encode Last Literals */
     ip = iend;
-    if (Lizard_encodeLastLiterals_LIZv1(ctx, &ip, &anchor)) goto _output_error;
+    if (Lizard_encodeLastLiterals(ctx, &ip, &anchor)) goto _output_error;
 
     /* End */
     return 1;

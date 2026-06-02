@@ -4,6 +4,10 @@
 #define LIZARD_NOCHAIN_HASH_FUNCTION(ip, hashLog) Lizard_hash5Ptr(ip, hashLog)
 #define LIZARD_NOCHAIN_MIN_OFFSET 8
 
+/* reject matches that LIZv1 format cannot encode: offset >= 64K requires length >= MM_LONGOFF */
+#define LIZARD_NOCHAIN_VALID_MATCH(ml, offset) \
+    (!((ml) > 0 && (U32)(offset) >= LIZARD_MAX_16BIT_OFFSET && (ml) < MM_LONGOFF))
+
 /* Update chains up to ip (excluded) */
 FORCE_INLINE void Lizard_InsertNoChain (Lizard_stream_t* ctx, const BYTE* ip)
 {
@@ -68,6 +72,8 @@ FORCE_INLINE int Lizard_InsertAndFindBestMatchNoChain (Lizard_stream_t* ctx,   /
                 if (mlt > ml) { ml = mlt; *matchpos = base + matchIndex; }   /* virtual matchpos */
             }
         }
+        /* reject match if LIZv1 format cannot encode it */
+        if (!LIZARD_NOCHAIN_VALID_MATCH(ml, (U32)(ip - *matchpos))) ml = 0;
     }
 
     return (int)ml;
@@ -114,9 +120,11 @@ FORCE_INLINE int Lizard_InsertAndGetWiderMatchNoChain (
                     mlt -= back;
 
                     if (mlt > longest) {
-                        longest = (int)mlt;
-                        *matchpos = match+back;
-                        *startpos = ip+back;
+                        if (LIZARD_NOCHAIN_VALID_MATCH(mlt, (U32)(ip+back - (match+back)))) {
+                            longest = (int)mlt;
+                            *matchpos = match+back;
+                            *startpos = ip+back;
+                        }
                     }
                 }
             }
@@ -131,12 +139,28 @@ FORCE_INLINE int Lizard_InsertAndGetWiderMatchNoChain (
                 size_t mlt = Lizard_count_2segments(ip+MINMATCH, match+MINMATCH, iHighLimit, dictEnd, lowPrefixPtr) + MINMATCH;
                 while ((ip+back > iLowLimit) && (matchIndex+back > lowLimit) && (ip[back-1] == match[back-1])) back--;
                 mlt -= back;
-                if ((int)mlt > longest) { longest = (int)mlt; *matchpos = base + matchIndex + back; *startpos = ip+back; }
+                if ((int)mlt > longest) {
+                    if (LIZARD_NOCHAIN_VALID_MATCH((int)mlt, (U32)(ip+back - (base + matchIndex + back)))) {
+                        longest = (int)mlt;
+                        *matchpos = base + matchIndex + back;
+                        *startpos = ip+back;
+                    }
+                }
             }
         }
     }
 
     return longest;
+}
+
+
+FORCE_INLINE int Lizard_encodeSequenceSafe(Lizard_stream_t* ctx, const BYTE** ip, const BYTE** anchor, int ml, const BYTE* ref)
+{
+    if ((U32)(*ip - ref) >= LIZARD_MAX_16BIT_OFFSET && (U32)ml < MM_LONGOFF) {
+        *ip += ml;
+        return 0;
+    }
+    return Lizard_encodeSequence(ctx, ip, anchor, ml, ref);
 }
 
 
@@ -177,7 +201,7 @@ _Search2:
         else ml2 = ml;
 
         if (ml2 == ml) { /* No better match */
-            if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml, ref)) return 0;
+            if (Lizard_encodeSequenceSafe(ctx, &ip, &anchor, ml, ref)) return 0;
             continue;
         }
 
@@ -225,9 +249,9 @@ _Search3:
             /* ip & ref are known; Now for ml */
             if (start2 < ip+ml)  ml = (int)(start2 - ip);
             /* Now, encode 2 sequences */
-            if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml, ref)) return 0;
+            if (Lizard_encodeSequenceSafe(ctx, &ip, &anchor, ml, ref)) return 0;
             ip = start2;
-            if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml2, ref2)) return 0;
+            if (Lizard_encodeSequenceSafe(ctx, &ip, &anchor, ml2, ref2)) return 0;
             continue;
         }
 
@@ -245,7 +269,7 @@ _Search3:
                     }
                 }
 
-                if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml, ref)) return 0;
+                if (Lizard_encodeSequenceSafe(ctx, &ip, &anchor, ml, ref)) return 0;
                 ip  = start3;
                 ref = ref3;
                 ml  = ml3;
@@ -273,7 +297,7 @@ _Search3:
                 if (ip + ml > start2 + ml2 - MINMATCH) {
                     ml = (int)(start2 - ip) + ml2 - MINMATCH;
                     if (ml < MINMATCH) { // match2 doesn't fit, remove it
-                        if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml, ref)) return 0;
+                        if (Lizard_encodeSequenceSafe(ctx, &ip, &anchor, ml, ref)) return 0;
                         ip  = start3;
                         ref = ref3;
                         ml  = ml3;
@@ -294,7 +318,7 @@ _Search3:
                 ml = (int)(start2 - ip);
             }
         }
-        if (Lizard_encodeSequence_LZ4(ctx, &ip, &anchor, ml, ref)) return 0;
+        if (Lizard_encodeSequenceSafe(ctx, &ip, &anchor, ml, ref)) return 0;
 
         ip = start2;
         ref = ref2;
@@ -309,7 +333,7 @@ _Search3:
 
     /* Encode Last Literals */
     ip = iend;
-    if (Lizard_encodeLastLiterals_LZ4(ctx, &ip, &anchor)) goto _output_error;
+    if (Lizard_encodeLastLiterals(ctx, &ip, &anchor)) goto _output_error;
 
     /* End */
     return 1;
