@@ -1,0 +1,17 @@
+.{
+    .name = .skim,
+    .version = "0.0.1",
+    .fingerprint = 0x9b7039a4d70bac45, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .zbench = .{
+            .url = "git+https://github.com/hendriknielaender/zBench.git#b2b89c475e3ef1bb2bd71255c80478a82d3e0ca8",
+            .hash = "zbench-0.13.0-YTdc7xVBAQCCMC-IdLLuotBeiNNNm8k9Pi2V4VYqrwfI",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

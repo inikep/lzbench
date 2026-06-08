@@ -114,7 +114,59 @@ int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 }
 #endif
 
+#ifndef BENCH_REMOVE_SKIM
+extern "C" {
+#include "misc/skim/skim.h"
+}
 
+struct lzbench_skim_state {
+    skim_encoder_t* encoder;
+    skim_decoder_t* decoder;
+};
+
+char* lzbench_skim_init(size_t insize, size_t level, size_t)
+{
+    lzbench_skim_state* state = (lzbench_skim_state*)malloc(sizeof(lzbench_skim_state));
+    if (!state) return NULL;
+    
+    state->encoder = skim_encoder_create();
+    state->decoder = skim_decoder_create();
+    return (char*)state;
+}
+
+void lzbench_skim_deinit(char* workmem)
+{
+    lzbench_skim_state* state = (lzbench_skim_state*)workmem;
+    if (state) {
+        if (state->encoder) skim_encoder_destroy(state->encoder);
+        if (state->decoder) skim_decoder_destroy(state->decoder);
+        free(state);
+    }
+}
+
+int64_t lzbench_skim_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    lzbench_skim_state* state = (lzbench_skim_state*)codec_options->work_mem;
+    if (!state || !state->encoder) return 0;
+    
+    skim_encoder_reset(state->encoder);
+    
+    return skim_encoder_compress(state->encoder, (const uint8_t*)inbuf, insize, (uint8_t*)outbuf);
+}
+
+int64_t lzbench_skim_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    lzbench_skim_state* state = (lzbench_skim_state*)codec_options->work_mem;
+    if (!state || !state->decoder) return 0;
+
+    skim_decoder_reset(state->decoder);
+    
+    size_t consumed = skim_decoder_decompress(state->decoder, (const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
+    if (consumed == 0) return 0;
+
+    return skim_decoder_exact_output_length((const uint8_t*)inbuf, insize);
+}
+#endif 
 
 #ifdef BENCH_HAS_CUDA
 #include <cuda_runtime.h>

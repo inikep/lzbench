@@ -174,7 +174,7 @@ SNAPPY_RVV=printf '%s\n' \
         '    return 0;' \
         '}' \
     | $(CC)  $(CFLAGS) -x c -o /dev/null - 2>/dev/null \
-    && echo 1 || echo 0 
+    && echo 1 || echo 0
 
 #   1. With __riscv_ prefix (new spec, e.g. __riscv_vsetvl_e8m1)
 SNAPPY_RVV_1:=$(shell $(SNAPPY_RVV))
@@ -216,6 +216,17 @@ ifneq ($(DONT_BUILD_DENSITY),1)
     endif
 endif
 
+HAVE_ZIG := $(shell command -v zig >/dev/null 2>&1 && echo 1 || echo 0)
+
+ifneq ($(HAVE_ZIG),1)
+    DONT_BUILD_SKIM ?= 1
+endif
+
+ifeq "$(DONT_BUILD_SKIM)" "1"
+    DEFINES += -DBENCH_REMOVE_SKIM
+else
+    SKIM_FILE = misc/skim/libskim.a
+endif
 
 ifeq "$(DONT_BUILD_ACEAPEX)" "1"
     DEFINES += -DBENCH_REMOVE_ACEAPEX
@@ -745,7 +756,7 @@ endif # ifeq "$(ENABLE_CUDA)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES)
+lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -897,7 +908,12 @@ ifneq ($(DONT_BUILD_DENSITY),1)
 	cargo rustc --crate-type=$(DENSITY_BUILD_TYPE) --release -- --print=native-static-libs
 endif
 
+misc/skim/libskim.a: misc/skim/src/root.zig
+	@echo "Building Skim (Zig)..."
+	cd misc/skim && zig build-lib -O ReleaseFast -femit-bin=libskim.a src/root.zig -lc
+
 clean:
 	rm -rf lzbench lzbench.exe
 	find . -type f -name "*.o" -exec rm -f {} +
 	rm -rf $(DENSITY_SRC_DIR)target/
+	rm -f $(SKIM_DIR)/libskim.a
