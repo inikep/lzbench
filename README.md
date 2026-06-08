@@ -92,6 +92,7 @@ Supported compressors
  - [zpaq 7.15](https://github.com/zpaq/zpaq)
  - [zstd 1.5.7](https://github.com/facebook/zstd)
  - [zxc 0.11.0](https://github.com/hellobertrand/zxc)
+ - [skim 0.1.0](https://github.com/vantorrewannes-skim)
 
 **Warning**: The compressors listed below have security issues and/or are
 no longer maintained. For information about the security of the various compressors,

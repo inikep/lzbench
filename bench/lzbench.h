@@ -261,6 +261,7 @@ static const compressor_desc_t comp_desc[] =
     { "zstdLDM",    "zstd 1.5.7 --long",       1,  22,    0, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstd_fast",  "zstd 1.5.7 --fast",      -5,  -1,    0, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
     { "zxc",        "zxc 0.11.0",              1,   6,    0, BENCH_POOL_MT,  lzbench_zxc_compress,        lzbench_zxc_decompress,        lzbench_zxc_init,        lzbench_zxc_deinit },
+    { "skim",       "skim 0.1.0",              0,   0,    0,  BENCH_POOL_MT, lzbench_skim_compress,       lzbench_skim_decompress,       lzbench_skim_init,       lzbench_skim_deinit },
 };
 
 const long int LZBENCH_COMPRESSOR_COUNT = sizeof(comp_desc)/sizeof(comp_desc[0]);
@@ -269,10 +270,10 @@ const long int LZBENCH_COMPRESSOR_COUNT = sizeof(comp_desc)/sizeof(comp_desc[0])
 static const alias_desc_t alias_desc[] =
 {
     { "FAST", "Refers to compressors capable of achieving compression speeds exceeding 100 MB/s (default alias).",
-              "memcpy/density,1,2,3/fastlz/kanzi,1,2,3/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
+              "memcpy/density,1,2,3/fastlz/kanzi,1,2,3/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/skim/" \
               "lzsse4fast/lzsse8,1/lzvn/quicklz,1,2/snappy/zstd,1,2,3,4,5" }, // default alias
     { "ALL",  "Represents all major supported compressors.",
-              "memcpy/density,1,2,3/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,5/" \
+              "memcpy/skim/density,1,2,3/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,5/" \
               "fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,1,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
               "lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzav/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzlib,0,3,6,9/lzma,0,2,4,6,9/" \
@@ -294,7 +295,7 @@ static const alias_desc_t alias_desc[] =
     { "SYMMETRIC","Includes compressors with similar compression and decompression speeds.",
                   "memcpy/bsc/bzip2/bzip3/density,1,2,3/ppmd8/zpaq" },
     { "MISC",     "Covers miscellaneous compressors.",
-                  "memcpy/crush/lzjb/tamp/tornado/zling" },
+                  "memcpy/crush/lzjb/tamp/tornado/zling/skim" },
     { "BUGGY",    "Lists potentially unstable codecs that may cause segmentation faults.",
                   "memcpy/csc/gipfeli/lzmat/lzrw/lzsse8fast/wflz/yalz77/yappy" }, // these can SEGFAULT
 #if !defined(BENCH_REMOVE_UCL)
