@@ -52,47 +52,62 @@ For complete building instruction, with troubleshooting refer to [BUILD.md](BUIL
 Supported compressors
 -------------------------
 
- - [brieflz 1.3.0](https://github.com/jibsen/brieflz)
- - [brotli 1.2.0](https://github.com/google/brotli)
- - [bsc 3.3.11](https://github.com/IlyaGrebnov/libbsc)
- - [bzip2 1.0.8](https://www.sourceware.org/bzip2/downloads.html)
- - [bzip3 1.5.2](https://github.com/kspalaiologos/bzip3)
- - [crush 1.0](https://sourceforge.net/projects/crush/)
- - [density 0.16.6](https://github.com/g1mv/density)
- - [fastlz 0.5.0](https://github.com/ariya/FastLZ)
- - [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2)
- - [glza 0.12](https://encode.su/threads/2427-GLZA)
- - [kanzi 2.5.3](https://github.com/flanglet/kanzi-cpp)
- - [libdeflate v1.25](https://github.com/ebiggers/libdeflate)
- - [lizard v2.1](https://github.com/inikep/lizard)
- - [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4)
- - [lzav 5.7](https://github.com/avaneev/lzav)
- - [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html)
- - [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse)
- - [lzg 1.0.10](https://github.com/mbitsnbites/liblzg)
- - [lzham 1.0](https://github.com/richgel999/lzham_codec)
- - lzjb 2010
- - [lzlib 1.15](http://www.nongnu.org/lzip)
- - [lzma v25.01](http://7-zip.org)
- - [lzo 2.10](http://www.oberhumer.com/opensource/lzo)
- - [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE)
- - [memlz 0.2 beta](https://github.com/rrrlasse/memlz)
- - [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) - if CUDA is available
- - [ppmd8 25.01](http://7-zip.org)
- - [quicklz to 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/)
- - [skim 0.1.0](https://github.com/vantorrewannes-skim)
- - [slz 1.2.1](http://www.libslz.org/) - only a compressor, uses zlib for decompression
- - [snappy 1.2.2](https://github.com/google/snappy)
- - [tamp 2.1.0](https://github.com/BrianPugh/tamp)
- - [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29)
- - [ucl 1.03](http://www.oberhumer.com/opensource/ucl/)
- - [xz 5.8.1](https://github.com/tukaani-project/xz)
- - [zlib 1.3.1](http://zlib.net)
- - [zlib-ng 2.2.5](https://github.com/zlib-ng/zlib-ng)
- - [zling 2018-10-12](https://github.com/richox/libzling) - according to the author using libzling in a production environment is not a good idea
- - [zpaq 7.15](https://github.com/zpaq/zpaq)
- - [zstd 1.5.7](https://github.com/facebook/zstd)
- - [zxc 0.11.0](https://github.com/hellobertrand/zxc)
+The table below lists the supported compressors and the platforms they are
+built on across the CI matrix. ✓ = built and benchmarked (`lzbench -eall`);
+✗ = not built on that platform. The columns map to the CI jobs: Linux x86-64
+(gcc/clang), Linux x86 32-bit (i686), Linux ARM64 (aarch64), Linux ARM 32-bit
+(armv7), Linux PPC64LE, macOS (arm64), and Windows (MinGW 32/64-bit).
+
+| Compressor | Linux x86-64 | Linux x86 32-bit | Linux ARM64 | Linux ARM 32-bit | Linux PPC64LE | macOS arm64 | Windows |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| [brieflz 1.3.0](https://github.com/jibsen/brieflz) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [brotli 1.2.0](https://github.com/google/brotli) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [bsc 3.3.11](https://github.com/IlyaGrebnov/libbsc) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [bzip2 1.0.8](https://www.sourceware.org/bzip2/downloads.html) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [bzip3 1.5.2](https://github.com/kspalaiologos/bzip3) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [crush 1.0](https://sourceforge.net/projects/crush/) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [density 0.16.6](https://github.com/g1mv/density) ᵇ | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
+| [fastlz 0.5.0](https://github.com/ariya/FastLZ) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [glza 0.12](https://encode.su/threads/2427-GLZA) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [kanzi 2.5.3](https://github.com/flanglet/kanzi-cpp) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [libdeflate v1.25](https://github.com/ebiggers/libdeflate) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [lizard v2.1](https://github.com/inikep/lizard) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [lzav 5.7](https://github.com/avaneev/lzav) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [lzg 1.0.10](https://github.com/mbitsnbites/liblzg) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [lzham 1.0](https://github.com/richgel999/lzham_codec) | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✓ |
+| lzjb 2010 | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [lzlib 1.15](http://www.nongnu.org/lzip) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [lzma v25.01](http://7-zip.org) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [lzo 2.10](http://www.oberhumer.com/opensource/lzo) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE) ᵃ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✓ |
+| [memlz 0.2 beta](https://github.com/rrrlasse/memlz) | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | ✓ |
+| [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) ᵈ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| [ppmd8 25.01](http://7-zip.org) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [quicklz 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [skim 0.1.0](https://github.com/vantorrewannes/skim) ᶜ | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
+| [slz 1.2.1](http://www.libslz.org/) ᵉ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [snappy 1.2.2](https://github.com/google/snappy) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [tamp 2.1.0](https://github.com/BrianPugh/tamp) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [ucl 1.03](http://www.oberhumer.com/opensource/ucl/) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [xz 5.8.1](https://github.com/tukaani-project/xz) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [zlib 1.3.1](http://zlib.net) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [zlib-ng 2.2.5](https://github.com/zlib-ng/zlib-ng) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [zling 2018-10-12](https://github.com/richox/libzling) ᶠ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [zpaq 7.15](https://github.com/zpaq/zpaq) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [zstd 1.5.7](https://github.com/facebook/zstd) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| [zxc 0.11.0](https://github.com/hellobertrand/zxc) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+ᵃ lzsse requires SSE4.1 and a 64-bit x86 CPU; on Windows it is built for 64-bit (MinGW-w64) only.
+ᵇ density requires the Rust toolchain (cargo with edition 2024) and is built only on native 64-bit Linux/macOS (skipped for 32-bit, cross-compiled and Windows builds).
+ᶜ skim requires the [Zig](https://ziglang.org) compiler; CI builds it on Linux x86-64 and macOS.
+ᵈ nvcomp requires CUDA (`make ENABLE_CUDA=1`) and is not part of the default CI matrix.
+ᵉ slz is a compressor only; it uses zlib for decompression.
+ᶠ according to the author, using libzling in a production environment is not a good idea.
 
 **Warning**: The compressors listed below have security issues and/or are
 no longer maintained. For information about the security of the various compressors,
