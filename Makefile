@@ -737,6 +737,8 @@ ifeq "$(ENABLE_CUDA)" "1"
     CUDA_ARCH = 50 52 60 61 70 75 80 86 89
     CUDA_CXXFLAGS = -x cu -std=c++14 -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
 
+    ACEAPEX_CUDA_FILES = lz/aceapex/cuda/aceapex_cuda.cu.o lz/aceapex/cuda/aceapex_cuda_lzbench.o
+
   ifneq "$(DONT_BUILD_NVCOMP)" "1"
     DEFINES += -DBENCH_HAS_NVCOMP
     NVCOMP_CPP_SRC = $(wildcard misc/nvcomp/src/*.cpp misc/nvcomp/src/lowlevel/*.cpp)
@@ -749,7 +751,6 @@ ifeq "$(ENABLE_CUDA)" "1"
   ifneq "$(DONT_BUILD_BSC)" "1"
     BSC_FLAGS += -DLIBBSC_CUDA_SUPPORT
     BSC_CUDA_FILES = bwt/libbsc/libbsc/bwt/libcubwt/libcubwt.cu.o bwt/libbsc/libbsc/st/st.cu.o
-    ACEAPEX_CUDA_FILES = lz/aceapex/cuda/aceapex_cuda.cu.o lz/aceapex/cuda/aceapex_cuda_lzbench.o
   endif
   endif # ifneq "$(LIBCUDART)"
 endif # ifeq "$(ENABLE_CUDA)"
