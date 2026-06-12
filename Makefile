@@ -228,10 +228,22 @@ else
     SKIM_FILE = misc/skim/libskim.a
 endif
 
+# aceapex and memlz perform unaligned 64-bit loads in their match finders,
+# which fault (SIGBUS) on 32-bit ARM (armv5/v7). aarch64 and x86 are unaffected,
+# so disable these two on 32-bit ARM targets only; they stay available elsewhere.
+ifneq (,$(filter arm armeb armv%,$(TARGET_ARCH)))
+    DONT_BUILD_ACEAPEX ?= 1
+    DONT_BUILD_MEMLZ ?= 1
+endif
+
 ifeq "$(DONT_BUILD_ACEAPEX)" "1"
     DEFINES += -DBENCH_REMOVE_ACEAPEX
 else
     ACEAPEX_FILES = lz/aceapex/aceapex_lzbench.o
+endif
+
+ifeq "$(DONT_BUILD_MEMLZ)" "1"
+    DEFINES += -DBENCH_REMOVE_MEMLZ
 endif
 
 
