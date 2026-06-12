@@ -273,14 +273,14 @@ static const alias_desc_t alias_desc[] =
               "memcpy/density,1,2,3/fastlz/kanzi,1,2,3/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
               "lzsse4fast/lzsse8,1/lzvn/quicklz,1,2/skim/snappy/zstd,1,2,3,4,5" }, // default alias
     { "ALL",  "Represents all major supported compressors.",
-              "memcpy/density,1,2,3/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,5/" \
+              "memcpy/density,1,2,3/aceapex,1,2/brieflz,1,3,6,8/brotli,0,2,5,8,11/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,5/" \
               "fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,1,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
               "lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzav/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzlib,0,3,6,9/lzma,0,2,4,6,9/" \
               "lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
-              "lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/ppmd8,4/quicklz,1,2,3/" \
+              "lzsse2,1,6,12,16/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/memlz/ppmd8,4/quicklz,1,2,3/" \
               "skim/slz_gzip/snappy/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
-              "zlib,1,6,9/zlib-ng,1,6,9/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22" },
+              "zlib,1,6,9/zlib-ng,1,6,9/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22/zxc,1,3,6" },
     { "POPULAR", "Includes commonly used compressors.",
               "memcpy/brotli,0,2,5,8,11/bzip2,1,5,9/bzip3,5/kanzi,1,2,3,4,5,6,7,8,9/libdeflate,1,3,6,9,12/" \
               "lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzlib,0,3,6,9/lzma,0,2,4,6,9/ppmd8,4/snappy/" \
@@ -298,6 +298,8 @@ static const alias_desc_t alias_desc[] =
                   "memcpy/crush/lzjb/skim/tamp/tornado/zling" },
     { "BUGGY",    "Lists potentially unstable codecs that may cause segmentation faults.",
                   "memcpy/csc/gipfeli/lzmat/lzrw/lzsse8fast/wflz/yalz77/yappy" }, // these can SEGFAULT
+    { "SLOW",     "Lists very slow compressors.",
+                  "memcpy/glza" },
 #if !defined(BENCH_REMOVE_UCL)
     { "UCL",      "Refers to all UCL compressor variants.",
                   "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },
