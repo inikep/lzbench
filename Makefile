@@ -916,4 +916,4 @@ clean:
 	rm -rf lzbench lzbench.exe
 	find . -type f -name "*.o" -exec rm -f {} +
 	rm -rf $(DENSITY_SRC_DIR)target/
-	rm -f $(SKIM_DIR)/libskim.a
+	rm -f misc/skim/libskim.a

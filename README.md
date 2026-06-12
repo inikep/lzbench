@@ -80,6 +80,7 @@ Supported compressors
  - [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) - if CUDA is available
  - [ppmd8 25.01](http://7-zip.org)
  - [quicklz to 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/)
+ - [skim 0.1.0](https://github.com/vantorrewannes-skim)
  - [slz 1.2.1](http://www.libslz.org/) - only a compressor, uses zlib for decompression
  - [snappy 1.2.2](https://github.com/google/snappy)
  - [tamp 2.1.0](https://github.com/BrianPugh/tamp)
@@ -92,7 +93,6 @@ Supported compressors
  - [zpaq 7.15](https://github.com/zpaq/zpaq)
  - [zstd 1.5.7](https://github.com/facebook/zstd)
  - [zxc 0.11.0](https://github.com/hellobertrand/zxc)
- - [skim 0.1.0](https://github.com/vantorrewannes-skim)
 
 **Warning**: The compressors listed below have security issues and/or are
 no longer maintained. For information about the security of the various compressors,

@@ -312,9 +312,22 @@ jobs:
       fi
     displayName: '*** System and compiler info'
 
+  # Install Zig so the 'skim' codec (misc/skim, built via 'zig build-lib') is
+  # compiled and round-trip tested. Linux native builds only: a native x86_64
+  # libskim.a cannot be linked into the cross-compiled (QEMU) or 32-bit targets,
+  # and the macOS job is skipped on purpose; those keep skim disabled via the
+  # Makefile's 'command -v zig' auto-detection.
+  - script: |
+      sudo snap install zig --classic --channel=latest/beta
+      echo "##vso[task.prependpath]/snap/bin"
+      /snap/bin/zig version
+    displayName: '*** Install Zig (for skim; Linux native builds only)'
+    condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'), eq(variables['QEMU_INTERPRETER'], ''), not(contains(variables['MORE_OPTIONS'], '32-bit')))
+
   - script: |
       echo SELECTED_CC=$SELECTED_CC SELECTED_CXX=$SELECTED_CXX REAL_COMPILER_VER=$REAL_COMPILER_VER imageName=$(imageName) OS_NAME=$OS_NAME
       df -Th
+      command -v zig && zig version || echo "zig not installed - skim disabled"
 
       make -j2 CC="ccache $SELECTED_CC" CXX="ccache $SELECTED_CXX" $MORE_OPTIONS || exit 1
       ccache --show-stats
