@@ -228,11 +228,18 @@ else
     SKIM_FILE = misc/skim/libskim.a
 endif
 
-# memlz performs unaligned 64-bit loads in its match finder, which fault
-# (SIGBUS) on 32-bit ARM (armv5/v7); disable it on 32-bit ARM targets only.
-# (aceapex uses alignment-safe loads since ax_align.h and builds everywhere.)
+# memlz performs unaligned 64-bit loads in its match finder (SIGBUS) on 32-bit
+# ARM (armv5/v7); disable it there. (aceapex uses alignment-safe loads since
+# ax_align.h and builds everywhere.)
 ifneq (,$(filter arm armeb armv%,$(TARGET_ARCH)))
     DONT_BUILD_MEMLZ ?= 1
+endif
+
+# zpaq's JIT emits x86 machine code and crashes on other CPUs (SIGSEGV on
+# 32-bit ARM, SIGILL on aarch64). On non-x86 targets build it with -DNOJIT so
+# it uses its portable (slower) interpreter instead.
+ifeq (,$(filter x86_64% amd64% i%86%,$(TARGET_ARCH)))
+    ZPAQ_FLAGS += -DNOJIT
 endif
 
 ifeq "$(DONT_BUILD_ACEAPEX)" "1"
@@ -887,9 +894,9 @@ $(ZSTD_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
 	$(CC) $(CFLAGS) $(ZSTD_FLAGS) $< -c -o $@
 
-$(ZPAQ_FILES): %.o : %.cpp
+misc/zpaq/libzpaq.o: misc/zpaq/libzpaq.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -I misc/zpaq $< -c -o $@
+	$(CXX) $(CXXFLAGS) $(ZPAQ_FLAGS) -I misc/zpaq $< -c -o $@
 
 
 # CUDA compressors

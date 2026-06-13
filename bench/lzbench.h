@@ -293,7 +293,7 @@ static const alias_desc_t alias_desc[] =
               "LZ/SYMMETRIC/MISC" },
     { "FASTEST", "All LZ/SYMMETRIC/MISC compressors, each at only its fastest level.",
      /* LZ */ "memcpy/aceapex-DISABLED,1/brieflz,1/brotli,0/fastlz,1/fastlzma2,1/kanzi,1/libdeflate,1/lizard,10/lz4fast,99/lz4/lz4hc,1/lzav,1/" \
-              "lzf,0/lzfse/lzg,1/lzham,0/lzlib,0/lzma,0/lzo1,1/lzo1a,1/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/lzo1z/lzo2a/lzsse2,1/" \
+              "lzf,0/lzfse/lzham,0/lzlib,0/lzma,0/lzo1,1/lzo1a,1/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/lzo1z/lzo2a/lzsse2,1/" \
               "lzsse4fast/lzsse4,1/lzsse8,1/lzvn/memlz/quicklz,1/slz_gzip,1/snappy/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/xz,0/yalz77,1/" \
               "zlib,1/zlib-ng,1/zstd_fast,-5/zstd,1/zxc,1/" /* aceapex is disabled as it has issues with tiny inputs */ \
 /* SYMMETR */ "bsc1/bzip2,1/bzip3-DISABLED,1/density,1/ppmd8,1/zpaq,1/" /* bzip3 has to be updated to 1.5.3 */ \

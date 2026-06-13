@@ -548,6 +548,7 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
 
 
     LZBENCH_PRINT(5, "*** trying %s insize=%zu comprsize=%zu chunk_size=%zu\n", desc->name, insize, comprsize, effective_max_chunk_size);
+    fflush(stdout); // flush so a crashing codec is identifiable in redirected/CI logs
 
     if (!desc->compress || !desc->decompress) return;
     if (level < desc->first_level || level > desc->last_level) {
