@@ -1,4 +1,5 @@
 #define ACEAPEX_NO_MAIN
+#include "ax_align.h"
 #include "aceapex_main.cpp"
 #include "aceapex.h"
 #include <vector>
@@ -82,7 +83,7 @@ int64_t aceapex_decompress(
     memcpy(zo,p,hdr.zoff_sz); p+=hdr.zoff_sz;
     memcpy(zn,p,hdr.zlen_sz); p+=hdr.zlen_sz;
     memcpy(zc,p,hdr.zcmd_sz);
-    size_t os=*(uint64_t*)zo,ns=*(uint64_t*)zn,cs=*(uint64_t*)zc;
+    size_t os=AX_read64((zo)),ns=AX_read64((zn)),cs=AX_read64((zc));
     size_t ls=0; uint8_t* l=lit_decompress(zl,hdr.zlit_sz,ls);
     if(!l){free(zl);free(zo);free(zn);free(zc);return ACEAPEX_ERR_MEMORY;}
     uint8_t* o=(uint8_t*)malloc(os);
