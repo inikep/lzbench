@@ -219,17 +219,38 @@ UTIL_STATIC int UTIL_getFileStat(const char* infilename, stat_t *statbuf)
 
 UTIL_STATIC U64 UTIL_getFileSize(const char* infilename)
 {
-    int r;
 #if defined(_WIN32)
-    struct _stat64 statbuf;
-    r = _stat64(infilename, &statbuf);
-    if (r || !(statbuf.st_mode & S_IFREG)) return 0;   /* No good... */
+    /* Windows _stat64() does NOT follow a symlink / reparse point: it stats the
+       link itself and reports it as a regular file (S_IFREG) with st_size == 0.
+       Trusting that would under-size the join buffer, since lzbench's read pass
+       opens the file with fopen(), which DOES follow the link. So detect reparse
+       points up front and size them via the fopen+ftello fallback below; only
+       plain regular files use the (faster) stat size. */
+    DWORD attr = GetFileAttributesA(infilename);
+    if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        if (attr & FILE_ATTRIBUTE_DIRECTORY) return 0;                 /* directory */
+        struct _stat64 statbuf;
+        if (!_stat64(infilename, &statbuf) && (statbuf.st_mode & S_IFREG))
+            return (U64)statbuf.st_size;                               /* regular file */
+    }
 #else
-    struct stat statbuf;
-    r = stat(infilename, &statbuf);
-    if (r || !S_ISREG(statbuf.st_mode)) return 0;   /* No good... */
+    struct stat statbuf;                       /* stat() follows symlinks on POSIX */
+    if (!stat(infilename, &statbuf)) {
+        if (S_ISREG(statbuf.st_mode)) return (U64)statbuf.st_size;     /* regular file */
+        if (S_ISDIR(statbuf.st_mode)) return 0;                        /* directory */
+    }
 #endif
-    return (U64)statbuf.st_size;
+    /* Symlink / reparse point, or stat failed: follow the link via fopen, exactly
+       like the read pass, so symlinked files are counted and totalsize matches
+       what fread() will actually consume. */
+    {
+        FILE* f = fopen(infilename, "rb");
+        if (!f) return 0;
+        if (fseeko(f, 0, SEEK_END) != 0) { fclose(f); return 0; }
+        int64_t sz = ftello(f);
+        fclose(f);
+        return (sz < 0) ? 0 : (U64)sz;
+    }
 }
 
 
