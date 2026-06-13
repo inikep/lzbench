@@ -220,7 +220,7 @@ UTIL_STATIC int UTIL_getFileStat(const char* infilename, stat_t *statbuf)
 UTIL_STATIC U64 UTIL_getFileSize(const char* infilename)
 {
     int r;
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     struct _stat64 statbuf;
     r = _stat64(infilename, &statbuf);
     if (r || !(statbuf.st_mode & S_IFREG)) return 0;   /* No good... */
@@ -246,7 +246,7 @@ UTIL_STATIC U64 UTIL_getTotalFileSize(const char** fileNamesTable, unsigned nbFi
 UTIL_STATIC int UTIL_doesFileExists(const char* infilename)
 {
     int r;
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     struct _stat64 statbuf;
     r = _stat64(infilename, &statbuf);
     if (r || !(statbuf.st_mode & S_IFREG)) return 0;   /* No good... */
@@ -262,7 +262,7 @@ UTIL_STATIC int UTIL_doesFileExists(const char* infilename)
 UTIL_STATIC U32 UTIL_isDirectory(const char* infilename)
 {
     int r;
-#if defined(_MSC_VER)
+#if defined(_WIN32)
     struct _stat64 statbuf;
     r = _stat64(infilename, &statbuf);
     if (!r && (statbuf.st_mode & _S_IFDIR)) return 1;
