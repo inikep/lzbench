@@ -1,5 +1,6 @@
 v2.x.y (work in progress)
 - added aceapex 1.0 (thanks to @yasha1971-coder)
+- added aceapex_cuda 0.9 — optional CUDA decoder for the aceapex format (thanks to @yasha1971-coder)
 - added memlz 0.2 beta (thanks to @rrrlasse)
 - added skim 0.1.0 (thanks to @vantorrewannes-skim)
 - added zxc 0.11.0 (thanks to @hellobertrand)

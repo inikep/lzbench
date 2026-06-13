@@ -169,6 +169,9 @@ static const compressor_desc_t comp_desc[] =
      // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func,             max_input_size
     { "memcpy",     "memcpy",                  0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
     { "aceapex",    "aceapex 1.0",             1,   2,    0, FULL_THREADING, lzbench_aceapex_compress,     lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
+#ifdef BENCH_HAS_CUDA
+    { "aceapex_cuda","aceapex_cuda 0.9",        1,   2,    0,  NO_THREADING,  lzbench_aceapex_compress,    lzbench_aceapex_cuda_decompress, lzbench_aceapex_cuda_init, lzbench_aceapex_cuda_deinit },
+#endif
     { "brieflz",    "brieflz 1.3.0",           1,   9,    0,  BENCH_POOL_MT, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
     { "brotli",     "brotli 1.2.0",            0,  11,    0,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli22",   "brotli 1.2.0 -d22",       0,  11,   22,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
@@ -318,7 +321,7 @@ static const alias_desc_t alias_desc[] =
 #endif
 #ifdef BENCH_HAS_CUDA
     { "CUDA",     "Represents all CUDA-based compressors.",
-                  "memcpy/cudaMemcpy/nvcomp_lz4/bsc_cuda" },
+                  "memcpy/cudaMemcpy/nvcomp_lz4/bsc_cuda/aceapex_cuda" },
 #endif
     { "lzo1",     nullptr, "lzo1,1,99" },
     { "lzo1a",    nullptr, "lzo1a,1,99" },

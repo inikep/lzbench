@@ -97,3 +97,61 @@ int64_t aceapex_decompress(
     free(l);free(o);free(n);free(c);
     return (int64_t)hdr.orig_size;
 }
+
+
+// ---- stream-level decode export for the CUDA decoder (lz/aceapex/cuda) ----
+extern "C" {
+typedef struct {
+    uint8_t *lit, *off, *len, *cmd;
+    uint64_t lit_sz, off_sz, len_sz, cmd_sz;
+    void    *boffs_vec;
+    const void *boffs;
+    size_t   num_blocks;
+    uint32_t block_size;
+    uint64_t orig_size;
+} aceapex_streams_t;
+
+int aceapex_decode_streams(const void* src, size_t src_size, aceapex_streams_t* out)
+{
+    if (!src || !out || src_size < sizeof(AetHeader)) return -1;
+    const uint8_t* p=(const uint8_t*)src;
+    AetHeader hdr; memcpy(&hdr,p,sizeof(hdr));
+    if (memcmp(hdr.magic,"ACEPX2\0\0",8)!=0) return -1;
+    p+=sizeof(hdr);
+    std::vector<BlockOffsets>* bv=new std::vector<BlockOffsets>(hdr.num_blocks);
+    memcpy(bv->data(),p,hdr.num_blocks*sizeof(BlockOffsets));
+    p+=hdr.num_blocks*sizeof(BlockOffsets);
+    uint8_t* zl=(uint8_t*)malloc(hdr.zlit_sz);
+    uint8_t* zo=(uint8_t*)malloc(hdr.zoff_sz);
+    uint8_t* zn=(uint8_t*)malloc(hdr.zlen_sz);
+    uint8_t* zc=(uint8_t*)malloc(hdr.zcmd_sz);
+    if(!zl||!zo||!zn||!zc){free(zl);free(zo);free(zn);free(zc);delete bv;return -2;}
+    memcpy(zl,p,hdr.zlit_sz); p+=hdr.zlit_sz;
+    memcpy(zo,p,hdr.zoff_sz); p+=hdr.zoff_sz;
+    memcpy(zn,p,hdr.zlen_sz); p+=hdr.zlen_sz;
+    memcpy(zc,p,hdr.zcmd_sz);
+    size_t os=*(uint64_t*)zo, ns=*(uint64_t*)zn, cs=*(uint64_t*)zc;
+    size_t ls=0; uint8_t* l=lit_decompress(zl,hdr.zlit_sz,ls);
+    if(!l){free(zl);free(zo);free(zn);free(zc);delete bv;return -2;}
+    uint8_t* o=(uint8_t*)malloc(os);
+    uint8_t* n=(uint8_t*)malloc(ns);
+    uint8_t* c=(uint8_t*)malloc(cs);
+    if(!o||!n||!c){free(o);free(n);free(c);free(l);free(zl);free(zo);free(zn);free(zc);delete bv;return -2;}
+    fse_chunked_decomp(zo,os,o); fse_chunked_decomp(zn,ns,n); fse_chunked_decomp(zc,cs,c);
+    free(zl);free(zo);free(zn);free(zc);
+    out->lit=l; out->off=o; out->len=n; out->cmd=c;
+    out->lit_sz=ls; out->off_sz=os; out->len_sz=ns; out->cmd_sz=cs;
+    out->boffs_vec=(void*)bv; out->boffs=(const void*)bv->data();
+    out->num_blocks=hdr.num_blocks; out->block_size=hdr.block_size;
+    out->orig_size=hdr.orig_size;
+    return 0;
+}
+
+void aceapex_streams_free(aceapex_streams_t* s)
+{
+    if(!s) return;
+    free(s->lit); free(s->off); free(s->len); free(s->cmd);
+    delete (std::vector<BlockOffsets>*)s->boffs_vec;
+    s->lit=s->off=s->len=s->cmd=nullptr; s->boffs_vec=nullptr; s->boffs=nullptr;
+}
+} // extern "C"
