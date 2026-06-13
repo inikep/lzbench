@@ -228,11 +228,12 @@ else
     SKIM_FILE = misc/skim/libskim.a
 endif
 
-# memlz performs unaligned 64-bit loads in its match finder (SIGBUS) on 32-bit
-# ARM (armv5/v7); disable it there. (aceapex uses alignment-safe loads since
-# ax_align.h and builds everywhere.)
+# On 32-bit ARM (armv5/v7): memlz does unaligned 64-bit loads (SIGBUS), and bsc
+# crashes in its multithreaded decompress path (lzbench#293); disable both.
+# (aceapex uses alignment-safe loads since ax_align.h and builds everywhere.)
 ifneq (,$(filter arm armeb armv%,$(TARGET_ARCH)))
     DONT_BUILD_MEMLZ ?= 1
+    DONT_BUILD_BSC ?= 1
 endif
 
 # zpaq's JIT emits x86 machine code and crashes on other CPUs (SIGSEGV on

@@ -878,7 +878,10 @@ int lzbench_join(lzbench_params_t* params, const char** inFileNames, unsigned if
         insize = ftello(in);
         rewind(in);
 
-        if (inpos + insize > totalsize) { printf("inpos + insize > totalsize\n"); goto _clean; };
+        if (inpos + insize > totalsize) {
+            printf("ERROR: inpos=%llu + insize=%llu > totalsize=%llu\n", (uint64)inpos, (uint64)insize, (uint64)totalsize);
+            goto _clean;
+        }
         insize = fread(inbuf+inpos, 1, insize, in);
         file_sizes.push_back(insize);
         inpos += insize;
