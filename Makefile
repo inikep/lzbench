@@ -34,6 +34,8 @@ ifeq ($(BUILD_ARCH),32-bit)
     CODE_FLAGS += -m32
     LDFLAGS += -m32
     DONT_BUILD_LZSSE ?= 1
+    # lzham's 64 MB dict overflows the 32-bit address space (see TARGET_ARCH note below)
+    DONT_BUILD_LZHAM ?= 1
 endif
 
 CC?=gcc
@@ -239,8 +241,18 @@ endif
 # zpaq's JIT emits x86 machine code and crashes on other CPUs (SIGSEGV on
 # 32-bit ARM, SIGILL on aarch64). On non-x86 targets build it with -DNOJIT so
 # it uses its portable (slower) interpreter instead.
-ifeq (,$(filter x86_64% amd64% i%86%,$(TARGET_ARCH)))
+ifeq (,$(filter x86_64% amd64% i%86,$(TARGET_ARCH)))
     ZPAQ_FLAGS += -DNOJIT
+endif
+
+# lzham uses a 64 MB dictionary (m_dict_size_log2=26) and multiplies that working
+# set across helper threads; on 32-bit x86 it overflows the limited address space
+# and every chunk fails to compress (seen on 32-bit Windows under -T). Disable it
+# on native 32-bit x86 (mingw32 etc.); the -m32 build is handled separately above.
+# (Pattern is i%86 -- a single '%' wildcard, matching i386/i586/i686. GNU make
+# allows only one '%' per word, so the old i%86% never matched anything.)
+ifneq (,$(filter i%86,$(TARGET_ARCH)))
+    DONT_BUILD_LZHAM ?= 1
 endif
 
 ifeq "$(DONT_BUILD_ACEAPEX)" "1"
@@ -576,7 +588,7 @@ else
     ZXC_FILES = $(ZXC_DIR)/zxc_common.o $(ZXC_DIR)/zxc_driver.o $(ZXC_DIR)/zxc_dispatch.o $(ZXC_DIR)/zxc_pstream.o $(ZXC_DIR)/zxc_seekable.o
     ZXC_FILES += $(ZXC_DIR)/zxc_compress_default.o $(ZXC_DIR)/zxc_decompress_default.o $(ZXC_DIR)/zxc_huffman_default.o
 
-    ifneq (,$(filter x86_64% amd64% i%86%,$(TARGET_ARCH)))
+    ifneq (,$(filter x86_64% amd64% i%86,$(TARGET_ARCH)))
         ifneq (,$(filter x86_64% amd64%,$(TARGET_ARCH)))
             ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx2.o $(ZXC_DIR)/zxc_decompress_avx2.o $(ZXC_DIR)/zxc_huffman_avx2.o
             ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx512.o $(ZXC_DIR)/zxc_decompress_avx512.o $(ZXC_DIR)/zxc_huffman_avx512.o
