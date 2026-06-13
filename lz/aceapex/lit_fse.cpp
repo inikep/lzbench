@@ -1,3 +1,4 @@
+#include "ax_align.h"
 #include <stdlib.h>
 #include <string.h>
 #include <cstdint>
@@ -33,9 +34,9 @@ static uint8_t* fse_comp(const uint8_t* src,size_t sz,size_t& out_sz,int nc=16){
         size_t cap=LIT_compressBound(sz)+16;
         uint8_t* buf=(uint8_t*)malloc(cap);
         if(!buf){out_sz=0;return nullptr;}
-        *(uint64_t*)buf=sz;
+        AX_write64((void*)(buf),(uint64_t)(sz));
         size_t csz=LIT_compress(buf+8,cap-8,src,sz);
-        if(LIT_isError(csz)||csz==0){ *(uint64_t*)buf=sz|(uint64_t(1)<<63); memcpy(buf+8,src,sz); out_sz=sz+8; }
+        if(LIT_isError(csz)||csz==0){ AX_write64((void*)(buf),(uint64_t)(sz|(uint64_t(1)<<63))); memcpy(buf+8,src,sz); out_sz=sz+8; }
         else out_sz=csz+8;
         return buf;
     }
@@ -56,7 +57,7 @@ static uint8_t* fse_comp(const uint8_t* src,size_t sz,size_t& out_sz,int nc=16){
     for(int i=0;i<nc;i++) total+=(jobs[i].osz&~(uint64_t(1)<<62));
     uint8_t* res=(uint8_t*)malloc(total);
     if(!res){out_sz=0;return nullptr;}
-    *(uint32_t*)res=(uint32_t)nc; *(uint32_t*)(res+4)=0;
+    AX_write32((void*)(res),(uint32_t)((uint32_t)nc)); AX_write32((void*)(res+4),(uint32_t)(0));
     uint64_t* rsz=(uint64_t*)(res+8);
     uint64_t* csz2=(uint64_t*)(res+8+nc*8);
     uint8_t* p=res+hdr;

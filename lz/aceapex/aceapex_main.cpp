@@ -1,3 +1,4 @@
+#include "ax_align.h"
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
@@ -99,11 +100,11 @@ static inline int find_matches(const uint8_t* src, size_t pos, size_t bstart, si
     uint32_t maxl = (uint32_t)(bend - pos);
     for (int i = 0; i < 4 && n < maxout; i++) {
         uint32_t d = rep[i]; if (pos < bstart+d) continue;
-        if (*(uint32_t*)(src+pos)!=*(uint32_t*)(src+pos-d)) continue;
+        if (AX_read32((src+pos))!=AX_read32((src+pos-d))) continue;
         uint32_t l=4; while(l<maxl&&src[pos+l]==src[pos-d+l]&&l<65535) l++;
         if (l>=6) out[n++]={l,d,i};
     }
-    uint32_t h=((*(uint32_t*)(src+pos)*0x9E3779B1u)>>10)&ht->hash_mask;
+    uint32_t h=((AX_read32((src+pos))*0x9E3779B1u)>>10)&ht->hash_mask;
     int32_t head=(ht->epoch[h]==ht->cur_epoch)?ht->pos[h]:-1;
     ht->pos[h]=(int32_t)pos; ht->epoch[h]=ht->cur_epoch;
     if (head>=0) ht->chain[pos & ht->chain_mask]=head;
@@ -113,10 +114,10 @@ static inline int find_matches(const uint8_t* src, size_t pos, size_t bstart, si
         bool is_rep=false; for(int r=0;r<4;r++) if(dist==rep[r]){is_rep=true;break;}
         if(!is_rep){
             uint32_t mlen=min_match_len(dist);
-            if(pos+8<=bend&&*(uint64_t*)(src+pos)==*(uint64_t*)(src+cur)){
+            if(pos+8<=bend&&AX_read64((src+pos))==AX_read64((src+cur))){
                 uint32_t l=8; while(l<maxl&&src[pos+l]==src[cur+l]&&l<65535) l++;
                 if(l>=mlen) out[n++]={l,dist,-1};
-            } else if(*(uint32_t*)(src+pos)==*(uint32_t*)(src+cur)){
+            } else if(AX_read32((src+pos))==AX_read32((src+cur))){
                 uint32_t l=4; while(l<maxl&&src[pos+l]==src[cur+l]&&l<65535) l++;
                 if(l>=mlen) out[n++]={l,dist,-1};
             }
@@ -165,14 +166,14 @@ static void compress_block(const uint8_t* src, size_t src_size,
         Match matches[36]; int nm=find_matches(src,pos,bstart,bend,ht,rep,matches,36);
         for(int mi=0;mi<nm;mi++) if(matches[mi].len>c_len){c_len=matches[mi].len;c_off=matches[mi].off;c_rep=matches[mi].rep;}
         if (c_len >= 6 && c_len < 64 && pos+13 < bend) {
-            uint32_t h1=((*(uint32_t*)(src+pos+1)*0x9E3779B1u)>>10)&ht->hash_mask;
+            uint32_t h1=((AX_read32((src+pos+1))*0x9E3779B1u)>>10)&ht->hash_mask;
             int32_t mp1=(ht->epoch[h1]==ht->cur_epoch)?ht->pos[h1]:-1;
             if (mp1>=0 && (size_t)mp1>=bstart && (size_t)mp1<pos+1) {
                 uint32_t dist1=(uint32_t)(pos+1-mp1);
                 if (dist1<MAX_DIST && dist1!=rep[0]) {
                     uint32_t mlen1=min_match_len(dist1);
                     uint32_t maxl1=(uint32_t)(bend-pos-1);
-                    if (pos+9<=bend && *(uint64_t*)(src+pos+1)==*(uint64_t*)(src+mp1)) {
+                    if (pos+9<=bend && AX_read64((src+pos+1))==AX_read64((src+mp1))) {
                         uint32_t l1=8;
                         while (l1<maxl1 && src[pos+1+l1]==src[mp1+l1] && l1<65535) l1++;
                         if (l1 >= mlen1 && l1 > c_len + 1) {
@@ -187,13 +188,13 @@ static void compress_block(const uint8_t* src, size_t src_size,
             }
             // Lazy check pos+2
             if (c_len >= 6 && c_len < 64 && pos+14 < bend) {
-                uint32_t h2=((*(uint32_t*)(src+pos+2)*0x9E3779B1u)>>10)&ht->hash_mask;
+                uint32_t h2=((AX_read32((src+pos+2))*0x9E3779B1u)>>10)&ht->hash_mask;
                 int32_t mp2=(ht->epoch[h2]==ht->cur_epoch)?ht->pos[h2]:-1;
                 if (mp2>=0 && (size_t)mp2>=bstart && (size_t)mp2<pos+2) {
                     uint32_t dist2=(uint32_t)(pos+2-mp2);
                     if (dist2<MAX_DIST && dist2!=rep[0]) {
                         uint32_t maxl2=(uint32_t)(bend-pos-2);
-                        if (pos+10<=bend && *(uint64_t*)(src+pos+2)==*(uint64_t*)(src+mp2)) {
+                        if (pos+10<=bend && AX_read64((src+pos+2))==AX_read64((src+mp2))) {
                             uint32_t l2=8;
                             while (l2<maxl2 && src[pos+2+l2]==src[mp2+l2] && l2<65535) l2++;
                             if (l2 >= 6 && l2 > c_len + 2 && lit_i+1 < lit_cap) {
@@ -230,7 +231,7 @@ static void compress_block(const uint8_t* src, size_t src_size,
             if (c_len < 32) {
               uint32_t step=1+(c_len>>3);
               for(size_t ii=1;ii<c_len&&pos+ii+4<bend;ii+=step){
-                uint32_t hh=((*(uint32_t*)(src+pos+ii)*0x9E3779B1u)>>10)&ht->hash_mask;
+                uint32_t hh=((AX_read32((src+pos+ii))*0x9E3779B1u)>>10)&ht->hash_mask;
                 ht->chain[(pos+ii)&ht->chain_mask]=ht->pos[hh]; ht->pos[hh]=(int32_t)(pos+ii); ht->epoch[hh]=ht->cur_epoch;
               }
             }
@@ -239,7 +240,7 @@ static void compress_block(const uint8_t* src, size_t src_size,
         if (lit_i>=lit_cap) { ov=1; break; }
         res->lit_buf[lit_i++]=src[pos++]; lit_run++; miss++;
         if (miss>=1 && pos+12<bend) {
-            uint32_t hh=((*(uint32_t*)(src+pos)*0x9E3779B1u)>>10)&ht->hash_mask;
+            uint32_t hh=((AX_read32((src+pos))*0x9E3779B1u)>>10)&ht->hash_mask;
             if(hh<=ht->hash_mask) { ht->pos[hh]=(int32_t)pos; ht->epoch[hh]=ht->cur_epoch; }
             if (lit_i>=lit_cap) { ov=1; break; }
             res->lit_buf[lit_i++]=src[pos++]; lit_run++;
@@ -605,7 +606,7 @@ static uint8_t* lit_compress(const uint8_t* src, size_t sz, size_t& out_sz) {
     for(int t=0;t<NW;t++) totalsz+=zws[t].osz;
     uint8_t* res=(uint8_t*)malloc(totalsz);
     if(!res){out_sz=0;return nullptr;}
-    *(uint64_t*)res=sz|(uint64_t(1)<<62);
+    AX_write64((void*)(res),(uint64_t)(sz|(uint64_t(1)<<62)));
     uint64_t* zsz=(uint64_t*)(res+8); uint8_t* p=res+hdrsz;
     for(int t=0;t<NW;t++){zsz[t]=zws[t].osz;memcpy(p,zws[t].out,zws[t].osz);p+=zws[t].osz;free(zws[t].out);}
     out_sz=totalsz; return res;
@@ -650,7 +651,7 @@ static void entropy_encode(
         size_t cap=hdrsz+e->isz+nc*64;
         *e->out=(uint8_t*)malloc(cap);
         if(!*e->out) return nullptr;
-        *(uint64_t*)*e->out=e->isz;
+        AX_write64((void*)(*e->out),(uint64_t)(e->isz));
         uint64_t* csizes=(uint64_t*)(*e->out+8);
         uint8_t* p=*e->out+hdrsz;
         size_t total=hdrsz;
@@ -797,9 +798,9 @@ static int do_decompress(const char* in_path, const char* out_path) {
     fread(zlen,1,hdr.zlen_sz,fin); fread(zcmd,1,hdr.zcmd_sz,fin);
     fclose(fin);
  
-    size_t off_sz=*(uint64_t*)zoff;
-    size_t len_sz=*(uint64_t*)zlen;
-    size_t cmd_sz=*(uint64_t*)zcmd;
+    size_t off_sz=AX_read64((zoff));
+    size_t len_sz=AX_read64((zlen));
+    size_t cmd_sz=AX_read64((zcmd));
  
     double dec_time=now_sec();
     double t_lit=now_sec();
@@ -872,9 +873,9 @@ static int do_test(const char* in_path, int threads, int level=2) {
  
     size_t total_z=zlit_sz+zoff_sz+zlen_sz+zcmd_sz;
  
-    size_t off_sz=*(uint64_t*)zoff;
-    size_t len_sz=*(uint64_t*)zlen;
-    size_t cmd_sz=*(uint64_t*)zcmd;
+    size_t off_sz=AX_read64((zoff));
+    size_t len_sz=AX_read64((zlen));
+    size_t cmd_sz=AX_read64((zcmd));
  
     size_t lit_sz=0; uint8_t* lit=lit_decompress(zlit,zlit_sz,lit_sz);
     if(!lit) return 1;

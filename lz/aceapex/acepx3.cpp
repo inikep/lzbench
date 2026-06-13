@@ -1,4 +1,5 @@
 #define ACEAPEX_NO_MAIN
+#include "ax_align.h"
 #include "aceapex_main.cpp"
 
 // ACEPX3 File Header
@@ -146,7 +147,7 @@ int acepx3_decode(const char* in_path, const char* out_path, int threads=8) {
         fread(zo,1,chdr.off_size,fin);
         fread(zn,1,chdr.len_size,fin);
         fread(zc,1,chdr.cmd_size,fin);
-        size_t os=*(uint64_t*)zo,ns=*(uint64_t*)zn,cs=*(uint64_t*)zc;
+        size_t os=AX_read64((zo)),ns=AX_read64((zn)),cs=AX_read64((zc));
         size_t ls=0; uint8_t* l=lit_decompress(zl,chdr.lit_size,ls);
         uint8_t* o=(uint8_t*)malloc(os); fse_chunked_decomp(zo,os,o);
         uint8_t* n=(uint8_t*)malloc(ns); fse_chunked_decomp(zn,ns,n);
