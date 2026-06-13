@@ -421,11 +421,11 @@ jobs:
   - task: ExtractFiles@1
     inputs:
       archiveFilePatterns: '$(Build.ArtifactStagingDirectory)\mingw.7z'
-      destinationFolder: '$(Build.SourcesDirectory)\mingw'
+      destinationFolder: '$(Build.BinariesDirectory)\mingw'
 
   - script: |
       echo Building with $(toolchain) for $(arch) architecture
-      set PATH=$(Build.SourcesDirectory)\mingw\$(toolchain)\bin;%PATH%
+      set PATH=$(Build.BinariesDirectory)\mingw\$(toolchain)\bin;%PATH%
       where $(SELECTED_CC)
       $(SELECTED_CXX) --version
       mingw32-make -j2 CC=$(SELECTED_CC) CXX=$(SELECTED_CXX) $(MORE_OPTIONS) || exit 1
