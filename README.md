@@ -59,7 +59,7 @@ Notes column says otherwise.
 
 | Compressor | Last update | Notes |
 | :--- | :--- | :--- |
-| [aceapex 1.0](https://github.com/yasha1971-coder/aceapex) | 2026-04-24 | Disabled on 32-bit ARM — unaligned access faults (SIGBUS) |
+| [aceapex 1.0](https://github.com/yasha1971-coder/aceapex) | 2026-04-24 | |
 | [brieflz 1.3.0](https://github.com/jibsen/brieflz) | 2020-02-15 | |
 | [brotli 1.2.0](https://github.com/google/brotli) | 2025-10-27 | |
 | [bsc 3.3.11](https://github.com/IlyaGrebnov/libbsc) | 2025-08-14 | |
@@ -83,7 +83,7 @@ Notes column says otherwise.
 | [lzlib 1.15](http://www.nongnu.org/lzip) | 2025-01-13 | |
 | [lzma v25.01](http://7-zip.org) | 2025-08-03 | |
 | [lzo 2.10](http://www.oberhumer.com/opensource/lzo) | 2017-03-01 | |
-| [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE) | 2019-04-18 | 64-bit x86 only — requires SSE4.1 (Windows: MinGW-w64 only) |
+| [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE) | 2019-04-18 | 64-bit x86 only — requires SSE4.1 (Windows: MinGW-w64 only); lzsse8fast has a [bug](https://github.com/ConorStokes/LZSSE/issues/14) |
 | [memlz 0.2 beta](https://github.com/rrrlasse/memlz) | 2025-11-03 | Disabled on 32-bit ARM — unaligned access faults (SIGBUS) |
 | [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) | 2022-02-07 | CUDA only — built with `make ENABLE_CUDA=1`; not in the default CI matrix |
 | [ppmd8 25.01](http://7-zip.org) | 2025-08-03 | |
@@ -95,6 +95,7 @@ Notes column says otherwise.
 | [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | |
 | [ucl 1.03](http://www.oberhumer.com/opensource/ucl/) | 2004-07-20 | |
 | [xz 5.8.1](https://github.com/tukaani-project/xz) | 2025-04-03 | |
+| [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) | 2022-07-06 | |
 | [zlib 1.3.1](http://zlib.net) | 2024-01-22 | |
 | [zlib-ng 2.2.5](https://github.com/zlib-ng/zlib-ng) | 2025-08-07 | |
 | [zling 2018-10-12](https://github.com/richox/libzling) | 2018-10-12 | Not recommended for production use (per author) |
@@ -111,7 +112,6 @@ Notes column says otherwise.
 | [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat) | 2008-07-08 | Decompression bugs; may segfault with GCC 4.9+ using -O3 |
 | [lzrw 15-Jul-1991](https://en.wikipedia.org/wiki/LZRW) | 1991-07-15 | May segfault with GCC 4.9+ using -O3 |
 | [wflz 2015-09-16](https://github.com/ShaneWF/wflz) | 2015-09-16 | May segfault with GCC 4.9+ using -O3 |
-| [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) | 2022-07-06 | Segfault with GCC 13.3.0 on 32-bit ARM (arm-linux-gnueabi) |
 | [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) | 2014-03-22 | Segfault with GCC 13.3.0 on 32-bit ARM (arm-linux-gnueabi) |
 
 Benchmarks
