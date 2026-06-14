@@ -5,13 +5,14 @@ v2.x.y (work in progress)
 - added skim 0.1.0 (thanks to @VantorreWannes)
 - added zxc 0.11.0 (thanks to @hellobertrand)
 - updated brotli to 1.2.0 (thanks to @data-man)
-- updated bzip3 to v1.5.3
+- updated bzip3 to v1.5.3 (thanks to @inikep)
 - updated glza to v0.12 (thanks to @tansy)
 - updated kanzi to 2.5.3 (thanks to @flanglet)
 - updated libdeflate to v1.25 (thanks to @tansy)
 - updated lzav to 5.7 (thanks to @avaneev)
-- updated quicklz to 1.5.1 beta 7
+- updated quicklz to 1.5.1 beta 7 (thanks to @inikep)
 - updated tamp to 2.1.0 (thanks to @tansy)
+- updated zlib to 1.3.2 (thanks to @inikep)
 
 v2.2 (Oct 28, 2025)
 - improvement: Automatic chunk size splitting for multi-threading (-T) when -b is not specified

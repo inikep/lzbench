@@ -96,7 +96,7 @@ Notes column says otherwise.
 | [ucl 1.03](http://www.oberhumer.com/opensource/ucl/) | 2004-07-20 | |
 | [xz 5.8.1](https://github.com/tukaani-project/xz) | 2025-04-03 | |
 | [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) | 2022-07-06 | |
-| [zlib 1.3.1](http://zlib.net) | 2024-01-22 | |
+| [zlib 1.3.2](http://zlib.net) | 2026-02-17 | |
 | [zlib-ng 2.2.5](https://github.com/zlib-ng/zlib-ng) | 2025-08-07 | |
 | [zling 2018-10-12](https://github.com/richox/libzling) | 2018-10-12 | Disabled on big-endian PowerPC; not recommended for production use (per author) |
 | [zpaq 7.15](https://github.com/zpaq/zpaq) | 2016-08-17 | Slower on non-x86 — built with `-DNOJIT` (x86-only JIT, portable interpreter elsewhere) |
