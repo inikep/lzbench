@@ -62,7 +62,7 @@ Notes column says otherwise.
 | [aceapex 1.0](https://github.com/yasha1971-coder/aceapex) | 2026-04-24 | |
 | [brieflz 1.3.0](https://github.com/jibsen/brieflz) | 2020-02-15 | |
 | [brotli 1.2.0](https://github.com/google/brotli) | 2025-10-27 | |
-| [bsc 3.3.11](https://github.com/IlyaGrebnov/libbsc) | 2025-08-14 | |
+| [bsc 3.3.11](https://github.com/IlyaGrebnov/libbsc) | 2025-08-14 | Disabled on 32-bit ARM — multithreaded decompress faults (SIGBUS, lzbench#293) |
 | [bzip2 1.0.8](https://www.sourceware.org/bzip2/downloads.html) | 2019-07-13 | |
 | [bzip3 1.5.2](https://github.com/kspalaiologos/bzip3) | 2025-04-27 | |
 | [crush 1.0](https://sourceforge.net/projects/crush/) | 2013-07-01 | |
@@ -78,7 +78,7 @@ Notes column says otherwise.
 | [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html) | 2014-03-13 | |
 | [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse) | 2017-03-08 | |
 | [lzg 1.0.10](https://github.com/mbitsnbites/liblzg) | 2018-11-29 | |
-| [lzham 1.0](https://github.com/richgel999/lzham_codec) | 2015-01-25 | Disabled on macOS |
+| [lzham 1.0](https://github.com/richgel999/lzham_codec) | 2015-01-25 | Disabled on macOS and 32-bit x86 — 64 MB dictionary overflows the 32-bit address space |
 | lzjb 2010 | 2010 | |
 | [lzlib 1.15](http://www.nongnu.org/lzip) | 2025-01-13 | |
 | [lzma v25.01](http://7-zip.org) | 2025-08-03 | |
@@ -92,13 +92,13 @@ Notes column says otherwise.
 | [slz 1.2.1](http://www.libslz.org/) | 2022-10-23 | Compressor only; decompresses via zlib |
 | [snappy 1.2.2](https://github.com/google/snappy) | 2025-03-26 | |
 | [tamp 2.1.0](https://github.com/BrianPugh/tamp) | 2025-03-27 | |
-| [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | |
+| [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | Disabled on RISC-V (unaligned access) |
 | [ucl 1.03](http://www.oberhumer.com/opensource/ucl/) | 2004-07-20 | |
 | [xz 5.8.1](https://github.com/tukaani-project/xz) | 2025-04-03 | |
 | [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) | 2022-07-06 | |
 | [zlib 1.3.1](http://zlib.net) | 2024-01-22 | |
 | [zlib-ng 2.2.5](https://github.com/zlib-ng/zlib-ng) | 2025-08-07 | |
-| [zling 2018-10-12](https://github.com/richox/libzling) | 2018-10-12 | Not recommended for production use (per author) |
+| [zling 2018-10-12](https://github.com/richox/libzling) | 2018-10-12 | Disabled on big-endian PowerPC; not recommended for production use (per author) |
 | [zpaq 7.15](https://github.com/zpaq/zpaq) | 2016-08-17 | Slower on non-x86 — built with `-DNOJIT` (x86-only JIT, portable interpreter elsewhere) |
 | [zstd 1.5.7](https://github.com/facebook/zstd) | 2025-02-19 | |
 | [zxc 0.11.0](https://github.com/hellobertrand/zxc) | 2026-05-13 | |
@@ -107,12 +107,12 @@ Notes column says otherwise.
 
 | Compressor | Last update | Notes |
 | :--- | :--- | :--- |
-| [csc 2016-10-13](https://github.com/fusiyuan2010/CSC) | 2016-10-13 | May segfault when compiled with Apple LLVM 7.3.0 (clang-703.0.31) |
+| [csc 2016-10-13](https://github.com/fusiyuan2010/CSC) | 2016-10-13 | Disabled on macOS — segfaults with Apple LLVM 7.3.0 (clang-703.0.31) |
 | [gipfeli 2016-07-13](https://github.com/google/gipfeli) | 2016-07-13 | Decompression file mismatch when compiled with GCC 14.2 using -O3 |
 | [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat) | 2008-07-08 | Decompression bugs; may segfault with GCC 4.9+ using -O3 |
 | [lzrw 15-Jul-1991](https://en.wikipedia.org/wiki/LZRW) | 1991-07-15 | May segfault with GCC 4.9+ using -O3 |
 | [wflz 2015-09-16](https://github.com/ShaneWF/wflz) | 2015-09-16 | May segfault with GCC 4.9+ using -O3 |
-| [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) | 2014-03-22 | Segfault with GCC 13.3.0 on 32-bit ARM (arm-linux-gnueabi) |
+| [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) | 2014-03-22 | Disabled on big-endian PowerPC; segfault with GCC 13.3.0 on 32-bit ARM (arm-linux-gnueabi) |
 
 Benchmarks
 -------------------------
