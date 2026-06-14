@@ -2,16 +2,21 @@ cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
 project(
   bzip3
-  VERSION 1.5.2
+  VERSION 1.5.3
   DESCRIPTION "A better and stronger spiritual successor to BZip2"
-  HOMEPAGE_URL "https://github.com/kspalaiologos/bzip3"
+  HOMEPAGE_URL "https://github.com/iczelia/bzip3"
   LANGUAGES C)
 
 set(CMAKE_C_STANDARD 99)
 
 option(BUILD_SHARED_LIBS "Build libbz3 as a shared library" ON)
 option(BZIP3_BUILD_APPS "Build bzip3 applications" ON)
-option(BZIP3_ENABLE_PTHREAD "Enable use of pthread library" ON)
+if(WIN32 AND NOT (MINGW OR CYGWIN))
+  set(BZIP3_ENABLE_PTHREAD_DEFAULT OFF)
+else()
+  set(BZIP3_ENABLE_PTHREAD_DEFAULT ON)
+endif()
+option(BZIP3_ENABLE_PTHREAD "Enable use of pthread library" "${BZIP3_ENABLE_PTHREAD_DEFAULT}")
 option(BZIP3_ENABLE_ARCH_NATIVE "Enable CPU-specific optimizations" OFF)
 option(BZIP3_ENABLE_STATIC_EXE "Enable static builds of the executable" OFF)
 
@@ -29,6 +34,11 @@ set(libdir ${CMAKE_INSTALL_FULL_LIBDIR})
 set(includedir ${CMAKE_INSTALL_FULL_INCLUDEDIR})
 set(PACKAGE ${CMAKE_PROJECT_NAME})
 set(PACKAGE_VERSION ${PROJECT_VERSION})
+if(WIN32 AND BUILD_SHARED_LIBS)
+  set(extra_cflags " -DBZIP3_DLL_IMPORT=1")
+else()
+  set(extra_cflags "")
+endif()
 configure_file(bzip3.pc.in ${CMAKE_CURRENT_BINARY_DIR}/bzip3.pc @ONLY)
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/bzip3.pc
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
@@ -45,6 +55,10 @@ else()
 endif()
 target_sources(bz3 PRIVATE src/libbz3.c)
 target_compile_definitions(bz3 PUBLIC VERSION="${PROJECT_VERSION}")
+if(WIN32 AND BUILD_SHARED_LIBS)
+  target_compile_definitions(bz3 PRIVATE BZIP3_DLL_EXPORT=1)
+  target_compile_definitions(bz3 INTERFACE BZIP3_DLL_IMPORT=1)
+endif()
 target_include_directories(
   bz3
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -76,15 +90,21 @@ if(BUILD_SHARED_LIBS)
 endif()
 install(
   TARGETS bz3
-  EXPORT ${CMAKE_PROJECT_NAME}-config
+  EXPORT ${CMAKE_PROJECT_NAME}-targets
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
   PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 install(
-  EXPORT ${CMAKE_PROJECT_NAME}-config
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${CMAKE_PROJECT_NAME}
+  EXPORT ${CMAKE_PROJECT_NAME}-targets
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${CMAKE_PROJECT_NAME}"
   NAMESPACE ${CMAKE_PROJECT_NAME}::)
-
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/${CMAKE_PROJECT_NAME}-config.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
+  @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_PROJECT_NAME}-config.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${CMAKE_PROJECT_NAME}")
 if(BZIP3_BUILD_APPS)
   add_executable(bzip3)
   target_sources(bzip3 PRIVATE src/main.c)

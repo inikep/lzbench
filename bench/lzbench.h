@@ -193,7 +193,7 @@ static const compressor_desc_t comp_desc[] =
     { "bsc_cuda7",  "bsc 3.3.11 -G -m7 -e0",   0,   0,    7,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
     { "bsc_cuda8",  "bsc 3.3.11 -G -m8 -e0",   0,   0,    8,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
     { "bzip2",      "bzip2 1.0.8",             1,   9,    0,  BENCH_POOL_MT, lzbench_bzip2_compress,      lzbench_bzip2_decompress,      NULL,                    NULL },
-    { "bzip3",      "bzip3 1.5.2",             1,  10,    0,  BENCH_POOL_MT, lzbench_bzip3_compress,      lzbench_bzip3_decompress,      NULL,                    NULL },
+    { "bzip3",      "bzip3 1.5.3",             1,  10,    0,  BENCH_POOL_MT, lzbench_bzip3_compress,      lzbench_bzip3_decompress,      NULL,                    NULL },
     { "crush",      "crush 1.0",               0,   2,    0,   NO_THREADING, lzbench_crush_compress,      lzbench_crush_decompress,      NULL,                    NULL },
     { "csc",        "csc 2016-10-13",          1,   5,    0,  BENCH_POOL_MT, lzbench_csc_compress,        lzbench_csc_decompress,        NULL,                    NULL },
     { "cudaMemcpy", "cudaMemcpy",              0,   0,    0,  BENCH_POOL_MT, lzbench_cuda_memcpy,         lzbench_cuda_memcpy,           lzbench_cuda_init,       lzbench_cuda_deinit },
@@ -275,7 +275,7 @@ static const alias_desc_t alias_desc[] =
     { "FAST", "Refers to compressors capable of achieving compression speeds exceeding 100 MB/s (default alias).",
               "memcpy/density,1,2,3/fastlz/kanzi,1,2,3/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
               "lzsse4fast/lzsse8,1/lzvn/quicklz,1,2/skim/snappy/yalz77,1/zstd,1,2,3,4,5" },
-    // CI uses LZ + SYMMETRIC + MISC for testing
+    // CI uses LZ + SYMMETRIC + MISC for single-threaded testing
     { "LZ",   "Represents all major LZ-based compressors.",
               "memcpy/aceapex,1,2/brieflz,1,3,6,8/brotli,0,2,5,8,11/" \
               "fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,1,2,3,4/libdeflate,1,3,6,9,12/" \
@@ -291,12 +291,13 @@ static const alias_desc_t alias_desc[] =
               "memcpy/crush,0,2/lzjb/skim/tamp,8,12,15/tornado,1,6,11,16/zling,0,2,4" },
     { "ALL",  "Represents all major compressors.",
               "LZ/SYMMETRIC/MISC" },
+    // CI uses FASTEST for multi-threaded testing
     { "FASTEST", "All LZ/SYMMETRIC/MISC compressors, each at only its fastest level.",
      /* LZ */ "memcpy/aceapex-DISABLED,1/brieflz,1/brotli,0/fastlz,1/fastlzma2,1/kanzi,1/libdeflate,1/lizard,10/lz4fast,99/lz4/lz4hc,1/lzav,1/" \
               "lzf,0/lzfse/lzham,0/lzlib,0/lzma,0/lzo1,1/lzo1a,1/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/lzo1z/lzo2a/lzsse2,1/" \
               "lzsse4fast/lzsse4,1/lzsse8,1/lzvn/memlz/quicklz,1/slz_gzip,1/snappy/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/xz,0/yalz77,1/" \
               "zlib,1/zlib-ng,1/zstd_fast,-5/zstd,1/zxc,1/" /* aceapex is disabled as it has issues with tiny inputs */ \
-/* SYMMETR */ "bsc1/bzip2,1/bzip3-DISABLED,1/density,1/ppmd8,1/zpaq,1/" /* bzip3 has to be updated to 1.5.3 */ \
+/* SYMMETR */ "bsc1/bzip2,1/bzip3,1/density,1/ppmd8,1/zpaq,1/" \
    /* MISC */ "crush,0/lzjb/skim/tamp,8/tornado-DISABLED,1/zling,0" }, /* Tornado is disabled as it has issues with incompressible data */
     { "SLOW", "Lists very slow compressors.",
               "memcpy/glza" },

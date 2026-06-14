@@ -841,7 +841,7 @@ $(BUGGY_CXX_FILES): %.o : %.cpp
 
 $(BZIP3_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DVERSION=\"1.5.1\" -Ibwt/bzip3/include $< -c -o $@
+	$(CC) $(CFLAGS) -DVERSION=\"1.5.3\" -Ibwt/bzip3/include $< -c -o $@
 
 $(CSC_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)

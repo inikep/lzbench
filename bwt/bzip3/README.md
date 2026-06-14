@@ -1,6 +1,6 @@
 # BZip3
 
-[![Build](https://github.com/kspalaiologos/bzip3/actions/workflows/build.yml/badge.svg)](https://github.com/kspalaiologos/bzip3/actions/workflows/build.yml)
+[![Build](https://github.com/iczelia/bzip3/actions/workflows/build.yml/badge.svg)](https://github.com/iczelia/bzip3/actions/workflows/build.yml)
 
 A better, faster and stronger spiritual successor to BZip2. Features higher compression ratios and better performance thanks to a order-0 context mixing entropy coder, a fast Burrows-Wheeler transform code making use of suffix arrays and a RLE with Lempel Ziv+Prediction pass based on LZ77-style string matching and PPM-style context modeling.
 
@@ -134,7 +134,7 @@ Check etc/BENCHMARKS.md for more results.
 
 A breakdown of components and their licenses follows:
 
-- (runtime) The codebase as a whole: Copyright 2022-2023, Kamila Szewczyk (kspalaiologos@gmail.com); LGPL (LICENSE)
+- (runtime) The codebase as a whole: Copyright 2022-2023, Kamila Szewczyk (k@iczelia.net); LGPL (LICENSE)
 - (runtime) The Burrows-Wheeler transform (libsais) and LZP code: 2021-2022, Ilya Grebnov (ilya.grebnov@gmail.com); Apache 2.0 (3rdparty/libsais-LICENSE)
 - (compile-time) `build-aux`: Copyright 2011, Daniel Richard G (skunk@iSKUNK.ORG), 2019, Marc Stevens (marc.stevens@cwi.nl), 2008, Steven G. Johnson (stevenj@alum.mit.edu); GPL-3+ with AutoConf exception
 - (compile-time) `build-aux/ax_check_compile_flag.m4`: Copyright 2008, Guido U. Draheim (guidod@gmx.de), 2011, Maarten Bosmans (mkbosmans@gmail.com); FSFAP
