@@ -16,6 +16,7 @@ v2.x.y (work in progress)
 - updated tamp to 2.1.0 (thanks to @tansy)
 - updated xz to 5.8.3 (thanks to @inikep)
 - updated zlib to 1.3.2 (thanks to @inikep)
+- updated zlib-ng to 2.3.3 (thanks to @inikep)
 
 v2.2 (Oct 28, 2025)
 - improvement: Automatic chunk size splitting for multi-threading (-T) when -b is not specified

@@ -97,7 +97,7 @@ Notes column says otherwise.
 | [xz 5.8.3](https://github.com/tukaani-project/xz) | 2026-03-31 | |
 | [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) | 2022-07-06 | |
 | [zlib 1.3.2](http://zlib.net) | 2026-02-17 | |
-| [zlib-ng 2.2.5](https://github.com/zlib-ng/zlib-ng) | 2025-08-07 | |
+| [zlib-ng 2.3.3](https://github.com/zlib-ng/zlib-ng) | 2026-02-03 | |
 | [zling 2018-10-12](https://github.com/richox/libzling) | 2018-10-12 | Disabled on big-endian PowerPC; not recommended for production use (per author) |
 | [zpaq 7.15](https://github.com/zpaq/zpaq) | 2016-08-17 | Slower on non-x86 — built with `-DNOJIT` (x86-only JIT, portable interpreter elsewhere) |
 | [zstd 1.5.7](https://github.com/facebook/zstd) | 2025-02-19 | |

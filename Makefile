@@ -901,7 +901,7 @@ $(ZLIB_FILES): %.o : %.c
 
 $(ZLIB_NG_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz/zlib-ng $< -c -o $@
+	$(CC) $(CFLAGS) -DWITH_ALL_FALLBACKS -Ilz/zlib-ng $< -c -o $@
 
 $(ZSTD_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
