@@ -20,6 +20,8 @@
 
 int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
+    if (insize > outsize)
+        return -1;
     memcpy(outbuf, inbuf, insize);
     return insize;
 }
