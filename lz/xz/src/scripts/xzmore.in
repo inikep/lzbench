@@ -16,6 +16,8 @@
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
+# shellcheck shell=sh
+
 @enable_path_for_scripts@
 #SET_PATH - This line is a placeholder to ease patching this script.
 
@@ -58,7 +60,7 @@ if test $# = 0; then
 else
 	FIRST=1
 	for FILE; do
-		< "$FILE" || continue
+		true < "$FILE" || continue
 		if test $FIRST -eq 0; then
 			printf "%s--More--(Next file: %s)" "" "$FILE"
 			stty $cb -echo 2>/dev/null

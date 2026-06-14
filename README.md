@@ -94,7 +94,7 @@ Notes column says otherwise.
 | [tamp 2.1.0](https://github.com/BrianPugh/tamp) | 2025-03-27 | |
 | [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | Disabled on RISC-V (unaligned access) |
 | [ucl 1.03](http://www.oberhumer.com/opensource/ucl/) | 2004-07-20 | |
-| [xz 5.8.1](https://github.com/tukaani-project/xz) | 2025-04-03 | |
+| [xz 5.8.3](https://github.com/tukaani-project/xz) | 2026-03-31 | |
 | [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) | 2022-07-06 | |
 | [zlib 1.3.2](http://zlib.net) | 2026-02-17 | |
 | [zlib-ng 2.2.5](https://github.com/zlib-ng/zlib-ng) | 2025-08-07 | |

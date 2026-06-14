@@ -172,11 +172,13 @@ txtcp()
 }
 
 if type -P i686-w64-mingw32-gcc > /dev/null; then
-	# 32-bit x86, Win2k or later
-	buildit pkg/bin_i686 i686-w64-mingw32 \
-			'-march=i686 -mtune=generic'
+	# 32-bit x86, Win2k or later if using MSVCRT
+	#
+	# Uncomment if using MSVCRT and you want the binaries to be compatible
+	# with old Windows versions on old computers.
+	#buildit pkg/bin_i686 i686-w64-mingw32 '-march=i686 -mtune=generic'
 
-	# 32-bit x86 with SSE2, Win2k or later
+	# 32-bit x86 with SSE2 (Win2k or later if using MSVCRT)
 	buildit pkg/bin_i686-sse2 i686-w64-mingw32 \
 			'-march=i686 -msse2 -mtune=generic'
 else
@@ -195,6 +197,10 @@ else
 	echo
 fi
 
+if type -P ps2pdf > /dev/null; then
+	make pdf
+fi
+
 # Copy the headers, the .def file, and the docs.
 # They are the same for all architectures and builds.
 mkdir -pv pkg/{include/lzma,doc/{manuals,examples}}
@@ -202,12 +208,14 @@ txtcp pkg/include "" src/liblzma/api/lzma.h
 txtcp pkg/include/lzma "" src/liblzma/api/lzma/*.h
 txtcp pkg/doc "" src/liblzma/liblzma.def
 txtcp pkg/doc .txt AUTHORS COPYING COPYING.0BSD NEWS README THANKS
-txtcp pkg/doc "" doc/*.txt \
+txtcp pkg/doc "" doc/*-file-format.txt \
 	windows/README-Windows.txt \
 	windows/liblzma-crt-mixing.txt \
 	windows/COPYING.MinGW-w64-runtime.txt
 txtcp pkg/doc/manuals "" doc/man/txt/{xz,xzdec,lzmainfo}.txt
-# cp -v doc/man/pdf-*/{xz,xzdec,lzmainfo}-*.pdf pkg/doc/manuals
+if [ -d doc/man/pdf-a4 ]; then
+	cp -v doc/man/pdf-*/{xz,xzdec,lzmainfo}-*.pdf pkg/doc/manuals
+fi
 # cp -rv doc/api pkg/doc/api
 txtcp pkg/doc/examples "" doc/examples/*
 
@@ -220,11 +228,11 @@ do
 	[ -x "$SEVENZ" ] && break
 done
 
+VER=$(sh build-aux/version.sh)
 if [ -x "$SEVENZ" ]; then
-	VER=$(sh build-aux/version.sh)
 	cd pkg
-	"$SEVENZ" a -tzip ../xz-$VER-windows.zip *
-	"$SEVENZ" a ../xz-$VER-windows.7z *
+	"$SEVENZ" a -tzip "../xz-$VER-windows.zip" *
+	"$SEVENZ" a "../xz-$VER-windows.7z" *
 else
 	echo
 	echo "NOTE: 7z was not found. xz-$VER-windows.zip"

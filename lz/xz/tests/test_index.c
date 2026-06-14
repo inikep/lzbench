@@ -1758,6 +1758,40 @@ test_lzma_index_buffer_decode(void)
 }
 
 
+// With liblzma <= 5.8.2 (before the commit c8c22869e780),
+// this triggers a buffer overflow in lzma_index_append().
+static void
+test_decode_empty_and_append(void)
+{
+#if !defined(HAVE_ENCODERS) || !defined(HAVE_DECODERS)
+	assert_skip("Encoder or decoder support disabled");
+#else
+	uint8_t buf[256];
+	lzma_index *idx = lzma_index_init(NULL);
+	assert_true(idx != NULL);
+
+	// Encode an empty Index.
+	size_t buf_size = 0;
+	assert_lzma_ret(lzma_index_buffer_encode(
+			idx, buf, &buf_size, sizeof(buf)), LZMA_OK);
+	assert_true(buf_size > 0);
+	lzma_index_end(idx, NULL);
+	idx = NULL;
+
+	// Decode the empty Index.
+	uint64_t memlimit = MEMLIMIT;
+	size_t buf_pos = 0;
+	assert_lzma_ret(lzma_index_buffer_decode(&idx, &memlimit, NULL,
+			buf, &buf_pos, buf_size), LZMA_OK);
+	assert_uint_eq(buf_pos, buf_size);
+
+	// Append one Record to the decoded empty idx.
+	assert_lzma_ret(lzma_index_append(idx, NULL, 55, 1), LZMA_OK);
+	lzma_index_end(idx, NULL);
+#endif
+}
+
+
 extern int
 main(int argc, char **argv)
 {
@@ -1786,6 +1820,7 @@ main(int argc, char **argv)
 	tuktest_run(test_lzma_index_decoder);
 	tuktest_run(test_lzma_index_buffer_encode);
 	tuktest_run(test_lzma_index_buffer_decode);
+	tuktest_run(test_decode_empty_and_append);
 	lzma_index_end(decode_test_index, NULL);
 	return tuktest_end();
 }

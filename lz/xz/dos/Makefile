@@ -45,13 +45,15 @@ SRCS_C = \
 	../src/common/tuklib_cpucores.c \
 	../src/common/tuklib_exit.c \
 	../src/common/tuklib_mbstr_fw.c \
+	../src/common/tuklib_mbstr_nonprint.c \
 	../src/common/tuklib_mbstr_width.c \
+	../src/common/tuklib_mbstr_wrap.c \
 	../src/common/tuklib_open_stdxxx.c \
 	../src/common/tuklib_physmem.c \
 	../src/common/tuklib_progname.c \
 	../src/liblzma/check/check.c \
-	../src/liblzma/check/crc32_table.c \
-	../src/liblzma/check/crc64_table.c \
+	../src/liblzma/check/crc32_fast.c \
+	../src/liblzma/check/crc64_fast.c \
 	../src/liblzma/check/sha256.c \
 	../src/liblzma/common/alone_decoder.c \
 	../src/liblzma/common/alone_encoder.c \

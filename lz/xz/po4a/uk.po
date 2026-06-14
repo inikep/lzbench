@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: 0BSD
 #
 # Ukrainian translation for xz-man.
-# This file is distributed under the same license as the xz-man package.
+# This file is published under the BSD Zero Clause License.
 # Copyright (C) The XZ Utils authors and contributors
 #
-# Yuri Chornoivan <yurchor@ukr.net>, 2019, 2022, 2023, 2024.
+# Yuri Chornoivan <yurchor@ukr.net>, 2019, 2022, 2023, 2024, 2025.
 msgid ""
 msgstr ""
-"Project-Id-Version: xz-man-5.6.0-pre2\n"
-"POT-Creation-Date: 2024-05-29 17:45+0300\n"
-"PO-Revision-Date: 2024-02-15 17:53+0200\n"
+"Project-Id-Version: xz-man-5.8.2-pre1\n"
+"POT-Creation-Date: 2025-10-31 13:23+0200\n"
+"PO-Revision-Date: 2025-10-31 20:48+0200\n"
 "Last-Translator: Yuri Chornoivan <yurchor@ukr.net>\n"
 "Language-Team: Ukrainian <trans-uk@lists.fedoraproject.org>\n"
 "Language: uk\n"
@@ -18,7 +18,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "X-Bugs: Report translation errors to the Language-Team address.\n"
 "Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
-"X-Generator: Lokalize 23.04.1\n"
+"X-Generator: Lokalize 23.04.3\n"
 
 #. type: TH
 #: ../src/xz/xz.1
@@ -27,11 +27,10 @@ msgid "XZ"
 msgstr "XZ"
 
 #. type: TH
-#: ../src/xz/xz.1 ../src/xzdec/xzdec.1
-#, fuzzy, no-wrap
-#| msgid "2024-02-25"
-msgid "2024-04-08"
-msgstr "25 лютого 2024 року"
+#: ../src/xz/xz.1
+#, no-wrap
+msgid "2025-03-08"
+msgstr "8 березня 2025 року"
 
 #. type: TH
 #: ../src/xz/xz.1 ../src/xzdec/xzdec.1 ../src/lzmainfo/lzmainfo.1
@@ -216,6 +215,8 @@ msgstr "Використання B<xz> пам'яті може бути різн�
 msgid "Especially users of older systems may find the possibility of very large memory usage annoying.  To prevent uncomfortable surprises, B<xz> has a built-in memory usage limiter, which is disabled by default.  While some operating systems provide ways to limit the memory usage of processes, relying on it wasn't deemed to be flexible enough (for example, using B<ulimit>(1)  to limit virtual memory tends to cripple B<mmap>(2))."
 msgstr "Ймовірність високого рівня використання пам'яті може бути особливо дошкульною для користувачів застарілих комп'ютерів. Щоб запобігти прикрим несподіванкам, у B<xz> передбачено вбудований обмежувач пам'яті, який типово вимкнено. Хоча у деяких операційних системах передбачено спосіб обмежити використання пам'яті процесами, сподівання на його ефективність не є аж надто гнучким (наприклад, використання B<ulimit>(1) для обмеження віртуальної пам'яті призводить до викривлення даних B<mmap>(2))."
 
+#.  TRANSLATORS: Don't translate the uppercase XZ_DEFAULTS.
+#.  It's a name of an environment variable.
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "The memory usage limiter can be enabled with the command line option B<--memlimit=>I<limit>.  Often it is more convenient to enable the limiter by default by setting the environment variable B<XZ_DEFAULTS>, for example, B<XZ_DEFAULTS=--memlimit=150MiB>.  It is possible to set the limits separately for compression and decompression by using B<--memlimit-compress=>I<limit> and B<--memlimit-decompress=>I<limit>.  Using these two options outside B<XZ_DEFAULTS> is rarely useful because a single run of B<xz> cannot do both compression and decompression and B<--memlimit=>I<limit> (or B<-M> I<limit>)  is shorter to type on the command line."
@@ -324,16 +325,27 @@ msgstr "B<-z>, B<--compress>"
 msgid "Compress.  This is the default operation mode when no operation mode option is specified and no other operation mode is implied from the command name (for example, B<unxz> implies B<--decompress>)."
 msgstr "Стиснути. Це типовий режим дій, якщо не вказано параметр режиму дій, а назва команди неявним чином не визначає іншого режиму дій (наприклад, B<unxz> неявно визначає B<--decompress>)."
 
+#.  The DESCRIPTION section already says this but it's good to repeat it
+#.  here because the default behavior is a bit dangerous and new users
+#.  in a hurry may skip reading the DESCRIPTION section.
+#. type: Plain text
+#: ../src/xz/xz.1
+msgid "After successful compression, the source file is removed unless writing to standard output or B<--keep> was specified."
+msgstr "Після успішного пакування початковий файл буде вилучено, якщо виведення не відбувається до стандартного виведення або не вказано параметра B<--keep>."
+
 #. type: TP
 #: ../src/xz/xz.1 ../src/xzdec/xzdec.1
 #, no-wrap
 msgid "B<-d>, B<--decompress>, B<--uncompress>"
 msgstr "B<-d>, B<--decompress>, B<--uncompress>"
 
+#.  The DESCRIPTION section already says this but it's good to repeat it
+#.  here because the default behavior is a bit dangerous and new users
+#.  in a hurry may skip reading the DESCRIPTION section.
 #. type: Plain text
 #: ../src/xz/xz.1
-msgid "Decompress."
-msgstr "Розпакувати."
+msgid "Decompress.  After successful decompression, the source file is removed unless writing to standard output or B<--keep> was specified."
+msgstr "Розпакувати. Після успішного розпаковування початковий файл буде вилучено, якщо виведення не відбувається до стандартного виведення або не вказано параметра B<--keep>."
 
 #. type: TP
 #: ../src/xz/xz.1
@@ -447,6 +459,11 @@ msgstr "B<xz> ніколи не виконуватиме спроби видоб
 msgid "This option has no effect if the operation mode is not B<--decompress> or B<--test>."
 msgstr "Цей параметр нічого не змінює, якщо режимом дій не є B<--decompress> або B<--test>."
 
+#. type: Plain text
+#: ../src/xz/xz.1
+msgid "Since B<xz> 5.7.1alpha, B<--single-stream> implies B<--keep>."
+msgstr "З B<xz> 5.7.1alpha, B<--single-stream> неявно визначає B<--keep>."
+
 #. type: TP
 #: ../src/xz/xz.1
 #, no-wrap
@@ -518,6 +535,7 @@ msgstr "B<-F> I<format>, B<--format=>I<формат>"
 msgid "Specify the file I<format> to compress or decompress:"
 msgstr "Вказати файл I<формат> для стискання або розпакування:"
 
+#.  TRANSLATORS: Don't translate bold string B<auto>.
 #. type: TP
 #: ../src/xz/xz.1
 #, no-wrap
@@ -564,13 +582,8 @@ msgstr "Приймати лише файли B<.lz> при розпакуван�
 
 #. type: Plain text
 #: ../src/xz/xz.1
-msgid "The B<.lz> format version 0 and the unextended version 1 are supported.  Version 0 files were produced by B<lzip> 1.3 and older.  Such files aren't common but may be found from file archives as a few source packages were released in this format.  People might have old personal files in this format too.  Decompression support for the format version 0 was removed in B<lzip> 1.18."
-msgstr "Передбачено підтримку версії формату B<.lz> 0 та нерозширеної версії 1. Файли версії 0 було створено B<lzip> 1.3 та старішими версіями. Такі файли не є поширеними, але їх можна знайти у файлових архівах, оскільки певну незначну кількість пакунків із початковим кодом було випущено у цьому форматі. Також можуть існувати особисті файли у цьому форматі. Підтримку розпаковування для формату версії 0 було вилучено у B<lzip> 1.18."
-
-#. type: Plain text
-#: ../src/xz/xz.1
-msgid "B<lzip> 1.4 and later create files in the format version 1.  The sync flush marker extension to the format version 1 was added in B<lzip> 1.6.  This extension is rarely used and isn't supported by B<xz> (diagnosed as corrupt input)."
-msgstr "B<lzip> 1.4 і пізніші версії створюють файли у форматі версії 1. Розширення синхронізації позначки витирання до формату версії 1 було додано у B<lzip> 1.6. Це розширення використовують не часто, його підтримки у B<xz> не передбачено (програма повідомлятиме про пошкоджені вхідні дані)."
+msgid "The B<.lz> format versions 0 and 1 are supported.  Version 0 files were produced by B<lzip> 1.3 and older.  Such files aren't common but may be found from file archives as a few source packages were released in this format.  People might have old personal files in this format too.  Decompression support for the format version 0 was removed in B<lzip> 1.18.  B<lzip> 1.4 and later create files in the format version 1."
+msgstr "Передбачено підтримку версії формату B<.lz> 0 та 1. Файли версії 0 було створено B<lzip> 1.3 та старішими версіями. Такі файли не є поширеними, але їх можна знайти у файлових архівах, оскільки певну незначну кількість пакунків із початковим кодом було випущено у цьому форматі. Також можуть існувати особисті файли у цьому форматі. Підтримку розпаковування для формату версії 0 було вилучено у B<lzip> 1.18. Версія B<lzip> 1.4 і новіші версії створюють файли у форматі версії 1."
 
 #. type: TP
 #: ../src/xz/xz.1
@@ -599,6 +612,9 @@ msgstr "Вказати тип перевірки цілісності. Конт�
 msgid "Supported I<check> types:"
 msgstr "Підтримувані типи I<перевірок>:"
 
+#.  TRANSLATORS: Don't translate the bold strings B<none>, B<crc32>,
+#.  B<crc64>, and B<sha256>. The command line option --check accepts
+#.  only the untranslated strings.
 #. type: TP
 #: ../src/xz/xz.1
 #, no-wrap
@@ -1243,6 +1259,27 @@ msgstr "B<Ця можливість усе ще є експерименталь�
 #. type: TP
 #: ../src/xz/xz.1
 #, no-wrap
+msgid "B<--no-sync>"
+msgstr "B<--no-sync>"
+
+#. type: Plain text
+#: ../src/xz/xz.1
+msgid "Do not synchronize the target file and its directory to the storage device before removing the source file.  This can improve performance if compressing or decompressing many small files.  However, if the system crashes soon after the deletion, it is possible that the target file was not written to the storage device but the delete operation was.  In that case neither the original source file nor the target file is available."
+msgstr "Не синхронізувати файл призначення та його каталог із пристроєм зберігання даних до вилучення початкового файла. Це може підвищити швидкодію, якщо виконується стискання або розпаковування багатьох малих файлів. Втім, якщо система аварійно завершує роботу невдовзі після вилучення, можлива ситуація, коли файл призначення не буде записано на пристрій зберігання даних, а дію з вилучення буде записано. У цьому випадку буде знищено дані як початкового файла, так і файла призначення."
+
+#. type: Plain text
+#: ../src/xz/xz.1
+msgid "This option has an effect only when B<xz> is going to remove the source file.  In other cases synchronization is never done."
+msgstr "Цей параметр матиме хоч який вплив, лише якщо B<xz> вилучає початковий файл. В інших випадках синхронізація не виконується."
+
+#. type: Plain text
+#: ../src/xz/xz.1
+msgid "The synchronization and B<--no-sync> were added in B<xz> 5.7.1alpha."
+msgstr "Синхронізацію і B<--no-sync> було додано у версії B<xz> 5.7.1alpha."
+
+#. type: TP
+#: ../src/xz/xz.1
+#, no-wrap
 msgid "B<--memlimit-compress=>I<limit>"
 msgstr "B<--memlimit-compress=>I<обмеження>"
 
@@ -1502,6 +1539,11 @@ msgstr "LZMA1 є застарілим фільтром, підтримку як�
 msgid "LZMA1 and LZMA2 share the same set of I<options>:"
 msgstr "LZMA1 і LZMA2 спільно використовують той самий набір I<параметрів>:"
 
+#.  TRANSLATORS: Don't translate bold strings like B<preset>, B<dict>,
+#.  B<mode>, B<nice>, B<fast>, or B<normal> because those are command line
+#.  options. On the other hand, do translate the italic strings like
+#.  I<preset>, I<size>, and I<mode>, because such italic strings are
+#.  placeholders which a user replaces with an actual value.
 #. type: TP
 #: ../src/xz/xz.1
 #, no-wrap
@@ -2206,11 +2248,16 @@ msgstr "Режим списку"
 msgid "B<xz --robot --list> uses tab-separated output.  The first column of every line has a string that indicates the type of the information found on that line:"
 msgstr "У B<xz --robot --list> використано табуляції для поділу виведених даних. Першим стовпчиком у кожному рядку є рядок, що вказує на тип відомостей, які можна знайти у цьому рядку:"
 
+#.  TRANSLATORS: The bold strings B<name>, B<file>, B<stream>, B<block>,
+#.  B<summary>, and B<totals> are produced by the xz tool for scripts to
+#.  parse, thus the untranslated strings must be included in the translated
+#.  man page. It may be useful to provide a translated string in parenthesis
+#.  without bold, for example: "B<name> (nimi)"
 #. type: TP
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "B<name>"
-msgstr "B<назва>"
+msgstr "B<name>"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -2221,7 +2268,7 @@ msgstr "Це завжди перший рядок на початку списк
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "B<file>"
-msgstr "B<файл>"
+msgstr "B<file>"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -2338,6 +2385,9 @@ msgstr "Коефіцієнт стискання, наприклад, B<0.123>. �
 msgid "7."
 msgstr "7."
 
+#.  TRANSLATORS: Don't translate the bold strings B<None>, B<CRC32>,
+#.  B<CRC64>, B<SHA-256>, or B<Unknown-> here. In robot mode, xz produces
+#.  them in untranslated form for scripts to parse.
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "Comma-separated list of integrity check names.  The following strings are used for the known check types: B<None>, B<CRC32>, B<CRC64>, and B<SHA-256>.  For unknown check types, B<Unknown->I<N> is used, where I<N> is the Check ID as a decimal number (one or two digits)."
@@ -2719,6 +2769,7 @@ msgstr "Версія"
 msgid "B<xz --robot --version> prints the version number of B<xz> and liblzma in the following format:"
 msgstr "B<xz --robot --version> виведе назву версії B<xz> і liblzma у такому форматі:"
 
+#.  TRANSLATORS: Don't translate the uppercase XZ_VERSION or LIBLZMA_VERSION.
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "B<XZ_VERSION=>I<XYYYZZZS>"
@@ -2835,10 +2886,17 @@ msgstr "Зауваження (не попередження або помилк�
 msgid "ENVIRONMENT"
 msgstr "СЕРЕДОВИЩЕ"
 
+#.  TRANSLATORS: Don't translate the uppercase XZ_DEFAULTS or XZ_OPT.
+#.  They are names of environment variables.
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "B<xz> parses space-separated lists of options from the environment variables B<XZ_DEFAULTS> and B<XZ_OPT>, in this order, before parsing the options from the command line.  Note that only options are parsed from the environment variables; all non-options are silently ignored.  Parsing is done with B<getopt_long>(3)  which is used also for the command line arguments."
 msgstr "B<xz> обробляє списки відокремлених пробілами параметрів зі змінних середовища B<XZ_DEFAULTS> і B<XZ_OPT>, перш ніж обробляти параметри з рядка команди. Зауважте, що буде оброблено лише параметри зі змінних середовища; усі непараметричні записи буде без повідомлень проігноровано. Обробку буде виконано за допомогою функції B<getopt_long>(3), яку також використовують для аргументів рядка команди."
+
+#. type: Plain text
+#: ../src/xz/xz.1
+msgid "B<Warning:> By setting these environment variables, one is effectively modifying programs and scripts that run B<xz>.  Most of the time it is safe to set memory usage limits, number of threads, and compression options via the environment variables.  However, some options can break scripts.  An obvious example is B<--help> which makes B<xz> show the help text instead of compressing or decompressing a file.  More subtle examples are B<--quiet> and B<--verbose>.  In many cases it works well to enable the progress indicator using B<--verbose>, but in some situations the extra messages create problems.  The verbosity level also affects the behavior of B<--list>."
+msgstr "B<Попередження:> Встановлюючи ці змінні середовища, ви насправді змінюєте програми та скрипти, які виконують B<xz>. У більшості випадків без проблем можна встановлювати обмеження на використання пам'яті, кількість потоків і параметри стиснення за допомогою змінних середовища. Однак деякі параметри можуть порушити роботу скриптів. Очевидним прикладом є B<--help>, який змушує B<xz> показувати текст довідки замість стискання або розпаковування файла. Менш очевидними є приклади B<--quiet> і B<--verbose>. У багатьох випадках усе працюватиме добре, якщо увімкнути індикатор поступу за допомогою B<--verbose>, але у деяких ситуаціях додаткові повідомлення створюють проблеми. Рівень докладності також впливає на поведінку B<--list>."
 
 #. type: TP
 #: ../src/xz/xz.1
@@ -2848,8 +2906,8 @@ msgstr "B<XZ_DEFAULTS>"
 
 #. type: Plain text
 #: ../src/xz/xz.1
-msgid "User-specific or system-wide default options.  Typically this is set in a shell initialization script to enable B<xz>'s memory usage limiter by default.  Excluding shell initialization scripts and similar special cases, scripts must never set or unset B<XZ_DEFAULTS>."
-msgstr "Специфічні для користувача або загальносистемні типові параметри. Зазвичай, їх встановлюють у скрипті ініціалізації оболонки для типового вмикання обмеження на використання пам'яті у B<xz>. Окрім скриптів ініціалізації оболонки і подібних особливих випадків, не слід встановлювати або скасовувати встановлення значення B<XZ_DEFAULTS> у скриптах."
+msgid "User-specific or system-wide default options.  Typically this is set in a shell initialization script to enable B<xz>'s memory usage limiter by default or set the default number of threads.  Excluding shell initialization scripts and similar special cases, scripts should never set or unset B<XZ_DEFAULTS>."
+msgstr "Специфічні для користувача або загальносистемні типові параметри. Зазвичай, їх встановлюють у скрипті ініціалізації оболонки для типового вмикання обмеження на використання пам'яті у B<xz> або встановлення типової кількості потоків обробки. Окрім скриптів ініціалізації оболонки і подібних особливих випадків, не слід встановлювати або скасовувати встановлення значення B<XZ_DEFAULTS> у скриптах."
 
 #. type: TP
 #: ../src/xz/xz.1
@@ -2864,10 +2922,9 @@ msgstr "Цю змінну призначено для передавання п�
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<XZ_OPT=-2v tar caf foo.tar.xz foo>\n"
+#, no-wrap
 msgid "\\f(CRXZ_OPT=-2v tar caf foo.tar.xz foo\\fR\n"
-msgstr "CW<XZ_OPT=-2v tar caf foo.tar.xz foo>\n"
+msgstr "\\f(CRXZ_OPT=-2v tar caf foo.tar.xz foo\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -2876,16 +2933,13 @@ msgstr "Скрипти можуть використовувати B<XZ_OPT>, н
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid ""
-#| "CW<XZ_OPT=${XZ_OPT-\"-7e\"}\n"
-#| "export XZ_OPT>\n"
+#, no-wrap
 msgid ""
 "\\f(CRXZ_OPT=${XZ_OPT-\"-7e\"}\n"
 "export XZ_OPT\\fR\n"
 msgstr ""
-"CW<XZ_OPT=${XZ_OPT-\"-7e\"}\n"
-"export XZ_OPT>\n"
+"\\f(CRXZ_OPT=${XZ_OPT-\"-7e\"}\n"
+"export XZ_OPT\\fR\n"
 
 #. type: SH
 #: ../src/xz/xz.1
@@ -3117,10 +3171,9 @@ msgstr "Стиснути файл I<foo> до I<foo.xz> за допомогою 
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<xz foo>\n"
+#, no-wrap
 msgid "\\f(CRxz foo\\fR\n"
-msgstr "CW<xz foo>\n"
+msgstr "\\f(CRxz foo\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3129,10 +3182,9 @@ msgstr "Розпакувати I<bar.xz> до I<bar> і не вилучати I<
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<xz -dk bar.xz>\n"
+#, no-wrap
 msgid "\\f(CRxz -dk bar.xz\\fR\n"
-msgstr "CW<xz -dk bar.xz>\n"
+msgstr "\\f(CRxz -dk bar.xz\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3141,10 +3193,9 @@ msgstr "Створити I<baz.tar.xz> з використанням шабло�
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<tar cf - baz | xz -4e E<gt> baz.tar.xz>\n"
+#, no-wrap
 msgid "\\f(CRtar cf - baz | xz -4e E<gt> baz.tar.xz\\fR\n"
-msgstr "CW<tar cf - baz | xz -4e E<gt> baz.tar.xz>\n"
+msgstr "\\f(CRtar cf - baz | xz -4e E<gt> baz.tar.xz\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3153,10 +3204,9 @@ msgstr "Суміш стиснених і нестиснених файлів м�
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<xz -dcf a.txt b.txt.xz c.txt d.txt.lzma E<gt> abcd.txt>\n"
+#, no-wrap
 msgid "\\f(CRxz -dcf a.txt b.txt.xz c.txt d.txt.lzma E<gt> abcd.txt\\fR\n"
-msgstr "CW<xz -dcf a.txt b.txt.xz c.txt d.txt.lzma E<gt> abcd.txt>\n"
+msgstr "\\f(CRxz -dcf a.txt b.txt.xz c.txt d.txt.lzma E<gt> abcd.txt\\fR\n"
 
 #. type: SS
 #: ../src/xz/xz.1
@@ -3171,16 +3221,13 @@ msgstr "У GNU і *BSD можна скористатися B<find>(1) і B<xargs
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid ""
-#| "CW<find . -type f \\e! -name '*.xz' -print0 \\e\n"
-#| "    | xargs -0r -P4 -n16 xz -T1>\n"
+#, no-wrap
 msgid ""
 "\\f(CRfind . -type f \\e! -name '*.xz' -print0 \\e\n"
 "    | xargs -0r -P4 -n16 xz -T1\\fR\n"
 msgstr ""
-"CW<find . -type f \\e! -name '*.xz' -print0 \\e\n"
-"    | xargs -0r -P4 -n16 xz -T1>\n"
+"\\f(CRfind . -type f \\e! -name '*.xz' -print0 \\e\n"
+"    | xargs -0r -P4 -n16 xz -T1\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3205,10 +3252,9 @@ msgstr "Обчислити скільки байтів було заощадже
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<xz --robot --list *.xz | awk '/^totals/{print $5-$4}'>\n"
+#, no-wrap
 msgid "\\f(CRxz --robot --list *.xz | awk '/^totals/{print $5-$4}'\\fR\n"
-msgstr "CW<xz --robot --list *.xz | awk '/^totals/{print $5-$4}'>\n"
+msgstr "\\f(CRxz --robot --list *.xz | awk '/^totals/{print $5-$4}'\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3217,13 +3263,7 @@ msgstr "Скрипту можуть знадобитися дані щодо т�
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid ""
-#| "CW<if ! eval \"$(xz --robot --version 2E<gt> /dev/null)\" ||\n"
-#| "        [ \"$XZ_VERSION\" -lt 50000002 ]; then\n"
-#| "    echo \"Your xz is too old.\"\n"
-#| "fi\n"
-#| "unset XZ_VERSION LIBLZMA_VERSION>\n"
+#, no-wrap
 msgid ""
 "\\f(CRif ! eval \"$(xz --robot --version 2E<gt> /dev/null)\" ||\n"
 "        [ \"$XZ_VERSION\" -lt 50000002 ]; then\n"
@@ -3231,11 +3271,11 @@ msgid ""
 "fi\n"
 "unset XZ_VERSION LIBLZMA_VERSION\\fR\n"
 msgstr ""
-"CW<if ! eval \"$(xz --robot --version 2E<gt> /dev/null)\" ||\n"
+"\\f(CRif ! eval \"$(xz --robot --version 2E<gt> /dev/null)\" ||\n"
 "        [ \"$XZ_VERSION\" -lt 50000002 ]; then\n"
 "    echo \"Your xz is too old.\"\n"
 "fi\n"
-"unset XZ_VERSION LIBLZMA_VERSION>\n"
+"unset XZ_VERSION LIBLZMA_VERSION\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3244,14 +3284,7 @@ msgstr "Встановити обмеження на використання п
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid ""
-#| "CW<NEWLIM=$((123 E<lt>E<lt> 20))\\ \\ # 123 MiB\n"
-#| "OLDLIM=$(xz --robot --info-memory | cut -f3)\n"
-#| "if [ $OLDLIM -eq 0 -o $OLDLIM -gt $NEWLIM ]; then\n"
-#| "    XZ_OPT=\"$XZ_OPT --memlimit-decompress=$NEWLIM\"\n"
-#| "    export XZ_OPT\n"
-#| "fi>\n"
+#, no-wrap
 msgid ""
 "\\f(CRNEWLIM=$((123 E<lt>E<lt> 20))\\ \\ # 123 MiB\n"
 "OLDLIM=$(xz --robot --info-memory | cut -f3)\n"
@@ -3260,12 +3293,12 @@ msgid ""
 "    export XZ_OPT\n"
 "fi\\fR\n"
 msgstr ""
-"CW<NEWLIM=$((123 E<lt>E<lt> 20))\\ \\ # 123 MiB\n"
+"\\f(CRNEWLIM=$((123 E<lt>E<lt> 20))\\ \\ # 123 MiB\n"
 "OLDLIM=$(xz --robot --info-memory | cut -f3)\n"
 "if [ $OLDLIM -eq 0 -o $OLDLIM -gt $NEWLIM ]; then\n"
 "    XZ_OPT=\"$XZ_OPT --memlimit-decompress=$NEWLIM\"\n"
 "    export XZ_OPT\n"
-"fi>\n"
+"fi\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3284,10 +3317,9 @@ msgstr "Якщо вам відомо, що певний файл потребу�
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<xz --lzma2=preset=1,dict=32MiB foo.tar>\n"
+#, no-wrap
 msgid "\\f(CRxz --lzma2=preset=1,dict=32MiB foo.tar\\fR\n"
-msgstr "CW<xz --lzma2=preset=1,dict=32MiB foo.tar>\n"
+msgstr "\\f(CRxz --lzma2=preset=1,dict=32MiB foo.tar\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3301,10 +3333,9 @@ msgstr "Якщо дуже високий рівень використання �
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<xz -vv --lzma2=dict=192MiB big_foo.tar>\n"
+#, no-wrap
 msgid "\\f(CRxz -vv --lzma2=dict=192MiB big_foo.tar\\fR\n"
-msgstr "CW<xz -vv --lzma2=dict=192MiB big_foo.tar>\n"
+msgstr "\\f(CRxz -vv --lzma2=dict=192MiB big_foo.tar\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3318,10 +3349,9 @@ msgstr "Іноді час стискання не має значення, ал�
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<xz --check=crc32 --lzma2=preset=6e,dict=64KiB foo>\n"
+#, no-wrap
 msgid "\\f(CRxz --check=crc32 --lzma2=preset=6e,dict=64KiB foo\\fR\n"
-msgstr "CW<xz --check=crc32 --lzma2=preset=6e,dict=64KiB foo>\n"
+msgstr "\\f(CRxz --check=crc32 --lzma2=preset=6e,dict=64KiB foo\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3330,10 +3360,9 @@ msgstr "Якщо вам потрібно витиснути зі стискан�
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<xz --lzma2=preset=6e,pb=0,lc=4 source_code.tar>\n"
+#, no-wrap
 msgid "\\f(CRxz --lzma2=preset=6e,pb=0,lc=4 source_code.tar\\fR\n"
-msgstr "CW<xz --lzma2=preset=6e,pb=0,lc=4 source_code.tar>\n"
+msgstr "\\f(CRxz --lzma2=preset=6e,pb=0,lc=4 source_code.tar\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3342,10 +3371,9 @@ msgstr "Використання іншого фільтра разом із LZM
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<xz --x86 --lzma2 libfoo.so>\n"
+#, no-wrap
 msgid "\\f(CRxz --x86 --lzma2 libfoo.so\\fR\n"
-msgstr "CW<xz --x86 --lzma2 libfoo.so>\n"
+msgstr "\\f(CRxz --x86 --lzma2 libfoo.so\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3364,10 +3392,9 @@ msgstr "Зображення слід берегти у нестисненому
 
 #. type: Plain text
 #: ../src/xz/xz.1
-#, fuzzy, no-wrap
-#| msgid "CW<xz --delta=dist=3 --lzma2=pb=0 foo.tiff>\n"
+#, no-wrap
 msgid "\\f(CRxz --delta=dist=3 --lzma2=pb=0 foo.tiff\\fR\n"
-msgstr "CW<xz --delta=dist=3 --lzma2=pb=0 foo.tiff>\n"
+msgstr "\\f(CRxz --delta=dist=3 --lzma2=pb=0 foo.tiff\\fR\n"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3407,6 +3434,12 @@ msgstr "LZMA SDK: E<lt>https://7-zip.org/sdk.htmlE<gt>"
 #, no-wrap
 msgid "XZDEC"
 msgstr "XZDEC"
+
+#. type: TH
+#: ../src/xzdec/xzdec.1
+#, no-wrap
+msgid "2024-04-08"
+msgstr "8 квітня 2024 року"
 
 #. type: Plain text
 #: ../src/xzdec/xzdec.1
@@ -3548,10 +3581,11 @@ msgid "XZDIFF"
 msgstr "XZDIFF"
 
 #. type: TH
-#: ../src/scripts/xzdiff.1 ../src/scripts/xzgrep.1
+#: ../src/scripts/xzdiff.1 ../src/scripts/xzgrep.1 ../src/scripts/xzless.1
+#: ../src/scripts/xzmore.1
 #, no-wrap
-msgid "2024-02-13"
-msgstr "13 лютого 2024 року"
+msgid "2025-03-06"
+msgstr "6 березня 2025 року"
 
 #. type: Plain text
 #: ../src/scripts/xzdiff.1
@@ -3570,13 +3604,13 @@ msgstr "B<xzdiff> \\&..."
 
 #. type: Plain text
 #: ../src/scripts/xzdiff.1
-msgid "B<lzcmp> \\&..."
-msgstr "B<lzcmp> \\&..."
+msgid "B<lzcmp> \\&...  (DEPRECATED)"
+msgstr "B<lzcmp> \\&...  (ЗАСТАРІЛО)"
 
 #. type: Plain text
 #: ../src/scripts/xzdiff.1
-msgid "B<lzdiff> \\&..."
-msgstr "B<lzdiff> \\&..."
+msgid "B<lzdiff> \\&...  (DEPRECATED)"
+msgstr "B<lzdiff> \\&...  (ЗАСТАРІЛО)"
 
 #. type: Plain text
 #: ../src/scripts/xzdiff.1
@@ -3595,8 +3629,8 @@ msgstr "Якщо вказано лише одну назву файла, I<фа�
 
 #. type: Plain text
 #: ../src/scripts/xzdiff.1
-msgid "The commands B<lzcmp> and B<lzdiff> are provided for backward compatibility with LZMA Utils."
-msgstr "Працездатність команд B<lzcmp> і B<lzdiff> забезпечено для зворотної сумісності із LZMA Utils."
+msgid "The commands B<lzcmp> and B<lzdiff> are provided for backward compatibility with LZMA Utils.  They are deprecated and will be removed in a future version."
+msgstr "Працездатність команд B<lzcmp> і B<lzdiff> забезпечено для зворотної сумісності із LZMA Utils. Ці команди вважаються застарілими, їх буде вилучено у майбутній версії комплекту програм."
 
 #. type: Plain text
 #: ../src/scripts/xzdiff.1
@@ -3636,18 +3670,18 @@ msgstr "B<xzfgrep> \\&..."
 
 #. type: Plain text
 #: ../src/scripts/xzgrep.1
-msgid "B<lzgrep> \\&..."
-msgstr "B<lzgrep> \\&..."
+msgid "B<lzgrep> \\&...  (DEPRECATED)"
+msgstr "B<lzgrep> \\&...  (ЗАСТАРІЛО)"
 
 #. type: Plain text
 #: ../src/scripts/xzgrep.1
-msgid "B<lzegrep> \\&..."
-msgstr "B<lzegrep> \\&..."
+msgid "B<lzegrep> \\&...  (DEPRECATED)"
+msgstr "B<lzegrep> \\&...  (ЗАСТАРІЛО)"
 
 #. type: Plain text
 #: ../src/scripts/xzgrep.1
-msgid "B<lzfgrep> \\&..."
-msgstr "B<lzfgrep> \\&..."
+msgid "B<lzfgrep> \\&...  (DEPRECATED)"
+msgstr "B<lzfgrep> \\&...  (ЗАСТАРІЛО)"
 
 #. type: Plain text
 #: ../src/scripts/xzgrep.1
@@ -3716,8 +3750,8 @@ msgstr "B<xzegrep> є альтернативним записом B<xzgrep -E>. 
 
 #. type: Plain text
 #: ../src/scripts/xzgrep.1
-msgid "The commands B<lzgrep>, B<lzegrep>, and B<lzfgrep> are provided for backward compatibility with LZMA Utils."
-msgstr "Працездатність команд B<lzgrep>, B<lzegrep> і B<lzfgrep> забезпечено для зворотної сумісності із LZMA Utils."
+msgid "The commands B<lzgrep>, B<lzegrep>, and B<lzfgrep> are provided for backward compatibility with LZMA Utils.  They are deprecated and will be removed in a future version."
+msgstr "Працездатність команд B<lzgrep>, B<lzegrep> і B<lzfgrep> забезпечено для зворотної сумісності із LZMA Utils. Ці команди вважаються застарілими, їх буде вилучено у майбутній версії комплекту програм."
 
 #. type: Plain text
 #: ../src/scripts/xzgrep.1
@@ -3762,12 +3796,6 @@ msgstr "B<grep>(1), B<xz>(1), B<gzip>(1), B<bzip2>(1), B<lzop>(1), B<zstd>(1), B
 msgid "XZLESS"
 msgstr "XZLESS"
 
-#. type: TH
-#: ../src/scripts/xzless.1 ../src/scripts/xzmore.1
-#, no-wrap
-msgid "2024-02-12"
-msgstr "12 лютого 2024 року"
-
 #. type: Plain text
 #: ../src/scripts/xzless.1
 msgid "xzless, lzless - view xz or lzma compressed (text) files"
@@ -3780,8 +3808,8 @@ msgstr "B<xzless> [I<файл>...]"
 
 #. type: Plain text
 #: ../src/scripts/xzless.1
-msgid "B<lzless> [I<file>...]"
-msgstr "B<lzless> [I<файл>...]"
+msgid "B<lzless> [I<file>...] (DEPRECATED)"
+msgstr "B<lzless> [I<файл>...] (ЗАСТАРІЛО)"
 
 #. type: Plain text
 #: ../src/scripts/xzless.1
@@ -3795,8 +3823,8 @@ msgstr "Для показу виведених даних B<xzless> викори
 
 #. type: Plain text
 #: ../src/scripts/xzless.1
-msgid "The command named B<lzless> is provided for backward compatibility with LZMA Utils."
-msgstr "Команду B<lzless> реалізовано для забезпечення зворотної сумісності з LZMA Utils."
+msgid "The command named B<lzless> is provided for backward compatibility with LZMA Utils.  It is deprecated and will be removed in a future version."
+msgstr "Команду B<lzless> реалізовано для забезпечення зворотної сумісності з LZMA Utils. Ця команда вважається застарілою, її буде вилучено у майбутній версії комплекту програм."
 
 #. type: TP
 #: ../src/scripts/xzless.1
@@ -3843,8 +3871,8 @@ msgstr "B<xzmore> [I<файл>...]"
 
 #. type: Plain text
 #: ../src/scripts/xzmore.1
-msgid "B<lzmore> [I<file>...]"
-msgstr "B<lzmore> [I<файл>...]"
+msgid "B<lzmore> [I<file>...] (DEPRECATED)"
+msgstr "B<lzmore> [I<файл>...] (ЗАСТАРІЛО)"
 
 #. type: Plain text
 #: ../src/scripts/xzmore.1
@@ -3858,9 +3886,11 @@ msgstr "Зауважте, що гортання у зворотному напр
 
 #. type: Plain text
 #: ../src/scripts/xzmore.1
-msgid "The command B<lzmore> is provided for backward compatibility with LZMA Utils."
-msgstr "Команду B<lzmore> реалізовано для забезпечення зворотної сумісності з LZMA Utils."
+msgid "The command B<lzmore> is provided for backward compatibility with LZMA Utils.  It is deprecated and will be removed in a future version."
+msgstr "Команду B<lzmore> реалізовано для забезпечення зворотної сумісності з LZMA Utils. Ця команда вважається застарілою, її буде вилучено у майбутній версії комплекту програм."
 
+#.  TRANSLATORS: Don't translate the uppercase PAGER.
+#.  It is a name of an environment variable.
 #. type: TP
 #: ../src/scripts/xzmore.1
 #, no-wrap
@@ -3876,7 +3906,3 @@ msgstr "Якщо встановлено значення B<PAGER>, значен�
 #: ../src/scripts/xzmore.1
 msgid "B<more>(1), B<xz>(1), B<xzless>(1), B<zmore>(1)"
 msgstr "B<more>(1), B<xz>(1), B<xzless>(1), B<zmore>(1)"
-
-#, no-wrap
-#~ msgid "2024-01-19"
-#~ msgstr "19 січня 2024 року"

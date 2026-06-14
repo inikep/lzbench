@@ -70,7 +70,7 @@ if(BUILD_TESTING)
     # test_microlzma will fail to compile because this configuration is
     # not possible in the Autotools build, so the test was not made to
     # support it since it would have required additional changes.
-    if (MICROLZMA_ENCODER AND (MICROLZMA_DECODER
+    if (XZ_MICROLZMA_ENCODER AND (XZ_MICROLZMA_DECODER
             OR NOT "lzma1" IN_LIST DECODERS))
         list(APPEND LIBLZMA_TESTS test_microlzma)
     endif()
@@ -120,7 +120,7 @@ if(BUILD_TESTING)
     set(SUPPORTED_FILTERS_SORTED "${SUPPORTED_FILTERS}")
     list(SORT SUPPORTED_FILTERS_SORTED)
 
-    set(ENCODERS_SORTED "${ENCODERS}")
+    set(ENCODERS_SORTED "${XZ_ENCODERS}")
     list(SORT ENCODERS_SORTED)
 
     if("${ENCODERS_SORTED}" STREQUAL "${SUPPORTED_FILTERS_SORTED}")
@@ -129,7 +129,7 @@ if(BUILD_TESTING)
         set(HAVE_ALL_ENCODERS OFF)
     endif()
 
-    set(DECODERS_SORTED "${DECODERS}")
+    set(DECODERS_SORTED "${XZ_DECODERS}")
     list(SORT DECODERS_SORTED)
 
     if("${DECODERS_SORTED}" STREQUAL "${SUPPORTED_FILTERS_SORTED}")
@@ -138,21 +138,20 @@ if(BUILD_TESTING)
         set(HAVE_ALL_DECODERS OFF)
     endif()
 
-    set(ADDITIONAL_SUPPORTED_CHECKS_SORTED "${ADDITIONAL_SUPPORTED_CHECKS}")
-    list(SORT ADDITIONAL_SUPPORTED_CHECKS_SORTED)
+    set(SUPPORTED_CHECKS_SORTED "${SUPPORTED_CHECKS}")
+    list(SORT SUPPORTED_CHECKS_SORTED)
 
-    set(ADDITIONAL_CHECK_TYPES_SORTED "${ADDITIONAL_CHECK_TYPES}")
-    list(SORT ADDITIONAL_CHECK_TYPES_SORTED)
+    set(XZ_CHECKS_SORTED "${XZ_CHECKS}")
+    list(SORT XZ_CHECKS_SORTED)
 
-    if("${ADDITIONAL_SUPPORTED_CHECKS_SORTED}" STREQUAL
-        "${ADDITIONAL_CHECK_TYPES_SORTED}")
-        set(HAVE_ALL_CHECK_TYPES ON)
+    if("${SUPPORTED_CHECKS_SORTED}" STREQUAL "${XZ_CHECKS_SORTED}")
+        set(HAVE_ALL_CHECKS ON)
     else()
-        set(HAVE_ALL_CHECK_TYPES OFF)
+        set(HAVE_ALL_CHECKS OFF)
     endif()
 
     # test_scripts.sh only needs LZMA2 decoder and CRC32.
-    if(UNIX AND HAVE_DECODERS)
+    if(ENABLE_SCRIPTS)
         file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test_scripts")
 
         add_test(NAME test_scripts.sh
@@ -209,7 +208,7 @@ if(BUILD_TESTING)
 
     # test_files.sh decompresses files that use different filters and
     # check types so run it only if support for all of them has been enabled.
-    if(UNIX AND HAVE_ALL_DECODERS AND HAVE_ALL_CHECK_TYPES AND LZIP_DECODER)
+    if(UNIX AND HAVE_ALL_DECODERS AND HAVE_ALL_CHECKS AND XZ_LZIP_DECODER)
         # test_files.sh doesn't make any temporary files but it
         # must not be run at the top-level build directory because
         # it checks if ../config.h exists. We don't want to read

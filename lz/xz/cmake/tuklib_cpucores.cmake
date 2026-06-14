@@ -9,6 +9,7 @@
 #############################################################################
 
 include("${CMAKE_CURRENT_LIST_DIR}/tuklib_common.cmake")
+include(CMakePushCheckState)
 include(CheckCSourceCompiles)
 include(CheckIncludeFile)
 
@@ -64,7 +65,7 @@ function(tuklib_cpucores_internal_check)
         "
         TUKLIB_CPUCORES_CPUSET)
     if(TUKLIB_CPUCORES_CPUSET)
-        set(TUKLIB_CPUCORES_DEFINITIONS "HAVE_PARAM_H;TUKLIB_CPUCORES_CPUSET"
+        set(TUKLIB_CPUCORES_DEFINITIONS "TUKLIB_CPUCORES_CPUSET"
             CACHE INTERNAL "")
         return()
     endif()
@@ -76,6 +77,7 @@ function(tuklib_cpucores_internal_check)
     #
     # We test sysctl() first and intentionally break the sysctl() test on QNX
     # so that sysctl() is never used on QNX.
+    cmake_push_check_state()
     check_include_file(sys/param.h HAVE_SYS_PARAM_H)
     if(HAVE_SYS_PARAM_H)
         list(APPEND CMAKE_REQUIRED_DEFINITIONS -DHAVE_SYS_PARAM_H)
@@ -103,10 +105,11 @@ function(tuklib_cpucores_internal_check)
             }
         "
         TUKLIB_CPUCORES_SYSCTL)
+    cmake_pop_check_state()
     if(TUKLIB_CPUCORES_SYSCTL)
         if(HAVE_SYS_PARAM_H)
             set(TUKLIB_CPUCORES_DEFINITIONS
-                "HAVE_PARAM_H;TUKLIB_CPUCORES_SYSCTL"
+                "HAVE_SYS_PARAM_H;TUKLIB_CPUCORES_SYSCTL"
                 CACHE INTERNAL "")
         else()
             set(TUKLIB_CPUCORES_DEFINITIONS

@@ -10,8 +10,10 @@ src/xz/main.c
 src/xz/message.c
 src/xz/mytime.c
 src/xz/options.c
+src/xz/sandbox.c
 src/xz/signals.c
 src/xz/suffix.c
 src/xz/util.c
 src/lzmainfo/lzmainfo.c
 src/common/tuklib_exit.c
+src/liblzma/common/string_conversion.c

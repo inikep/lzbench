@@ -77,7 +77,7 @@
 #
 #############################################################################
 
-cmake_minimum_required(VERSION 3.20...3.31 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.20...4.2 FATAL_ERROR)
 
 include(CMakePushCheckState)
 include(CheckIncludeFile)
@@ -404,11 +404,13 @@ endif()
 
 
 # Add warning options for GCC or Clang. Keep this in sync with configure.ac.
+# Check for MSVC so that these won't be added with clang-cl with which -Wall
+# means -Weverything.
 #
 # NOTE: add_compile_options() doesn't affect the feature checks;
 # only the new targets being created use these flags. Thus
 # the -Werror usage in checks won't be break because of these.
-if(CMAKE_C_COMPILER_ID MATCHES GNU|Clang)
+if(NOT MSVC AND CMAKE_C_COMPILER_ID MATCHES GNU|Clang)
     foreach(OPT -Wall
                 -Wextra
                 -Wvla
@@ -442,13 +444,13 @@ if(CMAKE_C_COMPILER_ID MATCHES GNU|Clang)
                 -Wc11-extensions
                 -Wc2x-compat
                 -Wc2x-extensions
-                -Wpre-c2x-compat
                 -Warray-bounds-pointer-arithmetic
                 -Wassign-enum
                 -Wconditional-uninitialized
                 -Wdocumentation
                 -Wduplicate-enum
                 -Wempty-translation-unit
+                -Wextra-semi-stmt
                 -Wflexible-array-extensions
                 -Wmissing-variable-declarations
                 -Wnewline-eof
@@ -464,6 +466,23 @@ if(CMAKE_C_COMPILER_ID MATCHES GNU|Clang)
             add_compile_options("${OPT}")
         endif()
     endforeach()
+endif()
+
+# Enable more warnings with MSVC and clang-cl but disable a few too:
+#   - C4100: unused function arguments
+#   - C4127: conditional expression is a constant
+#   - C4200: C99/C11 flexible array member
+#   - C4244: Integer conversion
+#   - C4267: Integer conversion
+#   - C4996: getenv() and a few other functions
+#
+# With clang-cl, some warnings have to be disabled with clang-style options.
+if(MSVC)
+    add_compile_options(/W4 /wd4100 /wd4127 /wd4200 /wd4244 /wd4267 /wd4996)
+    if(CMAKE_C_COMPILER_ID MATCHES Clang)
+        add_compile_options(-Wno-unused-parameter
+                            -Wno-deprecated-declarations)
+    endif()
 endif()
 
 
@@ -1379,6 +1398,13 @@ if(XZ_ARM64_CRC32)
         check_symbol_exists(getauxval sys/auxv.h HAVE_GETAUXVAL)
         tuklib_add_definition_if(liblzma HAVE_GETAUXVAL)
 
+        # With getauxval() we also need HWCAP_CRC32 which was
+        # added in glibc 2.24.
+        if(HAVE_GETAUXVAL)
+            check_symbol_exists(HWCAP_CRC32 sys/auxv.h HAVE_HWCAP_CRC32)
+            tuklib_add_definition_if(liblzma HAVE_HWCAP_CRC32)
+        endif()
+
         # elf_aux_info() is supported on FreeBSD and OpenBSD >= 7.6.
         check_symbol_exists(elf_aux_info sys/auxv.h HAVE_ELF_AUX_INFO)
         tuklib_add_definition_if(liblzma HAVE_ELF_AUX_INFO)
@@ -2198,6 +2224,9 @@ this many MiB of RAM if xz cannot determine the amount at runtime")
         tuklib_add_definition_if(xz HAVE_OPTRESET)
     endif()
 
+    check_symbol_exists(getrlimit sys/resource.h HAVE_GETRLIMIT)
+    tuklib_add_definition_if(xz HAVE_GETRLIMIT)
+
     check_symbol_exists(posix_fadvise fcntl.h HAVE_POSIX_FADVISE)
     tuklib_add_definition_if(xz HAVE_POSIX_FADVISE)
 
@@ -2369,51 +2398,49 @@ xzdiff, xzgrep, xzmore, xzless, and their symlinks" ON)
     set(XZ_POSIX_SHELL "${POSIX_SHELL_DEFAULT}" CACHE STRING
         "Shell to use for scripts (xzgrep and others)")
 
-    # Guess the extra path to add from XZ_POSIX_SHELL. Autotools-based build
-    # has a separate option --enable-path-for-scripts=PREFIX but this is
-    # enough for Solaris.
-    set(enable_path_for_scripts)
-    get_filename_component(POSIX_SHELL_DIR "${XZ_POSIX_SHELL}" DIRECTORY)
+    if(ENABLE_SCRIPTS)
+        # Guess the extra path to add from XZ_POSIX_SHELL. Autotools-based
+        # build has a separate option --enable-path-for-scripts=PREFIX but
+        # this is enough for Solaris.
+        set(enable_path_for_scripts)
+        get_filename_component(POSIX_SHELL_DIR "${XZ_POSIX_SHELL}" DIRECTORY)
 
-    if(NOT POSIX_SHELL_DIR MATCHES "^/bin$|^/usr/bin$")
-        set(enable_path_for_scripts "PATH=${POSIX_SHELL_DIR}:\$PATH")
-    endif()
+        if(NOT POSIX_SHELL_DIR MATCHES "^/bin$|^/usr/bin$")
+            set(enable_path_for_scripts "PATH=${POSIX_SHELL_DIR}:\$PATH")
+        endif()
 
-    set(XZDIFF_LINKS xzcmp)
-    set(XZGREP_LINKS xzegrep xzfgrep)
-    set(XZMORE_LINKS)
-    set(XZLESS_LINKS)
+        set(XZDIFF_LINKS xzcmp)
+        set(XZGREP_LINKS xzegrep xzfgrep)
+        set(XZMORE_LINKS)
+        set(XZLESS_LINKS)
 
-    if(XZ_TOOL_SYMLINKS_LZMA)
-        list(APPEND XZDIFF_LINKS lzdiff lzcmp)
-        list(APPEND XZGREP_LINKS lzgrep lzegrep lzfgrep)
-        list(APPEND XZMORE_LINKS lzmore)
-        list(APPEND XZLESS_LINKS lzless)
-    endif()
+        if(XZ_TOOL_SYMLINKS_LZMA)
+            list(APPEND XZDIFF_LINKS lzdiff lzcmp)
+            list(APPEND XZGREP_LINKS lzgrep lzegrep lzfgrep)
+            list(APPEND XZMORE_LINKS lzmore)
+            list(APPEND XZLESS_LINKS lzless)
+        endif()
 
-    set(xz "xz")
-    set(POSIX_SHELL "${XZ_POSIX_SHELL}")
+        set(xz "xz")
+        set(POSIX_SHELL "${XZ_POSIX_SHELL}")
 
-    foreach(S xzdiff xzgrep xzmore xzless)
-        configure_file("src/scripts/${S}.in" "${S}"
-               @ONLY
-               NEWLINE_STYLE LF
-               FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
-                                GROUP_READ GROUP_EXECUTE
-                                WORLD_READ WORLD_EXECUTE)
+        foreach(S xzdiff xzgrep xzmore xzless)
+            configure_file("src/scripts/${S}.in" "${S}"
+                   @ONLY
+                   NEWLINE_STYLE LF
+                   FILE_PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
+                                    GROUP_READ GROUP_EXECUTE
+                                    WORLD_READ WORLD_EXECUTE)
 
-        if(ENABLE_SCRIPTS)
             install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/${S}"
                     DESTINATION "${CMAKE_INSTALL_BINDIR}"
                     COMPONENT scripts_Runtime)
-        endif()
-    endforeach()
+        endforeach()
 
-    unset(xz)
-    unset(POSIX_SHELL)
-    unset(enable_path_for_scripts)
+        unset(xz)
+        unset(POSIX_SHELL)
+        unset(enable_path_for_scripts)
 
-    if(ENABLE_SCRIPTS)
         my_install_symlinks(scripts_Runtime "${CMAKE_INSTALL_BINDIR}"
                             xzdiff "" "${XZDIFF_LINKS}")
 
