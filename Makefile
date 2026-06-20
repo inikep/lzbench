@@ -80,6 +80,12 @@ else
         MOREFLAGS += -mno-strict-align
     endif
 
+    # some compressors use dlopen(), which requires linking with -ldl on glibc
+    # 2.33 and older, and other libc libraries.
+    # GNU Make 3.8.x fails to parse \# inside the $(shell ...) function.
+    LIBDL_TEST_SRC := \#include <dlfcn.h>\nint main(){dlopen(0,0);return 0;}\n
+    LIBDL := $(shell printf '${LIBDL_TEST_SRC}' | $(CXX) -x c - -o /dev/null 2>/dev/null && echo "" || echo "-ldl")
+
     # detect MacOS
     detected_OS := $(shell uname -s)
     ifeq ($(detected_OS), Darwin)
@@ -939,6 +945,8 @@ else
     BSC_CXX_FILES += bwt/libbsc/libbsc/lzp/lzp.o
     BSC_CXX_FILES += bwt/libbsc/libbsc/platform/platform.o
     BSC_CXX_FILES += bwt/libbsc/libbsc/st/st.o
+
+    LDFLAGS_LIBDL  = $(LIBDL)
 endif
 
 
@@ -1097,6 +1105,7 @@ ifeq "$(ENABLE_CUDA)" "1"
     NVCOMP_CU_SRC  = $(wildcard misc/nvcomp/src/*.cu misc/nvcomp/src/lowlevel/*.cu)
     NVCOMP_CU_OBJ  = $(NVCOMP_CU_SRC:%=%.o)
     NVCOMP_FILES   = $(NVCOMP_CU_OBJ) $(NVCOMP_CPP_OBJ)
+    LDFLAGS_LIBDL  = $(LIBDL)
   endif
 
   ifneq "$(DONT_BUILD_BSC)" "1"
@@ -1110,7 +1119,7 @@ endif # ifeq "$(ENABLE_CUDA)"
 MKDIR = mkdir -p
 
 lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISA77_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
-	$(CXX) $^ -o $@ $(LDFLAGS)
+	$(CXX) $^ -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
 $(BENCH_MAIN): bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h DENSITY_LIB
