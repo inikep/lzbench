@@ -86,6 +86,7 @@ Notes column says otherwise.
 | [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE) | 2019-04-18 | 64-bit x86 only — requires SSE4.1 (Windows: MinGW-w64 only); lzsse8fast has a [bug](https://github.com/ConorStokes/LZSSE/issues/14) |
 | [memlz 0.2 beta](https://github.com/rrrlasse/memlz) | 2025-11-03 | Disabled on 32-bit ARM — unaligned access faults (SIGBUS) |
 | [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) | 2022-02-07 | CUDA only — built with `make ENABLE_CUDA=1`; not in the default CI matrix |
+| [openzl 0.2.0](https://openzl.org/) | 2026-06-21 | |
 | [ppmd8 26.01](http://7-zip.org) | 2026-04-27 | |
 | [quicklz 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/) | 2011-10-07 | |
 | [skim 0.1.0](https://github.com/vantorrewannes/skim) | 2026-06-07 | Linux x86-64 and macOS only — requires the [Zig](https://ziglang.org) compiler |

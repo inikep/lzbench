@@ -416,6 +416,19 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
 #endif
 
 
+#ifndef BENCH_REMOVE_OPENZL
+    char* lzbench_openzl_init(size_t insize, size_t level, size_t);
+    void lzbench_openzl_deinit(char* workmem);
+    int64_t lzbench_openzl_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_openzl_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_openzl_init NULL
+    #define lzbench_openzl_deinit NULL
+    #define lzbench_openzl_compress NULL
+    #define lzbench_openzl_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_PPMD
     int64_t lzbench_ppmd_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_ppmd_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t *codec_options);

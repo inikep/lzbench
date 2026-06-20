@@ -450,6 +450,257 @@ else
 endif
 
 
+ifeq "$(DONT_BUILD_OPENZL)" "1"
+    DEFINES += -DBENCH_REMOVE_OPENZL
+else
+    OPENZL_C_FILES  = lz/openzl/src/openzl/codecs/bitSplit/common_bitSplit_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/decode_bitSplit_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/decode_bitSplit_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/encode_bitSplit_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/encode_bitSplit_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/encode_bitsplit_bf16_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/encode_bitsplit_fp_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/encode_bitsplit_top8_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitpack/common_bitpack_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitpack/decode_bitpack_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitpack/encode_bitpack_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitunpack/decode_bitunpack_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitunpack/encode_bitunpack_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/common/fast_table.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/common/fast_table16.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/common/fast_tag_table.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/common/window.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/concat/decode_concat_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/concat/encode_concat_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/constant/decode_constant_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/constant/decode_constant_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/constant/encode_constant_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/constant/encode_constant_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/conversion/decode_conversion_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/conversion/encode_conversion_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/conversion/encode_setStringSizes_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/conversion/graph_conversion.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/decoder_registry.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dedup/decode_dedup_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dedup/encode_dedup_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/delta/decode_delta_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/delta/decode_delta_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/delta/encode_delta_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/delta/encode_delta_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatchN_byTag/decode_dispatchN_byTag_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatchN_byTag/decode_dispatchN_byTag_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatchN_byTag/encode_dispatchN_byTag_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatchN_byTag/encode_dispatchN_byTag_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_by_tag/decode_dispatch_by_tag_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_by_tag/encode_dispatch_by_tag_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_string/decode_dispatch_string_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_string/decode_dispatch_string_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_string/encode_dispatch_string_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_string/encode_dispatch_string_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/divide_by/decode_divide_by_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/divide_by/decode_divide_by_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/divide_by/encode_divide_by_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/divide_by/encode_divide_by_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/encoder_registry.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/decode_entropy_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/decode_huffman_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/decode_entropy_decompress.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/decode_fse_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/decode_huf_avx2_decompress.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/encode_entropy_compress.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/encode_fse_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/encode_huf_avx2_compress.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/encode_entropy_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/encode_entropy_selector.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/encode_huffman_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/flatpack/decode_flatpack_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/flatpack/decode_flatpack_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/flatpack/encode_flatpack_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/flatpack/encode_flatpack_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/float_deconstruct/decode_float_deconstruct_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/float_deconstruct/decode_float_deconstruct_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/float_deconstruct/encode_float_deconstruct_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/float_deconstruct/encode_float_deconstruct_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/interleave/decode_interleave_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/interleave/encode_interleave_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/decode_field_lz.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/decode_lz_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/decode_lz_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_field_lz.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_field_lz_literals_selector.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_field_lz_sequences.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_lz_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_lz_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_match_finder_fast_field_lz.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_match_finder_greedy_field_lz.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz4/decode_lz4_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz4/encode_lz4_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/merge_sorted/decode_merge_sorted_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/merge_sorted/decode_merge_sorted_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/merge_sorted/encode_merge_sorted_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/merge_sorted/encode_merge_sorted_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/mux_lengths/decode_mux_lengths_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/mux_lengths/decode_mux_lengths_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/mux_lengths/encode_mux_lengths_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/mux_lengths/encode_mux_lengths_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/parse_int/decode_parse_int_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/parse_int/decode_parse_int_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/parse_int/encode_parse_int_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/parse_int/encode_parse_int_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/common_partition.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/decode_partition_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/decode_partition_bitpack_fusion.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/decode_partition_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/encode_partition_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/encode_partition_bitpack.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/encode_partition_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/prefix/decode_prefix_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/prefix/decode_prefix_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/prefix/encode_prefix_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/prefix/encode_prefix_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/quantize/common_quantize.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/quantize/decode_quantize_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/quantize/decode_quantize_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/quantize/encode_quantize_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/quantize/encode_quantize_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/range_pack/decode_range_pack_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/range_pack/decode_range_pack_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/range_pack/encode_range_pack_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/range_pack/encode_range_pack_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/decode_experimental_dec.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/decode_fast_dec.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/decode_rolz_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/decode_rolz_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_experimental_enc.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_fast_enc.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_match_finder_double_fast_lc.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_match_finder_lazy.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_rolz_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_rolz_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_rolz_sequences.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sentinel/decode_sentinel_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sentinel/decode_sentinel_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sentinel/encode_sentinel_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sentinel/encode_sentinel_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitByStruct/decode_splitByStruct_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitByStruct/decode_splitByStruct_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitByStruct/encode_splitByStruct_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitByStruct/encode_splitByStruct_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitN/decode_splitN_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitN/decode_splitN_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitN/encode_splitN_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitN/encode_split_byrange_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/decode_tokenize2to1_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/decode_tokenize4to2_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/decode_tokenizeVarto4_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/decode_tokenize_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/decode_tokenize_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenize2to1_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenize4to2_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenizeVarto4_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenize_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenize_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenize_kernel_sort.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/transpose/decode_transpose_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/transpose/decode_transpose_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/transpose/encode_transpose_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/transpose/encode_transpose_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zigzag/decode_zigzag_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zigzag/decode_zigzag_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zigzag/encode_zigzag_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zigzag/encode_zigzag_kernel.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zstd/decode_zstd_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zstd/encode_zstd_binding.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/a1cbor_helpers.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/allocation.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/errors.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/limits.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/logging.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/opaque.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/operation_context.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/refcount.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/sha256.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/stream.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/unique_id.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/common/wire_format.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/cctx.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/cdictmgr.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/cgraph.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/cnode.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/cnodes.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/compress2.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/compressor_serialization.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/dyngraph_interface.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/enc_interface.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/encode_frameheader.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/gcparams.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graph_registry.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphmgr.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/automated_compressor_explorer.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/generic_clustering_graph.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl/simple_data_description_language.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl/simple_data_description_language_source_code.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl2/sddl2.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl2/sddl2_disasm.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl2/sddl2_interpreter.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl2/sddl2_vm.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/small_lengths_graph.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/split_graph.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/implicit_conversion.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/localparams.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/materializer.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/name.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/nodemgr.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/rtgraphs.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/segmenter.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/segmenters/segmenter_numeric.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/segmenters/segmenter_serial.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selector.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/ml/features.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/ml/gbt.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/ml/ml_selector_graph.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/ml/mlselector.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/ml/selector_numeric_model.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_brute_force.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_compress.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_constant.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_genericLZ.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_numeric.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_store.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/compress/trStates.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/decode_frameheader.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/decoder_fusion.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/decompress2.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/dictx.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/dtransforms.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/gdparams.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/reflection.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/dict/bundle.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/dict/dict.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/dict/materializer_ctx.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/fse/common/debug.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/fse/common/entropy_common.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/fse/common/error_private.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/fse/compress/fse_compress.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/fse/compress/hist.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/fse/compress/huf_compress.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/fse/decompress/fse_decompress.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/fse/decompress/huf_decompress.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/shared/a1cbor.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/shared/clustering_common.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/shared/clustering_compress.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/shared/data_stats.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/shared/detail/pdqsort1.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/shared/detail/pdqsort2.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/shared/detail/pdqsort4.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/shared/detail/pdqsort8.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/shared/estimate.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/shared/histogram.o
+    OPENZL_C_FILES += lz/openzl/src/openzl/shared/numeric_operations.o
+    OPENZL_S_FILES += lz/openzl/src/openzl/fse/decompress/huf_decompress_amd64.o
+endif
+
+
 ifeq "$(DONT_BUILD_SLZ)" "1"
     DEFINES += -DBENCH_REMOVE_SLZ
 else
@@ -793,7 +1044,7 @@ endif # ifeq "$(ENABLE_CUDA)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
+lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -865,7 +1116,7 @@ $(LIZARD_FILES): %.o : %.c
 
 $(LZ_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/zxc/src/lib/vendors $< -c -o $@
+	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/openzl/include -Ilz/zxc/src/lib/vendors $< -c -o $@
 
 $(LZHAM_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
@@ -878,6 +1129,14 @@ $(LZO_FILES): %.o : %.c
 $(LZSSE_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CXXFLAGS) -std=c++0x -msse4.1 $< -c -o $@
+
+$(OPENZL_C_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz/zstd/lib -Ilz/lz4/lib -Ilz/openzl/include -Ilz/openzl/src $< -c -o $@
+
+$(OPENZL_S_FILES): %.o : %.S
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ilz/zstd/lib -Ilz/lz4/lib -Ilz/openzl/include -Ilz/openzl/src $< -c -o $@
 
 $(SNAPPY_FILES): %.o : %.cc
 	@$(MKDIR) $(dir $@)

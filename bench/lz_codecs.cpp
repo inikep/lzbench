@@ -17,7 +17,6 @@
 #include <algorithm> // std::max
 
 
-
 int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     memcpy(outbuf, inbuf, insize);
@@ -1601,6 +1600,89 @@ int64_t lzbench_zling_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #endif
 
 
+#ifndef BENCH_REMOVE_OPENZL
+#include <openzl/openzl.h>
+
+/* The format version used when compressing in the example.  */
+#define LZBENCH_OPENZL_FORMAT_VERSION 24
+
+typedef struct {
+    ZL_Compressor* cgraph;
+    ZL_CCtx* cctx;
+    ZL_DCtx* dctx;
+} openzl_params_s;
+
+char* lzbench_openzl_init(size_t insize, size_t level, size_t windowLog)
+{
+    openzl_params_s* params = (openzl_params_s*) malloc(sizeof(openzl_params_s));
+
+    params->cgraph = ZL_Compressor_create();
+    assert(params->cgraph);
+    params->cctx = ZL_CCtx_create();
+    assert(params->cctx);
+    params->dctx = ZL_DCtx_create();
+    assert(params->dctx);
+
+    ZL_Report report = ZL_Compressor_setParameter(params->cgraph, ZL_CParam_formatVersion, LZBENCH_OPENZL_FORMAT_VERSION);
+    if (ZL_isError(report)) {
+      printf("OpenZL initialisation error: %s\n", ZL_Compressor_getErrorContextString(params->cgraph, report));
+      abort();
+    }
+
+    report = ZL_Compressor_selectStartingGraphID(params->cgraph, ZL_GRAPH_LZ);
+    if (ZL_isError(report)) {
+      printf("OpenZL initialisation error: %s\n", ZL_Compressor_getErrorContextString(params->cgraph, report));
+      abort();
+    }
+
+    return (char*) params;
+}
+
+void lzbench_openzl_deinit(char* workmem)
+{
+    openzl_params_s* params = (openzl_params_s*) workmem;
+    if (!params) return;
+    if (params->dctx) ZL_DCtx_free(params->dctx);
+    if (params->cctx) ZL_CCtx_free(params->cctx);
+    if (params->cgraph) ZL_Compressor_free(params->cgraph);
+    free(workmem);
+}
+
+int64_t lzbench_openzl_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    openzl_params_s* params = (openzl_params_s*) codec_options->work_mem;
+    if (not params or not params->cctx or not params->cgraph) return 0;
+
+    ZL_Report report = ZL_CCtx_refCompressor(params->cctx, params->cgraph);
+    if (ZL_isError(report)) {
+      printf("OpenZL compression error: %s\n", ZL_CCtx_getErrorContextString(params->cctx, report));
+      return 0;
+    }
+
+    report = ZL_CCtx_compress(params->cctx, outbuf, outsize, inbuf, insize);
+    if (ZL_isError(report)) {
+      printf("OpenZL compression error: %s\n", ZL_CCtx_getErrorContextString(params->cctx, report));
+      return 0;
+    }
+
+    return (int64_t) ZL_validResult(report);
+}
+
+int64_t lzbench_openzl_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    openzl_params_s* params = (openzl_params_s*) codec_options->work_mem;
+    if (not params or not params->dctx) return 0;
+
+    ZL_Report report = ZL_DCtx_decompress(params->dctx, outbuf, outsize, inbuf, insize);
+    if (ZL_isError(report)) {
+      printf("OpenZL decompression error: %s\n", ZL_DCtx_getErrorContextString(params->dctx, report));
+      return 0;
+    }
+
+    return (int64_t) ZL_validResult(report);
+}
+
+#endif // BENCH_REMOVE_OPENZL
 
 #ifndef BENCH_REMOVE_ZSTD
 #define ZSTD_STATIC_LINKING_ONLY
