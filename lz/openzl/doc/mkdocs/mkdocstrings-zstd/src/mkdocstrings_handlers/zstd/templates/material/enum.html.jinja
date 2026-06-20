@@ -1,0 +1,67 @@
+{#- Template for C enums.
+
+Context:
+enum:
+root (bool)
+heading_level (int): The HTML heading level to use
+config (dict): The configuration options
+
+-#}
+
+<div class="doc doc-object doc-enum">
+    {% with obj = enum, html_id = enum.qualified_name %}
+
+
+    {% if (root and config.show_root_toc_entry) or config.show_enum_toc_entries %}
+    {%
+    filter heading(
+    heading_level,
+    role=enum.role,
+    id=html_id,
+    toc_label=(('<code class="doc-symbol doc-symbol-toc doc-symbol-enum"></code>&nbsp;')|safe if
+    config.show_symbol_type_toc else '') + enum.name,
+    hidden=True,
+    )
+    %}
+    {% endfilter %}
+    {% endif %}
+
+    {% block enum_signature scoped %}
+    <div class="doc doc-signature">
+        {%+ filter highlight(language="cpp", inline=False) %}
+        enum {{ "class " if enum.strong else "" }}{{ enum.name }}
+        {% endfilter %}
+    </div>
+    {% endblock enum_signature %}
+
+    <div class="doc doc-contents">
+        {% block enum_description scoped %}
+        {% with description = enum.description %}
+        {% include "description.html.jinja" %}
+        {% endwith %}
+        {% endblock enum_description %}
+
+        {% for value in enum.values %}
+        <div class="doc doc-object doc-enum-value">
+            {% block value_signature scoped %}
+            <div class="doc doc-signature">
+                {%+ filter highlight(language="cpp", inline=False) %}
+                {{ value.name }}
+                {%- if value.initializer %} {{ value.initializer }}{%- endif %}
+                {% endfilter %}
+            </div>
+            {% endblock value_signature %}
+
+            <div class="doc doc-contents">
+                {% block value_description scoped %}
+                {% with description = value.description %}
+                {% include "description.html.jinja" %}
+                {% endwith %}
+                {% endblock value_description %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% endwith %}
+</div>

@@ -1,0 +1,11 @@
+-Ideps/googletest/googletest/include
+-Iinclude
+-Isrc
+-Wall
+-Wextra
+-Wconversion
+-Wcast-qual
+-Wcast-align
+-Wswitch-enum
+-Wunused-variable
+-Wno-missing-designated-field-initializers

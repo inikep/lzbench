@@ -1,0 +1,13 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("@fbcode_macros//build_defs:python_unittest.bzl", "python_unittest")
+
+oncall("data_compression")
+
+python_unittest(
+    name = "compress_test",
+    srcs = ["compress_test.py"],
+    resources = {
+        "..:compress": "compress",
+    },
+)

@@ -1,0 +1,19 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("@fbcode_macros//build_defs:cpp_binary.bzl", "cpp_binary")
+
+oncall("data_compression")
+
+cpp_binary(
+    name = "parse_batch_file",
+    srcs = [
+        "parse_batch_file.cpp",
+    ],
+    deps = [
+        "//admarket/adlogger/parser/if:if-cpp2-types",
+        "//admarket/training_data/feature_store/common:feature_store_serialization",
+        "//folly:file_util",
+        "//folly:range",
+        "//folly/io:iobuf",
+    ],
+)

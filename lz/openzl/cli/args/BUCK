@@ -1,0 +1,30 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("../../defs.bzl", "zs_cxxlibrary")
+
+oncall("data_compression")
+
+zs_cxxlibrary(
+    name = "args",
+    srcs = ["ArgsUtils.cpp"],
+    headers = [
+        "ArgsUtils.h",
+        "BenchmarkArgs.h",
+        "CompressArgs.h",
+        "DecompressArgs.h",
+        "GlobalArgs.h",
+        "InspectArgs.h",
+        "ListProfilesArgs.h",
+        "TrainArgs.h",
+    ],
+    exported_deps = [
+        "..:cmd",
+        "../../cpp:openzl_cpp",
+        "../../custom_parsers:custom_parsers",
+        "../../tools:arg",
+        "../../tools:io",
+        "../../tools/training:train_common",
+        "../../tools/training/utils:training_utils",
+        "../utils:utils",
+    ],
+)

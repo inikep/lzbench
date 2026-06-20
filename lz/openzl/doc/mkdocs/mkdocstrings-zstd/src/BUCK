@@ -1,0 +1,26 @@
+load("@fbcode_macros//build_defs:native_rules.bzl", "buck_filegroup")
+load("@fbcode_macros//build_defs:python_library.bzl", "python_library")
+
+oncall("data_compression")
+
+buck_filegroup(
+    name = "templates",
+    srcs = glob([
+        "mkdocstrings_handlers/zstd/templates/**/*.jinja",
+        "mkdocstrings_handlers/zstd/templates/**/*.css",
+    ]),
+)
+
+python_library(
+    name = "mkdocstrings-zstd",
+    srcs = glob(["mkdocstrings_handlers/zstd/**/*.py"]),
+    base_module = "",
+    resources = {
+        ":templates": "",
+    },
+    deps = [
+        "fbsource//third-party/pypi/markdown:markdown",
+        "fbsource//third-party/pypi/mkdocs-autorefs:mkdocs-autorefs",
+        "fbsource//third-party/pypi/mkdocstrings:mkdocstrings",
+    ],
+)

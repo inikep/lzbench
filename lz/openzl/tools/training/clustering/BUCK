@@ -1,0 +1,120 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("../../../defs.bzl", "zs_cxxlibrary")
+
+oncall("data_compression")
+
+zs_cxxlibrary(
+    name = "clustering_graph_trainer",
+    srcs = [
+        "clustering_graph_trainer.cpp",
+        "sample_limiter.cpp",
+    ],
+    headers = [
+        "clustering_graph_trainer.h",
+        "sample_limiter.h",
+    ],
+    exported_deps = [
+        "..:train_common",
+        "../..:logger",
+        "../../..:zstronglib",
+        "../../../cpp:openzl_cpp",
+        "../graph_mutation:graph_mutation",
+        "../sample_collection:sample_collection",
+        "../utils:training_utils",
+        ":train_api",
+    ],
+)
+
+zs_cxxlibrary(
+    name = "train_api",
+    srcs = [
+        "train_api.cpp",
+    ],
+    headers = [
+        "train_api.h",
+    ],
+    exported_deps = [
+        "..:train_common",
+        "../..:logger",
+        "../../..:zstronglib",
+        "../../../cpp:openzl_cpp",
+        "../graph_mutation:graph_mutation",
+        ":bottom_up_trainer",
+        ":full_split_trainer",
+        ":greedy_trainer",
+        ":training_clustering",
+    ],
+)
+
+zs_cxxlibrary(
+    name = "full_split_trainer",
+    srcs = [
+        "trainers/full_split_trainer.cpp",
+    ],
+    headers = [
+        "trainers/full_split_trainer.h",
+        "trainers/trainer.h",
+    ],
+    exported_deps = [
+        "../../..:zstronglib",
+        "../../../cpp:openzl_cpp",
+        "../utils:training_utils",
+        ":training_clustering",
+    ],
+)
+
+zs_cxxlibrary(
+    name = "bottom_up_trainer",
+    srcs = [
+        "trainers/bottom_up_trainer.cpp",
+    ],
+    headers = [
+        "trainers/bottom_up_trainer.h",
+        "trainers/trainer.h",
+    ],
+    exported_deps = [
+        "../../..:zstronglib",
+        "../../../cpp:openzl_cpp",
+        "../utils:training_utils",
+        ":training_clustering",
+    ],
+)
+
+zs_cxxlibrary(
+    name = "greedy_trainer",
+    srcs = [
+        "trainers/greedy_trainer.cpp",
+    ],
+    headers = [
+        "trainers/greedy_trainer.h",
+        "trainers/trainer.h",
+    ],
+    exported_deps = [
+        "../../..:zstronglib",
+        "../../../cpp:openzl_cpp",
+        "../utils:training_utils",
+        ":training_clustering",
+    ],
+)
+
+zs_cxxlibrary(
+    name = "training_clustering",
+    srcs = [
+        "clustering_config_builder.cpp",
+        "compression_utils.cpp",
+    ],
+    headers = [
+        "clustering_config.h",
+        "clustering_config_builder.h",
+        "compression_utils.h",
+        "utils.h",
+    ],
+    exported_deps = [
+        "../..:logger",
+        "../../..:zstronglib",
+        "../../../cpp:openzl_cpp",
+        "../../../custom_parsers:custom_parsers",
+        "../utils:training_utils",
+    ],
+)

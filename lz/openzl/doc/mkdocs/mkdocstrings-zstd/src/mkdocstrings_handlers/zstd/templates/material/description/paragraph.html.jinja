@@ -1,0 +1,12 @@
+{#- Template for paragraphs in docstrings.
+
+  description (DescriptionParagraph)
+-#}
+
+<p>
+{% for desc in description.contents %}
+{% with description = desc %}
+{% include "description.html.jinja" %}
+{% endwith %}
+{% endfor %}
+</p>

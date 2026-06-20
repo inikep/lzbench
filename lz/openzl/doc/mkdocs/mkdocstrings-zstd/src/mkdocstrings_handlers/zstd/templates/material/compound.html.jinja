@@ -1,0 +1,117 @@
+{#- Template for C compounds.
+
+Context:
+compound:
+root (bool): Whether this is the root
+heading_level (int): The HTML heading level to use
+config (dict): The configuration options
+
+-#}
+
+<div class="doc doc-object doc-compound doc-{{ compound.type }}">
+    {% with obj = compound, html_id = compound.qualified_name %}
+
+    {% block signature scoped %}
+    {% if not root or config.show_compound_root_heading %}
+    {% if compound.type == "group" %}
+    <div class="doc doc-contents">
+        {% if (root and config.show_root_toc_entry) or config.show_compound_toc_entries %}
+        {%
+        filter heading(
+        heading_level,
+        role=compound.role,
+        id=html_id,
+        toc_label=(('<code class="doc-symbol doc-symbol-toc doc-symbol-group"></code>&nbsp;')|safe if
+        config.show_symbol_type_toc else '') + compound.title,
+        hidden=False,
+        )
+        %}
+        {{ compound.title }}
+        {% endfilter %}
+        {% endif %}
+    </div>
+    {% else %}
+        {% if (root and config.show_root_toc_entry) or config.show_compound_toc_entries %}
+        {%
+        filter heading(
+        heading_level,
+        role=compound.role,
+        id=html_id,
+        toc_label=(('<code class="doc-symbol doc-symbol-toc doc-symbol-' + compound.type + '"></code>&nbsp;')|safe if
+        config.show_symbol_type_toc else '') + compound.name,
+        hidden=True,
+        )
+        %}
+        {% endfilter %}
+        {% endif %}
+
+    <div class="doc doc-signature">
+        {%+ filter highlight(language="cpp", inline=False) %}
+        {%- if compound.template_parameters is not none -%}
+        {%- with template = True, parameters = compound.template_parameters -%}
+        {%- include "signature.html.jinja" -%}
+        {%- endwith %}
+
+        {% endif -%}
+        {{ compound.type }} {{ compound.name }}
+        {% endfilter %}
+    </div>
+    {% endif %}
+    {% endif %}
+    {% endblock signature %}
+
+    <div class="doc doc-contents">
+        {% block description scoped %}
+        {% with description = compound.description %}
+        {% include "description.html.jinja" %}
+        {% endwith %}
+        {% endblock description %}
+
+        {% with root = False, heading_level = heading_level + (1 if not root or config.show_compound_root_heading else 0) %}
+
+        {% for member in compound.members %}
+
+        {% if member.kind == "compound" %}
+        {% with compound = member %}
+        {% include "compound.html.jinja" %}
+        {% endwith %}
+
+        {% elif member.kind == "define" %}
+        {% with define = member %}
+        {% include "define.html.jinja" %}
+        {% endwith %}
+
+        {% elif member.kind == "enum" %}
+        {% with enum = member %}
+        {% include "enum.html.jinja" %}
+        {% endwith %}
+
+        {% elif member.kind == "function" %}
+        {% with function = member %}
+        {% include "function.html.jinja" %}
+        {% endwith %}
+
+        {% elif member.kind == "overload_set" %}
+        {% with overload_set = member %}
+        {% include "overload_set.html.jinja" %}
+        {% endwith %}
+
+        {% elif member.kind == "typedef" %}
+        {% with typedef = member %}
+        {% include "typedef.html.jinja" %}
+        {% endwith %}
+
+        {% elif member.kind == "variable" %}
+        {% with variable = member %}
+        {% include "variable.html.jinja" %}
+        {% endwith %}
+
+        {% endif %}
+
+        {% endfor %}
+
+        {% endwith %}
+    </div>
+
+    {% endwith %}
+</div>

@@ -1,0 +1,54 @@
+Coding style conventions
+========================
+
+
+Naming conventions
+------------------
+
+### File names use lowercase letters, exclusively
+
+### Public interfaces (header files) shall be prefixed by `zl_*`
+
+### Public symbols (variables, functions, types) shall be prefixed by `ZL_*`
+
+### Non-public yet shared symbols (between units)
+shall have a prefix uniquely specific to their unit,
+such as `CCTX_*`.
+
+### Private symbols, which are not shared beyond their unit,
+may not need to feature a prefix.
+However, in an effort to keep their name unique across the entire project
+in order to support amalgamated source code in the future,
+it's often better and simpler to use a unit-specific prefix, like above.
+
+### Type names shall start with an Uppercase letter (after their prefix),
+while variables and functions shall start with a lowercase letter.
+Example : `ZL_Type streamtype = ZL_Type_serial;`
+
+
+
+Dependency policy
+-----------------
+
+The `openzl` library shall not depend on anything external,
+save a limited few C-standard symbols,
+such as `malloc`, `free`, or `memcpy`.
+Even these invocations shall remain as isolated as possible,
+in an effort to make them pluggable or replaceable.
+For example, never use `malloc` directly, use its replacement `ZL_malloc()` instead,
+within `src/openzl/common/allocation.h`.
+
+All public interfaces (*.h) must be present in the `include/openzl` directory.
+They shall not depend on any other directory, notably not from `src/openzl`
+
+Within `src/openzl/`, the highest level is `src/openzl/shared/`.
+These units can be shared across the entire repository.
+
+Then there is `src/openzl/common`, which is shared within the engine only,
+i.e. by `compress/` `decompress/`.
+In particular, `src/openzl/codecs` cannot depend on it.
+Consequently, when an information must be shared between compression and decompression side,
+such as, for example, an identifier,
+it shall be present in `src/openzl/common`.
+
+`compress/`, `decompress/` and `codecs/` shall remain completely independent from each other.

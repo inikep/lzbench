@@ -1,0 +1,33 @@
+{#- Template for parameters in docstrings.
+
+This template renders a list of text.
+
+Context:
+description (DescriptionList): The list to render.
+heading_level
+html_id
+autorefs_hook
+-#}
+
+{% if
+not description.title
+or description.title == "Preconditions" and config.show_description_preconditions
+or description.title == "Postconditions" and config.show_description_postconditions
+or description.title == "Parameters" and config.show_description_parameters
+or description.title == "Exceptions" and config.show_description_exceptions
+%}
+
+{% if description.title %}
+<p><span class="doc-section-title">{{ description.title }}:</span></p>
+{% endif %}
+{{ description.open_tag | safe }}
+    {% for item in description.contents %}
+    <li class="doc-section-item field-body">
+        {% with description = item %}
+        {% include "description.html.jinja" %}
+        {% endwith %}
+    </li>
+    {% endfor %}
+{{ description.close_tag | safe }}
+
+{% endif %}

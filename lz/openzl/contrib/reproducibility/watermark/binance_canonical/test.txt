@@ -1,0 +1,12 @@
+BTC-BUSD.parquet.canonical
+BTC-DAI.parquet.canonical
+BTC-EUR.parquet.canonical
+BTC-GBP.parquet.canonical
+BTC-NGN.parquet.canonical
+BTC-PAX.parquet.canonical
+BTC-RUB.parquet.canonical
+BTC-TRY.parquet.canonical
+BTC-TUSD.parquet.canonical
+BTC-UAH.parquet.canonical
+BTC-USDC.parquet.canonical
+BTC-USDT.parquet.canonical

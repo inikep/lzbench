@@ -1,0 +1,2 @@
+[mkdocs.plugins]
+mkdocs-openzl = mkdocs_openzl:OpenZLPlugin

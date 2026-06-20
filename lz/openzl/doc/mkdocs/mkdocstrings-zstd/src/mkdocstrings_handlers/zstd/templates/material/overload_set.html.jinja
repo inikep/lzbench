@@ -1,0 +1,32 @@
+{#- Template for C compounds.
+
+Context:
+overload_set:
+root (bool): Whether this is the root
+heading_level (int): The HTML heading level to use
+config (dict): The configuration options
+
+-#}
+
+{% with obj = overload_set, html_id = overload_set.qualified_name %}
+
+{% if (root and config.show_root_toc_entry) or config.show_function_toc_entries %}
+{%
+    filter heading(
+        heading_level,
+        role=overload_set.role,
+        id=html_id,
+        toc_label=(('<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;')|safe if config.show_symbol_type_toc else '') + overload_set.name,
+        hidden=True,
+    )
+%}
+{% endfilter %}
+{% endif %}
+
+{% with root = False, heading_level = heading_level + 1, in_overload_set = True %}
+{% for function in overload_set.overloads %}
+{% include "function.html.jinja" %}
+{% endfor %}
+{% endwith %}
+
+{% endwith %}

@@ -1,0 +1,50 @@
+{#- Template for C defines.
+
+Context:
+define:
+root (bool)
+heading_level (int): The HTML heading level to use
+config (dict): The configuration options
+
+-#}
+
+<div class="doc doc-object doc-define">
+    {% with obj = define, html_id = define.qualified_name %}
+
+    {% if (root and config.show_root_toc_entry) or config.show_define_toc_entries %}
+    {%
+    filter heading(
+    heading_level,
+    role=define.role,
+    id=html_id,
+    toc_label=(('<code class="doc-symbol doc-symbol-toc doc-symbol-macro"></code>&nbsp;')|safe if
+    config.show_symbol_type_toc else '') + define.name,
+    hidden=True,
+    )
+    %}
+    {% endfilter %}
+    {% endif %}
+
+    {% block signature scoped %}
+    {%+ filter highlight(language="cpp", inline=True) %}
+    &#35;define {{ define.name }}
+    {%- if define.parameters is not none -%}
+    {%- with parameters = define.parameters -%}
+    {% include "signature.html.jinja" %}
+    {%- endwith -%}
+    {%- endif -%}
+    {%- if config.show_define_initializer and define.initializer %} {{ define.initializer }}{% endif %}
+    {% endfilter %}
+    {% endblock signature %}
+
+    <div class="doc doc-contents">
+        {% block description scoped %}
+        {% with description = define.description %}
+        {% include "description.html.jinja" %}
+        {% endwith %}
+        {% endblock description %}
+    </div>
+
+
+    {% endwith %}
+</div>

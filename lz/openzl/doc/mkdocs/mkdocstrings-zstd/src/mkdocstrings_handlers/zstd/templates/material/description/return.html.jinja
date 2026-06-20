@@ -1,0 +1,23 @@
+{#- Template for parameters in docstrings.
+
+This template renders parameters in a list format.
+
+Context:
+description (DescriptionReturn): The description to render.
+heading_level
+html_id
+autorefs_hook
+-#}
+
+{% if config.show_description_return %}
+
+<p>
+    <span class="doc-section-title">{{ description.title }}:</span>
+</p>
+<div class="doc-return-description">
+    {% with description = description.description %}
+    {% include "description.html.jinja" %}
+    {% endwith %}
+</div>
+
+{% endif %}

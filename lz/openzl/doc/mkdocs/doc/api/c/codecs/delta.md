@@ -1,0 +1,1 @@
+--8<-- "src/include/openzl/codecs/zl_delta_manual.md"

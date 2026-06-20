@@ -1,0 +1,81 @@
+site_name: 'Zstandard'
+
+docs_dir: ./doc
+
+site_dir: ./build/site/
+
+repo_url: https://example.com
+
+extra_css:
+  - extra.css
+
+extra_javascript:
+  - extra.js
+
+nav:
+  - Home: index.md
+
+theme:
+  name: material
+  features:
+    - search.suggest
+    - navigation.tabs
+    - navigation.top
+
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - md_in_html
+  - pymdownx.highlight:
+      use_pygments: true
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: zstd
+      handlers:
+        zstd:
+          source_directory: "../tests/c/"
+          build_directory: "./build/"
+          sources: [
+            "file1.h",
+            "file2.h",
+            "dir/file3.h",
+          ]
+          options:
+            clang_format_based_on_style: "Google"
+            heading_level: 3
+
+extra:
+  generator: false

@@ -1,0 +1,63 @@
+/* Copyright (c) Meta Platforms, Inc. and affiliates. */
+
+@import url('https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&display=swap');
+
+.drawer {
+  background-color: var(--background-primary);
+  color: var(--text-primary);
+}
+
+.legend-icon-svg {
+  color: var(--text-primary);
+  padding: 4px;
+  padding-left: 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+}
+
+/* Legend info boxes */
+.legend-info-box {
+  background-color: var(--background-secondary);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+/* Local Parameters Legend Styling */
+.param-example {
+  margin-bottom: 8px;
+  text-align: left;
+}
+
+.local-param-header {
+  color: var(--text-primary);
+  font-weight: bold;
+  margin-bottom: 2px;
+}
+
+.local-param-item {
+  border-bottom: 1px dotted #a4a0a0;
+  color: var(--text-primary);
+  padding-bottom: 4px;
+}
+
+.info-box-title {
+  color: var(--text-primary);
+  font-family: 'Gabarito', sans-serif;
+  font-weight: 700;
+  margin: 0 0 10px 0;
+  padding-bottom: 5px;
+}
+
+.info-box-content {
+  color: var(--text-primary);
+  font-family: 'Gabarito', sans-serif;
+  line-height: 1.4;
+}
+
+.info-box-content p {
+  margin: 4px 0;
+}

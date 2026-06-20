@@ -1,0 +1,23 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+# @noautodeps
+load("@fbcode_macros//build_defs:cpp_unittest.bzl", "cpp_unittest")
+load("../../defs.bzl", "cross_platform_labels", "relative_headers")
+
+oncall("data_compression")
+
+cpp_unittest(
+    name = "test_openzl_cpp",
+    srcs = glob([
+        "**/*.cpp",
+    ]),
+    headers = relative_headers(glob([
+        "**/*.hpp",
+    ])),
+    header_namespace = "",
+    labels = cross_platform_labels(),
+    deps = [
+        "..:openzl_cpp",
+        "../../tests/datagen:datagen",
+    ],
+)

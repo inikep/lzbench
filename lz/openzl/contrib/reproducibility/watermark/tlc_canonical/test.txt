@@ -1,0 +1,4 @@
+green_tripdata_2025-03.parquet.canonical
+yellow_tripdata_2025-01.parquet.canonical
+yellow_tripdata_2025-02.parquet.canonical
+yellow_tripdata_2025-03.parquet.canonical

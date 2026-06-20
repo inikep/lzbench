@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+
+set -euo pipefail
+
+PWD="$(pwd)"
+cd "$(dirname "${BASH_SOURCE[0]}")"
+
+buck2 run @//mode/opt :static_docs_build_script\[standalone\] -- \
+    --pwd "$PWD" \
+    --use-system-python-extension \
+    -- \
+    "$@"

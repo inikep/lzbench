@@ -1,0 +1,5 @@
+ERA5_snow_100.bin
+ERA5_snow_1090.bin
+ERA5_snow_2290.bin
+ERA5_snow_3395.bin
+ERA5_snow_500.bin

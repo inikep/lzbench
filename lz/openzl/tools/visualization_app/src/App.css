@@ -1,0 +1,104 @@
+/* Copyright (c) Meta Platforms, Inc. and affiliates. */
+
+@import url('https://fonts.googleapis.com/css2?family=Gabarito:wght@400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800;900&display=swap');
+
+/* #root {
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+  background-color: #D7D8DF;
+} */
+
+.wrapper {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.content {
+  transition: margin-left 0.3s ease;
+  min-height: 0;
+  flex: 1 1 0;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+h1 {
+  color: black;
+  font-family: 'Playfair Display', serif;
+  font-weight: 300;
+}
+
+h2 {
+  color: black;
+  font-family: 'Gabarito', sans-serif;
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+.view-mode-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.view-mode-button {
+  background: none;
+  border: 2px solid black;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.view-mode-button:hover {
+  background-color: rgba(173, 216, 230, 0.3); /* Light blue on hover */
+}
+
+.view-mode-button.active {
+  background-color: lightblue; /* Light blue background when selected */
+}
+
+.view-mode-icon {
+  width: 40px;
+  height: 40px;
+  display: block;
+}

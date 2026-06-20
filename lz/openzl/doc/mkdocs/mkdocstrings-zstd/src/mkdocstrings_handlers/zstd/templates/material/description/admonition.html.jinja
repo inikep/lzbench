@@ -1,0 +1,14 @@
+{#- Template for admonitions in docstrings.
+
+This template renders admonitions using the `details` HTML element.
+
+Context:
+  description (DescriptionAdmonition): The description to render.
+-#}
+
+<details class="{{ description.style }}" open>
+  <summary>{{ description.title|convert_markdown(heading_level, html_id, strip_paragraph=True, autoref_hook=autoref_hook) }}</summary>
+  {% with description = description.contents %}
+  {% include "description.html.jinja" %}
+  {% endwith %}
+</details>

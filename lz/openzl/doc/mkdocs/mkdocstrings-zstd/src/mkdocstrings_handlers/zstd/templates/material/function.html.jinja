@@ -1,0 +1,58 @@
+{#- Template for C functions.
+
+Context:
+function:
+heading_level (int): The HTML heading level to use
+config (dict): The configuration options
+
+-#}
+
+<div class="doc doc-object doc-function">
+    {% with obj = function, html_id = function.qualified_name %}
+
+    {% if (root and config.show_root_toc_entry) or config.show_function_toc_entries %}
+    {% if not in_overload_set %}
+    {%
+        filter heading(
+            heading_level,
+            role=function.role,
+            id=html_id,
+            toc_label=(('<code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;')|safe if config.show_symbol_type_toc else '') + function.name,
+            hidden=True,
+        )
+    %}
+    {% endfilter %}
+    {% endif %}
+    {% endif %}
+
+    {% block signature scoped %}
+    <div class="doc doc-signature">
+        {%+ filter highlight(language="cpp", inline=False) %}
+        {%- filter format(config) -%}
+        {%- if function.template_parameters is not none -%}
+        {%- with template = True, parameters = function.template_parameters -%}
+        {%- include "signature.html.jinja" -%}
+        {%- endwith %}
+
+        {% endif -%}
+        {%- with parameters = function.parameters -%}
+        {{ function.type }} {{ function.name }}
+        {%- include "signature.html.jinja" -%}
+        ;
+        {%- endwith -%}
+        {%- endfilter -%}
+        {% endfilter %}
+    </div>
+    {% endblock signature %}
+
+    <div class="doc doc-contents">
+        {% block description scoped %}
+        {% with description = function.description %}
+        {% include "description.html.jinja" %}
+        {% endwith %}
+        {% endblock description %}
+    </div>
+
+
+    {% endwith %}
+</div>

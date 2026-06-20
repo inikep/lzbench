@@ -1,0 +1,78 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("@fbcode_macros//build_defs:python_binary.bzl", "python_binary")
+load("@fbcode_macros//build_defs:python_library.bzl", "python_library")
+
+oncall("data_compression")
+
+python_library(
+    name = "scuba_utils",
+    srcs = ["scuba_utils.py"],
+    deps = [
+        "fbsource//third-party/pypi/numpy:numpy",
+        "fbsource//third-party/pypi/pandas:pandas",
+        "fbsource//third-party/pypi/pypika:pypika",
+        "//libfb/py:employee",
+        "//libfb/py/asyncio:await_utils",
+        "//oncall/if:thrift-py3-clients",
+        "//rfe/py/lib:sql-pandas",
+        "//rfe/scubadata:scubadata_py3",
+        "//servicerouter/client/py3:get_client",
+    ],
+)
+
+python_library(
+    name = "zstrong_gbenchmarks",
+    srcs = ["zstrong_gbenchmarks.py"],
+    deps = [
+        "fbsource//third-party/pypi/numpy:numpy",
+        "fbsource//third-party/pypi/pandas:pandas",
+        "fbsource//third-party/pypi/scipy:scipy",
+        "fbsource//third-party/pypi/tabulate:tabulate",  # @manual
+        ":scuba_utils",
+    ],
+)
+
+python_binary(
+    name = "runner",
+    main_function = ".main.main",
+    main_src = "main.py",
+    par_style = "xar",
+    deps = [
+        "fbsource//third-party/pypi/click:click",
+        ":phabricator_utils",
+        ":zstrong_gbenchmarks",
+    ],
+)
+
+python_binary(
+    name = "local_compare",
+    main_function = ".local_compare.compare_versions",
+    main_src = "local_compare.py",
+    deps = [
+        "fbsource//third-party/pypi/click:click",
+        ":phabricator_utils",
+        ":quiet_cpu_utils",
+        ":zstrong_gbenchmarks",
+        "//scm/lib:repo",
+    ],
+)
+
+python_library(
+    name = "quiet_cpu_utils",
+    srcs = [
+        "quiet_cpu_utils.py",
+    ],
+)
+
+python_library(
+    name = "phabricator_utils",
+    srcs = ["phabricator_utils.py"],
+    deps = [
+        "//ci_experiences/signalhub/if:signal_hub_thrift-py3-types",
+        "//ci_experiences/signalhub/utils:signal_hub_service_util",
+        "//libfb/py/asyncio:await_utils",
+        "//phabricator:new_phabricator_graphql_helpers",
+        "//phabricator:phabricator_authentication",
+    ],
+)

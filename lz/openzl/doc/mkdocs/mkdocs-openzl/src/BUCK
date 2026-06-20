@@ -1,0 +1,17 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("@fbcode_macros//build_defs:python_library.bzl", "python_library")
+
+oncall("data_compression")
+
+python_library(
+    name = "mkdocs_openzl",
+    srcs = [
+        "mkdocs_openzl.dist-info/entry_points.txt",
+        "mkdocs_openzl/__init__.py",
+        "mkdocs_openzl/plugin.py",
+    ],
+    base_module = "",
+    labels = ["autodeps2_generated"],
+    deps = ["fbsource//third-party/pypi/mkdocs:mkdocs"],
+)

@@ -1,0 +1,110 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("@fbcode_macros//build_defs:protobuf_library.bzl", "protobuf_library")
+load("../../defs.bzl", "zs_cxxbinary", "zs_cxxlibrary")
+
+oncall("data_compression")
+
+protobuf_library(
+    name = "schema",
+    srcs = ["schema.proto"],
+    langs = [
+        "cpp",
+    ],
+)
+
+zs_cxxlibrary(
+    name = "utils",
+    srcs = [
+        "DescriptorLoader.cpp",
+        "DynamicMessageHelper.cpp",
+        "StringWriter.cpp",
+    ],
+    headers = [
+        "DescriptorLoader.h",
+        "DynamicMessageHelper.h",
+        "StringReader.h",
+        "StringWriter.h",
+        "mem.h",
+    ],
+    exported_deps = [
+        "../..:zstronglib",
+        "fbsource//third-party/protobuf:libprotobuf",
+    ],
+)
+
+zs_cxxbinary(
+    name = "cli",
+    srcs = ["cli.cpp"],
+    compiler_flags = [
+        "-Wno-switch-enum",
+        "-Wno-cast-qual",
+    ],
+    deps = [
+        "..:arg",
+        "..:io",
+        "../../custom_parsers:custom_parsers",
+        "../training:train",
+        ":schema-cpp",
+        ":serialization_utils",
+        ":serializer",
+    ],
+    external_deps = ["protobuf"],
+)
+
+zs_cxxlibrary(
+    name = "serializer",
+    srcs = [
+        "ProtoDeserializer.cpp",
+        "ProtoSerializer.cpp",
+    ],
+    headers = [
+        "ProtoDeserializer.h",
+        "ProtoSerializer.h",
+        "Types.h",
+    ],
+    compiler_flags = [
+        "-Wno-switch-enum",
+        "-Wno-cast-qual",
+    ],
+    deps = [
+        "../..:zstronglib",
+    ],
+    exported_deps = [
+        "../../cpp:openzl_cpp",
+        "fbsource//third-party/protobuf:libprotobuf",
+        ":proto_graph",
+        ":utils",
+    ],
+    exported_external_deps = ["protobuf"],
+)
+
+zs_cxxlibrary(
+    name = "serialization_utils",
+    srcs = [
+        "serialization_utils.cpp",
+    ],
+    headers = [
+        "serialization_utils.h",
+    ],
+    exported_deps = [
+        ":serializer",
+    ],
+)
+
+zs_cxxlibrary(
+    name = "proto_graph",
+    srcs = [
+        "ProtoGraph.cpp",
+    ],
+    headers = [
+        "ProtoGraph.h",
+    ],
+    compiler_flags = [
+        "-Wno-switch-enum",
+        "-Wno-cast-qual",
+    ],
+    deps = [
+        "../..:zstronglib",
+    ],
+)

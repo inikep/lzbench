@@ -1,0 +1,21 @@
+{#- Template for descriptions.
+
+Context:
+description (Description): The description.
+obj: The object to which the description belongs.
+config (dict): The configuration dictionary.
+heading_level (int): The heading level to use for Markdown conversion.
+html_id (str): The HTML ID to use for Markdown conversion.
+-#}
+
+{% if config.show_description %}
+
+{% with autoref_hook = AutorefsHook(obj, config) %}
+
+{% if description %}
+{% include "description/" + description.kind + ".html.jinja" %}
+{% endif %}
+
+{% endwith%}
+
+{% endif %}

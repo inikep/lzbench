@@ -1,0 +1,36 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+# @noautodeps
+
+load("@fbcode_macros//build_defs:cpp_unittest.bzl", "cpp_unittest")
+load("@fbcode_macros//build_defs:python_unittest.bzl", "python_unittest")
+
+oncall("data_compression")
+
+python_unittest(
+    name = "test_zstrong_json",
+    srcs = ["test_zstrong_json.py"],
+    deps = [
+        "..:zstrong_json",
+        "fbsource//third-party/pypi/numpy:numpy",
+    ],
+)
+
+python_unittest(
+    # @autodeps-skip
+    name = "test_zstrong_ml",
+    srcs = ["test_zstrong_ml.py"],
+    deps = [
+        "..:zstrong_ml",
+        "fbsource//third-party/pypi/numpy:numpy",
+    ],
+)
+
+cpp_unittest(
+    name = "test_pybind_helpers",
+    srcs = ["test_pybind_helpers.cpp"],
+    deps = [
+        "..:pybind_helpers",
+        "fbsource//third-party/pybind11:pybind11",
+    ],
+)

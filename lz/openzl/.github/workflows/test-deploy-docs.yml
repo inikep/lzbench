@@ -1,0 +1,42 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+# Simple workflow for deploying static content to GitHub Pages
+name: Test build static content
+
+on:
+  # Runs on pull requests to dev
+  pull_request:
+    branches:
+      - dev
+
+jobs:
+  # This should be synced to the "build" step in deploy-docs.yml
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'yarn'
+          cache-dependency-path: ${{github.workspace}}/tools/visualization_app
+      - name: Install yarn dependencies
+        working-directory: ${{github.workspace}}/tools/visualization_app
+        run: yarn
+      - name: Build vite
+        working-directory: ${{github.workspace}}/tools/visualization_app
+        run: yarn build
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Setup mkdocs environment
+        run: |
+            sudo apt-get update
+            sudo apt-get install doxygen clang-format
+            pip install mkdocs-material==9.5.50 mkdocstrings==0.27.0 mkdocs==1.6.1 mkdocstrings-python==1.13.0
+      - name: build
+        run: |
+            ./doc/mkdocs/github_pages_build_script.py

@@ -1,0 +1,16 @@
+-Wall
+-Wextra
+-Wcast-qual
+-Wcast-align
+-Wshadow
+-Wconversion
+-Wstrict-aliasing=1
+-Wundef
+-Wpointer-arith
+-Wvla
+-Wformat=2
+-Wno-missing-designated-field-initializers
+-I.
+-Iinclude
+-Isrc
+-Ideps/googletest/googletest/include

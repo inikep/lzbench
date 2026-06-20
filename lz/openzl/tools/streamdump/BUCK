@@ -1,0 +1,53 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("../../defs.bzl", "zs_binary", "zs_library", "zs_release_binary")
+
+oncall("data_compression")
+
+zs_library(
+    name = "stream_dump2_headers",
+    headers = [
+        "stream_dump2.h",
+    ],
+)
+
+zs_binary(
+    name = "stream_dump2",
+    srcs = [
+        "stream_dump2.c",
+        "stream_dump2_noop_shim.c",
+    ],
+    deps = [
+        "..:fileio",
+        "../..:zstronglib",
+        ":stream_dump2_headers",
+    ],
+)
+
+# These external targets depend on the released zstrong, not dev. We don't want
+# to introduce a cross-dependency.
+zs_release_binary(
+    name = "stream_dump2_mc",
+    srcs = [
+        "stream_dump2.c",
+    ],
+    deps = [
+        ":stream_dump2_headers",
+        "//common/managed_compression/zstrong:stream_dump_shim",
+        "//openzl:openzl",
+        "//openzl:openzl_test_utils",
+    ],
+)
+
+zs_release_binary(
+    name = "stream_dump2_xldb",
+    srcs = [
+        "stream_dump2.c",
+    ],
+    deps = [
+        ":stream_dump2_headers",
+        "//data_compression/experimental/zstrong_compressors/xldb/bin:xldb_compressor_stream_dump_shim",
+        "//openzl:openzl",
+        "//openzl:openzl_test_utils",
+    ],
+)

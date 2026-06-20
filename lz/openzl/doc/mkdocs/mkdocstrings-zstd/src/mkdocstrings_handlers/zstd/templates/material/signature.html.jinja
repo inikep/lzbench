@@ -1,0 +1,33 @@
+{#- Template for signatures.
+
+This template renders the signature of a function or method.
+It iterates over the parameters of the function to rebuild the signature.
+The signature is the list of parameters of a function or method, including their names, default values, and annotations.
+
+Context:
+parameters: The parameters to render.
+config (dict): The configuration options.
+-#}
+
+{%- if config.show_signature -%}
+{%- if template -%}
+template &lt;
+{%- else -%}
+(
+{%- endif -%}
+{%- for param in parameters -%}
+{%- if param.type -%}
+{{ param.type }}
+{%- endif -%}
+{%- if param.type and param.name %} {% endif -%}
+{%- if param.name -%}
+{{ param.name }}
+{%- endif -%}
+{%- if not loop.last -%}, {% endif -%}
+{%- endfor -%}
+{%- if template -%}
+&gt;
+{%- else -%}
+)
+{%- endif -%}
+{%- endif -%}

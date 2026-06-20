@@ -1,0 +1,24 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("../../defs.bzl", "zs_library")
+
+oncall("data_compression")
+
+zs_library(
+    name = "csv_parser",
+    srcs = glob(
+        [
+            "*.c",
+            "*.cpp",
+        ],
+        exclude = ["tests/*"],
+    ),
+    headers = glob(
+        ["*.h"],
+    ),
+    exported_deps = [
+        "../..:zstronglib",
+        "../shared_components:numeric_graphs",
+        "../shared_components:string_graphs",
+    ],
+)

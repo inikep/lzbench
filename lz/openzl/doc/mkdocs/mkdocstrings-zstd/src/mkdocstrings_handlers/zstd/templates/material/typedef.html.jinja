@@ -1,0 +1,46 @@
+{#- Template for C typedefs.
+
+Context:
+typedef:
+heading_level (int): The HTML heading level to use
+config (dict): The configuration options
+
+-#}
+
+<div class="doc doc-object doc-typedef">
+    {% with obj = typedef, html_id = typedef.qualified_name %}
+    
+    {% if (root and config.show_root_toc_entry) or config.show_typedef_toc_entries %}
+    {%
+        filter heading(
+            heading_level,
+            role=typedef.role,
+            id=html_id,
+            toc_label=(('<code class="doc-symbol doc-symbol-toc doc-symbol-typedef"></code>&nbsp;')|safe if config.show_symbol_type_toc else '') + typedef.name,
+            hidden=True,
+        )
+    %}
+    {% endfilter %}
+    {% endif %}
+
+    {% block signature scoped %}
+    <div class="doc doc-signature">
+        {%+ filter highlight(language="cpp", inline=False) %}
+        {%- filter format(config) -%}
+        {{ typedef.definition }};
+        {%- endfilter -%}
+        {% endfilter %}
+    </div>
+    {% endblock signature %}
+
+    <div class="doc doc-contents">
+        {% block description scoped %}
+        {% with description = typedef.description %}
+        {% include "description.html.jinja" %}
+        {% endwith %}
+        {% endblock description %}
+    </div>
+
+
+    {% endwith %}
+</div>

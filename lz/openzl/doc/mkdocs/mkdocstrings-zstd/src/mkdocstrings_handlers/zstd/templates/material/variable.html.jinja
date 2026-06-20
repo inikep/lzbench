@@ -1,0 +1,48 @@
+{#- Template for C variables.
+
+Context:
+variable:
+heading_level (int): The HTML heading level to use
+config (dict): The configuration options
+
+-#}
+
+<div class="doc doc-object doc-variable">
+    {% with obj = variable, html_id = variable.qualified_name %}
+    
+    {% if (root and config.show_root_toc_entry) or config.show_variable_toc_entries %}
+    {%
+        filter heading(
+            heading_level,
+            role=variable.role,
+            id=html_id,
+            toc_label=(('<code class="doc-symbol doc-symbol-toc doc-symbol-variable"></code>&nbsp;')|safe if config.show_symbol_type_toc else '') + variable.name,
+            hidden=True,
+        )
+    %}
+    {% endfilter %}
+    {% endif %}
+
+    {% block signature scoped %}
+    <div class="doc doc-signature">
+        {%+ filter highlight(language="cpp", inline=False) %}
+        {%- filter format(config) -%}
+        {{ variable.type }} {{ variable.name }}
+        {%- if variable.initializer %} {{ variable.initializer }}{%- endif -%}
+        ;
+        {%- endfilter -%}
+        {% endfilter %}
+    </div>
+    {% endblock signature %}
+
+    <div class="doc doc-contents">
+        {% block description scoped %}
+        {% with description = variable.description %}
+        {% include "description.html.jinja" %}
+        {% endwith %}
+        {% endblock description %}
+    </div>
+
+
+    {% endwith %}
+</div>

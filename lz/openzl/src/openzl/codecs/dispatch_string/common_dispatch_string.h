@@ -1,0 +1,17 @@
+// Copyright (c) Meta Platforms, Inc. and affiliates.
+
+#ifndef ZSTRONG_TRANSFORMS_DISPATCH_STRING_COMMON_DISPATCH_STRING_H
+#define ZSTRONG_TRANSFORMS_DISPATCH_STRING_COMMON_DISPATCH_STRING_H
+
+#include "openzl/shared/portability.h"
+
+ZL_BEGIN_C_DECLS
+
+// memcpy block size, in bytes
+#define ZL_DISPATCH_STRING_BLK_SIZE 32
+#define ZL_DISPATCH_STRING_MAX_DISPATCHES_V20 256
+#define ZL_DISPATCH_STRING_MAX_DISPATCHES 2048
+
+ZL_END_C_DECLS
+
+#endif

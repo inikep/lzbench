@@ -1,0 +1,21 @@
+{#- Template for parameters in docstrings.
+
+This template renders parameters in a list format.
+
+Context:
+description (DescriptionParameter): The description to render.
+heading_level
+html_id
+autorefs_hook
+-#}
+
+<code><b>{{ description.name }}</b>
+{%- if config.show_description_parameter_type and description.type %}: {{ description.type }}{% endif -%}
+{%- if description.direction %} [{{ description.direction }}]{% endif -%}
+</code>
+–
+<div class="doc-md-description">
+    {% with description = description.description %}
+    {% include "description.html.jinja" %}
+    {% endwith %}
+</div>

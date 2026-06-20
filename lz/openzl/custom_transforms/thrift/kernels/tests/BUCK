@@ -1,0 +1,70 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+# @noautodeps
+
+load("@fbcode_macros//build_defs:cpp_library.bzl", "cpp_library")
+load("@fbcode_macros//build_defs:cpp_unittest.bzl", "cpp_unittest")
+load("@fbcode_macros//build_defs:thrift_library.bzl", "thrift_library")
+load("../../../../defs.bzl", "relative_headers", "zs_fuzzers")
+
+oncall("data_compression")
+
+thrift_library(
+    name = "fuzz_data",
+    languages = [
+        "cpp2",
+    ],
+    thrift_cpp2_options = "reflection",
+    thrift_srcs = {"fuzz_data.thrift": []},
+)
+
+cpp_library(
+    name = "thrift_kernel_test_utils",
+    headers = relative_headers(["thrift_kernel_test_utils.h"]),
+    header_namespace = "",
+    exported_deps = [
+        "../../../..:zstronglib",
+        "../../../../tests/datagen:datagen",
+        ":fuzz_data-cpp2-types",
+        ":fuzz_data-cpp2-visitation",
+        "//folly:overload",
+        "//folly:range",
+        "//folly/io:iobuf",
+        "//thrift/lib/cpp2/protocol:protocol",
+    ],
+)
+
+cpp_unittest(
+    name = "test_thrift_kernel",
+    srcs = ["test_thrift_kernel.cpp"],
+    deps = [
+        "..:decode_thrift_kernel",
+        "..:encode_thrift_kernel",
+        "..:thrift_kernel_utils",
+        "../../../..:common",
+        "//folly:range",
+        "//folly/io:iobuf",
+        "//thrift/lib/cpp2/protocol:protocol",
+    ],
+)
+
+zs_fuzzers(
+    srcs = ["fuzz_thrift_kernel.cpp"],
+    ftest_names = [
+        ("ThriftKernelTest", "FuzzRoundTrip"),
+        ("ThriftKernelTest", "FuzzCompress"),
+        ("ThriftKernelTest", "FuzzDecompress"),
+    ],
+    deps = [
+        "..:decode_thrift_binding",
+        "..:encode_thrift_binding",
+        "../../../..:common",
+        "../../../../tests:fuzz_utils",
+        "../../../../tests:test_zstrong_fixtures",
+        "fbsource//xplat/security/lionhead/utils/lib_ftest:lib",
+        ":thrift_kernel_test_utils",
+        "//folly:range",
+        "//folly/io:iobuf",
+        "//thrift/lib/cpp2/protocol:protocol",
+    ],
+)

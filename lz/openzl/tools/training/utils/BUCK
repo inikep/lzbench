@@ -1,0 +1,37 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("../../../defs.bzl", "zs_cxxlibrary")
+
+oncall("data_compression")
+
+zs_cxxlibrary(
+    name = "training_utils",
+    srcs = [
+        "thread_pool.cpp",
+        "utils.cpp",
+    ],
+    headers = [
+        "thread_pool.h",
+        "utils.h",
+    ],
+    exported_deps = [
+        "../..:io",
+        "../..:logger",
+        "../../..:common",
+        "../../..:zstronglib",
+        "../../../cpp:openzl_cpp",
+    ],
+)
+
+zs_cxxlibrary(
+    name = "genetic_algorithm",
+    srcs = [
+        "genetic_algorithm.cpp",
+    ],
+    headers = [
+        "genetic_algorithm.h",
+    ],
+    exported_deps = [
+        "../../../cpp:openzl_cpp",
+    ],
+)

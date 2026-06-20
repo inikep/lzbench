@@ -1,0 +1,74 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+# @noautodeps
+load("@fbcode_macros//build_defs:cpp_library.bzl", "cpp_library")
+load("@fbcode_macros//build_defs:cpp_unittest.bzl", "cpp_unittest")
+load("@fbcode_macros//build_defs:thrift_library.bzl", "thrift_library")
+load("../../../defs.bzl", "relative_headers", "zs_fuzzers")
+
+oncall("data_compression")
+
+cpp_unittest(
+    name = "thrift_test",
+    srcs = glob(["test_*.cpp"]),
+    headers = relative_headers(glob(["test_*.h"])),
+    header_namespace = "",
+    deps = [
+        "../../tulip_v2/tests:tulip_v2_data_utils",
+        ":thrift_test_utils",
+    ],
+)
+
+cpp_library(
+    name = "thrift_test_utils",
+    srcs = [
+        "test_prob_selector_fixture.cpp",
+        "util.cpp",
+    ],
+    headers = relative_headers([
+        "test_prob_selector_fixture.h",
+        "util.h",
+    ]),
+    header_namespace = "",
+    exported_deps = [
+        "..:thrift_lib",
+        "../../..:zstronglib",
+        "../../../tests/datagen:datagen",
+        "../../../tools:zstrong_cpp",
+        "../kernels/tests:thrift_kernel_test_utils",
+        ":thrift_test_schema-cpp2-types",
+        ":thrift_test_schema-cpp2-visitation",
+        "//common/gtest:gtest",
+        "//thrift/lib/cpp2/protocol:protocol",
+    ],
+)
+
+thrift_library(
+    name = "thrift_test_schema",
+    languages = [
+        "cpp2",
+    ],
+    thrift_cpp2_options = "reflection",
+    thrift_srcs = {
+        "test_schema.thrift": [],
+    },
+    deps = [],
+)
+
+zs_fuzzers(
+    srcs = ["fuzz.cpp"],
+    ftest_names = [
+        ("ThriftCompactTest", "FuzzRoundTrip"),
+        ("ThriftCompactTest", "FuzzCompress"),
+        ("ThriftCompactTest", "FuzzDecompress"),
+        ("ThriftBinaryTest", "FuzzRoundTrip"),
+        ("ThriftBinaryTest", "FuzzCompress"),
+        ("ThriftBinaryTest", "FuzzDecompress"),
+        ("ProbSelectorTest", "FuzzRoundTrip"),
+    ],
+    deps = [
+        "../../../tests:fuzz_utils",
+        "fbsource//xplat/security/lionhead/utils/lib_ftest:lib",
+        ":thrift_test_utils",
+    ],
+)

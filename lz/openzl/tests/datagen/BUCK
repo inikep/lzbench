@@ -1,0 +1,71 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+# @noautodeps
+
+load("@fbcode_macros//build_defs:cpp_library.bzl", "cpp_library")
+load("../../defs.bzl", "relative_headers", "zs_cxxlibrary", "zs_unittest")
+
+oncall("data_compression")
+
+zs_cxxlibrary(
+    name = "datagen",
+    srcs = glob(
+        ["**/*.cpp"],
+        exclude = [
+            "test/**/*.cpp",
+            "test_registry/**/*.cpp",
+        ],
+    ),
+    headers = glob(
+        ["**/*.h"],
+        exclude = [
+            "test/**/*.h",
+            "test_registry/**/*.h",
+        ],
+    ),
+    exported_deps = [
+        "..:utils",
+        "../..:common",
+        "../..:compress",
+        "../../cpp:openzl_cpp",
+    ],
+)
+
+zs_cxxlibrary(
+    name = "registry_records",
+    srcs = glob(["datagen/registry_records/**/*.cpp"]),
+    headers = glob(["datagen/registry_records/**/*.h"]),
+)
+
+zs_unittest(
+    name = "datagen_test",
+    srcs = glob(["test/**/*Test.cpp"]),
+    deps = [
+        ":datagen",
+        ":registry_records",
+    ],
+)
+
+cpp_library(
+    name = "custom_nodes",
+    srcs = glob(["test_registry/*.cpp"]),
+    headers = relative_headers(glob(["test_registry/*.h"])),
+    header_namespace = "",
+    # NOTE: Must only be used by version_test_interface.so because it depends on Zstrong
+    # Must NOT be used by version_test_interface or version_test targets.
+    visibility = [
+        "..:",
+        "../version:version_test_interface.so",
+    ],
+    exported_deps = [
+        "../..:zstronglib",
+        "../../custom_transforms/thrift:thrift_lib",
+        "../../custom_transforms/thrift/kernels:decode_thrift_binding",
+        "../../custom_transforms/thrift/kernels:encode_thrift_binding",
+        "../../custom_transforms/thrift/kernels/tests:thrift_kernel_test_utils",
+        "../../custom_transforms/thrift/tests:thrift_test_utils",
+        "../../custom_transforms/tulip_v2:tulip_v2",
+        "../../custom_transforms/tulip_v2/tests:tulip_v2_data_utils",
+        ":datagen",
+    ],
+)

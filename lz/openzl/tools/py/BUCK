@@ -1,0 +1,67 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+# @noautodeps
+
+load("@fbcode_macros//build_defs:cpp_python_extension.bzl", "cpp_python_extension")
+load("@fbcode_macros//build_defs:python_library.bzl", "python_library")
+load("../../defs.bzl", "zs_cxxlibrary")
+
+oncall("data_compression")
+
+zs_cxxlibrary(
+    name = "pybind_helpers",
+    srcs = ["pybind_helpers.cpp"],
+    headers = ["pybind_helpers.h"],
+    deps = [
+        "..:zstrong_cpp",
+        "fbsource//third-party/fmt:fmt",
+        "fbsource//third-party/pybind11:pybind11",
+    ],
+    exported_deps = [
+        "../..:zstronglib",
+    ],
+)
+
+zs_cxxlibrary(
+    name = "zstrong_ml_native",
+    srcs = ["zstrong_ml_pybind.cpp"],
+    headers = ["zstrong_ml_pybind.h"],
+    compiler_flags = ["-Wno-float-equal"],
+    strict_conversions = False,
+    deps = [
+        "..:zstrong_ml",
+        "fbsource//third-party/pybind11:pybind11",
+        "fbsource//third-party/pypi/numpy:numpy",
+        ":pybind_helpers",
+    ],
+)
+
+cpp_python_extension(
+    name = "zstrong_json",
+    srcs = ["zstrong_json_pybind.cpp"],
+    base_module = "",
+    types = [
+        "zstrong_json.pyi",
+        "zstrong_json.ml.pyi",
+    ],
+    deps = [
+        "..:zstrong_json",
+        "..:zstrong_ml",
+        "fbsource//third-party/pybind11:pybind11",
+        "fbsource//third-party/pypi/numpy:numpy",
+        ":pybind_helpers",
+        ":zstrong_ml_native",
+        "//folly:json",
+    ],
+)
+
+python_library(
+    name = "zstrong_ml",
+    srcs = ["zstrong_ml.py"],
+    base_module = "",
+    deps = [
+        "fbsource//third-party/pypi/pandas:pandas",
+        ":zstrong_json",
+    ],
+    external_deps = ["xgboost"],
+)

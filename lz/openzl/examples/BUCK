@@ -1,0 +1,81 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("@fbcode_macros//build_defs:python_library.bzl", "python_library")
+load("../defs.bzl", "zs_binary", "zs_cxxbinary", "zs_library")
+
+oncall("data_compression")
+
+zs_binary(
+    name = "compress",
+    srcs = ["compress_app.cpp"],
+    deps = [
+        "..:zstronglib",
+    ],
+)
+
+zs_binary(
+    name = "zs2_pipeline",
+    srcs = ["zs2_pipeline.c"],
+    deps = [
+        "..:zstronglib",
+        "../tools:fileio",
+    ],
+)
+
+zs_binary(
+    name = "zs2_trygraph",
+    srcs = ["zs2_trygraph.c"],
+    deps = [
+        "..:zstronglib",
+        "../tools:fileio",
+    ],
+)
+
+zs_binary(
+    name = "zs2_selector",
+    srcs = ["zs2_selector.c"],
+    deps = [
+        "..:zstronglib",
+        "../tools:fileio",
+    ],
+)
+
+zs_library(
+    name = "example_utils",
+    srcs = ["example_utils.cpp"],
+    headers = ["example_utils.h"],
+    deps = [
+        "..:zstronglib",
+        "../tools:fileio",
+    ],
+)
+
+zs_cxxbinary(
+    name = "numeric_array",
+    srcs = ["numeric_array.cpp"],
+    deps = [
+        "..:zstronglib",
+        ":example_utils",
+    ],
+)
+
+zs_cxxbinary(
+    name = "training",
+    srcs = ["training.cpp"],
+    deps = [
+        "..:zstronglib",
+        "../cpp:openzl_cpp",
+        "../custom_parsers/shared_components:numeric_graphs",
+        "../tools:io",
+        "../tools/training:train",
+        "../tools/training:train_common",
+        "../tools/training/clustering:clustering_graph_trainer",
+        ":example_utils",
+    ],
+)
+
+python_library(
+    name = "parsing_data_generator_correlated",
+    srcs = ["parsing_data_generator_correlated.py"],
+    labels = ["autodeps2_generated"],
+)

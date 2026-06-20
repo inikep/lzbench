@@ -1,0 +1,89 @@
+# build artifacts
+/doc/mkdocs/build/
+/doc/mkdocs/build-doxyxml/
+/obj/
+cacheObjs/
+cachedObjs/
+*.o
+*.rsp
+*.exe
+.deps
+gtests
+libzstrong.a
+saoTest
+vrsTest
+benchCombiner
+/fullbench
+/unitBench
+stream_dump
+stream_dump2
+stream_dump2_xldb
+nci_test
+rolz_bench
+json_test
+splitBy_test
+xldb_compress
+zs2_basic
+zs2_intgraph
+zs2_pipeline
+zs2_round_trip
+zs2_selector
+zs2_struct
+zs2_treegraph
+zs2_trygraph
+zs2_typedgraph
+zli
+libzl.a
+libzl.so
+libopenzl.a
+libopenzl.so
+sddl_compiler
+sddl2_arithmetic_test
+sddl2_input_test
+sddl2_segments_test
+sddl2_tagged_segments_test
+sddl2_type_size_test
+sddl2_vm_test
+
+# dependencies
+/deps/*
+
+# Build system temporary objects
+build/
+build-*/
+__pycache__/
+.cache/
+cmakebuild/
+cmake-build/
+
+# VSCode CMake artifacts
+.vs
+/out/
+/compile_commands.json
+/CMakeUserPresets.json
+
+# editor artifacts
+.watchman-cookie-*
+.clangd
+
+# environment
+.venv
+.DS_Store
+*.dSYM/
+
+# corpus download
+/_corpus/
+
+# test artifacts
+sao
+sao.*
+vrs_index_*
+*.zl
+*.zlc
+*.zs
+*.zs.streams.*
+benchresult.bin*
+tmp*
+
+# CTest artifacts
+Testing/

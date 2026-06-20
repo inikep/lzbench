@@ -1,0 +1,41 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+
+load("../../defs.bzl", "zs_cxxlibrary")
+
+oncall("data_compression")
+
+zs_cxxlibrary(
+    name = "train",
+    srcs =
+        [
+            "train.cpp",
+        ],
+    headers =
+        [
+            "train.h",
+        ],
+    deps = [
+        "../../custom_parsers:custom_parsers",
+        "../ml_selector:ml_selector_trainer",
+        "ace:automated_compressor_explorer",
+        "clustering:clustering_graph_trainer",
+        "graph_mutation:graph_mutation",
+    ],
+    exported_deps = [
+        "..:logger",
+        "utils:training_utils",
+        ":train_common",
+    ],
+)
+
+# TODO: Clean up the BUCK rules in this directory
+zs_cxxlibrary(
+    name = "train_common",
+    headers =
+        [
+            "train_params.h",
+        ],
+    deps = [
+        "../../cpp:openzl_cpp",
+    ],
+)
