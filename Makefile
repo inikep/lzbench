@@ -49,6 +49,13 @@ ifneq ($(shell echo|$(CC) -dM -E - -march=native 2>/dev/null|egrep -c '__(SSE4_1
     DONT_BUILD_LZSSE ?= 1
 endif
 
+# OpenZL requires a 64-bit platform (src/openzl/shared/portability.h emits an
+# #error on 32-bit). Probe the pointer size with the active CODE_FLAGS so this
+# also catches -m32 (BUILD_ARCH=32-bit) builds, not just native 32-bit targets.
+ifneq ($(shell echo|$(CC) $(CODE_FLAGS) -dM -E - 2>/dev/null|grep -c '__SIZEOF_POINTER__ 8'), 1)
+    DONT_BUILD_OPENZL ?= 1
+endif
+
 # detect thread model for gcc or clang
 THREAD_MODEL := $(shell $(CXX) -v 2>&1 | grep '^Thread model:' | awk '{print $$3}')
 $(info Detected thread model: $(THREAD_MODEL))
