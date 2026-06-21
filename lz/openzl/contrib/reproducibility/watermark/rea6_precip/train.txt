@@ -1,3 +1,0 @@
-REA6_precip_10.bin
-REA6_precip_251.bin
-REA6_precip_538.bin

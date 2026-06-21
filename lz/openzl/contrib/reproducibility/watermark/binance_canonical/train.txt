@@ -1,3 +1,0 @@
-BTC-AUD.parquet.canonical
-BTC-BIDR.parquet.canonical
-BTC-BRL.parquet.canonical

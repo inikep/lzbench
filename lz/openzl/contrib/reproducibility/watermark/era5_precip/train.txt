@@ -1,5 +1,0 @@
-ERA5_precip_1018.bin
-ERA5_precip_2243.bin
-ERA5_precip_33.bin
-ERA5_precip_3543.bin
-ERA5_precip_898.bin

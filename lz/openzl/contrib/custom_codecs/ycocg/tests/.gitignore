@@ -1,5 +1,0 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-
-# Compilation artifacts
-check_lossless
-test_ycocg_codec
