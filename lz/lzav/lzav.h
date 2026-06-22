@@ -1,7 +1,7 @@
 /**
  * @file lzav.h
  *
- * @version 5.8
+ * @version 5.9
  *
  * @brief Self-contained header file for the "LZAV" in-memory data compression
  * and decompression algorithms.
@@ -15,7 +15,7 @@
  *
  * LICENSE:
  *
- * Copyright (c) 2023-2025 Aleksey Vaneev
+ * Copyright (c) 2023-2026 Aleksey Vaneev
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -39,8 +39,8 @@
 #ifndef LZAV_INCLUDED
 #define LZAV_INCLUDED
 
-#define LZAV_API_VER 0x204 ///< API version; unrelated to source code version.
-#define LZAV_VER_STR "5.8" ///< LZAV source code version string.
+#define LZAV_API_VER 0x205 ///< API version; unrelated to source code version.
+#define LZAV_VER_STR "5.9" ///< LZAV source code version string.
 
 /**
  * @def LZAV_FMT_MIN
@@ -61,9 +61,16 @@
  */
 
 /**
+ * @def LZAV_EXCEPT
+ * @brief If this macro is defined externally in a C++ environment, all LZAV
+ * functions will be declared without the "noexcept" specifier, and memory
+ * allocation may throw an exception on error. Not defined by default.
+ */
+
+/**
  * @def LZAV_NOEX
  * @brief Macro that defines the "noexcept" function specifier for the C++
- * environment.
+ * environment (if the @ref LZAV_EXCEPT macro is undefined).
  */
 
 /**
@@ -88,7 +95,8 @@
  * The implementation must return a `T*` pointer aligned to 4 bytes, or
  * preferably, 16 bytes.
  *
- * The called function should have the "noexcept" or "throw()" specifier.
+ * The called function should have the "noexcept" or "throw()" specifier, if
+ * the @ref LZAV_EXCEPT macros is undefined.
  *
  * @param s Allocation size, in bytes; a multiple of `sizeof( T )`.
  * @param T Allocation element type, for a C++ environment.
@@ -129,35 +137,50 @@
 
 	#include <cstring>
 
+	#if defined( LZAV_EXCEPT )
+		#define LZAV_NOEX
+
+		#if defined( LZAV_DEF_MALLOC )
+			#define LZAV_MALLOC( s, T ) new T[ s / sizeof( T )]
+			#define LZAV_FREE( p ) delete[] p
+		#endif // defined( LZAV_DEF_MALLOC )
+	#endif // defined( LZAV_EXCEPT )
+
 	#if __cplusplus >= 201103L
 
 		#include <cstdint>
 
-		#define LZAV_NOEX noexcept
 		#define LZAV_NULL nullptr
 
-		#if defined( LZAV_DEF_MALLOC )
-			#include <new>
+		#if !defined( LZAV_EXCEPT )
+			#define LZAV_NOEX noexcept
 
-			#define LZAV_MALLOC( s, T ) \
-				new( std :: nothrow ) T[ s / sizeof( T )]
+			#if defined( LZAV_DEF_MALLOC )
+				#include <new>
 
-			#define LZAV_FREE( p ) delete[] p
-		#endif // !defined( LZAV_DEF_MALLOC )
+				#define LZAV_MALLOC( s, T ) \
+					new( std :: nothrow ) T[ s / sizeof( T )]
+
+				#define LZAV_FREE( p ) delete[] p
+			#endif // defined( LZAV_DEF_MALLOC )
+		#endif // !defined( LZAV_EXCEPT )
 
 	#else // __cplusplus >= 201103L
 
 		#include <stdint.h>
 
-		#define LZAV_NOEX throw()
 		#define LZAV_NULL NULL
 
-		#if defined( LZAV_DEF_MALLOC )
-			#include <cstdlib>
+		#if !defined( LZAV_EXCEPT )
+			#define LZAV_NOEX throw()
 
-			#define LZAV_MALLOC( s, T ) (T*) std :: malloc( s )
-			#define LZAV_FREE( p ) std :: free( p )
-		#endif // !defined( LZAV_DEF_MALLOC )
+			#if defined( LZAV_DEF_MALLOC )
+				#include <cstdlib>
+
+				#define LZAV_MALLOC( s, T ) (T*) std :: malloc( s )
+				#define LZAV_FREE( p ) std :: free( p )
+			#endif // defined( LZAV_DEF_MALLOC )
+		#endif // !defined( LZAV_EXCEPT )
 
 	#endif // __cplusplus >= 201103L
 
@@ -284,9 +307,8 @@
  */
 
 #if defined( LZAV_ARCH64 ) || defined( __SSE__ ) || defined( __ARM_NEON ) || \
-	( defined( _M_IX86_FP ) && _M_IX86_FP >= 1 ) || \
-	defined( __VEC__ ) || defined( __ALTIVEC__ ) || \
-	defined( __wasm_simd128__ )
+	( defined( _M_IX86_FP ) && _M_IX86_FP >= 1 ) || defined( __VEC__ ) || \
+	defined( __ALTIVEC__ ) || defined( __wasm_simd128__ )
 
 	#define LZAV_LONG_COPY
 
@@ -381,6 +403,19 @@
  * @param x An expression that is unlikely to be evaluated to 1.
  */
 
+/**
+ * @def LZAV_LIKELY_DO( x )
+ * @brief Likelihood statement for `do-while` loops in C++20.
+ */
+
+/**
+ * @def LZAV_LIKELY_DO_EXPR( x )
+ * @brief Likelihood macro that is used for manually-guided
+ * micro-optimization of `do-while` loops.
+ *
+ * @param x An expression that is likely to be evaluated to 1.
+ */
+
 #if defined( LZAV_GCC_BUILTINS )
 
 	#define LZAV_LIKELY( x ) ( __builtin_expect( x, 1 ))
@@ -390,6 +425,8 @@
 
 	#define LZAV_LIKELY( x ) ( x ) [[likely]]
 	#define LZAV_UNLIKELY( x ) ( x ) [[unlikely]]
+	#define LZAV_LIKELY_DO [[likely]]
+	#define LZAV_LIKELY_DO_EXPR( x ) ( x )
 
 #else // Likelihood macros
 
@@ -397,6 +434,11 @@
 	#define LZAV_UNLIKELY( x ) ( x )
 
 #endif // Likelihood macros
+
+#if !defined( LZAV_LIKELY_DO )
+	#define LZAV_LIKELY_DO
+	#define LZAV_LIKELY_DO_EXPR( x ) LZAV_LIKELY( x )
+#endif // !defined( LZAV_LIKELY_DO )
 
 /**
  * @def LZAV_RESTRICT
@@ -1320,7 +1362,33 @@ LZAV_INLINE_F int lzav_compress( const void* const src, void* const dst,
 		{
 			if LZAV_LIKELY( iw1 != hp[ 2 ])
 			{
-				goto _no_match;
+			_no_match:
+				wp = ip;
+				hp[ 2 ] = iw1;
+
+				mavg -= mavg >> 11;
+				ip++;
+
+				hp[ 3 ] = ipo;
+
+				if( mavg < ( 200 << 10 ) && wp != ipa ) // Speed-up threshold.
+				{
+					// Advance faster on data which is harder to compress.
+
+					ip += 1 + ( ipo & 1 ); // Simple dithering.
+
+					if LZAV_UNLIKELY( mavg < ( 130 << 10 ))
+					{
+						ip++;
+
+						if LZAV_UNLIKELY( mavg < ( 100 << 10 ))
+						{
+							ip += (size_t) 100 - ( mavg >> 10 ); // Faster.
+						}
+					}
+				}
+
+				continue;
 			}
 
 			wpo = hp[ 3 ];
@@ -1430,33 +1498,6 @@ LZAV_INLINE_F int lzav_compress( const void* const src, void* const dst,
 
 	_d_oob:
 		ip++;
-		continue;
-
-	_no_match:
-		wp = ip;
-		hp[ 2 ] = iw1;
-
-		mavg -= mavg >> 11;
-		ip++;
-
-		hp[ 3 ] = ipo;
-
-		if( mavg < ( 200 << 10 ) && wp != ipa ) // Speed-up threshold.
-		{
-			// Advance faster on data which is harder to compress.
-
-			ip += 1 + ( ipo & 1 ); // Simple dithering.
-
-			if LZAV_UNLIKELY( mavg < ( 130 << 10 ))
-			{
-				ip++;
-
-				if LZAV_UNLIKELY( mavg < ( 100 << 10 ))
-				{
-					ip += (size_t) 100 - ( mavg >> 10 ); // Gradually faster.
-				}
-			}
-		}
 	}
 
 	op = lzav_write_fin_3( op, (size_t) ( ipe - ipa + LZAV_LIT_FIN ), ipa );
@@ -1751,7 +1792,7 @@ LZAV_NO_INLINE int lzav_compress_hi( const void* const src, void* const dst,
 
 		// Source data and hash-table entry match of suitable length.
 
-		const uint8_t* const wp = ip - d;
+		const uint8_t* wp = ip - d;
 		const uint8_t* const ip1 = ip + 1;
 		size_t lc = (size_t) ( ip - ipa );
 
@@ -1829,11 +1870,10 @@ LZAV_NO_INLINE int lzav_compress_hi( const void* const src, void* const dst,
 			goto _save_match;
 		}
 
-		op = lzav_write_blk_3( op, lc, rc, d, ipa, &cbp, &csh, mref );
-
 		// Update hash-table with 1 skipped position.
 
 		memcpy( &iw1, ip + 4, 4 );
+		wp = ipa;
 		hp = (uint32_t*) ( ht + lzav_hash( iw1, ip[ 8 ], 8, hmask ));
 
 		lzav_ht_insert( hp, hp[ mti + 3 ], mti, iw1,
@@ -1842,6 +1882,8 @@ LZAV_NO_INLINE int lzav_compress_hi( const void* const src, void* const dst,
 		ip += rc;
 		prc = 0;
 		ipa = ip;
+
+		op = lzav_write_blk_3( op, lc, rc, d, wp, &cbp, &csh, mref );
 	}
 
 	if( prc != 0 )
@@ -2048,7 +2090,7 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 				#if defined( LZAV_LONG_COPY )
 				if LZAV_LIKELY(( opcc < opet ) & ( d > 15 ))
 				{
-					do
+					do LZAV_LIKELY_DO
 					{
 						memcpy( op, ipd, 16 );
 						memcpy( op + 16, ipd + 16, 16 );
@@ -2056,7 +2098,7 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 						memcpy( op + 48, ipd + 48, 16 );
 						op += 64;
 						ipd += 64;
-					} while LZAV_LIKELY( op < opcc );
+					} while LZAV_LIKELY_DO_EXPR( op < opcc );
 
 					op = opcc;
 					continue;
@@ -2065,7 +2107,7 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 
 				if LZAV_LIKELY(( opcc < opet ) & ( d > 7 ))
 				{
-					do
+					do LZAV_LIKELY_DO
 					{
 						memcpy( op, ipd, 8 );
 						memcpy( op + 8, ipd + 8, 8 );
@@ -2073,7 +2115,7 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 						memcpy( op + 24, ipd + 24, 8 );
 						op += 32;
 						ipd += 32;
-					} while LZAV_LIKELY( op < opcc );
+					} while LZAV_LIKELY_DO_EXPR( op < opcc );
 
 					op = opcc;
 					continue;
@@ -2186,7 +2228,7 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 			if LZAV_LIKELY(( opcc < opet ) & ( ip < ipet - 64 ))
 			{
 				#if defined( LZAV_LONG_COPY )
-				do
+				do LZAV_LIKELY_DO
 				{
 					memcpy( op, ipd, 16 );
 					memcpy( op + 16, ipd + 16, 16 );
@@ -2194,9 +2236,9 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 					memcpy( op + 48, ipd + 48, 16 );
 					op += 64;
 					ipd += 64;
-				} while LZAV_LIKELY( op < opcc );
+				} while LZAV_LIKELY_DO_EXPR( op < opcc );
 				#else // defined( LZAV_LONG_COPY )
-				do
+				do LZAV_LIKELY_DO
 				{
 					memcpy( op, ipd, 8 );
 					memcpy( op + 8, ipd + 8, 8 );
@@ -2204,7 +2246,7 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 					memcpy( op + 24, ipd + 24, 8 );
 					op += 32;
 					ipd += 32;
-				} while LZAV_LIKELY( op < opcc );
+				} while LZAV_LIKELY_DO_EXPR( op < opcc );
 				#endif // defined( LZAV_LONG_COPY )
 
 				bh = *ip;
@@ -2448,7 +2490,7 @@ LZAV_NO_INLINE int lzav_decompress_2( const void* const src, void* const dst,
 
 				if LZAV_LIKELY(( opcc < opet ) & ( d > 15 ))
 				{
-					do
+					do LZAV_LIKELY_DO
 					{
 						memcpy( op, ipd, 16 );
 						memcpy( op + 16, ipd + 16, 16 );
@@ -2456,7 +2498,7 @@ LZAV_NO_INLINE int lzav_decompress_2( const void* const src, void* const dst,
 						memcpy( op + 48, ipd + 48, 16 );
 						op += 64;
 						ipd += 64;
-					} while LZAV_LIKELY( op < opcc );
+					} while LZAV_LIKELY_DO_EXPR( op < opcc );
 
 					op = opcc;
 					continue;
@@ -2549,7 +2591,7 @@ LZAV_NO_INLINE int lzav_decompress_2( const void* const src, void* const dst,
 
 			if LZAV_LIKELY(( opcc < opet ) & ( ip < ipet - 64 ))
 			{
-				do
+				do LZAV_LIKELY_DO
 				{
 					memcpy( op, ipd, 16 );
 					memcpy( op + 16, ipd + 16, 16 );
@@ -2557,7 +2599,7 @@ LZAV_NO_INLINE int lzav_decompress_2( const void* const src, void* const dst,
 					memcpy( op + 48, ipd + 48, 16 );
 					op += 64;
 					ipd += 64;
-				} while LZAV_LIKELY( op < opcc );
+				} while LZAV_LIKELY_DO_EXPR( op < opcc );
 
 				bh = *ip;
 				op = opcc;
@@ -2814,6 +2856,8 @@ using LZAV_NS :: lzav_decompress;
 #undef LZAV_IEC32
 #undef LZAV_LIKELY
 #undef LZAV_UNLIKELY
+#undef LZAV_LIKELY_DO
+#undef LZAV_LIKELY_DO_EXPR
 #undef LZAV_RESTRICT
 #undef LZAV_PREFETCH
 #undef LZAV_STATIC

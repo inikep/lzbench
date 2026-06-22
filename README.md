@@ -74,7 +74,7 @@ Notes column says otherwise.
 | [libdeflate v1.25](https://github.com/ebiggers/libdeflate) | 2025-11-01 | |
 | [lizard v2.1](https://github.com/inikep/lizard) | 2025-01-26 | |
 | [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4) | 2024-07-21 | |
-| [lzav 5.8](https://github.com/avaneev/lzav) | 2025-12-08 | |
+| [lzav 5.9](https://github.com/avaneev/lzav) | 2026-06-22 | |
 | [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html) | 2014-03-13 | |
 | [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse) | 2017-03-08 | |
 | [lzg 1.0.10](https://github.com/mbitsnbites/liblzg) | 2018-11-29 | |
