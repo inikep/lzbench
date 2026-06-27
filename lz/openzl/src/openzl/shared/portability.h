@@ -92,7 +92,7 @@ ZL_BEGIN_C_DECLS
 #    define ZL_PREFETCH_L2(ptr) ((void)(ptr))
 #endif
 
-#if defined(__GNUC__) || defined(__ICCARM__)
+#if defined(__GNUC__) || defined(__ICCARM__) || ZL_HAS_ATTRIBUTE(__target__)
 #    define ZL_TARGET_ATTRIBUTE(target) __attribute__((__target__(target)))
 #else
 #    define ZL_TARGET_ATTRIBUTE(target)
@@ -104,10 +104,22 @@ ZL_BEGIN_C_DECLS
 #    define ZL_HAS_BUILTIN(x) 0
 #endif
 
+#ifdef __has_attribute
+#    define ZL_HAS_ATTRIBUTE(x) __has_attribute(x)
+#else
+#    define ZL_HAS_ATTRIBUTE(x) 0
+#endif
+
 #ifdef __has_feature
 #    define ZL_HAS_FEATURE(x) __has_feature(x)
 #else
 #    define ZL_HAS_FEATURE(x) 0
+#endif
+
+#ifdef __has_include
+#    define ZL_HAS_INCLUDE(x) __has_include(x)
+#else
+#    define ZL_HAS_INCLUDE(x) 0
 #endif
 
 #ifndef ZL_ADDRESS_SANITIZER
@@ -275,6 +287,13 @@ ZL_INLINE bool ZL_addressIsPoisoned(const void* ptr)
 #    define ZL_HAS_BMI2 1
 #else
 #    define ZL_HAS_BMI2 0
+#endif
+
+#if defined(__aarch64__) && defined(__ARM_FEATURE_SVE) \
+        && defined(__ARM_FEATURE_SVE2_BITPERM) && ZL_HAS_INCLUDE(<arm_sve.h>)
+#    define ZL_HAS_SVE2_BITPERM 1
+#else
+#    define ZL_HAS_SVE2_BITPERM 0
 #endif
 
 #if defined(__AVX2__)

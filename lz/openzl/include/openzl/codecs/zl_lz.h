@@ -26,9 +26,92 @@ extern "C" {
 /// (like LZ4) and control the parameters like compression level.
 #define ZL_GRAPH_LZ ZL_MAKE_GRAPH_ID(ZL_StandardGraphID_lz)
 
-/// The LZ encoder sets the metadata on this ID to the minimum possible
-/// match length emitted by the encoder.
+/// The LZ encoder sets the metadata on this ID to the minimum expected
+/// match length emitted by the encoder. There may be edge cases where
+/// the match length is shorter, but it will be extremely rare. The
+/// current cases are:
+/// - The literal length is >= 2^16, and a match length of 0 is emitted.
+/// - The match length is >= 2^16 and (ml % 2^16 < min_match_length)
 #define ZL_LZ_MIN_MATCH_LENGTH_METADATA_ID 77
+
+/**
+ * Parameters that control the behavior of ZL_NODE_LZ and ZL_GRAPH_LZ.
+ */
+typedef enum {
+    /**
+     * If set, it overrides the ZL_GCParam_compressionLevel, otherwise
+     * it defaults to the global compression level.
+     *
+     * The compression level controls the default parameters and successor
+     * graphs. If compression level has no effect on parameters or successor
+     * graphs that are explicitly overridden.
+     */
+    ZL_LzParam_compressionLevel = 1,
+
+    /**
+     * The acceleration parameter controls how quickly the match finder
+     * skips over the input. Only one in every `acceleration` bytes of
+     * the input is checked for matches. The default value is derived
+     * from the compression level. If the compression level is >= 0,
+     * then it defaults to 1. Otherwise it defaults to -compression_level.
+     *
+     * @note This parameter is clamped to 1 if set to a lower value.
+     */
+    ZL_LzParam_acceleration = 100,
+
+    /**
+     * The log2 of the maximum lookback window in LZ match finding.
+     * windowSize = 1u << windowLog.
+     *
+     * The default value is set depending on the compression level and source
+     * size, and is capped at the source size.
+     *
+     * @note If the window size is <= 64K, then LZ will use 16-bit offsets
+     * rather than 32-bit offsets.
+     * @note currently, this value will be clamped between 10 and 28, but this
+     * is subject to change.
+     */
+    ZL_LzParam_windowLog = 101,
+
+    /**
+     * If set, the customGraph at this index is used to compress the literals,
+     * rather than sending them to the default graph.
+     */
+    ZL_LzParam_literalsGraphIdx = 1000,
+
+    /**
+     * If set, the customGraph at this index is used to compress the offsets,
+     * rather than sending them to the default graph.
+     */
+    ZL_LzParam_offsetsGraphIdx = 1001,
+
+    /**
+     * If set, the customGraph at this index is used to compress the muxed
+     * bytes (first output of ZL_NODE_MUX_LENGTHS), rather than sending them to
+     * the default graph.
+     *
+     * @note Not used if ZL_LzParam_muxLengthsGraphIdx is set.
+     */
+    ZL_LzParam_muxedBytesGraphIdx = 1002,
+
+    /**
+     * If set, the customGraph at this index is used to compress the overflow
+     * lengths (second output of ZL_NODE_MUX_LENGTHS), rather than sending them
+     * to the default graph.
+     *
+     * @note Not used if ZL_LzParam_muxLengthsGraphIdx is set.
+     */
+    ZL_LzParam_overflowLengthsGraphIdx = 1003,
+
+    /**
+     * If set, the custom graph at this index is used to compress the literal
+     * lengths and match lengths, rather than sending them to
+     * ZL_NODE_MUX_LENGTHS.
+     *
+     * @note Must be a multi-input graph that accepts two 16-bit numeric inputs.
+     */
+    ZL_LzParam_muxLengthsGraphIdx = 1004,
+} ZL_LzParam;
 
 #if defined(__cplusplus)
 }
