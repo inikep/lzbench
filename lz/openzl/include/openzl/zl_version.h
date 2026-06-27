@@ -13,7 +13,7 @@ extern "C" {
 
 #define ZL_LIBRARY_VERSION_MAJOR 0
 #define ZL_LIBRARY_VERSION_MINOR 2
-#define ZL_LIBRARY_VERSION_PATCH 0
+#define ZL_LIBRARY_VERSION_PATCH 4
 
 #define ZL_LIBRARY_VERSION_NUMBER                                      \
     (ZL_LIBRARY_VERSION_MAJOR * 10000 + ZL_LIBRARY_VERSION_MINOR * 100 \
@@ -54,13 +54,16 @@ extern "C" {
 /// format changes. But note that once a library with
 /// max format version X is released, we must support X
 /// through our support window.
-#define ZL_MAX_FORMAT_VERSION (24)
+#define ZL_MAX_FORMAT_VERSION (27)
 
 /// Minimum wire format version required to support chunking.
 #define ZL_CHUNK_VERSION_MIN (21)
 
 /// Minimum wire format version required to support typed input.
 #define ZL_TYPED_INPUT_VERSION_MIN (14)
+
+/// Minimum wire format version required to expose per-node materialized dicts.
+#define ZL_MATERIALIZED_DICT_VERSION_MIN (25)
 
 /**
  * @returns The current encoding version number.
