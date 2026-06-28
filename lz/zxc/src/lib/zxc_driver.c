@@ -210,15 +210,17 @@ typedef enum { JOB_STATUS_FREE, JOB_STATUS_FILLED, JOB_STATUS_PROCESSED } job_st
  * @var zxc_stream_job_t::status
  *      The current state of this job (Free, Filled, or Processed).
  * @var zxc_stream_job_t::pad
- *      Padding bytes to ensure the structure size aligns with typical cache
- * lines (64 bytes), minimizing cache contention between threads accessing
- * adjacent jobs.
+ *      Padding bytes to ensure the structure size aligns with the cache line
+ * size (@c ZXC_CACHE_LINE_SIZE), minimizing cache contention between threads
+ * accessing adjacent jobs.
  */
 typedef struct {
     uint8_t* in_buf;
-    size_t in_cap, in_sz;
+    size_t in_cap;
+    size_t in_sz;
     uint8_t* out_buf;
-    size_t out_cap, result_sz;
+    size_t out_cap;
+    size_t result_sz;
     int job_id;
     ZXC_ATOMIC job_status_t status;  // Atomic for lock-free status updates
     char pad[ZXC_CACHE_LINE_SIZE];   // Prevent False Sharing
@@ -305,14 +307,26 @@ typedef int (*zxc_chunk_processor_t)(zxc_cctx_t* RESTRICT ctx, const uint8_t* RE
  *    User data pointer to be passed to the progress callback function.
  * @var zxc_stream_ctx_t::total_input_bytes
  *     Total size of the input data in bytes, used for progress tracking.
+ * @var zxc_stream_ctx_t::dict
+ *     Pointer to the optional dictionary buffer used to prime
+ *     compression/decompression, NULL when no dictionary is in use.
+ * @var zxc_stream_ctx_t::dict_size
+ *     Size of the dictionary in bytes, 0 when no dictionary is in use.
+ * @var zxc_stream_ctx_t::dict_huf
+ *     Shared dictionary literal Huffman table (128-byte packed code-lengths
+ *     header), NULL when absent.
  */
 typedef struct {
     zxc_stream_job_t* jobs;
     size_t ring_size;
     int* worker_queue;
-    int wq_head, wq_tail, wq_count;
+    int wq_head;
+    int wq_tail;
+    int wq_count;
     pthread_mutex_t lock;
-    pthread_cond_t cond_reader, cond_worker, cond_writer;
+    pthread_cond_t cond_reader;
+    pthread_cond_t cond_worker;
+    pthread_cond_t cond_writer;
     int shutdown_workers;
     int compression_mode;
     ZXC_ATOMIC int io_error;
@@ -641,12 +655,10 @@ static int64_t zxc_stream_engine_run(FILE* f_in, FILE* f_out, const int n_thread
     if (mode == 1 && progress_cb) {
         // LCOV_EXCL_START
         const long long saved_pos = ftello(f_in);
-        if (saved_pos >= 0) {
-            if (fseeko(f_in, 0, SEEK_END) == 0) {
-                const long long size = ftello(f_in);
-                if (size > 0) total_file_size = (uint64_t)size;
-                fseeko(f_in, saved_pos, SEEK_SET);
-            }
+        if (saved_pos >= 0 && fseeko(f_in, 0, SEEK_END) == 0) {
+            const long long size = ftello(f_in);
+            if (size > 0) total_file_size = (uint64_t)size;
+            fseeko(f_in, saved_pos, SEEK_SET);
         }
         // LCOV_EXCL_STOP
     }
@@ -690,12 +702,11 @@ static int64_t zxc_stream_engine_run(FILE* f_in, FILE* f_out, const int n_thread
     uint32_t d_global_hash = 0;
 
     const uint64_t max_out = zxc_compress_bound(runtime_chunk_sz);
-    const size_t raw_alloc_in = (size_t)(((mode) ? runtime_chunk_sz : max_out) + ZXC_PAD_SIZE);
+    const size_t raw_alloc_in = (size_t)((mode ? runtime_chunk_sz : max_out) + ZXC_PAD_SIZE);
     const size_t alloc_in = (raw_alloc_in + ZXC_ALIGNMENT_MASK) & ~ZXC_ALIGNMENT_MASK;
 
     const size_t raw_alloc_out =
-        (size_t)((mode) ? (max_out + ZXC_PAD_SIZE)
-                        : (runtime_chunk_sz + ZXC_DECOMPRESS_TAIL_PAD + ZXC_PAD_SIZE));
+        (size_t)((mode ? max_out : runtime_chunk_sz + ZXC_DECOMPRESS_TAIL_PAD) + ZXC_PAD_SIZE);
     const size_t alloc_out = (raw_alloc_out + ZXC_ALIGNMENT_MASK) & ~ZXC_ALIGNMENT_MASK;
 
     const size_t per_job_sz = sizeof(zxc_stream_job_t) + sizeof(int) + alloc_in + alloc_out;
@@ -717,7 +728,7 @@ static int64_t zxc_stream_engine_run(FILE* f_in, FILE* f_out, const int n_thread
     ptr += ctx.ring_size * alloc_in;
     uint8_t* buf_out = ptr;
 
-    ZXC_MEMSET(mem_block, 0, alloc_size);
+    ZXC_MEMSET(mem_block, 0, ctx.ring_size * (sizeof(zxc_stream_job_t) + sizeof(int)));
 
     for (size_t i = 0; i < ctx.ring_size; i++) {
         ctx.jobs[i].job_id = (int)i;

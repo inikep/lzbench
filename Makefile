@@ -843,7 +843,7 @@ ifeq "$(DONT_BUILD_ZXC)" "1"
 else
     DEFINES += -DZXC_STATIC_DEFINE
     ZXC_DIR = lz/zxc/src/lib
-    ZXC_FILES = $(ZXC_DIR)/zxc_common.o $(ZXC_DIR)/zxc_dict.o $(ZXC_DIR)/zxc_dispatch.o $(ZXC_DIR)/zxc_driver.o $(ZXC_DIR)/zxc_pstream.o $(ZXC_DIR)/zxc_seekable.o
+    ZXC_FILES = $(ZXC_DIR)/zxc_common.o $(ZXC_DIR)/zxc_dict.o $(ZXC_DIR)/zxc_dispatch.o $(ZXC_DIR)/zxc_driver.o $(ZXC_DIR)/zxc_pivco_tables.o $(ZXC_DIR)/zxc_pstream.o $(ZXC_DIR)/zxc_seekable.o
     ZXC_FILES += $(ZXC_DIR)/zxc_compress_default.o $(ZXC_DIR)/zxc_decompress_default.o $(ZXC_DIR)/zxc_huffman_default.o
 
     ifneq (,$(filter x86_64% amd64% i%86,$(TARGET_ARCH)))
@@ -881,7 +881,7 @@ else
     $(ZXC_DIR)/%_avx2.o: ZXC_FLAGS = -mavx2 -mbmi -mbmi2 -mlzcnt -DZXC_FUNCTION_SUFFIX=_avx2 -DZXC_USE_AVX2
     $(ZXC_DIR)/%_avx2.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
 
-    $(ZXC_DIR)/%_avx512.o: ZXC_FLAGS = -mavx512f -mavx512bw -mbmi -mbmi2 -mlzcnt -DZXC_FUNCTION_SUFFIX=_avx512 -DZXC_USE_AVX512
+    $(ZXC_DIR)/%_avx512.o: ZXC_FLAGS = -mavx512f -mavx512bw -mavx512vbmi -mavx512vbmi2 -mbmi -mbmi2 -mlzcnt -DZXC_FUNCTION_SUFFIX=_avx512 -DZXC_USE_AVX512
     $(ZXC_DIR)/%_avx512.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
 
     $(ZXC_DIR)/%_neon.o: ZXC_FLAGS = $(NEON_FLAGS) -DZXC_FUNCTION_SUFFIX=_neon

@@ -34,8 +34,8 @@
 /**
  * @name Standard Headers
  * @brief Pulled in by the stock libzxc build to provide @c size_t,
- * @c uintN_t / @c intN_t, @c INT_MAX / @c UINT_MAX, @c malloc / @c calloc /
- * @c realloc / @c free / @c qsort, and @c memcpy / @c memset / @c memmove /
+ * @c uintN_t / @c intN_t, @c CHAR_BIT, @c malloc / @c calloc /
+ * @c realloc / @c free, and @c memcpy / @c memset / @c memmove /
  * @c memcmp.
  *
  * Vendored overrides of this file typically substitute @c <linux/limits.h>,
