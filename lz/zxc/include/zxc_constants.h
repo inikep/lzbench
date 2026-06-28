@@ -25,7 +25,7 @@
 /** @brief Major version number. */
 #define ZXC_VERSION_MAJOR 0
 /** @brief Minor version number. */
-#define ZXC_VERSION_MINOR 12
+#define ZXC_VERSION_MINOR 13
 /** @brief Patch version number. */
 #define ZXC_VERSION_PATCH 0
 
@@ -35,7 +35,7 @@
 /** @endcond */
 
 /**
- * @brief Human-readable version string (e.g. "0.7.2").
+ * @brief Human-readable version string in "MAJOR.MINOR.PATCH" form (e.g. "0.13.0").
  */
 #define ZXC_LIB_VERSION_STR    \
     ZXC_STR(ZXC_VERSION_MAJOR) \
@@ -89,8 +89,8 @@
  * @brief Bounds on thread-count parameters accepted by the streaming APIs.
  * @{
  */
-/** @brief Maximum value accepted for `num_threads` in `zxc_stream_compress`
- *  / `zxc_stream_decompress`. Passing a higher value returns `ZXC_ERROR_INVALID_OPTION`. */
+/** @brief Maximum value accepted for `n_threads` in `zxc_stream_compress`
+ *  / `zxc_stream_decompress`. Higher values are clamped to `ZXC_MAX_THREADS`. */
 #define ZXC_MAX_THREADS 512
 /** @} */ /* end of threading */
 
@@ -122,12 +122,13 @@
  * zxc_compress() or zxc_stream_compress().
  */
 typedef enum {
-    ZXC_LEVEL_FASTEST = 1,  /**< Fastest compression, best for real-time applications. */
-    ZXC_LEVEL_FAST = 2,     /**< Fast compression, good for real-time applications. */
-    ZXC_LEVEL_DEFAULT = 3,  /**< Recommended: ratio > LZ4, decode speed > LZ4. */
-    ZXC_LEVEL_BALANCED = 4, /**< Good ratio, good decode speed. */
-    ZXC_LEVEL_COMPACT = 5,  /**< High density. Best for storage/firmware/assets. */
-    ZXC_LEVEL_DENSITY = 6   /**< Maximum density: Huffman-coded literals on top of COMPACT. */
+    ZXC_LEVEL_FASTEST = 1,  /**< Fastest compression; lowest ratio. Best for real-time use. */
+    ZXC_LEVEL_FAST = 2,     /**< Fast compression; slightly better ratio than FASTEST. */
+    ZXC_LEVEL_DEFAULT = 3,  /**< Recommended default: better ratio and decode speed than LZ4. */
+    ZXC_LEVEL_BALANCED = 4, /**< Balanced trade-off between ratio and decode speed. */
+    ZXC_LEVEL_COMPACT = 5,  /**< Denser encoding. Best for storage, firmware, and assets. */
+    ZXC_LEVEL_DENSITY = 6,  /**< Higher density: adds Huffman-coded literals on top of COMPACT. */
+    ZXC_LEVEL_ULTRA = 7     /**< Maximum density: Huffman-coded literals and sequence tokens. */
 } zxc_compression_level_t;
 
 /** @} */ /* end of levels */

@@ -60,7 +60,7 @@ typedef void (*zxc_progress_callback_t)(uint64_t bytes_processed, uint64_t bytes
  */
 typedef struct {
     int n_threads;     /**< Worker thread count (0 = auto-detect CPU cores). */
-    int level;         /**< Compression level 1-5 (0 = default, ZXC_LEVEL_DEFAULT). */
+    int level;         /**< Compression level 1-7 (0 = default, ZXC_LEVEL_DEFAULT). */
     size_t block_size; /**< Block size in bytes (0 = default ZXC_BLOCK_SIZE_DEFAULT). Must be power
                           of 2, [4KB - 2MB]. */
     int checksum_enabled; /**< 1 to enable per-block and global checksums, 0 to disable. */
@@ -81,7 +81,7 @@ typedef struct {
  * Zero-initialise for safe defaults.
  *
  * @code
- * zxc_decompress_opts_t opts = { .checksum = 1 };
+ * zxc_decompress_opts_t opts = { .checksum_enabled = 1 };
  * zxc_stream_decompress(f_in, f_out, &opts);
  * @endcode
  */

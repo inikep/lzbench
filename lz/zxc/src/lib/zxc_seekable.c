@@ -360,8 +360,10 @@ static zxc_seekable* zxc_seekable_parse(const uint8_t* data, const size_t data_s
         comp_acc += s->comp_sizes[i];
         /* Reject if cumulative offset exceeds file size (inconsistent table) */
         if (UNLIKELY(comp_acc > (uint64_t)data_size)) {
+            // LCOV_EXCL_START
             zxc_seekable_free(s);
             return NULL;
+            // LCOV_EXCL_STOP
         }
     }
     s->comp_offsets[num_blocks] = comp_acc;
@@ -372,20 +374,26 @@ static zxc_seekable* zxc_seekable_parse(const uint8_t* data, const size_t data_s
     const uint64_t expected_eof_offset =
         (uint64_t)(seek_block_start - data) - ZXC_BLOCK_HEADER_SIZE;
     if (UNLIKELY(comp_acc != expected_eof_offset)) {
+        // LCOV_EXCL_START
         zxc_seekable_free(s);
         return NULL;
+        // LCOV_EXCL_STOP
     }
 
     /* Validate that an actual EOF block header exists at the computed offset */
     if (UNLIKELY(comp_acc + ZXC_BLOCK_HEADER_SIZE > data_size)) {
+        // LCOV_EXCL_START
         zxc_seekable_free(s);
         return NULL;
+        // LCOV_EXCL_STOP
     }
     zxc_block_header_t eof_bh;
     if (UNLIKELY(zxc_read_block_header(data + comp_acc, ZXC_BLOCK_HEADER_SIZE, &eof_bh) != ZXC_OK ||
                  eof_bh.block_type != ZXC_BLOCK_EOF)) {
+        // LCOV_EXCL_START
         zxc_seekable_free(s);
         return NULL;
+        // LCOV_EXCL_STOP
     }
 
     return s;
@@ -496,8 +504,10 @@ zxc_seekable* zxc_seekable_open_reader(const zxc_reader_t* r) {
     /* Build seekable handle */
     zxc_seekable* const s = (zxc_seekable*)ZXC_CALLOC(1, sizeof(zxc_seekable));
     if (UNLIKELY(!s)) {
+        // LCOV_EXCL_START
         ZXC_FREE(seek_buf);
         return NULL;
+        // LCOV_EXCL_STOP
     }
 
     s->reader = *r;
@@ -837,37 +847,82 @@ static int zxc_seek_read_block_mt(const zxc_seekable* s, const uint32_t block_id
 }
 
 /**
+ * @struct zxc_seek_mt_stripe_t
+ * @brief Per-thread stripe descriptor for multi-threaded decompression.
+ *
+ * Each worker owns the job subset {first, first+stride, first+2*stride, ...}
+ * of the shared @c jobs array and reuses one decompression context, one
+ * dictionary copy and one read buffer across all of them, amortising what
+ * would otherwise be per-block costs (context init, dict memcpy, malloc and
+ * a thread spawn per block).  Stripes are pairwise disjoint, so workers
+ * touch distinct jobs and distinct output ranges and need no
+ * synchronisation beyond the final join.
+ *
+ * Written by @ref zxc_seekable_decompress_range_mt before the fork phase and
+ * read-only for the worker (@ref zxc_seek_mt_worker); results travel through
+ * the jobs themselves (@c zxc_seek_mt_job_t::result).
+ *
+ * @var zxc_seek_mt_stripe_t::jobs
+ *      Job array shared by all workers; this worker only reads/writes the
+ *      entries of its own stripe.
+ * @var zxc_seek_mt_stripe_t::num_jobs
+ *      Total number of jobs in @c jobs (stripe iteration bound).
+ * @var zxc_seek_mt_stripe_t::first
+ *      Index of this worker's first job (equals its worker index, in
+ *      [0, @c stride)).
+ * @var zxc_seek_mt_stripe_t::stride
+ *      Stripe step between consecutive jobs of this worker; equals the
+ *      worker-thread count.
+ */
+typedef struct {
+    zxc_seek_mt_job_t* jobs;
+    uint32_t num_jobs;
+    uint32_t first;
+    uint32_t stride;
+} zxc_seek_mt_stripe_t;
+
+/**
+ * @brief Marks every job of a stripe with @p code (setup-failure path).
+ *
+ * @param[in,out] st   Stripe whose jobs to mark.
+ * @param[in]     code Negative @ref zxc_error_t value.
+ */
+static void zxc_seek_mt_fail_stripe(zxc_seek_mt_stripe_t* st, const int code) {
+    for (uint32_t i = st->first; i < st->num_jobs; i += st->stride) st->jobs[i].result = code;
+}
+
+/**
  * @brief Worker thread entry point for multi-threaded seekable decompression.
  *
- * Each worker:
- *   1. Allocates a thread-local decompression context.
- *   2. Reads the compressed block via pread (thread-safe).
- *   3. Decompresses into a local work buffer.
- *   4. Copies the requested sub-range into the caller's output buffer.
+ * Sets up its context, dictionary copy and read buffer once, then for each
+ * block of its stripe: read (thread-safe pread), decompress, copy the
+ * requested sub-range into the caller's output.  The dict prefix survives
+ * across blocks because the decoder never writes below its dst.
  *
- * The outcome is written into @c job->result; the main thread reads it after
- * join.
+ * Each job's outcome goes into its @c result (read by the main thread after
+ * join); on error the worker abandons the rest of its stripe.
  *
- * @param[in,out] arg  Pointer to this worker's @ref zxc_seek_mt_job_t.
- * @return Always NULL (the result code is reported via @c job->result).
+ * @param[in,out] arg  Pointer to this worker's @ref zxc_seek_mt_stripe_t.
+ * @return Always NULL (result codes are reported via the jobs).
  */
 static void* zxc_seek_mt_worker(void* arg) {
-    zxc_seek_mt_job_t* const job = (zxc_seek_mt_job_t*)arg;
-    const zxc_seekable* const s = job->s;
-    const uint32_t bi = job->block_idx;
+    zxc_seek_mt_stripe_t* const st = (zxc_seek_mt_stripe_t*)arg;
+    zxc_seek_mt_job_t* const jobs = st->jobs;
+    const zxc_seekable* const s = jobs[st->first].s;
 
     /* Thread-local decompression context (mode=0 for decompress-only) */
     zxc_cctx_t dctx;
-    // LCOV_EXCL_START
     if (UNLIKELY(zxc_cctx_init(&dctx, (size_t)s->block_size, 0, 0, 0, s->dict_size) != ZXC_OK)) {
-        job->result = ZXC_ERROR_MEMORY;
+        // LCOV_EXCL_START
+        zxc_seek_mt_fail_stripe(st, ZXC_ERROR_MEMORY);
         return NULL;
+        // LCOV_EXCL_STOP
     }
-    // LCOV_EXCL_STOP
+
     if (UNLIKELY(zxc_cctx_attach_dict_huf(&dctx, s->has_dict_huf ? s->dict_huf : NULL) != ZXC_OK)) {
         // LCOV_EXCL_START
         zxc_cctx_free(&dctx);
-        job->result = ZXC_ERROR_CORRUPT_DATA;
+        zxc_seek_mt_fail_stripe(st, ZXC_ERROR_CORRUPT_DATA);
         return NULL;
         // LCOV_EXCL_STOP
     }
@@ -876,51 +931,58 @@ static void* zxc_seek_mt_worker(void* arg) {
     uint8_t* const dict_work = dctx.dict_buffer;
     if (dict_work) ZXC_MEMCPY(dict_work, s->dict, s->dict_size);
 
-    /* Read compressed block */
-    const uint32_t csz = s->comp_sizes[bi];
-    uint8_t* const read_buf = (uint8_t*)ZXC_MALLOC(csz + ZXC_PAD_SIZE);
-    // LCOV_EXCL_START
+    /* Read buffer sized for the largest compressed block of the stripe. */
+    size_t max_csz = 0;
+    for (uint32_t i = st->first; i < st->num_jobs; i += st->stride) {
+        const uint32_t csz = s->comp_sizes[jobs[i].block_idx];
+        if (csz > max_csz) max_csz = csz;
+    }
+    uint8_t* const read_buf = (uint8_t*)ZXC_MALLOC(max_csz + ZXC_PAD_SIZE);
     if (UNLIKELY(!read_buf)) {
+        // LCOV_EXCL_START
         zxc_cctx_free(&dctx);
-        job->result = ZXC_ERROR_MEMORY;
+        zxc_seek_mt_fail_stripe(st, ZXC_ERROR_MEMORY);
         return NULL;
+        // LCOV_EXCL_STOP
     }
-    // LCOV_EXCL_STOP
 
-    const int read_res = zxc_seek_read_block_mt(s, bi, read_buf, csz + ZXC_PAD_SIZE);
-    // LCOV_EXCL_START
-    if (UNLIKELY(read_res < 0)) {
-        ZXC_FREE(read_buf);
-        zxc_cctx_free(&dctx);
-        job->result = read_res;
-        return NULL;
+    for (uint32_t i = st->first; i < st->num_jobs; i += st->stride) {
+        zxc_seek_mt_job_t* const job = &jobs[i];
+
+        const int read_res =
+            zxc_seek_read_block_mt(s, job->block_idx, read_buf, max_csz + ZXC_PAD_SIZE);
+        if (UNLIKELY(read_res < 0)) {
+            // LCOV_EXCL_START
+            job->result = read_res;
+            break;
+            // LCOV_EXCL_STOP
+        }
+
+        /* Decompress: use dict bounce buffer when dictionary is active */
+        uint8_t* dec_dst = dict_work ? dict_work + s->dict_size : dctx.work_buf;
+        const int dec_res =
+            zxc_decompress_chunk_wrapper(&dctx, read_buf, (size_t)read_res, dec_dst, work_sz);
+
+        if (UNLIKELY(dec_res < 0)) {
+            // LCOV_EXCL_START
+            job->result = dec_res;
+            break;
+            // LCOV_EXCL_STOP
+        }
+        if (UNLIKELY((size_t)dec_res < job->skip + job->copy_len)) {
+            // LCOV_EXCL_START
+            job->result = ZXC_ERROR_CORRUPT_DATA;
+            break;
+            // LCOV_EXCL_STOP
+        }
+
+        /* Copy the requested portion directly into the caller's output buffer */
+        ZXC_MEMCPY(job->dst, dec_dst + job->skip, job->copy_len);
+        job->result = 0;
     }
-    // LCOV_EXCL_STOP
 
-    /* Decompress: use dict bounce buffer when dictionary is active */
-    uint8_t* dec_dst = dict_work ? dict_work + s->dict_size : dctx.work_buf;
-    const int dec_res =
-        zxc_decompress_chunk_wrapper(&dctx, read_buf, (size_t)read_res, dec_dst, work_sz);
     ZXC_FREE(read_buf);
-
-    // LCOV_EXCL_START
-    if (UNLIKELY(dec_res < 0)) {
-        zxc_cctx_free(&dctx);
-        job->result = dec_res;
-        return NULL;
-    }
-    if (UNLIKELY((size_t)dec_res < job->skip + job->copy_len)) {
-        zxc_cctx_free(&dctx);
-        job->result = ZXC_ERROR_CORRUPT_DATA;
-        return NULL;
-    }
-    // LCOV_EXCL_STOP
-
-    /* Copy the requested portion directly into the caller's output buffer */
-    ZXC_MEMCPY(job->dst, dec_dst + job->skip, job->copy_len);
-
     zxc_cctx_free(&dctx);
-    job->result = 0;
     return NULL;
 }
 
@@ -999,61 +1061,51 @@ int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_
         remaining -= copy;
     }
 
-    /* Launch worker threads (fork phase) */
+    /* Launch one persistent worker per thread */
     zxc_thread_t* const threads =
         (zxc_thread_t*)ZXC_MALLOC((size_t)n_threads * sizeof(zxc_thread_t));
-    // LCOV_EXCL_START
-    if (UNLIKELY(!threads)) {
+    zxc_seek_mt_stripe_t* const stripes =
+        (zxc_seek_mt_stripe_t*)ZXC_MALLOC((size_t)n_threads * sizeof(zxc_seek_mt_stripe_t));
+    if (UNLIKELY(!threads || !stripes)) {
+        // LCOV_EXCL_START
+        ZXC_FREE(threads);
+        ZXC_FREE(stripes);
         ZXC_FREE(jobs);
         return ZXC_ERROR_MEMORY;
+        // LCOV_EXCL_STOP
     }
-    // LCOV_EXCL_STOP
 
-    /*
-     * Distribute jobs across threads round-robin style.
-     * If num_jobs > n_threads, some threads handle multiple blocks sequentially.
-     * We process jobs in waves: spawn n_threads at a time, join, repeat.
-     */
-    int error = 0;
-    uint32_t job_idx = 0;
-
-    while (job_idx < num_jobs && !error) {
-        const int wave_size =
-            ((int)(num_jobs - job_idx) < n_threads) ? (int)(num_jobs - job_idx) : n_threads;
-
-        int launched = 0;
-        for (int t = 0; t < wave_size; t++) {
+    int launched = 0;
+    for (int t = 0; t < n_threads; t++) {
+        stripes[t].jobs = jobs;
+        stripes[t].num_jobs = num_jobs;
+        stripes[t].first = (uint32_t)t;
+        stripes[t].stride = (uint32_t)n_threads;
+        if (UNLIKELY(zxc_seek_thread_create(&threads[t], zxc_seek_mt_worker, &stripes[t]) != 0)) {
             // LCOV_EXCL_START
-            if (zxc_seek_thread_create(&threads[t], zxc_seek_mt_worker, &jobs[job_idx + t]) != 0) {
-                /* Failed to create thread - mark remaining jobs as errors */
-                for (uint32_t j = job_idx + (uint32_t)t; j < num_jobs; j++)
-                    jobs[j].result = ZXC_ERROR_MEMORY;
-                error = 1;
-                break;
-            }
+            /* Failed to create thread - mark its stripe as errored; already
+             * launched workers keep running and are joined below. */
+            zxc_seek_mt_fail_stripe(&stripes[t], ZXC_ERROR_MEMORY);
+            continue;
             // LCOV_EXCL_STOP
-            launched++;
         }
 
-        /* Join phase */
-        for (int t = 0; t < launched; t++) {
-            zxc_seek_thread_join(threads[t]);
-            if (jobs[job_idx + t].result < 0) error = 1;
-        }
-
-        job_idx += (uint32_t)launched;
+        launched++;
+        threads[launched - 1] = threads[t];
     }
+
+    /* Join phase */
+    for (int t = 0; t < launched; t++) zxc_seek_thread_join(threads[t]);
 
     ZXC_FREE(threads);
+    ZXC_FREE(stripes);
 
-    /* Check for errors */
+    /* Report the first error in job order, if any. */
     int64_t result = (int64_t)len;
-    if (error) {
-        for (uint32_t i = 0; i < num_jobs; i++) {
-            if (jobs[i].result < 0) {
-                result = (int64_t)jobs[i].result;
-                break;
-            }
+    for (uint32_t i = 0; i < num_jobs; i++) {
+        if (jobs[i].result < 0) {
+            result = (int64_t)jobs[i].result;
+            break;
         }
     }
 
@@ -1071,7 +1123,7 @@ int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_
  * @param[in] s  Seekable handle to release (may be NULL).
  */
 void zxc_seekable_free(zxc_seekable* s) {
-    if (!s) return;
+    if (UNLIKELY(!s)) return;
     if (s->dctx_initialized) zxc_cctx_free(&s->dctx);
     ZXC_FREE(s->dict);
     ZXC_FREE(s->comp_sizes);

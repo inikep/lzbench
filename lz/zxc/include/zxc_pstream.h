@@ -98,6 +98,12 @@ typedef struct {
  * @c dst.  The library writes starting at @c dst+pos and advances @c pos by
  * the number of bytes produced.  The caller drains @c [dst, dst+pos) and
  * resets @c pos to 0 between rounds (or grows @c size).
+ *
+ * The ENTIRE region @c [dst+pos, dst+size) must be treated as writable
+ * scratch: when the remaining capacity is large enough, the decoder writes
+ * blocks directly into it using speculative (wild-copy) stores, so bytes
+ * beyond the final @c pos are unspecified after a call.  Do not keep live
+ * data inside the declared capacity.
  */
 typedef struct {
     void* dst;   /**< Caller-owned output region. */
@@ -119,13 +125,16 @@ typedef struct zxc_dstream_s zxc_dstream;
  * All settings from @p opts are copied into the context.  After this call,
  * the @p opts struct may be freed or reused.
  *
- * Only @c level, @c block_size, and @c checksum_enabled are honoured.
- * @c n_threads is ignored (this API is single-threaded; use
- * @ref zxc_stream_compress for the multi-threaded @c FILE* pipeline).
+ * Only @c level, @c block_size, and @c checksum_enabled are honoured
+ * (levels above @ref ZXC_LEVEL_ULTRA are clamped).  @c n_threads is ignored
+ * (this API is single-threaded; use @ref zxc_stream_compress for the
+ * multi-threaded @c FILE* pipeline).  Dictionary options are rejected: the
+ * push-stream format carries no dict_id, so passing @c dict / @c dict_size /
+ * @c dict_huf makes creation fail rather than silently dropping them.
  *
  * If @p opts is not @c NULL, the honoured fields must contain valid values.
- * Invalid option values (for example an unsupported @c block_size) cause
- * stream creation to fail.
+ * Invalid option values (for example an unsupported @c block_size or a
+ * dictionary) cause stream creation to fail.
  *
  * @param[in] opts  Compression options, or @c NULL for all defaults.
  * @return Allocated context to be released with @ref zxc_cstream_free,
@@ -228,11 +237,14 @@ ZXC_EXPORT size_t zxc_cstream_out_size(const zxc_cstream* cs);
  *
  * All settings from @p opts are copied into the context.  Only
  * @c checksum_enabled is honoured (controls whether per-block and global
- * checksums are verified when present).
+ * checksums are verified when present).  Dictionary options are rejected
+ * (the push-stream format carries no dict_id): passing @c dict /
+ * @c dict_size / @c dict_huf makes creation fail rather than silently
+ * ignoring them.
  *
  * @param[in] opts  Decompression options, or @c NULL for defaults.
  * @return Allocated context to be released with @ref zxc_dstream_free,
- *         or @c NULL on allocation failure.
+ *         or @c NULL on allocation failure or dictionary options in @p opts.
  */
 ZXC_EXPORT zxc_dstream* zxc_dstream_create(const zxc_decompress_opts_t* opts);
 

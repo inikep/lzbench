@@ -159,21 +159,25 @@ static int cs_set_error(zxc_cstream* cs, const int code) {
 }
 
 /**
- * @brief Compresses one full or partial accumulated block.
+ * @brief Compresses one block from @p src into @c cs->pending.
  *
- * Compresses the contents of @c cs->in_block into @c cs->pending, growing
- * the latter to @ref zxc_compress_block_bound if needed, and updates
- * bookkeeping (@c total_in, @c global_hash, @c in_used reset to 0).  When
- * file-level checksums are enabled, folds the block trailer into the
- * rolling @c global_hash.
+ * Grows @c pending to @ref zxc_compress_block_bound if needed and updates
+ * bookkeeping (@c total_in, @c global_hash).  When file-level checksums are
+ * enabled, folds the block trailer into the rolling @c global_hash.
+ * @p src is either the @c in_block accumulator (via
+ * @ref cs_compress_one_block) or the caller's input buffer directly (the
+ * full-block fast path in @ref zxc_cstream_compress, which skips the
+ * staging memcpy).
  *
- * @pre @c cs->in_used > 0.
+ * @pre @c len > 0.
  *
- * @param[in,out] cs Compression stream.
+ * @param[in,out] cs  Compression stream.
+ * @param[in]     src Block bytes to compress (only [src, src+len) is read).
+ * @param[in]     len Block length in bytes.
  * @return @ref ZXC_OK on success, negative @ref zxc_error_t on failure.
  */
-static int cs_compress_one_block(zxc_cstream* cs) {
-    const uint64_t bound = zxc_compress_block_bound(cs->in_used);
+static int cs_compress_block_from(zxc_cstream* cs, const uint8_t* RESTRICT src, const size_t len) {
+    const uint64_t bound = zxc_compress_block_bound(len);
     // LCOV_EXCL_START
     if (UNLIKELY(bound == 0 || bound > SIZE_MAX)) return ZXC_ERROR_OVERFLOW;
     if (UNLIKELY(bound > cs->pending_cap)) {
@@ -183,14 +187,13 @@ static int cs_compress_one_block(zxc_cstream* cs) {
         cs->pending_cap = (size_t)bound;
     }
     // LCOV_EXCL_STOP
-    const int64_t csize = zxc_compress_block(cs->cctx, cs->in_block, cs->in_used, cs->pending,
-                                             cs->pending_cap, &cs->opts);
+    const int64_t csize =
+        zxc_compress_block(cs->cctx, src, len, cs->pending, cs->pending_cap, &cs->opts);
     if (UNLIKELY(csize < 0)) return (int)csize;  // LCOV_EXCL_LINE
 
     cs->pending_len = (size_t)csize;
     cs->pending_pos = 0;
-    cs->total_in += cs->in_used;
-    cs->in_used = 0;
+    cs->total_in += len;
 
     /* If checksums are on, the block trailer is the last ZXC_BLOCK_CHECKSUM_SIZE
      * bytes of pending; fold it into the rolling global hash. */
@@ -199,6 +202,25 @@ static int cs_compress_one_block(zxc_cstream* cs) {
         cs->global_hash = zxc_hash_combine_rotate(cs->global_hash, bh);
     }
     return ZXC_OK;
+}
+
+/**
+ * @brief Compresses the accumulated (full or partial) block.
+ *
+ * Convenience wrapper around @ref cs_compress_block_from for the staging
+ * path: compresses @c cs->in_block[0..in_used) into @c cs->pending and, on
+ * success, resets @c in_used to 0 so the accumulator is ready for the next
+ * block.  On failure the accumulator is left untouched.
+ *
+ * @pre @c cs->in_used > 0.
+ *
+ * @param[in,out] cs Compression stream.
+ * @return @ref ZXC_OK on success, negative @ref zxc_error_t on failure.
+ */
+static int cs_compress_one_block(zxc_cstream* cs) {
+    const int rc = cs_compress_block_from(cs, cs->in_block, cs->in_used);
+    if (LIKELY(rc == ZXC_OK)) cs->in_used = 0;
+    return rc;
 }
 
 /**
@@ -230,22 +252,35 @@ static int cs_drain_pending(zxc_cstream* cs, zxc_outbuf_t* out) {
  *
  * Copies @p opts into the new context, applying defaults for any zero-valued
  * field (@c level -> @ref ZXC_LEVEL_DEFAULT, @c block_size ->
- * @ref ZXC_BLOCK_SIZE_DEFAULT).  Forces single-threaded operation
- * (@c n_threads = 0), disables progress callbacks and seekable framing
- * (those modes belong to the @c FILE*-based pipeline).  Pre-sizes the
+ * @ref ZXC_BLOCK_SIZE_DEFAULT; levels above @ref ZXC_LEVEL_ULTRA are
+ * clamped).  Forces single-threaded operation (@c n_threads = 0) and
+ * disables progress callbacks and seekable framing (those modes belong to
+ * the @c FILE*-based pipeline).  Dictionary options are REJECTED (the
+ * push-stream format carries no dict_id, so a dictionary would produce
+ * undecodable archives): passing any of @c dict / @c dict_size / @c dict_huf
+ * returns @c NULL rather than silently dropping them.  Pre-sizes the
  * @c pending buffer so that the file header / footer paths never need a
  * realloc.
  *
  * @param[in] opts Compression options, or @c NULL for full defaults.
  * @return New stream owned by the caller, or @c NULL on allocation
- *         failure / invalid option values.
+ *         failure / invalid option values (including dictionary options).
  */
 zxc_cstream* zxc_cstream_create(const zxc_compress_opts_t* opts) {
     zxc_cstream* cs = (zxc_cstream*)ZXC_CALLOC(1, sizeof(*cs));
     if (UNLIKELY(!cs)) return NULL;  // LCOV_EXCL_LINE
 
     if (opts) cs->opts = *opts;
+
+    /* The push-stream format carries no dict_id, so a dictionary here would
+     * produce archives that decode wrong (or not at all) elsewhere. */
+    if (UNLIKELY(cs->opts.dict || cs->opts.dict_size || cs->opts.dict_huf)) {
+        ZXC_FREE(cs);
+        return NULL;
+    }
+
     if (cs->opts.level == 0) cs->opts.level = ZXC_LEVEL_DEFAULT;
+    cs->opts.level = zxc_level_clamp(cs->opts.level);
     if (cs->opts.block_size == 0) cs->opts.block_size = ZXC_BLOCK_SIZE_DEFAULT;
     /* n_threads is ignored on this single-threaded path. */
     cs->opts.n_threads = 0;
@@ -390,7 +425,7 @@ size_t zxc_cstream_in_size(const zxc_cstream* cs) { return cs ? cs->block_size :
  * @return Suggested output buffer capacity in bytes, or 0 if @p cs is @c NULL.
  */
 size_t zxc_cstream_out_size(const zxc_cstream* cs) {
-    if (!cs) return 0;
+    if (UNLIKELY(!cs)) return 0;  // LCOV_EXCL_LINE
     const uint64_t b = zxc_compress_block_bound(cs->block_size);
     return (b == 0 || b > SIZE_MAX) ? cs->block_size : (size_t)b;
 }
@@ -432,12 +467,7 @@ int64_t zxc_cstream_compress(zxc_cstream* cs, zxc_outbuf_t* out, zxc_inbuf_t* in
                 break;
             }
 
-            case CS_DRAIN_HEADER: {
-                if (!cs_drain_pending(cs, out)) return (int64_t)(cs->pending_len - cs->pending_pos);
-                cs->state = CS_ACCUMULATE;
-                break;
-            }
-
+            case CS_DRAIN_HEADER:
             case CS_DRAIN_BLOCK: {
                 if (!cs_drain_pending(cs, out)) return (int64_t)(cs->pending_len - cs->pending_pos);
                 cs->state = CS_ACCUMULATE;
@@ -446,6 +476,15 @@ int64_t zxc_cstream_compress(zxc_cstream* cs, zxc_outbuf_t* out, zxc_inbuf_t* in
 
             case CS_ACCUMULATE: {
                 const size_t avail_in = in->size - in->pos;
+                if (cs->in_used == 0 && avail_in >= cs->block_size) {
+                    const int rc = cs_compress_block_from(cs, (const uint8_t*)in->src + in->pos,
+                                                          cs->block_size);
+                    if (UNLIKELY(rc < 0)) return cs_set_error(cs, rc);  // LCOV_EXCL_LINE
+                    in->pos += cs->block_size;
+                    cs->state = CS_DRAIN_BLOCK;
+                    break;
+                }
+
                 const size_t room = cs->block_size - cs->in_used;
                 const size_t n = avail_in < room ? avail_in : room;
                 if (n) {
@@ -504,14 +543,8 @@ int64_t zxc_cstream_end(zxc_cstream* cs, zxc_outbuf_t* out) {
                 break;
             }
 
-            case CS_DRAIN_HEADER: {
-                if (!cs_drain_pending(cs, out)) return (int64_t)(cs->pending_len - cs->pending_pos);
-                cs->state = CS_ACCUMULATE;
-                break;
-            }
-
+            case CS_DRAIN_HEADER:
             case CS_DRAIN_BLOCK: {
-                /* This drain came from a full block compressed during _compress. */
                 if (!cs_drain_pending(cs, out)) return (int64_t)(cs->pending_len - cs->pending_pos);
                 cs->state = CS_ACCUMULATE;
                 break;
@@ -559,7 +592,7 @@ int64_t zxc_cstream_end(zxc_cstream* cs, zxc_outbuf_t* out) {
 
             case CS_DONE:
             case CS_ERRORED:
-                return cs->state == CS_ERRORED ? cs->error_code : 0;
+                return cs->state == CS_ERRORED ? cs->error_code : 0;  // LCOV_EXCL_LINE
         }
     }
 }
@@ -641,8 +674,8 @@ typedef enum {
  * @var zxc_dstream_s::file_has_checksum
  *      File-level checksum flag declared by the file header.
  * @var zxc_dstream_s::scratch
- *      Generic accumulator for fixed-size frames; sized for the largest
- *      (file header = 16 bytes).
+ *      Generic 32-byte accumulator for fixed-size frames (file header, block
+ *      header, footer); comfortably holds the largest (16-byte file header).
  * @var zxc_dstream_s::scratch_used
  *      Number of bytes currently held in @c scratch.
  * @var zxc_dstream_s::scratch_need
@@ -794,6 +827,10 @@ zxc_dstream* zxc_dstream_create(const zxc_decompress_opts_t* opts) {
     zxc_dstream* ds = (zxc_dstream*)ZXC_CALLOC(1, sizeof(*ds));
     if (UNLIKELY(!ds)) return NULL;  // LCOV_EXCL_LINE
     if (opts) ds->opts = *opts;
+    if (UNLIKELY(ds->opts.dict || ds->opts.dict_size || ds->opts.dict_huf)) {
+        ZXC_FREE(ds);
+        return NULL;
+    }
     ds->opts.n_threads = 0;
     ds->opts.progress_cb = NULL;
     ds->opts.user_data = NULL;
@@ -810,7 +847,7 @@ zxc_dstream* zxc_dstream_create(const zxc_decompress_opts_t* opts) {
  * @param[in,out] ds Stream returned by @ref zxc_dstream_create.
  */
 void zxc_dstream_free(zxc_dstream* ds) {
-    if (!ds) return;
+    if (UNLIKELY(!ds)) return;  // LCOV_EXCL_LINE
     ZXC_FREE(ds->payload);
     ZXC_FREE(ds->decoded);
     if (ds->inner_initialized) zxc_cctx_free(&ds->inner);
@@ -836,7 +873,7 @@ int zxc_dstream_finished(const zxc_dstream* ds) { return (ds && ds->state == DS_
  * @return Suggested input buffer capacity in bytes, or 0 if @p ds is @c NULL.
  */
 size_t zxc_dstream_in_size(const zxc_dstream* ds) {
-    if (!ds) return 0;
+    if (UNLIKELY(!ds)) return 0;  // LCOV_EXCL_LINE
     if (ds->block_size == 0) return ZXC_BLOCK_SIZE_DEFAULT;
     const uint64_t b = zxc_compress_block_bound(ds->block_size);
     return (b == 0 || b > SIZE_MAX) ? ds->block_size : (size_t)b;
@@ -852,7 +889,7 @@ size_t zxc_dstream_in_size(const zxc_dstream* ds) {
  * @return Suggested output buffer capacity in bytes, or 0 if @p ds is @c NULL.
  */
 size_t zxc_dstream_out_size(const zxc_dstream* ds) {
-    if (!ds) return 0;
+    if (UNLIKELY(!ds)) return 0;  // LCOV_EXCL_LINE
     return ds->block_size == 0 ? ZXC_BLOCK_SIZE_DEFAULT : ds->block_size;
 }
 
@@ -1046,11 +1083,11 @@ int64_t zxc_dstream_decompress(zxc_dstream* ds, zxc_outbuf_t* out, zxc_inbuf_t* 
             }
 
             case DS_DECODE_BLOCK: {
+                const int direct = (out->size - out->pos) >= ds->decoded_cap;
+                uint8_t* const ddst = direct ? (uint8_t*)out->dst + out->pos : ds->decoded;
                 const int dsz = zxc_decompress_chunk_wrapper(
-                    &ds->inner, ds->payload, ds->payload_used, ds->decoded, ds->decoded_cap);
+                    &ds->inner, ds->payload, ds->payload_used, ddst, ds->decoded_cap);
                 if (UNLIKELY(dsz < 0)) return ds_set_error(ds, dsz);
-                ds->decoded_size = (size_t)dsz;
-                ds->decoded_pos = 0;
 
                 /* If file-level checksum verification is enabled, fold this
                  * block's trailer into the rolling global hash (last
@@ -1061,6 +1098,21 @@ int64_t zxc_dstream_decompress(zxc_dstream* ds, zxc_outbuf_t* out, zxc_inbuf_t* 
                         zxc_le32(ds->payload + ds->payload_used - ZXC_BLOCK_CHECKSUM_SIZE);
                     ds->global_hash = zxc_hash_combine_rotate(ds->global_hash, bh);
                 }
+
+                if (direct) {
+                    out->pos += (size_t)dsz;
+                    produced += (size_t)dsz;
+                    ds->total_out += (size_t)dsz;
+                    ds->decoded_size = 0;
+                    ds->decoded_pos = 0;
+                    ds->state = DS_NEED_BLOCK_HEADER;
+                    ds->scratch_used = 0;
+                    ds->scratch_need = ZXC_BLOCK_HEADER_SIZE;
+                    break;
+                }
+
+                ds->decoded_size = (size_t)dsz;
+                ds->decoded_pos = 0;
                 ds->state = DS_EMIT_DECODED;
                 break;
             }

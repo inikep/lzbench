@@ -71,6 +71,9 @@ typedef enum {
     ZXC_ERROR_DICT_MISMATCH = -16,  /**< Provided dictionary ID does not match the file header. */
     ZXC_ERROR_DICT_TOO_LARGE = -17, /**< Dictionary exceeds maximum allowed size. */
 
+    /* Parameter errors */
+    ZXC_ERROR_BAD_LEVEL = -18, /**< Compression level not supported by this context's workspace. */
+
 } zxc_error_t;
 
 /**

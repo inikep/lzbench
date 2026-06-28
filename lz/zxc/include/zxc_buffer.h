@@ -18,13 +18,13 @@
  * // Compress
  * size_t bound = zxc_compress_bound(src_size);
  * void *dst    = malloc(bound);
- * zxc_compress_opts_t opts = { .level = ZXC_LEVEL_DEFAULT, .checksum = 1 };
+ * zxc_compress_opts_t opts = { .level = ZXC_LEVEL_DEFAULT, .checksum_enabled = 1 };
  * int64_t csize = zxc_compress(src, src_size, dst, bound, &opts);
  *
  * // Decompress
  * uint64_t orig = zxc_get_decompressed_size(dst, csize);
  * void *out     = malloc(orig);
- * zxc_decompress_opts_t dopts = { .checksum = 1 };
+ * zxc_decompress_opts_t dopts = { .checksum_enabled = 1 };
  * int64_t dsize = zxc_decompress(dst, csize, out, orig, &dopts);
  * @endcode
  *
@@ -67,7 +67,7 @@ ZXC_EXPORT int zxc_min_level(void);
 /**
  * @brief Returns the maximum supported compression level.
  *
- * Currently returns @ref ZXC_LEVEL_DENSITY (6).
+ * Currently returns @ref ZXC_LEVEL_ULTRA (7).
  *
  * @return Maximum compression level value.
  */
@@ -86,7 +86,7 @@ ZXC_EXPORT int zxc_default_level(void);
  * @brief Returns the human-readable library version string.
  *
  * The returned pointer is a compile-time constant and must not be freed.
- * Example: "0.9.1".
+ * Format: "MAJOR.MINOR.PATCH" (e.g. "0.13.0").
  *
  * @return Null-terminated version string.
  */
@@ -125,7 +125,12 @@ ZXC_EXPORT uint64_t zxc_compress_bound(const size_t input_size);
  * @param[out] dst          Pointer to the destination buffer.
  * @param[in] dst_capacity Maximum capacity of the destination buffer.
  * @param[in] opts         Compression options (NULL uses all defaults).
- *                         Only @c level, @c block_size, and @c checksum are used.
+ *                         @c n_threads and the progress callback are ignored
+ *                         (this call is single-threaded and blocking).
+ *
+ * @note @p src and @p dst must not overlap (same contract as memcpy).
+ * @note Levels above @ref ZXC_LEVEL_ULTRA are silently clamped to
+ *       @ref ZXC_LEVEL_ULTRA; levels <= 0 select @ref ZXC_LEVEL_DEFAULT.
  *
  * @return The number of bytes written to dst (>0 on success),
  *         or a negative zxc_error_t code (e.g., ZXC_ERROR_DST_TOO_SMALL) on failure.
@@ -145,7 +150,10 @@ ZXC_EXPORT int64_t zxc_compress(const void* src, const size_t src_size, void* ds
  * @param[out] dst          Pointer to the destination buffer.
  * @param[in] dst_capacity  Capacity of the destination buffer.
  * @param[in] opts          Decompression options (NULL uses all defaults).
- *                          Only @c checksum is used.
+ *                          @c n_threads and the progress callback are ignored
+ *                          (this call is single-threaded and blocking).
+ *
+ * @note @p src and @p dst must not overlap (same contract as memcpy).
  *
  * @return The number of bytes written to dst (>0 on success),
  *         or a negative zxc_error_t code (e.g., ZXC_ERROR_CORRUPT_DATA) on failure.
@@ -154,16 +162,61 @@ ZXC_EXPORT int64_t zxc_decompress(const void* src, const size_t src_size, void* 
                                   const size_t dst_capacity, const zxc_decompress_opts_t* opts);
 
 /**
+ * @brief Minimum single-buffer size for an in-place decompression.
+ *
+ * Reads @p src's header and footer (no decoding) and returns the buffer size
+ * @ref zxc_decompress_inplace needs: `decompressed_size` plus a one-block and
+ * wild-copy safety margin. Allocate a buffer of this size, place the
+ * `comp_size`-byte archive flush-right in it, then call
+ * @ref zxc_decompress_inplace.
+ *
+ * @param[in] src       Compressed archive (only header + footer are read).
+ * @param[in] src_size  Size of the archive in bytes.
+ * @return Required buffer size in bytes, or 0 if @p src is not a valid archive.
+ */
+ZXC_EXPORT size_t zxc_decompress_inplace_bound(const void* src, const size_t src_size);
+
+/**
+ * @brief Decompresses in place inside a single caller-owned buffer.
+ *
+ * The compressed archive must sit **flush-right** in @p buffer (its last
+ * @p comp_size bytes). Decoding runs left-to-right into `buffer[0..]`; the
+ * write cursor provably never overtakes the flush-right read cursor as long as
+ * @p buffer_capacity is at least @ref zxc_decompress_inplace_bound. This
+ * replaces the usual separate input and output buffers with one allocation:
+ * decisive for memory-constrained targets (embedded, FOTA, firmware).
+ *
+ * @note @p buffer is both input and output; on success its first @c N bytes
+ *       hold the decompressed data (@c N = the return value).
+ *
+ * @param[in,out] buffer          Single work buffer with the flush-right archive.
+ * @param[in]     buffer_capacity Total size of @p buffer in bytes.
+ * @param[in]     comp_size       Size of the compressed archive in bytes.
+ * @param[in]     opts            Decompression options, or NULL for defaults.
+ * @return Decompressed size (>0), 0 for an empty frame, or a negative
+ *         @ref zxc_error_t (`ZXC_ERROR_DST_TOO_SMALL` if the margin is missing).
+ */
+ZXC_EXPORT int64_t zxc_decompress_inplace(void* buffer, const size_t buffer_capacity,
+                                          const size_t comp_size,
+                                          const zxc_decompress_opts_t* opts);
+
+/**
  * @brief Returns the decompressed size stored in a ZXC compressed buffer.
  *
  * This function reads the file footer to extract the original uncompressed size
  * without performing any decompression. Useful for allocating output buffers.
  *
+ * The footer is untrusted input: the value is checked for plausibility against
+ * the archive size (each block costs at least a block header and decodes to at
+ * most one block), so a forged footer claiming an absurd size returns 0 rather
+ * than driving an oversized allocation.
+ *
  * @param[in] src       Pointer to the compressed data buffer.
  * @param[in] src_size  Size of the compressed data in bytes.
  *
- * @return The original uncompressed size in bytes, or 0 if the buffer is invalid
- *         or too small to contain a valid ZXC archive.
+ * @return The original uncompressed size in bytes, or 0 if the buffer is invalid,
+ *         too small to contain a valid ZXC archive, or carries an implausible
+ *         footer value.
  */
 ZXC_EXPORT uint64_t zxc_get_decompressed_size(const void* src, const size_t src_size);
 
@@ -277,10 +330,15 @@ ZXC_EXPORT uint64_t zxc_decompress_block_bound(const size_t uncompressed_size);
  *                             Only @c level, @c block_size, and
  *                             @c checksum_enabled are used.
  *
+ * @note @p src and @p dst must not overlap (same contract as memcpy).
+ *
  * @return Compressed block size in bytes (> 0) on success,
  *         or a negative @ref zxc_error_t code on failure.
  *         Returns @ref ZXC_ERROR_BAD_BLOCK_SIZE if
- *         @p src_size > @ref ZXC_BLOCK_SIZE_MAX.
+ *         @p src_size > @ref ZXC_BLOCK_SIZE_MAX, and
+ *         @ref ZXC_ERROR_BAD_LEVEL on a static context for a level raise
+ *         the workspace cannot accommodate (levels above
+ *         @ref ZXC_LEVEL_ULTRA are otherwise silently clamped).
  */
 ZXC_EXPORT int64_t zxc_compress_block(zxc_cctx* cctx, const void* src, size_t src_size, void* dst,
                                       size_t dst_capacity, const zxc_compress_opts_t* opts);
@@ -305,6 +363,8 @@ ZXC_EXPORT int64_t zxc_compress_block(zxc_cctx* cctx, const void* src, size_t sr
  * @param[in]     opts         Decompression options (NULL for defaults).
  *                             Only @c checksum_enabled is used.
  *
+ * @note @p src and @p dst must not overlap (same contract as memcpy).
+ *
  * @return Decompressed size in bytes (> 0) on success,
  *         or a negative @ref zxc_error_t code on failure.
  *         Returns @ref ZXC_ERROR_BAD_BLOCK_SIZE if @p dst_capacity exceeds
@@ -319,7 +379,9 @@ ZXC_EXPORT int64_t zxc_decompress_block(zxc_dctx* dctx, const void* src, size_t 
  * Identical semantics to zxc_decompress_block() but accepts
  * @p dst_capacity == @c uncompressed_size (no trailing @c ZXC_DECOMPRESS_TAIL_PAD
  * required). Intended for integrations whose destination buffer cannot be
- * oversized (for example, in-place page-aligned decoding).
+ * oversized (for example, decoding into an exactly-sized, page-aligned
+ * region). Here "in-place" means a tightly-sized destination, not an
+ * overlapping @p src / @p dst (see @note below).
  *
  * This path is slightly slower than zxc_decompress_block() on the same input
  * because it avoids the wild-copy overshoot that the fast decoder relies on.
@@ -343,6 +405,8 @@ ZXC_EXPORT int64_t zxc_decompress_block(zxc_dctx* dctx, const void* src, size_t 
  *                             margin is required).
  * @param[in]     opts         Decompression options (NULL for defaults).
  *                             Only @c checksum_enabled is used.
+ *
+ * @note @p src and @p dst must not overlap (same contract as memcpy).
  *
  * @return Decompressed size in bytes (> 0) on success,
  *         or a negative @ref zxc_error_t code on failure.
@@ -368,8 +432,8 @@ ZXC_EXPORT int64_t zxc_decompress_block_safe(zxc_dctx* dctx, const void* src, co
  * Intended for integrators that need an accurate memory-budget figure.
  *
  * @param[in] src_size Uncompressed block size in bytes.
- * @param[in] level    Compression level (1..6). Levels <= 5 share the same
- *                     persistent cctx footprint; level 6 adds the optimal-
+ * @param[in] level    Compression level (1..7). Levels <= 5 share the same
+ *                     persistent cctx footprint; levels >= 6 add the optimal-
  *                     parser scratch.
  * @return Estimated peak cctx memory usage in bytes, or 0 if @p src_size is 0.
  */
@@ -404,8 +468,12 @@ ZXC_EXPORT uint64_t zxc_estimate_cctx_size(size_t src_size, int level);
  *
  * The returned context must be freed with zxc_free_cctx().
  *
+ * Levels above @ref ZXC_LEVEL_ULTRA are silently clamped to
+ * @ref ZXC_LEVEL_ULTRA.
+ *
  * @param[in] opts  Compression options for eager init, or NULL for lazy init.
- * @return Pointer to the new context, or @c NULL on allocation failure.
+ * @return Pointer to the new context, or @c NULL on allocation failure or an
+ *         invalid block size (not a power of two in range).
  */
 ZXC_EXPORT zxc_cctx* zxc_create_cctx(const zxc_compress_opts_t* opts);
 
@@ -423,11 +491,16 @@ ZXC_EXPORT void zxc_free_cctx(zxc_cctx* cctx);
  *
  * Identical to zxc_compress() but reuses the internal buffers from @p cctx,
  * avoiding per-call malloc/free overhead.  The context automatically
- * re-initializes when block_size or level changes between calls.
+ * re-initializes when block_size changes between calls, or when a level
+ * raise into @ref ZXC_LEVEL_DENSITY requires the optimal-parser scratch
+ * that lower-level inits do not allocate.  On a static (caller-workspace)
+ * context such a raise is rejected with @ref ZXC_ERROR_BAD_LEVEL instead,
+ * since the workspace cannot grow.
  *
  * Options are **sticky**: settings passed via @p opts are remembered and
  * reused on subsequent calls where @p opts is NULL.  The initial sticky
- * values come from the @p opts passed to zxc_create_cctx().
+ * values come from the @p opts passed to zxc_create_cctx().  Levels above
+ * @ref ZXC_LEVEL_ULTRA are silently clamped.
  *
  * @param[in,out] cctx         Reusable compression context.
  * @param[in]     src          Source data.
@@ -436,6 +509,8 @@ ZXC_EXPORT void zxc_free_cctx(zxc_cctx* cctx);
  * @param[in]     dst_capacity Capacity of the destination buffer.
  * @param[in]     opts         Compression options, or NULL to reuse
  *                             settings from create / last call.
+ *
+ * @note @p src and @p dst must not overlap (same contract as memcpy).
  *
  * @return Compressed size in bytes (> 0) on success,
  *         or a negative @ref zxc_error_t code on failure.
@@ -472,6 +547,8 @@ ZXC_EXPORT void zxc_free_dctx(zxc_dctx* dctx);
  * @param[out]    dst          Destination buffer.
  * @param[in]     dst_capacity Capacity of the destination buffer.
  * @param[in]     opts         Decompression options (NULL for defaults).
+ *
+ * @note @p src and @p dst must not overlap (same contract as memcpy).
  *
  * @return Decompressed size in bytes (> 0) on success,
  *         or a negative @ref zxc_error_t code on failure.
@@ -530,7 +607,7 @@ ZXC_EXPORT int64_t zxc_decompress_dctx(zxc_dctx* dctx, const void* src, size_t s
  * @param[in] block_size  Block size in bytes (must satisfy the regular
  *                        block-size constraints: power of two in
  *                        [@ref ZXC_BLOCK_SIZE_MIN, @ref ZXC_BLOCK_SIZE_MAX]).
- * @param[in] level       Compression level (1..6); higher levels at
+ * @param[in] level       Compression level (1..7); levels at or above
  *                        @ref ZXC_LEVEL_DENSITY add the optimal-parser
  *                        scratch (~8.125 x block_size).
  * @return Workspace size in bytes, or 0 if either argument is invalid.
@@ -553,7 +630,10 @@ ZXC_EXPORT size_t zxc_static_cctx_workspace_size(const size_t block_size, const 
  * pass options requesting a different @c block_size return
  * @ref ZXC_ERROR_BAD_BLOCK_SIZE without re-initialising.  A different
  * @c level / @c checksum_enabled is honoured per-call without
- * re-partitioning.
+ * re-partitioning, except a raise into @ref ZXC_LEVEL_DENSITY on a
+ * workspace carved below it: that would require the optimal-parser
+ * scratch the workspace does not carry, so the call returns
+ * @ref ZXC_ERROR_BAD_LEVEL.
  *
  * @param[in,out] workspace       Caller-allocated buffer, cache-line aligned.
  * @param[in]     workspace_size  Capacity of @p workspace in bytes.
