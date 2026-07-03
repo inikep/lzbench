@@ -1,0 +1,243 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under both the BSD-style license (found in the
+ * LICENSE file in the root directory of this source tree) and the GPLv2 (found
+ * in the COPYING file in the root directory of this source tree).
+ * You may select, at your option, one of the above-listed licenses.
+ */
+
+/**
+ * Modifications Copyright (C) 2025, Advanced Micro Devices. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from this
+ * software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifdef AOCL_ZSTD_OPT
+@AOCL_ZSTD_CFNGF_IS_LONG_MATCH@
+
+#if AOCL_DECOMPRESS_FAST > 1
+#define AOCL_ZSTD_FIND_MATCH_FDS2(safe) \
+{ \
+    /* found a match! */ \
+    PREFETCH_MATCH(ip0 + 4); \
+    \
+    prev_rep_offset1 = rep_offset1; \
+    /* _offset : */ \
+    /* Requires: ip0, idx */ \
+    /* Compute the offset code. */ \
+    match0 = base + matchIdx; \
+    rep_offset1 = (U32)(ip0 - match0); \
+    offcode = OFFSET_TO_OFFBASE(rep_offset1); \
+    mLength = 4; \
+     \
+    /* Count the backwards match length. */ \
+    while (((ip0 > anchor) & (match0 > prefixStart)) && (ip0[-1] == match0[-1])) \
+    { \
+        ip0--; \
+        match0--; \
+        mLength++; \
+    } \
+    \
+    @AOCL_ZSTD_CFNGF_MATCH@
+}
+
+@AOCL_ZSTD_CFNGF_COMMENT@
+FORCE_INLINE_TEMPLATE
+ZSTD_ALLOW_POINTER_OVERFLOW_ATTR
+size_t
+@AOCL_ZSTD_CFNGF_FUNC@(
+        ZSTD_MatchState_t* ms, SeqStore_t* seqStore, U32 rep[ZSTD_REP_NUM],
+        void const* src, size_t srcSize,
+        U32 const mls, int useCmov)
+{
+    const ZSTD_compressionParameters* const cParams = &ms->cParams;
+    U32* const hashTable = ms->hashTable;
+    U32 const hlog = cParams->hashLog;
+    /* support stepSize of 0 */
+    size_t const stepSize = cParams->targetLength + !(cParams->targetLength) + 1; /* min 2 */
+    const BYTE* const base = ms->window.base;
+    const BYTE* const istart = (const BYTE*)src;
+    const U32   endIndex = (U32)((size_t)(istart - base) + srcSize);
+    const U32   prefixStartIndex = ZSTD_getLowestPrefixIndex(ms, endIndex, cParams->windowLog);
+    const BYTE* const prefixStart = base + prefixStartIndex;
+    const BYTE* const iend = istart + srcSize;
+    const BYTE* const ilimit = iend - HASH_READ_SIZE - PREFETCH_SAFETY;
+
+    const BYTE* anchor = istart;
+    const BYTE* ip0 = istart;
+    const BYTE* ip1;
+    const BYTE* ip2;
+    const BYTE* ip3;
+    U32 current0;
+
+    U32 rep_offset1 = rep[0];
+    U32 prev_rep_offset1;
+    U32 offsetSaved1 = 0;
+
+    size_t hash0; /* hash for ip0 */
+    size_t hash1; /* hash for ip1 */
+    U32 matchIdx; /* match idx for ip0 */
+
+    U32 offcode;
+    const BYTE* match0;
+    size_t mLength;
+
+    /* ip0 and ip1 are always adjacent. The targetLength skipping and
+     * uncompressibility acceleration is applied to every other position,
+     * matching the behavior of #1562. step therefore represents the gap
+     * between pairs of positions, from ip0 to ip2 or ip1 to ip3. */
+    size_t step;
+    const BYTE* nextStep;
+#ifdef AOCL_ZSTD_SEARCH_SKIP_OPT
+    const size_t kStepIncr = (1 << (aocl_kSearchStrengthFast - 1));
+#else
+    const size_t kStepIncr = (1 << (kSearchStrength - 1));
+#endif /* AOCL_ZSTD_SEARCH_SKIP_OPT */
+    const ZSTD_match4Found matchFound = useCmov ? ZSTD_match4Found_cmov : ZSTD_match4Found_branch;
+
+    DEBUGLOG(5, "ZSTD_compressBlock_fast_generic_fds");
+    ip0 += (ip0 == prefixStart);
+    {   
+        U32 const curr = (U32)(ip0 - base);
+        U32 const windowLow = ZSTD_getLowestPrefixIndex(ms, curr, cParams->windowLog);
+        U32 const maxRep = curr - windowLow;
+        if (rep_offset1 > maxRep) 
+            offsetSaved1 = rep_offset1, rep_offset1 = 0;
+    }
+
+    /* start each op */
+_start: /* Requires: ip0 */
+    step = stepSize;
+    nextStep = ip0 + kStepIncr;
+
+    /* calculate positions, ip0 - anchor == 0, so we skip step calc */
+    ip1 = ip0 + 1;
+    ip2 = ip0 + step;
+    ip3 = ip2 + 1;
+
+    if (ip3 >= ilimit) 
+    {
+        goto _cleanup;
+    }
+
+    hash0 = ZSTD_hashPtr(ip0, hlog, mls);
+    PREFETCH_MATCH(ip0);
+    hash1 = ZSTD_hashPtr(ip1, hlog, mls);
+    PREFETCH_MATCH(ip1);
+
+    matchIdx = hashTable[hash0];
+
+    do {
+        // AOCL_ZSTD_SEARCH_SKIP_OPT : alternate step not used. Improves ratio.
+        /* write back hash table entry */
+        current0 = (U32)(ip0 - base);
+        hashTable[hash0] = current0;
+
+        @AOCL_ZSTD_CFNGF_REP_MATCH@
+
+        if (matchFound(ip0, base + matchIdx, matchIdx, prefixStartIndex))
+        AOCL_ZSTD_FIND_MATCH_FDS2(1)
+
+        /* lookup ip[1] */
+        matchIdx = hashTable[hash1];
+
+        /* hash ip[2] */
+        hash0 = hash1;
+        hash1 = ZSTD_hashPtr(ip2, hlog, mls);
+
+        /* advance to next positions */
+        ip0 = ip1;
+        ip1 = ip2;
+        ip2 = ip3;
+
+        /* write back hash table entry */
+        current0 = (U32)(ip0 - base);
+        hashTable[hash0] = current0;
+
+        if (matchFound(ip0, base + matchIdx, matchIdx, prefixStartIndex))
+        AOCL_ZSTD_FIND_MATCH_FDS2(0)
+
+        /* lookup ip[1] */
+        matchIdx = hashTable[hash1];
+
+        /* hash ip[2] */
+        hash0 = hash1;
+        hash1 = ZSTD_hashPtr(ip2, hlog, mls);
+
+        /* advance to next positions */
+        ip0 = ip1;
+        ip1 = ip2;
+        ip2 = ip0 + step;
+        ip3 = ip1 + step;
+
+        /* calculate step */
+        if (ip2 >= nextStep) 
+        {
+            // AOCL_ZSTD_SEARCH_SKIP_OPT : step += 3 not used
+            step++;
+            PREFETCH_L1(ip1 + 64);
+            PREFETCH_L1(ip1 + 128);
+            nextStep += kStepIncr;
+        }
+    } while (ip3 < ilimit);
+
+_cleanup:
+    /* Note that there are probably still a couple of positions one could search.
+     * However, it seems to be a meaningful performance hit to try to search
+     * them. So let's not. */
+
+    /* save reps for next block */
+    rep[0] = rep_offset1 ? rep_offset1 : offsetSaved1;
+    for (int i=1; i<ZSTD_REP_NUM; ++i) rep[i] = rep[0]; /* set to rep[0] as rest have not been maintained */
+
+    /* Return the last literals size */
+    return (size_t)(iend - anchor);
+
+    /* Count the forward length. */
+    mLength += AOCL_ZSTD_count(ip0 + mLength, match0 + mLength, iend);
+
+_store_sequences:
+    @AOCL_ZSTD_CFNGF_STORE_SEQ@
+
+@AOCL_ZSTD_CFNGF_MATCH_STORED@
+    ip0 += mLength;
+    anchor = ip0;
+
+    /* Fill table and check for immediate repcode. */
+    if (ip0 <= ilimit) 
+    {
+        /* Fill Table */
+        assert(base+current0+2 > istart);  /* check base overflow */
+        hashTable[ZSTD_hashPtr(base+current0+2, hlog, mls)] = current0+2;  /* here because current+2 could be > iend-8 */
+        hashTable[ZSTD_hashPtr(ip0 - 2, hlog, mls)] = (U32)(ip0 - 2 - base);
+    }
+
+    goto _start;
+}
+#undef AOCL_ZSTD_FIND_MATCH_FDS2
+#endif /* AOCL_DECOMPRESS_FAST > 1 */
+#endif /* AOCL_ZSTD_OPT */

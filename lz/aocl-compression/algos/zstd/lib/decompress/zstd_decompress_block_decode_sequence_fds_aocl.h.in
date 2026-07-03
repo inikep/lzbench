@@ -1,0 +1,96 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under both the BSD-style license (found in the
+ * LICENSE file in the root directory of this source tree) and the GPLv2 (found
+ * in the COPYING file in the root directory of this source tree).
+ * You may select, at your option, one of the above-listed licenses.
+ */
+
+/**
+ * Modifications Copyright (C) 2025, Advanced Micro Devices. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from this
+ * software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifdef AOCL_ZSTD_OPT
+/*
+* Derived from AOCL_ZSTD_decodeSequence. Faster decompression for streams with constraints.
+*/
+FORCE_INLINE_TEMPLATE seq_t
+@AOCL_ZSTD_DSF2_FUNC@(aocl_fast2_seqState_t* seqState, const ZSTD_longOffset_e longOffsets)
+{
+    seq_t seq;
+    const ZSTD_seqSymbol* const llDInfo = seqState->stateLL.state_ptr;
+    const ZSTD_seqSymbol* const mlDInfo = seqState->stateML.state_ptr;
+    const ZSTD_seqSymbol* const ofDInfo = seqState->stateOffb.state_ptr;
+
+    seq.matchLength = mlDInfo->baseValue;
+    seq.litLength = llDInfo->baseValue;
+    {
+        BYTE const llBits = llDInfo->nbAdditionalBits;
+        BYTE const mlBits = mlDInfo->nbAdditionalBits;
+        BYTE const ofBits = ofDInfo->nbAdditionalBits;
+
+        @AOCL_ZSTD_DSF2_INIT@
+
+        assert(llBits <= MaxLLBits);
+        assert(mlBits <= MaxMLBits);
+        assert(ofBits <= MaxOff);
+
+#ifdef AOCL_UNIT_TEST
+        if (UNLIKELY((llBits + mlBits + ofBits) /* totalBits */ >= STREAM_ACCUMULATOR_MIN_64 - (LLFSELog+MLFSELog+OffFSELog)))
+        {
+            seq.litLength = 0; seq.matchLength = 0; seq.offset = 0;
+            return seq; /* not FDS compliant */
+        }
+#else
+        assert((llBits + mlBits + ofBits) /* totalBits */ < (STREAM_ACCUMULATOR_MIN_64 - (LLFSELog + MLFSELog + OffFSELog)));
+#endif
+
+        /* sequence */
+        {
+            size_t offset;
+            @AOCL_ZSTD_DSF2_OFFSET@
+            seq.offset = offset;
+        }
+
+        if (mlBits > 0)
+            seq.matchLength += BIT_readBitsFast(&seqState->DStream, mlBits/*>0*/);
+
+        /* Ensure there are enough bits to read the rest of data in 64-bit mode. */
+        ZSTD_STATIC_ASSERT(16 + LLFSELog + MLFSELog + OffFSELog < STREAM_ACCUMULATOR_MIN_64);
+
+        if (llBits > 0)
+            seq.litLength += BIT_readBitsFast(&seqState->DStream, llBits/*>0*/);
+
+    @AOCL_ZSTD_DSF2_UPDATE_FSE_STATE@
+    }
+
+    return seq;
+}
+
+#endif /* AOCL_ZSTD_OPT */
