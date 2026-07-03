@@ -278,6 +278,41 @@ ifeq "$(DONT_BUILD_MEMLZ)" "1"
     DEFINES += -DBENCH_REMOVE_MEMLZ
 endif
 
+# AOCL-Compression (AMD optimized): x86_64 only; source via git submodule.
+# 'make' auto-fetches the submodule if missing. Force off: make DONT_BUILD_AOCL=1
+NM      ?= nm
+OBJCOPY ?= objcopy
+ifneq ($(DONT_BUILD_AOCL),1)
+    DONT_BUILD_AOCL := 1
+    ifneq ($(detected_OS),Linux)                            # non-Linux (Windows/macOS/etc.)
+    else ifneq ($(HOST_ARCH),$(TARGET_ARCH))                # skip cross-compilation
+    else ifeq (,$(filter x86_64%,$(TARGET_ARCH)))           # only x86_64 (AMD Zen)
+    else ifeq (,$(shell command -v $(OBJCOPY) 2>/dev/null)) # need binutils objcopy
+    else ifeq (,$(shell command -v $(NM) 2>/dev/null))      # need binutils nm
+    else
+        # Auto-fetch the submodule at parse time if missing (git checkout only).
+        ifeq (,$(wildcard lz/aocl-compression/Makefile))
+            ifneq (,$(wildcard .git))
+                $(info AOCL-Compression submodule missing - fetching with 'git submodule update --init lz/aocl-compression'...)
+                $(shell git submodule update --init lz/aocl-compression >&2)
+            endif
+        endif
+        # Enable AOCL only if source is now present.
+        ifeq (,$(wildcard lz/aocl-compression/Makefile))
+            $(info AOCL-Compression source not available at lz/aocl-compression - skipping AOCL build)
+        else
+            DONT_BUILD_AOCL := 0
+        endif
+    endif
+endif
+ifeq "$(DONT_BUILD_AOCL)" "1"
+    DEFINES += -DBENCH_REMOVE_AOCL
+else
+    AOCL_DIR     = lz/aocl-compression
+    AOCL_ARCHIVE = $(AOCL_DIR)/build/lib/libaocl_compression.a
+    AOCL_FILES   = $(AOCL_DIR)/libaocl_lzbench.a
+endif
+
 
 ifeq "$(DONT_BUILD_BRIEFLZ)" "1"
     DEFINES += -DBENCH_REMOVE_BRIEFLZ
@@ -1140,7 +1175,7 @@ endif # ifeq "$(ENABLE_CUDA)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(GPUCOMPACT_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISA77_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
+lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(GPUCOMPACT_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISA77_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE) $(AOCL_FILES)
 	$(CXX) $^ -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -1212,7 +1247,19 @@ $(LIZARD_FILES): %.o : %.c
 
 $(LZ_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/openzl/include -Ilz/zxc/src/lib/vendors -Ilz/misa77/include $< -c -o $@
+	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/openzl/include -Ilz/zxc/src/lib/vendors -Ilz/misa77/include -Ilz/aocl-compression/api $< -c -o $@
+
+ifneq "$(DONT_BUILD_AOCL)" "1"
+# Build AOCL's static archive using its own Make build.
+$(AOCL_ARCHIVE):
+	+$(MAKE) -C $(AOCL_DIR) CC=$(if $(filter cc,$(notdir $(CC))),gcc,$(CC)) CXX=$(CXX) BUILD_STATIC_LIBS=1 $(abspath $(AOCL_ARCHIVE))
+
+# Rename AOCL's internal symbols to AOCLLZB_* to avoid linker collisions,
+# keeping the public aocl_llc_* API. C = common symbols
+$(AOCL_FILES): $(AOCL_ARCHIVE) ; @$(MKDIR) $(dir $@); $(NM) -g --defined-only $(AOCL_ARCHIVE) | awk '$$2 ~ /^[TDBRGVWC]$$/ {print $$3}' | grep -v '^aocl_llc_' | sort -u | awk 'NF{print $$1" AOCLLZB_"$$1}' > $@.redef
+	$(OBJCOPY) --redefine-syms=$@.redef $(AOCL_ARCHIVE) $@
+	rm -f $@.redef
+endif
 
 $(LZHAM_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
@@ -1321,8 +1368,9 @@ misc/skim/libskim.a: misc/skim/src/root.zig
 	@echo "Building Skim (Zig)..."
 	cd misc/skim && zig build-lib -O ReleaseFast -femit-bin=libskim.a src/root.zig -lc
 
-clean:
+clean: ; if [ -f lz/aocl-compression/Makefile ]; then $(MAKE) -C lz/aocl-compression CC=$(if $(filter cc,$(notdir $(CC))),gcc,$(CC)) CXX=$(CXX) clean; fi
 	rm -rf lzbench lzbench.exe
 	find . -type f -name "*.o" -exec rm -f {} +
 	rm -rf $(DENSITY_SRC_DIR)target/
 	rm -f misc/skim/libskim.a
+	rm -f lz/aocl-compression/libaocl_lzbench.a

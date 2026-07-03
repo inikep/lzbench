@@ -1,0 +1,4 @@
+[submodule "lz/aocl-compression"]
+	path = lz/aocl-compression
+	url = https://github.com/amd/aocl-compression
+	shallow = true

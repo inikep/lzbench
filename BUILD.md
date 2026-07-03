@@ -27,6 +27,15 @@ git clone https://github.com/inikep/lzbench.git
 cd lzbench
 ```
 
+The AMD-optimized `aocl-compression` sources live in a git submodule
+(`lz/aocl-compression`, pinned to upstream tag `5.3`). It is optional: lzbench
+builds fine without it (those compressors are simply skipped). To include them, either
+clone with `--recurse-submodules`, or fetch the submodule afterwards:
+```
+git submodule update --init lz/aocl-compression
+```
+or just run `make` — it auto-fetches the submodule on supported hosts.
+
 ### Download an archive
 Another option is to download zip or tar ball from repository or release page at https://github.com/inikep/lzbench/releases/.
 
@@ -39,6 +48,11 @@ or
 
 This creates the directory `./lzbench-[version]` containing the source
 from the main archive.
+
+> **Note:** The `lz/aocl-compression` directory is a git submodule and is **not**
+> included in GitHub zip/tarball archives. Building from an archive will silently
+> skip the AOCL codecs. Use `git clone` (see above) instead, then run
+> `git submodule update --init lz/aocl-compression` (or use `git clone --recurse-submodules`).
 
 
 Compilation
