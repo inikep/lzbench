@@ -57,6 +57,31 @@ int64_t lzbench_memlz_decompress(char* inbuf, size_t insize, char* outbuf, size_
 
 
 
+#ifndef BENCH_REMOVE_MISA77
+#include "misa77/misa77.h"
+#include "misa77/experimental.h"
+
+int64_t lzbench_misa77_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    // level 0 = fastest decompression, level 1 = best ratio (the library default)
+    return (int64_t)misa77::compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize, misa77::config((uint8_t)codec_options->level));
+}
+
+int64_t lzbench_misa77_adaptive_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    // level 0 = loose (larger decode gain, some ratio cost), level 1 = tight (tiny ratio cost)
+    return (int64_t)misa77::experimental::adaptive_compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize, (uint8_t)codec_options->level);
+}
+
+// All misa77 modes emit one format, so every misa77_* codec shares this decompressor.
+int64_t lzbench_misa77_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    return (int64_t)misa77::decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
+}
+#endif // BENCH_REMOVE_MISA77
+
+
+
 #ifndef BENCH_REMOVE_BRIEFLZ
 #include "lz/brieflz/brieflz.h"
 

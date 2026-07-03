@@ -888,6 +888,40 @@ else
     $(ZXC_DIR)/%_neon.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
 endif
 
+
+# misa77 targets 64-bit little-endian systems and needs C++20.
+MISA77_OK := $(shell printf 'int main(){static_assert(__BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__);static_assert(sizeof(void*)==8);return 0;}' | $(CXX) -std=c++20 -fsyntax-only -x c++ - 2>/dev/null && echo ok)
+ifneq ($(MISA77_OK),ok)
+    DONT_BUILD_MISA77 ?= 1
+endif
+
+ifeq "$(DONT_BUILD_MISA77)" "1"
+    DEFINES += -DBENCH_REMOVE_MISA77
+else
+    MISA77_DIR = lz/misa77
+    MISA77_INC = -I$(MISA77_DIR)/include -I$(MISA77_DIR)/src
+    # always built:
+    MISA77_FILES  = $(MISA77_DIR)/src/compress.o $(MISA77_DIR)/src/decompress.o
+    MISA77_FILES += $(MISA77_DIR)/src/experimental/ecompress.o
+    MISA77_FILES += $(MISA77_DIR)/src/isa/target_portable.o
+    MISA77_FILES += $(MISA77_DIR)/src/experimental/isa/etarget_portable.o
+    # 64-bit x86 only:
+    ifneq (,$(filter x86_64% amd64%,$(TARGET_ARCH)))
+        MISA77_FILES += $(MISA77_DIR)/src/isa/target_sse2.o $(MISA77_DIR)/src/isa/target_avx2.o
+        MISA77_FILES += $(MISA77_DIR)/src/experimental/isa/etarget_sse2.o $(MISA77_DIR)/src/experimental/isa/etarget_avx2.o
+    endif
+
+    CMD_BUILD_MISA77 = @$(MKDIR) $(dir $@) && $(CXX) $(CXXFLAGS) -std=c++20 $(MISA77_INC) $(MISA77_FLAGS) $< -c -o $@
+
+    $(MISA77_DIR)/%_avx2.o: MISA77_FLAGS = -mavx2
+    $(MISA77_DIR)/%_avx2.o: $(MISA77_DIR)/%.cpp ; $(CMD_BUILD_MISA77)
+
+    $(MISA77_DIR)/%_sse2.o: MISA77_FLAGS = -msse2
+    $(MISA77_DIR)/%_sse2.o: $(MISA77_DIR)/%.cpp ; $(CMD_BUILD_MISA77)
+
+    $(MISA77_DIR)/%.o: $(MISA77_DIR)/%.cpp ; $(CMD_BUILD_MISA77)
+endif
+
 # Symmetric codecs
 ifeq "$(DONT_BUILD_BSC)" "1"
     DEFINES += -DBENCH_REMOVE_BSC
@@ -1051,7 +1085,7 @@ endif # ifeq "$(ENABLE_CUDA)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
+lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISA77_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
 	$(CXX) $^ -o $@ $(LDFLAGS)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -1123,7 +1157,7 @@ $(LIZARD_FILES): %.o : %.c
 
 $(LZ_CODECS): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/openzl/include -Ilz/zxc/src/lib/vendors $< -c -o $@
+	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/openzl/include -Ilz/zxc/src/lib/vendors -Ilz/misa77/include $< -c -o $@
 
 $(LZHAM_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
