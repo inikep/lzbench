@@ -27,7 +27,7 @@
 /** @brief Minor version number. */
 #define ZXC_VERSION_MINOR 13
 /** @brief Patch version number. */
-#define ZXC_VERSION_PATCH 0
+#define ZXC_VERSION_PATCH 1
 
 /** @cond INTERNAL */
 #define ZXC_STR_HELPER(x) #x
@@ -35,7 +35,7 @@
 /** @endcond */
 
 /**
- * @brief Human-readable version string in "MAJOR.MINOR.PATCH" form (e.g. "0.13.0").
+ * @brief Human-readable version string in "MAJOR.MINOR.PATCH" form (e.g. "0.13.1").
  */
 #define ZXC_LIB_VERSION_STR    \
     ZXC_STR(ZXC_VERSION_MAJOR) \

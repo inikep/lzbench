@@ -86,7 +86,7 @@ ZXC_EXPORT int zxc_default_level(void);
  * @brief Returns the human-readable library version string.
  *
  * The returned pointer is a compile-time constant and must not be freed.
- * Format: "MAJOR.MINOR.PATCH" (e.g. "0.13.0").
+ * Format: "MAJOR.MINOR.PATCH" (e.g. "0.13.1").
  *
  * @return Null-terminated version string.
  */

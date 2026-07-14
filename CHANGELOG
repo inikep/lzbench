@@ -1,6 +1,6 @@
 v2.x.y
 - added OpenZL v0.2.0 (thanks to @fwyzard)
-- updated zxc to 0.12.0
+- updated zxc to 0.13.1 (thanks to @hellobertrand)
 
 v2.3 (Jun 15, 2026)
 - improvement: Reorganized compressor alias groups by type — ALL is now a composite of LZ /
