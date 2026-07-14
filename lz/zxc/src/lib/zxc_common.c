@@ -1020,6 +1020,6 @@ int zxc_default_level(void) { return ZXC_LEVEL_DEFAULT; }
  * @brief Returns the human-readable library version string.
  *
  * The returned pointer is a compile-time constant and must not be freed.
- * Format: "MAJOR.MINOR.PATCH" (e.g. "0.13.0").
+ * Format: "MAJOR.MINOR.PATCH" (e.g. "0.13.1").
  */
 const char* zxc_version_string(void) { return ZXC_LIB_VERSION_STR; }
