@@ -17,7 +17,7 @@
 
 /*
  * Function Multi-Versioning Support
- * If ZXC_FUNCTION_SUFFIX is defined (e.g. _avx2, _neon), rename the public
+ * If ZXC_FUNCTION_SUFFIX is defined (e.g. _avx2, _neon32), rename the public
  * entry point AND the Huffman entry points consumed by this TU. The defines
  * sit before zxc_internal.h so that the prototypes the header declares are
  * also rewritten with the suffix, keeping callers and callees consistent.
@@ -55,32 +55,13 @@ static ZXC_ALWAYS_INLINE uint32_t zxc_hash_func(const uint64_t val, const int us
     }
 }
 
-#if defined(ZXC_USE_AVX2)
-/**
- * @brief Reduces a 256-bit integer vector to a single scalar by finding the maximum unsigned 32-bit
- * integer element.
- *
- * This function performs a horizontal reduction across the 8 packed 32-bit unsigned integers
- * in the source vector to determine the maximum value.
- *
- * @param[in] v The 256-bit vector containing 8 unsigned 32-bit integers.
- * @return The maximum unsigned 32-bit integer found in the vector.
- */
-// codeql[cpp/unused-static-function] : Used conditionally when ZXC_USE_AVX2 is defined
-static ZXC_ALWAYS_INLINE uint32_t zxc_mm256_reduce_max_epu32(__m256i v) {
-    __m128i vlow = _mm256_castsi256_si128(v);        // Extract the lower 128 bits
-    __m128i vhigh = _mm256_extracti128_si256(v, 1);  // Extract the upper 128 bits
-    vlow = _mm_max_epu32(vlow, vhigh);               // Element-wise max of lower and upper halves
-    __m128i vshuf = _mm_shuffle_epi32(vlow, _MM_SHUFFLE(1, 0, 3, 2));  // Shuffle to swap pairs
-    vlow = _mm_max_epu32(vlow, vshuf);  // Max of original and swapped
-    vshuf =
-        _mm_shuffle_epi32(vlow, _MM_SHUFFLE(2, 3, 0, 1));  // Shuffle to bring remaining candidates
-    vlow = _mm_max_epu32(vlow, vshuf);                     // Final max comparison
-    return (uint32_t)_mm_cvtsi128_si32(vlow);              // Extract the scalar result
-}
+/* SSE2 selected, not merely available: guards the two helpers below. */
+#if defined(ZXC_USE_SSE2) && !(defined(ZXC_USE_AVX512) && defined(__AVX512VL__)) && \
+    !defined(ZXC_USE_AVX2) && !defined(ZXC_USE_NEON64) && !defined(ZXC_USE_NEON32)
+#define ZXC_OPT_SSE2
 #endif
 
-#if defined(ZXC_USE_SSE2)
+#if defined(ZXC_OPT_SSE2)
 /**
  * @brief SSE2 emulation of SSE4.1 @c _mm_blendv_epi8.
  *
@@ -93,7 +74,6 @@ static ZXC_ALWAYS_INLINE uint32_t zxc_mm256_reduce_max_epu32(__m256i v) {
  * @param[in] mask  Per-byte selector (a full-width compare result).
  * @return The blended 128-bit vector.
  */
-// codeql[cpp/unused-static-function] : Used conditionally when ZXC_USE_SSE2 is defined
 static ZXC_ALWAYS_INLINE __m128i zxc_mm_blendv_epi8_sse2(__m128i a, __m128i b, __m128i mask) {
     return _mm_or_si128(_mm_and_si128(mask, b), _mm_andnot_si128(mask, a));
 }
@@ -110,7 +90,6 @@ static ZXC_ALWAYS_INLINE __m128i zxc_mm_blendv_epi8_sse2(__m128i a, __m128i b, _
  * @param[in] b  Four u32 lanes forming the high half of the result.
  * @return The eight u16 lanes packed from @p a then @p b.
  */
-// codeql[cpp/unused-static-function] : Used conditionally when ZXC_USE_SSE2 is defined
 static ZXC_ALWAYS_INLINE __m128i zxc_mm_packus_epi32_sse2(__m128i a, __m128i b) {
     const __m128i bias32 = _mm_set1_epi32(0x8000);
     const __m128i bias16 = _mm_set1_epi16((short)0x8000);
@@ -690,7 +669,7 @@ static ZXC_ALWAYS_INLINE size_t zxc_opt_dp_update_const_cost(
             vst1_u16(&parent_off[p + L], vbsl_u16(v_mask16, v_off, v_po));
         }
     }
-#elif defined(ZXC_USE_SSE2)
+#elif defined(ZXC_OPT_SSE2)
     if (L + 4 <= L_end) {
         const __m128i v_inc = _mm_setr_epi32(0, 1, 2, 3);
         const __m128i v_nxt = _mm_set1_epi32((int)nxt);
@@ -1641,6 +1620,8 @@ parse_done:;
 
         if (zxc_huf_build_code_lengths(freq, huf_code_len, ctx->opt_scratch,
                                        zxc_huf_enc_max_code_len(level)) == ZXC_OK) {
+            (void)zxc_huf_nudge_code_lengths(freq, huf_code_len, ctx->opt_scratch,
+                                             zxc_huf_enc_max_code_len(level));
             huf_total_size = zxc_huf_calc_size(freq, huf_code_len, 1);
             /* Space-speed: the entropy candidate must beat the current winner's
              * J, paying its own decode tax over the copy path. */
@@ -1695,6 +1676,8 @@ parse_done:;
         for (uint32_t i = 0; i < seq_c; i++) tfreq[buf_tokens[i]]++;
         if (zxc_huf_build_code_lengths(tfreq, tok_code_len, ctx->opt_scratch,
                                        zxc_huf_enc_max_code_len(level)) == ZXC_OK) {
+            (void)zxc_huf_nudge_code_lengths(tfreq, tok_code_len, ctx->opt_scratch,
+                                             zxc_huf_enc_max_code_len(level));
             tok_huf_size = zxc_huf_calc_size(tfreq, tok_code_len, 1);
             /* Space-speed J comparison (this path is ULTRA-only): the PivCo
              * token section pays the same decode tax as PivCo literals. */

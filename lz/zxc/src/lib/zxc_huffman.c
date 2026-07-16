@@ -33,7 +33,7 @@
 
 /*
  * Function Multi-Versioning Support
- * If ZXC_FUNCTION_SUFFIX is defined (e.g. _avx2, _neon), rename the public
+ * If ZXC_FUNCTION_SUFFIX is defined (e.g. _avx2, _neon32), rename the public
  * entry points so each variant TU produces its own copy under a unique symbol
  * (e.g. zxc_huf_decode_section_avx2). The runtime dispatcher in
  * zxc_compress.c / zxc_decompress.c routes to the matching variant.
@@ -49,11 +49,24 @@
 #define zxc_huf_unpack_lengths ZXC_CAT(zxc_huf_unpack_lengths, ZXC_FUNCTION_SUFFIX)
 #define zxc_huf_calc_size ZXC_CAT(zxc_huf_calc_size, ZXC_FUNCTION_SUFFIX)
 #define zxc_huf_calc_size_dict ZXC_CAT(zxc_huf_calc_size_dict, ZXC_FUNCTION_SUFFIX)
-#define zxc_huf_dict_tree_build ZXC_CAT(zxc_huf_dict_tree_build, ZXC_FUNCTION_SUFFIX)
 #define zxc_huf_encode_section ZXC_CAT(zxc_huf_encode_section, ZXC_FUNCTION_SUFFIX)
 #define zxc_huf_encode_section_dict ZXC_CAT(zxc_huf_encode_section_dict, ZXC_FUNCTION_SUFFIX)
 #define zxc_huf_decode_section ZXC_CAT(zxc_huf_decode_section, ZXC_FUNCTION_SUFFIX)
 #define zxc_huf_decode_section_dict ZXC_CAT(zxc_huf_decode_section_dict, ZXC_FUNCTION_SUFFIX)
+#endif
+
+/* Mark the primary variant (only _default, or a no-suffix build) so ISA-
+ * independent cold code compiles once, not in every per-ISA copy. Keyed off the
+ * suffix value, so every build gets it with no extra flag. */
+#ifdef ZXC_FUNCTION_SUFFIX
+#define ZXC_PRIMARY__default 1
+#define ZXC_PRIMARY_CAT_(a, b) a##b
+#define ZXC_PRIMARY_CAT(a, b) ZXC_PRIMARY_CAT_(a, b)
+#if ZXC_PRIMARY_CAT(ZXC_PRIMARY_, ZXC_FUNCTION_SUFFIX)
+#define ZXC_VARIANT_PRIMARY 1
+#endif
+#else
+#define ZXC_VARIANT_PRIMARY 1
 #endif
 
 #include "../../include/zxc_error.h"
@@ -302,6 +315,661 @@ int zxc_huf_build_code_lengths(const uint32_t* RESTRICT freq, uint8_t* RESTRICT 
 #undef ITEM
     return ZXC_OK;
 }
+
+/* ===========================================================================
+ * Encoder-side joint flat/length nudge (idea: pivco-huffman issue #20)
+ * ===========================================================================
+ *
+ * Package-merge minimizes bits alone; the PivCo decoder's cost also depends on
+ * the SHAPE of the length histogram (pass count = max_depth + 1, and maximal
+ * complete subtrees collapse into single unpacks -- see the decode section).
+ * The functions below reshape the class counts toward power-of-two boundaries
+ * and shallower caps under an adoption guard, trading a bounded ratio loss for
+ * fewer modeled decode level-touches.
+ *
+ * Everything is exact integer arithmetic on the canonical code space. With
+ * leaves assigned in (length, symbol) ascending order -- the canonical rule of
+ * zxc_pivco_tree_build -- the depth-l leaves occupy one contiguous ALIGNED run
+ * [S_{l-1}, S_l) of the code space at 2^-11 slot granularity, where
+ * S_l = sum_{j<=l} bl_count[j] << (11-j) (each prior term is divisible by
+ * 2^(12-l), so runs start on even slot boundaries). The maximal dyadic (buddy)
+ * blocks of each run are EXACTLY the decoder's maximal flat subtrees, so any
+ * candidate histogram is priced without building a tree.
+ *
+ * Compiled once in the primary variant: this is ISA-independent cold encoder
+ * policy, and a single copy guarantees cross-ISA identical archives. For an
+ * A/B build without the nudge, override the guard from CFLAGS
+ * (-DZXC_HUF_NUDGE_MERGE_Q8=0 rejects every candidate).
+ */
+#if defined(ZXC_VARIANT_PRIMARY)
+
+/** @brief Modeled cost of one code-length candidate (see zxc_huf_nudge_eval). */
+typedef struct {
+    uint64_t bits;    /**< Payload bits: sum(len * freq); per-node padding excluded. */
+    uint64_t touches; /**< Modeled decode cost: occurrence-weighted level-touches. */
+} zxc_huf_nudge_cost_t;
+
+/**
+ * @brief Per-length class counts of a code-length vector.
+ *
+ * @param[in]  code_len Per-symbol code lengths (0 = absent symbol).
+ * @param[out] blc      Class counts indexed by length, entries
+ *                      `0..ZXC_HUF_MAX_CODE_LEN_ULTRA` (entry 0 stays 0).
+ * @return Number of present symbols (nonzero lengths).
+ */
+static int zxc_huf_nudge_classes(const uint8_t* RESTRICT code_len, uint32_t* RESTRICT blc) {
+    ZXC_MEMSET(blc, 0, (ZXC_HUF_MAX_CODE_LEN_ULTRA + 1) * sizeof(uint32_t));
+    int n = 0;
+    for (int s = 0; s < ZXC_HUF_NUM_SYMBOLS; s++) {
+        const int l = code_len[s];
+        if (!l) continue;
+        blc[l]++;
+        n++;
+    }
+    return n;
+}
+
+/**
+ * @brief Frequency prefix sums over the leaves in canonical (length, symbol)
+ *        order: `pf[i]` = mass of the first `i` leaves of the code space.
+ *
+ * @param[in]  code_len Per-symbol code lengths.
+ * @param[in]  freq     Frequency table indexed by symbol.
+ * @param[in]  blc      Class counts of @p code_len (from ::zxc_huf_nudge_classes).
+ * @param[out] pf       Prefix sums, `n_present + 1` entries with `pf[0] = 0`.
+ */
+static void zxc_huf_nudge_pf_canonical(const uint8_t* RESTRICT code_len,
+                                       const uint32_t* RESTRICT freq, const uint32_t* RESTRICT blc,
+                                       uint64_t* RESTRICT pf) {
+    uint32_t pos[ZXC_HUF_MAX_CODE_LEN_ULTRA + 1];
+    uint32_t acc = 0;
+    for (int l = 1; l <= ZXC_HUF_MAX_CODE_LEN_ULTRA; l++) {
+        pos[l] = acc;
+        acc += blc[l];
+    }
+    uint32_t val[ZXC_HUF_NUM_SYMBOLS];
+    for (int s = 0; s < ZXC_HUF_NUM_SYMBOLS; s++) {
+        const int l = code_len[s];
+        if (l) val[pos[l]++] = freq[s];
+    }
+    pf[0] = 0;
+    for (uint32_t i = 0; i < acc; i++) pf[i + 1] = pf[i] + val[i];
+}
+
+/**
+ * @brief Modeled (bits, level-touches) of one class-count histogram.
+ *
+ * The buddy decomposition of each same-depth leaf run mirrors
+ * zxc_pivco_decode_core row by row: a lone leaf at depth l is memset once and
+ * merged l times (l+1 touches); a leaf pair is emitted by its parent's
+ * XOR-blend (l touches); a flat root at depth t = l-D is unpacked once and
+ * merged t times (t+1 touches, plus a penalty past the SIMD unpackers); each
+ * pass adds a fixed overhead term.
+ *
+ * @param[in]  blc Class counts of the candidate (Kraft-exact by construction).
+ * @param[in]  pf  Frequency prefix sums of the leaves in code order
+ *                 (`pf[0] = 0`): canonical (length, symbol)-order sums give
+ *                 exact costs; frequency-rank sums give the cheap scores used
+ *                 inside the walk (bits are identical either way, only the
+ *                 within-run mass split differs).
+ * @param[out] out Modeled bits and level-touches.
+ */
+static void zxc_huf_nudge_eval(const uint32_t* RESTRICT blc, const uint64_t* RESTRICT pf,
+                               zxc_huf_nudge_cost_t* RESTRICT out) {
+    enum { LU = ZXC_HUF_MAX_CODE_LEN_ULTRA };
+    uint64_t bits = 0;
+    uint64_t touches = 0;
+    int max_len = 0;
+    uint32_t S = 0;    /* code-space cursor, in 2^-LU slots */
+    uint32_t base = 0; /* leaf index where the current run starts */
+    for (int l = 1; l <= LU; l++) {
+        if (!blc[l]) continue;
+        max_len = l;
+        bits += (uint64_t)l * (pf[base + blc[l]] - pf[base]);
+        const uint32_t w = 1U << (LU - l);
+        const uint32_t end = S + blc[l] * w;
+        uint32_t x = S;
+        while (x < end) {
+            const uint32_t wx = x ? (x & (0U - x)) : (1U << LU);
+            const uint32_t wr = 1U << zxc_log2_u32(end - x);
+            const uint32_t W = wx < wr ? wx : wr;
+            const int D = (int)zxc_log2_u32(W) - (LU - l);
+            const uint32_t i0 = base + ((x - S) >> (LU - l));
+            const uint64_t mass = pf[i0 + (W >> (LU - l))] - pf[i0];
+            int t;
+            if (D == 0) {
+                t = l + 1; /* lone leaf: one memset + merges above */
+            } else if (D == 1) {
+                t = l; /* leaf pair: parent XOR-blend at depth l-1 */
+            } else {
+                t = (l - D) + 1; /* flat root: one unpack + merges above */
+                if (D > ZXC_HUF_NUDGE_FLAT_SIMD_MAX) t += ZXC_HUF_NUDGE_DEEP_FLAT_PENALTY;
+            }
+            touches += mass * (uint64_t)t;
+            x += W;
+        }
+        S = end;
+        base += blc[l];
+    }
+    touches += (uint64_t)ZXC_HUF_NUDGE_LEVEL_COST * (uint64_t)(max_len + 1);
+    out->bits = bits;
+    out->touches = touches;
+}
+
+/**
+ * @brief Candidate cost `J = 256*bits + lambda*touches` (Q8 bit units).
+ *
+ * @param[in] c Modeled cost from ::zxc_huf_nudge_eval.
+ * @return Scalar cost; lower is better.
+ */
+static ZXC_ALWAYS_INLINE uint64_t zxc_huf_nudge_j(const zxc_huf_nudge_cost_t* c) {
+    return 256U * c->bits + (uint64_t)ZXC_HUF_NUDGE_LAMBDA_Q8 * c->touches;
+}
+
+/**
+ * @brief Clamp a desired class count into the feasible set at one walk level.
+ *
+ * A count c is feasible iff a Kraft-exact completion within @p cap still
+ * exists: either c == n_rem == s (a finishing level fills every slot), or,
+ * continuing with i = s - c internal nodes, i >= 1 and
+ * 2*i <= n_rem - c <= i << (cap - l). Under the walk invariant
+ * (s <= n_rem <= s << (cap - l)) the continuing window
+ * [max(0, 2s - n_rem), min(s-1, n_rem-1, (s*M - n_rem)/(M-1))] is nonempty
+ * whenever n_rem > s, and n_rem == s forces the finishing count (continuing
+ * would need both c >= s and c <= s-1).
+ *
+ * @param[in] want  Desired class count at this level.
+ * @param[in] s     Open slots at level @p l.
+ * @param[in] n_rem Symbols left to place (including this level's).
+ * @param[in] l     Current level.
+ * @param[in] cap   Code-length cap of the walk.
+ * @return The nearest feasible count to @p want.
+ */
+static uint32_t zxc_huf_nudge_clamp(const uint32_t want, const uint32_t s, const uint32_t n_rem,
+                                    const int l, const int cap) {
+    if (n_rem <= s || l >= cap) return n_rem; /* forced finish */
+    const uint64_t m = (uint64_t)1 << (cap - l);
+    const uint32_t lo = (2 * s > n_rem) ? 2 * s - n_rem : 0;
+    uint32_t hi = s - 1; /* s < n_rem here, so min(s-1, n_rem-1) == s-1 */
+    const uint64_t cap_hi = ((uint64_t)s * m - n_rem) / (m - 1);
+    if (cap_hi < hi) hi = (uint32_t)cap_hi;
+    const uint32_t c = want < lo ? lo : want;
+    return c > hi ? hi : c;
+}
+
+/**
+ * @brief Baseline-following completion: fill levels `l+1..cap` with the
+ *        baseline class counts clamped into feasibility.
+ *
+ * @param[in,out] blc   Candidate histogram; levels above @p l are written.
+ * @param[in]     l     Last level already fixed by the caller.
+ * @param[in]     s     Open slots at level `l+1`.
+ * @param[in]     n_rem Symbols still to place.
+ * @param[in]     blc0  Baseline class counts to follow.
+ * @param[in]     cap   Code-length cap of the walk.
+ */
+static void zxc_huf_nudge_complete(uint32_t* RESTRICT blc, const int l, uint32_t s, uint32_t n_rem,
+                                   const uint32_t* RESTRICT blc0, const int cap) {
+    for (int j = l + 1; j <= cap && n_rem; j++) {
+        const uint32_t c = zxc_huf_nudge_clamp(blc0[j], s, n_rem, j, cap);
+        blc[j] = c;
+        n_rem -= c;
+        s = 2 * (s - c);
+    }
+}
+
+/**
+ * @brief Greedy shallow-to-deep walk over the slot ledger.
+ *
+ * At each level, up to six feasible class counts are tried: follow the
+ * baseline; make the internal-node count the nearest power of two (down/up)
+ * or a two-bit value (power-of-two internal-node counts keep the run
+ * boundaries aligned, which is what lets deeper runs decompose into large
+ * flat blocks); or finish the whole remainder as uniform-depth subtrees.
+ * Each count is expanded into a full candidate histogram and scored with the
+ * rank-order evaluator; the cheapest count is fixed and the walk descends.
+ * Fixed candidate order + strict improvement keeps the result deterministic.
+ * A chosen uniform-depth finish needs no lock: at the next level it reappears
+ * as the (c = 0, D-1) finish candidate, so the greedy can hold or drop it.
+ *
+ * @param[in]  blc0    Baseline class counts (package-merge output).
+ * @param[in]  pf_rank Frequency-rank prefix sums (rank 0 = most frequent).
+ * @param[in]  n       Number of present symbols (>= 4).
+ * @param[in]  cap     Code-length cap.
+ * @param[out] out_blc Chosen class counts (Kraft-exact by construction).
+ */
+static void zxc_huf_nudge_walk(const uint32_t* RESTRICT blc0, const uint64_t* RESTRICT pf_rank,
+                               const int n, const int cap, uint32_t* RESTRICT out_blc) {
+    enum { LU = ZXC_HUF_MAX_CODE_LEN_ULTRA };
+    ZXC_MEMSET(out_blc, 0, (LU + 1) * sizeof(uint32_t));
+    uint32_t s = 2; /* the root's two slots at level 1 (n >= 4 => root is internal) */
+    uint32_t n_rem = (uint32_t)n;
+    for (int l = 1; l <= cap && n_rem; l++) {
+        struct {
+            uint32_t c;
+            int flat_d; /* > 0: complete as one uniform run at depth l + flat_d */
+        } cand[6];
+        int n_cand = 0;
+        const uint32_t c_base = zxc_huf_nudge_clamp(blc0[l], s, n_rem, l, cap);
+        cand[n_cand].c = c_base;
+        cand[n_cand++].flat_d = 0;
+        if (c_base < n_rem) {
+            /* Shape the internal-node count i = s - c toward few set bits. */
+            const uint32_t i_base = s - c_base;
+            const uint32_t i_dn = 1U << zxc_log2_u32(i_base);
+            const uint32_t rest = i_base - i_dn;
+            const uint32_t shapes[3] = {i_dn, i_dn << 1,
+                                        i_dn | (rest ? 1U << zxc_log2_u32(rest) : 0U)};
+            for (int k = 0; k < 3; k++) {
+                const uint32_t want = s > shapes[k] ? s - shapes[k] : 0;
+                const uint32_t c = zxc_huf_nudge_clamp(want, s, n_rem, l, cap);
+                int dup = 0;
+                for (int p = 0; p < n_cand; p++) dup |= (cand[p].c == c);
+                if (!dup) {
+                    cand[n_cand].c = c;
+                    cand[n_cand++].flat_d = 0;
+                }
+            }
+            /* Uniform finish: c leaves here, the rest as i complete depth-D
+             * subtrees (c*(2^D - 1) == s*2^D - n_rem must divide exactly). */
+            for (int d = 1; d <= cap - l && n_cand < 6; d++) {
+                const uint64_t den = ((uint64_t)1 << d) - 1;
+                const int64_t num = (int64_t)((uint64_t)s << d) - (int64_t)n_rem;
+                if (num < 0 || (uint64_t)num % den) continue;
+                const uint64_t c64 = (uint64_t)num / den;
+                if (c64 >= s || c64 >= n_rem) continue; /* need i >= 1 and a remainder */
+                cand[n_cand].c = (uint32_t)c64;
+                cand[n_cand++].flat_d = d;
+                break; /* the shallowest exact finish is the aggressive one */
+            }
+        }
+        uint64_t best_j = UINT64_MAX;
+        uint32_t best_c = c_base;
+        for (int k = 0; k < n_cand; k++) {
+            uint32_t tmp[LU + 1];
+            ZXC_MEMCPY(tmp, out_blc, sizeof(tmp));
+            tmp[l] = cand[k].c;
+            const uint32_t rem = n_rem - cand[k].c;
+            if (rem) {
+                if (cand[k].flat_d)
+                    tmp[l + cand[k].flat_d] = rem;
+                else
+                    zxc_huf_nudge_complete(tmp, l, 2 * (s - cand[k].c), rem, blc0, cap);
+            }
+            zxc_huf_nudge_cost_t cc;
+            zxc_huf_nudge_eval(tmp, pf_rank, &cc);
+            const uint64_t j = zxc_huf_nudge_j(&cc);
+            if (j < best_j) {
+                best_j = j;
+                best_c = cand[k].c;
+            }
+        }
+        out_blc[l] = best_c;
+        n_rem -= best_c;
+        s = 2 * (s - best_c);
+    }
+}
+
+/**
+ * @brief Exact rank-weighted J of one leaf run placed at coarse level @p lc.
+ *
+ * The DP prices in REAL units through a coarse lens: one coarse slot stands
+ * for a complete depth-@p g_log2 subtree of 2^g_log2 frequency-adjacent
+ * leaves, so a coarse buddy block of 2^d slots is a real block of depth
+ * d + g_log2 whose leaves have real length lc + g_log2. Because canonical
+ * codes fill the code space left to right, a ledger state with @p s open
+ * slots pins the run start at 2^lu - s * 2^(lu - lc): the cost of taking
+ * @p c slots here depends only on (lc, s, c, rank interval) -- which is what
+ * makes the level costs additive and the DP exact for this model.
+ *
+ * @param[in] lu     Coarse code-space scale (`ZXC_HUF_MAX_CODE_LEN_ULTRA - g_log2`).
+ * @param[in] lc     Coarse level the run is placed at.
+ * @param[in] g_log2 Granularity: one coarse slot = 2^g_log2 real leaves.
+ * @param[in] s      Open coarse slots at level @p lc.
+ * @param[in] c      Coarse slots taken as leaves at this level.
+ * @param[in] pfg    Group-mass prefix sums in frequency-rank order.
+ * @param[in] k      Groups already placed (rank of the run's first group).
+ * @return J contribution of the run (Q8 bits + lambda * touches).
+ */
+static uint64_t zxc_huf_nudge_dp_run_j(const int lu, const int lc, const int g_log2,
+                                       const uint32_t s, const uint32_t c,
+                                       const uint64_t* RESTRICT pfg, const uint32_t k) {
+    if (!c) return 0;
+    const int lr = lc + g_log2; /* real code length of these leaves */
+    const uint32_t w = 1U << (lu - lc);
+    const uint32_t S = (1U << lu) - s * w;
+    const uint32_t end = S + c * w;
+    const uint64_t bits = (uint64_t)lr * (pfg[k + c] - pfg[k]);
+    uint64_t touches = 0;
+    uint32_t x = S;
+    while (x < end) {
+        const uint32_t wx = x ? (x & (0U - x)) : (1U << lu);
+        const uint32_t wr = 1U << zxc_log2_u32(end - x);
+        const uint32_t W = wx < wr ? wx : wr;
+        const int d = (int)zxc_log2_u32(W >> (lu - lc)) + g_log2;
+        const uint32_t i0 = k + ((x - S) >> (lu - lc));
+        const uint64_t mass = pfg[i0 + (W >> (lu - lc))] - pfg[i0];
+        int t;
+        if (d == 0) {
+            t = lr + 1;
+        } else if (d == 1) {
+            t = lr;
+        } else {
+            t = (lr - d) + 1;
+            if (d > ZXC_HUF_NUDGE_FLAT_SIMD_MAX) t += ZXC_HUF_NUDGE_DEEP_FLAT_PENALTY;
+        }
+        touches += mass * (uint64_t)t;
+        x += W;
+    }
+    return 256U * bits + (uint64_t)ZXC_HUF_NUDGE_LAMBDA_Q8 * touches;
+}
+
+/**
+ * @brief Slot-ledger dynamic program: optimal class counts for the model.
+ *
+ * States are (symbols placed, open slots) per level -- the (k, s) plane of
+ * pivco-huffman #20 -- relaxed level by level with the exact per-run cost
+ * above; a state with s == remaining symbols is a forced finishing level
+ * (continuing needs both c >= s and c <= s - 1). The finishing transition
+ * adds the pass-loop overhead for the resulting max depth. Backtracking the
+ * per-level arrival choices reconstructs the coarse class counts.
+ *
+ * Iteration order and strict-improvement relaxation are fixed, so the result
+ * is deterministic.
+ *
+ * @param[in]  pfg      Group-mass prefix sums in frequency-rank order.
+ * @param[in]  m        Number of coarse symbols (groups), >= 2.
+ * @param[in]  cap_c    Coarse code-length cap (`real cap - g_log2`).
+ * @param[in]  lu       Coarse code-space scale (see ::zxc_huf_nudge_dp_run_j).
+ * @param[in]  g_log2   Granularity exponent.
+ * @param[out] out_cblc Optimal coarse class counts (indexed by coarse level).
+ * @return 1 on success; 0 on allocation failure or no feasible finish
+ *         (callers then simply keep their other candidates).
+ */
+static int zxc_huf_nudge_dp_solve(const uint64_t* RESTRICT pfg, const int m, const int cap_c,
+                                  const int lu, const int g_log2, uint32_t* RESTRICT out_cblc) {
+    if (UNLIKELY(m < 2 || cap_c < 1)) return 0;
+
+    const size_t plane = (size_t)(m + 1) * (size_t)(m + 1);
+    const size_t arrive_cnt = (size_t)(cap_c + 1) * plane;
+    const size_t arrive_slots =
+        (arrive_cnt * sizeof(uint16_t) + sizeof(uint64_t) - 1) / sizeof(uint64_t);
+    const size_t pool_slots = 2 * plane + arrive_slots;
+
+    uint64_t* pool = (uint64_t*)ZXC_MALLOC(pool_slots * sizeof(uint64_t));
+    if (UNLIKELY(!pool)) return 0;
+
+    uint64_t* jcur = pool;
+    uint64_t* jnxt = pool + plane;
+    uint16_t* arrive = (uint16_t*)(pool + 2 * plane);
+    int ok = 0;
+
+#define ZXC_NUDGE_DP_IDX(k, s) ((size_t)(k) * (size_t)(m + 1) + (size_t)(s))
+    for (size_t i = 0; i < plane; i++) jcur[i] = UINT64_MAX;
+    jcur[ZXC_NUDGE_DP_IDX(0, 2)] = 0;
+    uint64_t best_j = UINT64_MAX;
+    int best_l = 0;
+    int best_k = 0;
+    int best_s = 0;
+    for (int lc = 1; lc <= cap_c; lc++) {
+        for (size_t i = 0; i < plane; i++) jnxt[i] = UINT64_MAX;
+        for (int k = 0; k < m; k++) {
+            const uint32_t n_rem = (uint32_t)(m - k);
+            for (uint32_t s = 1; s <= n_rem; s++) {
+                const size_t from = ZXC_NUDGE_DP_IDX(k, s);
+                if (UNLIKELY(from >= plane)) continue;
+                const uint64_t j0 = jcur[from];
+                if (j0 == UINT64_MAX) continue;
+                if (s == n_rem) {
+                    /* Forced finish: fill every slot, close the tree here. */
+                    const uint64_t j =
+                        j0 + zxc_huf_nudge_dp_run_j(lu, lc, g_log2, s, s, pfg, (uint32_t)k) +
+                        (uint64_t)ZXC_HUF_NUDGE_LAMBDA_Q8 * (uint64_t)ZXC_HUF_NUDGE_LEVEL_COST *
+                            (uint64_t)(lc + g_log2 + 1);
+                    if (j < best_j) {
+                        best_j = j;
+                        best_l = lc;
+                        best_k = k;
+                        best_s = (int)s;
+                    }
+                    continue;
+                }
+                if (lc == cap_c) continue; /* must finish at the cap */
+                const uint64_t mm = (uint64_t)1 << (cap_c - lc);
+                const uint32_t lo = (2 * s > n_rem) ? 2 * s - n_rem : 0;
+                uint32_t hi = s - 1;
+                const uint64_t cap_hi = ((uint64_t)s * mm - n_rem) / (mm - 1);
+                if (cap_hi < hi) hi = (uint32_t)cap_hi;
+                for (uint32_t c = lo; c <= hi; c++) {
+                    const uint64_t j =
+                        j0 + zxc_huf_nudge_dp_run_j(lu, lc, g_log2, s, c, pfg, (uint32_t)k);
+                    const size_t to = ZXC_NUDGE_DP_IDX(k + (int)c, 2 * (s - c));
+                    const size_t arr = (size_t)(lc + 1) * plane + to;
+
+                    if (UNLIKELY(to >= plane || arr >= arrive_cnt)) continue;
+                    if (j < jnxt[to]) {
+                        jnxt[to] = j;
+                        arrive[arr] = (uint16_t)c;
+                    }
+                }
+            }
+        }
+        uint64_t* tmp = jcur;
+        jcur = jnxt;
+        jnxt = tmp;
+    }
+    if (best_j == UINT64_MAX) goto done;
+    ZXC_MEMSET(out_cblc, 0, (ZXC_HUF_MAX_CODE_LEN_ULTRA + 1) * sizeof(uint32_t));
+    out_cblc[best_l] = (uint32_t)best_s;
+    {
+        int k = best_k;
+        int s = best_s;
+        for (int lc = best_l; lc > 1; lc--) {
+            const uint32_t c = arrive[(size_t)lc * plane + ZXC_NUDGE_DP_IDX(k, s)];
+            out_cblc[lc - 1] = c;
+            s = s / 2 + (int)c;
+            k -= (int)c;
+        }
+        if (UNLIKELY(k != 0 || s != 2)) goto done; /* backtrack corruption: drop candidate */
+    }
+    ok = 1;
+done:
+#undef ZXC_NUDGE_DP_IDX
+    ZXC_FREE(pool);
+    return ok;
+}
+
+/**
+ * @brief Assign a class-count multiset to symbols: frequency rank r takes the
+ *        r-th shortest slot (rearrangement-optimal, deterministic).
+ *
+ * @param[in]  blc       Class counts to realize (sum = number of ranks).
+ * @param[in]  sym_order Symbols by descending frequency (rank 0 first).
+ * @param[out] cand_len  Resulting per-symbol code lengths, written in full.
+ */
+static void zxc_huf_nudge_assign(const uint32_t* RESTRICT blc, const int16_t* RESTRICT sym_order,
+                                 uint8_t* RESTRICT cand_len) {
+    ZXC_MEMSET(cand_len, 0, ZXC_HUF_NUM_SYMBOLS);
+    int r = 0;
+    for (int l = 1; l <= ZXC_HUF_MAX_CODE_LEN_ULTRA; l++)
+        for (uint32_t k = 0; k < blc[l]; k++) cand_len[sym_order[r++]] = (uint8_t)l;
+}
+
+/**
+ * @brief Modeled (bits, level-touches) decode cost of one code-length vector.
+ *
+ * Introspection hook over the exact evaluator (canonical-order weighting);
+ * full contract in zxc_internal.h. The unit tests cross-check it against the
+ * real tree built by the decoder.
+ */
+void zxc_huf_nudge_cost(const uint8_t* RESTRICT code_len, const uint32_t* RESTRICT freq,
+                        uint64_t* RESTRICT bits, uint64_t* RESTRICT touches) {
+    uint32_t blc[ZXC_HUF_MAX_CODE_LEN_ULTRA + 1];
+    (void)zxc_huf_nudge_classes(code_len, blc);
+    uint64_t pf[ZXC_HUF_NUM_SYMBOLS + 1];
+    zxc_huf_nudge_pf_canonical(code_len, freq, blc, pf);
+    zxc_huf_nudge_cost_t c;
+    zxc_huf_nudge_eval(blc, pf, &c);
+    *bits = c.bits;
+    *touches = c.touches;
+}
+
+/**
+ * @brief Optionally reshape freshly built code lengths for faster PivCo decode.
+ *
+ * Candidate generation (walk, reduced-cap rebuilds, slot-ledger DP), exact
+ * pricing and the adoption guard; full contract in zxc_internal.h. On
+ * rejection @p code_len is left byte-for-byte untouched.
+ */
+int zxc_huf_nudge_code_lengths(const uint32_t* RESTRICT freq, uint8_t* RESTRICT code_len,
+                               void* RESTRICT scratch, const int max_code_len) {
+    enum { LU = ZXC_HUF_MAX_CODE_LEN_ULTRA };
+    uint32_t blc0[LU + 1];
+    const int n = zxc_huf_nudge_classes(code_len, blc0);
+    /* Degenerate alphabets have no shape freedom (and n == 1 is format-pinned
+     * to code length exactly 1): leave them untouched. */
+    if (n < 4) return 0;
+
+    /* Baseline cost, exact (canonical-order frequency weighting). */
+    uint64_t pf[ZXC_HUF_NUM_SYMBOLS + 1];
+    zxc_huf_nudge_pf_canonical(code_len, freq, blc0, pf);
+    zxc_huf_nudge_cost_t c0;
+    zxc_huf_nudge_eval(blc0, pf, &c0);
+
+    /* Frequency-rank order shared by every candidate (rank 0 = most frequent;
+     * pm_leaves_sort is ascending, ties on symbol, so read it backwards). */
+    pm_leaf_t leaves[ZXC_HUF_NUM_SYMBOLS];
+    int k = 0;
+    for (int s = 0; s < ZXC_HUF_NUM_SYMBOLS; s++) {
+        if (!freq[s]) continue;
+        leaves[k].w = freq[s];
+        leaves[k].sym = (int16_t)s;
+        k++;
+    }
+    pm_leaves_sort(leaves, n);
+    int16_t sym_order[ZXC_HUF_NUM_SYMBOLS];
+    uint64_t pf_rank[ZXC_HUF_NUM_SYMBOLS + 1];
+    pf_rank[0] = 0;
+    for (int r = 0; r < n; r++) {
+        sym_order[r] = leaves[n - 1 - r].sym;
+        pf_rank[r + 1] = pf_rank[r] + leaves[n - 1 - r].w;
+    }
+
+    /* Candidates: the greedy ledger walk, then package-merge rebuilt at
+     * reduced caps (optimal bits for a forced-shallower tree; the pass loop
+     * runs max_depth + 1 times, so depth cuts attack the decoder's biggest
+     * fixed cost), plus the slot-ledger dynamic program below.
+     * Every candidate is a complete, Kraft-exact vector. */
+    uint8_t cand[4][ZXC_HUF_NUM_SYMBOLS];
+    int n_cand = 0;
+    {
+        uint32_t blc_w[LU + 1];
+        zxc_huf_nudge_walk(blc0, pf_rank, n, max_code_len, blc_w);
+        zxc_huf_nudge_assign(blc_w, sym_order, cand[n_cand]);
+        n_cand++;
+    }
+    int max_len0 = 0;
+    for (int l = LU; l >= 1; l--) {
+        if (blc0[l]) {
+            max_len0 = l;
+            break;
+        }
+    }
+    if (max_len0 >= 2) {
+        for (int cut = 1; cut <= 2; cut++) {
+            const int cap2 = max_len0 - cut;
+            if (cap2 < 2 || ((uint32_t)1 << cap2) < (uint32_t)n) break;
+            if (zxc_huf_build_code_lengths(freq, cand[n_cand], scratch, cap2) != ZXC_OK) break;
+            n_cand++;
+        }
+    }
+
+    /* Slot-ledger DP candidate: optimal class counts under the rank-weighted
+     * model, solved on groups of 2^G frequency-adjacent symbols (G = 0 is
+     * exact for small alphabets; coarse tiers keep the plane cache-resident
+     * for larger ones, bounding the whole call to a few hundred us). When G
+     * does not divide n, the lightest group is padded with zero-freq "ghost"
+     * leaves carried by unused byte values -- wire-legal, their runs
+     * are empty, and the ratio cost of the burnt code space is priced by the
+     * evaluator like everything else. */
+    {
+        const int g_log2 = n <= 64 ? 0 : (n <= 128 ? 1 : 2);
+        const int g = 1 << g_log2;
+        const int m = (n + g - 1) / g;
+        const int cap_c = max_code_len - g_log2;
+        if (m >= 2 && cap_c >= 1 && m <= (1 << cap_c)) {
+            uint64_t pfg[ZXC_HUF_NUM_SYMBOLS + 1];
+            for (int j2 = 0; j2 <= m; j2++) {
+                int r = j2 * g;
+                if (r > n) r = n;
+                pfg[j2] = pf_rank[r];
+            }
+            uint32_t cblc[LU + 1];
+            if (zxc_huf_nudge_dp_solve(pfg, m, cap_c, LU - g_log2, g_log2, cblc)) {
+                uint8_t* const cl = cand[n_cand];
+                ZXC_MEMSET(cl, 0, ZXC_HUF_NUM_SYMBOLS);
+                int r = 0;
+                int ghosts = 0;
+                uint8_t ghost_len = 0;
+                for (int lc = 1; lc <= cap_c; lc++) {
+                    for (uint32_t q = 0; q < cblc[lc]; q++) {
+                        for (int e = 0; e < g; e++, r++) {
+                            if (r < n) {
+                                cl[sym_order[r]] = (uint8_t)(lc + g_log2);
+                            } else {
+                                ghost_len = (uint8_t)(lc + g_log2);
+                                ghosts++;
+                            }
+                        }
+                    }
+                }
+                for (int s = 0; s < ZXC_HUF_NUM_SYMBOLS && ghosts; s++) {
+                    if (freq[s] == 0 && cl[s] == 0) {
+                        cl[s] = ghost_len;
+                        ghosts--;
+                    }
+                }
+                n_cand++;
+            }
+        }
+    }
+
+    /* Guard + selection on exact costs: adopt the cheapest candidate clearing
+     * both guard rails and strictly beating the baseline's J; otherwise leave
+     * code_len byte-for-byte untouched (identical archive to the unadjusted
+     * encoder -- rejection must not depend on package-merge tie assignment). */
+    const uint64_t j0 = zxc_huf_nudge_j(&c0);
+    uint64_t best_j = j0;
+    int best = -1;
+    for (int ci = 0; ci < n_cand; ci++) {
+        /* Every live symbol must keep a code; ghost-padded candidates carry
+         * MORE nonzero lengths than n, which is fine. */
+        int valid = 1;
+        for (int s = 0; s < ZXC_HUF_NUM_SYMBOLS; s++) {
+            if (freq[s] != 0 && cand[ci][s] == 0) {
+                valid = 0;
+                break;
+            }
+        }
+        if (!valid) continue;
+        uint32_t blc[LU + 1];
+        (void)zxc_huf_nudge_classes(cand[ci], blc);
+        zxc_huf_nudge_pf_canonical(cand[ci], freq, blc, pf);
+        zxc_huf_nudge_cost_t c1;
+        zxc_huf_nudge_eval(blc, pf, &c1);
+        if (c1.bits * 1000 > c0.bits * ZXC_HUF_NUDGE_BITS_PERMIL) continue;
+        if (c1.touches * 256 > c0.touches * ZXC_HUF_NUDGE_MERGE_Q8) continue;
+        const uint64_t j = zxc_huf_nudge_j(&c1);
+        if (j < best_j) {
+            best_j = j;
+            best = ci;
+        }
+    }
+    if (best < 0) return 0;
+    ZXC_MEMCPY(code_len, cand[best], ZXC_HUF_NUM_SYMBOLS);
+    return 1;
+}
+#endif /* ZXC_VARIANT_PRIMARY */
 
 /* ===========================================================================
  * 128-byte length header: 256 x 4-bit lengths, low nibble first.
@@ -752,6 +1420,9 @@ int zxc_huf_encode_section_dict(const uint8_t* RESTRICT literals, const size_t n
                                  0);
 }
 
+/* ISA-independent cold dict setup: emit once in the primary variant, not in
+ * every per-ISA copy (dead weight). zxc_pivco_tree_build stays per-variant. */
+#if defined(ZXC_VARIANT_PRIMARY)
 /**
  * @brief Precompute the topology-derived decoder tables for @p t.
  *
@@ -829,6 +1500,7 @@ int zxc_huf_dict_tree_build(const uint8_t* RESTRICT packed_lengths, zxc_pivco_tr
     zxc_pivco_decode_aux_build(tree, aux);
     return ZXC_OK;
 }
+#endif /* ZXC_VARIANT_PRIMARY */
 
 /**
  * @brief Merge two adjacent child sequences under control bits.
