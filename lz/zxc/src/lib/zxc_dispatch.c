@@ -9,8 +9,10 @@
  * @file zxc_dispatch.c
  * @brief Runtime CPU feature detection and SIMD dispatch layer.
  *
- * Detects AVX2/AVX512/NEON at runtime and routes compress/decompress calls
- * to the best available implementation via lazy-initialised function pointers.
+ * Detects AVX2/AVX512 (x86-64) and NEON (32-bit ARM) at runtime and routes
+ * compress/decompress calls to the best available implementation via
+ * lazy-initialised function pointers. SSE2 on x86-64 and NEON on AArch64 are
+ * baseline ISA guarantees, so the _default variant already covers those tiers.
  * Also contains the public one-shot buffer API (@ref zxc_compress,
  * @ref zxc_decompress, @ref zxc_get_decompressed_size).
  */
@@ -33,6 +35,10 @@
 #if defined(_M_X64)
 #include <immintrin.h>  // _xgetbv (x86-specific header; x64 AVX state check)
 #endif
+#endif
+
+#if (defined(__x86_64__) || defined(_M_X64)) && !defined(_MSC_VER) && !defined(ZXC_ONLY_DEFAULT)
+#include <cpuid.h>  // __cpuid_count: CPUID probes in zxc_detect_cpu_features
 #endif
 
 #if defined(__linux__) && (defined(__arm__) || defined(_M_ARM))
@@ -78,25 +84,16 @@ int zxc_decompress_chunk_wrapper_safe_avx2(const zxc_cctx_t* RESTRICT ctx,
 int zxc_decompress_chunk_wrapper_safe_avx512(const zxc_cctx_t* RESTRICT ctx,
                                              const uint8_t* RESTRICT src, const size_t src_sz,
                                              uint8_t* RESTRICT dst, const size_t dst_cap);
-int zxc_decompress_chunk_wrapper_sse2(const zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
-                                      const size_t src_sz, uint8_t* RESTRICT dst,
-                                      const size_t dst_cap);
-int zxc_decompress_chunk_wrapper_dict_sse2(const zxc_cctx_t* RESTRICT ctx,
-                                           const uint8_t* RESTRICT src, const size_t src_sz,
-                                           uint8_t* RESTRICT dst, const size_t dst_cap);
-int zxc_decompress_chunk_wrapper_safe_sse2(const zxc_cctx_t* RESTRICT ctx,
-                                           const uint8_t* RESTRICT src, const size_t src_sz,
-                                           uint8_t* RESTRICT dst, const size_t dst_cap);
-#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
-int zxc_decompress_chunk_wrapper_neon(const zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
-                                      const size_t src_sz, uint8_t* RESTRICT dst,
-                                      const size_t dst_cap);
-int zxc_decompress_chunk_wrapper_dict_neon(const zxc_cctx_t* RESTRICT ctx,
-                                           const uint8_t* RESTRICT src, const size_t src_sz,
-                                           uint8_t* RESTRICT dst, const size_t dst_cap);
-int zxc_decompress_chunk_wrapper_safe_neon(const zxc_cctx_t* RESTRICT ctx,
-                                           const uint8_t* RESTRICT src, const size_t src_sz,
-                                           uint8_t* RESTRICT dst, const size_t dst_cap);
+#elif defined(__arm__) || defined(_M_ARM)
+int zxc_decompress_chunk_wrapper_neon32(const zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                        const size_t src_sz, uint8_t* RESTRICT dst,
+                                        const size_t dst_cap);
+int zxc_decompress_chunk_wrapper_dict_neon32(const zxc_cctx_t* RESTRICT ctx,
+                                             const uint8_t* RESTRICT src, const size_t src_sz,
+                                             uint8_t* RESTRICT dst, const size_t dst_cap);
+int zxc_decompress_chunk_wrapper_safe_neon32(const zxc_cctx_t* RESTRICT ctx,
+                                             const uint8_t* RESTRICT src, const size_t src_sz,
+                                             uint8_t* RESTRICT dst, const size_t dst_cap);
 #endif
 #endif
 
@@ -129,10 +126,6 @@ int zxc_huf_decode_section_dict_default(const uint8_t* RESTRICT payload, size_t 
                                         const zxc_pivco_tree_t* RESTRICT tree,
                                         const zxc_pivco_decode_aux_t* RESTRICT aux,
                                         uint8_t* RESTRICT scratch);
-int zxc_huf_dict_tree_build_default(const uint8_t* RESTRICT packed_lengths,
-                                    zxc_pivco_tree_t* RESTRICT tree, uint32_t* RESTRICT codes,
-                                    uint8_t* RESTRICT code_len,
-                                    zxc_pivco_decode_aux_t* RESTRICT aux);
 size_t zxc_huf_calc_size_dict_default(const uint32_t* RESTRICT freq,
                                       const uint8_t* RESTRICT code_len,
                                       const zxc_pivco_tree_t* RESTRICT tree);
@@ -146,13 +139,10 @@ int zxc_compress_chunk_wrapper_avx2(zxc_cctx_t* RESTRICT ctx, const uint8_t* RES
 int zxc_compress_chunk_wrapper_avx512(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
                                       const size_t src_sz, uint8_t* RESTRICT dst,
                                       const size_t dst_cap);
-int zxc_compress_chunk_wrapper_sse2(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
-                                    const size_t src_sz, uint8_t* RESTRICT dst,
-                                    const size_t dst_cap);
-#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
-int zxc_compress_chunk_wrapper_neon(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
-                                    const size_t src_sz, uint8_t* RESTRICT dst,
-                                    const size_t dst_cap);
+#elif defined(__arm__) || defined(_M_ARM)
+int zxc_compress_chunk_wrapper_neon32(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT src,
+                                      const size_t src_sz, uint8_t* RESTRICT dst,
+                                      const size_t dst_cap);
 #endif
 
 /*
@@ -160,6 +150,36 @@ int zxc_compress_chunk_wrapper_neon(zxc_cctx_t* RESTRICT ctx, const uint8_t* RES
  * CPU DETECTION LOGIC
  * ============================================================================
  */
+
+#if (defined(__x86_64__) || defined(_M_X64)) && !defined(ZXC_ONLY_DEFAULT)
+
+/** @brief Reads CPUID leaf @p leaf, subleaf @p sub into @p regs (EAX,EBX,ECX,EDX). */
+static inline void zxc_cpuid(const uint32_t leaf, const uint32_t sub, uint32_t regs[4]) {
+#if defined(_MSC_VER)
+    int r[4];
+    __cpuidex(r, (int)leaf, (int)sub);
+    regs[0] = (uint32_t)r[0];
+    regs[1] = (uint32_t)r[1];
+    regs[2] = (uint32_t)r[2];
+    regs[3] = (uint32_t)r[3];
+#else
+    __cpuid_count(leaf, sub, regs[0], regs[1], regs[2], regs[3]);
+#endif
+}
+
+/** @brief Reads XCR0 (@c XGETBV with ECX=0). Callers must check OSXSAVE first. */
+static inline uint64_t zxc_xgetbv0(void) {
+#if defined(_MSC_VER)
+    return _xgetbv(0);
+#else
+    /* Raw encoding: the xgetbv intrinsic needs -mxsave, which the baseline
+     * translation unit is not compiled with. */
+    uint32_t lo, hi;
+    __asm__ volatile(".byte 0x0f, 0x01, 0xd0" : "=a"(lo), "=d"(hi) : "c"(0));
+    return ((uint64_t)hi << 32) | lo;
+#endif
+}
+#endif /* x86-64 && !ZXC_ONLY_DEFAULT */
 
 /**
  * @enum zxc_cpu_feature_t
@@ -169,8 +189,10 @@ typedef enum {
     ZXC_CPU_GENERIC = 0, /**< @brief Scalar-only fallback.   */
     ZXC_CPU_AVX2 = 1,    /**< @brief x86-64 AVX2 available.  */
     ZXC_CPU_AVX512 = 2,  /**< @brief x86-64 AVX-512F+BW available. */
-    ZXC_CPU_NEON = 3,    /**< @brief ARM NEON available.      */
-    ZXC_CPU_SSE2 = 4     /**< @brief x86 SSE2 available (no AVX2); x86-64 baseline. */
+    ZXC_CPU_NEON = 3,    /**< @brief ARM NEON available (dedicated variant on 32-bit ARM only;
+                          *          AArch64 baseline, served by _default there). */
+    ZXC_CPU_SSE2 = 4     /**< @brief x86 SSE2 available (no AVX2); x86-64 baseline,
+                          *          served by _default (no dedicated variant). */
 } zxc_cpu_feature_t;
 
 /**
@@ -189,48 +211,45 @@ static zxc_cpu_feature_t zxc_detect_cpu_features(void) {
     zxc_cpu_feature_t features = ZXC_CPU_GENERIC;
 
 #if defined(__x86_64__) || defined(_M_X64)
-#if defined(_MSC_VER)
     // AVX2/AVX512 need OS-enabled YMM/ZMM state: gate on OSXSAVE + XGETBV/XCR0,
     // not CPUID alone (else a VEX/EVEX op faults #UD when the OS hasn't enabled it).
-    int regs[4];
+    uint32_t regs[4];
     int sse2 = 0;
     int avx2 = 0;
     int avx512 = 0;
+    int bmi_lzcnt = 0;
 
-    __cpuid(regs, 1);
-    if (regs[3] & (1 << 26)) sse2 = 1;  // SSE2
-    if (regs[2] & (1 << 27)) {          // OSXSAVE
-        const unsigned long long xcr0 = _xgetbv(0);
+    zxc_cpuid(0, 0, regs);
+    const uint32_t max_leaf = regs[0];
+
+    zxc_cpuid(1, 0, regs);
+    if (regs[3] & (1U << 26)) sse2 = 1;             // CPUID.1:EDX[26]
+    if ((regs[2] & (1U << 27)) && max_leaf >= 7) {  // OSXSAVE, and leaf 7 is real
+        const uint64_t xcr0 = zxc_xgetbv0();
         if ((xcr0 & 0x6) == 0x6) {  // SSE+YMM enabled
-            __cpuidex(regs, 7, 0);
-            if (regs[1] & (1 << 5)) avx2 = 1;
+            zxc_cpuid(7, 0, regs);
+            const int bmi1 = (regs[1] >> 3) & 1;  // CPUID.7.0:EBX[3]
+            const int bmi2 = (regs[1] >> 8) & 1;  // CPUID.7.0:EBX[8]
+            if (regs[1] & (1U << 5)) avx2 = 1;
             // AVX512 also needs XCR0[5..7] (opmask/ZMM)
-            if ((regs[1] & (1 << 16)) && (regs[1] & (1 << 30)) && (regs[2] & (1 << 6)) &&
+            if ((regs[1] & (1U << 16)) && (regs[1] & (1U << 30)) && (regs[2] & (1U << 6)) &&
                 (xcr0 & 0xE0) == 0xE0)
                 avx512 = 1; /* AVX512 tier = F+BW+VBMI2 (variant built with -mavx512vbmi2) */
+            // The AVX2/AVX512 variants are compiled with BMI1/BMI2/LZCNT enabled,
+            // so both gates must prove those bits too. LZCNT (ABM) lives in
+            // CPUID.80000001H:ECX[5]; that leaf is architectural on x86-64.
+            zxc_cpuid(0x80000001U, 0, regs);
+            bmi_lzcnt = bmi1 && bmi2 && ((regs[2] >> 5) & 1);
         }
     }
 
-    if (avx512) {
+    if (avx512 && bmi_lzcnt) {
         features = ZXC_CPU_AVX512;
-    } else if (avx2) {
+    } else if (avx2 && bmi_lzcnt) {
         features = ZXC_CPU_AVX2;
     } else if (sse2) {
         features = ZXC_CPU_SSE2;
     }
-#else
-    // GCC/Clang built-in detection
-    __builtin_cpu_init();
-
-    if (__builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512bw") &&
-        __builtin_cpu_supports("avx512vbmi2")) {
-        features = ZXC_CPU_AVX512;
-    } else if (__builtin_cpu_supports("avx2")) {
-        features = ZXC_CPU_AVX2;
-    } else if (__builtin_cpu_supports("sse2")) {
-        features = ZXC_CPU_SSE2;
-    }
-#endif
 
 #elif defined(__aarch64__) || defined(_M_ARM64)
     // ARM64 usually guarantees NEON
@@ -311,18 +330,16 @@ static int zxc_decompress_dispatch_init(const zxc_cctx_t* RESTRICT ctx, const ui
     } else if (cpu == ZXC_CPU_AVX2) {
         zxc_decompress_ptr_local = zxc_decompress_chunk_wrapper_avx2;
         zxc_decompress_dict_ptr_local = zxc_decompress_chunk_wrapper_dict_avx2;
-    } else if (cpu == ZXC_CPU_SSE2) {
-        zxc_decompress_ptr_local = zxc_decompress_chunk_wrapper_sse2;
-        zxc_decompress_dict_ptr_local = zxc_decompress_chunk_wrapper_dict_sse2;
     } else {
         zxc_decompress_ptr_local = zxc_decompress_chunk_wrapper_default;
         zxc_decompress_dict_ptr_local = zxc_decompress_chunk_wrapper_dict_default;
     }
-#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
+#elif defined(__arm__) || defined(_M_ARM)
+    // 32-bit ARM: the only arch with a real runtime NEON probe (getauxval).
     // cppcheck-suppress knownConditionTrueFalse
     if (cpu == ZXC_CPU_NEON) {
-        zxc_decompress_ptr_local = zxc_decompress_chunk_wrapper_neon;
-        zxc_decompress_dict_ptr_local = zxc_decompress_chunk_wrapper_dict_neon;
+        zxc_decompress_ptr_local = zxc_decompress_chunk_wrapper_neon32;
+        zxc_decompress_dict_ptr_local = zxc_decompress_chunk_wrapper_dict_neon32;
     } else {
         zxc_decompress_ptr_local = zxc_decompress_chunk_wrapper_default;
         zxc_decompress_dict_ptr_local = zxc_decompress_chunk_wrapper_dict_default;
@@ -378,14 +395,12 @@ static int zxc_decompress_safe_dispatch_init(const zxc_cctx_t* RESTRICT ctx,
         zxc_decompress_safe_ptr_local = zxc_decompress_chunk_wrapper_safe_avx512;
     else if (cpu == ZXC_CPU_AVX2)
         zxc_decompress_safe_ptr_local = zxc_decompress_chunk_wrapper_safe_avx2;
-    else if (cpu == ZXC_CPU_SSE2)
-        zxc_decompress_safe_ptr_local = zxc_decompress_chunk_wrapper_safe_sse2;
     else
         zxc_decompress_safe_ptr_local = zxc_decompress_chunk_wrapper_safe_default;
-#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
+#elif defined(__arm__) || defined(_M_ARM)
     // cppcheck-suppress knownConditionTrueFalse
     if (cpu == ZXC_CPU_NEON)
-        zxc_decompress_safe_ptr_local = zxc_decompress_chunk_wrapper_safe_neon;
+        zxc_decompress_safe_ptr_local = zxc_decompress_chunk_wrapper_safe_neon32;
     else
         zxc_decompress_safe_ptr_local = zxc_decompress_chunk_wrapper_safe_default;
 #else
@@ -434,14 +449,12 @@ static int zxc_compress_dispatch_init(zxc_cctx_t* RESTRICT ctx, const uint8_t* R
         zxc_compress_ptr_local = zxc_compress_chunk_wrapper_avx512;
     else if (cpu == ZXC_CPU_AVX2)
         zxc_compress_ptr_local = zxc_compress_chunk_wrapper_avx2;
-    else if (cpu == ZXC_CPU_SSE2)
-        zxc_compress_ptr_local = zxc_compress_chunk_wrapper_sse2;
     else
         zxc_compress_ptr_local = zxc_compress_chunk_wrapper_default;
-#elif defined(__aarch64__) || defined(_M_ARM64) || defined(__arm__) || defined(_M_ARM)
+#elif defined(__arm__) || defined(_M_ARM)
     // cppcheck-suppress knownConditionTrueFalse
     if (cpu == ZXC_CPU_NEON)
-        zxc_compress_ptr_local = zxc_compress_chunk_wrapper_neon;
+        zxc_compress_ptr_local = zxc_compress_chunk_wrapper_neon32;
     else
         zxc_compress_ptr_local = zxc_compress_chunk_wrapper_default;
 #else
@@ -539,7 +552,8 @@ int zxc_compress_chunk_wrapper(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT
  * ============================================================================
  * HUFFMAN TRAMPOLINES
  * ============================================================================
- * The Huffman codec is built per-variant (default / avx2 / avx512 / neon)
+ * The Huffman codec is built per-variant (default / avx2 / avx512, plus neon32
+ * on 32-bit ARM)
  * alongside zxc_compress.c and zxc_decompress.c, so the LZ77 stages and the
  * Huffman stage in a given variant share the same ISA flags (e.g. -mbmi2 on
  * the AVX2/AVX512 variants). The compress/decompress variant TUs resolve
@@ -597,12 +611,6 @@ int zxc_huf_decode_section_dict(const uint8_t* RESTRICT payload, const size_t pa
                                 const zxc_pivco_decode_aux_t* RESTRICT aux,
                                 uint8_t* RESTRICT scratch) {
     return zxc_huf_decode_section_dict_default(payload, payload_size, dst, n, tree, aux, scratch);
-}
-
-int zxc_huf_dict_tree_build(const uint8_t* RESTRICT packed_lengths, zxc_pivco_tree_t* RESTRICT tree,
-                            uint32_t* RESTRICT codes, uint8_t* RESTRICT code_len,
-                            zxc_pivco_decode_aux_t* RESTRICT aux) {
-    return zxc_huf_dict_tree_build_default(packed_lengths, tree, codes, code_len, aux);
 }
 
 size_t zxc_huf_calc_size_dict(const uint32_t* RESTRICT freq, const uint8_t* RESTRICT code_len,
@@ -1011,23 +1019,41 @@ static int64_t zxc_decompress_frame(const uint8_t* src, const size_t src_size, u
 }
 
 /**
- * @brief Single source of truth for the in-place safety margin (bytes over the
- *        decompressed size @p d).
+ * @brief Bytes an in-place decode needs on top of the decompressed size.
  *
- * The write cursor sweeps [0, d) while the read cursor starts flush-right; the
- * no-overtake invariant `sum_{j<=k} o_j + PAD <= F + 16 + sum_{j<k} c_j` must
- * hold for every block k. Worst case is incompressible input (all RAW blocks,
- * `c_j = o_j + H`): the compressed stream then runs `nblocks * H` longer than
- * the output, squeezing the gap most at the first block, so the margin must
- * carry the full accumulated per-block overhead, not just one block. Hence
- * `chunk_size` (largest single block) + `nblocks * H` (H = block header +
- * optional per-block checksum) + footer + wild-copy tail.
+ * Flush-right placement puts block 0 at `capacity - comp_size`, so the read
+ * cursor before block k sits at `capacity - sum_{j>=k} (c_j + H) - trailing`,
+ * and the no-overtake invariant `sum_{j<=k} o_j + PAD <= R_k` requires
+ *
+ *     capacity >= max_k [ sum_{j<=k} o_j + sum_{j>=k} (c_j + H) ] + PAD + trailing
+ *
+ * Incompressible input (all RAW, `c_j = o_j`) maximises the bracket at
+ * `dsize + chunk_size + nblocks * H`: the margin carries the whole accumulated
+ * per-block overhead, not just one block's.
+ *
+ * `trailing` is everything written after the last data block: EOF header, footer
+ * and seek table. The latter is always reserved at its worst case (4 bytes per
+ * block, <= 0.1% of the payload) because no header flag announces one; omitting
+ * it used to push the bound *below* comp_size for a seekable archive of
+ * incompressible data in small blocks.
+ *
+ * @param[in] dsize      Decompressed size, in bytes.
+ * @param[in] chunk_size Block size from the file header (0 = no blocks).
+ * @param[in] has_cs     Non-zero if blocks carry checksums.
+ * @return Bytes to reserve beyond @p dsize.
  */
-static uint64_t zxc_inplace_margin(const uint64_t d, const size_t chunk_size, const int has_cs) {
-    const uint64_t nblocks = chunk_size ? (d + (uint64_t)chunk_size - 1) / (uint64_t)chunk_size : 0;
+static uint64_t zxc_inplace_margin(const uint64_t dsize, const size_t chunk_size,
+                                   const int has_cs) {
+    const uint64_t nblocks =
+        chunk_size ? (dsize + (uint64_t)chunk_size - 1) / (uint64_t)chunk_size : 0;
     const uint64_t per_block =
         (uint64_t)ZXC_BLOCK_HEADER_SIZE + (has_cs ? (uint64_t)ZXC_BLOCK_CHECKSUM_SIZE : 0);
-    return (uint64_t)chunk_size + nblocks * per_block + (uint64_t)ZXC_FILE_FOOTER_SIZE +
+    const uint64_t trailing =
+        (uint64_t)ZXC_BLOCK_HEADER_SIZE +  // EOF block header
+        ((uint64_t)ZXC_BLOCK_HEADER_SIZE +
+         nblocks * (uint64_t)ZXC_SEEK_ENTRY_SIZE) +  // Seek table (worst case)
+        (uint64_t)ZXC_FILE_FOOTER_SIZE;
+    return (uint64_t)chunk_size + nblocks * per_block + trailing +
            (uint64_t)ZXC_DECOMPRESS_TAIL_PAD;
 }
 
@@ -1040,9 +1066,14 @@ static uint64_t zxc_inplace_margin(const uint64_t d, const size_t chunk_size, co
  * and @ref zxc_decompress_inplace always agree on what a buffer of at least
  * the bound must satisfy.
  *
+ * @param[in]  comp      Compressed archive; only the header and footer are read.
+ * @param[in]  comp_size Size of the archive in bytes. The caller guarantees it
+ *                       covers at least the file header and footer.
+ * @param[out] dsize     Decompressed size read from the footer.
+ * @param[out] margin    In-place margin for @p dsize, from @ref zxc_inplace_margin.
  * @return ZXC_OK, or a negative @ref zxc_error_t on an invalid archive.
  */
-static int zxc_inplace_probe(const uint8_t* comp, const size_t comp_size, uint64_t* d,
+static int zxc_inplace_probe(const uint8_t* comp, const size_t comp_size, uint64_t* dsize,
                              uint64_t* margin) {
     if (UNLIKELY(zxc_le32(comp) != ZXC_MAGIC_WORD)) return ZXC_ERROR_BAD_MAGIC;
     size_t chunk_size = 0;
@@ -1050,8 +1081,8 @@ static int zxc_inplace_probe(const uint8_t* comp, const size_t comp_size, uint64
     uint32_t did = 0;
     if (UNLIKELY(zxc_read_file_header(comp, comp_size, &chunk_size, &has_cs, &did) != ZXC_OK))
         return ZXC_ERROR_BAD_HEADER;
-    *d = zxc_le64(comp + comp_size - ZXC_FILE_FOOTER_SIZE);
-    *margin = zxc_inplace_margin(*d, chunk_size, has_cs);
+    *dsize = zxc_le64(comp + comp_size - ZXC_FILE_FOOTER_SIZE);
+    *margin = zxc_inplace_margin(*dsize, chunk_size, has_cs);
     return ZXC_OK;
 }
 
@@ -1072,11 +1103,12 @@ static int zxc_inplace_probe(const uint8_t* comp, const size_t comp_size, uint64
 // cppcheck-suppress unusedFunction
 size_t zxc_decompress_inplace_bound(const void* src, const size_t src_size) {
     if (UNLIKELY(!src || src_size < ZXC_FILE_HEADER_SIZE + ZXC_FILE_FOOTER_SIZE)) return 0;
-    uint64_t d = 0;
+    uint64_t dsize = 0;
     uint64_t margin = 0;
-    if (UNLIKELY(zxc_inplace_probe((const uint8_t*)src, src_size, &d, &margin) != ZXC_OK)) return 0;
-    if (UNLIKELY(margin > (uint64_t)SIZE_MAX || d > (uint64_t)SIZE_MAX - margin)) return 0;
-    return (size_t)(d + margin);
+    if (UNLIKELY(zxc_inplace_probe((const uint8_t*)src, src_size, &dsize, &margin) != ZXC_OK))
+        return 0;
+    if (UNLIKELY(margin > (uint64_t)SIZE_MAX || dsize > (uint64_t)SIZE_MAX - margin)) return 0;
+    return (size_t)(dsize + margin);
 }
 
 /**
@@ -1107,11 +1139,11 @@ int64_t zxc_decompress_inplace(void* buffer, const size_t buffer_capacity, const
         return ZXC_ERROR_NULL_INPUT;
     uint8_t* const buf = (uint8_t*)buffer;
     const uint8_t* const comp = buf + (buffer_capacity - comp_size); /* flush-right */
-    uint64_t d = 0;
+    uint64_t dsize = 0;
     uint64_t margin = 0;
-    if (UNLIKELY(zxc_inplace_probe(comp, comp_size, &d, &margin) != ZXC_OK))
+    if (UNLIKELY(zxc_inplace_probe(comp, comp_size, &dsize, &margin) != ZXC_OK))
         return ZXC_ERROR_BAD_HEADER;
-    if (UNLIKELY(d > (uint64_t)buffer_capacity || (uint64_t)buffer_capacity - d < margin))
+    if (UNLIKELY(dsize > (uint64_t)buffer_capacity || (uint64_t)buffer_capacity - dsize < margin))
         return ZXC_ERROR_DST_TOO_SMALL;
     return zxc_decompress_frame(comp, comp_size, buf, buffer_capacity, opts);
 }
@@ -1143,18 +1175,18 @@ uint64_t zxc_get_decompressed_size(const void* src, const size_t src_size) {
     if (UNLIKELY(zxc_read_file_header(p, src_size, &chunk_size, &has_cs, &did) != ZXC_OK)) return 0;
 
     const uint8_t* const footer = p + src_size - ZXC_FILE_FOOTER_SIZE;
-    const uint64_t d = zxc_le64(footer);
+    const uint64_t dsize = zxc_le64(footer);
 
     /* Plausibility: an archive of src_size bytes cannot carry more blocks
      * than src_size / ZXC_BLOCK_HEADER_SIZE, and each block decodes to at
      * most chunk_size bytes. Division form keeps the compare overflow-free
-     * (the usual `(d + chunk - 1) / chunk` ceil would wrap for a forged d
-     * near UINT64_MAX). */
+     * (the usual `(dsize + chunk - 1) / chunk` ceil would wrap for a forged
+     * dsize near UINT64_MAX). */
     const uint64_t blocks_needed =
-        chunk_size ? d / (uint64_t)chunk_size + (d % (uint64_t)chunk_size != 0) : 0;
+        chunk_size ? dsize / (uint64_t)chunk_size + (dsize % (uint64_t)chunk_size != 0) : 0;
     if (UNLIKELY(blocks_needed > (uint64_t)(src_size / ZXC_BLOCK_HEADER_SIZE))) return 0;
 
-    return d;
+    return dsize;
 }
 
 /**
