@@ -236,6 +236,8 @@ static const compressor_desc_t comp_desc[] =
     { "lzsse8fast", "lzsse8fast 2019-04-18",   0,   0,    0,  BENCH_POOL_MT, lzbench_lzsse8fast_compress, lzbench_lzsse8_decompress,     lzbench_lzsse8fast_init, lzbench_lzsse8fast_deinit },
     { "lzvn",       "lzvn 2017-03-08",         0,   0,    0,  BENCH_POOL_MT, lzbench_lzvn_compress,       lzbench_lzvn_decompress,       lzbench_lzvn_init,       lzbench_lzvn_deinit },
     { "memlz",      "memlz 0.2 beta",          0,   0,    0,  BENCH_POOL_MT, lzbench_memlz_compress,      lzbench_memlz_decompress,      lzbench_memlz_init,      lzbench_memlz_deinit },
+    { "misa77",      "misa77 0.3.0",           0,   1,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_decompress,      NULL, NULL },
+    { "misa77_safe", "misa77 0.3.0 safe",      0,   1,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_safe_decompress, NULL, NULL },
     { "nvcomp_lz4", "nvcomp_lz4 2.2.0",        0,   7,    0,  BENCH_POOL_MT, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },
     { "openzl_u8",  "openzl 0.2.0 -p u8",       0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint8_t),  lzbench_openzl_deinit },
     { "openzl_i8",  "openzl 0.2.0 -p i8",       0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int8_t),  lzbench_openzl_deinit },
