@@ -3,6 +3,7 @@ v2.x.y
 - updated lzav to 5.16 (thanks to @avaneev)
 - updated nvcomp to support CUDA 13 and cccl 3 (thanks to @fwyzard)
 - updated zxc to 0.13.1 (thanks to @hellobertrand)
+- added misa77 0.5.0 (by @welcome-to-the-sunny-side)
 
 v2.3 (Jun 15, 2026)
 - improvement: Reorganized compressor alias groups by type — ALL is now a composite of LZ /
