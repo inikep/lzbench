@@ -1,7 +1,7 @@
 /**
  * @file lzav.h
  *
- * @version 5.14
+ * @version 5.16
  *
  * @brief Self-contained header file for the "LZAV" in-memory data compression
  * and decompression algorithms.
@@ -40,7 +40,7 @@
 #define LZAV_INCLUDED
 
 #define LZAV_API_VER 0x206 ///< API version; unrelated to the code version.
-#define LZAV_VER_STR "5.14" ///< LZAV source code version string.
+#define LZAV_VER_STR "5.16" ///< LZAV source code version string.
 
 /**
  * @def LZAV_FMT_MIN
@@ -580,7 +580,7 @@
 
 	#if defined( LZAV_GCC_BUILTINS )
 
-		#define LZAV_NO_INLINE LZAV_INLINE __attribute__((noinline))
+		#define LZAV_NO_INLINE LZAV_STATIC __attribute__((noinline))
 
 	#elif defined( _MSC_VER )
 
@@ -655,6 +655,24 @@ enum LZAV_PARAM
 	LZAV_MR5_THR = ( 1 << 18 ), ///< `srclen` threshold for using `mref=5`.
 	LZAV_FMT_CUR = 3 ///< Data format identifier used by the compressor.
 };
+
+
+/**
+ * @typedef lzav_shift_t
+ * @brief Defines a type for shift-count variables, depending on the platform.
+ *
+ * This specialization prevents implicit type conversions.
+ */
+
+#if defined( LZAV_X86 )
+
+	typedef unsigned int lzav_shift_t;
+
+#else // defined( LZAV_X86 )
+
+	typedef size_t lzav_shift_t;
+
+#endif // defined( LZAV_X86 )
 
 /**
  * @brief Determines the platform's endianness at runtime.
@@ -1618,7 +1636,7 @@ LZAV_INLINE int lzav_compress_mref6( const void* const src,
  * there is not enough memory.
  */
 
-LZAV_INLINE_F int lzav_compress_default( const void* const src,
+LZAV_INLINE int lzav_compress_default( const void* const src,
 	void* const dst, const int srclen, const int dstlen ) LZAV_NOEXC
 {
 	if( srclen < LZAV_MR5_THR )
@@ -2056,14 +2074,14 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 	*pwl = dstlen;
 	size_t bh; // Current block header, updated in each branch.
 	size_t cv = 0; // Reference offset-carry value.
-	int csh = 0; // Reference offset-carry shift.
+	lzav_shift_t csh = 0; // Reference offset-carry shift.
 
 	#define LZAV_SET_IPD_CV( x, v, sh ) \
 		const size_t d = ( x ) << csh | cv; \
 		const size_t md = (size_t) ( op - (uint8_t*) dst ); \
 		csh = ( sh ); \
-		cv = ( v ); \
 		ipd = op; \
+		cv = ( v ); \
 		if LZAV_UNLIKELY( d > md ) \
 			goto err_refoob; \
 		ipd -= d
@@ -2104,10 +2122,10 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 			LZAV_IEC32( bv );
 
 			static const size_t om[ 4 ] = { 0, 0x3FF, 0x7FFF, 0x1FFFFF };
-			static const int ocsh[ 4 ] = { 0, 0, 3, 5 };
+			static const lzav_shift_t ocsh[ 4 ] = { 0, 0, 3, 5 };
 
-			const int bt8 = (int) ( bt << 3 );
-			const int ncsh = ocsh[ bt ];
+			const size_t bt8 = bt << 3;
+			const lzav_shift_t ncsh = ocsh[ bt ];
 
 			LZAV_SET_IPD_CV(( (size_t) bv << 2 | bh >> 6 ) & om[ bt ],
 				( (size_t) ip[ bt - 1 ] << ncsh ) >> 8, ncsh );
