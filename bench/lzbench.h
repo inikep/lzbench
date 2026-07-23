@@ -168,7 +168,7 @@ static const compressor_desc_t comp_desc[] =
      //                                       last_level,       mt_mode,
      // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func,             max_input_size
     { "memcpy",     "memcpy",                  0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
-    { "aceapex",    "aceapex 1.0",             1,   2,    0, FULL_THREADING, lzbench_aceapex_compress,     lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
+    { "aceapex",    "aceapex 1.0.1",             1,   2,    0, FULL_THREADING, lzbench_aceapex_compress,     lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
 #ifdef BENCH_HAS_CUDA
     { "aceapex_cuda","aceapex_cuda 0.9",        1,   2,    0,  NO_THREADING,  lzbench_aceapex_compress,    lzbench_aceapex_cuda_decompress, lzbench_aceapex_cuda_init, lzbench_aceapex_cuda_deinit },
 #endif
@@ -307,10 +307,10 @@ static const alias_desc_t alias_desc[] =
               "LZ/SYMMETRIC/MISC" },
     // CI uses FASTEST for multi-threaded testing
     { "FASTEST", "All LZ/SYMMETRIC/MISC compressors, each at only its fastest level.",
-     /* LZ */ "memcpy/aceapex-DISABLED,1/brieflz,1/brotli,0/fastlz,1/fastlzma2,1/kanzi,1/libdeflate,1/lizard,10/lz4fast,99/lz4/lz4hc,1/lzav,1/" \
+     /* LZ */ "memcpy/aceapex,1/brieflz,1/brotli,0/fastlz,1/fastlzma2,1/kanzi,1/libdeflate,1/lizard,10/lz4fast,99/lz4/lz4hc,1/lzav,1/" \
               "lzf,0/lzfse/lzham,0/lzlib,0/lzma,0/lzo1,1/lzo1a,1/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/lzo1z/lzo2a/lzsse2,1/" \
               "lzsse4fast/lzsse4,1/lzsse8,1/lzvn/memlz/misa77,0/misa77_safe,0/quicklz,1/slz_gzip,1/snappy/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/xz,0/yalz77,1/" \
-              "zlib,1/zlib-ng,1/zstd_fast,-5/zstd,1/zxc,1/" /* aceapex is disabled as it has issues with tiny inputs */ \
+              "zlib,1/zlib-ng,1/zstd_fast,-5/zstd,1/zxc,1/" \
 /* SYMMETR */ "bsc1/bzip2,1/bzip3,1/density,1/ppmd8,1/zpaq,1/" \
    /* MISC */ "crush,0/lzjb/skim/tamp,8/tornado-DISABLED,1/zling,0" }, /* Tornado is disabled as it has issues with incompressible data */
     { "SLOW", "Lists very slow compressors.",

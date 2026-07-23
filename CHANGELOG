@@ -4,6 +4,9 @@ v2.x.y
 - updated nvcomp to support CUDA 13 and cccl 3 (thanks to @fwyzard)
 - updated zxc to 0.13.2 (thanks to @hellobertrand)
 - added misa77 0.6.0 (by @welcome-to-the-sunny-side)
+- fixed: aceapex produced wrong results on tiny inputs (1/2/5 bytes) and could abort
+         with a heap double-free after many small buffers, and could corrupt output
+         above 2 GiB; re-enabled in the FASTEST alias
 
 v2.3 (Jun 15, 2026)
 - improvement: Reorganized compressor alias groups by type — ALL is now a composite of LZ /
