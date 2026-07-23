@@ -321,13 +321,13 @@ static void decompress_streams(
             if (lv==0x0F) lv+=read_varint(len,np,len_sz);
             uint32_t l=lv+6, dist=rep[ri];
             if (ri>0) { for(int i=ri;i>0;i--) rep[i]=rep[i-1]; rep[0]=dist; }
-            if (!dist||out+l>dst_size) break;
+            if (!dist||dist>out||out+l>dst_size) break;
             copy_match(dst,out,dist,l); out+=l;
         } else {
             uint32_t lv=(c==0xFE)?read_varint(len,np,len_sz):(uint32_t)(c&0x3F);
             uint32_t l=lv+6, dist=read_varint(off,op,off_sz);
             rep[3]=rep[2];rep[2]=rep[1];rep[1]=rep[0];rep[0]=dist;
-            if (!dist||out+l>dst_size) break;
+            if (!dist||dist>out||out+l>dst_size) break;
             copy_match(dst,out,dist,l); out+=l;
         }
     }
@@ -589,7 +589,12 @@ static uint8_t* lit_compress(const uint8_t* src, size_t sz, size_t& out_sz) {
     struct ZW{const uint8_t*in;size_t isz;uint8_t*out;size_t osz;size_t cap;};
     ZW zws[NW];
     for(int t=0;t<NW;t++){
-        size_t off=(size_t)t*csz,isz=(t<NW-1)?csz:sz-off;
+        // Guard against unsigned underflow: for sz in {1,2,5,...} the last
+        // worker's offset (3*ceil(sz/4)) exceeds sz, so sz-off wrapped around
+        // to ~2^64 -> ZSTD_compressBound(huge) -> malloc failure -> zlit_sz=0
+        // -> the literal stream was silently dropped and decode produced garbage.
+        size_t off=(size_t)t*csz; if(off>sz) off=sz;
+        size_t isz=(t<NW-1)?((off+csz<=sz)?csz:(sz-off)):(sz-off);
         zws[t]={src+off,isz,nullptr,0,ZSTD_compressBound(isz)+8};
         zws[t].out=(uint8_t*)malloc(zws[t].cap);
         if(!zws[t].out){out_sz=0;return nullptr;}}
@@ -612,7 +617,13 @@ static uint8_t* lit_compress(const uint8_t* src, size_t sz, size_t& out_sz) {
     out_sz=totalsz; return res;
 }
 static uint8_t* lit_decompress(const uint8_t* src, size_t src_sz, size_t& orig_sz) {
-    uint64_t h=*(const uint64_t*)src;
+    // Guard: an empty or truncated literal stream must not be read as a header.
+    // Tiny inputs (1/2/5 bytes) produce zlit_sz==0; reading 8 bytes from a
+    // zero-length buffer gave a garbage orig_sz -> malloc(garbage) -> either a
+    // -1 decode or heap corruption that surfaced as a double-free thousands of
+    // calls later. (lzbench issue: aceapex tiny-input failures + tcache abort.)
+    if (!src || src_sz < 8) { orig_sz = 0; return (uint8_t*)malloc(1); }
+    uint64_t h=AX_read64(src);
     orig_sz=h & ~(uint64_t(1)<<62);
     uint8_t* out=(uint8_t*)malloc(orig_sz);
     if(!out) return nullptr;
@@ -623,7 +634,10 @@ static uint8_t* lit_decompress(const uint8_t* src, size_t src_sz, size_t& orig_s
     struct DW{uint8_t*out;size_t raw;const uint8_t*in;size_t isz;};
     DW dws[NW]; const uint8_t* p=p0;
     for(int t=0;t<NW;t++){
-        size_t off=(size_t)t*csz,raw=(t<NW-1)?csz:orig_sz-off;
+        // Same underflow guard as in lit_compress: orig_sz-off would wrap for
+        // sizes where 3*ceil(orig_sz/4) > orig_sz (1, 2, 5, ...).
+        size_t off=(size_t)t*csz; if(off>orig_sz) off=orig_sz;
+        size_t raw=(t<NW-1)?((off+csz<=orig_sz)?csz:(orig_sz-off)):(orig_sz-off);
         dws[t]={out+off,raw,p,(size_t)zsz[t]}; p+=(size_t)zsz[t];}
     auto dfn=[](void*a)->void*{DW*d=(DW*)a;
         ZSTD_decompress(d->out,d->raw,d->in,d->isz); return nullptr;};
@@ -817,7 +831,8 @@ static int do_decompress(const char* in_path, const char* out_path) {
     struct FD{const uint8_t*s;size_t sz;uint8_t*d;};
     FD fds[3]={{zoff,off_sz,off},{zlen,len_sz,len},{zcmd,cmd_sz,cmd}};
     auto fdfn=[](void*a)->void*{FD*f=(FD*)a;
-        size_t orig=*(const uint64_t*)f->s&~(uint64_t(1)<<63);
+        if(!f->s || f->sz < 8) return nullptr;   // empty stream: nothing to decode
+        size_t orig=AX_read64(f->s)&~(uint64_t(1)<<63);
         fse_chunked_decomp(f->s,orig,f->d); return nullptr;};
     pthread_t fpts[4];
     pthread_create(&fpts[0],nullptr,litfn,&larg);

@@ -71,12 +71,13 @@ static uint8_t* fse_comp(const uint8_t* src,size_t sz,size_t& out_sz,int nc=16){
 }
 
 static uint8_t* fse_decomp(const uint8_t* src,size_t sz,size_t& orig_sz){
-    uint32_t nc=*(const uint32_t*)src;
+    if(!src || sz < 8){ orig_sz=0; return (uint8_t*)malloc(1); }
+    uint32_t nc=AX_read32(src);
     if(nc==0||nc>256){
-        orig_sz=*(const uint64_t*)src&~(uint64_t(1)<<63);
-        int raw=(*(const uint64_t*)src>>63)&1;
-        uint8_t* out=(uint8_t*)malloc(orig_sz);
-    if(!out) return nullptr;
+        uint64_t h=AX_read64(src);
+        orig_sz=h&~(uint64_t(1)<<63);
+        int raw=(h>>63)&1;
+        uint8_t* out=(uint8_t*)malloc(orig_sz?orig_sz:1);
         if(!out) return nullptr;
         if(raw) memcpy(out,src+8,orig_sz);
         else LIT_decompress(out,orig_sz,src+8,sz-8);

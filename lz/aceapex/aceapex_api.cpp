@@ -1,3 +1,4 @@
+#include <stdio.h>
 #define ACEAPEX_NO_MAIN
 #include "ax_align.h"
 #include "aceapex_main.cpp"
@@ -74,10 +75,13 @@ int64_t aceapex_decompress(
     std::vector<BlockOffsets> boffs(hdr.num_blocks);
     memcpy(boffs.data(),p,hdr.num_blocks*sizeof(BlockOffsets));
     p+=hdr.num_blocks*sizeof(BlockOffsets);
-    uint8_t* zl=(uint8_t*)malloc(hdr.zlit_sz);
-    uint8_t* zo=(uint8_t*)malloc(hdr.zoff_sz);
-    uint8_t* zn=(uint8_t*)malloc(hdr.zlen_sz);
-    uint8_t* zc=(uint8_t*)malloc(hdr.zcmd_sz);
+    // malloc(0) may legally return NULL; a zero-length stream is not an error.
+    // Tiny inputs (1/2/5 bytes) produce zlit_sz==0, and the old !zl check turned
+    // that empty stream into ACEAPEX_ERR_MEMORY (-1). Allocate at least 1 byte.
+    uint8_t* zl=(uint8_t*)malloc(hdr.zlit_sz?hdr.zlit_sz:1);
+    uint8_t* zo=(uint8_t*)malloc(hdr.zoff_sz?hdr.zoff_sz:1);
+    uint8_t* zn=(uint8_t*)malloc(hdr.zlen_sz?hdr.zlen_sz:1);
+    uint8_t* zc=(uint8_t*)malloc(hdr.zcmd_sz?hdr.zcmd_sz:1);
     if(!zl||!zo||!zn||!zc){free(zl);free(zo);free(zn);free(zc);return ACEAPEX_ERR_MEMORY;}
     memcpy(zl,p,hdr.zlit_sz); p+=hdr.zlit_sz;
     memcpy(zo,p,hdr.zoff_sz); p+=hdr.zoff_sz;
@@ -86,9 +90,9 @@ int64_t aceapex_decompress(
     size_t os=AX_read64((zo)),ns=AX_read64((zn)),cs=AX_read64((zc));
     size_t ls=0; uint8_t* l=lit_decompress(zl,hdr.zlit_sz,ls);
     if(!l){free(zl);free(zo);free(zn);free(zc);return ACEAPEX_ERR_MEMORY;}
-    uint8_t* o=(uint8_t*)malloc(os);
-    uint8_t* n=(uint8_t*)malloc(ns);
-    uint8_t* c=(uint8_t*)malloc(cs);
+    uint8_t* o=(uint8_t*)malloc(os?os:1);
+    uint8_t* n=(uint8_t*)malloc(ns?ns:1);
+    uint8_t* c=(uint8_t*)malloc(cs?cs:1);
     if(!o||!n||!c){free(o);free(n);free(c);free(zl);free(zo);free(zn);free(zc);return ACEAPEX_ERR_MEMORY;}
     fse_chunked_decomp(zo,os,o); fse_chunked_decomp(zn,ns,n); fse_chunked_decomp(zc,cs,c);
     free(zl);free(zo);free(zn);free(zc);
