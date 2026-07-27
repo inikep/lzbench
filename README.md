@@ -70,6 +70,7 @@ Notes column says otherwise.
 | [fastlz 0.5.0](https://github.com/ariya/FastLZ) | 2020-02-02 | |
 | [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2) | 2019-05-06 | |
 | [glza 0.12](https://encode.su/threads/2427-GLZA) | 2026-03-23 | |
+| [gpucompact 1.0](https://github.com/UDPSendToFailed/gpucompact) | 2026-07-27 | CUDA only |
 | [kanzi 2.5.3](https://github.com/flanglet/kanzi-cpp) | 2026-04-22 | |
 | [libdeflate v1.25](https://github.com/ebiggers/libdeflate) | 2025-11-01 | |
 | [lizard v2.1](https://github.com/inikep/lizard) | 2025-01-26 | |

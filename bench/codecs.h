@@ -698,3 +698,23 @@ int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
     #define lzbench_aceapex3_decompress NULL
 #endif // BENCH_REMOVE_ACEAPEX
 
+#ifndef BENCH_REMOVE_GPUCOMPACT
+#ifdef BENCH_HAS_CUDA
+    char* lzbench_gpucompact_init(size_t insize, size_t level, size_t threads);
+    void lzbench_gpucompact_deinit(char* workmem);
+    int64_t lzbench_gpucompact_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_gpucompact_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_gpucompact_init NULL
+    #define lzbench_gpucompact_deinit NULL
+    #define lzbench_gpucompact_compress NULL
+    #define lzbench_gpucompact_decompress NULL
+#endif
+#else
+    #define lzbench_gpucompact_init NULL
+    #define lzbench_gpucompact_deinit NULL
+    #define lzbench_gpucompact_compress NULL
+    #define lzbench_gpucompact_decompress NULL
+#endif // BENCH_REMOVE_GPUCOMPACT
+
+

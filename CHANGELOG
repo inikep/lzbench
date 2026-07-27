@@ -3,6 +3,7 @@ v2.x.y (work-in-progress)
        NULL work_mem, which used to SEGFAULT (e.g. "lzbench -eCUDA" without a GPU)
 - added misa77 0.6.0 (by @welcome-to-the-sunny-side)
 - added OpenZL v0.2.0 (thanks to @fwyzard)
+- added GPUCompact 1.0 (by @UDPSendToFailed)
 - added a CUDA build job (nvcc 13.2, Ubuntu 24.04) to the Azure Pipelines CI
 - updated aceapex to 1.0.1 (thanks to @yasha1971-coder)
 - updated lzav to 5.16 (thanks to @avaneev)
