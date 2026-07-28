@@ -85,7 +85,7 @@ Notes column says otherwise.
 | [lzo 2.10](http://www.oberhumer.com/opensource/lzo) | 2017-03-01 | |
 | [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE) | 2019-04-18 | 64-bit x86 only — requires SSE4.1 (Windows: MinGW-w64 only); lzsse8fast has a [bug](https://github.com/ConorStokes/LZSSE/issues/14) |
 | [memlz 0.2 beta](https://github.com/rrrlasse/memlz) | 2025-11-03 | Disabled on 32-bit ARM — unaligned access faults (SIGBUS) |
-| [misa77 0.5.0](https://github.com/welcome-to-the-sunny-side/misa77) | 2026-07-27 | Little-endian 64-bit only |
+| [misa77 0.5.0](https://github.com/welcome-to-the-sunny-side/misa77) | 2026-07-27 | Little-endian 64-bit only — needs a C++20 compiler (GCC 10+, Clang 12+); skipped automatically |
 | [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) | 2022-02-07 | CUDA only — built with `make ENABLE_CUDA=1`; not in the default CI matrix |
 | [openzl 0.2.0](https://openzl.org/) | 2026-05-07 | 64-bit only — upstream does not support 32-bit builds |
 | [ppmd8 26.01](http://7-zip.org) | 2026-04-27 | |
