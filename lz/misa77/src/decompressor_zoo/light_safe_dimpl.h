@@ -16,10 +16,10 @@ namespace misa77
     // Returns number of bytes written to `dst`, and 0 on failure.
     // `isa_lib` is ISA-dependent.
     template <class isa_lib>
-    uint64_t safe_decompress_impl(const uint8_t* __restrict src,
-                                  uint64_t src_size,
-                                  uint8_t* __restrict dst,
-                                  uint64_t dst_cap)
+    uint64_t light_safe_dimpl(const uint8_t* __restrict src,
+                              uint64_t src_size,
+                              uint8_t* __restrict dst,
+                              uint64_t dst_cap)
     {
         using namespace light;
 

@@ -62,13 +62,14 @@ int64_t lzbench_memlz_decompress(char* inbuf, size_t insize, char* outbuf, size_
 
 int64_t lzbench_misa77_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
 {
-    // level 0 = fastest decompression, level 1 = best ratio (the library default),
-    // level 2 = "heavy" format (better ratio still, slow compression)
-    return (int64_t)misa77::compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize, misa77::config((uint8_t)codec_options->level));
+    // Levels run -1..4 and are monotone in ratio and (inversely) in compression speed:
+    // -1 and 0 = fast compression, 1 = fastest decompression (the library default),
+    // 2 = better ratio, 3 = optimal parse, 4 = "heavy" format (best ratio, slowest compression).
+    return (int64_t)misa77::compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize, misa77::config((int8_t)codec_options->level));
 }
 
-// The decompressor detects the format (light for levels 0-1, heavy for level 2) from the
-// stream itself. misa77_safe stops at level 1 because the heavy format has no safe decoder
+// The decompressor detects the format (light for levels -1..3, heavy for level 4) from the
+// stream itself. misa77_safe stops at level 3 because the heavy format has no safe decoder
 // yet (misa77::decompress with dconfig(true) rejects heavy streams by returning 0).
 int64_t lzbench_misa77_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
 {

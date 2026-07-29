@@ -17,7 +17,7 @@
 
 namespace misa77
 {
-    namespace heavy_detail
+    namespace heavy_optimal_detail
     {
         using namespace heavy;
 
@@ -135,18 +135,18 @@ namespace misa77
                 return -1;
             }
         };
-    } // namespace heavy_detail
+    } // namespace heavy_optimal_detail
 
     // Returns number of bytes written to `dst`, and 0 on failure.
     // `isa_lib` is ISA-dependent.
     template <class isa_lib>
-    uint64_t heavy_compress_impl(const uint8_t* __restrict src,
+    uint64_t heavy_optimal_cimpl(const uint8_t* __restrict src,
                                  uint64_t src_size,
                                  uint8_t* __restrict dst,
                                  uint64_t dst_cap)
     {
         using namespace heavy;
-        using namespace heavy_detail;
+        using namespace heavy_optimal_detail;
 
         if (compress_bound(src_size, config(config::heavy_lb)) > dst_cap)
             return 0;

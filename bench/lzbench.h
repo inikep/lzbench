@@ -236,8 +236,8 @@ static const compressor_desc_t comp_desc[] =
     { "lzsse8fast", "lzsse8fast 2019-04-18",   0,   0,    0,  BENCH_POOL_MT, lzbench_lzsse8fast_compress, lzbench_lzsse8_decompress,     lzbench_lzsse8fast_init, lzbench_lzsse8fast_deinit },
     { "lzvn",       "lzvn 2017-03-08",         0,   0,    0,  BENCH_POOL_MT, lzbench_lzvn_compress,       lzbench_lzvn_decompress,       lzbench_lzvn_init,       lzbench_lzvn_deinit },
     { "memlz",      "memlz 0.2 beta",          0,   0,    0,  BENCH_POOL_MT, lzbench_memlz_compress,      lzbench_memlz_decompress,      lzbench_memlz_init,      lzbench_memlz_deinit },
-    { "misa77",      "misa77 0.5.0",           0,   2,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_decompress,      NULL, NULL },
-    { "misa77_safe", "misa77 0.5.0 safe",      0,   1,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_safe_decompress, NULL, NULL },
+    { "misa77",      "misa77 0.6.0",          -1,   4,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_decompress,      NULL, NULL },
+    { "misa77_safe", "misa77 0.6.0 safe",     -1,   3,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_safe_decompress, NULL, NULL },
     { "nvcomp_lz4", "nvcomp_lz4 2.2.0",        0,   7,    0,  BENCH_POOL_MT, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },
     { "openzl_u8",  "openzl 0.2.0 -p u8",       0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint8_t),  lzbench_openzl_deinit },
     { "openzl_i8",  "openzl 0.2.0 -p i8",       0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int8_t),  lzbench_openzl_deinit },
@@ -296,7 +296,7 @@ static const alias_desc_t alias_desc[] =
               "lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzav/" \
               "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzlib,0,3,6,9/lzma,0,2,4,6,9/" \
               "lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
-              "lzsse2,1,6,12,16/lzsse4fast/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/memlz/misa77,0,1,2/misa77_safe,0,1/quicklz,1,2,3/" \
+              "lzsse2,1,6,12,16/lzsse4fast/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/memlz/misa77,-1,0,1,2,3,4/misa77_safe,-1,0,1,2,3/quicklz,1,2,3/" \
               "slz_gzip/snappy/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
               "xz,1,3,5,7,9/yalz77,1,6,12/zlib,1,6,9/zlib-ng,1,6,9/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22/zxc,1,3,6" },
     { "SYMMETRIC", "Includes compressors with similar compression and decompression speeds.",
