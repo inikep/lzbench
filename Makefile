@@ -1060,19 +1060,43 @@ ifeq "$(ENABLE_CUDA)" "1"
   # CUDA-based codecs
   CUDA_BASE ?= /usr/local/cuda
   LIBCUDART=$(wildcard $(CUDA_BASE)/lib64/libcudart.so)
+  CUDA_H=$(wildcard $(CUDA_BASE)/include/cuda.h)
 
-  ifeq "$(LIBCUDART)" ""
+  ifeq "$(and $(LIBCUDART),$(CUDA_H))" ""
     $(info CUDA Toolkit not found at $(CUDA_BASE), CUDA support will be disabled.)
     $(info Run "make CUDA_BASE=..." to use a different path.)
     CUDA_BASE =
     LIBCUDART =
+    CUDA_H =
   else
     DEFINES += -DBENCH_HAS_CUDA -I$(CUDA_BASE)/include
     LDFLAGS += -L$(CUDA_BASE)/lib64 -lcudart -Wl,-rpath=$(CUDA_BASE)/lib64
     CUDA_COMPILER = nvcc
     CUDA_CC = $(CUDA_BASE)/bin/nvcc --compiler-bindir $(CXX)
-    CUDA_ARCH = 50 52 60 61 70 75 80 86 89
-    CUDA_CXXFLAGS = -x cu -std=c++14 -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
+    CUDA_VERSION := $(shell awk '$$1 == "#define" && $$2 == "CUDA_VERSION" { print $$3; exit;}' $(CUDA_H))
+    ifeq "$(CUDA_VERSION)" ""
+      $(error Could not determine CUDA_VERSION from $(CUDA_H))
+    endif
+    CUDA_ARCH := $(shell \
+      if [ $(CUDA_VERSION) -ge 13000 ]; then \
+	  echo 75 80 86 89 90 100 120; \
+      elif [ $(CUDA_VERSION) -ge 12080 ]; then \
+	  echo 50 52 60 61 70 75 80 86 89 90 100 120; \
+      elif [ $(CUDA_VERSION) -ge 11080 ]; then \
+	  echo 50 52 60 61 70 75 80 86 89 90; \
+      elif [ $(CUDA_VERSION) -ge 11010 ]; then \
+	  echo 50 52 60 61 70 75 80 86; \
+      elif [ $(CUDA_VERSION) -ge 11000 ]; then \
+	  echo 50 52 60 61 70 75 80; \
+      else \
+	  echo 50 52 60 61 70 75; fi)
+    CUDA_CXXSTD := $(shell \
+      if [ $(CUDA_VERSION) -ge 13000 ]; then \
+	  echo c++17; \
+      else \
+	  echo c++14; \
+      fi)
+    CUDA_CXXFLAGS = -x cu -std=$(CUDA_CXXSTD) -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
 
     ACEAPEX_CUDA_FILES = lz/aceapex/cuda/aceapex_cuda.cu.o lz/aceapex/cuda/aceapex_cuda_lzbench.o
 
@@ -1089,7 +1113,7 @@ ifeq "$(ENABLE_CUDA)" "1"
     BSC_FLAGS += -DLIBBSC_CUDA_SUPPORT
     BSC_CUDA_FILES = bwt/libbsc/libbsc/bwt/libcubwt/libcubwt.cu.o bwt/libbsc/libbsc/st/st.cu.o
   endif
-  endif # ifneq "$(LIBCUDART)"
+  endif # ifeq "$(and $(LIBCUDART),$(CUDA_H))"
 endif # ifeq "$(ENABLE_CUDA)"
 
 
