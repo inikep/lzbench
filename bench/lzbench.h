@@ -337,9 +337,7 @@ static const alias_desc_t alias_desc[] =
 #ifndef BENCH_REMOVE_OPENZL
     { "OPENZL",   "Represents all OpenZL compressor variants.",
                   "openzl_u8/openzl_i8/openzl_le_u16/openzl_le_i16/openzl_le_u32/openzl_le_i32/openzl_le_u64/openzl_le_i64/" \
-                  "openzl_serial/openzl_generic/" \
-                  "openzl_zstd,-99,-90,-80,-70,-60,-50,-40,-30,-20,-10,-8,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,8,10,12,14,16,18,20,22/" \
-                  "openzl_lz4,-99,-90,-80,-70,-60,-50,-40,-30,-20,-10,-8,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,7,8,9,10,11,12/" },
+                  "openzl_serial/openzl_generic/openzl_zstd/openzl_lz4" },
 #endif
 #if !defined(BENCH_REMOVE_BSC)
     { "BSC",      "Represents all bsc compressor variants.",
@@ -360,8 +358,10 @@ static const alias_desc_t alias_desc[] =
     { "lzo1f",    nullptr, "lzo1f,1,999" },
     { "lzo1x",    nullptr, "lzo1x,1,11,12,15,999" },
     { "lzo1y",    nullptr, "lzo1y,1,999" },
+#ifndef BENCH_REMOVE_OPENZL
     { "openzl_zstd", nullptr, "openzl_zstd,-99,-90,-80,-70,-60,-50,-40,-30,-20,-10,-8,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,8,10,12,14,16,18,20,22" },
     { "openzl_lz4",  nullptr, "openzl_lz4,-99,-90,-80,-70,-60,-50,-40,-30,-20,-10,-8,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,7,8,9,10,11,12" },
+#endif
 };
 
 const long int LZBENCH_ALIASES_COUNT = sizeof(alias_desc)/sizeof(alias_desc[0]);
