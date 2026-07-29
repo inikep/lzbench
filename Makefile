@@ -1016,18 +1016,23 @@ ifeq "$(ENABLE_CUDA)" "1"
   # CUDA-based codecs
   CUDA_BASE ?= /usr/local/cuda
   LIBCUDART=$(wildcard $(CUDA_BASE)/lib64/libcudart.so)
+  CUDA_H=$(wildcard $(CUDA_BASE)/include/cuda.h)
 
-  ifeq "$(LIBCUDART)" ""
+  ifeq "$(and $(LIBCUDART),$(CUDA_H))" ""
     $(info CUDA Toolkit not found at $(CUDA_BASE), CUDA support will be disabled.)
     $(info Run "make CUDA_BASE=..." to use a different path.)
     CUDA_BASE =
     LIBCUDART =
+    CUDA_H =
   else
     DEFINES += -DBENCH_HAS_CUDA -I$(CUDA_BASE)/include
     LDFLAGS += -L$(CUDA_BASE)/lib64 -lcudart -Wl,-rpath=$(CUDA_BASE)/lib64
     CUDA_COMPILER = nvcc
     CUDA_CC = $(CUDA_BASE)/bin/nvcc --compiler-bindir $(CXX)
-    CUDA_VERSION := $(shell awk '/define *CUDA_VERSION/ { print $$3; exit;}' $(CUDA_BASE)/include/cuda.h)
+    CUDA_VERSION := $(shell awk '$$1 == "#define" && $$2 == "CUDA_VERSION" { print $$3; exit;}' $(CUDA_H))
+    ifeq "$(CUDA_VERSION)" ""
+      $(error Could not determine CUDA_VERSION from $(CUDA_H))
+    endif
     CUDA_ARCH := $(shell \
       if [ $(CUDA_VERSION) -ge 13000 ]; then \
 	  echo 75 80 86 89 90 100 120; \
@@ -1064,7 +1069,7 @@ ifeq "$(ENABLE_CUDA)" "1"
     BSC_FLAGS += -DLIBBSC_CUDA_SUPPORT
     BSC_CUDA_FILES = bwt/libbsc/libbsc/bwt/libcubwt/libcubwt.cu.o bwt/libbsc/libbsc/st/st.cu.o
   endif
-  endif # ifneq "$(LIBCUDART)"
+  endif # ifeq "$(and $(LIBCUDART),$(CUDA_H))"
 endif # ifeq "$(ENABLE_CUDA)"
 
 
