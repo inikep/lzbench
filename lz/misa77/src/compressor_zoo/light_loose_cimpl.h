@@ -16,7 +16,7 @@
 
 namespace misa77
 {
-    namespace default_detail
+    namespace light_loose_detail
     {
         using namespace light;
 
@@ -55,27 +55,34 @@ namespace misa77
             ++dlpos;
         }
 
-        // Don't look further ahead once you have a match `>= la_gate`
-        constexpr uint64_t la_gate = 16;
+        // Preferable lowerbound for match length (derived from the YOLO vector for now)
+        constexpr uint64_t accept_len = 7;
+        static_assert(accept_len >= min_match_len);
 
-        // Once you have match `>= la_pate`, only keep looking if you get gains
-        constexpr uint64_t la_pate = 8;
+        // We ideally want to keep literal length `<= fire_at`
+        constexpr uint64_t fire_at = 6;
 
         // When you've gone `p` hashtab searches without a match, advance the pointer by `p >>
         // skip_shift`
         constexpr uint64_t skip_shift = 6;
-    } // namespace default_detail
+
+        // Regime counter: an adaptive value in `[0, regime_cap]`
+        // Runs with literal length in `[7, 32]` have a vote of `+2`, others `-1`
+        inline constexpr int64_t regime_cap = 64;
+        inline constexpr int64_t regime_threshold = 32;
+
+    } // namespace light_loose_detail
 
     // Returns number of bytes written to `dst`, and 0 on failure.
     // `isa_lib` is ISA-dependent.
     template <class isa_lib>
-    uint64_t default_compress_impl(const uint8_t* __restrict src,
-                                   uint64_t src_size,
-                                   uint8_t* __restrict dst,
-                                   uint64_t dst_cap)
+    uint64_t light_loose_cimpl(const uint8_t* __restrict src,
+                               uint64_t src_size,
+                               uint8_t* __restrict dst,
+                               uint64_t dst_cap)
     {
         using namespace light;
-        using namespace default_detail;
+        using namespace light_loose_detail;
 
         static_assert(max_match_len >= 32);
 
@@ -121,6 +128,13 @@ namespace misa77
 
         std::vector<std::array<uint16_t, hashtab_wid>> hashtab(hash_siz);
         std::vector<uint8_t> hashtab_idx(hash_siz);
+
+        // Last remembered match
+        uint64_t cand_pos = 0, cand_len = 0, cand_lst = 0;
+
+        // Adaptive variable that reflects values of lit_len we've been getting for recent blocks
+        int64_t regime = 0;
+
         while (pos + max_match_len <= match_end_limit)
         {
             // Reduce branch misses, `batch = 8` performs well empirically
@@ -159,7 +173,6 @@ namespace misa77
 
                     // Guaranteed to lie within `[pos - 2^16 - hashtab_lag, pos - hashtab_lag)`
                     uint64_t ilst = (pos - max_match_len - 1 - d);
-
                     typename isa_lib::vec ireg = isa_lib::loadvec(src + ilst);
                     uint32_t imatch_len = isa_lib::lcp(reg, ireg);
                     lst = (imatch_len > match_len ? ilst : lst);
@@ -167,48 +180,66 @@ namespace misa77
                 }
             }
 
-            if (match_len >= min_match_len)
+            // We've inserted stuff into the hashtable assuming this value of `pos`, so we cannot
+            // probe the hashtable for any starting position behind this one going forward. This is
+            // important as `pos` is regressed ahead.
+            uint64_t pos_safe_bound = pos;
+
+            bool accept = (match_len >= accept_len);
+
+            uint64_t pend = pos - lit;
+            bool fire = (regime >= regime_threshold ? pend >= fire_at : pend == fire_at);
+
+            // We don't have an ideal match
+            if (!accept)
             {
-                for (uint64_t npos = pos + 1;
-                     npos <= pos + lookahead and npos + max_match_len <= match_end_limit and
-                     match_len < la_gate;
-                     npos++)
+                if (fire)
                 {
-                    uint64_t nlst = 0;
-                    uint64_t nmatch_len = 0;
-
-                    uint32_t val = loadu4(src + npos);
-                    uint32_t hsh = hash4(val);
-                    typename isa_lib::vec reg = isa_lib::loadvec(src + npos);
-#pragma GCC unroll hashtab_wid
-                    for (uint8_t i = 0; i < hashtab_wid; i++)
+                    // Prefer the one ending later between this position and the last remembered one
+                    if (cand_len != 0 and
+                        (match_len < min_match_len or cand_pos + cand_len >= pos + match_len))
                     {
-                        uint16_t d = uint16_t(npos - hashtab[hsh][i] - hashtab_lag - 1);
-
-                        // Guaranteed to lie within `[npos - 2^16 - hashtab_lag, npos -
-                        // hashtab_lag)`
-                        uint64_t ilst = (npos - max_match_len - 1 - d);
-
-                        typename isa_lib::vec ireg = isa_lib::loadvec(src + ilst);
-                        uint32_t imatch_len = isa_lib::lcp(reg, ireg);
-
-                        nlst = (imatch_len > nmatch_len ? ilst : nlst);
-                        nmatch_len = (imatch_len > nmatch_len ? imatch_len : nmatch_len);
+                        pos = cand_pos;
+                        lst = cand_lst;
+                        match_len = cand_len;
                     }
 
-                    bool improved = (nmatch_len > match_len);
-                    pos = (improved ? npos : pos);
-                    lst = (improved ? nlst : lst);
-                    match_len = (improved ? nmatch_len : match_len);
+                    // Note that if `accept` becomes false here, pos isn't pushed back by the above
+                    // branch
+                    accept = (match_len >= min_match_len);
+                }
+                else if (match_len >= min_match_len and
+                         (cand_len == 0 or pos + match_len >= cand_pos + cand_len))
+                {
+                    // This position becomes the new candidate
+                    cand_pos = pos;
+                    cand_len = match_len;
+                    cand_lst = lst;
+                }
+            }
 
-                    if (!improved and match_len >= la_pate)
-                        break;
+            if (accept)
+            {
+                // Extend the match backwards (note that `dis` in `(hashtab_lag, 2^16 +
+                // hashtab_lag]` holds).
+                // Extending `pos` backwards here is safe because we're not looking into the
+                // hashtable.
+                while (pos > lit and lst > 0 and match_len < max_match_len and
+                       src[pos - 1] == src[lst - 1])
+                {
+                    --pos;
+                    --lst;
+                    ++match_len;
                 }
 
                 uint64_t norm_match_len = match_len - min_match_len + 1;
 
                 // `src[lit, pos)` are the literals
                 uint64_t lit_len = pos - lit;
+
+                // regime vote
+                regime += (7 <= lit_len and lit_len <= 32 ? 2 : -1);
+                regime = std::clamp<int64_t>(regime, 0, regime_cap);
 
                 // Token Byte
                 uint8_t lrem = std::min(uint64_t(7), lit_len);
@@ -235,6 +266,8 @@ namespace misa77
 
                 pos += match_len;
                 lit = pos;
+                pos = std::max(pos, pos_safe_bound);
+                cand_len = 0;
                 miss_run = 0;
             }
             else

@@ -8,7 +8,7 @@
 
 // Library version
 #define MISA77_VERSION_MAJOR 0
-#define MISA77_VERSION_MINOR 5
+#define MISA77_VERSION_MINOR 6
 #define MISA77_VERSION_PATCH 0
 #define MISA77_VERSION_NUMBER                                                                      \
     (MISA77_VERSION_MAJOR * 10000 + MISA77_VERSION_MINOR * 100 + MISA77_VERSION_PATCH)
@@ -27,17 +27,18 @@ namespace misa77
     class config
     {
     public:
-        // Only integers in [0, max_level] are valid levels
-        static constexpr uint8_t max_level = 2;
-        static constexpr uint8_t default_level = 1;
-        static_assert(default_level <= max_level);
+        // Only integers in [min_level, max_level] are valid levels
+        static constexpr int8_t min_level = -1;
+        static constexpr int8_t max_level = 4;
+        static constexpr int8_t default_level = 1;
+        static_assert(min_level <= default_level and default_level <= max_level);
 
-        // Light levels in [0, heavy_lb), heavy levels in [heavy_lb, max_level]
-        static constexpr uint8_t heavy_lb = 2;
+        // Light levels in [min_level, heavy_lb), heavy levels in [heavy_lb, max_level]
+        static constexpr int8_t heavy_lb = 4;
 
-        uint8_t level;
+        int8_t level;
         config() : level(default_level) {}
-        explicit config(uint8_t l) : level(l) {}
+        explicit config(int8_t l) : level(l) {}
     };
 
     // decompressor config
@@ -60,7 +61,8 @@ namespace misa77
     // Returns number of bytes written to `dst`, and 0 on failure.
     // `cfg.level` selects the compressor to be used. Levels below `config::heavy_lb` emit the
     // light format, levels at or above it emit the heavy format.
-    // PRECONDITION: `src_size <= max_src_size` and `0 <= cfg.level <= config::max_level`
+    // PRECONDITION: `src_size <= max_src_size` and
+    // `config::min_level <= cfg.level <= config::max_level`
     uint64_t compress(const uint8_t* __restrict src,
                       uint64_t src_size,
                       uint8_t* __restrict dst,

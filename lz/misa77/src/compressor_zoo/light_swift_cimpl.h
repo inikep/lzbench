@@ -9,14 +9,13 @@
 #include "util.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
 #include <cstring>
 #include <vector>
 
 namespace misa77
 {
-    namespace loose_detail
+    namespace light_swift_detail
     {
         using namespace light;
 
@@ -24,14 +23,21 @@ namespace misa77
         constexpr uint32_t hash_siz = 1 << hash_top;
         constexpr uint32_t hash_mul = 2654435761;
 
-        // Size of ring buffer per hash in the hashtable.
-        inline constexpr uint64_t hashtab_wid = 16;
-
-        // Hash 4 bytes to an integer in `[0, 1 << (hash_top))`.
+        // Hash 4 bytes to an integer in `[0, 1 << hash_top)` (for the fallback table).
         [[gnu::always_inline]]
         inline uint32_t hash4(const uint32_t val)
         {
             return (val * hash_mul) >> (32 - hash_top);
+        }
+
+        constexpr uint64_t hash6_mul = 0x9E3779B185EBCA87; // 2^64 / phi
+
+        // Hash the low 6 bytes of an 8-byte load (for the primary table)
+        [[gnu::always_inline]]
+        inline uint32_t hash6(const uint64_t val)
+        {
+            constexpr uint64_t mask = (uint64_t(1) << 48) - 1;
+            return uint32_t(((val & mask) * hash6_mul) >> (64 - hash_top));
         }
 
         // Assuming that rem contains top 3 bits of the token, emits bytes specifying `n`.
@@ -55,7 +61,7 @@ namespace misa77
             ++dlpos;
         }
 
-        // Preferable lowerbound for match length (derived from the YOLO vector for now)
+        // A match must save enough bytes to pay for its token
         constexpr uint64_t accept_len = 7;
         static_assert(accept_len >= min_match_len);
 
@@ -71,18 +77,18 @@ namespace misa77
         inline constexpr int64_t regime_cap = 64;
         inline constexpr int64_t regime_threshold = 32;
 
-    } // namespace loose_detail
+    } // namespace light_swift_detail
 
     // Returns number of bytes written to `dst`, and 0 on failure.
     // `isa_lib` is ISA-dependent.
     template <class isa_lib>
-    uint64_t loose_compress_impl(const uint8_t* __restrict src,
-                                 uint64_t src_size,
-                                 uint8_t* __restrict dst,
-                                 uint64_t dst_cap)
+    uint64_t light_swift_cimpl(const uint8_t* __restrict src,
+                               uint64_t src_size,
+                               uint8_t* __restrict dst,
+                               uint64_t dst_cap)
     {
         using namespace light;
-        using namespace loose_detail;
+        using namespace light_swift_detail;
 
         static_assert(max_match_len >= 32);
 
@@ -121,13 +127,15 @@ namespace misa77
         // turning into a lit + match pair
         uint64_t pos = 0;
 
-        // `[0, hpos)` represents the range we've written into the hashtable
+        // `[0, hpos)` represents the range we've written into the hashtables
         uint64_t hpos = 0;
 
         uint64_t miss_run = 0;
 
-        std::vector<std::array<uint16_t, hashtab_wid>> hashtab(hash_siz);
-        std::vector<uint8_t> hashtab_idx(hash_siz);
+        // Two single-slot tables. `hashtab6` is for match quality, `hashtab4` exists to
+        // prevent too long literal lengths.
+        std::vector<uint16_t> hashtab6(hash_siz);
+        std::vector<uint16_t> hashtab4(hash_siz);
 
         // Last remembered match
         uint64_t cand_pos = 0, cand_len = 0, cand_lst = 0;
@@ -144,44 +152,47 @@ namespace misa77
 #pragma GCC unroll batch
                 for (uint64_t i = 0; i < batch; i++)
                 {
-                    uint32_t hsh = hash4(loadu4(src + hpos + i));
-                    hashtab[hsh][hashtab_idx[hsh]] =
-                        uint16_t(hpos + i); // We just store the lowest 2 bytes
-                    hashtab_idx[hsh] =
-                        (hashtab_idx[hsh] == hashtab_wid - 1
-                             ? uint8_t(0)
-                             : hashtab_idx[hsh] + 1); // Just cycle the pointer in the ring buffer
+                    hashtab6[hash6(loadu8(src + hpos + i))] = uint16_t(hpos + i);
+
+                    // The fallback table only needs recency, so half density suffices
+                    if ((hpos + i) % 2 == 0)
+                        hashtab4[hash4(loadu4(src + hpos + i))] = uint16_t(hpos + i);
                 }
                 hpos += batch;
             }
 
-            uint32_t val = loadu4(src + pos);
-            uint32_t hsh = hash4(val);
-
             uint64_t lst = 0;
             uint64_t match_len = 0;
 
-            typename isa_lib::vec reg = isa_lib::loadvec(src + pos);
-
             if (pos > hashtab_lag) [[likely]]
             {
-// MLP
-#pragma GCC unroll hashtab_wid
-                for (uint8_t i = 0; i < hashtab_wid; i++)
-                {
-                    uint16_t d = uint16_t(pos - hashtab[hsh][i] - hashtab_lag - 1);
+                // Exact cheap filter: `lcp >= min_match_len` iff the first 4 bytes agree
+                const uint32_t val4 = loadu4(src + pos);
+                uint16_t d = uint16_t(pos - hashtab6[hash6(loadu8(src + pos))] - hashtab_lag - 1);
 
-                    // Guaranteed to lie within `[pos - 2^16 - hashtab_lag, pos - hashtab_lag)`
-                    uint64_t ilst = (pos - max_match_len - 1 - d);
+                // Guaranteed to lie within `[pos - 2^16 - hashtab_lag, pos - hashtab_lag)`
+                uint64_t ilst = (pos - max_match_len - 1 - d);
+                bool hit = (loadu4(src + ilst) == val4);
+
+                // Only look at the fallback table when the remembered-candidate slot is empty
+                if (!hit and cand_len == 0)
+                {
+                    uint16_t d4 = uint16_t(pos - hashtab4[hash4(val4)] - hashtab_lag - 1);
+                    ilst = (pos - max_match_len - 1 - d4);
+                    hit = (loadu4(src + ilst) == val4);
+                }
+
+                if (hit)
+                {
+                    typename isa_lib::vec reg = isa_lib::loadvec(src + pos);
                     typename isa_lib::vec ireg = isa_lib::loadvec(src + ilst);
-                    uint32_t imatch_len = isa_lib::lcp(reg, ireg);
-                    lst = (imatch_len > match_len ? ilst : lst);
-                    match_len = (imatch_len > match_len ? imatch_len : match_len);
+                    lst = ilst;
+                    match_len = isa_lib::lcp(reg, ireg);
                 }
             }
 
-            // We've inserted stuff into the hashtable assuming this value of `pos`, so we cannot
-            // probe the hashtable for any starting position behind this one going forward. This is
+            // We've inserted stuff into the hashtables assuming this value of `pos`, so we cannot
+            // probe them for any starting position behind this one going forward. This is
             // important as `pos` is regressed ahead.
             uint64_t pos_safe_bound = pos;
 
@@ -223,7 +234,7 @@ namespace misa77
                 // Extend the match backwards (note that `dis` in `(hashtab_lag, 2^16 +
                 // hashtab_lag]` holds).
                 // Extending `pos` backwards here is safe because we're not looking into the
-                // hashtable.
+                // hashtables.
                 while (pos > lit and lst > 0 and match_len < max_match_len and
                        src[pos - 1] == src[lst - 1])
                 {
@@ -261,7 +272,14 @@ namespace misa77
                 {
                     uint64_t lit_cnt = pos - lit;
                     drpos -= lit_cnt;
-                    memcpy(dst + drpos, src + lit, lit_cnt);
+
+                    // Fixed 16-byte copy ending at the old drpos; bytes below the run only clobber
+                    // not-yet-written literal space. The fire rule keeps runs short, so the branch
+                    // is predictable.
+                    if (lit_cnt <= 16) [[likely]]
+                        memcpy(dst + drpos + lit_cnt - 16, src + lit + lit_cnt - 16, 16);
+                    else
+                        memcpy(dst + drpos, src + lit, lit_cnt);
                 }
 
                 pos += match_len;

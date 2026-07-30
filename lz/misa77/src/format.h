@@ -15,7 +15,7 @@ namespace misa77
     // formats.
     inline constexpr uint64_t vector_width = 32;
 
-    // light format, used by levels in [0, config::heavy_lb)
+    // light format, used by levels in [config::min_level, config::heavy_lb)
     namespace light
     {
         // (`raw file size <= small_lim`) => small mode, we just write the raw bytes.
@@ -37,6 +37,12 @@ namespace misa77
         // We have exactly 2 bytes to indicate distance.
         static_assert(dis_lim <= (1 << 16));
 
+        // The two distance bytes hold `dis - min_dis`, so the window is exactly [min_dis, max_dis].
+        inline constexpr uint32_t min_dis = uint32_t(hashtab_lag + 1);
+        inline constexpr uint32_t max_dis = uint32_t(hashtab_lag + dis_lim);
+        static_assert(max_dis - min_dis == dis_lim - 1);
+        static_assert(dis_lim - 1 <= UINT16_MAX);
+
         inline constexpr uint32_t min_match_len = 4;
 
         // `min_match_len >= 4` is needed for the compression bound to hold.
@@ -46,6 +52,12 @@ namespace misa77
 
         // One `cyccpy` call should deal with the entire match.
         static_assert(max_match_len <= vector_width);
+
+        // Every length in [min_match_len, max_match_len] should be exactly representable.
+        static_assert(max_match_len - min_match_len + 1 <= (uint32_t(1) << 5) - 1);
+
+        inline constexpr uint64_t lit_lim = 7;
+        static_assert(lit_lim == (uint64_t(1) << 3) - 1);
 
         // Lowerbound for the number of literals in the final raw suffix.
         // This MUST be >= `vector_width` because:
