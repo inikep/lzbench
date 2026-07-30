@@ -67,6 +67,7 @@ typedef struct {
     const void* dict_huf; /**< Optional shared literal Huffman table: the 128-byte packed
                                code-lengths header from zxc_train_dict_huf() /
                                zxc_dict_huf() (NULL = none, ignored without dict).
+                               Used at levels 6-7 only.
                                Becomes part of the archive's dict_id binding. */
     zxc_progress_callback_t progress_cb; /**< Optional progress callback (NULL to disable). */
     void* user_data;                     /**< User context pointer passed to progress_cb. */
@@ -87,9 +88,9 @@ typedef struct {
     int checksum_enabled; /**< 1 to verify per-block and global checksums, 0 to skip. */
     const void* dict;     /**< Pre-trained dictionary content (NULL = none). */
     size_t dict_size;     /**< Dictionary size in bytes (0 = none). */
-    const void* dict_huf; /**< Optional shared literal Huffman table: the 128-byte packed
-                               code-lengths header used at compression time
-                               (NULL = none, ignored without dict). */
+    const void* dict_huf; /**< Shared literal Huffman table: the same 128-byte header
+                               used at compression time. Required if the archive has
+                               one, else ZXC_ERROR_DICT_MISMATCH. Ignored without dict. */
     zxc_progress_callback_t progress_cb; /**< Optional progress callback (NULL to disable). */
     void* user_data;                     /**< User context pointer passed to progress_cb. */
 } zxc_decompress_opts_t;

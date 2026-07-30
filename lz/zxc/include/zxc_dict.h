@@ -156,6 +156,10 @@ ZXC_EXPORT int64_t zxc_train_dict(const void* const* samples, const size_t* samp
  * shared table drop their own 128-byte table header, which is decisive at
  * small block sizes.
  *
+ * Used at levels 6 and 7 only. Pass the same table to decompress: dict_id
+ * covers content and table, so the content alone is a
+ * @ref ZXC_ERROR_DICT_MISMATCH.
+ *
  * @param[in]  samples         Array of pointers to sample buffers (typically
  *                             the same corpus used for zxc_train_dict()).
  * @param[in]  sample_sizes    Array of sample sizes in bytes.

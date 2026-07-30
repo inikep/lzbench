@@ -237,7 +237,8 @@ ZXC_EXPORT void zxc_seekable_free(zxc_seekable* s);
  * @param[in] dict_huf  Shared literal Huffman table (128 bytes, see
  *                      zxc_dict_huf()), or NULL if the archive was compressed
  *                      without one. Must be the compression-time table: the
- *                      archive's dict_id binds the (dict, table) pair.
+ *                      archive's dict_id binds the (dict, table) pair. Wrong or
+ *                      missing: @ref ZXC_ERROR_DICT_MISMATCH, on this call.
  * @return @ref ZXC_OK on success, or a negative @ref zxc_error_t code.
  */
 ZXC_EXPORT int zxc_seekable_set_dict(zxc_seekable* s, const void* dict, size_t dict_size,
