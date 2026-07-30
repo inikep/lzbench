@@ -558,8 +558,17 @@ void lzbench_process_single_codec(ThreadPool& pool, int numThreads, lzbench_para
 
     if (desc->init) {
         for (int i = 0; i < numThreads; i++) {
-            if (desc->init) {
-                workmems[i] = desc->init(effective_max_chunk_size, param1, param2);
+            workmems[i] = desc->init(effective_max_chunk_size, param1, param2);
+            if (!workmems[i]) {
+                // init() failed: out of memory, no CUDA device at runtime, etc.
+                // Most codecs dereference work_mem unconditionally, so skip the
+                // codec instead of benchmarking it with a NULL work_mem (that
+                // used to SEGFAULT, e.g. "lzbench -eCUDA" on a host without a GPU).
+                LZBENCH_PRINT(0, "ERROR in %s: initialization failed\n", desc->name);
+                if (desc->deinit) {
+                    for (int j = 0; j < i; j++) desc->deinit(workmems[j]);
+                }
+                return;
             }
         }
     }

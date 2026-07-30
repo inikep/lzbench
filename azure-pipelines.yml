@@ -373,6 +373,122 @@ jobs:
     displayName: '*** Run FASTEST (-T2 -jr)'
 
 
+# CUDA build. Microsoft-hosted agents have no GPU, so this job compiles the CUDA
+# codecs (nvcomp, bsc_cuda, aceapex_cuda) and verifies that the resulting binary
+# still benchmarks the CPU codecs and degrades gracefully when no device is
+# present. Actually running the GPU codecs needs a self-hosted agent with an
+# NVIDIA GPU.
+- job:
+  timeoutInMinutes: 120
+  pool:
+    vmImage: $(imageName)
+
+  variables:
+    OS_NAME: $(Agent.OS)
+    # Compile two GPU architectures instead of the Makefile's full list: one below
+    # sm_80 and one above it, so both sides of the '__CUDA_ARCH__ >= 800' branches
+    # (cp.async and friends) are built without paying for seven architectures.
+    CUDA_ARCH_LIST: '75 89'
+
+  strategy:
+    matrix:
+      gcc + nvcc 13.2 [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: gcc
+        SELECTED_CXX: g++
+        CUDA_PKG_VER: '13-2'
+        CUDA_BASE: '/usr/local/cuda-13.2'
+        ARTIFACT_SLUG: gcc-cuda-13.2-x86_64
+
+  steps:
+  - script: |
+      set -e
+      uname -r
+      df -Th
+
+      echo --- Add the NVIDIA CUDA apt repository
+      curl -fsSLO https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2404/x86_64/cuda-keyring_1.1-1_all.deb
+      sudo dpkg -i cuda-keyring_1.1-1_all.deb
+      rm -f cuda-keyring_1.1-1_all.deb
+      sudo -E apt-get -yq update >> ~/apt-get-update.log 2>&1
+
+      # Only nvcc, the CUDA runtime (headers + libcudart) and CCCL (cub/thrust,
+      # needed by libcubwt and nvcomp) - about 190 MB. The 'cuda-toolkit'
+      # metapackage is several GB and pulls in libraries lzbench never links.
+      echo --- Install cuda-nvcc-$(CUDA_PKG_VER)
+      sudo -E apt-get -yq --no-install-suggests --no-install-recommends install \
+          cuda-nvcc-$(CUDA_PKG_VER) cuda-cudart-dev-$(CUDA_PKG_VER) cuda-cccl-$(CUDA_PKG_VER)
+
+      $(CUDA_BASE)/bin/nvcc --version
+      $SELECTED_CXX --version
+      df -Th
+    displayName: '*** Install CUDA Toolkit'
+
+  - checkout: self
+    fetchDepth: 32
+
+  - script: |
+      git submodule sync
+      git submodule update --init --force --depth=256
+      git submodule
+    displayName: '*** Update git submodules'
+
+  # ccache is deliberately not used here: the Makefile passes $(CXX) to nvcc as
+  # --compiler-bindir, and 'ccache g++' is two tokens, which makes nvcc fail with
+  # "A single input file is required for a non-link phase when an outputfile is
+  # specified". A from-scratch CUDA build takes only a few minutes.
+  - script: |
+      set -e
+      make -j2 ENABLE_CUDA=1 CUDA_BASE=$(CUDA_BASE) CUDA_ARCH="$(CUDA_ARCH_LIST)" \
+           CC=$SELECTED_CC CXX=$SELECTED_CXX
+
+      echo -------------------------------------
+      # The Makefile only prints a message and silently disables CUDA when it
+      # cannot find the toolkit, which would leave this job green without ever
+      # compiling a .cu file. Turn that into a hard failure.
+      ldd ./lzbench | grep -q libcudart || \
+        { echo "ERROR: lzbench is not linked against libcudart, CUDA was silently disabled"; exit 1; }
+      ./lzbench -l | grep -q aceapex_cuda || \
+        { echo "ERROR: the CUDA codecs are missing from the codec list"; exit 1; }
+
+      ldd ./lzbench | grep -i cuda
+      file ./lzbench
+      ./lzbench
+      df -Th
+    displayName: '*** Build with CUDA'
+
+  - task: PublishPipelineArtifact@1
+    displayName: 'Publish lzbench'
+    inputs:
+      targetPath: '$(Build.SourcesDirectory)/lzbench'
+      artifactName: 'lzbench-$(ARTIFACT_SLUG)'
+
+  # No GPU on this agent, so every CUDA codec has to fail its init() and be
+  # skipped. This is the regression test for the SEGFAULT that used to happen
+  # when lzbench benchmarked a codec whose init() had returned NULL.
+  # bsc_cuda is left out on purpose: it spins forever in its GPU-less fallback
+  # path, which is a separate libbsc issue.
+  - script: |
+      ./lzbench -ecudaMemcpy/nvcomp_lz4/aceapex_cuda -t0,0 -i1,1 -v5 README.md || exit 1
+    displayName: '*** Run CUDA codecs (no GPU: must skip cleanly)'
+
+  - script: |
+      ./lzbench -eLZ -v5 ./lzbench || exit 1
+    displayName: '*** Run LZ'
+
+  - script: |
+      ./lzbench -eSYMMETRIC -v5 ./lzbench || exit 1
+    displayName: '*** Run SYMMETRIC'
+
+  - script: |
+      ./lzbench -eMISC -v5 ./lzbench || exit 1
+    displayName: '*** Run MISC'
+
+  - script: |
+      ./lzbench -eFASTEST -t0,0 -T2 -jr . || exit 1
+    displayName: '*** Run FASTEST (-T2 -jr)'
+
+
 - job:
   pool:
     vmImage: 'windows-latest'

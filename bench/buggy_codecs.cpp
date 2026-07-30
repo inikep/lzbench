@@ -273,10 +273,15 @@ int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 #ifndef BENCH_REMOVE_YAPPY
 #include "lz/yappy/yappy.hpp"
 
+// Like bsc, yappy needs no work memory, it only fills its static tables. Return
+// a non-NULL dummy so lzbench does not treat this as a failed initialization.
+// yappy has a NULL deinit, so this is never passed to free().
+static char yappy_no_workmem;
+
 char* lzbench_yappy_init(size_t insize, size_t level, size_t)
 {
     YappyFillTables();
-    return NULL;
+    return &yappy_no_workmem;
 }
 
 int64_t lzbench_yappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)

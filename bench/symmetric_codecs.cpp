@@ -18,11 +18,17 @@
 #include <omp.h> // omp_set_num_threads
 #endif
 
+// bsc needs no per-thread work memory, it only has to initialise its static
+// tables. A NULL return means "initialization failed" (lzbench then skips the
+// codec), so hand back a non-NULL dummy. All bsc* codecs have a NULL deinit, so
+// this is never passed to free().
+static char bsc_no_workmem;
+
 char *lzbench_bsc_init(size_t insize, size_t level, size_t)
 {
     int features = LIBBSC_DEFAULT_FEATURES | LIBBSC_FEATURE_CUDA;
     bsc_init(features);
-    return 0;
+    return &bsc_no_workmem;
 }
 
 int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)

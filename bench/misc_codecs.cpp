@@ -184,8 +184,11 @@ int64_t lzbench_skim_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 char* lzbench_cuda_init(size_t insize, size_t, size_t)
 {
-    char* workmem;
-    cudaMalloc(& workmem, insize);
+    char* workmem = NULL;
+    // Report failure (no CUDA device, out of device memory) so that lzbench skips
+    // the codec. Without this the cudaMemcpy calls below silently do nothing and
+    // the codec is reported as a decompression ERROR.
+    if (cudaMalloc(& workmem, insize) != cudaSuccess) return NULL;
     return workmem;
 }
 
