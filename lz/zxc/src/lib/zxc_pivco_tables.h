@@ -34,7 +34,10 @@
 
 #include <stdint.h>
 
-#if defined(__GNUC__) || defined(__clang__)
+/* ELF/Mach-O visibility only: Windows PE/COFF targets (MinGW/MSYS2 GCC,
+ * clang-on-Windows) do not support it and warn -Wattributes, so gate on
+ * !_WIN32 exactly like ZXC_NO_EXPORT in zxc_export.h. */
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(_WIN32)
 #define ZXC_HIDDEN __attribute__((visibility("hidden")))
 #else
 #define ZXC_HIDDEN

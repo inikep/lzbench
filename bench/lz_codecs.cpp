@@ -1735,6 +1735,10 @@ char* lzbench_openzl_init_zstd(size_t insize, size_t level, size_t windowLog)
       abort();
     }
 
+    // OpenZL does not validate the compression level; it is forwarded to zstd, which
+    // clamps it to [ZSTD_minCLevel(), ZSTD_maxCLevel()], i.e. [-131072, 22].
+    // Level 0 requests the default behaviour, which corresponds to level 6.
+    // lzbench limits the range to [-99, 22]; -99 is an arbitrary practical floor.
     report = ZL_Compressor_setParameter(params->cgraph, ZL_CParam_compressionLevel, level);
     if (ZL_isError(report)) {
       printf("OpenZL initialisation error: %s\n", ZL_Compressor_getErrorContextString(params->cgraph, report));
@@ -1755,6 +1759,12 @@ char* lzbench_openzl_init_lz4(size_t insize, size_t level, size_t windowLog)
       abort();
     }
 
+    // OpenZL does not validate the compression level: the lz4 graph maps levels <= 1 to
+    // LZ4_compress_fast() with acceleration = 1 - level (lz4 clamps the acceleration to
+    // LZ4_ACCELERATION_MAX, i.e. 65537), and levels >= 2 to LZ4_compress_HC(), whose
+    // maximum is LZ4HC_CLEVEL_MAX, i.e. 12.
+    // Level 0 requests the default behaviour, which corresponds to level 6.
+    // lzbench limits the range to [-99, 12]; -99 is an arbitrary practical floor.
     report = ZL_Compressor_setParameter(params->cgraph, ZL_CParam_compressionLevel, level);
     if (ZL_isError(report)) {
       printf("OpenZL initialisation error: %s\n", ZL_Compressor_getErrorContextString(params->cgraph, report));

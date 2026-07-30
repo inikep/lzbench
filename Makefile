@@ -848,19 +848,16 @@ else
 
     ifneq (,$(filter x86_64% amd64% i%86,$(TARGET_ARCH)))
         ifneq (,$(filter x86_64% amd64%,$(TARGET_ARCH)))
-            ZXC_FILES += $(ZXC_DIR)/zxc_compress_sse2.o $(ZXC_DIR)/zxc_decompress_sse2.o $(ZXC_DIR)/zxc_huffman_sse2.o
             ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx2.o $(ZXC_DIR)/zxc_decompress_avx2.o $(ZXC_DIR)/zxc_huffman_avx2.o
             ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx512.o $(ZXC_DIR)/zxc_decompress_avx512.o $(ZXC_DIR)/zxc_huffman_avx512.o
         endif
     endif
 
+    # 32-bit ARM only (AArch64's NEON tier is _default).
     ifneq (,$(filter arm% aarch64%,$(TARGET_ARCH)))
-        ZXC_FILES += $(ZXC_DIR)/zxc_compress_neon.o $(ZXC_DIR)/zxc_decompress_neon.o $(ZXC_DIR)/zxc_huffman_neon.o
-
-        ifneq (,$(filter arm64% aarch64%,$(TARGET_ARCH)))
-            NEON_FLAGS = -DZXC_USE_NEON64
-        else
-            NEON_FLAGS = -march=armv7-a -mfloat-abi=softfp -mfpu=neon -DZXC_USE_NEON32
+        ifeq (,$(filter arm64% aarch64%,$(TARGET_ARCH)))
+            ZXC_FILES += $(ZXC_DIR)/zxc_compress_neon32.o $(ZXC_DIR)/zxc_decompress_neon32.o $(ZXC_DIR)/zxc_huffman_neon32.o
+            NEON_FLAGS = -march=armv7-a -mfpu=neon
         endif
     endif
 
@@ -868,24 +865,17 @@ else
 
     $(ZXC_DIR)/%.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
 
-    ifneq (,$(filter x86_64% amd64%,$(TARGET_ARCH)))
-        $(ZXC_DIR)/%_default.o: ZXC_FLAGS = -mbmi -mbmi2 -mlzcnt -DZXC_FUNCTION_SUFFIX=_default
-    else
-        $(ZXC_DIR)/%_default.o: ZXC_FLAGS = -DZXC_FUNCTION_SUFFIX=_default
-    endif
+    $(ZXC_DIR)/%_default.o: ZXC_FLAGS = -DZXC_FUNCTION_SUFFIX=_default
     $(ZXC_DIR)/%_default.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
 
-    $(ZXC_DIR)/%_sse2.o: ZXC_FLAGS = -msse2 -DZXC_FUNCTION_SUFFIX=_sse2 -DZXC_USE_SSE2
-    $(ZXC_DIR)/%_sse2.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
-
-    $(ZXC_DIR)/%_avx2.o: ZXC_FLAGS = -mavx2 -mbmi -mbmi2 -mlzcnt -DZXC_FUNCTION_SUFFIX=_avx2 -DZXC_USE_AVX2
+    $(ZXC_DIR)/%_avx2.o: ZXC_FLAGS = -mavx2 -mbmi -mbmi2 -mlzcnt -mno-avx512f -DZXC_FUNCTION_SUFFIX=_avx2 -DZXC_USE_AVX2
     $(ZXC_DIR)/%_avx2.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
 
     $(ZXC_DIR)/%_avx512.o: ZXC_FLAGS = -mavx512f -mavx512bw -mavx512vbmi -mavx512vbmi2 -mbmi -mbmi2 -mlzcnt -DZXC_FUNCTION_SUFFIX=_avx512 -DZXC_USE_AVX512
     $(ZXC_DIR)/%_avx512.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
 
-    $(ZXC_DIR)/%_neon.o: ZXC_FLAGS = $(NEON_FLAGS) -DZXC_FUNCTION_SUFFIX=_neon
-    $(ZXC_DIR)/%_neon.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
+    $(ZXC_DIR)/%_neon32.o: ZXC_FLAGS = $(NEON_FLAGS) -DZXC_FUNCTION_SUFFIX=_neon32
+    $(ZXC_DIR)/%_neon32.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
 endif
 
 

@@ -239,18 +239,18 @@ static const compressor_desc_t comp_desc[] =
     { "misa77",      "misa77 0.6.0",          -1,   4,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_decompress,      NULL, NULL },
     { "misa77_safe", "misa77 0.6.0 safe",     -1,   3,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_safe_decompress, NULL, NULL },
     { "nvcomp_lz4", "nvcomp_lz4 2.2.0",        0,   7,    0,  BENCH_POOL_MT, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },
-    { "openzl_u8",  "openzl 0.2.0 -p u8",       0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint8_t),  lzbench_openzl_deinit },
-    { "openzl_i8",  "openzl 0.2.0 -p i8",       0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int8_t),  lzbench_openzl_deinit },
-    { "openzl_le_u16",  "openzl 0.2.0 -p le-u16",   0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint16_t),  lzbench_openzl_deinit },
-    { "openzl_le_i16",  "openzl 0.2.0 -p le-i16",   0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int16_t),  lzbench_openzl_deinit },
-    { "openzl_le_u32",  "openzl 0.2.0 -p le-u32",   0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint32_t),  lzbench_openzl_deinit },
-    { "openzl_le_i32",  "openzl 0.2.0 -p le-i32",   0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int32_t),  lzbench_openzl_deinit },
-    { "openzl_le_u64",  "openzl 0.2.0 -p le-u64",   0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint64_t),  lzbench_openzl_deinit },
-    { "openzl_le_i64",  "openzl 0.2.0 -p le-i64",   0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int64_t),  lzbench_openzl_deinit },
-    { "openzl_serial",  "openzl 0.2.0 -p serial",   0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_serial,  lzbench_openzl_deinit },
-    { "openzl_generic", "openzl 0.2.0 'generic'",   0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_generic, lzbench_openzl_deinit },
-    { "openzl_zstd",    "openzl 0.2.0 'zstd'",      1,  22,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_zstd,    lzbench_openzl_deinit },
-    { "openzl_lz4",     "openzl 0.2.0 'lz4'",      -5,   9,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_lz4,     lzbench_openzl_deinit },
+    { "openzl_u8",      "openzl 0.2.0 -p u8",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint8_t),  lzbench_openzl_deinit },
+    { "openzl_i8",      "openzl 0.2.0 -p i8",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int8_t),   lzbench_openzl_deinit },
+    { "openzl_le_u16",  "openzl 0.2.0 -p le-u16",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint16_t), lzbench_openzl_deinit },
+    { "openzl_le_i16",  "openzl 0.2.0 -p le-i16",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int16_t),  lzbench_openzl_deinit },
+    { "openzl_le_u32",  "openzl 0.2.0 -p le-u32",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint32_t), lzbench_openzl_deinit },
+    { "openzl_le_i32",  "openzl 0.2.0 -p le-i32",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int32_t),  lzbench_openzl_deinit },
+    { "openzl_le_u64",  "openzl 0.2.0 -p le-u64",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint64_t), lzbench_openzl_deinit },
+    { "openzl_le_i64",  "openzl 0.2.0 -p le-i64",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int64_t),  lzbench_openzl_deinit },
+    { "openzl_serial",  "openzl 0.2.0 -p serial",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_serial,            lzbench_openzl_deinit },
+    { "openzl_generic", "openzl 0.2.0 'generic'",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_generic,           lzbench_openzl_deinit },
+    { "openzl_zstd",    "openzl 0.2.0 'zstd'",   -99,  22,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_zstd,              lzbench_openzl_deinit },
+    { "openzl_lz4",     "openzl 0.2.0 'lz4'",    -99,  12,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_lz4,               lzbench_openzl_deinit },
     { "ppmd8",      "ppmd8 26.01",             1,   9,    0,  BENCH_POOL_MT, lzbench_ppmd_compress,       lzbench_ppmd_decompress,       NULL,                    NULL },
     { "quicklz",    "quicklz 1.5.1 beta 7",    1,   3,    0,  BENCH_POOL_MT, lzbench_quicklz_compress,    lzbench_quicklz_decompress,    NULL,                    NULL },
     { "skim",       "skim 0.1.0",              0,   0,    0,  BENCH_POOL_MT, lzbench_skim_compress,       lzbench_skim_decompress,       lzbench_skim_init,       lzbench_skim_deinit },
@@ -278,7 +278,7 @@ static const compressor_desc_t comp_desc[] =
     { "zstd24LDM",  "zstd 1.5.7 --long -d24", 16,  22,   24, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstdLDM",    "zstd 1.5.7 --long",       1,  22,    0, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstd_fast",  "zstd 1.5.7 --fast",      -5,  -1,    0, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zxc",        "zxc 0.13.1",              1,   7,    0, BENCH_POOL_MT,  lzbench_zxc_compress,        lzbench_zxc_decompress,        lzbench_zxc_init,        lzbench_zxc_deinit },
+    { "zxc",        "zxc 0.13.2",              1,   7,    0, BENCH_POOL_MT,  lzbench_zxc_compress,        lzbench_zxc_decompress,        lzbench_zxc_init,        lzbench_zxc_deinit },
 };
 
 const long int LZBENCH_COMPRESSOR_COUNT = sizeof(comp_desc)/sizeof(comp_desc[0]);
@@ -336,6 +336,11 @@ static const alias_desc_t alias_desc[] =
     { "LZO",      "Represents all LZO compressor variants.",
                   "lzo1/lzo1a/lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a" },
 #endif
+#ifndef BENCH_REMOVE_OPENZL
+    { "OPENZL",   "Represents all OpenZL compressor variants.",
+                  "openzl_u8/openzl_i8/openzl_le_u16/openzl_le_i16/openzl_le_u32/openzl_le_i32/openzl_le_u64/openzl_le_i64/" \
+                  "openzl_serial/openzl_generic/openzl_zstd/openzl_lz4" },
+#endif
 #if !defined(BENCH_REMOVE_BSC)
     { "BSC",      "Represents all bsc compressor variants.",
                   "bsc0/bsc1/bsc2/bsc3/bsc4/bsc5/bsc6" },
@@ -355,6 +360,10 @@ static const alias_desc_t alias_desc[] =
     { "lzo1f",    nullptr, "lzo1f,1,999" },
     { "lzo1x",    nullptr, "lzo1x,1,11,12,15,999" },
     { "lzo1y",    nullptr, "lzo1y,1,999" },
+#ifndef BENCH_REMOVE_OPENZL
+    { "openzl_zstd", nullptr, "openzl_zstd,-99,-90,-80,-70,-60,-50,-40,-30,-20,-10,-8,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,8,10,12,14,16,18,20,22" },
+    { "openzl_lz4",  nullptr, "openzl_lz4,-99,-90,-80,-70,-60,-50,-40,-30,-20,-10,-8,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,7,8,9,10,11,12" },
+#endif
 };
 
 const long int LZBENCH_ALIASES_COUNT = sizeof(alias_desc)/sizeof(alias_desc[0]);
