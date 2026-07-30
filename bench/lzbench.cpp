@@ -819,6 +819,8 @@ void lzbench_process_mem_blocks(lzbench_params_t *params, size_t max_chunk_size,
     if (!compbuf || !decomp)
     {
         printf("Not enough memory, please use -m option!\n");
+        free(compbuf);
+        free(decomp);
         g_exit_result = 3;
         return;
     }
@@ -968,6 +970,8 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
 
         if (insize == 0) {
             LZBENCH_PRINT(2, "[Warning] File %s is empty and will be ignored\n", inFileNames[i]);
+            fclose(in);
+            free(inbuf);
             continue;
         }
 
