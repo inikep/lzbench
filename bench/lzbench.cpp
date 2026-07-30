@@ -948,6 +948,7 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
 
         if (!inbuf) {
             printf("Not enough memory, please use -m option!");
+            fclose(in);
             return 3;
         }
 
