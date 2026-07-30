@@ -108,8 +108,6 @@ ZXC_EXPORT uint64_t zxc_compress_bound(const size_t input_size);
  * @param[out] dst          Destination buffer.
  * @param[in]  dst_capacity Capacity of @p dst.
  * @param[in]  opts         Compression options, or NULL for defaults.
- *                           @c n_threads and the progress callback are ignored
- *                          (this call is single-threaded and blocking).
  *
  * @note @p src and @p dst must not overlap (same contract as memcpy).
  * @note Levels above @ref ZXC_LEVEL_ULTRA are silently clamped to it;
@@ -133,8 +131,6 @@ ZXC_EXPORT int64_t zxc_compress(const void* src, const size_t src_size, void* ds
  * @param[out] dst          Destination buffer.
  * @param[in]  dst_capacity Capacity of @p dst.
  * @param[in]  opts         Decompression options, or NULL for defaults.
- *                          @c n_threads and the progress callback are ignored
- *                         (this call is single-threaded and blocking).
  *
  * @note @p src and @p dst must not overlap (same contract as memcpy).
  *
@@ -456,6 +452,9 @@ ZXC_EXPORT int64_t zxc_compress_cctx(zxc_cctx* cctx, const void* src, size_t src
 
 /**
  * @brief Creates a reusable decompression context.
+ *
+ * Only the handle is allocated here: the working buffers are sized from the
+ * archive header, so they come on the first decode. Free with zxc_free_dctx().
  *
  * @return New context, or @c NULL on allocation failure.
  */

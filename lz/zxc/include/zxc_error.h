@@ -25,7 +25,6 @@ extern "C" {
 
 /**
  * @defgroup error Error Handling
- * @brief Error codes returned by ZXC library functions.
  * @{
  */
 
@@ -48,7 +47,7 @@ typedef enum {
     /* Format/header errors */
     ZXC_ERROR_BAD_MAGIC = -4,    /**< Invalid magic word in file header. */
     ZXC_ERROR_BAD_VERSION = -5,  /**< Unsupported file format version. */
-    ZXC_ERROR_BAD_HEADER = -6,   /**< Corrupted or invalid header (CRC mismatch). */
+    ZXC_ERROR_BAD_HEADER = -6,   /**< Corrupted or invalid header (checksum mismatch). */
     ZXC_ERROR_BAD_CHECKSUM = -7, /**< Block or global checksum verification failed. */
 
     /* Data integrity errors */

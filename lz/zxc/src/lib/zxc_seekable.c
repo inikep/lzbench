@@ -32,132 +32,11 @@
 #include "../../include/zxc_dict.h"
 #include "../../include/zxc_error.h"
 #include "zxc_internal.h"
+#include "zxc_threads.h"
 
-/* ========================================================================= */
-/*  Platform Threading Layer                                                 */
-/* ========================================================================= */
-
-// LCOV_EXCL_START - Windows platform layer, not reachable on POSIX CI
-#if defined(_WIN32)
-#include <process.h> /* _beginthreadex */
-#include <windows.h>
-
-/* Map POSIX threading primitives to Windows equivalents */
-typedef HANDLE zxc_thread_t;
-
-/**
- * @brief Trampoline payload bridging the POSIX-style @c void*(*)(void*) worker
- *        signature to the Win32 @c _beginthreadex entry point.
- *
- * Heap-allocated by @ref zxc_seek_thread_create and freed by
- * @ref zxc_seek_thread_entry once the captured callback has started.
- */
-typedef struct {
-    void* (*func)(void*); /* worker to invoke */
-    void* arg;            /* argument forwarded to @c func */
-} zxc_seek_thread_arg_t;
-
-/**
- * @brief @c _beginthreadex entry point: unpacks the trampoline payload, frees
- *        it, then runs the captured POSIX-style worker.
- *
- * @param[in] p  Heap @ref zxc_seek_thread_arg_t handed over by the creator;
- *               ownership transfers to this function.
- * @return Always 0 (the worker's @c void* result is discarded, matching the
- *         POSIX path which also ignores it).
- */
-static unsigned __stdcall zxc_seek_thread_entry(void* p) {
-    zxc_seek_thread_arg_t* a = (zxc_seek_thread_arg_t*)p;
-    void* (*f)(void*) = a->func;
-    void* arg = a->arg;
-    ZXC_FREE(a);
-    f(arg);
-    return 0;
-}
-
-/**
- * @brief Spawns a thread running @p fn(@p arg), abstracting @c _beginthreadex.
- *
- * Allocates a @ref zxc_seek_thread_arg_t trampoline so the Win32 entry-point
- * signature can carry a POSIX-style worker; the trampoline is freed by the
- * thread itself (or here, on a launch failure).
- *
- * @param[out] t    Receives the created thread handle on success.
- * @param[in]  fn   Worker to run on the new thread.
- * @param[in]  arg  Opaque argument forwarded to @p fn.
- * @return 0 on success, @ref ZXC_ERROR_MEMORY on allocation or spawn failure.
- */
-static int zxc_seek_thread_create(zxc_thread_t* t, void* (*fn)(void*), void* arg) {
-    zxc_seek_thread_arg_t* wrapper = ZXC_MALLOC(sizeof(zxc_seek_thread_arg_t));
-    if (UNLIKELY(!wrapper)) return ZXC_ERROR_MEMORY;
-    wrapper->func = fn;
-    wrapper->arg = arg;
-    uintptr_t handle = _beginthreadex(NULL, 0, zxc_seek_thread_entry, wrapper, 0, NULL);
-    if (UNLIKELY(handle == 0)) {
-        ZXC_FREE(wrapper);
-        return ZXC_ERROR_MEMORY;
-    }
-    *t = (HANDLE)handle;
-    return 0;
-}
-
-/**
- * @brief Blocks until thread @p t finishes, then releases its handle.
- * @param[in] t  Handle from a successful @ref zxc_seek_thread_create.
- */
-static void zxc_seek_thread_join(zxc_thread_t t) {
-    WaitForSingleObject(t, INFINITE);
-    CloseHandle(t);
-}
-
-/**
- * @brief Returns the number of logical processors reported by the OS.
- * @return Online processor count (always >= 1 in practice).
- */
-static int zxc_seek_get_num_procs(void) {
-    SYSTEM_INFO si;
-    GetSystemInfo(&si);
-    return (int)si.dwNumberOfProcessors;
-}
-// LCOV_EXCL_STOP
-
-#else /* POSIX */
-#include <pthread.h>
-#include <unistd.h>
-
-typedef pthread_t zxc_thread_t;
-
-/**
- * @brief Spawns a thread running @p fn(@p arg) via @c pthread_create.
- * @param[out] t    Receives the created thread handle on success.
- * @param[in]  fn   Worker to run on the new thread.
- * @param[in]  arg  Opaque argument forwarded to @p fn.
- * @return 0 on success, @ref ZXC_ERROR_MEMORY if the thread cannot be created.
- */
-static int zxc_seek_thread_create(zxc_thread_t* t, void* (*fn)(void*), void* arg) {
-    return pthread_create(t, NULL, fn, arg) == 0 ? 0 : ZXC_ERROR_MEMORY;
-}
-
-/**
- * @brief Blocks until thread @p t finishes (its @c void* result is discarded).
- * @param[in] t  Handle from a successful @ref zxc_seek_thread_create.
- */
-static void zxc_seek_thread_join(zxc_thread_t t) { pthread_join(t, NULL); }
-
-/**
- * @brief Returns the number of online logical processors.
- * @return @c _SC_NPROCESSORS_ONLN, clamped to a minimum of 1 if the query fails.
- */
-static int zxc_seek_get_num_procs(void) {
-    const long n = sysconf(_SC_NPROCESSORS_ONLN);
-    return (n > 0) ? (int)n : 1;
-}
-
-#endif /* _WIN32 */
-
-/* ========================================================================= */
-/*  Seek Table Writer                                                        */
-/* ========================================================================= */
+// =========================================================================
+// Seek Table Writer
+// =========================================================================
 
 /**
  * @brief Byte size of a seek table holding @p num_blocks entries.
@@ -165,9 +44,6 @@ static int zxc_seek_get_num_procs(void) {
  * Public API (declared in @c zxc_seekable.h): one block header plus
  * @p num_blocks fixed-size entries. Use it to size the destination buffer
  * before @ref zxc_write_seek_table.
- *
- * @param[in] num_blocks  Number of block entries the table will hold.
- * @return Total table size in bytes (block header + entries).
  */
 size_t zxc_seek_table_size(const uint32_t num_blocks) {
     return ZXC_BLOCK_HEADER_SIZE + (size_t)num_blocks * ZXC_SEEK_ENTRY_SIZE;
@@ -178,14 +54,6 @@ size_t zxc_seek_table_size(const uint32_t num_blocks) {
  *
  * Public API; full contract in @c zxc_seekable.h. Emits the standard ZXC block
  * header followed by one little-endian @c u32 compressed-size entry per block.
- *
- * @param[out] dst           Destination buffer.
- * @param[in]  dst_capacity  Capacity of @p dst in bytes.
- * @param[in]  comp_sizes    Array of @p num_blocks compressed block sizes.
- * @param[in]  num_blocks    Number of blocks (and entries) to write.
- * @return Bytes written on success, or a negative @ref zxc_error_t
- *         (@ref ZXC_ERROR_OVERFLOW, @ref ZXC_ERROR_DST_TOO_SMALL,
- *         @ref ZXC_ERROR_NULL_INPUT).
  */
 int64_t zxc_write_seek_table(uint8_t* dst, const size_t dst_capacity, const uint32_t* comp_sizes,
                              const uint32_t num_blocks) {
@@ -197,14 +65,14 @@ int64_t zxc_write_seek_table(uint8_t* dst, const size_t dst_capacity, const uint
 
     const uint32_t payload_size = num_blocks * ZXC_SEEK_ENTRY_SIZE;
 
-    /* Write standard ZXC block header */
+    // Write standard ZXC block header
     const zxc_block_header_t bh = {
         .block_type = ZXC_BLOCK_SEK, .block_flags = 0, .reserved = 0, .comp_size = payload_size};
     const int hdr_res = zxc_write_block_header(dst, dst_capacity, &bh);
     if (UNLIKELY(hdr_res < 0)) return hdr_res;
     uint8_t* p = dst + hdr_res;
 
-    /* Write entries: comp_size(4) only */
+    // Write entries: comp_size(4) only
     for (uint32_t i = 0; i < num_blocks; i++) {
         zxc_store_le32(p, comp_sizes[i]);
         p += sizeof(uint32_t);
@@ -213,186 +81,227 @@ int64_t zxc_write_seek_table(uint8_t* dst, const size_t dst_capacity, const uint
     return (int64_t)(p - dst);
 }
 
-/* ========================================================================= */
-/*  Seekable Reader (Opaque Handle)                                          */
-/* ========================================================================= */
+// =========================================================================
+// Seekable Reader (Opaque Handle)
+// =========================================================================
 
 struct zxc_seekable_s {
-    /* Source - exactly one of {src, reader.read_at} is set. The FILE* variant
-     * wraps pread() in its own reader ctx, indistinguishable from here. */
+    // Source - exactly one of {src, reader.read_at} is set. The FILE* variant
+    // wraps pread() in its own reader ctx, indistinguishable from here.
     const uint8_t* src;
     uint64_t src_size;
     zxc_reader_t reader; /* user-supplied callback reader; read_at == NULL when unused */
 
-    /* Reader context owned by the handle and freed in zxc_seekable_free, set by
-     * the thin wrappers. NULL when the caller owns reader.ctx itself. */
+    // Reader context owned by the handle and freed in zxc_seekable_free, set by
+    // the thin wrappers. NULL when the caller owns reader.ctx itself.
     void* owned_reader_ctx;
 
-    /* Parsed seek table */
+    // Parsed seek table
     uint32_t num_blocks;
     uint32_t* comp_sizes;   /* array[num_blocks] */
     uint64_t* comp_offsets; /* prefix-sum: byte offset in compressed file per block */
     uint64_t total_decomp;  /* total decompressed size (from footer) */
+    uint32_t max_comp_size; /* largest entry of comp_sizes, from the same walk */
 
-    /* File header info - block_size is always a power of 2 in [4KB, 2MB],
-     * fits in 21 bits. */
+    // File header info - block_size is always a power of 2 in [4KB, 2MB],
+    // fits in 21 bits.
     uint32_t block_size;
     int file_has_checksums;
     uint32_t expected_dict_id; /* dict_id from the file header; 0 = no dictionary */
 
-    /* Reusable decompression context (single-threaded path only) */
+    // Reusable decompression context and compressed-block scratch. Both belong
+    // to the single-threaded path, which is already not reentrant per handle;
+    // the multi-threaded path gives each worker its own.
     zxc_cctx_t dctx;
     int dctx_initialized;
+    uint8_t* read_buf;
+    size_t read_buf_cap;
 
-    /* Dictionary (owned copy, freed in zxc_seekable_free). */
+    // Dictionary (owned copy, freed in zxc_seekable_free).
     uint8_t* dict;
     size_t dict_size;
-    /* Shared literal Huffman table (owned copy; meaningful when has_dict_huf). */
+    // Shared literal Huffman table (owned copy; meaningful when has_dict_huf).
     uint8_t dict_huf[ZXC_HUF_TABLE_SIZE];
     int has_dict_huf;
 };
 
 /**
- * @brief Parses the seek table from raw bytes at the end of the archive.
+ * @struct zxc_seek_source_t
+ * @brief Where the archive bytes come from during parsing.
+ *
+ * The two public entry points differ only in this: @ref zxc_seekable_open holds
+ * the whole archive in memory, @ref zxc_seekable_open_reader reaches it through
+ * a positioned callback. Everything after the first read is common, so the
+ * parser below takes a source instead of being written twice.
+ */
+typedef struct {
+    const uint8_t* data;     /* in-memory archive, NULL in callback mode */
+    const zxc_reader_t* rdr; /* callback mode, NULL in buffer mode */
+    uint64_t size;           /* archive size, both modes */
+} zxc_seek_source_t;
+
+/**
+ * @brief Reads a byte range from the archive, whatever backs it.
+ *
+ * Returns 1 on success, 0 if the range falls outside the archive or the
+ * caller's reader came up short: every bounds check on a parsed offset goes
+ * through here.
+ */
+static int zxc_seek_source_read(const zxc_seek_source_t* src, void* dst, const size_t len,
+                                const uint64_t off) {
+    if (UNLIKELY(off > src->size || (uint64_t)len > src->size - off)) return 0;
+    if (src->data) {
+        ZXC_MEMCPY(dst, src->data + off, len);
+        return 1;
+    }
+    return src->rdr->read_at(src->rdr->ctx, dst, len, off) == (int64_t)len;
+}
+
+/**
+ * @brief Parses and validates the seek table at the end of the archive.
  *
  * Detection (backward from end):
  *   1. Read file header => block_size
  *   2. Read file footer => total_decomp_size
  *   3. Derive num_blocks = ceil(total_decomp_size / block_size)
  *   4. Compute expected seek block position, validate block_type == SEK
- *   5. Read comp_sizes; derive decomp_sizes from block_size
+ *   5. Read comp_sizes, build the compressed-offset prefix sums, and check the
+ *      layout lands exactly on the EOF block
  *
- * @param[in] data       Pointer to the whole in-memory archive.
- * @param[in] data_size  Archive size in bytes.
- * @return A newly allocated handle (free via @ref zxc_seekable_free), or NULL
- *         if the buffer is too small or the seek table is missing / malformed.
+ * Returns a handle to free via @ref zxc_seekable_free, or NULL if the archive
+ * is too small or the seek table is missing / malformed.
  */
-static zxc_seekable* zxc_seekable_parse(const uint8_t* data, const size_t data_size) {
-    /* Minimum: file_header(16) + eof_block(8) + seek_block_header(8)
-     *          + file_footer(12) = 44 */
-    const size_t MIN_SEEKABLE_SIZE =
+static zxc_seekable* zxc_seekable_parse(const zxc_seek_source_t* src) {
+    // Minimum: file_header(16) + eof_block(8) + seek_block_header(8)
+    //          + file_footer(12) = 44
+    const uint64_t MIN_SEEKABLE_SIZE =
         ZXC_FILE_HEADER_SIZE + ZXC_BLOCK_HEADER_SIZE + ZXC_BLOCK_HEADER_SIZE + ZXC_FILE_FOOTER_SIZE;
-    if (UNLIKELY(data_size < MIN_SEEKABLE_SIZE)) return NULL;
+    if (UNLIKELY(src->size < MIN_SEEKABLE_SIZE)) return NULL;
 
-    /* Step 1: validate file header => block_size */
+    // Step 1: validate file header => block_size
+    uint8_t header[ZXC_FILE_HEADER_SIZE];
+    if (UNLIKELY(!zxc_seek_source_read(src, header, sizeof(header), 0))) return NULL;
+
     size_t block_size_sz = 0;
     int file_has_chk = 0;
     uint32_t header_dict_id = 0;
-    if (UNLIKELY(zxc_read_file_header(data, data_size, &block_size_sz, &file_has_chk,
+    if (UNLIKELY(zxc_read_file_header(header, sizeof(header), &block_size_sz, &file_has_chk,
                                       &header_dict_id) != ZXC_OK))
         return NULL;  // LCOV_EXCL_LINE
     const uint32_t block_size = (uint32_t)block_size_sz;
     if (UNLIKELY(block_size == 0)) return NULL;  // LCOV_EXCL_LINE
 
-    /* Step 2: read total decompressed size from the file footer */
-    const uint8_t* const footer_ptr = data + data_size - ZXC_FILE_FOOTER_SIZE;
-    const uint64_t total_decomp = zxc_le64(footer_ptr);
+    // Step 2: read total decompressed size from the file footer
+    uint8_t footer[ZXC_FILE_FOOTER_SIZE];
+    if (UNLIKELY(
+            !zxc_seek_source_read(src, footer, sizeof(footer), src->size - ZXC_FILE_FOOTER_SIZE)))
+        return NULL;
+    const uint64_t total_decomp = zxc_le64(footer);
 
-    /* A value of 0 means empty file - no seek table */
+    // A value of 0 means empty file - no seek table
     if (UNLIKELY(total_decomp == 0)) return NULL;
 
-    /* Step 3: derive num_blocks = ceil(total_decomp / block_size) */
-    const uint64_t num_blocks_64 = (total_decomp + block_size - 1) / block_size;
+    // Step 3: derive num_blocks = ceil(total_decomp / block_size)
+    const uint64_t num_blocks_64 = total_decomp / block_size + (total_decomp % block_size != 0);
     if (UNLIKELY(num_blocks_64 > UINT32_MAX)) return NULL;
     const uint32_t num_blocks = (uint32_t)num_blocks_64;
 
-    /* Step 4: compute seek block position and validate. */
-    const uint64_t entries_total_64 = num_blocks_64 * ZXC_SEEK_ENTRY_SIZE;
-    if (UNLIKELY(entries_total_64 > SIZE_MAX - ZXC_BLOCK_HEADER_SIZE)) return NULL;
-    const size_t entries_total = (size_t)entries_total_64;
-    const size_t seek_block_total = ZXC_BLOCK_HEADER_SIZE + entries_total;
-    if (UNLIKELY(seek_block_total + ZXC_FILE_FOOTER_SIZE > data_size)) return NULL;
-    const uint8_t* const seek_block_start =
-        data + data_size - ZXC_FILE_FOOTER_SIZE - seek_block_total;
-    if (UNLIKELY(seek_block_start < data)) return NULL;
+    // Step 4: locate and validate the seek block. Two headers of margin, not one:
+    // the tail read below spans the EOF block, so tail_total could wrap on 32 bits.
+    const uint64_t entries_total = num_blocks_64 * ZXC_SEEK_ENTRY_SIZE;
+    if (UNLIKELY(entries_total > SIZE_MAX - 2 * ZXC_BLOCK_HEADER_SIZE)) return NULL;
 
-    /* Read and validate SEK block header */
+    const size_t seek_block_total = ZXC_BLOCK_HEADER_SIZE + (size_t)entries_total;
+    if (UNLIKELY((uint64_t)seek_block_total + ZXC_FILE_FOOTER_SIZE > src->size)) return NULL;
+
+    const uint64_t seek_off = src->size - ZXC_FILE_FOOTER_SIZE - (uint64_t)seek_block_total;
+    if (UNLIKELY(seek_off < ZXC_BLOCK_HEADER_SIZE)) return NULL;
+
+    // The EOF block sits immediately before the seek block, so one read covers
+    // both: [EOF 8][SEK header 8][entries]. Keeps a reader-backed open at three
+    // reads (header, footer, tail) while validating the same layout the
+    // in-memory path does.
+    const size_t tail_total = ZXC_BLOCK_HEADER_SIZE + seek_block_total;
+    const uint64_t tail_off = seek_off - ZXC_BLOCK_HEADER_SIZE;
+
+    uint8_t* tail = NULL;
+    const uint8_t* tail_view;
+    zxc_seekable* s = NULL;
+    if (src->data) {
+        tail_view = src->data + tail_off;
+    } else {
+        tail = (uint8_t*)ZXC_MALLOC(tail_total);
+        if (UNLIKELY(!tail)) return NULL;  // LCOV_EXCL_LINE
+        if (UNLIKELY(!zxc_seek_source_read(src, tail, tail_total, tail_off))) goto fail;
+        tail_view = tail;
+    }
+
+    const uint8_t* const eof_hdr = tail_view;
+    const uint8_t* const seek_blk = tail_view + ZXC_BLOCK_HEADER_SIZE;
+
     zxc_block_header_t bh;
-    if (UNLIKELY(zxc_read_block_header(seek_block_start, seek_block_total, &bh) != ZXC_OK))
-        return NULL;
-    if (UNLIKELY(bh.block_type != ZXC_BLOCK_SEK)) return NULL;
-    if (UNLIKELY(bh.comp_size != (uint32_t)entries_total)) return NULL;
+    // The SEK header stores the table size in a 32-bit field, so reject any larger value before
+    // reading it.
+    if (UNLIKELY(entries_total > UINT32_MAX)) goto fail;
+    if (UNLIKELY(zxc_read_block_header(seek_blk, seek_block_total, &bh) != ZXC_OK ||
+                 bh.block_type != ZXC_BLOCK_SEK || bh.comp_size != entries_total))
+        goto fail;
 
-    /* Step 5: allocate handle and parse entries */
-    zxc_seekable* const s = (zxc_seekable*)ZXC_CALLOC(1, sizeof(zxc_seekable));
-    // LCOV_EXCL_START
-    if (UNLIKELY(!s)) return NULL;
-    // LCOV_EXCL_STOP
+    // Step 5: allocate the handle and parse the entries
+    s = (zxc_seekable*)ZXC_CALLOC(1, sizeof(zxc_seekable));
+    if (UNLIKELY(!s)) goto fail;  // LCOV_EXCL_LINE
 
+    if (src->rdr) s->reader = *src->rdr;
+    s->src = src->data;
+    s->src_size = src->size;
     s->num_blocks = num_blocks;
     s->block_size = block_size;
     s->file_has_checksums = file_has_chk;
     s->expected_dict_id = header_dict_id;
-    s->src = data;
-    s->src_size = (uint64_t)data_size;
-
-    /* Allocate arrays */
-    s->comp_sizes = (uint32_t*)ZXC_CALLOC(num_blocks, sizeof(uint32_t));
-    s->comp_offsets = (uint64_t*)ZXC_CALLOC((size_t)num_blocks + 1, sizeof(uint64_t));
-    // LCOV_EXCL_START
-    if (UNLIKELY(!s->comp_sizes || !s->comp_offsets)) {
-        zxc_seekable_free(s);
-        return NULL;
-    }
-    // LCOV_EXCL_STOP
     s->total_decomp = total_decomp;
 
-    /* Parse comp_sizes and build compressed prefix sums.
-     * Validate each comp_size against data_size to prevent prefix-sum overflow
-     * and out-of-bounds reads during decompression. */
-    const uint8_t* ep = seek_block_start + ZXC_BLOCK_HEADER_SIZE;
-    uint64_t comp_acc = ZXC_FILE_HEADER_SIZE; /* blocks start after file header */
-    for (uint32_t i = 0; i < num_blocks; i++) {
-        s->comp_sizes[i] = zxc_le32(ep);
-        ep += sizeof(uint32_t);
+    s->comp_sizes = (uint32_t*)ZXC_CALLOC(num_blocks, sizeof(uint32_t));
+    s->comp_offsets = (uint64_t*)ZXC_CALLOC((size_t)num_blocks + 1, sizeof(uint64_t));
+    if (UNLIKELY(!s->comp_sizes || !s->comp_offsets)) goto fail;  // LCOV_EXCL_LINE
 
-        /* Reject entries below minimum (block header) or larger than the file */
-        if (UNLIKELY(s->comp_sizes[i] < ZXC_BLOCK_HEADER_SIZE ||
-                     s->comp_sizes[i] > (uint64_t)data_size)) {
-            zxc_seekable_free(s);
-            return NULL;
+    // Parse comp_sizes and build compressed prefix sums. Every entry is checked
+    // against the archive size, so the prefix sum can neither overflow nor
+    // point a later read out of bounds.
+    {
+        const uint8_t* ep = seek_blk + ZXC_BLOCK_HEADER_SIZE;
+        uint64_t comp_acc = ZXC_FILE_HEADER_SIZE; /* blocks start after file header */
+        for (uint32_t i = 0; i < num_blocks; i++) {
+            s->comp_sizes[i] = zxc_le32(ep);
+            ep += sizeof(uint32_t);
+
+            // Reject entries below minimum (block header) or larger than the file
+            if (UNLIKELY(s->comp_sizes[i] < ZXC_BLOCK_HEADER_SIZE || s->comp_sizes[i] > src->size))
+                goto fail;
+            if (s->comp_sizes[i] > s->max_comp_size) s->max_comp_size = s->comp_sizes[i];
+            s->comp_offsets[i] = comp_acc;
+            comp_acc += s->comp_sizes[i];
+            // Reject if cumulative offset exceeds file size (inconsistent table)
+            if (UNLIKELY(comp_acc > src->size)) goto fail;  // LCOV_EXCL_LINE
         }
-        s->comp_offsets[i] = comp_acc;
-        comp_acc += s->comp_sizes[i];
-        /* Reject if cumulative offset exceeds file size (inconsistent table) */
-        if (UNLIKELY(comp_acc > (uint64_t)data_size)) {
-            // LCOV_EXCL_START
-            zxc_seekable_free(s);
-            return NULL;
-            // LCOV_EXCL_STOP
-        }
-    }
-    s->comp_offsets[num_blocks] = comp_acc;
+        s->comp_offsets[num_blocks] = comp_acc;
 
-    /* Verify prefix-sum lands exactly at the EOF block position.
-     * Expected layout: [header 16][data blocks][EOF 8][SEK block][footer 12]
-     * So comp_acc (end of data blocks) + EOF(8) == seek_block_start. */
-    const uint64_t expected_eof_offset =
-        (uint64_t)(seek_block_start - data) - ZXC_BLOCK_HEADER_SIZE;
-    if (UNLIKELY(comp_acc != expected_eof_offset)) {
-        // LCOV_EXCL_START
-        zxc_seekable_free(s);
-        return NULL;
-        // LCOV_EXCL_STOP
+        // Verify the prefix sum lands exactly on the EOF block, and that an EOF
+        // block really sits there. Expected layout:
+        // [header 16][data blocks][EOF 8][SEK block][footer 12]
+        zxc_block_header_t eof_bh;
+        if (UNLIKELY(comp_acc != seek_off - ZXC_BLOCK_HEADER_SIZE ||
+                     zxc_read_block_header(eof_hdr, ZXC_BLOCK_HEADER_SIZE, &eof_bh) != ZXC_OK ||
+                     eof_bh.block_type != ZXC_BLOCK_EOF))
+            goto fail;
     }
 
-    /* Validate that an actual EOF block header exists at the computed offset */
-    if (UNLIKELY(comp_acc + ZXC_BLOCK_HEADER_SIZE > data_size)) {
-        // LCOV_EXCL_START
-        zxc_seekable_free(s);
-        return NULL;
-        // LCOV_EXCL_STOP
-    }
-    zxc_block_header_t eof_bh;
-    if (UNLIKELY(zxc_read_block_header(data + comp_acc, ZXC_BLOCK_HEADER_SIZE, &eof_bh) != ZXC_OK ||
-                 eof_bh.block_type != ZXC_BLOCK_EOF)) {
-        // LCOV_EXCL_START
-        zxc_seekable_free(s);
-        return NULL;
-        // LCOV_EXCL_STOP
-    }
-
+    ZXC_FREE(tail);
     return s;
+
+fail:
+    ZXC_FREE(tail);
+    zxc_seekable_free(s);
+    return NULL;
 }
 
 /**
@@ -400,19 +309,15 @@ static zxc_seekable* zxc_seekable_parse(const uint8_t* data, const size_t data_s
  *
  * Public API; see @c zxc_seekable.h. Thin guard around
  * @ref zxc_seekable_parse, which detects and validates the trailing seek table.
- *
- * @param[in] src       Pointer to the whole compressed archive.
- * @param[in] src_size  Archive size in bytes.
- * @return A handle to release with @ref zxc_seekable_free, or NULL on bad input
- *         or a missing / malformed seek table.
  */
 zxc_seekable* zxc_seekable_open(const void* src, const size_t src_size) {
     if (UNLIKELY(!src || src_size == 0)) return NULL;
-    return zxc_seekable_parse((const uint8_t*)src, src_size);
+    const zxc_seek_source_t source = {(const uint8_t*)src, NULL, (uint64_t)src_size};
+    return zxc_seekable_parse(&source);
 }
 
-/* zxc_seekable_open_file lives elsewhere: it builds a zxc_reader_t over pread()
- * and delegates below, keeping this TU free of <stdio.h>. */
+// zxc_seekable_open_file lives elsewhere: it builds a zxc_reader_t over pread()
+// and delegates below, keeping this TU free of <stdio.h>.
 
 /**
  * @brief Opens a seekable archive over a caller-supplied random-access reader.
@@ -422,148 +327,20 @@ zxc_seekable* zxc_seekable_open(const void* src, const size_t src_size) {
  * validates the SEK block, and builds the per-block compressed-offset prefix
  * sums. Unlike @ref zxc_seekable_open the archive is never mapped whole; only
  * the metadata is read up front.
- *
- * @param[in] r  Reader descriptor (@c read_at and @c size must be set).
- * @return A handle to release with @ref zxc_seekable_free, or NULL on bad input,
- *         a short read, or a malformed seek table.
  */
 zxc_seekable* zxc_seekable_open_reader(const zxc_reader_t* r) {
     if (UNLIKELY(!r || !r->read_at || r->size == 0)) return NULL;
-
-    /* Minimum: file_header(16) + eof_block(8) + seek_block_header(8)
-     *          + file_footer(12) = 44 */
-    const uint64_t MIN_SEEKABLE_SIZE =
-        ZXC_FILE_HEADER_SIZE + ZXC_BLOCK_HEADER_SIZE + ZXC_BLOCK_HEADER_SIZE + ZXC_FILE_FOOTER_SIZE;
-    if (UNLIKELY(r->size < MIN_SEEKABLE_SIZE)) return NULL;
-
-    /* Read file header => block_size */
-    uint8_t header[ZXC_FILE_HEADER_SIZE];
-    if (UNLIKELY(r->read_at(r->ctx, header, ZXC_FILE_HEADER_SIZE, 0) !=
-                 (int64_t)ZXC_FILE_HEADER_SIZE))
-        return NULL;
-
-    size_t bs_sz = 0;
-    int fhc = 0;
-    uint32_t header_dict_id = 0;
-    if (UNLIKELY(zxc_read_file_header(header, ZXC_FILE_HEADER_SIZE, &bs_sz, &fhc,
-                                      &header_dict_id) != ZXC_OK))
-        return NULL;  // LCOV_EXCL_LINE
-    const uint32_t bs = (uint32_t)bs_sz;
-    if (UNLIKELY(bs == 0)) return NULL;
-
-    /* Read footer => total_decomp_size */
-    uint8_t footer_buf[ZXC_FILE_FOOTER_SIZE];
-    if (UNLIKELY(r->read_at(r->ctx, footer_buf, ZXC_FILE_FOOTER_SIZE,
-                            r->size - ZXC_FILE_FOOTER_SIZE) != (int64_t)ZXC_FILE_FOOTER_SIZE))
-        return NULL;
-
-    const uint64_t total_decomp = zxc_le64(footer_buf);
-    if (UNLIKELY(total_decomp == 0)) return NULL;
-
-    /* Derive num_blocks = ceil(total_decomp / block_size) */
-    const uint64_t num_blocks_64 = (total_decomp + bs - 1) / bs;
-    if (UNLIKELY(num_blocks_64 > UINT32_MAX)) return NULL;
-    const uint32_t num_blocks = (uint32_t)num_blocks_64;
-
-    /* Guard against size_t multiplication overflow */
-    const uint64_t entries_total_64 = (uint64_t)num_blocks * ZXC_SEEK_ENTRY_SIZE;
-    if (UNLIKELY(entries_total_64 > SIZE_MAX - ZXC_BLOCK_HEADER_SIZE)) return NULL;
-
-    /* Read the full seek block */
-    const size_t seek_block_total = ZXC_BLOCK_HEADER_SIZE + (size_t)entries_total_64;
-    if (UNLIKELY(seek_block_total + ZXC_FILE_FOOTER_SIZE > r->size)) return NULL;
-
-    uint8_t* const seek_buf = (uint8_t*)ZXC_MALLOC(seek_block_total);
-    if (UNLIKELY(!seek_buf)) return NULL;
-
-    const uint64_t seek_offset = r->size - ZXC_FILE_FOOTER_SIZE - (uint64_t)seek_block_total;
-    if (UNLIKELY(r->read_at(r->ctx, seek_buf, seek_block_total, seek_offset) !=
-                 (int64_t)seek_block_total)) {
-        // LCOV_EXCL_START
-        ZXC_FREE(seek_buf);
-        return NULL;
-        // LCOV_EXCL_STOP
-    }
-
-    /* Validate SEK block header */
-    zxc_block_header_t bh;
-    if (UNLIKELY(zxc_read_block_header(seek_buf, seek_block_total, &bh) != ZXC_OK) ||
-        bh.block_type != ZXC_BLOCK_SEK || bh.comp_size != (uint32_t)entries_total_64) {
-        // LCOV_EXCL_START
-        ZXC_FREE(seek_buf);
-        return NULL;
-        // LCOV_EXCL_STOP
-    }
-
-    /* Build seekable handle */
-    zxc_seekable* const s = (zxc_seekable*)ZXC_CALLOC(1, sizeof(zxc_seekable));
-    if (UNLIKELY(!s)) {
-        // LCOV_EXCL_START
-        ZXC_FREE(seek_buf);
-        return NULL;
-        // LCOV_EXCL_STOP
-    }
-
-    s->reader = *r;
-    s->src = NULL;
-    s->src_size = r->size;
-    s->num_blocks = num_blocks;
-    s->block_size = bs;
-    s->file_has_checksums = fhc;
-    s->expected_dict_id = header_dict_id;
-
-    s->comp_sizes = (uint32_t*)ZXC_CALLOC(num_blocks, sizeof(uint32_t));
-    s->comp_offsets = (uint64_t*)ZXC_CALLOC((size_t)num_blocks + 1, sizeof(uint64_t));
-    if (UNLIKELY(!s->comp_sizes || !s->comp_offsets)) {
-        // LCOV_EXCL_START
-        ZXC_FREE(seek_buf);
-        zxc_seekable_free(s);
-        return NULL;
-        // LCOV_EXCL_STOP
-    }
-    s->total_decomp = total_decomp;
-
-    /* Parse comp_sizes and build prefix sums; validate against archive size. */
-    const uint8_t* ep = seek_buf + ZXC_BLOCK_HEADER_SIZE;
-    uint64_t comp_acc = ZXC_FILE_HEADER_SIZE;
-    for (uint32_t i = 0; i < num_blocks; i++) {
-        s->comp_sizes[i] = zxc_le32(ep);
-        ep += sizeof(uint32_t);
-
-        if (UNLIKELY(s->comp_sizes[i] < ZXC_BLOCK_HEADER_SIZE || s->comp_sizes[i] > r->size)) {
-            // LCOV_EXCL_START
-            ZXC_FREE(seek_buf);
-            zxc_seekable_free(s);
-            return NULL;
-            // LCOV_EXCL_STOP
-        }
-        s->comp_offsets[i] = comp_acc;
-        comp_acc += s->comp_sizes[i];
-        if (UNLIKELY(comp_acc > r->size)) {
-            // LCOV_EXCL_START
-            ZXC_FREE(seek_buf);
-            zxc_seekable_free(s);
-            return NULL;
-            // LCOV_EXCL_STOP
-        }
-    }
-    s->comp_offsets[num_blocks] = comp_acc;
-
-    ZXC_FREE(seek_buf);
-    return s;
+    const zxc_seek_source_t source = {NULL, r, r->size};
+    return zxc_seekable_parse(&source);
 }
 
 /**
  * @brief Number of blocks in the archive.
- * @param[in] s  Seekable handle (may be NULL).
- * @return Block count, or 0 if @p s is NULL.
  */
 uint32_t zxc_seekable_get_num_blocks(const zxc_seekable* s) { return s ? s->num_blocks : 0; }
 
 /**
  * @brief Total decompressed size of the archive.
- * @param[in] s  Seekable handle (may be NULL).
- * @return Decompressed size in bytes, or 0 if @p s is NULL.
  */
 uint64_t zxc_seekable_get_decompressed_size(const zxc_seekable* s) {
     return s ? s->total_decomp : 0;
@@ -571,10 +348,6 @@ uint64_t zxc_seekable_get_decompressed_size(const zxc_seekable* s) {
 
 /**
  * @brief Compressed byte size of a given block.
- * @param[in] s          Seekable handle (may be NULL).
- * @param[in] block_idx  Zero-based block index.
- * @return Compressed size in bytes, or 0 if @p s is NULL or @p block_idx is
- *         out of range.
  */
 uint32_t zxc_seekable_get_block_comp_size(const zxc_seekable* s, const uint32_t block_idx) {
     if (UNLIKELY(!s || block_idx >= s->num_blocks)) return 0;
@@ -586,11 +359,6 @@ uint32_t zxc_seekable_get_block_comp_size(const zxc_seekable* s, const uint32_t 
  *
  * Every block decompresses to @c block_size except the last, which holds the
  * remainder of @c total_decomp.
- *
- * @param[in] s          Seekable handle (may be NULL).
- * @param[in] block_idx  Zero-based block index.
- * @return Decompressed size in bytes, or 0 if @p s is NULL or @p block_idx is
- *         out of range.
  */
 uint32_t zxc_seekable_get_block_decomp_size(const zxc_seekable* s, const uint32_t block_idx) {
     if (UNLIKELY(!s || block_idx >= s->num_blocks)) return 0;
@@ -599,9 +367,9 @@ uint32_t zxc_seekable_get_block_decomp_size(const zxc_seekable* s, const uint32_
     return (remaining >= (uint64_t)s->block_size) ? s->block_size : (uint32_t)remaining;
 }
 
-/* ========================================================================= */
-/*  Random-Access Decompression                                              */
-/* ========================================================================= */
+// =========================================================================
+// Random-Access Decompression
+// =========================================================================
 
 /**
  * @brief Maps a decompressed @p offset to its containing block index (O(1)).
@@ -644,8 +412,8 @@ static uint32_t zxc_seek_decomp_size(const uint32_t block_size, const uint64_t t
 /**
  * @brief Reads a compressed block into @p buf from the memory buffer or reader.
  *
- * Single-threaded path: copies from @c s->src in buffer mode, otherwise calls
- * @c s->reader.read_at (which also backs the FILE* variant).
+ * Copies from @c s->src in buffer mode, otherwise calls @c s->reader.read_at
+ * (which also backs the FILE* variant).
  *
  * @param[in]  s          Seekable handle.
  * @param[in]  block_idx  Zero-based block index to read.
@@ -662,12 +430,12 @@ static int zxc_seek_read_block(const zxc_seekable* s, const uint32_t block_idx, 
     if (UNLIKELY(csz > buf_cap)) return ZXC_ERROR_DST_TOO_SMALL;
 
     if (s->src) {
-        /* Buffer mode */
+        // Buffer mode
         if (UNLIKELY(off + csz > s->src_size)) return ZXC_ERROR_SRC_TOO_SMALL;
         ZXC_MEMCPY(buf, s->src + off, csz);
     } else if (s->reader.read_at) {
-        /* Caller-supplied reader (also covers the FILE* variant, which
-         * provides a pread-backed callback from zxc_seekable_file.c). */
+        // Caller-supplied reader (also covers the FILE* variant, which
+        // provides a pread-backed callback from zxc_seekable_file.c).
         const int64_t r = s->reader.read_at(s->reader.ctx, buf, csz, off);
         if (UNLIKELY(r != (int64_t)csz)) return (r < 0) ? (int)r : ZXC_ERROR_IO;
     } else {
@@ -684,13 +452,6 @@ static int zxc_seek_read_block(const zxc_seekable* s, const uint32_t block_idx, 
  * lazily-initialised, dictionary-aware context, and copies out only the
  * requested sub-range. Single-threaded; see @ref zxc_seekable_decompress_range_mt
  * for the parallel variant.
- *
- * @param[in,out] s             Seekable handle (carries the reusable context).
- * @param[out]    dst           Destination buffer.
- * @param[in]     dst_capacity  Capacity of @p dst (must be >= @p len).
- * @param[in]     offset        Absolute decompressed start offset.
- * @param[in]     len           Number of decompressed bytes to produce.
- * @return @p len on success, or a negative @ref zxc_error_t.
  */
 int64_t zxc_seekable_decompress_range(zxc_seekable* s, void* dst, const size_t dst_capacity,
                                       const uint64_t offset, const size_t len) {
@@ -701,7 +462,7 @@ int64_t zxc_seekable_decompress_range(zxc_seekable* s, void* dst, const size_t d
     if (UNLIKELY(s->expected_dict_id != 0 && (!s->dict || s->dict_size == 0)))
         return ZXC_ERROR_DICT_REQUIRED;
 
-    /* Initialize decompression context on first use */
+    // Initialize decompression context on first use
     if (!s->dctx_initialized) {
         // LCOV_EXCL_START
         if (UNLIKELY(zxc_cctx_init(&s->dctx, (size_t)s->block_size, 0, 0, 0, s->dict_size) !=
@@ -720,58 +481,46 @@ int64_t zxc_seekable_decompress_range(zxc_seekable* s, void* dst, const size_t d
     }
     s->dctx.dict_size = s->dict_size;
 
-    /* work_buf is pre-sized to block_size + ZXC_DECOMPRESS_TAIL_PAD by the
-     * matching zxc_cctx_init above. */
+    // work_buf is pre-sized to block_size + ZXC_DECOMPRESS_TAIL_PAD by the
+    // matching zxc_cctx_init above.
     const size_t work_sz = (size_t)s->block_size + ZXC_DECOMPRESS_TAIL_PAD;
 
-    /* Find block range - O(1) division */
+    // Find block range - O(1) division
     const uint32_t blk_start = zxc_seek_find_block(s->block_size, offset);
     const uint32_t blk_end = zxc_seek_find_block(s->block_size, offset + len - 1);
 
     uint8_t* out = (uint8_t*)dst;
     size_t remaining = len;
 
-    /* Allocate read buffer for compressed blocks */
-    size_t max_comp = 0;
-    for (uint32_t bi = blk_start; bi <= blk_end; bi++) {
-        if (s->comp_sizes[bi] > max_comp) max_comp = s->comp_sizes[bi];
+    // Compressed-block scratch, sized once for the largest block of the archive
+    // and kept on the handle: a range read is often one of many.
+    const size_t read_cap = (size_t)s->max_comp_size + ZXC_PAD_SIZE;
+    if (s->read_buf_cap < read_cap) {
+        uint8_t* const nb = (uint8_t*)ZXC_REALLOC(s->read_buf, read_cap);
+        if (UNLIKELY(!nb)) return ZXC_ERROR_MEMORY;  // LCOV_EXCL_LINE
+        s->read_buf = nb;
+        s->read_buf_cap = read_cap;
     }
-    uint8_t* const read_buf = (uint8_t*)ZXC_MALLOC(max_comp + ZXC_PAD_SIZE);
-    if (UNLIKELY(!read_buf)) return ZXC_ERROR_MEMORY;  // LCOV_EXCL_LINE
+    uint8_t* const read_buf = s->read_buf;
 
     for (uint32_t bi = blk_start; bi <= blk_end; bi++) {
-        /* Read compressed block data */
-        const int read_res = zxc_seek_read_block(s, bi, read_buf, max_comp + ZXC_PAD_SIZE);
-        if (UNLIKELY(read_res < 0)) {
-            // LCOV_EXCL_START
-            ZXC_FREE(read_buf);
-            return read_res;
-            // LCOV_EXCL_STOP
-        }
+        // Read compressed block data
+        const int read_res = zxc_seek_read_block(s, bi, read_buf, read_cap);
+        if (UNLIKELY(read_res < 0)) return read_res;  // LCOV_EXCL_LINE
 
-        /* Decompress the block: when a dictionary is active, decode into the
-         * cctx-owned dict_buffer (which has dict content prepended) so that
-         * match copies referencing dictionary bytes resolve naturally. */
+        // Decompress the block: when a dictionary is active, decode into the
+        // cctx-owned dict_buffer (which has dict content prepended) so that
+        // match copies referencing dictionary bytes resolve naturally.
         uint8_t* dec_dst =
             s->dctx.dict_buffer ? s->dctx.dict_buffer + s->dict_size : s->dctx.work_buf;
         const int dec_res =
             zxc_decompress_chunk_wrapper(&s->dctx, read_buf, (size_t)read_res, dec_dst, work_sz);
-        if (UNLIKELY(dec_res < 0)) {
-            // LCOV_EXCL_START
-            ZXC_FREE(read_buf);
-            return dec_res;
-            // LCOV_EXCL_STOP
-        }
+        if (UNLIKELY(dec_res < 0)) return dec_res;  // LCOV_EXCL_LINE
 
-        /* Calculate which portion of this block's decompressed data we need */
+        // Calculate which portion of this block's decompressed data we need
         const uint64_t blk_decomp_start = zxc_seek_decomp_offset(s->block_size, bi);
         const size_t skip = (offset > blk_decomp_start) ? (size_t)(offset - blk_decomp_start) : 0;
-        if (UNLIKELY((size_t)dec_res < skip)) {
-            // LCOV_EXCL_START
-            ZXC_FREE(read_buf);
-            return ZXC_ERROR_CORRUPT_DATA;
-            // LCOV_EXCL_STOP
-        }
+        if (UNLIKELY((size_t)dec_res < skip)) return ZXC_ERROR_CORRUPT_DATA;  // LCOV_EXCL_LINE
         const size_t avail = (size_t)dec_res - skip;
         const size_t copy = (avail < remaining) ? avail : remaining;
 
@@ -780,13 +529,12 @@ int64_t zxc_seekable_decompress_range(zxc_seekable* s, void* dst, const size_t d
         remaining -= copy;
     }
 
-    ZXC_FREE(read_buf);
     return (int64_t)len;
 }
 
-/* ========================================================================= */
-/*  Multi-Threaded Random-Access Decompression (Fork-Join)                   */
-/* ========================================================================= */
+// =========================================================================
+// Multi-Threaded Random-Access Decompression (Fork-Join)
+// =========================================================================
 
 /**
  * @brief Per-block job descriptor for multi-threaded decompression.
@@ -803,42 +551,6 @@ typedef struct {
     size_t copy_len;       /* bytes to copy into dst */
     int result;            /* 0 = OK, < 0 = error */
 } zxc_seek_mt_job_t;
-
-/**
- * @brief Thread-safe block read backing the multi-threaded path.
- *
- * Like @ref zxc_seek_read_block but safe to call concurrently: buffer mode uses
- * @c memcpy on const data, reader mode relies on a positioned (pread-style)
- * callback that carries its own offset.
- *
- * @param[in]  s          Seekable handle (read-only).
- * @param[in]  block_idx  Zero-based block index to read.
- * @param[out] buf        Destination buffer.
- * @param[in]  buf_cap    Capacity of @p buf in bytes.
- * @return The block's compressed byte count on success, or a negative
- *         @ref zxc_error_t.
- */
-static int zxc_seek_read_block_mt(const zxc_seekable* s, const uint32_t block_idx, uint8_t* buf,
-                                  const size_t buf_cap) {
-    const uint64_t off = s->comp_offsets[block_idx];
-    const uint32_t csz = s->comp_sizes[block_idx];
-    if (UNLIKELY(csz > buf_cap)) return ZXC_ERROR_DST_TOO_SMALL;
-
-    if (s->src) {
-        /* Buffer mode - memcpy is inherently thread-safe on const data */
-        if (UNLIKELY(off + csz > s->src_size)) return ZXC_ERROR_SRC_TOO_SMALL;
-        ZXC_MEMCPY(buf, s->src + off, csz);
-    } else if (s->reader.read_at) {
-        /* Reader callback - caller-supplied read_at must be thread-safe.
-         * The FILE* variant (zxc_seekable_file.c) installs a pread-backed
-         * callback that is naturally thread-safe. */
-        const int64_t r = s->reader.read_at(s->reader.ctx, buf, csz, off);
-        if (UNLIKELY(r != (int64_t)csz)) return (r < 0) ? (int)r : ZXC_ERROR_IO;
-    } else {
-        return ZXC_ERROR_NULL_INPUT;  // LCOV_EXCL_LINE
-    }
-    return (int)csz;
-}
 
 /**
  * @struct zxc_seek_mt_stripe_t
@@ -896,7 +608,7 @@ static void zxc_seek_mt_fail_stripe(zxc_seek_mt_stripe_t* st, const int code) {
  * Each job's outcome goes into its @c result (read by the main thread after
  * join); on error the worker abandons the rest of its stripe.
  *
- * @param[in,out] arg  Pointer to this worker's @ref zxc_seek_mt_stripe_t.
+ * @param[in,out] arg  Pointer to this worker's `zxc_seek_mt_stripe_t`.
  * @return Always NULL (result codes are reported via the jobs).
  */
 static void* zxc_seek_mt_worker(void* arg) {
@@ -904,7 +616,7 @@ static void* zxc_seek_mt_worker(void* arg) {
     zxc_seek_mt_job_t* const jobs = st->jobs;
     const zxc_seekable* const s = jobs[st->first].s;
 
-    /* Thread-local decompression context (mode=0 for decompress-only) */
+    // Thread-local decompression context (mode=0 for decompress-only)
     zxc_cctx_t dctx;
     if (UNLIKELY(zxc_cctx_init(&dctx, (size_t)s->block_size, 0, 0, 0, s->dict_size) != ZXC_OK)) {
         // LCOV_EXCL_START
@@ -925,7 +637,7 @@ static void* zxc_seek_mt_worker(void* arg) {
     uint8_t* const dict_work = dctx.dict_buffer;
     if (dict_work) ZXC_MEMCPY(dict_work, s->dict, s->dict_size);
 
-    /* Read buffer sized for the largest compressed block of the stripe. */
+    // Read buffer sized for the largest compressed block of the stripe.
     size_t max_csz = 0;
     for (uint32_t i = st->first; i < st->num_jobs; i += st->stride) {
         const uint32_t csz = s->comp_sizes[jobs[i].block_idx];
@@ -944,7 +656,7 @@ static void* zxc_seek_mt_worker(void* arg) {
         zxc_seek_mt_job_t* const job = &jobs[i];
 
         const int read_res =
-            zxc_seek_read_block_mt(s, job->block_idx, read_buf, max_csz + ZXC_PAD_SIZE);
+            zxc_seek_read_block(s, job->block_idx, read_buf, max_csz + ZXC_PAD_SIZE);
         if (UNLIKELY(read_res < 0)) {
             // LCOV_EXCL_START
             job->result = read_res;
@@ -952,7 +664,7 @@ static void* zxc_seek_mt_worker(void* arg) {
             // LCOV_EXCL_STOP
         }
 
-        /* Decompress: use dict bounce buffer when dictionary is active */
+        // Decompress: use dict bounce buffer when dictionary is active
         uint8_t* dec_dst = dict_work ? dict_work + s->dict_size : dctx.work_buf;
         const int dec_res =
             zxc_decompress_chunk_wrapper(&dctx, read_buf, (size_t)read_res, dec_dst, work_sz);
@@ -970,7 +682,7 @@ static void* zxc_seek_mt_worker(void* arg) {
             // LCOV_EXCL_STOP
         }
 
-        /* Copy the requested portion directly into the caller's output buffer */
+        // Copy the requested portion directly into the caller's output buffer
         ZXC_MEMCPY(job->dst, dec_dst + job->skip, job->copy_len);
         job->result = 0;
     }
@@ -987,14 +699,6 @@ static void* zxc_seek_mt_worker(void* arg) {
  * block (each with its own thread-local context and read buffer) and runs them
  * fork-join in waves of up to @p n_threads. Falls back to the single-threaded
  * path for trivial spans. @p n_threads == 0 auto-detects the core count.
- *
- * @param[in,out] s             Seekable handle (read-only during the parallel phase).
- * @param[out]    dst           Destination buffer.
- * @param[in]     dst_capacity  Capacity of @p dst (must be >= @p len).
- * @param[in]     offset        Absolute decompressed start offset.
- * @param[in]     len           Number of decompressed bytes to produce.
- * @param[in]     n_threads     Worker thread count; 0 = auto-detect.
- * @return @p len on success, or the first negative @ref zxc_error_t observed.
  */
 int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_t dst_capacity,
                                          const uint64_t offset, const size_t len, int n_threads) {
@@ -1005,29 +709,29 @@ int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_
     if (UNLIKELY(s->expected_dict_id != 0 && (!s->dict || s->dict_size == 0)))
         return ZXC_ERROR_DICT_REQUIRED;
 
-    /* Find block range - O(1) division */
+    // Find block range - O(1) division
     const uint32_t blk_start = zxc_seek_find_block(s->block_size, offset);
     const uint32_t blk_end = zxc_seek_find_block(s->block_size, offset + len - 1);
     const uint32_t num_jobs = blk_end - blk_start + 1;
 
-    /* Auto-detect thread count (0 = use all available cores) */
-    if (n_threads == 0) n_threads = zxc_seek_get_num_procs();
+    // Auto-detect thread count (0 = use all available cores)
+    if (n_threads == 0) n_threads = zxc_num_procs();
 
-    /* Fallback to single-threaded path for trivial cases */
+    // Fallback to single-threaded path for trivial cases
     if (n_threads <= 1 || num_jobs <= 1) {
         return zxc_seekable_decompress_range(s, dst, dst_capacity, offset, len);
     }
 
-    /* Cap threads to number of blocks and max limit */
+    // Cap threads to number of blocks and max limit
     if ((uint32_t)n_threads > num_jobs) n_threads = (int)num_jobs;
     if (n_threads > ZXC_MAX_THREADS) n_threads = ZXC_MAX_THREADS;
 
-    /* Allocate job descriptors */
+    // Allocate job descriptors
     zxc_seek_mt_job_t* const jobs =
         (zxc_seek_mt_job_t*)ZXC_CALLOC(num_jobs, sizeof(zxc_seek_mt_job_t));
     if (UNLIKELY(!jobs)) return ZXC_ERROR_MEMORY;  // LCOV_EXCL_LINE
 
-    /* Plan jobs: compute skip, copy_len, and dst pointer for each block */
+    // Plan jobs: compute skip, copy_len, and dst pointer for each block
     uint8_t* out = (uint8_t*)dst;
     size_t remaining = len;
     for (uint32_t i = 0; i < num_jobs; i++) {
@@ -1055,9 +759,8 @@ int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_
         remaining -= copy;
     }
 
-    /* Launch one persistent worker per thread */
-    zxc_thread_t* const threads =
-        (zxc_thread_t*)ZXC_MALLOC((size_t)n_threads * sizeof(zxc_thread_t));
+    // Launch one persistent worker per thread
+    pthread_t* const threads = (pthread_t*)ZXC_MALLOC((size_t)n_threads * sizeof(pthread_t));
     zxc_seek_mt_stripe_t* const stripes =
         (zxc_seek_mt_stripe_t*)ZXC_MALLOC((size_t)n_threads * sizeof(zxc_seek_mt_stripe_t));
     if (UNLIKELY(!threads || !stripes)) {
@@ -1075,10 +778,10 @@ int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_
         stripes[t].num_jobs = num_jobs;
         stripes[t].first = (uint32_t)t;
         stripes[t].stride = (uint32_t)n_threads;
-        if (UNLIKELY(zxc_seek_thread_create(&threads[t], zxc_seek_mt_worker, &stripes[t]) != 0)) {
+        if (UNLIKELY(pthread_create(&threads[t], NULL, zxc_seek_mt_worker, &stripes[t]) != 0)) {
             // LCOV_EXCL_START
-            /* Failed to create thread - mark its stripe as errored; already
-             * launched workers keep running and are joined below. */
+            // Failed to create thread - mark its stripe as errored; already
+            // launched workers keep running and are joined below.
             zxc_seek_mt_fail_stripe(&stripes[t], ZXC_ERROR_MEMORY);
             continue;
             // LCOV_EXCL_STOP
@@ -1088,13 +791,13 @@ int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_
         threads[launched - 1] = threads[t];
     }
 
-    /* Join phase */
-    for (int t = 0; t < launched; t++) zxc_seek_thread_join(threads[t]);
+    // Join phase
+    for (int t = 0; t < launched; t++) pthread_join(threads[t], NULL);
 
     ZXC_FREE(threads);
     ZXC_FREE(stripes);
 
-    /* Report the first error in job order, if any. */
+    // Report the first error in job order, if any.
     int64_t result = (int64_t)len;
     for (uint32_t i = 0; i < num_jobs; i++) {
         if (jobs[i].result < 0) {
@@ -1113,13 +816,12 @@ int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_
  * Public API; see @c zxc_seekable.h. Tears down the reusable context, the seek
  * arrays (comp sizes / offsets), the owned dictionary copy and any attached
  * reader context. NULL-safe.
- *
- * @param[in] s  Seekable handle to release (may be NULL).
  */
 void zxc_seekable_free(zxc_seekable* s) {
     if (UNLIKELY(!s)) return;
     if (s->dctx_initialized) zxc_cctx_free(&s->dctx);
     ZXC_FREE(s->dict);
+    ZXC_FREE(s->read_buf);
     ZXC_FREE(s->comp_sizes);
     ZXC_FREE(s->comp_offsets);
     ZXC_FREE(s->owned_reader_ctx);
@@ -1133,13 +835,6 @@ void zxc_seekable_free(zxc_seekable* s) {
  * the file header, then takes an owned copy of @p dict (and the optional shared
  * literal Huffman table @p dict_huf). Drops any context already built so the
  * [dict | decode] bounce buffer is re-carved on the next decompress.
- *
- * @param[in,out] s          Seekable handle.
- * @param[in]     dict       Dictionary bytes.
- * @param[in]     dict_size  Dictionary length (<= @c ZXC_DICT_SIZE_MAX).
- * @param[in]     dict_huf   Optional shared literal Huffman table, or NULL.
- * @return @ref ZXC_OK, or a negative @ref zxc_error_t
- *         (@ref ZXC_ERROR_DICT_TOO_LARGE, @ref ZXC_ERROR_DICT_MISMATCH, ...).
  */
 int zxc_seekable_set_dict(zxc_seekable* s, const void* dict, const size_t dict_size,
                           const void* dict_huf) {
@@ -1163,9 +858,9 @@ int zxc_seekable_set_dict(zxc_seekable* s, const void* dict, const size_t dict_s
         s->has_dict_huf = 1;
     }
 
-    /* The [dict | decode] bounce buffer is carved into the dctx workspace.
-     * Drop any context built without it (or for a different dict size) so it is
-     * re-carved with the new dict on the next decompress. */
+    // The [dict | decode] bounce buffer is carved into the dctx workspace.
+    // Drop any context built without it (or for a different dict size) so it is
+    // re-carved with the new dict on the next decompress.
     if (s->dctx_initialized) {
         zxc_cctx_free(&s->dctx);
         s->dctx_initialized = 0;
@@ -1180,9 +875,6 @@ int zxc_seekable_set_dict(zxc_seekable* s, const void* dict, const size_t dict_s
  * @c ZXC_FREE when @ref zxc_seekable_free runs. Used by
  * @ref zxc_seekable_open_file so its allocated reader state outlives the open
  * call. NULL-safe on @p s.
- *
- * @param[in,out] s    Seekable handle (may be NULL).
- * @param[in]     ctx  Heap pointer to hand over; freed by @ref zxc_seekable_free.
  */
 void zxc_seekable_attach_owned_ctx(zxc_seekable* s, void* ctx) {
     if (s) s->owned_reader_ctx = ctx;
