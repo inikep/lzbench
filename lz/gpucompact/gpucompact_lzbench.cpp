@@ -19,7 +19,6 @@ struct GpucompactChunkHeader {
   uint32_t primary_idx;
   uint8_t is_raw;
   uint8_t reserved[3];
-  uint64_t gpu_hash;
 };
 #pragma pack(pop)
 
@@ -31,7 +30,6 @@ struct GpucompactState {
 };
 
 char *lzbench_gpucompact_init(size_t insize, size_t level, size_t threads) {
-  (void)insize;
   (void)threads;
   int device_count = 0;
   if (cudaGetDeviceCount(&device_count) != cudaSuccess || device_count == 0) {
@@ -75,7 +73,12 @@ char *lzbench_gpucompact_init(size_t insize, size_t level, size_t threads) {
     state->config.threads_decomp = 128;
   }
 
-  state->macro_bytes = (size_t)state->config.macro_mb * 1024 * 1024;
+  size_t full_macro = (size_t)state->config.macro_mb * 1024 * 1024;
+  if (insize > 0) {
+    state->macro_bytes = std::min(full_macro, std::max((size_t)65536, insize));
+  } else {
+    state->macro_bytes = full_macro;
+  }
 
   try {
     state->comp_ctx = new CompressionContext(
@@ -99,7 +102,6 @@ char *lzbench_gpucompact_init(size_t insize, size_t level, size_t threads) {
     state->decomp_ctx->primary_idx = state->comp_ctx->primary_idx;
     state->decomp_ctx->num_chunks = state->comp_ctx->num_chunks;
     state->decomp_ctx->total_words = state->comp_ctx->total_words;
-    state->decomp_ctx->gpu_hash = state->comp_ctx->gpu_hash;
 
     std::memcpy(state->decomp_ctx->host_in, state->comp_ctx->host_out,
                 state->comp_ctx->comp_size);
@@ -138,44 +140,47 @@ int64_t lzbench_gpucompact_compress(char *inbuf, size_t insize, char *outbuf,
   GpucompactState *state = (GpucompactState *)codec_options->work_mem;
   CompressionContext *ctx = state->comp_ctx;
 
-  size_t in_offset = 0;
-  size_t out_offset = 0;
+  try {
+    size_t in_offset = 0;
+    size_t out_offset = 0;
 
-  while (in_offset < insize) {
-    size_t chunk_in_size = std::min(insize - in_offset, state->macro_bytes);
+    while (in_offset < insize) {
+      size_t chunk_in_size = std::min(insize - in_offset, state->macro_bytes);
 
-    if (out_offset + sizeof(GpucompactChunkHeader) > outsize) {
-      return 0;
+      if (out_offset + sizeof(GpucompactChunkHeader) > outsize) {
+        return 0;
+      }
+
+      std::memcpy(ctx->host_in, inbuf + in_offset, chunk_in_size);
+      ctx->bytes_read = (int)chunk_in_size;
+
+      ctx->compress_chunk(state->config.threads_comp, state->config.mini_size);
+      cudaDeviceSynchronize();
+
+      if (out_offset + sizeof(GpucompactChunkHeader) + ctx->comp_size > outsize) {
+        return 0;
+      }
+
+      GpucompactChunkHeader header;
+      header.comp_size = (uint32_t)ctx->comp_size;
+      header.uncomp_size = (uint32_t)chunk_in_size;
+      header.primary_idx = (uint32_t)ctx->primary_idx;
+      header.is_raw = (uint8_t)ctx->is_raw;
+      std::memset(header.reserved, 0, sizeof(header.reserved));
+
+      std::memcpy(outbuf + out_offset, &header, sizeof(GpucompactChunkHeader));
+      out_offset += sizeof(GpucompactChunkHeader);
+
+      std::memcpy(outbuf + out_offset, ctx->host_out, ctx->comp_size);
+      out_offset += ctx->comp_size;
+
+      in_offset += chunk_in_size;
     }
 
-    std::memcpy(ctx->host_in, inbuf + in_offset, chunk_in_size);
-    ctx->bytes_read = (int)chunk_in_size;
-
-    ctx->compress_chunk(state->config.threads_comp, state->config.mini_size);
-    cudaDeviceSynchronize();
-
-    if (out_offset + sizeof(GpucompactChunkHeader) + ctx->comp_size > outsize) {
-      return 0;
-    }
-
-    GpucompactChunkHeader header;
-    header.comp_size = (uint32_t)ctx->comp_size;
-    header.uncomp_size = (uint32_t)chunk_in_size;
-    header.primary_idx = (uint32_t)ctx->primary_idx;
-    header.is_raw = (uint8_t)ctx->is_raw;
-    std::memset(header.reserved, 0, sizeof(header.reserved));
-    header.gpu_hash = ctx->gpu_hash;
-
-    std::memcpy(outbuf + out_offset, &header, sizeof(GpucompactChunkHeader));
-    out_offset += sizeof(GpucompactChunkHeader);
-
-    std::memcpy(outbuf + out_offset, ctx->host_out, ctx->comp_size);
-    out_offset += ctx->comp_size;
-
-    in_offset += chunk_in_size;
+    return (int64_t)out_offset;
+  } catch (...) {
+    return 0;
   }
-
-  return (int64_t)out_offset;
 }
 
 int64_t lzbench_gpucompact_decompress(char *inbuf, size_t insize, char *outbuf,
@@ -186,47 +191,50 @@ int64_t lzbench_gpucompact_decompress(char *inbuf, size_t insize, char *outbuf,
   GpucompactState *state = (GpucompactState *)codec_options->work_mem;
   DecompressionContext *ctx = state->decomp_ctx;
 
-  size_t in_offset = 0;
-  size_t out_offset = 0;
+  try {
+    size_t in_offset = 0;
+    size_t out_offset = 0;
 
-  while (in_offset < insize) {
-    if (in_offset + sizeof(GpucompactChunkHeader) > insize) {
-      return 0;
+    while (in_offset < insize) {
+      if (in_offset + sizeof(GpucompactChunkHeader) > insize) {
+        return 0;
+      }
+
+      GpucompactChunkHeader header;
+      std::memcpy(&header, inbuf + in_offset, sizeof(GpucompactChunkHeader));
+      in_offset += sizeof(GpucompactChunkHeader);
+
+      if (in_offset + header.comp_size > insize) {
+        return 0;
+      }
+
+      if (out_offset + header.uncomp_size > outsize) {
+        return 0;
+      }
+
+      std::memcpy(ctx->host_in, inbuf + in_offset, header.comp_size);
+      ctx->comp_size = (int)header.comp_size;
+      ctx->uncomp_size = (int)header.uncomp_size;
+      ctx->primary_idx = (int)header.primary_idx;
+      ctx->is_raw = (int)header.is_raw;
+
+      cudaDeviceSynchronize();
+
+      if (!ctx->decompress_chunk(state->config.threads_decomp,
+                                 state->config.mini_size)) {
+        return 0;
+      }
+      cudaDeviceSynchronize();
+
+      std::memcpy(outbuf + out_offset, ctx->host_out, header.uncomp_size);
+      out_offset += header.uncomp_size;
+      in_offset += header.comp_size;
     }
 
-    GpucompactChunkHeader header;
-    std::memcpy(&header, inbuf + in_offset, sizeof(GpucompactChunkHeader));
-    in_offset += sizeof(GpucompactChunkHeader);
-
-    if (in_offset + header.comp_size > insize) {
-      return 0;
-    }
-
-    if (out_offset + header.uncomp_size > outsize) {
-      return 0;
-    }
-
-    std::memcpy(ctx->host_in, inbuf + in_offset, header.comp_size);
-    ctx->comp_size = (int)header.comp_size;
-    ctx->uncomp_size = (int)header.uncomp_size;
-    ctx->primary_idx = (int)header.primary_idx;
-    ctx->is_raw = (int)header.is_raw;
-    ctx->gpu_hash = header.gpu_hash;
-
-    cudaDeviceSynchronize();
-
-    if (!ctx->decompress_chunk(state->config.threads_decomp,
-                               state->config.mini_size)) {
-      return 0;
-    }
-    cudaDeviceSynchronize();
-
-    std::memcpy(outbuf + out_offset, ctx->host_out, header.uncomp_size);
-    out_offset += header.uncomp_size;
-    in_offset += header.comp_size;
+    return (int64_t)out_offset;
+  } catch (...) {
+    return 0;
   }
-
-  return (int64_t)out_offset;
 }
 
 #endif // BENCH_HAS_CUDA

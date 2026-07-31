@@ -199,10 +199,10 @@ static const compressor_desc_t comp_desc[] =
     { "fastlz",     "fastlz 0.5.0",            1,   2,    0,  BENCH_POOL_MT, lzbench_fastlz_compress,     lzbench_fastlz_decompress,     NULL,                    NULL },
     { "fastlzma2",  "fastlzma2 1.0.1",         1,  10,    0, FULL_THREADING, lzbench_fastlzma2_compress,  lzbench_fastlzma2_decompress,  NULL,                    NULL },
     { "gipfeli",    "gipfeli 2016-07-13",      0,   0,    0,  BENCH_POOL_MT, lzbench_gipfeli_compress,    lzbench_gipfeli_decompress,    NULL,                    NULL },
+    { "glza",       "glza 0.12",               0,   0,    0,   NO_THREADING, lzbench_glza_compress,       lzbench_glza_decompress,       NULL,                    NULL },
 #if !defined(BENCH_REMOVE_GPUCOMPACT) && defined(BENCH_HAS_CUDA)
     { "gpucompact", "gpucompact 1.0",          1,   5,    0,  NO_THREADING,  lzbench_gpucompact_compress, lzbench_gpucompact_decompress, lzbench_gpucompact_init,  lzbench_gpucompact_deinit },
 #endif
-    { "glza",       "glza 0.12",               0,   0,    0,   NO_THREADING, lzbench_glza_compress,       lzbench_glza_decompress,       NULL,                    NULL },
     { "kanzi",      "kanzi 2.5.3",             1,   9,    0, FULL_THREADING, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
     { "libdeflate", "libdeflate 1.25",         1,  12,    0,  BENCH_POOL_MT, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
     { "lizard",     "lizard 2.1",             10,  49,    0,  BENCH_POOL_MT, lzbench_lizard_compress,     lzbench_lizard_decompress,     NULL,                    NULL },

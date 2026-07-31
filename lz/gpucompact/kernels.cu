@@ -275,7 +275,9 @@ __global__ void tabled_encode_kernel(const unsigned short *__restrict__ symbols,
     while (x > mx) {
       bit_buf |= ((uint64_t)(x & 1) << bit_cnt++);
       if (bit_cnt == 64) {
-        out_words[out_base + word_off++] = bit_buf;
+        if (word_off < max_words) {
+          out_words[out_base + word_off++] = bit_buf;
+        }
         bit_cnt = 0;
         bit_buf = 0;
       }
@@ -288,13 +290,18 @@ __global__ void tabled_encode_kernel(const unsigned short *__restrict__ symbols,
   for (int b = 0; b < state_bits; b++) {
     bit_buf |= ((uint64_t)((x >> b) & 1) << bit_cnt++);
     if (bit_cnt == 64) {
-      out_words[out_base + word_off++] = bit_buf;
+      if (word_off < max_words) {
+        out_words[out_base + word_off++] = bit_buf;
+      }
       bit_cnt = 0;
       bit_buf = 0;
     }
   }
-  if (bit_cnt > 0)
-    out_words[out_base + word_off++] = bit_buf;
+  if (bit_cnt > 0) {
+    if (word_off < max_words) {
+      out_words[out_base + word_off++] = bit_buf;
+    }
+  }
   bit_lengths[chunk_id] = (word_off * 64) - (64 - bit_cnt);
   if (bit_cnt == 0)
     bit_lengths[chunk_id] = word_off * 64;

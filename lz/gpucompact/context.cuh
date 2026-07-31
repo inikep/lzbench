@@ -148,6 +148,8 @@ public:
   int total_words = 0;
   int primary_idx = 0;
   uint64_t gpu_hash = 0;
+  size_t orig_l2_limit = 0;
+  bool l2_modified = false;
 
   DecompressionContext(int macro_bytes, int mini_bytes, int state_L);
   ~DecompressionContext();

@@ -1114,7 +1114,9 @@ ifeq "$(ENABLE_CUDA)" "1"
 
     ACEAPEX_CUDA_FILES = lz/aceapex/cuda/aceapex_cuda.cu.o lz/aceapex/cuda/aceapex_cuda_lzbench.o
 
-  ifneq "$(DONT_BUILD_GPUCOMPACT)" "1"
+  ifeq "$(DONT_BUILD_GPUCOMPACT)" "1"
+    DEFINES += -DBENCH_REMOVE_GPUCOMPACT
+  else
     GPUCOMPACT_FILES = lz/gpucompact/kernels.cu.o lz/gpucompact/context.cu.o lz/gpucompact/gpucompact_lzbench.o
   endif
 
@@ -1297,11 +1299,11 @@ lz/aceapex/cuda/aceapex_cuda_lzbench.o: lz/aceapex/cuda/aceapex_cuda_lzbench.cpp
 # GPUCOMPACT CUDA compressor
 lz/gpucompact/%.cu.o: lz/gpucompact/%.cu
 	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -Ilz/gpucompact -Ibench -c $< -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -c $< -o $@
 
 lz/gpucompact/gpucompact_lzbench.o: lz/gpucompact/gpucompact_lzbench.cpp
 	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz/gpucompact -Ibench -c $< -o $@
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(BSC_CUDA_FILES): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
