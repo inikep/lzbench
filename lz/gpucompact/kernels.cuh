@@ -63,11 +63,11 @@ __global__ void fill_sequence_kernel(int *__restrict__ out, int n);
 // -------------------------------------------------------------------------
 __global__ void sa_key_kernel(const int *__restrict__ rank,
                               int *__restrict__ sa,
-                              unsigned long long *__restrict__ keys, int n,
+                              uint64_t *__restrict__ keys, int n,
                               int k);
 
 __global__ void
-sa_diff_kernel(const unsigned long long *__restrict__ sorted_keys,
+sa_diff_kernel(const uint64_t *__restrict__ sorted_keys,
                int *__restrict__ diff, int n);
 
 __global__ void sa_rank_kernel(const int *__restrict__ unique_ranks,
@@ -100,7 +100,7 @@ __global__ void build_tans_all_kernel(
 
 __global__ void tabled_encode_kernel(const unsigned short *__restrict__ symbols,
                                      const unsigned int *__restrict__ lengths,
-                                     unsigned long long *__restrict__ out_words,
+                                     uint64_t *__restrict__ out_words,
                                      unsigned int *__restrict__ bit_lengths,
                                      const int *__restrict__ p,
                                      const int *__restrict__ prefix_p,
@@ -110,22 +110,22 @@ __global__ void tabled_encode_kernel(const unsigned short *__restrict__ symbols,
                                      int max_words, int L);
 
 __global__ void tabled_decode_kernel(
-    const unsigned long long *__restrict__ in_words,
+    const uint64_t *__restrict__ in_words,
     const unsigned int *__restrict__ word_offsets,
     const unsigned int *__restrict__ bit_lengths,
     unsigned char *__restrict__ bwt, const int *__restrict__ dec_table,
     const int *__restrict__ dec_symbol, int total_size, int chunk_size, int L);
 
-__global__ void dense_pack_kernel(const unsigned long long *__restrict__ in,
+__global__ void dense_pack_kernel(const uint64_t *__restrict__ in,
                                   const unsigned int *__restrict__ offsets,
                                   const unsigned int *__restrict__ lens,
-                                  unsigned long long *__restrict__ out, int n,
+                                  uint64_t *__restrict__ out, int n,
                                   int max_w);
 
-__global__ void fill_key_kernel(const unsigned long long *__restrict__ offsets,
+__global__ void fill_key_kernel(const uint64_t *__restrict__ offsets,
                                 const int *__restrict__ sizes,
                                 const unsigned char *__restrict__ bwt,
-                                unsigned long long *__restrict__ key,
+                                uint64_t *__restrict__ key,
                                 int num_chunks);
 
 __global__ void build_lf_kernel(const int *__restrict__ F_to_L,
@@ -134,7 +134,7 @@ __global__ void build_lf_kernel(const int *__restrict__ F_to_L,
 __global__ void
 jump_init_kernel(const int *__restrict__ LF,
                  const int *__restrict__ primary_indices,
-                 const unsigned long long *__restrict__ chunk_offsets,
+                 const uint64_t *__restrict__ chunk_offsets,
                  const int *__restrict__ chunk_sizes, int *__restrict__ J,
                  int *__restrict__ D);
 
@@ -142,15 +142,15 @@ __global__ void jump_step_kernel(const int *__restrict__ J_in,
                                  const int *__restrict__ D_in,
                                  int *__restrict__ J_out,
                                  int *__restrict__ D_out,
-                                 const unsigned long long *__restrict__ offsets,
+                                 const uint64_t *__restrict__ offsets,
                                  const int *__restrict__ sizes);
 
 __global__ void jump_scatter_kernel(
     const int *__restrict__ D, const unsigned char *__restrict__ bwt,
     unsigned char *__restrict__ out, const int *__restrict__ primary,
-    const unsigned long long *__restrict__ offsets,
+    const uint64_t *__restrict__ offsets,
     const int *__restrict__ sizes);
 
 __global__ void gpu_hash_kernel(const unsigned char *__restrict__ data,
-                                unsigned long long *__restrict__ d_hash,
+                                uint64_t *__restrict__ d_hash,
                                 int size);

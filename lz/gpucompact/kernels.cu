@@ -39,19 +39,19 @@ __global__ void fill_sequence_kernel(int *__restrict__ out, int n) {
 
 __global__ void sa_key_kernel(const int *__restrict__ rank,
                               int *__restrict__ sa,
-                              unsigned long long *__restrict__ keys, int n,
+                              uint64_t *__restrict__ keys, int n,
                               int k) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= n)
     return;
-  unsigned long long r1 = rank[idx];
-  unsigned long long r2 = rank[(idx + k) % n];
+  uint64_t r1 = rank[idx];
+  uint64_t r2 = rank[(idx + k) % n];
   keys[idx] = (r1 << 32) | r2;
   sa[idx] = idx;
 }
 
 __global__ void
-sa_diff_kernel(const unsigned long long *__restrict__ sorted_keys,
+sa_diff_kernel(const uint64_t *__restrict__ sorted_keys,
                int *__restrict__ diff, int n) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx >= n)
@@ -237,7 +237,7 @@ __global__ void build_tans_all_kernel(
 
 __global__ void tabled_encode_kernel(const unsigned short *__restrict__ symbols,
                                      const unsigned int *__restrict__ lengths,
-                                     unsigned long long *__restrict__ out_words,
+                                     uint64_t *__restrict__ out_words,
                                      unsigned int *__restrict__ bit_lengths,
                                      const int *__restrict__ p,
                                      const int *__restrict__ prefix_p,
@@ -266,14 +266,14 @@ __global__ void tabled_encode_kernel(const unsigned short *__restrict__ symbols,
 
   int len = lengths[chunk_id], in_base = chunk_id * chunk_size,
       out_base = chunk_id * max_words;
-  unsigned long long bit_buf = 0;
+  uint64_t bit_buf = 0;
   int bit_cnt = 0, word_off = 0, x = L;
 
   for (int i = len - 1; i >= 0; i--) {
     unsigned short s = symbols[in_base + i];
     int mx = max_x[s];
     while (x > mx) {
-      bit_buf |= ((unsigned long long)(x & 1) << bit_cnt++);
+      bit_buf |= ((uint64_t)(x & 1) << bit_cnt++);
       if (bit_cnt == 64) {
         out_words[out_base + word_off++] = bit_buf;
         bit_cnt = 0;
@@ -286,7 +286,7 @@ __global__ void tabled_encode_kernel(const unsigned short *__restrict__ symbols,
 
   int state_bits = 32 - __clz(L);
   for (int b = 0; b < state_bits; b++) {
-    bit_buf |= ((unsigned long long)((x >> b) & 1) << bit_cnt++);
+    bit_buf |= ((uint64_t)((x >> b) & 1) << bit_cnt++);
     if (bit_cnt == 64) {
       out_words[out_base + word_off++] = bit_buf;
       bit_cnt = 0;
@@ -301,7 +301,7 @@ __global__ void tabled_encode_kernel(const unsigned short *__restrict__ symbols,
 }
 
 __global__ void tabled_decode_kernel(
-    const unsigned long long *__restrict__ in_words,
+    const uint64_t *__restrict__ in_words,
     const unsigned int *__restrict__ word_offsets,
     const unsigned int *__restrict__ bit_lengths,
     unsigned char *__restrict__ bwt, const int *__restrict__ dec_table,
@@ -408,10 +408,10 @@ __global__ void tabled_decode_kernel(
   }
 }
 
-__global__ void dense_pack_kernel(const unsigned long long *__restrict__ in,
+__global__ void dense_pack_kernel(const uint64_t *__restrict__ in,
                                   const unsigned int *__restrict__ offsets,
                                   const unsigned int *__restrict__ lens,
-                                  unsigned long long *__restrict__ out, int n,
+                                  uint64_t *__restrict__ out, int n,
                                   int max_w) {
   int cid = blockIdx.x * blockDim.x + threadIdx.x;
   if (cid >= n)
@@ -440,10 +440,10 @@ __global__ void dense_pack_kernel(const unsigned long long *__restrict__ in,
   }
 }
 
-__global__ void fill_key_kernel(const unsigned long long *__restrict__ offsets,
+__global__ void fill_key_kernel(const uint64_t *__restrict__ offsets,
                                 const int *__restrict__ sizes,
                                 const unsigned char *__restrict__ bwt,
-                                unsigned long long *__restrict__ key,
+                                uint64_t *__restrict__ key,
                                 int num_chunks) {
   int cid = blockIdx.y;
   if (cid >= num_chunks)
@@ -454,10 +454,10 @@ __global__ void fill_key_kernel(const unsigned long long *__restrict__ offsets,
   if (lid >= size)
     return;
 
-  unsigned long long off = offsets[cid];
-  key[off + lid] = (((unsigned long long)cid) << 48) |
-                   (((unsigned long long)bwt[off + lid]) << 32) |
-                   (unsigned long long)lid;
+  uint64_t off = offsets[cid];
+  key[off + lid] = (((uint64_t)cid) << 48) |
+                   (((uint64_t)bwt[off + lid]) << 32) |
+                   (uint64_t)lid;
 }
 
 __global__ void build_lf_kernel(const int *__restrict__ F_to_L,
@@ -471,14 +471,14 @@ __global__ void build_lf_kernel(const int *__restrict__ F_to_L,
 __global__ void
 jump_init_kernel(const int *__restrict__ LF,
                  const int *__restrict__ primary_indices,
-                 const unsigned long long *__restrict__ chunk_offsets,
+                 const uint64_t *__restrict__ chunk_offsets,
                  const int *__restrict__ chunk_sizes, int *__restrict__ J,
                  int *__restrict__ D) {
   int cid = blockIdx.y, lid = blockIdx.x * blockDim.x + threadIdx.x,
       size = chunk_sizes[cid];
   if (lid >= size)
     return;
-  unsigned long long off = chunk_offsets[cid];
+  uint64_t off = chunk_offsets[cid];
   int gid = off + lid, prim = off + primary_indices[cid],
       g_target = off + LF[gid];
   if (gid == prim) {
@@ -494,7 +494,7 @@ __global__ void jump_step_kernel(const int *__restrict__ J_in,
                                  const int *__restrict__ D_in,
                                  int *__restrict__ J_out,
                                  int *__restrict__ D_out,
-                                 const unsigned long long *__restrict__ offsets,
+                                 const uint64_t *__restrict__ offsets,
                                  const int *__restrict__ sizes) {
   int cid = blockIdx.y, lid = blockIdx.x * blockDim.x + threadIdx.x;
   if (lid >= sizes[cid])
@@ -507,37 +507,37 @@ __global__ void jump_step_kernel(const int *__restrict__ J_in,
 __global__ void jump_scatter_kernel(
     const int *__restrict__ D, const unsigned char *__restrict__ bwt,
     unsigned char *__restrict__ out, const int *__restrict__ primary,
-    const unsigned long long *__restrict__ offsets,
+    const uint64_t *__restrict__ offsets,
     const int *__restrict__ sizes) {
   int cid = blockIdx.y, lid = blockIdx.x * blockDim.x + threadIdx.x,
       size = sizes[cid];
   if (lid >= size)
     return;
-  unsigned long long off = offsets[cid];
+  uint64_t off = offsets[cid];
   int gid = off + lid, prim = off + primary[cid],
       d_forw = (gid == prim) ? 0 : (size - D[gid]);
   out[off + size - 1 - d_forw] = bwt[gid];
 }
 
 __global__ void gpu_hash_kernel(const unsigned char *__restrict__ data,
-                                unsigned long long *__restrict__ d_hash,
+                                uint64_t *__restrict__ d_hash,
                                 int size) {
   int tid = threadIdx.x;
   int idx = blockIdx.x * blockDim.x + tid;
-  unsigned long long local_hash = 0;
+  uint64_t local_hash = 0;
 
   int num_words = (size + 7) / 8;
 
   if (idx < num_words) {
     int start_byte = idx * 8;
     int remain = size - start_byte;
-    unsigned long long val = 0;
+    uint64_t val = 0;
 
     if (remain >= 8) {
-      val = *reinterpret_cast<const unsigned long long *>(data + start_byte);
+      val = *reinterpret_cast<const uint64_t *>(data + start_byte);
     } else {
       for (int i = 0; i < remain; i++) {
-        val |= (static_cast<unsigned long long>(data[start_byte + i]))
+        val |= (static_cast<uint64_t>(data[start_byte + i]))
                << (i * 8);
       }
     }
@@ -550,7 +550,7 @@ __global__ void gpu_hash_kernel(const unsigned char *__restrict__ data,
     local_hash ^= __shfl_down_sync(0xFFFFFFFF, local_hash, offset);
   }
 
-  __shared__ unsigned long long shared_hash[32];
+  __shared__ uint64_t shared_hash[32];
   if (tid % 32 == 0)
     shared_hash[tid / 32] = local_hash;
   __syncthreads();
@@ -561,7 +561,7 @@ __global__ void gpu_hash_kernel(const unsigned char *__restrict__ data,
       local_hash ^= __shfl_down_sync(0xFFFFFFFF, local_hash, offset);
     }
     if (tid == 0 && local_hash != 0) {
-      atomicXor(d_hash, local_hash);
+      atomicXor(reinterpret_cast<unsigned long long *>(d_hash), (unsigned long long)local_hash);
     }
   }
 }
