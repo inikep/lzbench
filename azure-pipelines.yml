@@ -73,6 +73,11 @@ jobs:
         SELECTED_CC: clang-19
         SELECTED_CXX: clang++-19
         PACKAGES: 'clang-19 llvm-19-dev libomp-19-dev'
+        # clang 19 spends hours in "X86 DAG->DAG Instruction Selection" on
+        # partitionFull() in OpenZL's AVX-512 PivCo-Huffman encoder and then dies
+        # with "LLVM ERROR: out of memory". It happens at every -O level except -O0,
+        # and only with clang 19 -- clang 16/18/20/21/22 and gcc are all fine.
+        MORE_OPTIONS: 'DONT_BUILD_OPENZL=1'
         ARTIFACT_SLUG: clang-19-x86_64
 
       clang-18 [Ubuntu 24.04 Noble]:
