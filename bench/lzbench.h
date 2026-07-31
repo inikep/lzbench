@@ -19,7 +19,7 @@
 
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "2.3"
+#define PROGVERSION "2.3.1"
 #define PAD_SIZE (1024)
 #define MIN_PAGE_SIZE 4096  // smallest page size we expect, if it's wrong the first algorithm might be a bit slower
 #define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second
@@ -168,9 +168,9 @@ static const compressor_desc_t comp_desc[] =
      //                                       last_level,       mt_mode,
      // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func,             max_input_size
     { "memcpy",     "memcpy",                  0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
-    { "aceapex",    "aceapex 1.0.1",             1,   2,    0, FULL_THREADING, lzbench_aceapex_compress,     lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
+    { "aceapex",    "aceapex 1.0.1",           1,   2,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
 #ifdef BENCH_HAS_CUDA
-    { "aceapex_cuda","aceapex_cuda 0.9",        1,   2,    0,  NO_THREADING,  lzbench_aceapex_compress,    lzbench_aceapex_cuda_decompress, lzbench_aceapex_cuda_init, lzbench_aceapex_cuda_deinit },
+    { "aceapex_cuda","aceapex_cuda 0.9",       1,   2,    0,  NO_THREADING,  lzbench_aceapex_compress,    lzbench_aceapex_cuda_decompress, lzbench_aceapex_cuda_init, lzbench_aceapex_cuda_deinit },
 #endif
     { "brieflz",    "brieflz 1.3.0",           1,   9,    0,  BENCH_POOL_MT, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
     { "brotli",     "brotli 1.2.0",            0,  11,    0,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
@@ -353,6 +353,7 @@ static const alias_desc_t alias_desc[] =
     { "CUDA",     "Represents all CUDA-based compressors.",
                   "memcpy/cudaMemcpy/nvcomp_lz4/bsc_cuda/aceapex_cuda" },
 #endif
+#if !defined(BENCH_REMOVE_LZO)
     { "lzo1",     nullptr, "lzo1,1,99" },
     { "lzo1a",    nullptr, "lzo1a,1,99" },
     { "lzo1b",    nullptr, "lzo1b,1,2,3,4,5,6,7,8,9,99,999" },
@@ -360,6 +361,7 @@ static const alias_desc_t alias_desc[] =
     { "lzo1f",    nullptr, "lzo1f,1,999" },
     { "lzo1x",    nullptr, "lzo1x,1,11,12,15,999" },
     { "lzo1y",    nullptr, "lzo1y,1,999" },
+#endif
 #ifndef BENCH_REMOVE_OPENZL
     { "openzl_zstd", nullptr, "openzl_zstd,-99,-90,-80,-70,-60,-50,-40,-30,-20,-10,-8,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,8,10,12,14,16,18,20,22" },
     { "openzl_lz4",  nullptr, "openzl_lz4,-99,-90,-80,-70,-60,-50,-40,-30,-20,-10,-8,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,7,8,9,10,11,12" },

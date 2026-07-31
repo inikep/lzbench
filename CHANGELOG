@@ -1,15 +1,13 @@
-v2.x.y
-- added a CUDA build job (nvcc 13.2, Ubuntu 24.04) to the Azure Pipelines CI
+v2.x.y (work-in-progress)
 - fix: codecs whose init() fails are now skipped instead of being benchmarked with a
        NULL work_mem, which used to SEGFAULT (e.g. "lzbench -eCUDA" without a GPU)
+- added misa77 0.6.0 (by @welcome-to-the-sunny-side)
 - added OpenZL v0.2.0 (thanks to @fwyzard)
+- added a CUDA build job (nvcc 13.2, Ubuntu 24.04) to the Azure Pipelines CI
+- updated aceapex to 1.0.1 (thanks to @yasha1971-coder)
 - updated lzav to 5.16 (thanks to @avaneev)
 - updated nvcomp to support CUDA 13 and cccl 3 (thanks to @fwyzard)
 - updated zxc to 0.13.2 (thanks to @hellobertrand)
-- added misa77 0.6.0 (by @welcome-to-the-sunny-side)
-- fixed: aceapex produced wrong results on tiny inputs (1/2/5 bytes) and could abort
-         with a heap double-free after many small buffers, and could corrupt output
-         above 2 GiB; re-enabled in the FASTEST alias
 
 v2.3 (Jun 15, 2026)
 - improvement: Reorganized compressor alias groups by type — ALL is now a composite of LZ /

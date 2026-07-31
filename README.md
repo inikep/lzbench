@@ -59,7 +59,7 @@ Notes column says otherwise.
 
 | Compressor | Last update | Notes |
 | :--- | :--- | :--- |
-| [aceapex 1.0](https://github.com/yasha1971-coder/aceapex) | 2026-04-24 | |
+| [aceapex 1.0.1](https://github.com/yasha1971-coder/aceapex) | 2026-07-30 | |
 | [brieflz 1.3.0](https://github.com/jibsen/brieflz) | 2020-02-15 | |
 | [brotli 1.2.0](https://github.com/google/brotli) | 2025-10-27 | |
 | [bsc 3.3.12](https://github.com/IlyaGrebnov/libbsc) | 2025-09-10 | Disabled on 32-bit ARM — multithreaded decompress faults (SIGBUS, lzbench#293) |
@@ -103,7 +103,7 @@ Notes column says otherwise.
 | [zling 2018-10-12](https://github.com/richox/libzling) | 2018-10-12 | Disabled on big-endian PowerPC; not recommended for production use (per author) |
 | [zpaq 7.15](https://github.com/zpaq/zpaq) | 2016-08-17 | Slower on non-x86 — built with `-DNOJIT` (x86-only JIT, portable interpreter elsewhere) |
 | [zstd 1.5.7](https://github.com/facebook/zstd) | 2025-02-19 | |
-| [zxc 0.13.1](https://github.com/hellobertrand/zxc) | 2026-07-15 | |
+| [zxc 0.13.2](https://github.com/hellobertrand/zxc) | 2026-07-30 | |
 
 **Warning**: The compressors listed below have security issues and/or are no longer maintained.
 
