@@ -1252,7 +1252,12 @@ int main( int argc, char** argv)
             printf("Available compressors for -e option:\n");
             for (int i=0; i<LZBENCH_COMPRESSOR_COUNT; i++)
             {
-                if (comp_desc[i].compress)
+                // Same condition as lzbench_process_single_codec(): a codec that
+                // is missing either half is not built in and cannot be run, so
+                // don't advertise it. Both halves matter because a codec can
+                // have one of them compiled out on its own (aceapex_cuda shares
+                // the CPU compressor but has a CUDA-only decompressor).
+                if (comp_desc[i].compress && comp_desc[i].decompress)
                 {
                     if (comp_desc[i].first_level < comp_desc[i].last_level)
                         printf("%s = %s; levels=[%d-%d]", comp_desc[i].name, comp_desc[i].name_version, comp_desc[i].first_level, comp_desc[i].last_level);

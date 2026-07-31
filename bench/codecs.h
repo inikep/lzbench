@@ -669,6 +669,10 @@ int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
     char* lzbench_aceapex_cuda_init(size_t insize, size_t level, size_t threads);
     void lzbench_aceapex_cuda_deinit(char* workmem);
     int64_t lzbench_aceapex_cuda_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_aceapex_cuda_init NULL
+    #define lzbench_aceapex_cuda_deinit NULL
+    #define lzbench_aceapex_cuda_decompress NULL
 #endif
     char* lzbench_aceapex_stream_init(size_t insize, size_t level, size_t threads);
     int64_t lzbench_aceapex_stream_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
@@ -681,6 +685,11 @@ int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
     #define lzbench_aceapex_deinit NULL
     #define lzbench_aceapex_compress NULL
     #define lzbench_aceapex_decompress NULL
+    // Also needed with BENCH_HAS_CUDA: the aceapex_cuda entry in comp_desc is
+    // compiled whenever CUDA is enabled, independently of BENCH_REMOVE_ACEAPEX.
+    #define lzbench_aceapex_cuda_init NULL
+    #define lzbench_aceapex_cuda_deinit NULL
+    #define lzbench_aceapex_cuda_decompress NULL
     #define lzbench_aceapex_stream_init NULL
     #define lzbench_aceapex_stream_compress NULL
     #define lzbench_aceapex_stream_decompress NULL
