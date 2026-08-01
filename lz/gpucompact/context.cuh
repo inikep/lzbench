@@ -71,6 +71,9 @@ public:
 
   uint8_t *d_payload = nullptr;
   uint64_t *d_gpu_hash = nullptr;
+  uint32_t *d_overflow_flag = nullptr;
+
+  uint32_t *host_overflow_flag = nullptr;
 
   void *d_temp_storage = nullptr;
   size_t temp_storage_bytes = 0;

@@ -86,6 +86,8 @@ CompressionContext::CompressionContext(int macro_bytes, int mini_bytes,
 
   CUDA_CHECK(cudaMalloc(&d_payload, payload_alloc_size));
   CUDA_CHECK(cudaMalloc(&d_gpu_hash, sizeof(uint64_t)));
+  CUDA_CHECK(cudaMalloc(&d_overflow_flag, sizeof(uint32_t)));
+  CUDA_CHECK(cudaMallocHost(&host_overflow_flag, sizeof(uint32_t)));
 
   size_t sort_bytes = 0, scan_bytes = 0;
   cub::DoubleBuffer<uint64_t> d_keys_db(d_keys, d_keys_alt);
@@ -138,6 +140,8 @@ CompressionContext::~CompressionContext() {
   cudaFree(d_dense_words);
   cudaFree(d_payload);
   cudaFree(d_gpu_hash);
+  cudaFree(d_overflow_flag);
+  cudaFreeHost(host_overflow_flag);
   cudaFree(d_temp_storage);
 
   cudaEventDestroy(e_start);
@@ -231,11 +235,24 @@ void CompressionContext::compress_chunk(int threads_comp, int mini_chunk_size) {
   build_tans_all_kernel<<<1, 257, 0, stream>>>(
       d_hist, d_p, d_prefix_p, d_max_x, d_symbol_spread, d_enc_table,
       d_dec_table, d_dec_symbol, d_next_state, L, 257);
+  CUDA_CHECK(cudaMemsetAsync(d_overflow_flag, 0, sizeof(uint32_t), stream));
   tabled_encode_kernel<<<z_blocks, threads_comp, (L + 514) * sizeof(int),
                          stream>>>(d_out_symbols, d_chunk_sym_lens, d_out_words,
                                    d_chunk_bit_lens, d_p, d_prefix_p, d_max_x,
                                    d_enc_table, num_chunks, mini_chunk_size,
-                                   max_words, L);
+                                   max_words, L, d_overflow_flag);
+  CUDA_CHECK(cudaMemcpyAsync(host_overflow_flag, d_overflow_flag,
+                             sizeof(uint32_t), cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  if (*host_overflow_flag != 0) {
+    is_raw = 1;
+    comp_size = n;
+    std::memcpy(host_out, host_in, n);
+    CUDA_CHECK(cudaEventRecord(e_end, stream));
+    cudaStreamSynchronize(stream);
+    return;
+  }
 
   int c_blocks = (num_chunks + 255) / 256;
   bit_to_word_kernel<<<c_blocks, 256, 0, stream>>>(

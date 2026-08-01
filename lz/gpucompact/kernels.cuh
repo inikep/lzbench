@@ -107,7 +107,8 @@ __global__ void tabled_encode_kernel(const unsigned short *__restrict__ symbols,
                                      const int *__restrict__ max_x,
                                      const int *__restrict__ enc_table,
                                      int num_chunks, int chunk_size,
-                                     int max_words, int L);
+                                     int max_words, int L,
+                                     uint32_t *__restrict__ d_overflow_flag);
 
 __global__ void tabled_decode_kernel(
     const uint64_t *__restrict__ in_words,
