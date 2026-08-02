@@ -828,10 +828,15 @@ static int do_decompress(const char* in_path, const char* out_path) {
     LitArg larg={zlit,(size_t)hdr.zlit_sz,&lit,&lit_sz};
     auto litfn=[](void*a)->void*{LitArg*l=(LitArg*)a;
         *l->out=lit_decompress(l->s,l->sz,*l->osz); return nullptr;};
-    struct FD{const uint8_t*s;size_t sz;uint8_t*d;};
-    FD fds[3]={{zoff,off_sz,off},{zlen,len_sz,len},{zcmd,cmd_sz,cmd}};
+    // Empty-guard must test the COMPRESSED stream size (zsz), NOT the decoded orig.
+    // A valid cmd stream with orig size 7 (six 128-literal runs => 768-byte file)
+    // has orig<8, so the old `f->sz<8` guard wrongly SKIPPED cmd-decode, leaving
+    // cmd[] as malloc garbage and corrupting every file <768 bytes. The compressed
+    // stream is truly empty iff its size < 8 (just the 8-byte orig-size header).
+    struct FD{const uint8_t*s;size_t zsz;uint8_t*d;};
+    FD fds[3]={{zoff,(size_t)hdr.zoff_sz,off},{zlen,(size_t)hdr.zlen_sz,len},{zcmd,(size_t)hdr.zcmd_sz,cmd}};
     auto fdfn=[](void*a)->void*{FD*f=(FD*)a;
-        if(!f->s || f->sz < 8) return nullptr;   // empty stream: nothing to decode
+        if(!f->s || f->zsz < 8) return nullptr;   // empty COMPRESSED stream: nothing to decode
         size_t orig=AX_read64(f->s)&~(uint64_t(1)<<63);
         fse_chunked_decomp(f->s,orig,f->d); return nullptr;};
     pthread_t fpts[4];
