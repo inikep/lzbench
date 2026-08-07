@@ -325,8 +325,10 @@ int64_t lzbench_libdeflate_decompress(char *inbuf, size_t insize, char *outbuf, 
         return 0;
     size_t res = 0;
     if (libdeflate_deflate_decompress(decompressor, inbuf, insize, outbuf, outsize, &res) != LIBDEFLATE_SUCCESS) {
+        libdeflate_free_decompressor(decompressor);
         return 0;
     }
+    libdeflate_free_decompressor(decompressor);
     return res;
 }
 #endif
