@@ -23,6 +23,7 @@
 #include <cub/cub.cuh>
 #include <iostream>
 #include <stdexcept>
+#include <string>
 
 #define CUDA_CHECK(call)                                                       \
   do {                                                                         \
@@ -85,7 +86,6 @@ CompressionContext::CompressionContext(int macro_bytes, int mini_bytes,
       cudaMalloc(&d_dense_words, max_chunks * max_words * sizeof(uint64_t)));
 
   CUDA_CHECK(cudaMalloc(&d_payload, payload_alloc_size));
-  CUDA_CHECK(cudaMalloc(&d_gpu_hash, sizeof(uint64_t)));
   CUDA_CHECK(cudaMalloc(&d_overflow_flag, sizeof(uint32_t)));
   CUDA_CHECK(cudaMallocHost(&host_overflow_flag, sizeof(uint32_t)));
 
@@ -139,7 +139,6 @@ CompressionContext::~CompressionContext() {
   cudaFree(d_word_offsets);
   cudaFree(d_dense_words);
   cudaFree(d_payload);
-  cudaFree(d_gpu_hash);
   cudaFree(d_overflow_flag);
   cudaFreeHost(host_overflow_flag);
   cudaFree(d_temp_storage);
@@ -171,52 +170,92 @@ void CompressionContext::compress_chunk(int threads_comp, int mini_chunk_size) {
       cudaMemcpyAsync(d_data, host_in, n, cudaMemcpyHostToDevice, stream));
 
   int blocks = (n + 255) / 256;
-  cast_uint8_to_int32_kernel<<<blocks, 256, 0, stream>>>(d_data, d_rank, n);
-
-  int k = 1;
-  int max_iter = (int)std::ceil(std::log2(n)) + 2;
+  int rank_bits = (int)std::ceil(std::log2((double)n));
+  int key_bits = std::min(64, rank_bits * 2);
 
   cub::DoubleBuffer<uint64_t> d_keys_db(d_keys, d_keys_alt);
   cub::DoubleBuffer<int> d_sa_db(d_sa, d_sa_alt);
 
-  // ASYNC SA DOUBLING WITH PINNED MEMORY EARLY EXIT CHECK
-  for (int iter = 0; iter < max_iter; iter++) {
-    sa_key_kernel<<<blocks, 256, 0, stream>>>(d_rank, d_sa_db.Current(),
-                                              d_keys_db.Current(), n, k);
+  // PASS 0: 4-Byte Coarse Jumpstart (32-bit single-pass sort)
+  // Packs 4 consecutive cyclic bytes into uint32_t and sorts in one 32-bit pass
+  cub::DoubleBuffer<uint32_t> d_keys32_db(
+      reinterpret_cast<uint32_t *>(d_keys),
+      reinterpret_cast<uint32_t *>(d_keys_alt));
+  sa_4byte_keys_kernel<<<blocks, 256, 0, stream>>>(
+      d_data, d_keys32_db.Current(), d_sa_db.Current(), n);
 
-    size_t t_bytes = temp_storage_bytes;
-    cub::DeviceRadixSort::SortPairs(d_temp_storage, t_bytes, d_keys_db, d_sa_db,
-                                    n, 0, 64, stream);
+  size_t t_bytes = temp_storage_bytes;
+  cub::DeviceRadixSort::SortPairs(d_temp_storage, t_bytes, d_keys32_db,
+                                  d_sa_db, n, 0, 32, stream);
 
-    sa_diff_kernel<<<blocks, 256, 0, stream>>>(d_keys_db.Current(), d_diff, n);
+  sa_diff_32_kernel<<<blocks, 256, 0, stream>>>(d_keys32_db.Current(), d_diff, n);
 
-    t_bytes = temp_storage_bytes;
-    cub::DeviceScan::InclusiveSum(d_temp_storage, t_bytes, d_diff,
-                                  d_unique_ranks, n, stream);
+  t_bytes = temp_storage_bytes;
+  cub::DeviceScan::InclusiveSum(d_temp_storage, t_bytes, d_diff,
+                                d_unique_ranks, n, stream);
 
-    sa_rank_kernel<<<blocks, 256, 0, stream>>>(d_unique_ranks,
-                                               d_sa_db.Current(), d_rank, n);
+  sa_rank_kernel<<<blocks, 256, 0, stream>>>(d_unique_ranks,
+                                             d_sa_db.Current(), d_rank, n);
 
-    // Asynchronous transfer to pinned memory + stream synchronization
+  bool sorted = false;
+  if (n <= 1024) {
     CUDA_CHECK(cudaMemcpyAsync(host_last_rank, d_unique_ranks + n - 1,
                                sizeof(int), cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
-
-    if (*host_last_rank == n) {
-      break; // Early exit when Suffix Array is 100% sorted
-    }
-
-    k *= 2;
+    if (*host_last_rank == n)
+      sorted = true;
   }
 
-  if (*host_last_rank < n) {
+  // If 4-byte prefixes are not unique, continue doubling from k = 4 (skips k=1, 2)
+  if (!sorted) {
+    int k = 4;
+    int max_iter = rank_bits + 2;
+    for (int iter = 0; iter < max_iter; iter++) {
+      sa_key_kernel<<<blocks, 256, 0, stream>>>(d_rank, d_sa_db.Current(),
+                                                d_keys_db.Current(), n, k,
+                                                rank_bits);
+
+      t_bytes = temp_storage_bytes;
+      cub::DeviceRadixSort::SortPairs(d_temp_storage, t_bytes, d_keys_db, d_sa_db,
+                                      n, 0, key_bits, stream);
+
+      sa_diff_kernel<<<blocks, 256, 0, stream>>>(d_keys_db.Current(), d_diff, n);
+
+      t_bytes = temp_storage_bytes;
+      cub::DeviceScan::InclusiveSum(d_temp_storage, t_bytes, d_diff,
+                                    d_unique_ranks, n, stream);
+
+      sa_rank_kernel<<<blocks, 256, 0, stream>>>(d_unique_ranks,
+                                                 d_sa_db.Current(), d_rank, n);
+
+      // Only synchronize and poll for early exit starting at round 3 (effective prefix >= 64 bytes)
+      // or on the final iteration, allowing the GPU to queue early rounds back-to-back without CPU stalls.
+      if (iter >= 3 || n <= 1024 || iter == max_iter - 1) {
+        CUDA_CHECK(cudaMemcpyAsync(host_last_rank, d_unique_ranks + n - 1,
+                                   sizeof(int), cudaMemcpyDeviceToHost, stream));
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+
+        if (*host_last_rank == n) {
+          sorted = true;
+          break; // Early exit when Suffix Array is 100% sorted
+        }
+      }
+
+      k *= 2;
+    }
+  }
+
+  if (!sorted) {
     // Input is strictly periodic (period P < n), so suffix ranks cannot be unique.
     // Inverse BWT pointer jumping requires a single cycle of length n, so fall back to raw mode.
     is_raw = 1;
     comp_size = n;
     std::memcpy(host_out, host_in, n);
+    CUDA_CHECK(cudaEventRecord(e_end, stream));
+    cudaStreamSynchronize(stream);
     return;
   }
+
 
   extract_bwt_kernel<<<blocks, 256, 0, stream>>>(d_sa_db.Current(), d_data,
                                                  d_bwt, d_primary_idx, n);
@@ -228,10 +267,10 @@ void CompressionContext::compress_chunk(int threads_comp, int mini_chunk_size) {
 
   CUDA_CHECK(cudaMemsetAsync(d_hist, 0, 257 * sizeof(uint32_t), stream));
 
-  zrle_encode_kernel<<<z_blocks, threads_comp, threads_comp * 260, stream>>>(
-      d_bwt, d_out_symbols, d_chunk_sym_lens, n, mini_chunk_size, threads_comp);
-  compute_histogram_kernel<<<z_blocks, threads_comp, 0, stream>>>(
-      d_out_symbols, d_chunk_sym_lens, d_hist, num_chunks, mini_chunk_size);
+  size_t zrle_smem = (size_t)threads_comp * 260;
+  zrle_encode_kernel<<<z_blocks, threads_comp, zrle_smem, stream>>>(
+      d_bwt, d_out_symbols, d_chunk_sym_lens, d_hist, n, mini_chunk_size,
+      threads_comp);
   build_tans_all_kernel<<<1, 257, 0, stream>>>(
       d_hist, d_p, d_prefix_p, d_max_x, d_symbol_spread, d_enc_table,
       d_dec_table, d_dec_symbol, d_next_state, L, 257);
@@ -246,6 +285,7 @@ void CompressionContext::compress_chunk(int threads_comp, int mini_chunk_size) {
   CUDA_CHECK(cudaStreamSynchronize(stream));
 
   if (*host_overflow_flag != 0) {
+    // Bitstream overflow detected -> Fallback to Raw Mode
     is_raw = 1;
     comp_size = n;
     std::memcpy(host_out, host_in, n);
@@ -259,7 +299,7 @@ void CompressionContext::compress_chunk(int threads_comp, int mini_chunk_size) {
       d_chunk_bit_lens, d_chunk_word_lens, num_chunks);
 
   CUDA_CHECK(cudaMemsetAsync(d_word_offsets, 0, sizeof(uint32_t), stream));
-  size_t t_bytes = temp_storage_bytes;
+  t_bytes = temp_storage_bytes;
   cub::DeviceScan::InclusiveSum(d_temp_storage, t_bytes, d_chunk_word_lens,
                                 d_word_offsets + 1, num_chunks, stream);
 
@@ -339,7 +379,6 @@ DecompressionContext::DecompressionContext(int macro_bytes, int mini_bytes,
 
   CUDA_CHECK(cudaMallocHost(&host_in, payload_alloc_size));
   CUDA_CHECK(cudaMallocHost(&host_out, macro_size));
-  CUDA_CHECK(cudaMallocHost(&host_calc_hash, sizeof(uint64_t)));
 
   // Pinned host scalars for async copy safety
   CUDA_CHECK(cudaMallocHost(&host_uncomp_size, sizeof(int)));
@@ -352,10 +391,8 @@ DecompressionContext::DecompressionContext(int macro_bytes, int mini_bytes,
   CUDA_CHECK(cudaMalloc(&d_primary_idx, sizeof(int)));
 
   CUDA_CHECK(cudaMalloc(&d_global_LF, macro_size * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&d_J_in, macro_size * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&d_D_in, macro_size * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&d_J_out, macro_size * sizeof(int)));
-  CUDA_CHECK(cudaMalloc(&d_D_out, macro_size * sizeof(int)));
+  CUDA_CHECK(cudaMalloc(&d_JD_in, macro_size * sizeof(int2)));
+  CUDA_CHECK(cudaMalloc(&d_JD_out, macro_size * sizeof(int2)));
 
   CUDA_CHECK(cudaMalloc(&d_chunk_bit_lengths, max_chunks * sizeof(uint32_t)));
   CUDA_CHECK(cudaMalloc(&d_chunk_word_lens, max_chunks * sizeof(uint32_t)));
@@ -373,11 +410,11 @@ DecompressionContext::DecompressionContext(int macro_bytes, int mini_bytes,
   CUDA_CHECK(cudaMalloc(&d_sizes, sizeof(int)));
 
   CUDA_CHECK(cudaMalloc(&d_payload, payload_alloc_size));
-  CUDA_CHECK(cudaMalloc(&d_gpu_hash, sizeof(uint64_t)));
 
   size_t sort_bytes = 0, scan_bytes = 0;
   cub::DoubleBuffer<uint64_t> d_keys_db(d_keys, d_keys_alt);
-  cub::DoubleBuffer<int> d_sa_db(d_J_in, d_J_out);
+  cub::DoubleBuffer<int> d_sa_db(reinterpret_cast<int *>(d_JD_in),
+                                 reinterpret_cast<int *>(d_JD_out));
   cub::DeviceRadixSort::SortPairs(nullptr, sort_bytes, d_keys_db, d_sa_db,
                                   macro_size, 0, 64, stream);
   cub::DeviceScan::InclusiveSum(nullptr, scan_bytes, d_chunk_word_lens,
@@ -387,8 +424,10 @@ DecompressionContext::DecompressionContext(int macro_bytes, int mini_bytes,
   CUDA_CHECK(cudaMalloc(&d_temp_storage, temp_storage_bytes));
 
 #if CUDART_VERSION >= 11000
-  if (cudaDeviceGetLimit(&orig_l2_limit, cudaLimitPersistingL2CacheSize) == cudaSuccess &&
-      cudaDeviceSetLimit(cudaLimitPersistingL2CacheSize, dec_bytes) == cudaSuccess) {
+  if (cudaDeviceGetLimit(&orig_l2_limit, cudaLimitPersistingL2CacheSize) ==
+          cudaSuccess &&
+      cudaDeviceSetLimit(cudaLimitPersistingL2CacheSize, dec_bytes) ==
+          cudaSuccess) {
     l2_modified = true;
     cudaStreamAttrValue attr;
     std::memset(&attr, 0, sizeof(attr));
@@ -397,7 +436,8 @@ DecompressionContext::DecompressionContext(int macro_bytes, int mini_bytes,
     attr.accessPolicyWindow.hitRatio = 1.0f; // 100% L2 Persistence Preference
     attr.accessPolicyWindow.hitProp = cudaAccessPropertyPersisting;
     attr.accessPolicyWindow.missProp = cudaAccessPropertyStreaming;
-    if (cudaStreamSetAttribute(stream, cudaStreamAttributeAccessPolicyWindow, &attr) != cudaSuccess) {
+    if (cudaStreamSetAttribute(stream, cudaStreamAttributeAccessPolicyWindow,
+                               &attr) != cudaSuccess) {
       cudaGetLastError();
     }
   } else {
@@ -424,36 +464,40 @@ DecompressionContext::DecompressionContext(int macro_bytes, int mini_bytes,
     CUDA_CHECK(cudaMemcpyAsync(d_primary_idx, host_primary_idx, sizeof(int),
                                cudaMemcpyHostToDevice, stream));
 
+    int rank_bits = (int)std::ceil(std::log2((double)macro_size));
+    int key_bits = std::min(64, 8 + rank_bits);
+
     dim3 grid_k(blocks_u, 1);
     fill_key_kernel<<<grid_k, 256, 0, stream>>>(d_offsets, d_sizes, d_bwt,
-                                                d_keys, 1);
-    fill_sequence_kernel<<<blocks_u, 256, 0, stream>>>(d_J_in, macro_size);
+                                                d_keys, 1, rank_bits);
+    fill_sequence_kernel<<<blocks_u, 256, 0, stream>>>(
+        reinterpret_cast<int *>(d_JD_in), macro_size);
 
     cub::DoubleBuffer<uint64_t> keys_db(d_keys, d_keys_alt);
-    cub::DoubleBuffer<int> f_to_l_db(d_J_in, d_J_out);
+    cub::DoubleBuffer<int> f_to_l_db(reinterpret_cast<int *>(d_JD_in),
+                                     reinterpret_cast<int *>(d_JD_out));
     size_t t_bytes = temp_storage_bytes;
     cub::DeviceRadixSort::SortPairs(d_temp_storage, t_bytes, keys_db, f_to_l_db,
-                                    macro_size, 0, 64, stream);
+                                    macro_size, 0, key_bits, stream);
 
     build_lf_kernel<<<blocks_u, 256, 0, stream>>>(f_to_l_db.Current(),
                                                   d_global_LF, macro_size);
 
     dim3 grid_p(blocks_u, 1);
     dim3 block_p(256, 1);
-    jump_init_kernel<<<grid_p, block_p, 0, stream>>>(
-        d_global_LF, d_primary_idx, d_offsets, d_sizes, d_J_in, d_D_in);
+    jump_init_vec_kernel<<<grid_p, block_p, 0, stream>>>(
+        d_global_LF, d_primary_idx, d_offsets, d_sizes, d_JD_in);
 
-    int *curr_J = d_J_in, *curr_D = d_D_in;
-    int *next_J = d_J_out, *next_D = d_D_out;
+    int2 *curr_JD = d_JD_in;
+    int2 *next_JD = d_JD_out;
     for (int s = 0; s < steps; s++) {
-      jump_step_kernel<<<grid_p, block_p, 0, stream>>>(
-          curr_J, curr_D, next_J, next_D, d_offsets, d_sizes);
-      std::swap(curr_J, next_J);
-      std::swap(curr_D, next_D);
+      jump_step_vec_kernel<<<grid_p, block_p, 0, stream>>>(
+          curr_JD, next_JD, d_offsets, d_sizes);
+      std::swap(curr_JD, next_JD);
     }
 
-    jump_scatter_kernel<<<grid_p, block_p, 0, stream>>>(
-        curr_D, d_bwt, d_data, d_primary_idx, d_offsets, d_sizes);
+    jump_scatter_vec_kernel<<<grid_p, block_p, 0, stream>>>(
+        curr_JD, d_bwt, d_data, d_primary_idx, d_offsets, d_sizes);
 
     CUDA_CHECK(cudaStreamEndCapture(stream, &graph));
 #if CUDART_VERSION >= 11040
@@ -493,7 +537,6 @@ DecompressionContext::~DecompressionContext() {
 
   cudaFreeHost(host_in);
   cudaFreeHost(host_out);
-  cudaFreeHost(host_calc_hash);
   cudaFreeHost(host_uncomp_size);
   cudaFreeHost(host_primary_idx);
 
@@ -503,10 +546,8 @@ DecompressionContext::~DecompressionContext() {
   cudaFree(d_keys_alt);
   cudaFree(d_primary_idx);
   cudaFree(d_global_LF);
-  cudaFree(d_J_in);
-  cudaFree(d_D_in);
-  cudaFree(d_J_out);
-  cudaFree(d_D_out);
+  cudaFree(d_JD_in);
+  cudaFree(d_JD_out);
   cudaFree(d_chunk_bit_lengths);
   cudaFree(d_chunk_word_lens);
   cudaFree(d_decoding_table);
@@ -515,7 +556,6 @@ DecompressionContext::~DecompressionContext() {
   cudaFree(d_offsets);
   cudaFree(d_sizes);
   cudaFree(d_payload);
-  cudaFree(d_gpu_hash);
   cudaFree(d_temp_storage);
 
   cudaEventDestroy(e_start);
@@ -578,8 +618,6 @@ bool DecompressionContext::decompress_chunk(int threads_decomp,
       }
 
       int blocks = (num_chunks + threads_decomp - 1) / threads_decomp;
-      // DYNAMIC SMEM SIZE: (2 * L * sizeof(int)) + (threads_decomp * 256 bytes)
-      // for alphabet
       size_t smem_size = (2 * L * sizeof(int)) + (size_t)threads_decomp * 256;
 
       if (smem_size > 49152) {
@@ -595,54 +633,54 @@ bool DecompressionContext::decompress_chunk(int threads_decomp,
   }
 
   if (is_raw == 0) {
-    // Write scalars into pinned memory BEFORE graph launch reads them
     *host_uncomp_size = uncomp_size;
     *host_primary_idx = primary_idx;
 
     if (uncomp_size == macro_size && graph_exec) {
-      // CUDA GRAPH FAST PATH: Replay pre-captured inverse BWT graph
       CUDA_CHECK(cudaGraphLaunch(graph_exec, stream));
     } else {
-      // FALLBACK PATH: Inline launches for partial/last macro chunk
       CUDA_CHECK(cudaMemcpyAsync(d_sizes, host_uncomp_size, sizeof(int),
                                  cudaMemcpyHostToDevice, stream));
       CUDA_CHECK(cudaMemcpyAsync(d_primary_idx, host_primary_idx, sizeof(int),
                                  cudaMemcpyHostToDevice, stream));
 
+      int rank_bits = (int)std::ceil(std::log2((double)uncomp_size));
+      int key_bits = std::min(64, 8 + rank_bits);
       int blocks_u = (uncomp_size + 255) / 256;
 
       dim3 grid_k(blocks_u, 1);
       fill_key_kernel<<<grid_k, 256, 0, stream>>>(d_offsets, d_sizes, d_bwt,
-                                                  d_keys, 1);
-      fill_sequence_kernel<<<blocks_u, 256, 0, stream>>>(d_J_in, uncomp_size);
+                                                  d_keys, 1, rank_bits);
+      fill_sequence_kernel<<<blocks_u, 256, 0, stream>>>(
+          reinterpret_cast<int *>(d_JD_in), uncomp_size);
 
       cub::DoubleBuffer<uint64_t> keys_db(d_keys, d_keys_alt);
-      cub::DoubleBuffer<int> f_to_l_db(d_J_in, d_J_out);
+      cub::DoubleBuffer<int> f_to_l_db(reinterpret_cast<int *>(d_JD_in),
+                                       reinterpret_cast<int *>(d_JD_out));
       size_t t_bytes = temp_storage_bytes;
       cub::DeviceRadixSort::SortPairs(d_temp_storage, t_bytes, keys_db,
-                                      f_to_l_db, uncomp_size, 0, 64, stream);
+                                      f_to_l_db, uncomp_size, 0, key_bits, stream);
 
       build_lf_kernel<<<blocks_u, 256, 0, stream>>>(f_to_l_db.Current(),
                                                     d_global_LF, uncomp_size);
 
       dim3 grid_p(blocks_u, 1);
       dim3 block_p(256, 1);
-      jump_init_kernel<<<grid_p, block_p, 0, stream>>>(
-          d_global_LF, d_primary_idx, d_offsets, d_sizes, d_J_in, d_D_in);
+      jump_init_vec_kernel<<<grid_p, block_p, 0, stream>>>(
+          d_global_LF, d_primary_idx, d_offsets, d_sizes, d_JD_in);
 
-      int *curr_J = d_J_in, *curr_D = d_D_in;
-      int *next_J = d_J_out, *next_D = d_D_out;
+      int2 *curr_JD = d_JD_in;
+      int2 *next_JD = d_JD_out;
       int steps = (int)std::ceil(std::log2(uncomp_size));
 
       for (int s = 0; s < steps; s++) {
-        jump_step_kernel<<<grid_p, block_p, 0, stream>>>(
-            curr_J, curr_D, next_J, next_D, d_offsets, d_sizes);
-        std::swap(curr_J, next_J);
-        std::swap(curr_D, next_D);
+        jump_step_vec_kernel<<<grid_p, block_p, 0, stream>>>(
+            curr_JD, next_JD, d_offsets, d_sizes);
+        std::swap(curr_JD, next_JD);
       }
 
-      jump_scatter_kernel<<<grid_p, block_p, 0, stream>>>(
-          curr_D, d_bwt, d_data, d_primary_idx, d_offsets, d_sizes);
+      jump_scatter_vec_kernel<<<grid_p, block_p, 0, stream>>>(
+          curr_JD, d_bwt, d_data, d_primary_idx, d_offsets, d_sizes);
     }
   }
 
