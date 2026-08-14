@@ -102,10 +102,9 @@ int zxc_compress_chunk_wrapper_default(zxc_cctx_t* RESTRICT ctx, const uint8_t* 
                                        const size_t src_sz, uint8_t* RESTRICT dst,
                                        const size_t dst_cap);
 
-// Huffman Prototypes (variant TUs of zxc_huffman.c). The compressor and
-// decompressor variants resolve their Huffman calls to the matching suffixed
-// symbol at compile time (zero dispatch overhead in the hot path); the thin
-// wrappers below expose the un-suffixed names for tests and external callers.
+// Huffman prototypes (variant TUs of zxc_huffman.c). Compressor and decompressor
+// variants bind to the matching suffixed symbol at compile time, so the hot path
+// pays no dispatch; the wrappers below expose un-suffixed names to callers.
 int zxc_huf_build_code_lengths_default(const uint32_t* RESTRICT freq, uint8_t* RESTRICT code_len,
                                        void* RESTRICT scratch, int max_code_len);
 size_t zxc_huf_calc_size_default(const uint32_t* RESTRICT freq, const uint8_t* RESTRICT code_len,
@@ -830,11 +829,10 @@ int64_t zxc_compress(const void* RESTRICT src, const size_t src_size, void* REST
     return (int64_t)(op - op_start);
 }
 
-/* Shared frame decode body used by both zxc_decompress (non-overlapping
- * src/dst) and zxc_decompress_inplace (single overlapping buffer). No RESTRICT
- * between src and dst so the overlapping case is well-defined; each per-block
- * decode still gets disjoint compressed/output regions (guaranteed by the
- * in-place margin) and its wrapper keeps its own RESTRICT. */
+/* Shared frame decode body for zxc_decompress and zxc_decompress_inplace. No
+ * RESTRICT between src and dst, so the overlapping case stays defined; the
+ * in-place margin still gives each block disjoint regions, and the per-block
+ * wrappers keep their own RESTRICT. */
 static int64_t zxc_decompress_frame(const uint8_t* src, size_t src_size, uint8_t* dst,
                                     size_t dst_capacity, const zxc_decompress_opts_t* opts);
 
@@ -1177,11 +1175,9 @@ uint64_t zxc_get_decompressed_size(const void* src, const size_t src_size) {
     const uint8_t* const footer = p + src_size - ZXC_FILE_FOOTER_SIZE;
     const uint64_t dsize = zxc_le64(footer);
 
-    /* Plausibility: an archive of src_size bytes cannot carry more blocks
-     * than src_size / ZXC_BLOCK_HEADER_SIZE, and each block decodes to at
-     * most chunk_size bytes. Division form keeps the compare overflow-free
-     * (the usual `(dsize + chunk - 1) / chunk` ceil would wrap for a forged
-     * dsize near UINT64_MAX). */
+    /* Plausibility: at most src_size / ZXC_BLOCK_HEADER_SIZE blocks, each
+     * decoding to at most chunk_size. The division form keeps the compare
+     * overflow-free - a ceil would wrap on a forged dsize near UINT64_MAX. */
     const uint64_t blocks_needed =
         chunk_size ? dsize / (uint64_t)chunk_size + (dsize % (uint64_t)chunk_size != 0) : 0;
     if (UNLIKELY(blocks_needed > (uint64_t)(src_size / ZXC_BLOCK_HEADER_SIZE))) return 0;
@@ -1329,11 +1325,10 @@ int64_t zxc_compress_cctx(zxc_cctx* cctx, const void* RESTRICT src, const size_t
 
     if (UNLIKELY(!zxc_validate_block_size(block_size))) return ZXC_ERROR_BAD_BLOCK_SIZE;
 
-    /* Static cctx: block_size is locked at workspace init.  Reject any opts
-     * that would force a re-partition, since the workspace cannot grow.
-     * level / checksum_enabled may still vary per call - except a raise into
-     * the optimal-parser tier, whose opt_scratch region a workspace carved at
-     * level < ZXC_LEVEL_DENSITY does not carry. */
+    /* Static cctx: block_size is locked at init and the workspace cannot grow,
+     * so reject any opts forcing a re-partition. level and checksum_enabled may
+     * still vary - except a raise into the optimal-parser tier, whose
+     * opt_scratch a workspace carved below ZXC_LEVEL_DENSITY does not carry. */
     if (UNLIKELY(cctx->owns_workspace && block_size != cctx->last_block_size))
         return ZXC_ERROR_BAD_BLOCK_SIZE;
     if (UNLIKELY(cctx->owns_workspace && level >= ZXC_LEVEL_DENSITY && !cctx->inner.opt_scratch))
@@ -1343,10 +1338,9 @@ int64_t zxc_compress_cctx(zxc_cctx* cctx, const void* RESTRICT src, const size_t
     cctx->stored_block_size = block_size;
     cctx->stored_checksum = checksum_enabled;
 
-    /* Re-init when block_size changed (it drives buffer sizes), or when a
-     * per-call level raise into the optimal-parser tier requires the
-     * opt_scratch region that inits at level < ZXC_LEVEL_DENSITY do not
-     * allocate (using it NULL would crash). */
+    /* Re-init when block_size changed (it drives the buffer sizes), or when a
+     * level raise into the optimal-parser tier needs an opt_scratch that inits
+     * below ZXC_LEVEL_DENSITY never allocated. */
     if (UNLIKELY(!cctx->initialized || cctx->last_block_size != block_size ||
                  (level >= ZXC_LEVEL_DENSITY && !cctx->inner.opt_scratch))) {
         if (cctx->initialized) {
@@ -1367,6 +1361,9 @@ int64_t zxc_compress_cctx(zxc_cctx* cctx, const void* RESTRICT src, const size_t
         cctx->inner.compression_level = level;
         cctx->inner.checksum_enabled = checksum_enabled;
     }
+
+    /* Shared context: zxc_compress_block leaves its dictionary here. */
+    cctx->inner.dict_size = 0;
 
     zxc_cctx_t* const ctx = &cctx->inner;
 
@@ -1643,12 +1640,11 @@ int64_t zxc_compress_block(zxc_cctx* cctx, const void* RESTRICT src, const size_
     const size_t effective_block_size =
         b_dict_size > 0 ? zxc_block_size_ceil(b_dict_size + base_block_size) : base_block_size;
 
-    /* Static cctx: the workspace cannot grow, so reject any request that
-     * would force a re-partition - a different effective block size, or a
-     * per-call level raise into the optimal-parser tier whose opt_scratch
-     * region the workspace does not carry. A heap re-init here would violate
-     * the static API's no-allocation contract, and the replacement workspace
-     * could never be freed (zxc_free_cctx is a no-op for static contexts). */
+    /* Static cctx: the workspace cannot grow, so reject anything forcing a
+     * re-partition - another block size, or a level raise into the
+     * optimal-parser tier it carries no opt_scratch for. Re-initing on the heap
+     * would break the no-allocation contract and leak: zxc_free_cctx is a no-op
+     * for static contexts. */
     if (UNLIKELY(cctx->owns_workspace && effective_block_size != cctx->last_block_size))
         return ZXC_ERROR_BAD_BLOCK_SIZE;
     if (UNLIKELY(cctx->owns_workspace && level >= ZXC_LEVEL_DENSITY && !cctx->inner.opt_scratch))
@@ -1723,10 +1719,9 @@ int64_t zxc_decompress_block(zxc_dctx* dctx, const void* RESTRICT src, const siz
     if (UNLIKELY(!dctx || !src || !dst || src_size < ZXC_BLOCK_HEADER_SIZE || dst_capacity == 0))
         return ZXC_ERROR_NULL_INPUT;
 
-    /* Block API decompresses a single format-conformant block. Decoded payload
-     * cannot exceed ZXC_BLOCK_SIZE_MAX; dst_capacity is bounded accordingly to
-     * include the tail-pad needed for safe wild copies. Callers expecting
-     * larger outputs should use the frame or streaming APIs. */
+    /* One format-conformant block, so the payload cannot exceed
+     * ZXC_BLOCK_SIZE_MAX; dst_capacity is bounded to that plus the tail-pad the
+     * wild copies need. Larger outputs belong to the frame or streaming APIs. */
     if (UNLIKELY(dst_capacity > ZXC_BLOCK_SIZE_MAX + ZXC_DECOMPRESS_TAIL_PAD))
         return ZXC_ERROR_BAD_BLOCK_SIZE;
 

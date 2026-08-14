@@ -9,23 +9,17 @@
  * @file zxc_pstream.h
  * @brief Push-based, single-threaded streaming compression and decompression.
  *
- * This header exposes a non-blocking, caller-driven streaming API, the
- * counterpart of the @c FILE*-based @ref zxc_stream_compress / @ref
- * zxc_stream_decompress.  Where the @c FILE* API takes ownership of the
- * pipeline (it reads until EOF and writes until done), the push API hands the
- * control back to the caller: feed input chunks when available, drain output
- * chunks when ready, finalise on demand.
+ * The counterpart of the @c FILE*-based @ref zxc_stream_compress / @ref
+ * zxc_stream_decompress. Those own the pipeline (read until EOF, write until
+ * done); here the caller stays in control: feed input chunks when they arrive,
+ * drain output chunks when ready, finalise on demand. Nothing blocks.
  *
- * Use this API when you need to integrate ZXC into:
- * - a callback-driven library;
- * - an asynchronous event loop;
- * - a network protocol that streams data without seeking (HTTP chunked
- *   transfer, gRPC, custom binary protocols);
- * - any pipeline where you cannot block on a @c FILE*.
+ * That is what you want inside a callback-driven library, an asynchronous
+ * event loop, a non-seeking network protocol (HTTP chunked transfer, gRPC,
+ * your own binary protocol), or any pipeline with no @c FILE* to block on.
  *
- * The API is single-threaded: one context is processed by one thread at a
- * time.  For multi-threaded compression of a single file end-to-end, use
- * @ref zxc_stream_compress instead.
+ * One context, one thread at a time. To compress a single file end-to-end
+ * across threads, use @ref zxc_stream_compress instead.
  *
  * @par Compression usage
  * @code
@@ -81,9 +75,8 @@ extern "C" {
 /**
  * @brief Input buffer descriptor for push streaming.
  *
- * The caller fills @c src with bytes to feed in and sets @c size to their
- * count.  The library advances @c pos as it consumes input; the caller must
- * not modify @c pos between calls.
+ * The caller fills @c src and sets @c size; the library advances @c pos as it
+ * consumes input. Do not touch @c pos between calls.
  */
 typedef struct {
     const void* src; /**< Caller-owned input bytes. */
@@ -94,16 +87,15 @@ typedef struct {
 /**
  * @brief Output buffer descriptor for push streaming.
  *
- * The caller provides a writable region of capacity @c size starting at
- * @c dst.  The library writes starting at @c dst+pos and advances @c pos by
- * the number of bytes produced.  The caller drains @c [dst, dst+pos) and
- * resets @c pos to 0 between rounds (or grows @c size).
+ * The caller provides a writable region of capacity @c size at @c dst. The
+ * library writes from @c dst+pos and advances @c pos by what it produced; the
+ * caller drains @c [dst, dst+pos) and resets @c pos to 0 between rounds (or
+ * grows @c size).
  *
- * The ENTIRE region @c [dst+pos, dst+size) must be treated as writable
- * scratch: when the remaining capacity is large enough, the decoder writes
- * blocks directly into it using speculative (wild-copy) stores, so bytes
- * beyond the final @c pos are unspecified after a call.  Do not keep live
- * data inside the declared capacity.
+ * Treat the ENTIRE region @c [dst+pos, dst+size) as scratch: when the
+ * remaining capacity allows it the decoder writes blocks straight into it with
+ * speculative (wild-copy) stores, so bytes past the final @c pos are
+ * unspecified after a call. Never leave live data inside the declared capacity.
  */
 typedef struct {
     void* dst;   /**< Caller-owned output region. */
@@ -122,24 +114,19 @@ typedef struct zxc_dstream_s zxc_dstream;
 /**
  * @brief Creates a push compression stream.
  *
- * All settings from @p opts are copied into the context.  After this call,
- * the @p opts struct may be freed or reused.
+ * @p opts is copied into the context and may be freed or reused afterwards.
  *
- * Only @c level, @c block_size, and @c checksum_enabled are honoured
- * (levels above @ref ZXC_LEVEL_ULTRA are clamped).  @c n_threads is ignored
- * (this API is single-threaded; use @ref zxc_stream_compress for the
- * multi-threaded @c FILE* pipeline).  Dictionary options are rejected: the
- * push-stream format carries no dict_id, so passing @c dict / @c dict_size /
- * @c dict_huf makes creation fail rather than silently dropping them.
- *
- * If @p opts is not @c NULL, the honoured fields must contain valid values.
- * Invalid option values (for example an unsupported @c block_size or a
- * dictionary) cause stream creation to fail.
+ * Only @c level, @c block_size and @c checksum_enabled are honoured, and they
+ * must be valid (an unsupported @c block_size fails creation); levels above
+ * @ref ZXC_LEVEL_ULTRA are clamped. @c n_threads is ignored, this API being
+ * single-threaded, see @ref zxc_stream_compress for the multi-threaded
+ * @c FILE* pipeline. Dictionary options are rejected outright: the push-stream
+ * format carries no dict_id, so @c dict / @c dict_size / @c dict_huf fail
+ * creation rather than being silently dropped.
  *
  * @param[in] opts  Compression options, or @c NULL for all defaults.
- * @return Allocated context to be released with @ref zxc_cstream_free,
- *         or @c NULL if stream creation fails due to memory allocation
- *         failure or invalid option values in @p opts.
+ * @return Context to release with @ref zxc_cstream_free, or @c NULL on
+ *         allocation failure or invalid options.
  */
 ZXC_EXPORT zxc_cstream* zxc_cstream_create(const zxc_compress_opts_t* opts);
 
@@ -155,34 +142,30 @@ ZXC_EXPORT void zxc_cstream_free(zxc_cstream* cs);
 /**
  * @brief Pushes input bytes into the stream and drains compressed output.
  *
- * Reads from @c in->src starting at @c in->pos, writes to @c out->dst
- * starting at @c out->pos, advancing both as data flows.  Each call makes as
- * much progress as either buffer allows in a single visit:
+ * Reads from @c in->src at @c in->pos, writes to @c out->dst at @c out->pos,
+ * advancing both as data flows. Each call goes as far as the two buffers allow:
  *
  * - emits the file header on the first invocation (16 B);
  * - copies input into the internal block accumulator;
- * - whenever the accumulator is full, compresses one block and writes it
- *   into @p out (up to @c out->size);
- * - returns when @p in is fully consumed *and* no more compressed bytes are
- *   pending, or when @p out has no room left.
+ * - compresses one block into @p out whenever the accumulator fills;
+ * - returns once @p in is fully consumed *and* nothing is pending, or as soon
+ *   as @p out has no room left.
  *
- * The function is fully reentrant: if @p out fills mid-block, the next call
- * resumes draining from where the previous left off.  Safe to call with
- * @c in->size == in->pos (drain-only mode).
+ * Fully reentrant: if @p out fills mid-block, the next call picks up where this
+ * one stopped. Calling with @c in->size == in->pos drains only.
  *
  * @par Errors
- * On failure the context becomes errored (sticky): every subsequent call to
- * @ref zxc_cstream_compress / @ref zxc_cstream_end returns the same negative
- * code without doing further work.  Only @ref zxc_cstream_free is safe.
+ * Errors are sticky: once one is returned, @ref zxc_cstream_compress and
+ * @ref zxc_cstream_end keep returning the same code and do no further work.
+ * Only @ref zxc_cstream_free is safe from there.
  *
  * @param[in,out] cs   Compression stream.
  * @param[in,out] out  Output descriptor; @c pos is advanced by produced bytes.
  * @param[in,out] in   Input descriptor;  @c pos is advanced by consumed bytes.
  *
- * @return @c 0 if @p in was fully consumed and no compressed bytes remain
- *         pending in the internal staging area;
- *         @c >0 number of bytes still pending, drain @p out and call again
- *         with the same (or new) input;
+ * @return @c 0 @p in fully consumed and nothing pending in staging;
+ *         @c >0 bytes still pending, drain @p out and call again with the same
+ *         (or new) input;
  *         @c <0 a @ref zxc_error_t code.
  */
 ZXC_EXPORT int64_t zxc_cstream_compress(zxc_cstream* cs, zxc_outbuf_t* out, zxc_inbuf_t* in);
@@ -190,19 +173,17 @@ ZXC_EXPORT int64_t zxc_cstream_compress(zxc_cstream* cs, zxc_outbuf_t* out, zxc_
 /**
  * @brief Finalises the stream: flushes pending data, writes EOF block + footer.
  *
- * Must be called after the last @ref zxc_cstream_compress invocation to
- * produce a valid ZXC file.  Like @ref zxc_cstream_compress, this function
- * is reentrant: if @p out fills before everything is drained, it returns a
- * positive count and the caller drains and calls again.
+ * Required after the last @ref zxc_cstream_compress call to end up with a valid
+ * ZXC file. Reentrant like it: if @p out fills first, it returns a positive
+ * count and the caller drains and calls again.
  *
- * After @ref zxc_cstream_end returns @c 0, the stream is in DONE state and
- * any further call returns @c ZXC_ERROR_NULL_INPUT (use @ref
- * zxc_cstream_free to release).
+ * Once it returns @c 0 the stream is DONE and any further call returns
+ * @c ZXC_ERROR_NULL_INPUT; release it with @ref zxc_cstream_free.
  *
  * @param[in,out] cs   Compression stream.
  * @param[in,out] out  Output descriptor.
  *
- * @return @c 0 finalisation complete (file is now valid);
+ * @return @c 0 finalised, the file is now valid;
  *         @c >0 bytes still pending, drain @p out and call again;
  *         @c <0 a @ref zxc_error_t code.
  */
@@ -211,8 +192,7 @@ ZXC_EXPORT int64_t zxc_cstream_end(zxc_cstream* cs, zxc_outbuf_t* out);
 /**
  * @brief Suggested input chunk size for best throughput.
  *
- * Equal to the configured block size (default 512 KB).  The caller may
- * supply any input chunk; this is purely a performance hint.
+ * The configured block size (512 KB by default).
  *
  * @param[in] cs  Compression stream.
  * @return Suggested @c in_buf capacity in bytes, or 0 if @p cs is @c NULL.
@@ -220,10 +200,10 @@ ZXC_EXPORT int64_t zxc_cstream_end(zxc_cstream* cs, zxc_outbuf_t* out);
 ZXC_EXPORT size_t zxc_cstream_in_size(const zxc_cstream* cs);
 
 /**
- * @brief Suggested output chunk size to never trigger a partial drain.
+ * @brief Suggested output chunk size that never triggers a partial drain.
  *
- * Sized to hold one full compressed block plus framing overhead.  Smaller
- * outputs work but may force the caller into an extra drain loop.
+ * Holds one full compressed block plus framing overhead. Smaller outputs work,
+ * at the cost of an extra drain loop.
  *
  * @param[in] cs  Compression stream.
  * @return Suggested @c out_buf capacity in bytes, or 0 if @p cs is @c NULL.
@@ -235,16 +215,15 @@ ZXC_EXPORT size_t zxc_cstream_out_size(const zxc_cstream* cs);
 /**
  * @brief Creates a push decompression stream.
  *
- * All settings from @p opts are copied into the context.  Only
- * @c checksum_enabled is honoured (controls whether per-block and global
- * checksums are verified when present).  Dictionary options are rejected
- * (the push-stream format carries no dict_id): passing @c dict /
- * @c dict_size / @c dict_huf makes creation fail rather than silently
- * ignoring them.
+ * @p opts is copied into the context. Only @c checksum_enabled is honoured: it
+ * decides whether per-block and global checksums are verified when present.
+ * Dictionary options are rejected outright (the push-stream format carries no
+ * dict_id), so @c dict / @c dict_size / @c dict_huf fail creation rather than
+ * being silently ignored.
  *
  * @param[in] opts  Decompression options, or @c NULL for defaults.
- * @return Allocated context to be released with @ref zxc_dstream_free,
- *         or @c NULL on allocation failure or dictionary options in @p opts.
+ * @return Context to release with @ref zxc_dstream_free, or @c NULL on
+ *         allocation failure or dictionary options in @p opts.
  */
 ZXC_EXPORT zxc_dstream* zxc_dstream_create(const zxc_decompress_opts_t* opts);
 
@@ -258,27 +237,25 @@ ZXC_EXPORT void zxc_dstream_free(zxc_dstream* ds);
 /**
  * @brief Pushes compressed input and drains decompressed output.
  *
- * Internally runs a parser state machine: file header -> per-block
- * (header + payload + optional checksum) -> EOF block -> optional SEK block ->
- * file footer.  Each call makes as much progress as @p in and @p out allow.
+ * Drives a parser state machine: file header -> per-block (header + payload +
+ * optional checksum) -> EOF block -> optional SEK block -> file footer. Each
+ * call goes as far as @p in and @p out allow.
  *
  * @par End of stream
- * When the decoder reaches the file footer and validates it, the stream
- * enters DONE state.  Subsequent calls return @c 0 without producing more
- * output, even if extra bytes remain in @p in (those trailing bytes are
- * silently ignored, the caller may use the residual @c in->pos to detect
- * how much real data was consumed).
+ * Validating the file footer puts the stream in DONE state; later calls return
+ * @c 0 and produce nothing, even with bytes left in @p in. Those trailing bytes
+ * are ignored, and @c in->pos tells the caller how much real data was consumed.
  *
  * @par Errors
- * Sticky: once a negative code is returned, further calls keep returning it.
+ * Sticky: once a negative code comes back, every later call returns it too.
  *
  * @param[in,out] ds   Decompression stream.
  * @param[in,out] out  Output descriptor; @c pos advanced by produced bytes.
  * @param[in,out] in   Input descriptor;  @c pos advanced by consumed bytes.
  *
- * @return @c >0 number of decompressed bytes written into @p out this call;
- *         @c 0 stream complete (DONE) or no progress possible (caller should
- *         feed more input);
+ * @return @c >0 decompressed bytes written into @p out by this call;
+ *         @c 0 stream complete (DONE), or no progress possible and more input
+ *         is needed;
  *         @c <0 a @ref zxc_error_t code.
  */
 ZXC_EXPORT int64_t zxc_dstream_decompress(zxc_dstream* ds, zxc_outbuf_t* out, zxc_inbuf_t* in);
@@ -286,10 +263,10 @@ ZXC_EXPORT int64_t zxc_dstream_decompress(zxc_dstream* ds, zxc_outbuf_t* out, zx
 /**
  * @brief Reports whether the decoder has fully consumed a valid stream.
  *
- * Returns @c 1 iff the parser has reached the file footer **and** validated
- * it.  Callers that have finished feeding input use this to detect truncated
- * streams: if @ref zxc_dstream_decompress returns @c 0 with no output and
- * @ref zxc_dstream_finished returns @c 0, the input ended prematurely.
+ * True only once the parser has reached the file footer **and** validated it.
+ * That is how a caller done feeding input detects truncation: if
+ * @ref zxc_dstream_decompress returns @c 0 with no output and this returns
+ * @c 0, the input ended early.
  *
  * @param[in] ds  Decompression stream.
  * @return @c 1 if DONE, @c 0 otherwise (including errored).

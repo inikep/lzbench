@@ -17,10 +17,9 @@
 
 /*
  * Function Multi-Versioning Support
- * If ZXC_FUNCTION_SUFFIX is defined (e.g. _avx2, _neon32), rename the public
- * entry point AND the Huffman entry points consumed by this TU. The defines
- * sit before zxc_internal.h so that the prototypes the header declares are
- * also rewritten with the suffix, keeping callers and callees consistent.
+ * With ZXC_FUNCTION_SUFFIX defined (e.g. _avx2), rename the entry point AND the
+ * Huffman entry points this TU consumes. The defines precede zxc_internal.h so
+ * the header's prototypes get the suffix too, keeping callers and callees matched.
  */
 #ifdef ZXC_FUNCTION_SUFFIX
 #define ZXC_CAT_IMPL(x, y) x##y
@@ -118,12 +117,9 @@ static ZXC_ALWAYS_INLINE __m128i zxc_mm_packus_epi32_sse2(__m128i a, __m128i b) 
  * @return The number of bytes written to the destination buffer.
  */
 static ZXC_ALWAYS_INLINE size_t zxc_write_varint(uint8_t* RESTRICT dst, const uint32_t val) {
-    // Refuse to emit varints above ZXC_MAX_VARINT_VALUE: such values are
-    // out-of-spec (block_size_max is 2^21, the largest legitimate varint is
-    // strictly less) and would be rejected by the decoder. For valid inputs
-    // from the Block API (src_size <= ZXC_BLOCK_SIZE_MAX) this never triggers;
-    // it is a defense-in-depth check. Callers must treat a return of 0 as an
-    // encoding error.
+    // Values above ZXC_MAX_VARINT_VALUE are out-of-spec and the decoder would
+    // reject them. Unreachable from the Block API, so this is defence in depth;
+    // callers must treat a return of 0 as an encoding error.
     if (UNLIKELY(val > ZXC_MAX_VARINT_VALUE)) {
         return 0;
     }
@@ -196,13 +192,9 @@ static ZXC_ALWAYS_INLINE zxc_match_t zxc_lz77_find_best_match(
     uint16_t* RESTRICT chain_table, const uint32_t epoch_mark, const uint32_t offset_mask,
     const int level, const zxc_lz77_params_t p, const uint32_t last_off) {
     const int use_hash5 = (level >= 3);
-    // Track the best match found so far.
-    //  ref is the pointer to the start of the match in the history buffer,
-    //  len is the match length, and backtrack is the distance from ip to ref.
-    //  Start with a sentinel length just below the minimum so any valid match will replace it.
+    // Sentinel length just below the minimum, so any valid match replaces it.
     zxc_match_t best = (zxc_match_t){NULL, ZXC_LZ_MIN_MATCH_LEN - 1, 0};
 
-    // Load the 8-byte sequence at the current position.
     uint64_t cur_val8 = zxc_le64(ip);
     uint32_t cur_val = (uint32_t)cur_val8;
     uint32_t h = zxc_hash_func(cur_val8, use_hash5);
@@ -210,7 +202,6 @@ static ZXC_ALWAYS_INLINE zxc_match_t zxc_lz77_find_best_match(
     // 8-bit tag: XOR fold of first 4 bytes for fast rejection
     const uint8_t cur_tag = (uint8_t)(cur_val ^ (cur_val >> 16));
 
-    // Current position in the input buffer expressed as a 32-bit index.
     const uint32_t cur_pos = (uint32_t)(ip - src);
 
     // Tag-first filter on fast levels.
@@ -747,10 +738,9 @@ static uint32_t zxc_opt_estimate_lit_bits(const uint8_t* RESTRICT src, const siz
                                             ZXC_HUF_MAX_CODE_LEN_DENSITY) != ZXC_OK))
         return CHAR_BIT;
 
-    /* Sample-weighted sum of code lengths == predicted total Huffman bits
-     * for the sample. Divide by sample count for bits/byte, rounded up
-     * (DP works in integer bits; rounding up errs on the conservative
-     * side, slightly favoring matches over fractional-cost literals). */
+    /* Sample-weighted sum of code lengths = predicted Huffman bits; divide by
+     * the sample count for bits/byte, rounded up. The DP is integer, and
+     * rounding up favours matches over fractional-cost literals. */
     uint64_t total_bits = 0;
     for (int k = 0; k < ZXC_HUF_NUM_SYMBOLS; k++) {
         total_bits += (uint64_t)hist[k] * (uint64_t)code_len[k];
@@ -818,10 +808,9 @@ static int zxc_lz77_optimal_parse_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* R
     zxc_lz77_params_t lzp_opt = zxc_get_lz77_params(level);
     lzp_opt.use_lazy = 0;  // guard
 
-    /* When a dictionary is active, src = [dict | block_data]. DP arrays are
-     * indexed relative to the block start (position dict_sz in src). The
-     * variable src_base points to the first block byte for literal copies,
-     * while src remains the base for the match finder (absolute positions). */
+    /* With a dictionary, src = [dict | block]. The DP arrays index from the block
+     * start, so src_base points at the first block byte for literal copies while
+     * src stays the match finder's base. */
     const size_t dict_sz = ctx->dict_size;
     const size_t block_sz = src_sz - dict_sz;
     const uint8_t* const src_base = src + dict_sz;
@@ -840,29 +829,20 @@ static int zxc_lz77_optimal_parse_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* R
     const size_t search_limit_pos = block_sz - ZXC_LZ_SEARCH_MARGIN;
     const uint8_t* const search_limit = src + search_limit_pos;
 
-    /* DP arrays carved from ctx->opt_scratch: a single allocation lazy-
-     * grown on the first level-6 call and reused across blocks. Each
-     * sub-buffer is cache-line padded so the next one starts on a 64 B
-     * boundary. The total `needed` matches zxc_estimate_cctx_size() keep
-     * the formula in sync.
+    /* DP arrays carved from ctx->opt_scratch, one allocation reused across
+     * blocks, each sub-buffer cache-line padded. Keep `needed` in sync with
+     * zxc_estimate_cctx_size().
      *
-     *   dp             : (chunk+1) x uint32_t: min cost to reach position p.
-     *   parent_len     : (chunk+1) x uint16_t: 0 = literal, >= MIN_MATCH = match.
-     *   parent_off     : (chunk+1) x uint16_t: biased match offset (distance-1).
-     *   match_end_bits : ceil((chunk+1)/64) x uint64_t: 1 bit per position,
-     *                                                  set when that position
-     *                                                  is the end of a match
-     *                                                  on the chosen DP path.
-     *                                                  Replaces a forward-order
-     *                                                  actions[] stack at 1/64
-     *                                                  the cost.
+     *   dp             : (chunk+1) x u32: min cost to reach position p.
+     *   parent_len     : (chunk+1) x u16: 0 = literal, >= MIN_MATCH = match.
+     *   parent_off     : (chunk+1) x u16: biased match offset (distance-1).
+     *   match_end_bits : one bit per position, set when a match on the chosen
+     *                    path ends there - a forward actions[] stack at 1/64
+     *                    the cost.
      *
-     * The same buffer is reused as transient scratch for the length-limited
-     * Huffman code-length builder (see zxc_opt_estimate_lit_bits below and
-     * the Huffman selection in zxc_encode_block_glo): the package-merge
-     * scratch is needed before the DP runs and again after the parse has
-     * been read out, so the lifetimes never overlap. The capacity is the
-     * larger of the two demands. */
+     * The same buffer doubles as package-merge scratch for the code-length
+     * builder: that scratch is live before the DP and after the parse is read
+     * out, never during, so capacity is just the larger of the two. */
     const size_t chunk = ctx->chunk_size;
     const size_t sz_dp = ZXC_ALIGN_CL((chunk + 1) * sizeof(uint32_t));
     const size_t sz_pl = ZXC_ALIGN_CL((chunk + 1) * sizeof(uint16_t));
@@ -873,10 +853,9 @@ static int zxc_lz77_optimal_parse_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* R
     const size_t needed =
         (dp_needed > ZXC_HUF_BUILD_SCRATCH_SIZE) ? dp_needed : ZXC_HUF_BUILD_SCRATCH_SIZE;
 
-    /* opt_scratch is now pre-allocated inside ctx->memory_block by
-     * zxc_cctx_init when level >= ZXC_LEVEL_DENSITY. The formula above must
-     * stay byte-for-byte in sync with the one in zxc_cctx_init() and
-     * zxc_estimate_cctx_size(). */
+    /* zxc_cctx_init pre-allocates opt_scratch inside ctx->memory_block at
+     * level >= ZXC_LEVEL_DENSITY. The formula above must stay byte-for-byte in
+     * sync with it and with zxc_estimate_cctx_size(). */
     (void)needed;
 
     /* Per-block literal cost (sample only block data, not dict prefix): */
@@ -892,10 +871,9 @@ static int zxc_lz77_optimal_parse_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* R
     ZXC_MEMSET(match_end_bits, 0, sz_bm);
 
     /* Forward DP: visit every position, update reachable successors.
-     * `skip_until` skips find_best_match at positions strictly inside the
-     * last long match, the DP transition from the start of the match
-     * already covers dp[p+1..p+L], and re-searching at every intra-match
-     * position is what makes the parser quadratic on repetitive inputs. */
+     * `skip_until` suppresses find_best_match strictly inside the last long
+     * match - the transition from its start already covers dp[p+1..p+L], and
+     * re-searching there is what makes the parser quadratic on repetitive data. */
     size_t skip_until = 0;
     /* Rolling repeat-offset seed for find_best_match */
     uint32_t last_off = 0;
@@ -911,11 +889,10 @@ static int zxc_lz77_optimal_parse_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* R
 
         if (p < skip_until) continue;
 
-        /* Match transition: call find_best_match (no lazy, no backtrack via
-         * anchor=ip). Iterate sub-lengths since any L <= max_L matches at the
-         * same offset and may end at a more useful DP position.
-         * ip uses absolute position (src + dict_sz + p) so match finder
-         * resolves dict references correctly via src as base. */
+        /* Match transition: no lazy, no backtrack (anchor=ip). Sub-lengths are
+         * iterated because any L <= max_L matches at the same offset and may end
+         * at a more useful DP position. ip is absolute so dict references
+         * resolve against src. */
         const uint8_t* ip = src_base + p;
         const zxc_match_t m = zxc_lz77_find_best_match(
             src, ip, iend, search_limit, /*anchor=*/ip, hash_table, hash_tags, chain_table,
@@ -928,15 +905,13 @@ static int zxc_lz77_optimal_parse_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* R
                 const size_t L_max_raw = (m.len > block_sz - p) ? (block_sz - p) : (size_t)m.len;
                 const size_t L_max = (L_max_raw > UINT16_MAX) ? UINT16_MAX : L_max_raw;
 
-                /* The L-iteration cost function is piecewise constant in
-                 * varint segments. Split the [MIN_MATCH, L_max] span into:
-                 *   1. cheap   : v < ML_MASK            -> cost = base
-                 *   2. varint1 : v in [ML_MASK, ML_MASK + 128) -> cost = base + 8
-                 *   3. varint2+: v >= ML_MASK + 128     -> cost = base + 16, +24, ...
-                 *
-                 * Steps 1 and 2 use constant nxt and are vectorized via
-                 * the helper. Step 3 is rare (typical matches are short)
-                 * and stays scalar. */
+                /* Cost is piecewise constant in varint segments, so split
+                 * [MIN_MATCH, L_max] into:
+                 *   1. cheap   : v < ML_MASK                   -> base
+                 *   2. varint1 : v in [ML_MASK, ML_MASK + 128) -> base + 8
+                 *   3. varint2+: v >= ML_MASK + 128            -> base + 16, ...
+                 * The first two have a constant nxt and vectorize; the third is
+                 * rare enough to stay scalar. */
                 const uint16_t off_biased = (uint16_t)(off - ZXC_LZ_OFFSET_BIAS);
                 const size_t L_max_plus = L_max + 1;
                 size_t L = ZXC_LZ_MIN_MATCH_LEN;
@@ -993,10 +968,9 @@ static int zxc_lz77_optimal_parse_glo(zxc_cctx_t* RESTRICT ctx, const uint8_t* R
         }
     }
 
-    /* Backtrack from src_sz to 0: only match endpoints are recorded (one bit
-     * per position in match_end_bits). Literals between matches are implicit
-     * runs of unmarked positions and are reconstructed during forward emission
-     * via lit_start tracking, so they need no backtrack storage. */
+    /* Backtrack from src_sz to 0. Only match endpoints are recorded; literals
+     * are the unmarked runs between them, rebuilt at emission from lit_start,
+     * so they need no backtrack storage. */
     {
         size_t pos = block_sz;
         while (pos > 0) {
@@ -1559,11 +1533,9 @@ parse_done:;
                 }
 #endif
                 while (p < p_end_4) {
-                    // Check for RLE opportunity (4 identical bytes)
                     if (UNLIKELY(p[0] == p[1] && p[1] == p[2] && p[2] == p[3])) break;
                     p++;
                 }
-                // Handle remaining bytes near end
                 while (p < p_end) {
                     if (UNLIKELY(p + 3 < p_end && p[0] == p[1] && p[1] == p[2] && p[2] == p[3]))
                         break;
@@ -1590,11 +1562,9 @@ parse_done:;
         }
     }
 
-    /* Level >= 6: also evaluate Huffman as a 3rd literal-encoding candidate.
-     * Build a histogram and length-limited canonical code lengths, compute the
-     * exact PivCo section size (128-byte header + derived node runs), and
-     * switch to HUFFMAN if its J (size + decode tax) beats the current
-     * winner's. */
+    /* Level >= 6: Huffman as a third literal-encoding candidate. Histogram,
+     * length-limited code lengths, exact PivCo section size, and switch if its
+     * J (size + decode tax) beats the current winner's. */
     uint8_t huf_code_len[ZXC_HUF_NUM_SYMBOLS];
     size_t huf_total_size = SIZE_MAX;
     uint32_t lit_freq[ZXC_HUF_NUM_SYMBOLS]; /* valid iff huf_total_size != SIZE_MAX */
@@ -1635,10 +1605,9 @@ parse_done:;
         }
     }
 
-    /* Shared dictionary table candidate (level >= 6, dict with table attached):
-     * same bitstream as HUFFMAN but no 128-byte lengths header, so it stays
-     * viable on literal sections far below ZXC_HUF_MIN_LITERALS. Exact size
-     * accounting; invalid (a literal byte without a code) drops the candidate. */
+    /* Shared dictionary table (level >= 6, dict with a table): the HUFFMAN
+     * bitstream minus the 128-byte header, so it stays viable far below
+     * ZXC_HUF_MIN_LITERALS. A literal without a code drops the candidate. */
     size_t huf_dict_total_size = SIZE_MAX;
     if (level >= ZXC_LEVEL_DENSITY && ctx->dict_huf_tree_ok && lit_c > 0) {
         /* The dict candidate runs on sections too small for the per-block
@@ -1662,11 +1631,9 @@ parse_done:;
         }
     }
 
-    /* Level-7 (ULTRA): Huffman-code the token byte stream, reusing the literal
-     * codec (tokens are a <=256-symbol byte alphabet). Same J rule as literals
-     * (entropy tax vs the RAW copy); the decoder selects the path from
-     * gh.enc_litlen. opt_scratch
-     * is free here (the parse and literal code-length build are done). */
+    /* Level-7 (ULTRA): Huffman-code the token stream with the literal codec -
+     * tokens are a <= 256-symbol alphabet. Same J rule; the decoder picks the
+     * path from gh.enc_litlen. opt_scratch is free by now. */
     uint8_t tok_code_len[ZXC_HUF_NUM_SYMBOLS];
     uint8_t enc_tok = ZXC_SECTION_ENCODING_RAW;
     size_t tok_huf_size = 0;
@@ -1691,7 +1658,6 @@ parse_done:;
     uint8_t* const p = dst + ZXC_BLOCK_HEADER_SIZE;
     size_t rem = dst_cap - ZXC_BLOCK_HEADER_SIZE;
 
-    // Decide offset encoding mode: 1-byte if all offsets <= 255
     const int use_8bit_off = (max_offset <= 255) ? 1 : 0;
     const size_t off_stream_size = use_8bit_off ? seq_c : (seq_c * 2);
 
@@ -1721,7 +1687,6 @@ parse_done:;
     uint8_t* p_curr = p + ghs;
     rem -= ghs;
 
-    // Extract stream sizes once
     const size_t sz_lit = (size_t)(desc[0].sizes & ZXC_SECTION_SIZE_MASK);
     const size_t sz_tok = (size_t)(desc[1].sizes & ZXC_SECTION_SIZE_MASK);
     const size_t sz_off = (size_t)(desc[2].sizes & ZXC_SECTION_SIZE_MASK);
@@ -1751,7 +1716,6 @@ parse_done:;
             uint8_t b = *lit_ptr;
             const uint8_t* run_start = lit_ptr++;
 
-            // Count run length
             while (lit_ptr < lit_end && *lit_ptr == b) lit_ptr++;
             size_t run = (size_t)(lit_ptr - run_start);
 
@@ -1774,7 +1738,6 @@ parse_done:;
                 const uint8_t* lit_run_start = run_start;
 
                 while (lit_ptr < lit_end) {
-                    // Quick check: need 4 identical bytes to break
                     if (UNLIKELY(lit_ptr + 3 < lit_end && lit_ptr[0] == lit_ptr[1] &&
                                  lit_ptr[1] == lit_ptr[2] && lit_ptr[2] == lit_ptr[3])) {
                         break;
@@ -1929,7 +1892,6 @@ static int zxc_encode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     uint32_t seq_c = 0;
     size_t extras_c = 0;
     size_t lit_c = 0;
-    uint16_t max_offset = 0;
 
     while (LIKELY(ip < search_limit)) {
         size_t dist = (size_t)(ip - anchor);
@@ -1975,8 +1937,6 @@ static int zxc_encode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
             const uint32_t seq_val = (ll_write << (ZXC_SEQ_ML_BITS + ZXC_SEQ_OFF_BITS)) |
                                      (ml_write << ZXC_SEQ_OFF_BITS) |
                                      ((off - ZXC_LZ_OFFSET_BIAS) & ZXC_SEQ_OFF_MASK);
-            if ((off - ZXC_LZ_OFFSET_BIAS) > max_offset)
-                max_offset = (uint16_t)(off - ZXC_LZ_OFFSET_BIAS);
             buf_sequences[seq_c] = seq_val;
             seq_c++;
 
@@ -2008,13 +1968,12 @@ static int zxc_encode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     uint8_t* const p = dst + ZXC_BLOCK_HEADER_SIZE;
     size_t rem = dst_cap - ZXC_BLOCK_HEADER_SIZE;
 
-    // Decide offset encoding mode
     const zxc_gnr_header_t gh = {.n_sequences = seq_c,
                                  .n_literals = (uint32_t)lit_c,
                                  .enc_lit = ZXC_SECTION_ENCODING_RAW,
                                  .enc_litlen = 0,
                                  .enc_mlen = 0,
-                                 .enc_off = (uint8_t)(max_offset <= 255) ? 1 : 0};
+                                 .enc_off = 0};
 
     zxc_section_desc_t desc[ZXC_GHI_SECTIONS] = {0};
     desc[0].sizes = (uint64_t)lit_c | ((uint64_t)lit_c << 32);
@@ -2028,7 +1987,6 @@ static int zxc_encode_block_ghi(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRIC
     uint8_t* p_curr = p + ghs;
     rem -= ghs;
 
-    // Extract stream sizes once
     const size_t sz_lit = (size_t)(desc[0].sizes & ZXC_SECTION_SIZE_MASK);
     const size_t sz_seq = (size_t)(desc[1].sizes & ZXC_SECTION_SIZE_MASK);
     const size_t sz_ext = (size_t)(desc[2].sizes & ZXC_SECTION_SIZE_MASK);
@@ -2086,7 +2044,6 @@ static int zxc_encode_block_raw(const uint8_t* RESTRICT src, const size_t src_sz
                                 size_t* RESTRICT const out_sz) {
     if (UNLIKELY(dst_cap < ZXC_BLOCK_HEADER_SIZE + src_sz)) return ZXC_ERROR_DST_TOO_SMALL;
 
-    // Compute block RAW
     zxc_block_header_t bh;
     bh.block_type = ZXC_BLOCK_RAW;
     bh.block_flags = 0;  // Checksum flag moved to file header

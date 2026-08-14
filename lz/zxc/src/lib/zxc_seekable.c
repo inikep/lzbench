@@ -218,18 +218,14 @@ int64_t zxc_write_seek_table(uint8_t* dst, const size_t dst_capacity, const uint
 /* ========================================================================= */
 
 struct zxc_seekable_s {
-    /* Source - exactly one of {src, reader.read_at} is set.  The FILE*
-     * variant (see zxc_seekable_file.c) routes through the reader callback
-     * by wrapping pread() in its own ctx; from this struct's perspective it
-     * is indistinguishable from any other caller-supplied reader. */
+    /* Source - exactly one of {src, reader.read_at} is set. The FILE* variant
+     * wraps pread() in its own reader ctx, indistinguishable from here. */
     const uint8_t* src;
     uint64_t src_size;
     zxc_reader_t reader; /* user-supplied callback reader; read_at == NULL when unused */
 
-    /* Heap-allocated reader context owned by the seekable handle, freed in
-     * zxc_seekable_free.  Set by thin wrappers (e.g. zxc_seekable_open_file)
-     * via zxc_seekable_attach_owned_ctx.  NULL when the caller manages
-     * reader.ctx lifetime themselves. */
+    /* Reader context owned by the handle and freed in zxc_seekable_free, set by
+     * the thin wrappers. NULL when the caller owns reader.ctx itself. */
     void* owned_reader_ctx;
 
     /* Parsed seek table */
@@ -415,10 +411,8 @@ zxc_seekable* zxc_seekable_open(const void* src, const size_t src_size) {
     return zxc_seekable_parse((const uint8_t*)src, src_size);
 }
 
-/* zxc_seekable_open_file (FILE* variant) lives in zxc_seekable_file.c.  It
- * builds a zxc_reader_t over pread() and delegates to
- * zxc_seekable_open_reader below, keeping this translation unit free of any
- * <stdio.h> dependency. */
+/* zxc_seekable_open_file lives elsewhere: it builds a zxc_reader_t over pread()
+ * and delegates below, keeping this TU free of <stdio.h>. */
 
 /**
  * @brief Opens a seekable archive over a caller-supplied random-access reader.

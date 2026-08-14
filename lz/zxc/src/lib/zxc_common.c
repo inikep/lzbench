@@ -76,11 +76,8 @@ size_t zxc_compress_opts_size(void) { return sizeof(zxc_compress_opts_t); }
  */
 size_t zxc_decompress_opts_size(void) { return sizeof(zxc_decompress_opts_t); }
 
-/*
- * Layout of the persistent buffer carved by every cctx/dctx init: both modes
- * (compress, decompress) compute the same offset table, used by the workspace
- * sizer and the in-place init.
- */
+/* Offset table of the persistent buffer carved by every cctx/dctx init. Both
+ * modes compute it identically, for the workspace sizer and the in-place init. */
 typedef struct {
     size_t total;
     /* mode == 0 (decompress) */
@@ -169,10 +166,9 @@ static zxc_cctx_layout_t compute_cctx_layout(const size_t chunk_size, const int 
     const size_t max_seq = zxc_cctx_max_seq(chunk_size);
 
     if (mode == 0) {
-        /* Decompress: work_buf + lit_buffer, both padded for wild-copy
-         * overshoot and sized worst-case (chunk_size + ZXC_DECOMPRESS_TAIL_PAD).
-         * lit_buffer is provisioned regardless of level because the decoder cannot
-         * predict the per-block literal encoding (RAW / RLE / HUFFMAN). */
+        /* Decompress: work_buf + lit_buffer, padded for wild-copy overshoot and
+         * sized worst-case. lit_buffer is provisioned at every level - the decoder
+         * cannot predict a block's literal encoding (RAW / RLE / HUFFMAN). */
         const size_t sz_work = chunk_size + ZXC_DECOMPRESS_TAIL_PAD;
         const size_t sz_lit = chunk_size + ZXC_PAD_SIZE;
 
@@ -180,12 +176,11 @@ static zxc_cctx_layout_t compute_cctx_layout(const size_t chunk_size, const int 
         layout.total += ZXC_ALIGN_CL(sz_work);
         layout.off_lit_dctx = layout.total;
         layout.total += ZXC_ALIGN_CL(sz_lit);
-        /* Token-section decode scratch (level-7 GLO blocks Huffman-code the
-         * token stream) + PivCo ping-pong scratch. The decoder cannot predict
-         * per-block enc_lit/enc_litlen, so static workspaces provision both
-         * up front (no-alloc contract); heap contexts defer them to the first
-         * entropy section instead (~1.2 x chunk_size that L1-5 archives never
-         * pay), see zxc_cctx_alloc_entropy_scratch. */
+        /* Token-section decode scratch (level-7 GLO Huffman-codes the tokens) +
+         * PivCo ping-pong scratch. enc_lit/enc_litlen are unpredictable, so static
+         * workspaces provision both up front (no-alloc contract); heap contexts
+         * defer them to the first entropy section, sparing L1-5 archives ~1.2x
+         * chunk_size. See zxc_cctx_alloc_entropy_scratch. */
         if (!defer_entropy_scratch) {
             size_t sz_tok = 0;
             size_t sz_pivco = 0;
@@ -211,11 +206,10 @@ static zxc_cctx_layout_t compute_cctx_layout(const size_t chunk_size, const int 
         const size_t sz_extras = layout.max_seq * 2 * vbyte_len;
         const size_t sz_lit = chunk_size + ZXC_PAD_SIZE;
 
-        /* opt_scratch (level >= ZXC_LEVEL_DENSITY only): DP arrays for the optimal parser, also
-         * reused transiently as the package-merge scratch for the length-limited
-         * Huffman code-length builder. Sized to the larger of the two demands.
-         * The formula must stay in sync with zxc_estimate_cctx_size() and the
-         * consumer in zxc_compress.c. */
+        /* opt_scratch (level >= ZXC_LEVEL_DENSITY): the optimal parser's DP arrays,
+         * reused transiently as package-merge scratch by the code-length builder,
+         * so sized to the larger demand. Keep in sync with zxc_estimate_cctx_size()
+         * and its consumer in zxc_compress.c. */
         if (level >= ZXC_LEVEL_DENSITY) {
             const size_t sz_dp = ZXC_ALIGN_CL((chunk_size + 1) * sizeof(uint32_t));
             const size_t sz_pl = ZXC_ALIGN_CL((chunk_size + 1) * sizeof(uint16_t));
@@ -386,10 +380,8 @@ int zxc_cctx_init_in_workspace(zxc_cctx_t* RESTRICT ctx, void* RESTRICT workspac
 int zxc_cctx_init(zxc_cctx_t* RESTRICT ctx, const size_t chunk_size, const int mode,
                   const int level, const int checksum_enabled, const size_t dict_size) {
     if (UNLIKELY(chunk_size == 0)) return ZXC_ERROR_NULL_INPUT;
-    /* Defer the decode-side entropy scratch allocation to the first entropy
-     * section (zxc_cctx_alloc_entropy_scratch) when the caller is a heap context.
-     * Static workspaces must provision it up front (no allocation is ever allowed
-     * later). */
+    /* Heap contexts defer the decode-side entropy scratch to the first entropy
+     * section; static workspaces must have it already, they may never allocate. */
     const int defer_entropy = (mode == 0);
     const size_t total =
         compute_cctx_layout(chunk_size, mode, level, dict_size, defer_entropy).total;
@@ -553,7 +545,6 @@ int zxc_write_file_header(uint8_t* RESTRICT dst, const size_t dst_capacity, cons
     // Block size stored as log2 exponent (e.g. 18 = 256 KB)
     dst[5] = (uint8_t)zxc_log2_u32((uint32_t)chunk_size);
 
-    // Flags are at offset 6
     uint8_t flags = has_checksum ? (ZXC_FILE_FLAG_HAS_CHECKSUM | ZXC_CHECKSUM_RAPIDHASH) : 0;
     if (dict_id != 0) flags |= ZXC_FILE_FLAG_HAS_DICTIONARY;
     dst[6] = flags;
@@ -609,7 +600,6 @@ int zxc_read_file_header(const uint8_t* RESTRICT src, const size_t src_size,
         // Exponent encoding: block_size = 2^code  (4 KB - 2 MB)
         *out_block_size = (size_t)1U << code;
     }
-    // Flags are at offset 6
     if (out_has_checksum) *out_has_checksum = (src[6] & ZXC_FILE_FLAG_HAS_CHECKSUM) ? 1 : 0;
     if (out_dict_id) *out_dict_id = (src[6] & ZXC_FILE_FLAG_HAS_DICTIONARY) ? zxc_le32(src + 7) : 0;
 
@@ -873,11 +863,9 @@ uint64_t zxc_compress_bound(const size_t input_size) {
  *         the arithmetic would overflow.
  */
 uint64_t zxc_compress_block_bound(const size_t input_size) {
-    // Mirror the Block API contract: src_size must be in [1, ZXC_BLOCK_SIZE_MAX].
-    // Inputs outside this range cause zxc_compress_block to fail
-    // (NULL_INPUT for 0, BAD_BLOCK_SIZE above MAX), so the bound is undefined.
-    // Returning 0 signals "unusable" upfront. The cap also makes the addition
-    // below trivially overflow-free.
+    // Mirrors the Block API contract: outside [1, ZXC_BLOCK_SIZE_MAX] the call
+    // would fail anyway, so the bound is undefined and 0 says "unusable". The cap
+    // also makes the addition below trivially overflow-free.
     if (UNLIKELY(input_size == 0 || input_size > ZXC_BLOCK_SIZE_MAX)) return 0;
     // Outer block header + payload (worst case: incompressible, raw bytes)
     // + inner format overhead + optional checksum.

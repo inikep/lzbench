@@ -33,13 +33,10 @@
 
 /*
  * Function Multi-Versioning Support
- * If ZXC_FUNCTION_SUFFIX is defined (e.g. _avx2, _neon32), rename the public
- * entry points so each variant TU produces its own copy under a unique symbol
- * (e.g. zxc_huf_decode_section_avx2). The runtime dispatcher in
- * zxc_compress.c / zxc_decompress.c routes to the matching variant.
- *
- * The defines sit before zxc_internal.h so the header's prototypes are
- * rewritten with the same suffix as the definitions below.
+ * With ZXC_FUNCTION_SUFFIX defined (e.g. _avx2), each variant TU gets its own
+ * copy under a unique symbol, which the runtime dispatcher routes to. The
+ * defines precede zxc_internal.h so the header's prototypes take the same
+ * suffix as the definitions below.
  */
 #ifdef ZXC_FUNCTION_SUFFIX
 #define ZXC_CAT_IMPL(x, y) x##y
@@ -855,11 +852,9 @@ int zxc_huf_nudge_code_lengths(const uint32_t* RESTRICT freq, uint8_t* RESTRICT 
         pf_rank[r + 1] = pf_rank[r] + leaves[n - 1 - r].w;
     }
 
-    /* Candidates: the greedy ledger walk, then package-merge rebuilt at
-     * reduced caps (optimal bits for a forced-shallower tree; the pass loop
-     * runs max_depth + 1 times, so depth cuts attack the decoder's biggest
-     * fixed cost), plus the slot-ledger dynamic program below.
-     * Every candidate is a complete, Kraft-exact vector. */
+    /* Candidates: the greedy ledger walk, package-merge rebuilt at reduced caps
+     * (the pass loop runs max_depth + 1 times, so depth cuts attack the decoder's
+     * biggest fixed cost), and the slot-ledger DP below. All Kraft-exact. */
     uint8_t cand[4][ZXC_HUF_NUM_SYMBOLS];
     int n_cand = 0;
     {
@@ -884,14 +879,12 @@ int zxc_huf_nudge_code_lengths(const uint32_t* RESTRICT freq, uint8_t* RESTRICT 
         }
     }
 
-    /* Slot-ledger DP candidate: optimal class counts under the rank-weighted
-     * model, solved on groups of 2^G frequency-adjacent symbols (G = 0 is
-     * exact for small alphabets; coarse tiers keep the plane cache-resident
-     * for larger ones, bounding the whole call to a few hundred us). When G
-     * does not divide n, the lightest group is padded with zero-freq "ghost"
-     * leaves carried by unused byte values -- wire-legal, their runs
-     * are empty, and the ratio cost of the burnt code space is priced by the
-     * evaluator like everything else. */
+    /* Slot-ledger DP: optimal class counts under the rank-weighted model, over
+     * groups of 2^G frequency-adjacent symbols (G = 0 is exact; coarser tiers
+     * keep the plane cache-resident, bounding the call to a few hundred us).
+     * When G does not divide n the lightest group is padded with zero-freq
+     * ghost leaves on unused byte values - wire-legal, empty runs, and the
+     * evaluator prices the burnt code space like anything else. */
     {
         const int g_log2 = n <= 64 ? 0 : (n <= 128 ? 1 : 2);
         const int g = 1 << g_log2;
@@ -934,10 +927,9 @@ int zxc_huf_nudge_code_lengths(const uint32_t* RESTRICT freq, uint8_t* RESTRICT 
         }
     }
 
-    /* Guard + selection on exact costs: adopt the cheapest candidate clearing
-     * both guard rails and strictly beating the baseline's J; otherwise leave
-     * code_len byte-for-byte untouched (identical archive to the unadjusted
-     * encoder -- rejection must not depend on package-merge tie assignment). */
+    /* Adopt the cheapest candidate clearing both guard rails and strictly
+     * beating the baseline J; otherwise leave code_len byte-for-byte alone, so a
+     * rejection never depends on package-merge tie assignment. */
     const uint64_t j0 = zxc_huf_nudge_j(&c0);
     uint64_t best_j = j0;
     int best = -1;
@@ -1029,6 +1021,10 @@ int zxc_huf_unpack_lengths(const uint8_t* RESTRICT in, uint8_t* RESTRICT code_le
  * PivCo-Huffman section codec (enc 2/3)
  * ===========================================================================
  *
+ * Level-ordered layout and the merge-based decode are from PivCo-Huffman
+ * by Marcin Zukowski (https://github.com/MarcinZukowski/pivco-huffman).
+ * Implemented independently here.
+ *
  * Layout: [128-byte packed code lengths (literal sections only)] then, for
  * every EMITTING node of the canonical code tree in BFS order, that node's
  * run: one branch bit per symbol routed through the node (0 = left child,
@@ -1104,10 +1100,8 @@ static int zxc_pivco_tree_build(const uint8_t* RESTRICT code_len, zxc_pivco_tree
             kraft += bl_count[l] << (ZXC_HUF_MAX_CODE_LEN_ULTRA - l);
         if (UNLIKELY(kraft != (1U << ZXC_HUF_MAX_CODE_LEN_ULTRA))) return -1;
     } else {
-        /* Degenerate single-symbol table: the format requires the lone symbol
-         * to have code length exactly 1 (FORMAT.md, decoder validation
-         * requirements); the encoder never emits anything else. Reject longer
-         * unary chains. */
+        /* Degenerate single-symbol table: the format pins the lone symbol at code
+         * length exactly 1, so reject longer unary chains. */
         if (UNLIKELY(bl_count[1] != 1)) return -1;
     }
 
@@ -1280,10 +1274,9 @@ size_t zxc_huf_calc_size(const uint32_t* RESTRICT freq, const uint8_t* RESTRICT 
  */
 size_t zxc_huf_calc_size_dict(const uint32_t* RESTRICT freq, const uint8_t* RESTRICT code_len,
                               const zxc_pivco_tree_t* RESTRICT tree) {
-    /* Encodability is part of the estimate: a histogram symbol without a
-     * code (dict table not covering this block) has no leaf, so the counts
-     * below would silently ignore it and undercount. Such a candidate cannot
-     * be emitted -- report it as unencodable instead. */
+    /* Encodability is part of the estimate: a histogram symbol the table has no
+     * code for would be silently ignored below and undercount. Report the
+     * candidate unencodable instead. */
     for (int k = 0; k < ZXC_HUF_NUM_SYMBOLS; k++)
         if (UNLIKELY(freq[k] != 0 && code_len[k] == 0)) return SIZE_MAX;
     uint32_t count[ZXC_PIVCO_MAX_NODES];
@@ -1338,12 +1331,10 @@ static int zxc_pivco_encode_core(const uint8_t* RESTRICT literals, const size_t 
     uint8_t* const out = dst + hdr;
     ZXC_MEMSET(out, 0, payload + 2);
 
-    /* Per-node bit cursors; emit MSB-first code bits while descending. At a
-     * flat root, emit the symbol's packed D-bit residual (bit j = branch at
-     * subtree level j) in one shot and stop descending.
-     * Batching the per-bit RMW (read-modify-write) brings nothing:
-     * per-node accumulators would still touch memory once per bit, and flat
-     * roots already absorb the dense levels in one shot. */
+    /* Per-node bit cursors, emitting MSB-first while descending. At a flat root,
+     * emit the symbol's packed D-bit residual in one shot and stop. Batching the
+     * per-bit read-modify-write buys nothing: accumulators would still touch
+     * memory once per bit, and flat roots already absorb the dense levels. */
     uint32_t wpos[ZXC_PIVCO_MAX_NODES];
     ZXC_MEMSET(wpos, 0, (size_t)t->n_nodes * sizeof(uint32_t));
     for (size_t i = 0; i < n_literals; i++) {
@@ -1540,10 +1531,9 @@ static ZXC_ALWAYS_INLINE void zxc_pivco_merge(uint8_t* RESTRICT out, const uint8
     }
 #else /* x86 tiers */
 #if defined(ZXC_USE_AVX512) && defined(__AVX512VBMI2__)
-    /* 64 outputs per step: the merge IS a pair of byte expands. Bytes of L
-     * fill the 0-bit lanes of the control word, bytes of R the 1-bit lanes
-     * (merge-masked into the first result). Masked loads keep the speculative
-     * reads fault-safe without extra buffer slack. */
+    /* 64 outputs per step: the merge IS a pair of byte expands - L's bytes fill
+     * the control word's 0-bit lanes, R's the 1-bit lanes. Masked loads keep the
+     * speculative reads fault-safe without extra buffer slack. */
     while (i + 64 <= n) {
         uint64_t ctrl;
         ZXC_MEMCPY(&ctrl, bits + (i >> 3), 8);
@@ -1615,10 +1605,9 @@ static ZXC_ALWAYS_INLINE void zxc_pivco_merge(uint8_t* RESTRICT out, const uint8
         i += 16;
     }
 #elif defined(ZXC_USE_NEON32)
-    /* 8 outputs per step: four-register VTBL over {L[0..7], -, R[0..7], -}.
-     * The shared index tables address a 32-lane view (L lanes 0..15, R lanes
-     * 16..31); an 8-output step only ever references lanes 0..7 and 16..23,
-     * so the two unused d-registers stay undefined-but-harmless zeros. */
+    /* 8 outputs per step: four-register VTBL over {L[0..7], -, R[0..7], -}. The
+     * shared index tables address a 32-lane view, and an 8-output step only
+     * touches lanes 0..7 and 16..23, so the two spare d-registers stay zero. */
     while (i + 8 <= n) {
         const uint8_t b = bits[i >> 3];
         uint8x8x4_t tb;
@@ -1831,9 +1820,9 @@ static void zxc_pivco_unpack_flat(uint8_t* RESTRICT out, const size_t n, const i
         }
     } else if (D == 3) {
         /* 8 codes/step. 3-bit codes straddle bytes, so build a 16-bit window
-         * {byte_j, byte_j+1} per lane (byte_j = 3i>>3) via two VTBLs, then
-         * extract bits [s,s+3) by multiply-by-2^(13-s) + >>13 (no per-lane u16
-         * variable shift on ARMv7); s_j = 3j&7. 8 codes fit in 3 source bytes. */
+         * {byte_j, byte_j+1} per lane via two VTBLs, then extract bits [s,s+3)
+         * by multiply-by-2^(13-s) then >>13 - ARMv7 has no per-lane u16 variable
+         * shift. 8 codes fit in 3 source bytes. */
         const uint8x8_t vc2s = vld1_u8(c2s); /* 8 entries (2^3) */
         static const uint8_t idxlo[8] = {0, 1, 0, 1, 0, 1, 1, 2};
         static const uint8_t idxhi[8] = {1, 2, 1, 2, 2, 3, 2, 3};
@@ -1933,10 +1922,9 @@ static void zxc_pivco_unpack_flat(uint8_t* RESTRICT out, const size_t n, const i
             i += 16;
         }
     } else if (D == 2) {
-        /* 16 codes from 4 bytes. SSE lacks per-lane byte shifts, so shift via a
-         * per-lane multiply: (b << (6 - 2j)) >> 6 keeps bits [2j+1:2j]. Bytes
-         * are spread to u16 lanes, multiplied by {64,16,4,1}, shifted, then the
-         * two halves are packed back to 16 code bytes. */
+        /* 16 codes from 4 bytes. SSE has no per-lane byte shift, so shift by
+         * multiply: (b << (6 - 2j)) >> 6 keeps bits [2j+1:2j]. Bytes spread to
+         * u16 lanes, times {64,16,4,1}, shifted, then packed back. */
         uint8_t c2s16[16];
         for (int k = 0; k < 16; k++) c2s16[k] = c2s[k & 3];
         const __m128i vc2s = _mm_loadu_si128((const __m128i*)(const void*)c2s16);
@@ -2159,10 +2147,9 @@ static int zxc_pivco_decode_core(const uint8_t* RESTRICT payload, const size_t p
         const size_t nbytes = zxc_pivco_run_bytes(c, 0); /* merge node: c partition bits */
         if (UNLIKELY((size_t)(pend - p) < nbytes)) return ZXC_ERROR_CORRUPT_DATA;
         bit_ptr[nid] = p;
-        /* popcount of the c valid bits = right child's count. Count all but the
-         * last byte fast, then the last byte with its padding masked off: the
-         * 8-byte loop must not swallow the final byte unmasked when nbytes % 8 == 0
-         * (else set padding bits inflate `ones` past the true child count). */
+        /* popcount of the c valid bits = the right child's count. All but the
+         * last byte counted fast, the last one with its padding masked - if the
+         * 8-byte loop swallowed it unmasked, padding bits would inflate `ones`. */
         uint32_t ones = 0;
         if (nbytes) {
             const size_t full = nbytes - 1;

@@ -16,10 +16,9 @@
 
 /*
  * Function Multi-Versioning Support
- * If ZXC_FUNCTION_SUFFIX is defined (e.g. _avx2, _neon32), rename the public
- * entry point AND the Huffman decoder consumed by this TU. The defines sit
- * before zxc_internal.h so that the prototypes the header declares are also
- * rewritten with the suffix, keeping callers and callees consistent.
+ * With ZXC_FUNCTION_SUFFIX defined (e.g. _avx2), rename the entry point AND the
+ * Huffman decoder this TU consumes. The defines precede zxc_internal.h so the
+ * header's prototypes get the suffix too, keeping callers and callees matched.
  */
 #ifdef ZXC_FUNCTION_SUFFIX
 #define ZXC_CAT_IMPL(x, y) x##y
@@ -54,7 +53,6 @@
  */
 static ZXC_ALWAYS_INLINE uint32_t zxc_read_varint(const uint8_t** ptr, const uint8_t* end) {
     const uint8_t* p = *ptr;
-    // Bounds check: need at least 1 byte
     if (UNLIKELY(p >= end)) return 0;
 
     const uint32_t b0 = p[0];
@@ -75,10 +73,9 @@ static ZXC_ALWAYS_INLINE uint32_t zxc_read_varint(const uint8_t** ptr, const uin
         return (b0 & 0x3F) | ((uint32_t)p[1] << 6);
     }
 
-    // 3 Bytes: 110xxxxx xxxxxxxx xxxxxxxx (21 bits) -> val < 2097152 (2^21).
-    // This is the largest length a legitimate varint can take: block_size_max
-    // is 2^21 and varint values represent (ll - MASK) or (ml - MASK), which is
-    // always strictly less than block_size_max.
+    // 3 Bytes: 110xxxxx xxxxxxxx xxxxxxxx (21 bits) -> val < 2^21. The longest
+    // a legitimate varint can be: values are (ll - MASK) or (ml - MASK), always
+    // strictly below block_size_max = 2^21.
     if (LIKELY(b0 < 0xE0)) {
         if (UNLIKELY(p + 2 >= end)) {
             *ptr = end;
@@ -276,7 +273,7 @@ static ZXC_ALWAYS_INLINE void zxc_decode_fill_run(uint8_t* dst, const uint8_t by
 /* ==========================================================================
  * Shared decode macros for the GLO and GHI decoders (fast + safe variants).
  * Defined at file scope to avoid four identical copies inside each function.
- * They reference the local names l_ptr, d_ptr, written that every call site
+ * They reference the local names l_ptr, d_ptr, d_floor that every call site
  * has in scope. #undef-ed at the end of the last consumer.
  * ========================================================================== */
 
@@ -403,20 +400,19 @@ static ZXC_NOINLINE void zxc_decode_copy_match_exact(uint8_t* d_ptr, const uint8
     }
 }
 
-// SAFE version: validates offset against written bytes
-#define DECODE_SEQ_SAFE(ll, ml, off)                              \
-    do {                                                          \
-        zxc_decode_copy_literals(d_ptr, l_ptr, ll);               \
-        l_ptr += ll;                                              \
-        d_ptr += ll;                                              \
-        written += ll;                                            \
-        if (UNLIKELY(off > written)) return ZXC_ERROR_BAD_OFFSET; \
-        zxc_decode_copy_match(d_ptr, off, ml);                    \
-        d_ptr += ml;                                              \
-        written += ml;                                            \
+// SAFE version: rejects a match reaching below d_floor.
+#define DECODE_SEQ_SAFE(ll, ml, off)                                                  \
+    do {                                                                              \
+        zxc_decode_copy_literals(d_ptr, l_ptr, ll);                                   \
+        l_ptr += ll;                                                                  \
+        d_ptr += ll;                                                                  \
+        if (UNLIKELY((size_t)(d_ptr - d_floor) < (off))) return ZXC_ERROR_BAD_OFFSET; \
+        zxc_decode_copy_match(d_ptr, off, ml);                                        \
+        d_ptr += ml;                                                                  \
     } while (0)
 
-// FAST version: no offset validation (for use after written >= 256 or 65536)
+// FAST version: no offset check. Only reached past d_bounds, where no encodable
+// offset can reach below d_floor, so the check above would always pass.
 #define DECODE_SEQ_FAST(ll, ml, off)                \
     do {                                            \
         zxc_decode_copy_literals(d_ptr, l_ptr, ll); \
@@ -425,6 +421,19 @@ static ZXC_NOINLINE void zxc_decode_copy_match_exact(uint8_t* d_ptr, const uint8
         zxc_decode_copy_match(d_ptr, off, ml);      \
         d_ptr += ml;                                \
     } while (0)
+
+/**
+ * @brief True when the GLO offset stream stores 1-byte offsets, 2-byte otherwise.
+ *
+ * The single definition of the offset width: the stream-size check, the
+ * validation span and every read site expand from this, so a bound can never
+ * drift from the width actually consumed. A macro rather than a local flag on
+ * purpose -- holding one more value live across the decode costs more spills in
+ * these register-starved loops than re-reading the header field.
+ *
+ * References the call site's `gh`, like the DECODE_* macros below.
+ */
+#define GLO_OFF8 (gh.enc_off == 1)
 
 /**
  * @brief Decodes one GLO sequence of a 4x batch: extracts ll/ml, applies the
@@ -440,26 +449,28 @@ static ZXC_NOINLINE void zxc_decode_copy_match_exact(uint8_t* d_ptr, const uint8
  * `return ZXC_ERROR_OVERFLOW` otherwise.
  *
  */
-#define DECODE_GLO_SEQ(LL, ML, OFF, RESERVE, N_REM, DECODE, ON_FAIL)                   \
-    do {                                                                               \
-        uint64_t ll = (LL);                                                            \
-        uint64_t ml = (ML);                                                            \
-        if (UNLIKELY(ll == ZXC_TOKEN_LL_MASK)) {                                       \
-            ll += zxc_read_varint(&e_ptr, e_end);                                      \
-            const uint64_t reserve = (RESERVE);                                        \
-            if (UNLIKELY(ll + reserve > (size_t)(l_end - l_ptr) ||                     \
-                         ll + ZXC_PAD_SIZE > (size_t)(d_end - d_ptr)))                 \
-                ON_FAIL;                                                               \
-        }                                                                              \
-        if (UNLIKELY(ml == ZXC_TOKEN_ML_MASK)) {                                       \
-            ml += zxc_read_varint(&e_ptr, e_end);                                      \
-            if (UNLIKELY(ll + ml + ZXC_LZ_MIN_MATCH_LEN +                              \
-                             (N_REM) * ZXC_GLO_MAX_INLINE_OUT_PER_SEQ + ZXC_PAD_SIZE > \
-                         (size_t)(d_end - d_ptr)))                                     \
-                ON_FAIL;                                                               \
-        }                                                                              \
-        ml += ZXC_LZ_MIN_MATCH_LEN;                                                    \
-        DECODE(ll, ml, OFF);                                                           \
+#define DECODE_GLO_SEQ(LL, ML, OFF, RESERVE, N_REM, DECODE, ON_FAIL)                       \
+    do {                                                                                   \
+        uint64_t ll = (LL);                                                                \
+        uint64_t ml = (ML);                                                                \
+        if (UNLIKELY(ll == ZXC_TOKEN_LL_MASK)) {                                           \
+            ll += zxc_read_varint(&e_ptr, e_end);                                          \
+            const uint64_t reserve = (RESERVE);                                            \
+            if (UNLIKELY(ll + reserve > (size_t)(l_end - l_ptr) ||                         \
+                         ll + ml + ZXC_LZ_MIN_MATCH_LEN +                                  \
+                                 (N_REM) * ZXC_GLO_MAX_INLINE_OUT_PER_SEQ + ZXC_PAD_SIZE > \
+                             (size_t)(d_end - d_ptr)))                                     \
+                ON_FAIL;                                                                   \
+        }                                                                                  \
+        if (UNLIKELY(ml == ZXC_TOKEN_ML_MASK)) {                                           \
+            ml += zxc_read_varint(&e_ptr, e_end);                                          \
+            if (UNLIKELY(ll + ml + ZXC_LZ_MIN_MATCH_LEN +                                  \
+                             (N_REM) * ZXC_GLO_MAX_INLINE_OUT_PER_SEQ + ZXC_PAD_SIZE >     \
+                         (size_t)(d_end - d_ptr)))                                         \
+                ON_FAIL;                                                                   \
+        }                                                                                  \
+        ml += ZXC_LZ_MIN_MATCH_LEN;                                                        \
+        DECODE(ll, ml, OFF);                                                               \
     } while (0)
 
 /**
@@ -472,7 +483,7 @@ static ZXC_NOINLINE void zxc_decode_copy_match_exact(uint8_t* d_ptr, const uint8
         t_ptr += sizeof(uint32_t);                                                                \
         uint32_t off1 = ZXC_LZ_OFFSET_BIAS, off2 = ZXC_LZ_OFFSET_BIAS, off3 = ZXC_LZ_OFFSET_BIAS, \
                  off4 = ZXC_LZ_OFFSET_BIAS;                                                       \
-        if (gh.enc_off == 1) {                                                                    \
+        if (GLO_OFF8) {                                                                           \
             uint32_t offsets = zxc_le32(o_ptr);                                                   \
             o_ptr += sizeof(uint32_t);                                                            \
             off1 += offsets & 0xFF;                                                               \
@@ -506,15 +517,16 @@ static ZXC_NOINLINE void zxc_decode_copy_match_exact(uint8_t* d_ptr, const uint8
 #define DECODE_GHI_SEQ(S, RESERVE, N_REM, DECODE, ON_FAIL)                                   \
     do {                                                                                     \
         uint64_t ll = (S) >> 24;                                                             \
+        const uint32_t mb = ((S) >> 16) & 0xFF;                                              \
+        uint64_t ml = mb + ZXC_LZ_MIN_MATCH_LEN;                                             \
         if (UNLIKELY(ll == ZXC_SEQ_LL_MASK)) {                                               \
             ll += zxc_read_varint(&extras_ptr, extras_end);                                  \
             const uint64_t reserve = (RESERVE);                                              \
             if (UNLIKELY(ll + reserve > (size_t)(l_end - l_ptr) ||                           \
-                         ll + ZXC_PAD_SIZE > (size_t)(d_end - d_ptr)))                       \
+                         ll + ml + (N_REM) * ZXC_GHI_MAX_INLINE_OUT_PER_SEQ + ZXC_PAD_SIZE > \
+                             (size_t)(d_end - d_ptr)))                                       \
                 ON_FAIL;                                                                     \
         }                                                                                    \
-        const uint32_t mb = ((S) >> 16) & 0xFF;                                              \
-        uint64_t ml = mb + ZXC_LZ_MIN_MATCH_LEN;                                             \
         if (UNLIKELY(mb == ZXC_SEQ_ML_MASK)) {                                               \
             ml += zxc_read_varint(&extras_ptr, extras_end);                                  \
             if (UNLIKELY(ll + ml + (N_REM) * ZXC_GHI_MAX_INLINE_OUT_PER_SEQ + ZXC_PAD_SIZE > \
@@ -545,10 +557,6 @@ static ZXC_NOINLINE void zxc_decode_copy_match_exact(uint8_t* d_ptr, const uint8
         n_seq -= 4;                                                                    \
     } while (0)
 
-/* The section decoders below are outlined COLD on purpose: they run once per
- * section (a call is noise), and keeping them out of the hot sequence-decode
- * loop protects its i-cache footprint - inlining them was measured at
- * ~3-5% slower on levels 3-5, which never take these branches. */
 /**
  * @brief Ensures the entropy decode scratch (tok_buffer + pivco_scratch) is
  *        available before decoding an entropy section.
@@ -684,8 +692,7 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
                                                        const int has_dict, const int tok_entropy) {
     zxc_gnr_header_t gh;
 
-    /* Constant 0 when !has_dict, so `written` starts at 0 and `dst - dict_size`
-     * folds to `dst` -- pre-dict codegen on the hot path. */
+    /* Constant 0 when !has_dict, so `d_floor` folds to `dst`. */
     const size_t dict_size = has_dict ? ctx->dict_size : 0;
     zxc_section_desc_t desc[ZXC_GLO_SECTIONS];
 
@@ -693,10 +700,9 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
         return ZXC_ERROR_BAD_HEADER;
 
     /* Entropy-coded tokens (level 7): tail-call the dedicated instantiation
-     * BEFORE any section work (it restarts from the header, so only the
-     * header parse above is duplicated). Constant flags per instantiation:
-     * exactly one call survives; the RAW-token fast path below keeps t_ptr on
-     * a single provenance (a joined pointer cost ~4% at levels 3-5). */
+     * before any section work - it restarts from the header, so only the parse
+     * above is duplicated. Flags are constant per instantiation, so exactly one
+     * call survives and t_ptr keeps a single provenance below. */
     if (!tok_entropy && UNLIKELY(gh.enc_litlen == ZXC_SECTION_ENCODING_HUFFMAN)) {
         if (safe) return zxc_decode_block_glo_entropy_safe(ctx, src, src_size, dst, dst_capacity);
         if (has_dict)
@@ -823,7 +829,7 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
 
     // Validate stream sizes match sequence count (early rejection of malformed data)
     const uint64_t expected_off_size =
-        (gh.enc_off == 1) ? (uint64_t)gh.n_sequences : (uint64_t)gh.n_sequences * 2;
+        GLO_OFF8 ? (uint64_t)gh.n_sequences : (uint64_t)gh.n_sequences * 2;
 
     /* Offsets/extras follow the on-disk token SECTION; sz_tokens is its size
      * (== n_sequences when RAW, the Huffman payload size when enc_litlen set). */
@@ -855,15 +861,15 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
 
     uint8_t* d_ptr = dst;
     const uint8_t* const d_end = dst + dst_capacity;
+    // Lowest address a match may reach: the dictionary prefix if any, else dst.
+    const uint8_t* const d_floor = dst - dict_size;
     // Destination safe margin for 4x loop: max output without varint extension.
     // ll_max = 14, ml_max = 14 + 5 = 19, per-seq = 33, 4x = 132.
     // Add ZXC_PAD_SIZE (32) for the wild zxc_copy32 overshoot + 4 safety = 168.
     const uint8_t* const d_end_safe = d_end - (132 + ZXC_PAD_SIZE + 4);
 
-    // Literal stream safe threshold for 4x-unrolled loops.
-    // Without varint extension, max ll per sequence = ZXC_TOKEN_LL_MASK - 1 = 14.
-    // For 4 sequences: 4 * 14 = 56. With this margin, l_ptr checks are only needed
-    // on the cold varint path, keeping the hot path free of l_ptr overhead.
+    // Literal margin for the 4x loops: without a varint, ll <= 14 per sequence,
+    // so 4 * 14 = 56. Past that margin only the cold varint path checks l_ptr.
     const size_t glo_sz_lit = (size_t)(l_end - l_ptr);
     const size_t glo_margin_4x = 4 * (ZXC_TOKEN_LL_MASK - 1);  // 56
     const size_t glo_margin_1x = ZXC_TOKEN_LL_MASK - 1;        // 14
@@ -874,29 +880,23 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
 
     uint32_t n_seq = gh.n_sequences;
 
-    // Track bytes written for offset validation
-    // For 1-byte offsets (enc_off==1): validate until 256 bytes written (max 8-bit offset)
-    // For 2-byte offsets (enc_off==0): validate until 65536 bytes written (max 16-bit offset)
-    // After threshold, all offsets are guaranteed valid (can't exceed written bytes)
-    // When a dictionary is active, dict_size bytes are logically "already written"
-    // (prepended by the caller), so the SAFE loop may be skipped entirely.
-    size_t written = dict_size;
+    // Offsets only need checking until the output is wider than the widest offset
+    // the format can encode (256 for 1-byte offsets, 65536 for 2-byte); past that
+    // none can reach below d_floor. A dictionary counts as already written, so a
+    // large one puts d_bounds at dst and skips the SAFE loop.
+    const size_t off_span = GLO_OFF8 ? (1U << 8) : (1U << 16);
+    const size_t span = (dict_size >= off_span) ? 0 : off_span - dict_size;
+    const uint8_t* const d_bounds = (span >= dst_capacity) ? d_end : dst + span;
 
-    // --- SAFE Loop: offset validation until threshold (4x unroll) ---
-    // For 1-byte offsets: bounds check until 256 bytes written
-    // For 2-byte offsets: bounds check until 65536 bytes written
-    const size_t bounds_threshold = (gh.enc_off == 1) ? (1U << 8) : (1U << 16);
-
+    // --- SAFE Loop: offset validation until d_bounds (4x unroll) ---
     if (safe) {
         /* SAFE variant: save per-batch state so overflow can rollback. */
-        while (n_seq >= 4 && d_ptr < d_end_safe && l_ptr < l_end_safe_4x &&
-               written < bounds_threshold) {
+        while (n_seq >= 4 && d_ptr < d_end_safe && l_ptr < l_end_safe_4x && d_ptr < d_bounds) {
             const uint8_t* const t_save = t_ptr;
             const uint8_t* const o_save = o_ptr;
             const uint8_t* const e_save = e_ptr;
             uint8_t* const d_save = d_ptr;
             const uint8_t* const l_save = l_ptr;
-            const size_t w_save = written;
             DECODE_GLO_BATCH_4X(DECODE_SEQ_SAFE, goto rollback_safe_4x);
             continue;
 
@@ -906,12 +906,10 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
             e_ptr = e_save;
             d_ptr = d_save;
             l_ptr = l_save;
-            written = w_save;
             break;
         }
     } else {
-        while (n_seq >= 4 && d_ptr < d_end_safe && l_ptr < l_end_safe_4x &&
-               written < bounds_threshold) {
+        while (n_seq >= 4 && d_ptr < d_end_safe && l_ptr < l_end_safe_4x && d_ptr < d_bounds) {
             DECODE_GLO_BATCH_4X(DECODE_SEQ_SAFE, return ZXC_ERROR_OVERFLOW);
         }
     }
@@ -955,7 +953,7 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
         uint64_t ll = token >> ZXC_TOKEN_LIT_BITS;
         uint64_t ml = token & ZXC_TOKEN_ML_MASK;
         uint32_t offset = ZXC_LZ_OFFSET_BIAS;
-        if (gh.enc_off == 1) {
+        if (GLO_OFF8) {
             offset += *o_ptr++;  // 1-byte offset (biased)
         } else {
             offset += zxc_le16(o_ptr);  // 2-byte offset (biased)
@@ -976,7 +974,6 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
 
         // Check bounds before wild copies - if too close to end, fall back to Safe Path
         if (UNLIKELY(ll + ml + ZXC_PAD_SIZE > (size_t)(d_end - d_ptr))) {
-            // Restore pointers and let Safe Path handle this sequence
             t_ptr = t_save;
             o_ptr = o_save;
             e_ptr = e_save;
@@ -986,19 +983,14 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
         zxc_decode_copy_literals(d_ptr, l_ptr, ll);
         l_ptr += ll;
         d_ptr += ll;
-        written += ll;
 
-        {
-            // Skip check if written >= bounds_threshold (256 for 8-bit, 65536 for 16-bit)
-            if (UNLIKELY(written < bounds_threshold && offset > written))
-                return ZXC_ERROR_BAD_OFFSET;
+        if (UNLIKELY(d_ptr < d_bounds && (size_t)(d_ptr - d_floor) < offset))
+            return ZXC_ERROR_BAD_OFFSET;
 
-            /* The loop entry check guarantees ll + ml + ZXC_PAD_SIZE bytes of
-             * headroom, so the wild-copy ladder (incl. overlap/fill runs) is safe. */
-            zxc_decode_copy_match(d_ptr, offset, ml);
-            d_ptr += ml;
-            written += ml;
-        }
+        /* The loop entry check guarantees ll + ml + ZXC_PAD_SIZE bytes of
+         * headroom, so the wild-copy ladder (incl. overlap/fill runs) is safe. */
+        zxc_decode_copy_match(d_ptr, offset, ml);
+        d_ptr += ml;
         n_seq--;
     }
 
@@ -1008,7 +1000,7 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
         uint64_t ll = token >> ZXC_TOKEN_LIT_BITS;
         uint64_t ml = token & ZXC_TOKEN_ML_MASK;
         uint32_t offset = ZXC_LZ_OFFSET_BIAS;
-        if (gh.enc_off == 1) {
+        if (GLO_OFF8) {
             offset += *o_ptr++;  // 1-byte offset (biased)
         } else {
             offset += zxc_le16(o_ptr);  // 2-byte offset (biased)
@@ -1025,8 +1017,8 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
         l_ptr += ll;
         d_ptr += ll;
 
+        if (UNLIKELY((size_t)(d_ptr - d_floor) < offset)) return ZXC_ERROR_BAD_OFFSET;
         const uint8_t* match_src = d_ptr - offset;
-        if (UNLIKELY(match_src < dst - dict_size)) return ZXC_ERROR_BAD_OFFSET;
 
         zxc_decode_copy_match_exact(d_ptr, match_src, offset, ml);
         d_ptr += ml;
@@ -1036,6 +1028,8 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
     // --- Trailing Literals ---
     // Copy remaining literals from source stream (literal exhaustion)
     if (UNLIKELY(l_ptr > l_end)) return ZXC_ERROR_CORRUPT_DATA;
+    if (UNLIKELY(d_ptr > d_end)) return ZXC_ERROR_OVERFLOW;
+
     const size_t remaining_literals = (size_t)(l_end - l_ptr);
     if (UNLIKELY(remaining_literals > (size_t)(d_end - d_ptr))) return ZXC_ERROR_OVERFLOW;
     ZXC_MEMCPY(d_ptr, l_ptr, remaining_literals);
@@ -1071,7 +1065,7 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_ghi_impl(const zxc_cctx_t* RESTRIC
                                                        const int has_dict) {
     zxc_gnr_header_t gh;
 
-    /* 0 when !has_dict (safe path) -> folds `written`/`dst - dict_size`. */
+    /* 0 when !has_dict (safe path) -> folds `d_floor` to `dst`. */
     const size_t dict_size = has_dict ? ctx->dict_size : 0;
     zxc_section_desc_t desc[ZXC_GHI_SECTIONS];
 
@@ -1106,15 +1100,15 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_ghi_impl(const zxc_cctx_t* RESTRIC
 
     uint8_t* d_ptr = dst;
     const uint8_t* const d_end = dst + dst_capacity;
+    // Lowest address a match may reach: the dictionary prefix if any, else dst.
+    const uint8_t* const d_floor = dst - dict_size;
     const uint8_t* const d_end_safe = d_end - (ZXC_PAD_SIZE * 4);  // 128
     // Safety margin for 4x unrolled loop: 4 * (ZXC_SEQ_LL_MASK LL +
     // ZXC_SEQ_ML_MASK+ZXC_LZ_MIN_MATCH_LEN ML) + ZXC_PAD_SIZE Pad = 4 x (255 + 255 + 5) + 32 = 2092
     const uint8_t* const d_end_fast = d_end - ZXC_DECOMPRESS_TAIL_PAD;  // 2112
 
-    // Literal stream safe thresholds for GHI loops.
-    // Without varint extension, max ll per sequence = ZXC_SEQ_LL_MASK - 1 = 254.
-    // For 4 sequences: 4 * 254 = 1016. With this margin, l_ptr checks are only needed
-    // on the cold varint path, keeping the hot path free of l_ptr overhead.
+    // Literal margin for the GHI loops: without a varint, ll <= 254 per sequence,
+    // so 4 * 254 = 1016. Past that only the cold varint path checks l_ptr.
     const size_t ghi_margin_4x = 4 * (ZXC_SEQ_LL_MASK - 1);  // 1016
     const size_t ghi_margin_1x = ZXC_SEQ_LL_MASK - 1;        // 254
     const uint8_t* const l_end_safe_4x = (sz_lit > ghi_margin_4x) ? l_end - ghi_margin_4x : l_ptr;
@@ -1122,31 +1116,22 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_ghi_impl(const zxc_cctx_t* RESTRIC
 
     uint32_t n_seq = gh.n_sequences;
 
-    // Track bytes written for offset validation
-    // For 1-byte offsets (enc_off==1): validate until 256 bytes written (max 8-bit offset)
-    // For 2-byte offsets (enc_off==0): validate until 65536 bytes written (max 16-bit offset)
-    // After threshold, all offsets are guaranteed valid (can't exceed written bytes)
-    // When a dictionary is active, dict_size bytes are logically "already written"
-    // (prepended by the caller), so the SAFE loop may be skipped entirely.
-    size_t written = dict_size;
+    // Same handover as GLO, but the GHI offset is inline in the sequence word and
+    // always 16 bits -- enc_off is not a width here, so the span is fixed.
+    const size_t off_span = 1U << 16;
+    const size_t span = (dict_size >= off_span) ? 0 : off_span - dict_size;
+    const uint8_t* const d_bounds = (span >= dst_capacity) ? d_end : dst + span;
 
-    // --- SAFE Loop: offset validation until threshold (4x unroll) ---
-    // Since offset is 16-bit, threshold is 65536.
-    // For 1-byte offsets (enc_off==1): validate until 256 bytes written
-    // For 2-byte offsets (enc_off==0): validate until 65536 bytes written
-    const size_t bounds_threshold = (gh.enc_off == 1) ? (1U << 8) : (1U << 16);
-
+    // --- SAFE loop: validate offsets until d_bounds (4x unroll) ---
     if (safe) {
         /* SAFE variant: save per-batch state so an OVERFLOW can rollback and
          * hand over to the 1x loop / Safe Path. Wild writes already committed
          * are deterministically overwritten when the 1x loop replays. */
-        while (n_seq >= 4 && d_ptr < d_end_fast && l_ptr < l_end_safe_4x &&
-               written < bounds_threshold) {
+        while (n_seq >= 4 && d_ptr < d_end_fast && l_ptr < l_end_safe_4x && d_ptr < d_bounds) {
             const uint8_t* const t_save = seq_ptr;
             const uint8_t* const e_save = extras_ptr;
             uint8_t* const d_save = d_ptr;
             const uint8_t* const l_save = l_ptr;
-            const size_t w_save = written;
             DECODE_GHI_BATCH_4X(DECODE_SEQ_SAFE, goto rollback_safe_4x, (void)0);
             continue;
 
@@ -1155,18 +1140,16 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_ghi_impl(const zxc_cctx_t* RESTRIC
             extras_ptr = e_save;
             d_ptr = d_save;
             l_ptr = l_save;
-            written = w_save;
             break;
         }
     } else {
-        while (n_seq >= 4 && d_ptr < d_end_fast && l_ptr < l_end_safe_4x &&
-               written < bounds_threshold) {
+        while (n_seq >= 4 && d_ptr < d_end_fast && l_ptr < l_end_safe_4x && d_ptr < d_bounds) {
             DECODE_GHI_BATCH_4X(DECODE_SEQ_SAFE, return ZXC_ERROR_OVERFLOW, (void)0);
         }
     }
 
     // --- SAFE Loop tail: remaining sequences with offset validation (1x) ---
-    while (n_seq > 0 && d_ptr < d_end_safe && written < bounds_threshold) {
+    while (n_seq > 0 && d_ptr < d_end_safe && d_ptr < d_bounds) {
         uint32_t seq = zxc_le32(seq_ptr);
         seq_ptr += sizeof(uint32_t);
 
@@ -1188,16 +1171,14 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_ghi_impl(const zxc_cctx_t* RESTRIC
             ZXC_MEMCPY(d_ptr, l_ptr, ll);
             l_ptr += ll;
             d_ptr += ll;
-            written += ll;
 
-            if (UNLIKELY(offset > written || d_ptr + ml > d_end)) return ZXC_ERROR_BAD_OFFSET;
+            if (UNLIKELY(d_ptr + ml > d_end)) return ZXC_ERROR_OVERFLOW;
+            if (UNLIKELY((size_t)(d_ptr - d_floor) < offset)) return ZXC_ERROR_BAD_OFFSET;
             const uint8_t* match_src = d_ptr - offset;
 
             zxc_decode_copy_match_exact(d_ptr, match_src, offset, ml);
             d_ptr += ml;
-            written += ml;
         } else {
-            // Safe to process with wild copies
             DECODE_SEQ_SAFE(ll, ml, offset);
         }
         n_seq--;
@@ -1254,7 +1235,6 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_ghi_impl(const zxc_cctx_t* RESTRIC
         // Strict bounds checks (including wild copy overrun safety)
         if (UNLIKELY(ll + ml + ZXC_PAD_SIZE > (size_t)(d_end - d_ptr) ||
                      ll + ZXC_PAD_SIZE > (size_t)(l_end - l_ptr))) {
-            // Restore state and break to Safe Path
             seq_ptr = seq_save;
             extras_ptr = ext_save;
             break;
@@ -1264,19 +1244,14 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_ghi_impl(const zxc_cctx_t* RESTRIC
         zxc_decode_copy_literals(d_ptr, l_ptr, ll);
         l_ptr += ll;
         d_ptr += ll;
-        written += ll;
 
-        {
-            // Skip check if written >= bounds_threshold (256 for 8-bit, 65536 for 16-bit)
-            if (UNLIKELY(written < bounds_threshold && offset > written))
-                return ZXC_ERROR_BAD_OFFSET;
+        if (UNLIKELY(d_ptr < d_bounds && (size_t)(d_ptr - d_floor) < offset))
+            return ZXC_ERROR_BAD_OFFSET;
 
-            /* The loop entry check guarantees ll + ml + ZXC_PAD_SIZE bytes of
-             * headroom, so the wild-copy ladder (incl. overlap/fill runs) is safe. */
-            zxc_decode_copy_match(d_ptr, offset, ml);
-            d_ptr += ml;
-            written += ml;
-        }
+        /* The loop entry check guarantees ll + ml + ZXC_PAD_SIZE bytes of
+         * headroom, so the wild-copy ladder (incl. overlap/fill runs) is safe. */
+        zxc_decode_copy_match(d_ptr, offset, ml);
+        d_ptr += ml;
         n_seq--;
     }
 
@@ -1299,8 +1274,8 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_ghi_impl(const zxc_cctx_t* RESTRIC
         l_ptr += ll;
         d_ptr += ll;
 
+        if (UNLIKELY((size_t)(d_ptr - d_floor) < offset)) return ZXC_ERROR_BAD_OFFSET;
         const uint8_t* match_src = d_ptr - offset;
-        if (UNLIKELY(match_src < dst - dict_size)) return ZXC_ERROR_BAD_OFFSET;
 
         zxc_decode_copy_match_exact(d_ptr, match_src, offset, ml);
         d_ptr += ml;
@@ -1310,6 +1285,8 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_ghi_impl(const zxc_cctx_t* RESTRIC
     // --- Trailing Literals ---
     // Copy remaining literals from source stream (literal exhaustion)
     if (UNLIKELY(l_ptr > l_end)) return ZXC_ERROR_CORRUPT_DATA;
+    if (UNLIKELY(d_ptr > d_end)) return ZXC_ERROR_OVERFLOW;
+
     const size_t remaining_literals = (size_t)(l_end - l_ptr);
     if (UNLIKELY(remaining_literals > (size_t)(d_end - d_ptr))) return ZXC_ERROR_OVERFLOW;
     ZXC_MEMCPY(d_ptr, l_ptr, remaining_literals);
@@ -1471,6 +1448,7 @@ static ZXC_NOINLINE int zxc_decode_block_ghi_safe(const zxc_cctx_t* RESTRICT ctx
 #undef DECODE_GLO_BATCH_4X
 #undef DECODE_GLO_SEQ
 #undef DECODE_SEQ_FAST
+#undef GLO_OFF8
 #undef DECODE_SEQ_SAFE
 
 /**

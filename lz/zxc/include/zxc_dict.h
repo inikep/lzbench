@@ -9,15 +9,12 @@
  * @file zxc_dict.h
  * @brief Pre-trained dictionary API for ZXC compression.
  *
- * Provides functions to train, save, load, and identify dictionaries that
- * improve compression ratio on small, similar payloads. Dictionaries are
- * stored as external `.zxd` files and referenced by a 32-bit ID in the
- * ZXC file header.
- *
- * A dictionary contains raw byte content that prefills the LZ77 sliding
- * window at the start of each block, giving the compressor immediate
- * access to representative patterns without waiting for them to appear
- * in the input stream.
+ * Train, save, load and identify dictionaries, which buy back compression
+ * ratio on small, similar payloads. A dictionary is raw byte content that
+ * prefills the LZ77 window at the start of every block, so the compressor
+ * starts out already knowing the patterns instead of waiting for them to
+ * show up in the input. Dictionaries live in `.zxd` files and are referenced
+ * by a 32-bit ID in the ZXC file header.
  *
  * @code
  * // Train a dictionary from a corpus of JSON samples
@@ -58,14 +55,13 @@ extern "C" {
  */
 
 /**
- * @brief Compute the dictionary ID for the given content and optional table.
+ * @brief Computes the dictionary ID for the given content and optional table.
  *
- * The ID is a deterministic 32-bit hash stored in the ZXC file header so the
- * decoder can verify that the correct dictionary is provided at decompression
- * time. With @p huf_lengths NULL it hashes the raw content only (the in-memory
- * content-only dictionary of the buffer API). With a table it binds the
- * (content, table) pair: `hash(table, seed = hash(content))` -- the value
- * stored in `.zxd` files and in archives compressed with a shared table.
+ * A deterministic 32-bit hash, stored in the ZXC file header so the decoder can
+ * check it was handed the right dictionary. With @p huf_lengths NULL it hashes
+ * the content alone (the content-only dictionary of the buffer API); with a
+ * table it binds the pair as `hash(table, seed = hash(content))`, which is what
+ * `.zxd` files and archives compressed with a shared table carry.
  *
  * @param[in] dict        Pointer to dictionary content.
  * @param[in] dict_size   Size in bytes.
@@ -76,13 +72,12 @@ extern "C" {
 ZXC_EXPORT uint32_t zxc_dict_id(const void* dict, size_t dict_size, const void* huf_lengths);
 
 /**
- * @brief Load and validate a `.zxd` dictionary file from a memory buffer.
+ * @brief Loads and validates a `.zxd` dictionary file from a memory buffer.
  *
- * On success, @p content_out and @p huf_out (when non-NULL) point into the
- * input buffer (zero-copy); the caller must keep @p buf alive while they are in
- * use. A single call yields everything needed to (de)compress with the
- * dictionary, pass @p content_out / @p huf_out straight to the @c dict /
- * @c dict_huf option fields.
+ * Zero-copy: on success @p content_out and @p huf_out point into @p buf, which
+ * must stay alive as long as they are in use. One call gives everything needed
+ * to (de)compress with the dictionary, feed @p content_out / @p huf_out
+ * straight to the @c dict / @c dict_huf option fields.
  *
  * @param[in]  buf              Buffer containing the .zxd file.
  * @param[in]  buf_size         Size of @p buf in bytes.
@@ -97,13 +92,11 @@ ZXC_EXPORT int zxc_dict_load(const void* buf, size_t buf_size, const void** cont
                              size_t* content_size_out, const void** huf_out, uint32_t* dict_id_out);
 
 /**
- * @brief Serialize dictionary content and its shared Huffman table to the
- *        `.zxd` file format.
+ * @brief Serializes dictionary content and its shared Huffman table to `.zxd`.
  *
  * The 128-byte packed code-lengths table (from zxc_train_dict_huf()) is
- * mandatory and is appended after the content. The stored dict_id covers both
- * content and table, so archives compressed with this dictionary are bound to
- * the exact pair.
+ * mandatory and follows the content. The stored dict_id covers both, so
+ * archives compressed with this dictionary are bound to the exact pair.
  *
  * @param[in]  content       Raw dictionary content.
  * @param[in]  content_size  Size of @p content in bytes (max ZXC_DICT_SIZE_MAX).
@@ -116,7 +109,7 @@ ZXC_EXPORT int64_t zxc_dict_save(const void* content, size_t content_size, const
                                  void* buf, size_t buf_capacity);
 
 /**
- * @brief Returns the maximum .zxd file size for a given content size.
+ * @brief Returns the `.zxd` file size for a given content size.
  *
  * @param[in] content_size Size of the dictionary content.
  * @return Total .zxd file size (header + content).
@@ -126,21 +119,21 @@ ZXC_EXPORT size_t zxc_dict_save_bound(size_t content_size);
 /**
  * @brief Returns the dictionary ID stored in a `.zxd` file buffer.
  *
- * Reads the dict_id field from the .zxd header without validating the full
- * file. Returns 0 if the buffer is too small or the magic word doesn't match.
+ * Reads the header's dict_id field only; the rest of the file is not validated.
  *
  * @param[in] buf       Buffer containing the .zxd file.
  * @param[in] buf_size  Size of @p buf in bytes.
- * @return Dictionary ID, or 0 if the buffer is not a valid .zxd file.
+ * @return Dictionary ID, or 0 if @p buf is too small or the magic word does
+ *         not match.
  */
 ZXC_EXPORT uint32_t zxc_dict_get_id(const void* buf, size_t buf_size);
 
 /**
- * @brief Train a dictionary from a corpus of samples.
+ * @brief Trains a dictionary from a corpus of samples.
  *
- * Analyzes the samples to select byte sequences that maximize LZ77 match
- * coverage. The resulting dictionary content can be passed directly to
- * zxc_compress_opts_t::dict or serialized with zxc_dict_save().
+ * Picks the byte sequences that maximize LZ77 match coverage across the
+ * samples. The content can go straight into zxc_compress_opts_t::dict, or
+ * through zxc_dict_save().
  *
  * @param[in]  samples        Array of pointers to sample buffers.
  * @param[in]  sample_sizes   Array of sample sizes in bytes.
@@ -154,14 +147,14 @@ ZXC_EXPORT int64_t zxc_train_dict(const void* const* samples, const size_t* samp
                                   size_t n_samples, void* dict_buf, size_t dict_capacity);
 
 /**
- * @brief Train the shared literal Huffman table for an already-trained dictionary.
+ * @brief Trains the shared literal Huffman table for an already-trained dictionary.
  *
- * Compresses the samples with @p dict and builds canonical Huffman code
- * lengths from the real post-LZ literal distribution. The resulting 128-byte
- * packed table can be embedded in a `.zxd` file via zxc_dict_save() and
- * passed to the compressor/decompressor via the `dict_huf` option field.
- * Blocks whose literals compress better with the shared table skip their
- * per-block 128-byte table header, which is decisive at small block sizes.
+ * Compresses the samples with @p dict and derives canonical Huffman code
+ * lengths from the real post-LZ literal distribution. Embed the resulting
+ * 128-byte packed table in a `.zxd` via zxc_dict_save(), or pass it through the
+ * `dict_huf` option field. Blocks whose literals compress better with the
+ * shared table drop their own 128-byte table header, which is decisive at
+ * small block sizes.
  *
  * @param[in]  samples         Array of pointers to sample buffers (typically
  *                             the same corpus used for zxc_train_dict()).
@@ -177,16 +170,15 @@ ZXC_EXPORT int zxc_train_dict_huf(const void* const* samples, const size_t* samp
                                   uint8_t* huf_lengths_out);
 
 /**
- * @brief One-call dictionary creation: train content + shared table, serialize
- *        to ready-to-write `.zxd` bytes.
+ * @brief One-call dictionary creation: content + shared table, serialized to
+ *        ready-to-write `.zxd` bytes.
  *
- * Convenience over the train/train-table/save sequence: it runs
- * zxc_train_dict() then zxc_train_dict_huf() (which depends on the trained
- * content) then zxc_dict_save(), writing a complete `.zxd` into @p zxd_buf.
- * Use zxc_dict_save_bound(ZXC_DICT_SIZE_MAX) for a safe @p zxd_capacity, or
- * size to the dictionary you expect. The lower-level primitives remain
- * available for advanced use (raw content-only dictionaries, retraining only
- * the table, or supplying externally-sourced content).
+ * Runs zxc_train_dict(), then zxc_train_dict_huf() on the trained content, then
+ * zxc_dict_save() into @p zxd_buf. Size @p zxd_capacity from the dictionary you
+ * expect, or use zxc_dict_save_bound(ZXC_DICT_SIZE_MAX) for a safe upper bound.
+ * The three primitives stay available for the cases this shortcut does not
+ * cover: content-only dictionaries, retraining just the table, externally
+ * sourced content.
  *
  * @param[in]  samples       Array of pointers to sample buffers.
  * @param[in]  sample_sizes  Array of sample sizes in bytes.
@@ -202,13 +194,12 @@ ZXC_EXPORT int64_t zxc_dict_train(const void* const* samples, const size_t* samp
 /**
  * @brief Returns a pointer to the shared Huffman table inside a `.zxd` buffer.
  *
- * Zero-copy accessor: the returned pointer aims into @p buf and is valid as
- * long as @p buf is. Returns NULL if the buffer is not a valid `.zxd` file or
- * carries no table.
+ * Zero-copy: the returned pointer aims into @p buf and lives as long as it does.
  *
  * @param[in] buf       Buffer containing the .zxd file.
  * @param[in] buf_size  Size of @p buf in bytes.
- * @return Pointer to the 128-byte packed code-lengths table, or NULL.
+ * @return Pointer to the 128-byte packed code-lengths table, or NULL if @p buf
+ *         is not a valid `.zxd` file or carries no table.
  */
 ZXC_EXPORT const void* zxc_dict_huf(const void* buf, size_t buf_size);
 

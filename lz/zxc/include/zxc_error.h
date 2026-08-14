@@ -9,9 +9,9 @@
  * @file zxc_error.h
  * @brief Error codes and error-name lookup for the ZXC library.
  *
- * Every public function that can fail returns a value from @ref zxc_error_t.
- * A return value < 0 indicates an error; use zxc_error_name() to convert
- * any code to a human-readable string.
+ * Every public function that can fail returns a @ref zxc_error_t code, and
+ * anything < 0 is an error. zxc_error_name() turns a code into a readable
+ * string.
  */
 
 #ifndef ZXC_ERROR_H
@@ -32,10 +32,8 @@ extern "C" {
 /**
  * @brief Error codes returned by ZXC library functions.
  *
- * All error codes are negative integers. Functions that return int or int64_t
- * will return these codes on failure. Check with `result < 0` for errors.
- *
- * Use zxc_error_name() to get a human-readable string for any error code.
+ * All negative, returned in place of the int / int64_t result on failure, so
+ * `result < 0` is the check.
  */
 typedef enum {
     ZXC_OK = 0, /**< Success (no error). */
@@ -77,11 +75,11 @@ typedef enum {
 } zxc_error_t;
 
 /**
- * @brief Returns a human-readable name for the given error code.
+ * @brief Returns a readable name for the given error code.
  *
- * @param[in] code An error code from zxc_error_t (or any integer).
- * @return A constant string such as "ZXC_OK" or "ZXC_ERROR_MEMORY".
- *         Returns "ZXC_UNKNOWN_ERROR" for unrecognized codes.
+ * @param[in] code A zxc_error_t code (or any integer).
+ * @return A constant string such as "ZXC_OK" or "ZXC_ERROR_MEMORY", or
+ *         "ZXC_UNKNOWN_ERROR" for an unrecognized code.
  */
 ZXC_EXPORT const char* zxc_error_name(const int code);
 

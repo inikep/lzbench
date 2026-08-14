@@ -7,10 +7,10 @@
 
 /**
  * @file zxc_constants.h
- * @brief Public constants: library version and compression levels.
+ * @brief Public constants: library version, block sizes, compression levels.
  *
- * Include this header to query the library version at compile time or to
- * reference the predefined compression-level constants used throughout the API.
+ * Include it to check the version at compile time, or to name the constants
+ * the rest of the API expects.
  */
 
 #ifndef ZXC_CONSTANTS_H
@@ -27,7 +27,7 @@
 /** @brief Minor version number. */
 #define ZXC_VERSION_MINOR 13
 /** @brief Patch version number. */
-#define ZXC_VERSION_PATCH 2
+#define ZXC_VERSION_PATCH 3
 
 /** @cond INTERNAL */
 #define ZXC_STR_HELPER(x) #x
@@ -35,7 +35,7 @@
 /** @endcond */
 
 /**
- * @brief Human-readable version string in "MAJOR.MINOR.PATCH" form (e.g. "0.13.2").
+ * @brief Human-readable version string in "MAJOR.MINOR.PATCH" form (e.g. "0.13.3").
  */
 #define ZXC_LIB_VERSION_STR    \
     ZXC_STR(ZXC_VERSION_MAJOR) \
@@ -71,16 +71,15 @@
  */
 /** @brief Maximum dictionary content size in bytes (64 KB - 1).
  *
- * Bounded to a 16-bit value (65535) by two constraints that both cap at the
- * same number: the `.zxd` header stores the content size in a 16-bit field, and
- * LZ77 match offsets are 16-bit (max distance 65535). */
+ * 16-bit for two reasons that happen to cap at the same 65535: the `.zxd`
+ * header stores the content size in a 16-bit field, and LZ77 match offsets are
+ * 16-bit (max distance 65535). */
 #define ZXC_DICT_SIZE_MAX ((1U << 16) - 1U)
 /** @brief Size of the .zxd dictionary file header in bytes. */
 #define ZXC_DICT_HEADER_SIZE 16
-/** @brief Size in bytes of a packed literal Huffman code-lengths table
- *         (256 symbols, 4 bits each): the shared table carried by a .zxd
- *         file and, internally, the per-block lengths header. See
- *         zxc_train_dict_huf() / zxc_dict_huf(). */
+/** @brief Size of a packed literal Huffman code-lengths table (256 symbols,
+ *         4 bits each): the shared table in a .zxd file, and internally the
+ *         per-block lengths header. See zxc_train_dict_huf() / zxc_dict_huf(). */
 #define ZXC_HUF_TABLE_SIZE 128
 /** @} */ /* end of dictionary */
 
@@ -89,8 +88,8 @@
  * @brief Bounds on thread-count parameters accepted by the streaming APIs.
  * @{
  */
-/** @brief Maximum value accepted for `n_threads` in `zxc_stream_compress`
- *  / `zxc_stream_decompress`. Higher values are clamped to `ZXC_MAX_THREADS`. */
+/** @brief Maximum `n_threads` for `zxc_stream_compress` /
+ *  `zxc_stream_decompress`. Higher values are clamped to it. */
 #define ZXC_MAX_THREADS 512
 /** @} */ /* end of threading */
 
@@ -110,16 +109,15 @@
  * @defgroup levels Compression Levels
  * @brief Predefined compression levels for the ZXC library.
  *
- * Higher levels trade encoding speed for better compression ratio.
- * All levels produce data that can be decompressed at the same speed.
+ * Higher levels spend more encoding time for a better ratio; decoding stays
+ * fast at every level.
  * @{
  */
 
 /**
- * @brief Enumeration of ZXC compression levels.
+ * @brief ZXC compression levels.
  *
- * Use one of these constants as the @p level parameter of
- * zxc_compress() or zxc_stream_compress().
+ * Pass one as the @p level of zxc_compress() or zxc_stream_compress().
  */
 typedef enum {
     ZXC_LEVEL_FASTEST = 1,  /**< Fastest compression; lowest ratio. Best for real-time use. */

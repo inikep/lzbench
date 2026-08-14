@@ -8,7 +8,7 @@ v2.x.y (work-in-progress)
 - updated aceapex to 1.0.1 (thanks to @yasha1971-coder)
 - updated lzav to 5.16 (thanks to @avaneev)
 - updated nvcomp to support CUDA 13 and cccl 3 (thanks to @fwyzard)
-- updated zxc to 0.13.2 (thanks to @hellobertrand)
+- updated zxc to 0.13.3 (thanks to @hellobertrand)
 
 v2.3 (Jun 15, 2026)
 - improvement: Reorganized compressor alias groups by type — ALL is now a composite of LZ /

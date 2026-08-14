@@ -42,9 +42,8 @@
  * ============================================================================
  * WINDOWS THREADING EMULATION
  * ============================================================================
- * Maps POSIX pthread calls to Windows Native API (CriticalSection,
- * ConditionVariable, Threads). Allows the same threading logic to compile on
- * Linux/macOS and Windows.
+ * Maps POSIX pthread calls to the Windows Native API, so one threading logic
+ * compiles on Linux/macOS and Windows.
  */
 #if defined(_WIN32)
 #include <io.h> /* _get_osfhandle, _fileno (used by zxc_seekable_open_file) */
@@ -578,7 +577,6 @@ static void* zxc_async_writer(void* arg) {
             args->seek_comp[args->seek_count++] = (uint32_t)result_sz;
         }
 
-        // Update progress callback
         if (ctx->progress_cb) {
             // LCOV_EXCL_START
             args->bytes_processed += ctx->compression_mode == 1 ? in_sz : result_sz;
@@ -1104,7 +1102,6 @@ int64_t zxc_stream_get_decompressed_size(FILE* f_in) {
     const long long saved_pos = ftello(f_in);
     if (UNLIKELY(saved_pos < 0)) return ZXC_ERROR_IO;
 
-    // Get file size
     if (fseeko(f_in, 0, SEEK_END) != 0) return ZXC_ERROR_IO;
     const long long file_size = ftello(f_in);
     if (UNLIKELY(file_size < (long long)(ZXC_FILE_HEADER_SIZE + ZXC_FILE_FOOTER_SIZE))) {
@@ -1140,10 +1137,9 @@ int64_t zxc_stream_get_decompressed_size(FILE* f_in) {
  * ============================================================================
  * SEEKABLE FILE* WRAPPER
  * ============================================================================
- * Adapts a FILE* into a thread-safe zxc_reader_t (pread on POSIX, ReadFile +
- * OVERLAPPED on Windows) and delegates to zxc_seekable_open_reader.  Keeping
- * this entry point alongside the stream driver, rather than in the kernel-
- * safe zxc_seekable.c, means zxc_seekable.c stays freestanding.
+ * Adapts a FILE* into a thread-safe zxc_reader_t (pread, or ReadFile +
+ * OVERLAPPED on Windows). It lives here rather than in zxc_seekable.c so that
+ * file stays freestanding.
  */
 
 #if defined(_WIN32)

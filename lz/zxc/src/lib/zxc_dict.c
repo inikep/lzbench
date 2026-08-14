@@ -22,9 +22,9 @@
 /**
  * @brief Computes the dictionary identifier for @p dict (and optional table).
  *
- * Public API; see @c zxc_dict.h. One logical checksum over the content bytes,
- * optionally chained with the packed Huffman lengths so a single id covers
- * both. Stored in the archive header and re-checked on decode.
+ * Public API; see @c zxc_dict.h. One checksum over the content, chained with
+ * the packed Huffman lengths so a single id covers both. Stored in the archive
+ * header and re-checked on decode.
  *
  * @param[in] dict         Dictionary content bytes.
  * @param[in] dict_size    Content length in bytes.
@@ -51,8 +51,7 @@ uint32_t zxc_dict_id(const void* RESTRICT dict, const size_t dict_size,
  *    0x04  1  Version (1)
  *    0x05  1  Flags   (bits 0-3: checksum algo id, 0=RapidHash; bits 4-7 reserved)
  *    0x06  2  Content size (u16 LE)
- *    0x08  4  dict_id (u32 LE; covers content AND the Huffman table --
- *                      see zxc_dict_id)
+ *    0x08  4  dict_id (u32 LE; covers content AND the Huffman table)
  *    0x0C  2  Reserved (0)
  *    0x0E  2  Header CRC16 (zxc_hash16, computed with bytes 0x0C-0x0F zeroed)
  *    0x10  N  Content bytes
@@ -62,8 +61,7 @@ uint32_t zxc_dict_id(const void* RESTRICT dict, const size_t dict_size,
 /**
  * @brief Extracts the stored @c dict_id from a serialized .zxd buffer.
  *
- * Public API; see @c zxc_dict.h. Validates the magic, then reads the id field
- * straight from the header without recomputing it.
+ * Public API; see @c zxc_dict.h. Reads the header field without recomputing it.
  *
  * @param[in] buf       Serialized .zxd bytes.
  * @param[in] buf_size  Size of @p buf in bytes.
@@ -79,8 +77,7 @@ uint32_t zxc_dict_get_id(const void* buf, const size_t buf_size) {
 /**
  * @brief Worst-case .zxd byte size for a dictionary of @p content_size bytes.
  *
- * Public API; see @c zxc_dict.h. Use it to size the buffer passed to
- * @ref zxc_dict_save.
+ * Public API; see @c zxc_dict.h. Sizes the buffer for @ref zxc_dict_save.
  *
  * @param[in] content_size  Dictionary content length in bytes.
  * @return Required buffer size: header + content + Huffman table.
@@ -92,9 +89,8 @@ size_t zxc_dict_save_bound(const size_t content_size) {
 /**
  * @brief Serializes dictionary content + Huffman table into the .zxd format.
  *
- * Public API; full contract in @c zxc_dict.h. Writes the 16-byte header (magic,
- * version, sizes, dict_id, header CRC), then the content bytes, then the packed
- * Huffman lengths. See the on-disk layout note above.
+ * Public API; full contract in @c zxc_dict.h. Header, then content, then packed
+ * Huffman lengths - layout above.
  *
  * @param[in]  content       Dictionary content bytes.
  * @param[in]  content_size  Content length (<= @c ZXC_DICT_SIZE_MAX).
@@ -135,9 +131,8 @@ int64_t zxc_dict_save(const void* RESTRICT content, const size_t content_size,
  * @brief Parses a .zxd buffer, returning in-buffer views of content and table.
  *
  * Public API; full contract in @c zxc_dict.h. Validates magic, version, header
- * CRC and dict_id, then points the out-params at the content and Huffman table
- * inside @p buf (no copy). The returned pointers alias @p buf and stay valid
- * only while it does.
+ * CRC and dict_id, then points the out-params into @p buf - no copy, so they
+ * stay valid only while @p buf does.
  *
  * @param[in]  buf               Serialized .zxd bytes.
  * @param[in]  buf_size          Size of @p buf in bytes.
@@ -189,9 +184,8 @@ int zxc_dict_load(const void* RESTRICT buf, const size_t buf_size,
 /**
  * @brief Returns a pointer to the packed Huffman table inside a .zxd buffer.
  *
- * Public API; see @c zxc_dict.h. Lightweight accessor (checks magic, version
- * and sizes) that locates the table without the full validation of
- * @ref zxc_dict_load. The returned pointer aliases @p buf.
+ * Public API; see @c zxc_dict.h. Locates the table on magic/version/size checks
+ * alone, skipping @ref zxc_dict_load's full validation. Aliases @p buf.
  *
  * @param[in] buf       Serialized .zxd bytes.
  * @param[in] buf_size  Size of @p buf in bytes.
@@ -217,21 +211,19 @@ const void* zxc_dict_huf(const void* buf, const size_t buf_size) {
  *  1. Concatenate all samples into a corpus.
  *  2. For each position in the corpus, hash the k-gram (k = MIN_MATCH_LEN)
  *     and count occurrences in a fixed-size hash map.
- *  3. Walk the corpus, building candidate segments: each starts at a frequent
- *     k-gram and extends while neighbours stay frequent. A segment's score is
- *     the summed frequency of its k-grams (its coverage of the corpus).
- *  4. Greedily fill the dictionary in descending coverage order, BUT account
- *     for overlap: once a pattern is placed, a single copy serves all future
- *     LZ matches, so its k-grams are zeroed in the frequency table. Segments
- *     whose coverage has since collapsed (mostly already in the dict) are
- *     skipped, so capacity goes to NEW patterns instead of redundant copies.
+ *  3. Build candidate segments: each starts at a frequent k-gram and extends
+ *     while neighbours stay frequent. Its score is the summed frequency of its
+ *     k-grams - its coverage of the corpus.
+ *  4. Fill the dictionary greedily in descending coverage, zeroing each pick's
+ *     k-grams: one copy serves all future matches, so segments that collapse
+ *     are skipped and capacity goes to NEW patterns.
  * ------------------------------------------------------------------------- */
 
 /**
  * @brief Hashes the k-gram at @p p into a frequency-table bucket index.
  *
- * Training-internal: a multiplicative hash of the @c ZXC_DICT_KGRAM_LEN-byte
- * k-gram, folded down to @c ZXC_DICT_HASH_BITS.
+ * Multiplicative hash of the @c ZXC_DICT_KGRAM_LEN-byte k-gram, folded down to
+ * @c ZXC_DICT_HASH_BITS.
  *
  * @param[in] p  Pointer to at least @c ZXC_DICT_KGRAM_LEN readable bytes.
  * @return Bucket index in [0, @c ZXC_DICT_HASH_SIZE).
@@ -254,15 +246,12 @@ typedef struct {
 /**
  * @brief Restore the min-heap property at @p root over the range @p a[0..n).
  *
- * Sinks @p a[root] down the binary heap (children at @c 2i+1 / @c 2i+2) until
- * both children are @c >= it, comparing on @ref zxc_dict_seg_t::score. The loop
- * is iterative (no recursion), so the call stack stays O(1) regardless of @p n.
+ * Sinks @p a[root] until both children are @c >= it, comparing on
+ * @ref zxc_dict_seg_t::score. Iterative, so the stack stays O(1).
  *
  * @param[in,out] a    Heap-ordered array; @p a[0..n) is treated as the heap.
  * @param[in]     root Index of the element to sift down. Must be @c < n.
  * @param[in]     n    Number of valid elements in the heap.
- *
- * @note Complexity O(log n).
  */
 static void zxc_dict_sift_down(zxc_dict_seg_t* RESTRICT a, size_t root, const size_t n) {
     for (;;) {
@@ -280,30 +269,16 @@ static void zxc_dict_sift_down(zxc_dict_seg_t* RESTRICT a, size_t root, const si
 /**
  * @brief Sort @p a[0..n) by @ref zxc_dict_seg_t::score in descending order.
  *
- * In-place heapsort: a min-heap is built over the whole array, then each
- * extracted minimum is swapped to the shrinking tail. Because the smallest
- * scores accumulate at the end, the array is left in descending order
- * (largest score at index 0), as required by the dictionary fill step.
- *
- * Replaces a libc @c qsort call for two reasons:
- *  - **Freestanding/kernel-safe**: no dependency on @c qsort and no indirect
- *    comparator call (the @c score comparison is inlined in @ref
- *    zxc_dict_sift_down).
- *  - **Deterministic**: ordering is fixed by this code rather than by the
- *    platform's @c qsort, which matters for reproducible dictionary output
- *    across libc implementations.
+ * In-place heapsort: a min-heap pushes the smallest scores to the tail, so the
+ * array ends up descending, which is what the fill step wants. Not @c qsort:
+ * no libc dependency, no indirect comparator, and the order is fixed here
+ * rather than by the platform - dictionaries stay reproducible.
  *
  * Equal scores keep an unspecified-but-deterministic relative order, matching
  * the previous comparator that returned 0 on ties (heapsort is not stable).
  *
  * @param[in,out] a Array of @p n segments, sorted in place.
  * @param[in]     n Number of segments. @c n < 2 is a no-op.
- *
- * @note Complexity O(n log n) worst case with no extra allocation. In practice
- *       this matches or beats @c qsort on the sizes seen here (up to ~65536
- *       segments): eliminating the per-comparison indirect call outweighs
- *       heapsort's weaker cache locality. This is a cold path (dictionary
- *       training), so absolute speed is not critical.
  */
 static void zxc_dict_sort_segs_desc(zxc_dict_seg_t* RESTRICT a, const size_t n) {
     if (UNLIKELY(n < 2)) return;
@@ -321,11 +296,8 @@ static void zxc_dict_sort_segs_desc(zxc_dict_seg_t* RESTRICT a, const size_t n) 
  * @brief Trains a raw dictionary from sample buffers by k-gram coverage.
  *
  * Public API; full contract in @c zxc_dict.h, algorithm in the note above.
- * Concatenates the samples, counts sampled k-gram frequencies, builds
- * coverage-scored candidate segments, then greedily fills @p dict_buf in
- * descending coverage while zeroing each pick's k-grams (so overlapping
- * patterns aren't copied twice). Picks are emitted in reverse so the
- * highest-coverage bytes land at the dict's end (smallest match offsets).
+ * Picks are emitted in reverse so the highest-coverage bytes land at the dict's
+ * end, where match offsets are smallest.
  *
  * @param[in]  samples        Array of @p n_samples sample buffers.
  * @param[in]  sample_sizes   Array of @p n_samples sample lengths.
@@ -366,10 +338,9 @@ int64_t zxc_train_dict(const void* const* RESTRICT samples, const size_t* RESTRI
     }
     ZXC_MEMSET(freq, 0, ZXC_DICT_HASH_SIZE * sizeof(uint16_t));
 
-    /* Count k-gram frequencies on a representative sample of positions, not all
-     * of them: counting a large corpus in full saturates the 16-bit counters,
-     * so the segment-extension test never stops and segments balloon into
-     * filler. Sampling keeps counts unsaturated and spread across the corpus. */
+    /* Sample positions rather than count them all: a full count saturates the
+     * 16-bit counters, the extension test then never stops and segments balloon
+     * into filler. */
     const size_t kgram_limit = corpus_size - ZXC_DICT_KGRAM_LEN + 1;
     size_t freq_stride = kgram_limit / ZXC_DICT_SAMPLE_TARGET;
     if (freq_stride < 1) freq_stride = 1;
@@ -378,11 +349,9 @@ int64_t zxc_train_dict(const void* const* RESTRICT samples, const size_t* RESTRI
         if (freq[h] < UINT16_MAX) freq[h]++;
     }
 
-    /* Step 3: build candidate segments, each scored by its coverage. Spread the
-     * candidate starts across the whole corpus: a fixed k-gram stride exhausts
-     * the segment budget within the prefix, leaving a large input's later
-     * content unseen. Segments still extend k-gram by k-gram, so they stay
-     * contiguous. */
+    /* Step 3: build candidate segments, scored by coverage. Starts are spread
+     * across the whole corpus - a fixed k-gram stride would exhaust the segment
+     * budget in the prefix and never see a large input's tail. */
     const size_t max_segs = corpus_size / ZXC_DICT_KGRAM_LEN;
     const size_t seg_alloc = (max_segs < ZXC_DICT_MAX_SEGMENTS) ? max_segs : ZXC_DICT_MAX_SEGMENTS;
     size_t stride = ZXC_DICT_KGRAM_LEN;
@@ -430,9 +399,9 @@ int64_t zxc_train_dict(const void* const* RESTRICT samples, const size_t* RESTRI
         return (int64_t)copy;
     }
 
-    /* Step 4: pick segments greedily in descending-coverage order, zeroing each
-     * pick's k-grams so overlapping patterns aren't copied twice. Picks are
-     * compacted in place into segs[0..n_sel); placement is step 5. */
+    /* Step 4: pick greedily in descending coverage, zeroing each pick's k-grams
+     * so overlapping patterns aren't copied twice. Picks are compacted in place
+     * into segs[0..n_sel); placement is step 5. */
     zxc_dict_sort_segs_desc(segs, n_segs);
 
     uint8_t* out = (uint8_t*)dict_buf;
@@ -467,14 +436,11 @@ int64_t zxc_train_dict(const void* const* RESTRICT samples, const size_t* RESTRI
 
     ZXC_FREE(freq);
 
-    /* Step 5: emit picks in reverse order so the highest-coverage segment ends
-     * up at the END of the dict. The dict sits just before the data, so bytes
-     * nearer its end have the smallest match offset: cheapest to encode and the
-     * last to leave the 16-bit (65535) offset window.
-     *
-     * No padding: if the picks don't fill the capacity, the dict is just
-     * shorter. The old tail-padding only added low-value bytes that raised
-     * offsets for everything after them. */
+    /* Step 5: emit in reverse so the highest-coverage segment lands at the END
+     * of the dict. The dict sits just before the data, so bytes near its end
+     * have the smallest offsets: cheapest to encode, last to fall out of the
+     * 16-bit window. No padding - short picks just make a shorter dict, whereas
+     * padding would raise the offset of everything after it. */
     size_t filled = 0;
     for (size_t i = n_sel; i-- > 0;) {
         ZXC_MEMCPY(out + filled, corpus + segs[i].offset, segs[i].length);
@@ -497,26 +463,21 @@ int64_t zxc_train_dict(const void* const* RESTRICT samples, const size_t* RESTRI
 /* -------------------------------------------------------------------------
  *  Shared literal Huffman table training (Tier-2)
  *
- *  Compresses the training samples with the freshly trained dictionary at
- *  level ZXC_LEVEL_DENSITY and accumulates the frequencies of the REAL
- *  post-LZ literals (via the cctx lit_freq_acc hook in the GLO encoder).
- *  Raw sample bytes are a poor proxy: LZ matches against the dictionary
- *  remove most repeated content, so the literal distribution differs
- *  substantially from the raw byte histogram.
+ *  Compresses the samples with the freshly trained dictionary at level
+ *  ZXC_LEVEL_DENSITY and histograms the REAL post-LZ literals (cctx
+ *  lit_freq_acc hook). Raw bytes are a poor proxy: matches against the dict
+ *  remove most repeated content, so the two distributions differ a lot.
  *
- *  Samples are sliced into ZXC_DICT_HUF_TRAIN_BLOCK-byte blocks: the small-
- *  block regime is where the shared table pays (per-block table headers are
- *  unaffordable there) and literal density is highest.
+ *  Slices are ZXC_DICT_HUF_TRAIN_BLOCK bytes - the small-block regime is where
+ *  a shared table pays (per-block headers are unaffordable there) and where
+ *  literal density is highest.
  * ------------------------------------------------------------------------- */
 
 /**
  * @brief Trains the shared literal Huffman table for a dictionary (Tier-2).
  *
- * Public API; see @c zxc_dict.h and the algorithm note above. Compresses the
- * samples with @p dict at @c ZXC_LEVEL_DENSITY, accumulating the frequencies of
- * the REAL post-LZ literals (raw bytes are a poor proxy), then builds and packs
- * length-limited code lengths. Samples are sliced into
- * @c ZXC_DICT_HUF_TRAIN_BLOCK blocks, sub-sampled to a fixed budget.
+ * Public API; see @c zxc_dict.h and the algorithm note above. Slices are
+ * sub-sampled to a fixed budget.
  *
  * @param[in]  samples          Array of @p n_samples sample buffers.
  * @param[in]  sample_sizes     Array of @p n_samples sample lengths.
@@ -588,27 +549,24 @@ int zxc_train_dict_huf(const void* const* RESTRICT samples, const size_t* RESTRI
     }
 
     if (rc == ZXC_OK) {
-        /* A low-entropy corpus leaves no post-LZ literals: an empty histogram,
-         * not corrupt input. Detect that on the histogram itself (OR-reduce) and
-         * emit an empty all-zero table: every block then falls back to its
-         * per-block table. Inferring "empty" from a build error code instead
-         * would risk masking a genuine failure. */
+        /* A low-entropy corpus leaves no post-LZ literals - an empty histogram,
+         * not corrupt input. Detected on the histogram itself, so an all-zero
+         * table is emitted and every block falls back to its own; inferring
+         * "empty" from a build error code could mask a real failure. */
         uint32_t any = 0;
         for (int i = 0; i < ZXC_HUF_NUM_SYMBOLS; i++) any |= freq[i];
         if (any == 0) {
             ZXC_MEMSET(huf_lengths_out, 0, ZXC_HUF_TABLE_SIZE);
         } else {
-            /* No coverage smoothing: with 8-bit cap, a code over all 256 symbols
-             * can only be the degenerate all-8-bit code (Kraft equality),
-             * which compresses nothing. Symbols unseen in training
-             * stay code-less; blocks containing one fall back to their per-block
-             * table at compression time (the encoder's validity check). */
+            /* No coverage smoothing: under an 8-bit cap a code over all 256
+             * symbols can only be the degenerate all-8-bit one (Kraft equality),
+             * which compresses nothing. Unseen symbols stay code-less and their
+             * blocks fall back to a per-block table. */
             uint8_t code_len[ZXC_HUF_NUM_SYMBOLS];
             rc = zxc_huf_build_code_lengths(freq, code_len, NULL, ZXC_HUF_MAX_CODE_LEN_DENSITY);
             if (rc == ZXC_OK) {
-                /* Dict tables serve the most literal-bound decode path (small
-                 * blocks, tree built once at attach), so the flat/length nudge
-                 * pays off most here. */
+                /* Dict tables serve the most literal-bound decode path, so the
+                 * flat/length nudge pays off most here. */
                 (void)zxc_huf_nudge_code_lengths(freq, code_len, NULL,
                                                  ZXC_HUF_MAX_CODE_LEN_DENSITY);
                 zxc_huf_pack_lengths(code_len, huf_lengths_out);
@@ -628,10 +586,9 @@ int zxc_train_dict_huf(const void* const* RESTRICT samples, const size_t* RESTRI
 /**
  * @brief One-shot training: sample buffers in, ready-to-write .zxd bytes out.
  *
- * Public API; see @c zxc_dict.h. Convenience wrapper that trains the content
- * (@ref zxc_train_dict), then the shared Huffman table from that content
- * (@ref zxc_train_dict_huf), then serializes both via @ref zxc_dict_save. The
- * two phases are a real data dependency, hidden behind one call.
+ * Public API; see @c zxc_dict.h. Trains the content (@ref zxc_train_dict), then
+ * the shared table from that content (@ref zxc_train_dict_huf), then serializes
+ * both (@ref zxc_dict_save). The two phases are a real data dependency.
  *
  * @param[in]  samples       Array of @p n_samples sample buffers.
  * @param[in]  sample_sizes  Array of @p n_samples sample lengths.
