@@ -70,7 +70,6 @@ public:
   uint64_t *d_dense_words = nullptr;
 
   uint8_t *d_payload = nullptr;
-  uint64_t *d_gpu_hash = nullptr;
   uint32_t *d_overflow_flag = nullptr;
 
   uint32_t *host_overflow_flag = nullptr;
@@ -85,7 +84,6 @@ public:
   int num_chunks = 0;
   int total_words = 0;
   int primary_idx = 0;
-  uint64_t gpu_hash = 0;
   int comp_size = 0;
 
   CompressionContext(int macro_bytes, int mini_bytes, int state_L);
@@ -110,7 +108,6 @@ public:
 
   unsigned char *host_in = nullptr;
   unsigned char *host_out = nullptr;
-  uint64_t *host_calc_hash = nullptr;
 
   // Pinned Host Buffers for Async Copy Safety
   int *host_uncomp_size = nullptr;
@@ -123,10 +120,8 @@ public:
   int *d_primary_idx = nullptr;
 
   int *d_global_LF = nullptr;
-  int *d_J_in = nullptr;
-  int *d_D_in = nullptr;
-  int *d_J_out = nullptr;
-  int *d_D_out = nullptr;
+  int2 *d_JD_in = nullptr;
+  int2 *d_JD_out = nullptr;
 
   uint32_t *d_chunk_bit_lengths = nullptr;
   uint32_t *d_chunk_word_lens = nullptr;
@@ -139,7 +134,6 @@ public:
   int *d_sizes = nullptr;
 
   uint8_t *d_payload = nullptr;
-  uint64_t *d_gpu_hash = nullptr;
 
   void *d_temp_storage = nullptr;
   size_t temp_storage_bytes = 0;
@@ -150,7 +144,6 @@ public:
   int num_chunks = 0;
   int total_words = 0;
   int primary_idx = 0;
-  uint64_t gpu_hash = 0;
   size_t orig_l2_limit = 0;
   bool l2_modified = false;
 
