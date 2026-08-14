@@ -1,4 +1,5 @@
 v2.x.y (work-in-progress)
+- updated GPUCompact to 1.1 (by @UDPSendToFailed)
 - fix: codecs whose init() fails are now skipped instead of being benchmarked with a
        NULL work_mem, which used to SEGFAULT (e.g. "lzbench -eCUDA" without a GPU)
 - added misa77 0.6.0 (by @welcome-to-the-sunny-side)
