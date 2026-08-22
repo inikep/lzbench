@@ -204,6 +204,7 @@ static const compressor_desc_t comp_desc[] =
     { "gpucompact", "gpucompact 1.0",          1,   5,    0,  NO_THREADING,  lzbench_gpucompact_compress, lzbench_gpucompact_decompress, lzbench_gpucompact_init,  lzbench_gpucompact_deinit },
 #endif
     { "kanzi",      "kanzi 2.5.3",             1,   9,    0, FULL_THREADING, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
+    { "lbzip2",     "lbzip2 2.6.5",            1,   9,    0,  BENCH_POOL_MT, lzbench_lbzip2_compress,     lzbench_lbzip2_decompress,     NULL,                    NULL },
     { "libdeflate", "libdeflate 1.25",         1,  12,    0,  BENCH_POOL_MT, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
     { "lizard",     "lizard 2.1",             10,  49,    0,  BENCH_POOL_MT, lzbench_lizard_compress,     lzbench_lizard_decompress,     NULL,                    NULL },
     { "lz4",        "lz4 1.10.0",              0,   0,    0,  BENCH_POOL_MT, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },

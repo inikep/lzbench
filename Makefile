@@ -974,6 +974,14 @@ else
 endif
 
 
+ifeq "$(DONT_BUILD_LBZIP2)" "1"
+    DEFINES += -DBENCH_REMOVE_LBZIP2
+else
+    LBZIP2_FILES += bwt/lbzip2/crctab.o bwt/lbzip2/decode.o bwt/lbzip2/divbwt.o
+    LBZIP2_FILES += bwt/lbzip2/encode.o bwt/lbzip2/parse.o bwt/lbzip2/lbzip2_lzbench.o
+endif
+
+
 ifeq "$(DONT_BUILD_BZIP3)" "1"
     DEFINES += -DBENCH_REMOVE_BZIP3
 else
@@ -1140,7 +1148,7 @@ endif # ifeq "$(ENABLE_CUDA)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(GPUCOMPACT_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISA77_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
+lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(GPUCOMPACT_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(LBZIP2_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISA77_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
 	$(CXX) $^ -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -1189,6 +1197,13 @@ $(BUGGY_CODECS): %.o : %.cpp
 $(BUGGY_CXX_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
 	$(CXX) $(CFLAGS_O2) $< -c -o $@
+
+# -Ibwt/lbzip2 also picks up the <arpa/inet.h> shim there, which MinGW needs.
+# zstd's dictBuilder exports a divbwt() too, and xmalloc() is a name anything
+# might take, so rename both rather than patch the vendored source.
+$(LBZIP2_FILES): %.o : %.c
+	@$(MKDIR) $(dir $@)
+	$(CC) $(CFLAGS) -Ibwt/lbzip2 -Ddivbwt=lbzip2_divbwt -Dxmalloc=lbzip2_xmalloc $< -c -o $@
 
 $(BZIP3_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
