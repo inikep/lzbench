@@ -79,6 +79,15 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
 #endif // BENCH_REMOVE_BZIP2
 
 
+#ifndef BENCH_REMOVE_LBZIP2
+    int64_t lzbench_lbzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_lbzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_lbzip2_compress NULL
+    #define lzbench_lbzip2_decompress NULL
+#endif // BENCH_REMOVE_LBZIP2
+
+
 #ifndef BENCH_REMOVE_BZIP3
     int64_t lzbench_bzip3_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_bzip3_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);

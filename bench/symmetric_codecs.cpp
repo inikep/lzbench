@@ -153,6 +153,24 @@ int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #endif // BENCH_REMOVE_BZIP2
 
 
+#ifndef BENCH_REMOVE_LBZIP2
+#include "bwt/lbzip2/lbzip2_lzbench.h"
+
+int64_t lzbench_lbzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+   size_t res = lbzip2_buf_compress(inbuf, insize, outbuf, outsize, codec_options->level);
+   return res ? (int64_t)res : -1;
+}
+
+int64_t lzbench_lbzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+   size_t res = lbzip2_buf_decompress(inbuf, insize, outbuf, outsize);
+   return res ? (int64_t)res : -1;
+}
+
+#endif // BENCH_REMOVE_LBZIP2
+
+
 #ifndef BENCH_REMOVE_BZIP3
 #include "bwt/bzip3/include/libbz3.h"
 
