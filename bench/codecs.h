@@ -657,6 +657,66 @@ int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
 #define lzbench_zxc_decompress NULL
 #endif
 
+#ifndef BENCH_REMOVE_AOCL
+int64_t lzbench_aocl_lz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_lz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_lz4hc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_lz4hc_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_lzma_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_bzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_snappy_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_snappy_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_zlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_zstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+int64_t lzbench_aocl_zstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+char* lzbench_aocl_lz4_init(size_t insize, size_t level, size_t param);
+void lzbench_aocl_lz4_deinit(char* workmem);
+char* lzbench_aocl_lz4hc_init(size_t insize, size_t level, size_t param);
+void lzbench_aocl_lz4hc_deinit(char* workmem);
+char* lzbench_aocl_lzma_init(size_t insize, size_t level, size_t param);
+void lzbench_aocl_lzma_deinit(char* workmem);
+char* lzbench_aocl_bzip2_init(size_t insize, size_t level, size_t param);
+void lzbench_aocl_bzip2_deinit(char* workmem);
+char* lzbench_aocl_snappy_init(size_t insize, size_t level, size_t param);
+void lzbench_aocl_snappy_deinit(char* workmem);
+char* lzbench_aocl_zlib_init(size_t insize, size_t level, size_t param);
+void lzbench_aocl_zlib_deinit(char* workmem);
+char* lzbench_aocl_zstd_init(size_t insize, size_t level, size_t param);
+void lzbench_aocl_zstd_deinit(char* workmem);
+#else
+#define lzbench_aocl_lz4_compress NULL
+#define lzbench_aocl_lz4_decompress NULL
+#define lzbench_aocl_lz4hc_compress NULL
+#define lzbench_aocl_lz4hc_decompress NULL
+#define lzbench_aocl_lzma_compress NULL
+#define lzbench_aocl_lzma_decompress NULL
+#define lzbench_aocl_bzip2_compress NULL
+#define lzbench_aocl_bzip2_decompress NULL
+#define lzbench_aocl_snappy_compress NULL
+#define lzbench_aocl_snappy_decompress NULL
+#define lzbench_aocl_zlib_compress NULL
+#define lzbench_aocl_zlib_decompress NULL
+#define lzbench_aocl_zstd_compress NULL
+#define lzbench_aocl_zstd_decompress NULL
+#define lzbench_aocl_lz4_init NULL
+#define lzbench_aocl_lz4_deinit NULL
+#define lzbench_aocl_lz4hc_init NULL
+#define lzbench_aocl_lz4hc_deinit NULL
+#define lzbench_aocl_lzma_init NULL
+#define lzbench_aocl_lzma_deinit NULL
+#define lzbench_aocl_bzip2_init NULL
+#define lzbench_aocl_bzip2_deinit NULL
+#define lzbench_aocl_snappy_init NULL
+#define lzbench_aocl_snappy_deinit NULL
+#define lzbench_aocl_zlib_init NULL
+#define lzbench_aocl_zlib_deinit NULL
+#define lzbench_aocl_zstd_init NULL
+#define lzbench_aocl_zstd_deinit NULL
+#endif // BENCH_REMOVE_AOCL
+
 #ifndef BENCH_REMOVE_ACEAPEX
     char* lzbench_aceapex_init(size_t insize, size_t level, size_t threads);
     void lzbench_aceapex_deinit(char* workmem);

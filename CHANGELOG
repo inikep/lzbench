@@ -1,4 +1,5 @@
 v2.x.y (work-in-progress)
+- added AOCL-Compression 5.3.0 (AMD optimized lz4/lz4hc/lzma/bzip2/snappy/zlib/zstd, prefixed aocl-)
 - fix: codecs whose init() fails are now skipped instead of being benchmarked with a
        NULL work_mem, which used to SEGFAULT (e.g. "lzbench -eCUDA" without a GPU)
 - added misa77 0.6.0 (by @welcome-to-the-sunny-side)
