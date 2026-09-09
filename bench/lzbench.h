@@ -267,7 +267,7 @@ static const compressor_desc_t comp_desc[] =
     { "ucl_nrv2e",  "ucl_nrv2e 1.03",          1,   9,    0,  BENCH_POOL_MT, lzbench_ucl_nrv2e_compress,  lzbench_ucl_nrv2e_decompress,  NULL,                    NULL },
     { "wflz",       "wflz 2015-09-16",         0,   0,    0,  BENCH_POOL_MT, lzbench_wflz_compress,       lzbench_wflz_decompress,       lzbench_wflz_init,       lzbench_wflz_deinit }, // SEGFAULT on decompression with gcc 4.9+ -O3 on Ubuntu
     { "xz",         "xz 5.8.3",                0,   9,    0, FULL_THREADING, lzbench_xz_compress,         lzbench_xz_decompress,         NULL,                    NULL },
-    { "yalz77",     "yalz77 2015-09-19",       1,  12,    0,  BENCH_POOL_MT, lzbench_yalz77_compress,     lzbench_yalz77_decompress,     NULL,                    NULL },
+    { "yalz77",     "yalz77 2022-07-06",       1,  12,    0,  BENCH_POOL_MT, lzbench_yalz77_compress,     lzbench_yalz77_decompress,     NULL,                    NULL },
     { "yappy",      "yappy 2014-03-22",        1,  12,    0,   NO_THREADING, lzbench_yappy_compress,      lzbench_yappy_decompress,      lzbench_yappy_init,      NULL },
     { "zlib",       "zlib 1.3.2",              1,   9,    0,  BENCH_POOL_MT, lzbench_zlib_compress,       lzbench_zlib_decompress,       NULL,                    NULL },
     { "zlib-ng",    "zlib-ng 2.3.3",           1,   9,    0,  BENCH_POOL_MT, lzbench_zlib_ng_compress,    lzbench_zlib_ng_decompress,    NULL,                    NULL },
@@ -302,7 +302,7 @@ static const alias_desc_t alias_desc[] =
               "slz_gzip/snappy/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
               "xz,1,3,5,7,9/yalz77,1,6,12/zlib,1,6,9/zlib-ng,1,6,9/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22/zxc,1,3,6" },
     { "SYMMETRIC", "Includes compressors with similar compression and decompression speeds.",
-              "memcpy/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,1,5,9/density,1,2,3/kanzi,5,6,7,8,9/ppmd8,1,4,9/zpaq,1,5" },
+              "memcpy/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,1,5,9/density,1,2,3/kanzi,5,6,7,8,9/lbzip2,1,5,9/ppmd8,1,4,9/zpaq,1,5" },
     { "MISC", "Covers miscellaneous compressors.",
               "memcpy/crush,0,2/lzjb/skim/tamp,8,12,15/tornado,1,6,11,16/zling,0,2,4" },
     { "ALL",  "Represents all major compressors.",
@@ -313,7 +313,7 @@ static const alias_desc_t alias_desc[] =
               "lzf,0/lzfse/lzham,0/lzlib,0/lzma,0/lzo1,1/lzo1a,1/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/lzo1z/lzo2a/lzsse2,1/" \
               "lzsse4fast/lzsse4,1/lzsse8,1/lzvn/memlz/misa77,0/misa77_safe,0/quicklz,1/slz_gzip,1/snappy/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/xz,0/yalz77,1/" \
               "zlib,1/zlib-ng,1/zstd_fast,-5/zstd,1/zxc,1/" \
-/* SYMMETR */ "bsc1/bzip2,1/bzip3,1/density,1/ppmd8,1/zpaq,1/" \
+/* SYMMETR */ "bsc1/bzip2,1/bzip3,1/density,1/lbzip2,1/ppmd8,1/zpaq,1/" \
    /* MISC */ "crush,0/lzjb/skim/tamp,8/tornado-DISABLED,1/zling,0" }, /* Tornado is disabled as it has issues with incompressible data */
     { "SLOW", "Lists very slow compressors.",
               "memcpy/glza" },

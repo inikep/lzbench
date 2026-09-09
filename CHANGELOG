@@ -1,15 +1,20 @@
 v2.x.y (work-in-progress)
-- updated GPUCompact to 1.1 (by @UDPSendToFailed)
-- fix: codecs whose init() fails are now skipped instead of being benchmarked with a
-       NULL work_mem, which used to SEGFAULT (e.g. "lzbench -eCUDA" without a GPU)
+- added GPUCompact 1.1 (by @UDPSendToFailed)
+- added lbzip2 2.6.5 (thanks to @caius72)
 - added misa77 0.6.0 (by @welcome-to-the-sunny-side)
-- added OpenZL v0.2.0 (thanks to @fwyzard)
-- added GPUCompact 1.0 (by @UDPSendToFailed)
-- added a CUDA build job (nvcc 13.2, Ubuntu 24.04) to the Azure Pipelines CI
+- added OpenZL v0.2.3 (thanks to @fwyzard)
 - updated aceapex to 1.0.1 (thanks to @yasha1971-coder)
 - updated lzav to 5.16 (thanks to @avaneev)
 - updated nvcomp to support CUDA 13 and cccl 3 (thanks to @fwyzard)
 - updated zxc to 0.14.0 (thanks to @hellobertrand)
+- improvement: autodetect whether linking with -ldl is required (thanks to @fwyzard)
+- improvement: added a CUDA build job (nvcc 13.2, Ubuntu 24.04) to the Azure Pipelines CI
+- fix: codecs whose init() fails are now skipped instead of being benchmarked with a
+       NULL work_mem, which used to SEGFAULT (e.g. "lzbench -eCUDA" without a GPU)
+- fix: libdeflate leaked a decompressor on every decompression call (thanks to @wu-zhao-min)
+- fix: aceapex corrupted inputs smaller than 768 bytes (thanks to @yasha1971-coder)
+- fix: memory and file handle leaks when an input file cannot be read, or when a memory
+       allocation fails (thanks to @wu-zhao-min)
 
 v2.3 (Jun 15, 2026)
 - improvement: Reorganized compressor alias groups by type — ALL is now a composite of LZ /
