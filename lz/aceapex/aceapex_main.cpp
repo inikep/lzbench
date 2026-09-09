@@ -516,11 +516,12 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
         }
 
         // Realloc raw buffers to fit accumulated data
+        // Clamp realloc size to avoid realloc(ptr, 0) which would free and return NULL
         uint8_t* tmp;
-        tmp=(uint8_t*)realloc(raw_lit,total_lit); if(!tmp){free(results);free(wargs);free(pts);free(raw_lit);free(raw_off);free(raw_len);free(raw_cmd);return false;} raw_lit=tmp;
-        tmp=(uint8_t*)realloc(raw_off,total_off); if(!tmp){free(results);free(wargs);free(pts);free(raw_lit);free(raw_off);free(raw_len);free(raw_cmd);return false;} raw_off=tmp;
-        tmp=(uint8_t*)realloc(raw_len,total_len); if(!tmp){free(results);free(wargs);free(pts);free(raw_lit);free(raw_off);free(raw_len);free(raw_cmd);return false;} raw_len=tmp;
-        tmp=(uint8_t*)realloc(raw_cmd,total_cmd); if(!tmp){free(results);free(wargs);free(pts);free(raw_lit);free(raw_off);free(raw_len);free(raw_cmd);return false;} raw_cmd=tmp;
+        tmp=(uint8_t*)realloc(raw_lit,total_lit?total_lit:1); if(!tmp){free(results);free(wargs);free(pts);free(raw_lit);free(raw_off);free(raw_len);free(raw_cmd);return false;} raw_lit=tmp;
+        tmp=(uint8_t*)realloc(raw_off,total_off?total_off:1); if(!tmp){free(results);free(wargs);free(pts);free(raw_lit);free(raw_off);free(raw_len);free(raw_cmd);return false;} raw_off=tmp;
+        tmp=(uint8_t*)realloc(raw_len,total_len?total_len:1); if(!tmp){free(results);free(wargs);free(pts);free(raw_lit);free(raw_off);free(raw_len);free(raw_cmd);return false;} raw_len=tmp;
+        tmp=(uint8_t*)realloc(raw_cmd,total_cmd?total_cmd:1); if(!tmp){free(results);free(wargs);free(pts);free(raw_lit);free(raw_off);free(raw_len);free(raw_cmd);return false;} raw_cmd=tmp;
 
         // Copy batch results and free block buffers immediately
         size_t li=boffs[batch_start].lit_off;
