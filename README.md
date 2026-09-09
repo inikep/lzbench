@@ -55,7 +55,8 @@ Supported compressors
 The table below lists the supported compressors. The Last update column is the
 release date of the bundled version. Compressors are built on every CI platform
 (Linux x86-64/x86-32/ARM64/ARM32/PPC64LE, macOS arm64, Windows MinGW) unless the
-Notes column says otherwise.
+Notes column says otherwise. Where lzbench carries local build fixes to a codec's
+sources, the Notes column says so.
 
 | Compressor | Last update | Notes |
 | :--- | :--- | :--- |
@@ -80,7 +81,7 @@ Notes column says otherwise.
 | [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html) | 2014-03-13 | |
 | [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse) | 2017-03-08 | |
 | [lzg 1.0.10](https://github.com/mbitsnbites/liblzg) | 2018-11-29 | |
-| [lzham 1.0](https://github.com/richgel999/lzham_codec) | 2020-09-15 | Public domain since 2020-09-15; disabled on macOS and 32-bit x86 — 64 MB dictionary overflows the 32-bit address space |
+| [lzham 1.0](https://github.com/richgel999/lzham_codec) | 2020-09-15 | Public domain since 2020-09-15. Build fixed in lzbench for MinGW and newer compilers (`<cstdint>` includes, `GetSystemInfo`, `DISABLE_THREADING`). Disabled on macOS and 32-bit x86 — 64 MB dictionary overflows the 32-bit address space |
 | lzjb 2010 | 2010 | |
 | [lzlib 1.16](https://www.nongnu.org/lzip/lzlib.html) | 2026-03-11 | |
 | [lzma v26.01](http://7-zip.org) | 2026-04-27 | |
@@ -94,15 +95,15 @@ Notes column says otherwise.
 | [quicklz 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/) | 2011-10-07 | |
 | [skim 0.1.0](https://github.com/vantorrewannes/skim) | 2026-06-07 | Linux x86-64 and macOS only — requires the [Zig](https://ziglang.org) compiler |
 | [slz 1.2.2](http://www.libslz.org/) | 2026-04-09 | Compressor only; decompresses via zlib |
-| [snappy 1.2.2](https://github.com/google/snappy) | 2025-03-26 | |
+| [snappy 1.2.2](https://github.com/google/snappy) | 2025-03-26 | Patched in lzbench: RISC-V support in `snappy-internal.h` |
 | [tamp 2.2.4](https://github.com/BrianPugh/tamp) | 2026-06-11 | |
 | [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | Disabled on RISC-V (unaligned access) |
 | [ucl 1.03](http://www.oberhumer.com/opensource/ucl/) | 2004-07-20 | |
-| [xz 5.8.3](https://github.com/tukaani-project/xz) | 2026-03-31 | |
+| [xz 5.8.3](https://github.com/tukaani-project/xz) | 2026-03-31 | Built in lzbench with a hand-written `config.h` (upstream uses autotools) |
 | [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) | 2022-07-06 | |
 | [zlib 1.3.2](http://zlib.net) | 2026-02-17 | |
 | [zlib-ng 2.3.3](https://github.com/zlib-ng/zlib-ng) | 2026-02-03 | |
-| [zling 2018-10-12](https://github.com/richox/libzling) | 2018-10-12 | Disabled on big-endian PowerPC; not recommended for production use (per author) |
+| [zling 2018-10-12](https://github.com/richox/libzling) | 2018-10-12 | Build fixed in lzbench (missing `<functional>` include). Disabled on big-endian PowerPC; not recommended for production use (per author) |
 | [zpaq 7.15](https://github.com/zpaq/zpaq) | 2016-08-17 | Slower on non-x86 — built with `-DNOJIT` (x86-only JIT, portable interpreter elsewhere) |
 | [zstd 1.5.7](https://github.com/facebook/zstd) | 2025-02-19 | |
 | [zxc 0.14.0](https://github.com/hellobertrand/zxc) | 2026-09-03 | |
@@ -111,9 +112,9 @@ Notes column says otherwise.
 
 | Compressor | Last update | Notes |
 | :--- | :--- | :--- |
-| [csc 2016-10-13](https://github.com/fusiyuan2010/CSC) | 2016-10-13 | Disabled on macOS — segfaults with Apple LLVM 7.3.0 (clang-703.0.31) |
+| [csc 2016-10-13](https://github.com/fusiyuan2010/CSC) | 2016-10-13 | Build fixed in lzbench (SSE intrinsics header, 7-Zip type guards). Disabled on macOS — segfaults with Apple LLVM 7.3.0 (clang-703.0.31) |
 | [gipfeli 2016-07-13](https://github.com/google/gipfeli) | 2016-07-13 | Decompression file mismatch when compiled with GCC 14.2 using -O3 |
-| [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat) | 2008-07-08 | Decompression bugs; may segfault with GCC 4.9+ using -O3 |
+| [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat) | 2008-07-08 | Build fixed in lzbench for 64-bit (pointer arithmetic truncated through `MP_U32`). Decompression bugs; may segfault with GCC 4.9+ using -O3 |
 | [lzrw 15-Jul-1991](https://en.wikipedia.org/wiki/LZRW) | 1991-07-15 | May segfault with GCC 4.9+ using -O3 |
 | [wflz 2015-09-16](https://github.com/ShaneWF/wflz) | 2015-09-16 | May segfault with GCC 4.9+ using -O3 |
 | [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) | 2014-03-22 | Disabled on big-endian PowerPC; segfault with GCC 13.3.0 on 32-bit ARM (arm-linux-gnueabi) |
