@@ -80,7 +80,7 @@ Notes column says otherwise.
 | [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html) | 2014-03-13 | |
 | [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse) | 2017-03-08 | |
 | [lzg 1.0.10](https://github.com/mbitsnbites/liblzg) | 2018-11-29 | |
-| [lzham 1.0](https://github.com/richgel999/lzham_codec) | 2015-01-25 | Disabled on macOS and 32-bit x86 — 64 MB dictionary overflows the 32-bit address space |
+| [lzham 1.0](https://github.com/richgel999/lzham_codec) | 2020-09-15 | Public domain since 2020-09-15; disabled on macOS and 32-bit x86 — 64 MB dictionary overflows the 32-bit address space |
 | lzjb 2010 | 2010 | |
 | [lzlib 1.16](https://www.nongnu.org/lzip/lzlib.html) | 2026-03-11 | |
 | [lzma v26.01](http://7-zip.org) | 2026-04-27 | |
