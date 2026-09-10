@@ -76,8 +76,21 @@ else
     endif
 
     ifneq (,$(filter riscv%,$(shell uname -m)))
-        DONT_BUILD_TORNADO ?= 1
-        MOREFLAGS += -mno-strict-align
+        # Detect fast unaligned access support using hwprobe syscall
+        RISCV_HAS_FAST_UNALIGNED := $(shell \
+            $(CC) $(SOURCE_PATH)check_riscv_fast_unaligned.c -o /tmp/check_riscv_unaligned 2>/dev/null && \
+            /tmp/check_riscv_unaligned 2>/dev/null && \
+            echo 1 || echo 0; \
+            rm -f /tmp/check_riscv_unaligned)
+
+        ifeq ($(RISCV_HAS_FAST_UNALIGNED),1)
+            $(info RISC-V: fast unaligned access detected)
+            DONT_BUILD_TORNADO ?= 0
+        else
+            $(info RISC-V: adding -mno-strict-align)
+            DONT_BUILD_TORNADO ?= 1
+            MOREFLAGS += -mno-strict-align
+        endif
     endif
 
     # some compressors use dlopen(), which requires linking with -ldl on glibc
