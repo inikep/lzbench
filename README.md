@@ -60,7 +60,7 @@ sources, the Notes column says so.
 
 | Compressor | Last update | Notes |
 | :--- | :--- | :--- |
-| [aceapex 1.0.1](https://github.com/yasha1971-coder/aceapex) | 2026-07-30 | |
+| [aceapex 1.0.1](https://github.com/yasha1971-coder/aceapex) | 2026-07-30 | Fixed in lzbench: double-free on empty compression streams |
 | [brieflz 1.3.0](https://github.com/jibsen/brieflz) | 2020-02-15 | |
 | [brotli 1.2.0](https://github.com/google/brotli) | 2025-10-27 | |
 | [bsc 3.3.12](https://github.com/IlyaGrebnov/libbsc) | 2025-09-10 | Disabled on 32-bit ARM — multithreaded decompress faults (SIGBUS, lzbench#293) |
