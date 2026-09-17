@@ -1,0 +1,148 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under both the BSD-style license (found in the
+ * LICENSE file in the root directory of this source tree) and the GPLv2 (found
+ * in the COPYING file in the root directory of this source tree).
+ * You may select, at your option, one of the above-listed licenses.
+ */
+
+/**
+ * Modifications Copyright (C) 2025, Advanced Micro Devices. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * 1. Redistributions of source code must retain the above copyright notice,
+ * this list of conditions and the following disclaimer.
+ * 2. Redistributions in binary form must reproduce the above copyright notice,
+ * this list of conditions and the following disclaimer in the documentation
+ * and/or other materials provided with the distribution.
+ * 3. Neither the name of the copyright holder nor the names of its
+ * contributors may be used to endorse or promote products derived from this
+ * software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#ifdef AOCL_ZSTD_OPT
+#if defined(__GNUC__) && defined(__x86_64__) && !defined(__clang__)
+    #define AOCL_ZSTD_DECODESEQUENCE_MEM64 AOCL_ZSTD_decodeSequence_gcc
+    #define AOCL_ZSTD_DECODESEQUENCE_MEM64_FDS2 AOCL_ZSTD_decodeSequence_mem64_gcc_fast2
+    #define AOCL_ZSTD_DECODESEQUENCE_MEM64_FDS3 AOCL_ZSTD_decodeSequence_mem64_gcc_fast3
+#else
+    #define AOCL_ZSTD_DECODESEQUENCE_MEM64 AOCL_ZSTD_decodeSequence
+    #define AOCL_ZSTD_DECODESEQUENCE_MEM64_FDS2 AOCL_ZSTD_decodeSequence_mem64_fast2
+    #define AOCL_ZSTD_DECODESEQUENCE_MEM64_FDS3 AOCL_ZSTD_decodeSequence_mem64_fast3
+#endif
+
+/*
+* Change wrt ZSTD_decompressSequences_body:
+*  + Calls AOCL_ZSTD_decodeSequence_gcc* for gcc compiler on x86 machines
+*  + Calls AOCL_ZSTD_execSequence*
+*/
+FORCE_INLINE_TEMPLATE size_t
+DONT_VECTORIZE
+AOCL_ZSTD_decompressSequences_body_mem64_fast3(ZSTD_DCtx* dctx,
+    void* dst, size_t maxDstSize,
+    const void* seqStart, size_t seqSize, int nbSeq,
+    const ZSTD_longOffset_e isLongOffset)
+{
+    const BYTE* ip = (const BYTE*)seqStart;
+    const BYTE* const iend = ip + seqSize;
+    BYTE* const ostart = (BYTE*)dst;
+    BYTE* const oend = dctx->litBufferLocation == ZSTD_not_in_dst ? ZSTD_maybeNullPtrAdd(ostart, maxDstSize) : dctx->litBuffer;
+    BYTE* op = ostart;
+    const BYTE* litPtr = dctx->litPtr;
+    const BYTE* const litEnd = litPtr + dctx->litSize;
+    const BYTE* const prefixStart = (const BYTE*)(dctx->prefixStart);
+    const BYTE* const vBase = (const BYTE*)(dctx->virtualStart);
+    const BYTE* const dictEnd = (const BYTE*)(dctx->dictEnd);
+    DEBUGLOG(5, "AOCL_ZSTD_decompressSequences_body_mem64_fast3: nbSeq = %d", nbSeq);
+
+    /* Regen sequences */
+    if (nbSeq) {
+            aocl_fast2_seqState_t seqState;
+    dctx->fseEntropy = 1;
+    seqState.prevOffset = dctx->entropy.rep[0];
+    RETURN_ERROR_IF(ERR_isError(BIT_initDStream(&seqState.DStream, ip, iend - ip)), corruption_detected, "");
+    ZSTD_initFseState(&seqState.stateLL, &seqState.DStream, dctx->LLTptr);
+    ZSTD_initFseState(&seqState.stateOffb, &seqState.DStream, dctx->OFTptr);
+    ZSTD_initFseState(&seqState.stateML, &seqState.DStream, dctx->MLTptr);
+    assert(dst != NULL);
+    (&seqState)->stateLL.state_ptr = (&seqState)->stateLL.table + (&seqState)->stateLL.state;
+    (&seqState)->stateML.state_ptr = (&seqState)->stateML.table + (&seqState)->stateML.state;
+    (&seqState)->stateOffb.state_ptr = (&seqState)->stateOffb.table + (&seqState)->stateOffb.state;
+
+
+#if defined(__GNUC__) && defined(__x86_64__)
+        __asm__(".p2align 6");
+        __asm__("nop");
+#  if __GNUC__ >= 7
+        __asm__(".p2align 5");
+        __asm__("nop");
+        __asm__(".p2align 3");
+#  else
+        __asm__(".p2align 4");
+        __asm__("nop");
+        __asm__(".p2align 3");
+#  endif
+#endif
+        for (; ; ) {
+            seq_t const sequence = AOCL_ZSTD_DECODESEQUENCE_MEM64_FDS3(&seqState, isLongOffset);
+#ifdef AOCL_UNIT_TEST
+            RETURN_ERROR_IF(UNLIKELY(sequence.litLength == 0 && sequence.matchLength == 0 &&
+            sequence.offset == 0), corruption_detected, ""); /* not FDS compliant */
+#endif
+            size_t const oneSeqSize = AOCL_ZSTD_execSequence_mem64_fast2(op, oend, sequence, &litPtr, litEnd, prefixStart, vBase, dictEnd);
+#if defined(FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION) && defined(FUZZING_ASSERT_VALID_SEQUENCE)
+            assert(!ZSTD_isError(oneSeqSize));
+            ZSTD_assertValidSequence(dctx, op, oend, sequence, prefixStart, vBase);
+#endif
+            if (UNLIKELY(ZSTD_isError(oneSeqSize)))
+                return oneSeqSize;
+            DEBUGLOG(6, "regenerated sequence size : %u", (U32)oneSeqSize);
+            op += oneSeqSize;
+            if (UNLIKELY(!--nbSeq))
+                break;
+            BIT_reloadDStream(&(seqState.DStream));
+        }
+
+        /* check if reached exact end */
+        assert(nbSeq == 0);
+        RETURN_ERROR_IF(BIT_reloadDStream(&seqState.DStream) < BIT_DStream_completed, corruption_detected, "");
+
+        /* save reps for next block */
+            /* During compression offsets that are not maintained are set to rep[0] to account for scenarios
+       where switch from FDS to non-FDS modes occur. Similar operation must be replicated in 
+       decompression as well to account for this scenario. */
+    { U32 i; for (i = 0; i < ZSTD_REP_NUM; i++) dctx->entropy.rep[i] = (U32)(seqState.prevOffset); }
+
+    }
+
+    /* last literal segment */
+    {
+        size_t const lastLLSize = (size_t)(litEnd - litPtr);
+        DEBUGLOG(6, "copy last literals : %u", (U32)lastLLSize);
+        RETURN_ERROR_IF(lastLLSize > (size_t)(oend - op), dstSize_tooSmall, "");
+        if (op != NULL) {
+            ZSTD_memcpy(op, litPtr, lastLLSize);
+            op += lastLLSize;
+        }
+    }
+
+    DEBUGLOG(6, "decoded block of size %u bytes", (U32)(op - ostart));
+    return op - ostart;
+}
+#endif /* AOCL_ZSTD_OPT */

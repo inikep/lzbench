@@ -61,6 +61,7 @@ sources, the Notes column says so.
 | Compressor | Last update | Notes |
 | :--- | :--- | :--- |
 | [aceapex 1.0.1](https://github.com/yasha1971-coder/aceapex) | 2026-07-30 | |
+| [aocl-compression 5.3.0](https://github.com/amd/aocl-compression) | 2026-05-19 | Linux x86-64 only — AMD-optimized lz4/lz4hc/lzma/bzip2/snappy/zlib/zstd (compression prefixed `aocl-`); requires GNU binutils (`nm`, `objcopy`); license: BSD 3-Clause / MIT / NCSA |
 | [brieflz 1.3.0](https://github.com/jibsen/brieflz) | 2020-02-15 | |
 | [brotli 1.2.0](https://github.com/google/brotli) | 2025-10-27 | |
 | [bsc 3.3.12](https://github.com/IlyaGrebnov/libbsc) | 2025-09-10 | Disabled on 32-bit ARM — multithreaded decompress faults (SIGBUS, lzbench#293) |
