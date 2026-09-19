@@ -10,6 +10,9 @@ v2.x.y (work-in-progress)
 - updated zxc to 0.14.0 (thanks to @hellobertrand)
 - improvement: autodetect whether linking with -ldl is required (thanks to @fwyzard)
 - improvement: added a CUDA build job (nvcc 13.2, Ubuntu 24.04) to the Azure Pipelines CI
+- improvement: the Makefile now generates header dependencies (-MMD -MP), so editing a header
+               or a .cpp that another .cpp #includes (aceapex, lzo, ucl, tamp, 7-zip) rebuilds the
+               affected objects instead of relinking stale ones
 - fix: codecs whose init() fails are now skipped instead of being benchmarked with a
        NULL work_mem, which used to SEGFAULT (e.g. "lzbench -eCUDA" without a GPU)
 - fix: libdeflate leaked a decompressor on every decompression call (thanks to @wu-zhao-min)

@@ -122,9 +122,21 @@ else
     OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
 endif
 
-CXXFLAGS  = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS) $(USER_CXXFLAGS)
-CFLAGS    = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS) $(USER_CFLAGS)
-CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES) $(MOREFLAGS) $(USER_CFLAGS)
+# Automatic header dependencies. -MMD writes "<object>.d" next to each object,
+# listing every file the translation unit included; -MP adds a phony target for
+# each of them so that deleting or renaming a header does not break the next
+# build. Without this, `make` only knows about the one source file named in the
+# rule, so editing a header -- or a .cpp that another .cpp #includes, as
+# lz/aceapex, lz/lzo, lz/ucl, lz/tamp and misc/7-zip do -- silently relinks a
+# stale object. The flags are a gcc/clang/mingw extension, so probe for them and
+# fall back to the old behaviour on a compiler that does not understand them.
+DEPFLAGS := $(shell printf 'int main(){return 0;}' | $(CXX) -x c++ - -MMD -MP -MF /dev/null -c -o /dev/null 2>/dev/null && printf -- '-MMD -MP')
+
+CXXFLAGS  = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS) $(USER_CXXFLAGS) $(DEPFLAGS)
+CFLAGS    = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS) $(USER_CFLAGS) $(DEPFLAGS)
+CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES) $(MOREFLAGS) $(USER_CFLAGS) $(DEPFLAGS)
+# nvcc does not reliably accept -MMD/-MP, so CUDA rules use the host flags without them
+CUDA_HOST_CXXFLAGS = $(filter-out $(DEPFLAGS),$(CXXFLAGS))
 LDFLAGS  += -pthread $(MOREFLAGS) $(USER_LDFLAGS)
 ifeq ($(detected_OS), Darwin)
     CXXFLAGS += -std=c++14
@@ -1148,7 +1160,9 @@ endif # ifeq "$(ENABLE_CUDA)"
 
 MKDIR = mkdir -p
 
-lzbench: $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(GPUCOMPACT_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(LBZIP2_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISA77_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
+LZBENCH_OBJS = $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(GPUCOMPACT_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(LBZIP2_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISA77_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
+
+lzbench: $(LZBENCH_OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
@@ -1289,7 +1303,7 @@ misc/zpaq/libzpaq.o: misc/zpaq/libzpaq.cpp
 # CUDA compressors
 $(NVCOMP_CU_OBJ): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -Imisc/nvcomp/include -Imisc/nvcomp/src -Imisc/nvcomp/src/lowlevel -c $< -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) -Imisc/nvcomp/include -Imisc/nvcomp/src -Imisc/nvcomp/src/lowlevel -c $< -o $@
 
 $(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
 	@$(MKDIR) $(dir $@)
@@ -1306,7 +1320,7 @@ $(BSC_CXX_FILES): %.o : %.cpp
 
 # ACEAPEX CUDA decoder
 lz/aceapex/cuda/aceapex_cuda.cu.o: lz/aceapex/cuda/aceapex_cuda.cu
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -c $< -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) -c $< -o $@
 
 lz/aceapex/cuda/aceapex_cuda_lzbench.o: lz/aceapex/cuda/aceapex_cuda_lzbench.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
@@ -1314,7 +1328,7 @@ lz/aceapex/cuda/aceapex_cuda_lzbench.o: lz/aceapex/cuda/aceapex_cuda_lzbench.cpp
 # GPUCOMPACT CUDA compressor
 lz/gpucompact/%.cu.o: lz/gpucompact/%.cu
 	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) -c $< -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) -c $< -o $@
 
 lz/gpucompact/gpucompact_lzbench.o: lz/gpucompact/gpucompact_lzbench.cpp
 	@$(MKDIR) $(dir $@)
@@ -1322,7 +1336,7 @@ lz/gpucompact/gpucompact_lzbench.o: lz/gpucompact/gpucompact_lzbench.cpp
 
 $(BSC_CUDA_FILES): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CXXFLAGS) $(BSC_FLAGS) -c $< -o $@
+	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) $(BSC_FLAGS) -c $< -o $@
 
 DENSITY_LIB:
 ifneq ($(DONT_BUILD_DENSITY),1)
@@ -1339,5 +1353,11 @@ misc/skim/libskim.a: misc/skim/src/root.zig
 clean:
 	rm -rf lzbench lzbench.exe
 	find . -type f -name "*.o" -exec rm -f {} +
+	find . -type f -name "*.d" -exec rm -f {} +
 	rm -rf $(DENSITY_SRC_DIR)target/
 	rm -f misc/skim/libskim.a
+
+# Pull in the header dependencies generated by $(DEPFLAGS). Missing .d files
+# (a fresh tree, or a CUDA object built by nvcc) are silently ignored.
+DEPFILES := $(patsubst %.o,%.d,$(filter %.o,$(LZBENCH_OBJS)))
+-include $(DEPFILES)

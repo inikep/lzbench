@@ -14,6 +14,9 @@ misc/density/src/Cargo.lock
 *.o
 *.ko
 
+# Compiler-generated header dependencies (make DEPFLAGS)
+*.d
+
 # Libraries
 *.lib
 *.a
