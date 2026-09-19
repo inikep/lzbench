@@ -97,7 +97,7 @@ sources, the Notes column says so.
 | [slz 1.2.2](http://www.libslz.org/) | 2026-04-09 | Compressor only; decompresses via zlib |
 | [snappy 1.2.2](https://github.com/google/snappy) | 2025-03-26 | Patched in lzbench: RISC-V support in `snappy-internal.h` |
 | [tamp 2.2.4](https://github.com/BrianPugh/tamp) | 2026-06-11 | |
-| [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | Disabled on RISC-V (unaligned access) |
+| [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | Disabled on RISC-V unless the build machine does misaligned access at full speed (asked via the hwprobe syscall); such a build is then not portable to a slower RISC-V machine |
 | [ucl 1.03](http://www.oberhumer.com/opensource/ucl/) | 2004-07-20 | |
 | [xz 5.8.3](https://github.com/tukaani-project/xz) | 2026-03-31 | Built in lzbench with a hand-written `config.h` (upstream uses autotools) |
 | [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) | 2022-07-06 | |

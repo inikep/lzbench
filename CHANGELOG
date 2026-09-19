@@ -10,6 +10,9 @@ v2.x.y (work-in-progress)
 - updated zxc to 0.14.0 (thanks to @hellobertrand)
 - improvement: autodetect whether linking with -ldl is required (thanks to @fwyzard)
 - improvement: added a CUDA build job (nvcc 13.2, Ubuntu 24.04) to the Azure Pipelines CI
+- improvement: tornado is now benchmarked on RISC-V hardware whose misaligned scalar access
+               is fast (detected with the hwprobe syscall), instead of being disabled outright
+               (thanks to @zqb-all)
 - improvement: the Makefile now generates header dependencies (-MMD -MP), so editing a header
                or a .cpp that another .cpp #includes (aceapex, lzo, ucl, tamp, 7-zip) rebuilds the
                affected objects instead of relinking stale ones
