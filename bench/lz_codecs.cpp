@@ -26,6 +26,7 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
 
 
 #ifndef BENCH_REMOVE_MEMLZ
+#define MEMLZ_IMPLEMENTATION
 #include "lz/memlz/memlz.h"
 
 char* lzbench_memlz_init(size_t insize, size_t level, size_t)
