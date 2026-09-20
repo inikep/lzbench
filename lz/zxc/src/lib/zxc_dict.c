@@ -22,19 +22,16 @@
 /**
  * @brief Computes the dictionary identifier for @p dict (and optional table).
  *
- * Public API; see @c zxc_dict.h. One checksum over the content, chained with
- * the packed Huffman lengths so a single id covers both. Stored in the archive
- * header and re-checked on decode.
+ * Public API; see @c zxc_dict.h. A checksum over the content, then a second one
+ * over the packed Huffman lengths seeded by the first, so a single id covers
+ * both. Stored in the archive header and re-checked on decode.
  */
 uint32_t zxc_dict_id(const void* RESTRICT dict, const size_t dict_size,
                      const void* RESTRICT huf_lengths) {
     if (UNLIKELY(!dict || dict_size == 0)) return 0;
-    // One logical hash over the real bytes only: the content checksum seeds
-    // the table checksum (content and table are not contiguous at the API
-    // level, so chaining avoids both a concat copy and a synthetic buffer).
-    const uint32_t base = zxc_checksum(dict, dict_size, 0);
-    if (huf_lengths == NULL) return base;
-    return zxc_checksum_seed(huf_lengths, ZXC_HUF_TABLE_SIZE, base, 0);
+    const uint32_t base = zxc_checksum(dict, dict_size, 0, ZXC_CHECKSUM_RAPIDHASH);
+    if (!huf_lengths) return base;
+    return zxc_checksum(huf_lengths, ZXC_HUF_TABLE_SIZE, base, ZXC_CHECKSUM_RAPIDHASH);
 }
 
 // -------------------------------------------------------------------------
@@ -45,7 +42,7 @@ uint32_t zxc_dict_id(const void* RESTRICT dict, const size_t dict_size,
 //    0x04  1  Version (1)
 //    0x05  1  Flags   (bits 0-3: checksum algo id, 0=RapidHash; bits 4-7 reserved)
 //    0x06  2  Content size (u16 LE)
-//    0x08  4  dict_id (u32 LE; covers content AND the Huffman table)
+//    0x08  4  Dictionary ID (u32 LE; covers content AND the Huffman table)
 //    0x0C  2  Reserved (0)
 //    0x0E  2  Header Checksum (zxc_hash16, computed with 0x0C-0x0F zeroed)
 //    0x10  N  Content bytes

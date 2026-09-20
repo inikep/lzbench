@@ -120,9 +120,9 @@ typedef struct zxc_dstream_s zxc_dstream;
  * must be valid (an unsupported @c block_size fails creation); levels above
  * @ref ZXC_LEVEL_ULTRA are clamped. @c n_threads is ignored, this API being
  * single-threaded, see @ref zxc_stream_compress for the multi-threaded
- * @c FILE* pipeline. Dictionary options are rejected outright: the push-stream
- * format carries no dict_id, so @c dict / @c dict_size / @c dict_huf fail
- * creation rather than being silently dropped.
+ * @c FILE* pipeline. Dictionary options are rejected outright: push streams
+ * take no dictionary yet (support can be added if a need arises), so @c dict /
+ * @c dict_size / @c dict_huf fail creation rather than being silently dropped.
  *
  * @param[in] opts  Compression options, or @c NULL for all defaults.
  * @return Context to release with @ref zxc_cstream_free, or @c NULL on
@@ -217,9 +217,10 @@ ZXC_EXPORT size_t zxc_cstream_out_size(const zxc_cstream* cs);
  *
  * @p opts is copied into the context. Only @c checksum_enabled is honoured: it
  * decides whether per-block and global checksums are verified when present.
- * Dictionary options are rejected outright (the push-stream format carries no
- * dict_id), so @c dict / @c dict_size / @c dict_huf fail creation rather than
- * being silently ignored.
+ * Push streams take no dictionary yet (support can be added if a need
+ * arises): @c dict / @c dict_size / @c dict_huf fail creation, and an archive
+ * whose header requires one fails with @ref ZXC_ERROR_DICT_REQUIRED at the
+ * first decompress call.
  *
  * @param[in] opts  Decompression options, or @c NULL for defaults.
  * @return Context to release with @ref zxc_dstream_free, or @c NULL on

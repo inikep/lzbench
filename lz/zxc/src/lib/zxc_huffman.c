@@ -427,7 +427,7 @@ static void zxc_huf_nudge_eval(const uint32_t* RESTRICT blc, const uint64_t* RES
                 t = l; /* leaf pair: parent XOR-blend at depth l-1 */
             } else {
                 t = (l - D) + 1; /* flat root: one unpack + merges above */
-                if (D > ZXC_HUF_NUDGE_FLAT_SIMD_MAX) t += ZXC_HUF_NUDGE_DEEP_FLAT_PENALTY;
+                if (D > ZXC_PIVCO_UNPACK_FLAT_SIMD_MAX) t += ZXC_HUF_NUDGE_DEEP_FLAT_PENALTY;
             }
             touches += mass * (uint64_t)t;
             x += W;
@@ -640,7 +640,7 @@ static uint64_t zxc_huf_nudge_dp_run_j(const int lu, const int lc, const int g_l
             t = lr;
         } else {
             t = (lr - d) + 1;
-            if (d > ZXC_HUF_NUDGE_FLAT_SIMD_MAX) t += ZXC_HUF_NUDGE_DEEP_FLAT_PENALTY;
+            if (d > ZXC_PIVCO_UNPACK_FLAT_SIMD_MAX) t += ZXC_HUF_NUDGE_DEEP_FLAT_PENALTY;
         }
         touches += mass * (uint64_t)t;
         x += W;

@@ -761,7 +761,7 @@ static ZXC_NOINLINE void zxc_decode_copy_match_exact(uint8_t* d_ptr, const uint8
  * @return @ref ZXC_OK, or @ref ZXC_ERROR_MEMORY on allocation failure.
  */
 static ZXC_NOINLINE ZXC_COLD int zxc_ensure_entropy_scratch(const zxc_cctx_t* RESTRICT ctx) {
-    if (LIKELY(ctx->pivco_scratch != NULL)) return ZXC_OK;
+    if (LIKELY(ctx->pivco_scratch)) return ZXC_OK;
     return zxc_cctx_alloc_entropy_scratch((zxc_cctx_t*)(uintptr_t)ctx);
 }
 
@@ -773,7 +773,7 @@ static ZXC_NOINLINE ZXC_COLD int zxc_decode_lit_pivco(const zxc_cctx_t* RESTRICT
     if (UNLIKELY(arc != ZXC_OK)) return arc;
     if (UNLIKELY(ctx->lit_buffer_cap < required_size + ZXC_PAD_SIZE ||
                  ctx->pivco_scratch_cap < required_size + ZXC_PIVCO_SCRATCH_PAD))
-        return ZXC_ERROR_CORRUPT_DATA;
+        return ZXC_ERROR_DST_TOO_SMALL;
     return zxc_huf_decode_section(payload, psize, ctx->lit_buffer, required_size,
                                   ctx->pivco_scratch);
 }
@@ -787,7 +787,7 @@ static ZXC_NOINLINE ZXC_COLD int zxc_decode_lit_pivco_dict(const zxc_cctx_t* RES
     if (UNLIKELY(arc != ZXC_OK)) return arc;
     if (UNLIKELY(ctx->lit_buffer_cap < required_size + ZXC_PAD_SIZE ||
                  ctx->pivco_scratch_cap < required_size + ZXC_PIVCO_SCRATCH_PAD))
-        return ZXC_ERROR_CORRUPT_DATA;
+        return ZXC_ERROR_DST_TOO_SMALL;
     return zxc_huf_decode_section_dict(payload, psize, ctx->lit_buffer, required_size,
                                        &ctx->dict_huf->tree, &ctx->dict_huf->dec,
                                        ctx->pivco_scratch);
@@ -800,7 +800,7 @@ static ZXC_NOINLINE ZXC_COLD int zxc_decode_tok_pivco(const zxc_cctx_t* RESTRICT
     if (UNLIKELY(arc != ZXC_OK)) return arc;
     if (UNLIKELY(n_tok + ZXC_PAD_SIZE > ctx->tok_buffer_cap ||
                  n_tok + ZXC_PIVCO_SCRATCH_PAD > ctx->pivco_scratch_cap))
-        return ZXC_ERROR_CORRUPT_DATA;
+        return ZXC_ERROR_DST_TOO_SMALL;
     return zxc_huf_decode_section(payload, psize, ctx->tok_buffer, n_tok, ctx->pivco_scratch);
 }
 
@@ -911,7 +911,7 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
 
             // lit_buffer is pre-allocated to chunk_size + ZXC_PAD_SIZE by
             // zxc_cctx_init (mode == 0).
-            if (UNLIKELY(ctx->lit_buffer_cap < alloc_size)) return ZXC_ERROR_CORRUPT_DATA;
+            if (UNLIKELY(ctx->lit_buffer_cap < alloc_size)) return ZXC_ERROR_DST_TOO_SMALL;
 
             rle_buf = ctx->lit_buffer;
             if (UNLIKELY(!rle_buf || lit_stream_size > (size_t)(src + src_size - p_curr)))
@@ -1029,7 +1029,8 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_glo_impl(const zxc_cctx_t* RESTRIC
     // Destination safe margin for 4x loop: max output without varint extension.
     // ll_max = 14, ml_max = 14 + 5 = 19, per-seq = 33, 4x = 132.
     // Plus the overshoot the wild copies are allowed (ZXC_PAD_SIZE) + 4 safety = 168.
-    const uint8_t* const d_end_safe = d_end - (132 + ZXC_PAD_SIZE + 4);
+    const uint8_t* const d_end_safe =
+        (dst_capacity > 132 + ZXC_PAD_SIZE + 4) ? d_end - (132 + ZXC_PAD_SIZE + 4) : dst;
 
     // Literal margin for the 4x loops: without a varint, ll <= 14 per sequence,
     // so 4 * 14 = 56. Past that margin only the cold varint path checks l_ptr.
@@ -1272,10 +1273,12 @@ static ZXC_ALWAYS_INLINE int zxc_decode_block_ghi_impl(const zxc_cctx_t* RESTRIC
     const uint8_t* const d_end = dst + dst_capacity;
     // Lowest address a match may reach: the dictionary prefix if any, else dst.
     const uint8_t* const d_floor = dst - dict_size;
-    const uint8_t* const d_end_safe = d_end - (ZXC_PAD_SIZE * 4);  // 128
+    const uint8_t* const d_end_safe =
+        (dst_capacity > ZXC_PAD_SIZE * 4) ? d_end - (ZXC_PAD_SIZE * 4) : dst;  // 128
     // Safety margin for 4x unrolled loop: 4 * (ZXC_SEQ_LL_MASK LL +
     // ZXC_SEQ_ML_MASK+ZXC_LZ_MIN_MATCH_LEN ML) + ZXC_PAD_SIZE Pad = 4 x (255 + 255 + 5) + 32 = 2092
-    const uint8_t* const d_end_fast = d_end - ZXC_DECOMPRESS_TAIL_PAD;  // 2112
+    const uint8_t* const d_end_fast =
+        (dst_capacity > ZXC_DECOMPRESS_TAIL_PAD) ? d_end - ZXC_DECOMPRESS_TAIL_PAD : dst;  // 2112
 
     // Literal margin for the GHI loops: without a varint, ll <= 254 per sequence,
     // so 4 * 254 = 1016. Past that only the cold varint path checks l_ptr.
@@ -1652,6 +1655,9 @@ static ZXC_ALWAYS_INLINE int zxc_decompress_chunk_wrapper_body(
     const uint32_t comp_sz = zxc_le32(src + 3);
     const int has_checksum = ctx->checksum_enabled;
 
+    // A block never compresses past its own content size
+    if (UNLIKELY((uint64_t)comp_sz > (uint64_t)ctx->chunk_size)) return ZXC_ERROR_BAD_BLOCK_SIZE;
+
     // Check bounds: Header + Body + Checksum(if any)
     const size_t expected_sz =
         (size_t)ZXC_BLOCK_HEADER_SIZE + comp_sz + (has_checksum ? ZXC_BLOCK_CHECKSUM_SIZE : 0);
@@ -1661,7 +1667,7 @@ static ZXC_ALWAYS_INLINE int zxc_decompress_chunk_wrapper_body(
 
     if (has_checksum) {
         const uint32_t stored = zxc_le32(data + comp_sz);
-        const uint32_t calc = zxc_checksum(data, comp_sz, ZXC_CHECKSUM_RAPIDHASH);
+        const uint32_t calc = zxc_checksum(data, comp_sz, 0, ZXC_CHECKSUM_RAPIDHASH);
         if (UNLIKELY(stored != calc)) return ZXC_ERROR_BAD_CHECKSUM;
     }
 

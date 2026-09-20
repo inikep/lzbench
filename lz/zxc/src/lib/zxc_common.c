@@ -383,7 +383,7 @@ int zxc_cctx_init(zxc_cctx_t* RESTRICT ctx, const size_t chunk_size, const int m
  * released by @ref zxc_cctx_free.
  */
 int zxc_cctx_alloc_entropy_scratch(zxc_cctx_t* ctx) {
-    if (LIKELY(ctx->pivco_scratch != NULL)) return ZXC_OK;
+    if (LIKELY(ctx->pivco_scratch)) return ZXC_OK;
 
     size_t sz_tok = 0;
     size_t sz_pivco = 0;
@@ -461,7 +461,7 @@ void zxc_cctx_free(zxc_cctx_t* ctx) {
 int zxc_cctx_attach_dict_huf(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT lengths) {
     if (UNLIKELY(!ctx)) return ZXC_ERROR_NULL_INPUT;
     ctx->dict_huf_tree_ok = 0;
-    if (lengths == NULL) return ZXC_OK;
+    if (!lengths) return ZXC_OK;
 
     // Empty (all-zero) table from a low-entropy corpus: treat it as "no shared table".
     int empty = 1;
@@ -471,7 +471,7 @@ int zxc_cctx_attach_dict_huf(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT l
             break;
         }
     }
-    if (UNLIKELY(empty || ctx->dict_huf == NULL)) return ZXC_OK;
+    if (UNLIKELY(empty || !ctx->dict_huf)) return ZXC_OK;
 
     // Tree-at-attach: unpack + build the PivCo tree, codes and decoder tables
     // once here; the per-block encode/estimate/decode paths reuse them via
@@ -507,11 +507,11 @@ int zxc_write_file_header(uint8_t* RESTRICT dst, const size_t dst_capacity, cons
     if (dict_id != 0) flags |= ZXC_FILE_FLAG_HAS_DICTIONARY;
     dst[6] = flags;
 
-    // Bytes 7-13: Reserved / dict_id
+    // Bytes 7-13: Reserved / Dictionary ID
     ZXC_MEMSET(dst + 7, 0, 7);
     if (dict_id != 0) zxc_store_le32(dst + 7, dict_id);
 
-    // Bytes 14-15: checksum (16-bit)
+    // Bytes 14-15: Header Checksum (16-bit)
     zxc_store_le16(dst + 14, 0);  // Zero out before hashing
     const uint16_t sum = zxc_hash16(dst);
     zxc_store_le16(dst + 14, sum);
@@ -865,6 +865,8 @@ const char* zxc_error_name(const int code) {
             return "ZXC_ERROR_DICT_TOO_LARGE";
         case ZXC_ERROR_BAD_LEVEL:
             return "ZXC_ERROR_BAD_LEVEL";
+        case ZXC_ERROR_DICT_UNSUPPORTED:
+            return "ZXC_ERROR_DICT_UNSUPPORTED";
         default:
             return "ZXC_UNKNOWN_ERROR";
     }
@@ -901,6 +903,6 @@ int zxc_default_level(void) { return ZXC_LEVEL_DEFAULT; }
  * @brief Returns the human-readable library version string.
  *
  * The returned pointer is a compile-time constant and must not be freed.
- * Format: "MAJOR.MINOR.PATCH" (e.g. "0.13.1").
+ * Format: "MAJOR.MINOR.PATCH".
  */
 const char* zxc_version_string(void) { return ZXC_LIB_VERSION_STR; }

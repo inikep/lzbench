@@ -7,7 +7,7 @@ v2.x.y (work-in-progress)
 - updated lzav to 5.16 (thanks to @avaneev)
 - updated memlz to 0.4 beta (thanks to @rrrlasse)
 - updated nvcomp to support CUDA 13 and cccl 3 (thanks to @fwyzard)
-- updated zxc to 0.14.0 (thanks to @hellobertrand)
+- updated zxc to 0.14.1 (thanks to @hellobertrand)
 - improvement: autodetect whether linking with -ldl is required (thanks to @fwyzard)
 - improvement: added a CUDA build job (nvcc 13.2, Ubuntu 24.04) to the Azure Pipelines CI
 - improvement: tornado is now benchmarked on RISC-V hardware whose misaligned scalar access
