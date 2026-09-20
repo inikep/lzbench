@@ -269,8 +269,9 @@ zxc_cstream* zxc_cstream_create(const zxc_compress_opts_t* opts) {
 
     if (opts) cs->opts = *opts;
 
-    // The push-stream format carries no dict_id, so a dictionary here would
-    // produce archives that decode wrong (or not at all) elsewhere.
+    // Push streams take no dictionary yet (deferred until a need arises): the
+    // header id stays 0, so a dictionary here would produce archives that
+    // decode wrong elsewhere.
     if (UNLIKELY(cs->opts.dict || cs->opts.dict_size || cs->opts.dict_huf)) {
         ZXC_FREE(cs);
         return NULL;
@@ -852,8 +853,11 @@ static int ds_handle_need_file_header(zxc_dstream* ds, zxc_inbuf_t* in) {
 
     size_t bs = 0;
     int has_csum = 0;
-    const int rc = zxc_read_file_header(ds->scratch, ds->scratch_used, &bs, &has_csum, NULL);
+    uint32_t dict_id = 0;
+    const int rc = zxc_read_file_header(ds->scratch, ds->scratch_used, &bs, &has_csum, &dict_id);
     if (UNLIKELY(rc != ZXC_OK)) return ds_set_error(ds, rc);  // LCOV_EXCL_LINE
+    // Push streams take no dictionary yet, so an archive requiring one is refused.
+    if (UNLIKELY(dict_id != 0)) return ds_set_error(ds, ZXC_ERROR_DICT_REQUIRED);
     ds->block_size = bs;
     ds->file_has_checksum = has_csum;
 
@@ -914,7 +918,11 @@ static int ds_handle_need_block_header(zxc_dstream* ds, zxc_inbuf_t* in) {
         return 0;
     }
 
-    // Normal data block: read comp_size [+ ZXC_BLOCK_CHECKSUM_SIZE if file-level checksums].
+    // Data block: validate comp_size against the block_size negotiated in the file header.
+    if (UNLIKELY((uint64_t)ds->cur_bh.comp_size > (uint64_t)ds->block_size))
+        return ds_set_error(ds, ZXC_ERROR_BAD_BLOCK_SIZE);
+
+    // Read comp_size [+ ZXC_BLOCK_CHECKSUM_SIZE if file-level checksums].
     const uint64_t need = (uint64_t)ds->cur_bh.comp_size +
                           (ds->file_has_checksum ? (uint64_t)ZXC_BLOCK_CHECKSUM_SIZE : 0U);
     if (UNLIKELY(need > ds->payload_cap)) return ds_set_error(ds, ZXC_ERROR_BAD_BLOCK_SIZE);

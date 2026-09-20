@@ -180,6 +180,11 @@ ZXC_EXPORT uint32_t zxc_seekable_get_block_decomp_size(const zxc_seekable* s,
  * The core random-access primitive: only the blocks overlapping
  * [@p offset, @p offset + @p len) are read and decompressed.
  *
+ * @par Checksums
+ * Per-block checksums are **not** verified unless
+ * @ref zxc_seekable_set_checksum was called with a non-zero argument; a
+ * mismatch then returns @ref ZXC_ERROR_BAD_CHECKSUM.
+ *
  * @param[in,out] s            Seekable handle.
  * @param[out]    dst          Destination buffer.
  * @param[in]     dst_capacity Capacity of @p dst (must be >= @p len).
@@ -200,7 +205,8 @@ ZXC_EXPORT int64_t zxc_seekable_decompress_range(zxc_seekable* s, void* dst,
  * (Windows), so the I/O stays lock-free.
  *
  * Falls back to the single-threaded path when @p n_threads <= 1 or the range
- * fits in one block.
+ * fits in one block. Same checksum rule as
+ * @ref zxc_seekable_decompress_range.
  *
  * @param[in,out] s            Seekable handle.
  * @param[out]    dst          Destination buffer.
@@ -224,6 +230,18 @@ ZXC_EXPORT int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst,
  * @param[in] s  Handle to free.
  */
 ZXC_EXPORT void zxc_seekable_free(zxc_seekable* s);
+
+/**
+ * @brief Turns per-block checksum verification on or off.
+ *
+ * Off by default, as in the frame API. No effect without checksums in the
+ * archive. Applies from the next call, on both paths.
+ *
+ * @param[in,out] s       Seekable handle.
+ * @param[in]     enabled Non-zero to verify, 0 to skip.
+ * @return @ref ZXC_OK, or @ref ZXC_ERROR_NULL_INPUT if @p s is NULL.
+ */
+ZXC_EXPORT int zxc_seekable_set_checksum(zxc_seekable* s, int enabled);
 
 /**
  * @brief Attaches a pre-trained dictionary to a seekable handle.

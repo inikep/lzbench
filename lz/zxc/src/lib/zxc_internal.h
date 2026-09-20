@@ -618,6 +618,10 @@ extern "C" {
 
 /** @brief Upper bound on PivCo tree nodes (full binary tree over the alphabet). */
 #define ZXC_PIVCO_MAX_NODES (2 * ZXC_HUF_NUM_SYMBOLS - 1)
+/** @brief Deepest flat subtree ::zxc_pivco_unpack_flat unpacks with a SIMD
+ *         kernel (its D == 2..6 cases); deeper flat roots take the scalar
+ *         bit-reader. A structural fact of that unpacker, not tunable. */
+#define ZXC_PIVCO_UNPACK_FLAT_SIMD_MAX 6
 
 /** @brief One PivCo Huffman tree node. */
 typedef struct {
@@ -702,49 +706,27 @@ typedef struct {
  *  lengths toward power-of-two class counts and shallower caps, adopting a
  *  candidate only when its modeled decode win clears the guard below at a
  *  bounded ratio cost. Wire-compatible by construction: adjusted lengths stay
- *  canonical, Kraft-exact and within the level cap, so any v7 decoder reads
- *  the section unchanged (selection is encoder policy, FORMAT.md 5.2.1).
- *  Idea from pivco-huffman issue #20 (dougallj). All knobs are
- *  `#ifndef`-guarded so an A/B build can override them from CFLAGS; in
- *  particular `-DZXC_HUF_NUDGE_MERGE_Q8=0` makes the guard reject every
- *  candidate, restoring archives byte-identical to the unadjusted encoder.
+ *  canonical, Kraft-exact and within the level cap.
+ *  Idea from pivco-huffman issue #20 (dougallj).
  *  @{ */
 /** @brief Exchange rate (Q8 bits per modeled level-touch) in the candidate
  *         cost `J = 256*bits + lambda*touches`; 26 ~= 0.10 bit per touch. */
-#ifndef ZXC_HUF_NUDGE_LAMBDA_Q8
 #define ZXC_HUF_NUDGE_LAMBDA_Q8 26
-#endif
 /** @brief Adoption guard, ratio side (permil): adopt only while
  *         `bits' * 1000 <= bits0 * ZXC_HUF_NUDGE_BITS_PERMIL` (<= +1.5%). */
-#ifndef ZXC_HUF_NUDGE_BITS_PERMIL
 #define ZXC_HUF_NUDGE_BITS_PERMIL 1015
-#endif
 /** @brief Adoption guard, speed side (Q8): adopt only while
  *         `touches' * 256 <= touches0 * ZXC_HUF_NUDGE_MERGE_Q8` (<= ~0.90x). */
-#ifndef ZXC_HUF_NUDGE_MERGE_Q8
 #define ZXC_HUF_NUDGE_MERGE_Q8 230
-#endif
-/** @brief Deepest flat-subtree depth with a SIMD unpacker (see
- *         zxc_pivco_unpack_flat); deeper flat roots fall back to the scalar
- *         bit-reader and must NOT be priced as free. */
-#define ZXC_HUF_NUDGE_FLAT_SIMD_MAX 6
 /** @brief Extra level-touches charged per occurrence under a flat root deeper
- *         than ::ZXC_HUF_NUDGE_FLAT_SIMD_MAX (scalar bit-reader unpack path).
- *         Measured on M2 silesia sections: the scalar unpack costs ~18 SIMD
- *         touch-equivalents per occurrence even in its byte-aligned D = 8 best
- *         case (a mispriced 2 let the walk collapse a 256-symbol section into
- *         one all-8-bit flat root: modeled -30% touches, real -54% decode).
+ *         than ::ZXC_PIVCO_UNPACK_FLAT_SIMD_MAX (scalar bit-reader unpack path).
  *         24 keeps low-mass deep-flat tails adoptable while making
  *         all-the-mass deep flats impossible to justify. */
-#ifndef ZXC_HUF_NUDGE_DEEP_FLAT_PENALTY
 #define ZXC_HUF_NUDGE_DEEP_FLAT_PENALTY 24
-#endif
 /** @brief Fixed per-pass overhead (occurrence-equivalents) charged per merge
  *         level, modeling the pass-loop and node-dispatch cost so shallower
  *         trees also win on small sections. */
-#ifndef ZXC_HUF_NUDGE_LEVEL_COST
 #define ZXC_HUF_NUDGE_LEVEL_COST 64
-#endif
 /** @} */
 
 /** @name Space-speed section selection
@@ -836,7 +818,8 @@ static inline int zxc_level_clamp(const int level) {
  *  and decompression option structs carry these fields without sharing a type. */
 #define ZXC_OPTS_DICT_SIZE(o) (((o) && (o)->dict) ? (o)->dict_size : (size_t)0)
 /** @brief Shared literal Huffman table, gated on @c dict the same way. */
-#define ZXC_OPTS_DICT_HUF(o) (((o) && (o)->dict) ? (const uint8_t*)(o)->dict_huf : NULL)
+#define ZXC_OPTS_DICT_HUF(o) \
+    (((o) && (o)->dict && (o)->dict_size > 0) ? (const uint8_t*)(o)->dict_huf : NULL)
 /** @brief Compression level, 0 meaning the default, clamped to the highest level
  *         the encoder implements. */
 #define ZXC_OPTS_LEVEL(o, dflt) zxc_level_clamp(((o) && (o)->level > 0) ? (o)->level : (dflt))
@@ -1438,32 +1421,22 @@ void zxc_aligned_free(void* ptr);
 
 /**
  * @brief Calculates a 32-bit hash for a given input buffer.
+ *
+ * Pass @p seed 0 for a standalone checksum. A non-zero @p seed derives one
+ * checksum from another: the first 64-bit hash is folded to 32 bits, and that
+ * fold is all the seed carries. So
+ * `zxc_checksum(b, bn, zxc_checksum(a, an, 0, m), m)` is a two-stage value over
+ * the pair (a, b), not the checksum of `a || b`; the two differ. Use it to bind
+ * two buffers under one id, never to hash a split buffer incrementally.
+ *
  * @param[in] input Pointer to the data buffer.
  * @param[in] len Length of the data in bytes.
+ * @param[in] seed Previous 32-bit checksum to derive from, or 0 to start fresh.
  * @param[in] hash_method Checksum algorithm identifier (e.g., ZXC_CHECKSUM_RAPIDHASH).
  * @return The calculated 32-bit hash value.
  */
 static ZXC_ALWAYS_INLINE uint32_t zxc_checksum(const void* RESTRICT input, const size_t len,
-                                               const uint8_t hash_method) {
-    (void)hash_method; /* single algorithm for now; extend when adding more */
-    const uint64_t hash = rapidhash(input, len);
-
-    return (uint32_t)(hash ^ (hash >> (sizeof(uint32_t) * CHAR_BIT)));
-}
-
-/**
- * @brief Seeded variant of @ref zxc_checksum, for chaining a hash over
- *        non-contiguous buffers: `zxc_checksum_seed(b, bn, zxc_checksum(a, an, m), m)`
- *        hashes each byte once without a concat copy.
- * @param[in] input Pointer to the data buffer.
- * @param[in] len Length of the data in bytes.
- * @param[in] seed Previous 32-bit checksum to chain from.
- * @param[in] hash_method Checksum algorithm identifier (e.g., ZXC_CHECKSUM_RAPIDHASH).
- * @return The calculated 32-bit hash value.
- */
-static ZXC_ALWAYS_INLINE uint32_t zxc_checksum_seed(const void* RESTRICT input, const size_t len,
-                                                    const uint32_t seed,
-                                                    const uint8_t hash_method) {
+                                               const uint32_t seed, const uint8_t hash_method) {
     (void)hash_method; /* single algorithm for now; extend when adding more */
     const uint64_t hash = rapidhash_withSeed(input, len, seed);
 
