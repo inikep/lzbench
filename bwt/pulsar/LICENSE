@@ -1,0 +1,24 @@
+pulsar is available under two licenses. You choose one.
+
+1. GNU General Public License v3.0 or later
+   See LICENSE.GPL-3.0
+
+2. Slid Phi Labs Commercial License
+   See LICENSE.COMMERCIAL
+   Use this to put pulsar inside a closed-source product.
+
+This grant never includes Combined GC, LBR1 / splb / ASMD,
+AWARE encoder source, Chamber kernel, or Agent-Rider signing keys
+unless the invoice names them.
+
+Copyright (c) 2026 Slid Phi Labs / Corey Tasz.
+
+Legal identity
+- Trade name: Slid Phi Labs
+- Public author / copyright: Corey Tasz
+- Legal name on manuscript: Corey Robert Ptaszenski
+
+Seats and current terms: https://www.slidphilabs.com/licensing.json
+Contact: corey@slidphilabs.com
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
