@@ -10,15 +10,7 @@ publish = false
 [lib]
 name = "pulsar"
 path = "src/lib.rs"
-crate-type = ["staticlib", "rlib"]
-
-[[bin]]
-name = "pulsar"
-path = "src/bin/pulsar.rs"
-
-[[bin]]
-name = "pulsar-bench"
-path = "src/bin/pulsar-bench.rs"
+crate-type = ["cdylib", "staticlib", "rlib"]
 
 [profile.release]
 lto = false
