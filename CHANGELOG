@@ -5,7 +5,7 @@ v2.x.y (work-in-progress)
 - added OpenZL v0.2.3 (thanks to @fwyzard)
 - updated aceapex to 1.0.1 (thanks to @yasha1971-coder)
 - updated lzav to 5.16 (thanks to @avaneev)
-- updated memlz to 0.4 beta (thanks to @rrrlasse)
+- updated memlz to 0.5 beta (thanks to @rrrlasse); fixes unaligned accesses, re-enabled on 32-bit ARM
 - updated nvcomp to support CUDA 13 and cccl 3 (thanks to @fwyzard)
 - updated zxc to 0.14.1 (thanks to @hellobertrand)
 - improvement: autodetect whether linking with -ldl is required (thanks to @fwyzard)
