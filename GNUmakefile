@@ -31,6 +31,6 @@ PULSAR_LIB:
 ifneq ($(DONT_BUILD_PULSAR),1)
 	@echo "Building Pulsar..."
 	cd $(PULSAR_SRC_DIR) && \
-	RUSTFLAGS="-C target-cpu=native -C linker=$$(lastword $(CXX))" \
+	RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" \
 	cargo rustc --lib --crate-type=$(PULSAR_BUILD_TYPE) --release -- --print=native-static-libs
 endif
