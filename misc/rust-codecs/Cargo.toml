@@ -1,0 +1,41 @@
+# Links every Rust codec into one library, liblzbench_rust (a staticlib for
+# BUILD_STATIC=1, a cdylib otherwise). Two Rust staticlibs each carry their own
+# copy of std and cannot be linked into the same binary, so the codecs cannot
+# each be built as a library of their own. The Makefile enables one feature per
+# codec it builds.
+[package]
+name = "lzbench-rust"
+version = "0.0.0"
+edition = "2024"
+# Density's minimum; mbrotli needs 1.89 and is only enabled on such toolchains.
+# Also makes the resolver lock dependencies compatible with it.
+rust-version = "1.85"
+publish = false
+
+[lib]
+name = "lzbench_rust"
+path = "lib.rs"
+
+[dependencies]
+density-rs = { path = "../density/src", optional = true }
+mbrotli-ffi = { path = "../../lz/mbrotli/mbrotli-ffi", optional = true }
+
+[features]
+density = ["dep:density-rs"]
+mbrotli = ["dep:mbrotli-ffi"]
+
+# Carried over from density's own manifest, which is ignored now that it is a
+# dependency. mbrotli-ffi catches panics at the C boundary, so keep unwinding.
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = "fat"
+debug-assertions = false
+codegen-units = 1
+panic = "unwind"
+incremental = false
+overflow-checks = false
+
+# A workspace of its own, so cargo never looks for one in a parent directory.
+[workspace]

@@ -9,6 +9,7 @@
 *.odt binary
 *.png binary
 *.jpg binary
+*.bin binary
 
 # Visual Studio
 *.sln binary

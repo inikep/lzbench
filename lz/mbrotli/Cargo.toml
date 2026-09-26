@@ -1,0 +1,53 @@
+# Trimmed for lzbench: dev-dependencies, benches, examples, the workspace and
+# the experimental/hotpath features were stubbed out (they reference files that
+# are not vendored). The library sources in src/ are unmodified.
+[package]
+name = "mbrotli"
+version = "0.5.2"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+description = "Fast Brotli (RFC 7932 and RFC 9841) compression and decompression in safe Rust; encoding is byte-identical to Google's reference encoder"
+repository = "https://github.com/Mnwa/mbrotli"
+homepage = "https://github.com/Mnwa/mbrotli"
+documentation = "https://docs.rs/mbrotli"
+readme = "README.md"
+keywords = ["brotli", "compression", "encoder", "simd"]
+categories = ["compression", "algorithms", "no-std"]
+
+[dependencies.fearless_simd]
+version = "1"
+optional = true
+default-features = false
+
+[dependencies.thiserror]
+version = "2"
+optional = true
+default-features = false
+
+[dependencies.libm]
+version = "0.2"
+optional = true
+
+[features]
+default = ["std", "compression", "decompression"]
+# Independently selectable public codecs and their private implementations.
+compression = ["dep:fearless_simd", "dep:thiserror"]
+decompression = ["dep:fearless_simd", "dep:thiserror"]
+# Dependency runtime detection for ordinary builds.
+std = ["fearless_simd?/std", "thiserror?/std"]
+# Opt-in alloc-backed support; overrides std-only APIs and instrumentation.
+# Disable default features too when targeting a platform without std.
+no_std = ["dep:libm", "fearless_simd?/libm"]
+
+# Exposes the prepared-dictionary longest-match diagnostic. It answers how well
+# a candidate dictionary covers a corpus, which is worth knowing before
+# shipping one, but the candidate order it breaks ties by is an implementation
+# detail; keeping it behind a feature keeps that out of the default surface.
+diagnostics = []
+
+# Declared but inert in lzbench: upstream wires these to the C reference
+# library (experimental) and a profiler crate (hotpath), neither vendored here.
+# Keeping the names avoids unexpected_cfgs warnings from the unmodified sources.
+experimental = []
+hotpath = []

@@ -175,17 +175,18 @@ jobs:
         ARTIFACT_SLUG: gcc-14-i686
 
       # The only native static build: the cross builds below are static too, but
-      # they skip the cargo (density) and zig (skim) codecs, so without this job
-      # nothing links the Rust staticlibs into a -static binary. Two Rust
+      # they skip the cargo (density, mbrotli) and zig (skim) codecs, so without
+      # this job nothing links the Rust staticlib into a -static binary. Two Rust
       # staticlibs each carry their own copy of std and fail to link together
-      # ("multiple definition of rust_eh_personality").
+      # ("multiple definition of rust_eh_personality"), which is why every Rust
+      # codec is built into the one library from misc/rust-codecs.
       gcc-14 x86 64-bit static [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-14
         SELECTED_CXX: g++-14
         PACKAGES: 'g++-14'
         MORE_OPTIONS: 'BUILD_STATIC=1'
-        REQUIRE_CODECS: 'density skim'
+        REQUIRE_CODECS: 'density mbrotli skim'
         ARTIFACT_SLUG: gcc-14-x86_64-static
 
       gcc-13 [Ubuntu 24.04 Noble]:
