@@ -1,4 +1,5 @@
 v2.x.y (work-in-progress)
+- added pulsar 2.5.0 (thanks to @ceedot-rock)
 - added GPUCompact 1.1 (by @UDPSendToFailed)
 - added lbzip2 2.6.5 (thanks to @caius72)
 - added misa77 0.6.0 (by @welcome-to-the-sunny-side)
