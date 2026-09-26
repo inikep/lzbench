@@ -51,6 +51,7 @@ if(BUILD_TESTING)
     #################
 
     set(LIBLZMA_TESTS
+        test_alone_decoder
         test_bcj_exact_size
         test_block_header
         test_check
@@ -61,6 +62,8 @@ if(BUILD_TESTING)
         test_index_hash
         test_lzip_decoder
         test_memlimit
+        test_stream_buffer_decode
+        test_stream_buffer_encode
         test_stream_flags
         test_vli
     )
@@ -86,14 +89,12 @@ if(BUILD_TESTING)
 
         target_link_libraries("${TEST}" PRIVATE liblzma tests_w32res)
 
-        # Put the test programs into their own subdirectory so they don't
-        # pollute the top-level dir which might contain xz and xzdec.
-        set_target_properties("${TEST}" PROPERTIES
-            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests_bin"
-        )
-
+        # We used to put the test executables into their own subdirectory,
+        # but it can create problems on Windows when BUILD_SHARED_LIBS=ON.
+        # The executables and liblzma.dll should be in the same directory to
+        # ensure that the correct liblzma.dll file is always found and used.
         add_test(NAME "${TEST}"
-                 COMMAND "${CMAKE_CURRENT_BINARY_DIR}/tests_bin/${TEST}"
+                 COMMAND "${CMAKE_CURRENT_BINARY_DIR}/${TEST}"
         )
 
         # Set srcdir environment variable so that the tests find their

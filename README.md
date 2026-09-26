@@ -99,7 +99,7 @@ sources, the Notes column says so.
 | [tamp 2.2.4](https://github.com/BrianPugh/tamp) | 2026-06-11 | |
 | [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | Disabled on RISC-V unless the build machine does misaligned access at full speed (asked via the hwprobe syscall); such a build is then not portable to a slower RISC-V machine |
 | [ucl 1.03](http://www.oberhumer.com/opensource/ucl/) | 2004-07-20 | |
-| [xz 5.8.3](https://github.com/tukaani-project/xz) | 2026-03-31 | Built in lzbench with a hand-written `config.h` (upstream uses autotools) |
+| [xz 5.8.4](https://github.com/tukaani-project/xz) | 2026-09-09 | Built in lzbench with a hand-written `config.h` (upstream uses autotools) |
 | [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) | 2022-07-06 | |
 | [zlib 1.3.2](http://zlib.net) | 2026-02-17 | |
 | [zlib-ng 2.3.3](https://github.com/zlib-ng/zlib-ng) | 2026-02-03 | |

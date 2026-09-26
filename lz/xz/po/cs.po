@@ -6,7 +6,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: xz-utils\n"
 "Report-Msgid-Bugs-To: xz@tukaani.org\n"
-"POT-Creation-Date: 2026-03-30 17:13+0300\n"
+"POT-Creation-Date: 2026-08-15 19:56+0300\n"
 "PO-Revision-Date: 2010-12-03 11:32+0100\n"
 "Last-Translator: Marek Černocký <marek@manet.cz>\n"
 "Language-Team: Czech <diskuze@lists.l10n.cz>\n"
@@ -586,6 +586,10 @@ msgstr "Ne"
 
 #: src/xz/list.c
 msgid "Minimum XZ Utils version:"
+msgstr ""
+
+#: src/xz/list.c
+msgid "Error: The total compressed or uncompressed size of the files is too large"
 msgstr ""
 
 #. TRANSLATORS: %s is an integer. Only the plural form of this

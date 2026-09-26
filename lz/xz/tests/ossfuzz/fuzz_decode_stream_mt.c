@@ -20,26 +20,38 @@ extern int
 LLVMFuzzerTestOneInput(const uint8_t *inbuf, size_t inbuf_size)
 {
 	lzma_stream strm = LZMA_STREAM_INIT;
+	prepare_stream(&strm, inbuf, inbuf_size);
 
 	lzma_mt mt = {
-		.flags = LZMA_CONCATENATED | LZMA_IGNORE_CHECK,
+		.flags = /*LZMA_CONCATENATED |*/ LZMA_IGNORE_CHECK,
 		.threads = 2,
 		.timeout = 0,
 		.memlimit_threading = MEM_LIMIT / 2,
 		.memlimit_stop = MEM_LIMIT,
 	};
 
-	lzma_ret ret = lzma_stream_decoder_mt(&strm, &mt);
+	lzma_ret ret;
 
-	if (ret != LZMA_OK) {
-		// This should never happen unless the system has
-		// no free memory or address space to allow the small
-		// allocations that the initialization requires.
-		fprintf(stderr, "lzma_stream_decoder_mt() failed (%d)\n", ret);
-		abort();
+	for (int i = 0; i < 3; ++i) {
+		if (i == 2)
+			mt.flags |= LZMA_CONCATENATED;
+
+		ret = lzma_stream_decoder_mt(&strm, &mt);
+
+		if (ret == LZMA_MEM_ERROR)
+			continue;
+
+		if (ret != LZMA_OK) {
+			// This should never happen unless the system has
+			// no free memory or address space to allow the small
+			// allocations that the initialization requires.
+			fprintf(stderr, "lzma_stream_decoder_mt() "
+					"failed (%d)\n", ret);
+			abort();
+		}
+
+		fuzz_code(&strm, strm.next_in, strm.avail_in);
 	}
-
-	fuzz_code(&strm, inbuf, inbuf_size);
 
 	lzma_end(&strm);
 

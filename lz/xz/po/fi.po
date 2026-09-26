@@ -9,7 +9,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: xz 5.7.1-dev1\n"
 "Report-Msgid-Bugs-To: xz@tukaani.org\n"
-"POT-Creation-Date: 2026-03-30 17:13+0300\n"
+"POT-Creation-Date: 2026-08-15 19:56+0300\n"
 "PO-Revision-Date: 2025-01-29 21:57+0200\n"
 "Last-Translator: Lauri Nurmi <lanurmi@iki.fi>\n"
 "Language-Team: Finnish <translation-team-fi@lists.sourceforge.net>\n"
@@ -558,6 +558,10 @@ msgstr "Ei"
 #: src/xz/list.c
 msgid "Minimum XZ Utils version:"
 msgstr "XZ Utilsin vähimmäisversio:"
+
+#: src/xz/list.c
+msgid "Error: The total compressed or uncompressed size of the files is too large"
+msgstr ""
 
 #. TRANSLATORS: %s is an integer. Only the plural form of this
 #. message is used (e.g. "2 files"). Test with "xz -l foo.xz bar.xz".

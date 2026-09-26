@@ -7,6 +7,7 @@ v2.x.y (work-in-progress)
 - updated lzav to 5.16 (thanks to @avaneev)
 - updated memlz to 0.5 beta (thanks to @rrrlasse); fixes unaligned accesses, re-enabled on 32-bit ARM
 - updated nvcomp to support CUDA 13 and cccl 3 (thanks to @fwyzard)
+- updated xz to 5.8.4; fixes an invalid memory access in liblzma decoders after a failed allocation
 - updated zxc to 0.14.1 (thanks to @hellobertrand)
 - improvement: autodetect whether linking with -ldl is required (thanks to @fwyzard)
 - improvement: added a CUDA build job (nvcc 13.2, Ubuntu 24.04) to the Azure Pipelines CI

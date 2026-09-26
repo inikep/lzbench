@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: xz 5.6.0-pre2\n"
 "Report-Msgid-Bugs-To: xz@tukaani.org\n"
-"POT-Creation-Date: 2026-03-30 17:13+0300\n"
+"POT-Creation-Date: 2026-08-15 19:56+0300\n"
 "PO-Revision-Date: 2024-02-17 18:35+0100\n"
 "Last-Translator: Meskó Balázs <mesko.balazs@fsf.hu>\n"
 "Language-Team: Hungarian <translation-team-hu@lists.sourceforge.net>\n"
@@ -564,6 +564,10 @@ msgstr "Nem"
 #| msgid "  Minimum XZ Utils version: %s\n"
 msgid "Minimum XZ Utils version:"
 msgstr "  Legkisebb XZ Utils verzió: %s\n"
+
+#: src/xz/list.c
+msgid "Error: The total compressed or uncompressed size of the files is too large"
+msgstr ""
 
 #. TRANSLATORS: %s is an integer. Only the plural form of this
 #. message is used (e.g. "2 files"). Test with "xz -l foo.xz bar.xz".

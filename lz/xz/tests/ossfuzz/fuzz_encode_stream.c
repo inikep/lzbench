@@ -69,11 +69,15 @@ LLVMFuzzerTestOneInput(const uint8_t *inbuf, size_t inbuf_size)
 
 	// initialize empty LZMA stream
 	lzma_stream strm = LZMA_STREAM_INIT;
+	prepare_stream(&strm, inbuf, inbuf_size);
 
 	// Initialize the stream encoder using the above
 	// stream, filter chain and CRC64.
 	lzma_ret ret = lzma_stream_encoder(&strm, filters, LZMA_CHECK_CRC64);
 	if (ret != LZMA_OK) {
+		if (ret == LZMA_MEM_ERROR)
+			return 0;
+
 		fprintf(stderr, "lzma_stream_encoder() failed (%d)\n", ret);
 		abort();
 	}

@@ -39,6 +39,8 @@ check_PROGRAMS = \
 	create_compress_files \
 	test_check \
 	test_hardware \
+	test_stream_buffer_decode \
+	test_stream_buffer_encode \
 	test_stream_flags \
 	test_filter_flags \
 	test_filter_str \
@@ -47,12 +49,15 @@ check_PROGRAMS = \
 	test_index_hash \
 	test_bcj_exact_size \
 	test_memlimit \
+	test_alone_decoder \
 	test_lzip_decoder \
 	test_vli
 
 TESTS = \
 	test_check \
 	test_hardware \
+	test_stream_buffer_decode \
+	test_stream_buffer_encode \
 	test_stream_flags \
 	test_filter_flags \
 	test_filter_str \
@@ -61,6 +66,7 @@ TESTS = \
 	test_index_hash \
 	test_bcj_exact_size \
 	test_memlimit \
+	test_alone_decoder \
 	test_lzip_decoder \
 	test_vli \
 	test_files.sh \
