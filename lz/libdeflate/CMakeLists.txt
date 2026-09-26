@@ -6,6 +6,10 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Choose the type of build" FORCE)
 endif()
 
+if(DEFINED CMAKE_C_FLAGS_RELEASE)
+    set(LIBDEFLATE_USER_SET_RELEASE_FLAGS ON)
+endif()
+
 # With MSVC, don't automatically append /W3 to the compiler flags.
 # This makes it possible for the user to select /W4.
 if(POLICY CMP0092)
@@ -22,6 +26,11 @@ string(REGEX REPLACE ${VERSION_REGEX} "\\1" VERSION_STRING "${VERSION_STRING}")
 project(libdeflate
         LANGUAGES C
         VERSION ${VERSION_STRING})
+if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+    set(LIBDEFLATE_IS_TOP_LEVEL_PROJECT ON)
+else()
+    set(LIBDEFLATE_IS_TOP_LEVEL_PROJECT OFF)
+endif()
 
 # Include the CMake modules required by the top-level directory.
 include(CMakePackageConfigHelpers)
@@ -44,6 +53,8 @@ option(LIBDEFLATE_BUILD_TESTS "Build the test programs" OFF)
 option(LIBDEFLATE_USE_SHARED_LIB
        "Link the libdeflate-gzip and test programs to the shared library instead
        of the static library" OFF)
+option(LIBDEFLATE_INSTALL "Install all targets built" ${LIBDEFLATE_IS_TOP_LEVEL_PROJECT})
+
 if(APPLE)
     option(LIBDEFLATE_APPLE_FRAMEWORK "Build as Apple Framework" OFF)
 endif()
@@ -64,8 +75,11 @@ if(NOT LIBDEFLATE_BUILD_STATIC_LIB)
 endif()
 
 # Set common C compiler flags for all targets (the library and the programs).
-set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG")
-set(CMAKE_C_STANDARD 99)
+if(NOT LIBDEFLATE_USER_SET_RELEASE_FLAGS)
+    set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG"
+        CACHE STRING "C compiler flags for release builds" FORCE)
+endif()
+set(CMAKE_C_STANDARD 11)
 if(NOT MSVC)
     check_c_compiler_flag(-Wdeclaration-after-statement HAVE_WDECLARATION_AFTER_STATEMENT)
     check_c_compiler_flag(-Wimplicit-fallthrough HAVE_WIMPLICIT_FALLTHROUGH)
@@ -303,17 +317,19 @@ if(LIBDEFLATE_BUILD_SHARED_LIB)
 endif()
 
 # Install the static and/or shared library.
-install(TARGETS ${LIB_TARGETS}
-        EXPORT libdeflate_exported_targets
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-        FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT runtime OPTIONAL
-        INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-        PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+if(LIBDEFLATE_INSTALL)
+    install(TARGETS ${LIB_TARGETS}
+            EXPORT libdeflate_exported_targets
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+            FRAMEWORK DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT runtime OPTIONAL
+            INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+            PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+endif()
 
 # Install resource files to Resources/ directory in the framework
-if(LIBDEFLATE_APPLE_FRAMEWORK)
+if(LIBDEFLATE_INSTALL AND LIBDEFLATE_APPLE_FRAMEWORK)
     install(FILES ${LIBDEFLATE_RESOURCES}
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/libdeflate_static.framework/Resources"
     )
@@ -335,21 +351,25 @@ else()
     set(CMAKE_PKGCONFIG_LIBDIR "\${exec_prefix}/${CMAKE_INSTALL_LIBDIR}")
 endif()
 configure_file(libdeflate.pc.in libdeflate.pc @ONLY)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libdeflate.pc
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+if(LIBDEFLATE_INSTALL)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libdeflate.pc
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+endif()
 
 # Generate a "libdeflate-targets.cmake" file in the build tree that can be
 # included by outside projects to import targets from the build tree.
-export(EXPORT libdeflate_exported_targets
+export(TARGETS ${LIB_TARGETS}
        NAMESPACE libdeflate::
        FILE libdeflate-targets.cmake)
 
 # Generate and install a separate "libdeflate-targets.cmake" file that can be
 # included by outside projects to import targets from the installation tree.
-install(EXPORT libdeflate_exported_targets
-        NAMESPACE libdeflate::
-        FILE libdeflate-targets.cmake
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libdeflate)
+if(LIBDEFLATE_INSTALL)
+    install(EXPORT libdeflate_exported_targets
+            NAMESPACE libdeflate::
+            FILE libdeflate-targets.cmake
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libdeflate)
+endif()
 
 # Generate and install the CMake package version and config files.
 write_basic_package_version_file(libdeflate-config-version.cmake
@@ -359,9 +379,11 @@ configure_package_config_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/libdeflate-config.cmake.in
     libdeflate-config.cmake
     INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libdeflate)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libdeflate-config.cmake
-        ${CMAKE_CURRENT_BINARY_DIR}/libdeflate-config-version.cmake
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libdeflate)
+if(LIBDEFLATE_INSTALL)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/libdeflate-config.cmake
+            ${CMAKE_CURRENT_BINARY_DIR}/libdeflate-config-version.cmake
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/libdeflate)
+endif()
 
 # Build the programs subdirectory if needed.
 if(LIBDEFLATE_BUILD_GZIP OR LIBDEFLATE_BUILD_TESTS)
