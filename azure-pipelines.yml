@@ -174,6 +174,20 @@ jobs:
         MORE_OPTIONS: 'BUILD_ARCH=32-bit'
         ARTIFACT_SLUG: gcc-14-i686
 
+      # The only native static build: the cross builds below are static too, but
+      # they skip the cargo (density) and zig (skim) codecs, so without this job
+      # nothing links the Rust staticlibs into a -static binary. Two Rust
+      # staticlibs each carry their own copy of std and fail to link together
+      # ("multiple definition of rust_eh_personality").
+      gcc-14 x86 64-bit static [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: gcc-14
+        SELECTED_CXX: g++-14
+        PACKAGES: 'g++-14'
+        MORE_OPTIONS: 'BUILD_STATIC=1'
+        REQUIRE_CODECS: 'density skim'
+        ARTIFACT_SLUG: gcc-14-x86_64-static
+
       gcc-13 [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
         SELECTED_CC: gcc-13
@@ -340,6 +354,13 @@ jobs:
       file ./lzbench
       $QEMU_INTERPRETER ./lzbench
 
+      # The Makefile silently drops codecs whose toolchain (cargo, zig) it cannot
+      # find, which would leave a job green without testing what it is meant to.
+      for codec in $REQUIRE_CODECS; do
+        $QEMU_INTERPRETER ./lzbench -l | grep -q "^$codec = " || \
+          { echo "ERROR: $codec was not built, but this job requires it"; exit 1; }
+      done
+
       df -Th
       BUILD_TIME=$SECONDS
       echo --- Build took $BUILD_TIME seconds. Packages updated in $UPDATE_TIME seconds.
@@ -365,6 +386,42 @@ jobs:
   - script: |
       $QEMU_INTERPRETER ./lzbench -eMISC -v5 ./lzbench || exit 1
     displayName: '*** Run MISC'
+
+  # Every built codec at its first level, on data it cannot compress. The codec
+  # list comes from 'lzbench -l', so this also covers codecs that are missing
+  # from the LZ/SYMMETRIC/MISC/FASTEST aliases used above. A compressor must
+  # store such input rather than fail: lzbench exits with 10 when compress()
+  # returns <= 0 and with 11 when the round trip does not match.
+  - script: |
+      set -e
+      DATA_DIR=$(Agent.TempDirectory)/incompressible
+      mkdir -p $DATA_DIR
+      python3 -c "import random,sys; random.seed(1); sys.stdout.buffer.write(random.randbytes(262144))" > $DATA_DIR/random-256K
+      python3 -c "import random,sys; random.seed(2); sys.stdout.buffer.write(random.randbytes(100))" > $DATA_DIR/random-100
+      printf 'hello' > $DATA_DIR/tiny-5
+      printf 'x' > $DATA_DIR/tiny-1
+
+      # BUGGY and SLOW aliases are skipped, as is tornado (see FASTEST). The
+      # openzl integer profiles fail when the input size is not a multiple of
+      # the element width.
+      SKIP="$($QEMU_INTERPRETER ./lzbench -l | sed -nE 's/^(BUGGY|SLOW) = //p' | tr '/\n' '  ')"
+      SKIP="$SKIP tornado openzl_le_u16 openzl_le_i16 openzl_le_u32 openzl_le_i32 openzl_le_u64 openzl_le_i64"
+      CODECS=$($QEMU_INTERPRETER ./lzbench -l | awk -v skip=" $SKIP memcpy " '
+        /^Available compressors/ { f = 1; next }
+        /^$/ { f = 0 }
+        f && / = / {
+          n = $1
+          if (index(skip, " " n " ")) next
+          if (match($0, /levels=\[-?[0-9]+/)) n = n "," substr($0, RSTART + 8, RLENGTH - 8)
+          printf "%s%s", sep, n; sep = "/"
+        }')
+      echo "CODECS=$CODECS"
+
+      for f in $DATA_DIR/*; do
+        $QEMU_INTERPRETER ./lzbench -e"$CODECS" -t0,0 -i1,1 -v5 $f
+      done
+      rm -rf $DATA_DIR
+    displayName: '*** Run all codecs on incompressible and tiny inputs'
 
   - script: |
       $QEMU_INTERPRETER ./lzbench -eFASTEST -t0,0 -T2 -jr . || exit 1
