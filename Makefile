@@ -283,8 +283,26 @@ ifneq ($(strip $(RUST_FEATURES)),)
     RUST_SRC_DIR=misc/rust-codecs/
     ifeq ($(BUILD_STATIC),1)
         RUST_BUILD_TYPE=staticlib
+        RUST_LIB := $(RUST_SRC_DIR)target/release/liblzbench_rust.a
     else
         RUST_BUILD_TYPE=cdylib
+        RUST_LIB := $(RUST_SRC_DIR)target/release/liblzbench_rust$(if $(filter Darwin,$(detected_OS)),.dylib,.so)
+    endif
+
+    # RUST_LIB is rebuilt when a source of an enabled codec changes, and when the
+    # crate type or the set of codecs does: RUST_STAMP records those and is
+    # rewritten, while the Makefile is read, whenever they differ.
+    RUST_STAMP  := $(RUST_SRC_DIR)target/lzbench-config
+    RUST_CONFIG := $(RUST_BUILD_TYPE) $(strip $(RUST_FEATURES))
+    ifneq ($(shell cat $(RUST_STAMP) 2>/dev/null),$(RUST_CONFIG))
+        $(shell mkdir -p $(RUST_SRC_DIR)target && echo '$(RUST_CONFIG)' > $(RUST_STAMP))
+    endif
+    RUST_DEPS := $(RUST_STAMP) $(addprefix $(RUST_SRC_DIR),Cargo.toml Cargo.lock lib.rs .cargo/config.toml)
+    ifneq (,$(filter density,$(RUST_FEATURES)))
+        RUST_DEPS += $(shell find misc/density/src/Cargo.toml misc/density/src/src -type f)
+    endif
+    ifneq (,$(filter mbrotli,$(RUST_FEATURES)))
+        RUST_DEPS += $(shell find lz/mbrotli/Cargo.toml lz/mbrotli/src lz/mbrotli/mbrotli-ffi -type f)
     endif
 
     LDFLAGS += -Wl,-rpath,$(RUST_SRC_DIR)target/release -L$(RUST_SRC_DIR)target/release -llzbench_rust
@@ -1213,11 +1231,14 @@ MKDIR = mkdir -p
 
 LZBENCH_OBJS = $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(GPUCOMPACT_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(LBZIP2_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISA77_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
 
-lzbench: $(LZBENCH_OBJS)
-	$(CXX) $^ -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
+# RUST_LIB is linked with -l (see LDFLAGS), but it has to be built first and a
+# new one has to relink lzbench
+lzbench: $(LZBENCH_OBJS) $(RUST_LIB)
+	$(CXX) $(filter-out $(RUST_LIB),$^) -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
-$(BENCH_MAIN): bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h RUST_LIB
+
+$(BENCH_MAIN): bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h
 
 # disable the implicit rule for making a binary out of a single object file
 %: %.o
@@ -1389,13 +1410,16 @@ $(BSC_CUDA_FILES): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
 	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) $(BSC_FLAGS) -c $< -o $@
 
-# --offline: the dependencies are vendored in misc/rust-codecs/vendor
-RUST_LIB:
-ifneq ($(strip $(RUST_FEATURES)),)
+# cargo leaves an up-to-date library alone, so touch it: otherwise it would stay
+# older than a source edited without effect on the output, and cargo would run on
+# every make. --offline: the dependencies are vendored in misc/rust-codecs/vendor.
+ifneq ($(RUST_LIB),)
+$(RUST_LIB): $(RUST_DEPS)
 	@echo "Building Rust codecs ($(strip $(RUST_FEATURES)))..."
 	cd $(RUST_SRC_DIR) && \
 	RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" \
 	cargo rustc --locked --offline --features "$(strip $(RUST_FEATURES))" --crate-type=$(RUST_BUILD_TYPE) --release -- --print=native-static-libs
+	touch $@
 endif
 
 misc/skim/libskim.a: misc/skim/src/root.zig

@@ -23,6 +23,8 @@ v2.x.y (work-in-progress)
                misc/rust-codecs, so a BUILD_STATIC=1 binary can link more than one of them
 - improvement: the crates.io dependencies of the Rust codecs are vendored in
                misc/rust-codecs/vendor, so they build without network access
+- improvement: "make" no longer reruns cargo and recompiles bench/lzbench.o every time;
+               the Rust library is rebuilt only when its sources or the set of Rust codecs change
 - improvement: tornado is now benchmarked on RISC-V hardware whose misaligned scalar access
                is fast (detected with the hwprobe syscall), instead of being disabled outright
                (thanks to @zqb-all)
