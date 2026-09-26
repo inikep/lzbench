@@ -1,8 +1,8 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 /*
  * ZXC - High-performance lossless compression
  *
- * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
- * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) Bertrand Lebonnois and contributors.
  */
 
 /**
@@ -25,9 +25,9 @@
 /** @brief Major version number. */
 #define ZXC_VERSION_MAJOR 0
 /** @brief Minor version number. */
-#define ZXC_VERSION_MINOR 14
+#define ZXC_VERSION_MINOR 15
 /** @brief Patch version number. */
-#define ZXC_VERSION_PATCH 1
+#define ZXC_VERSION_PATCH 0
 
 /** @cond INTERNAL */
 #define ZXC_STR_HELPER(x) #x
@@ -35,7 +35,7 @@
 /** @endcond */
 
 /**
- * @brief Human-readable version string in "MAJOR.MINOR.PATCH" form (e.g. "0.14.1").
+ * @brief Human-readable version string in "MAJOR.MINOR.PATCH" form (e.g. "0.15.0").
  */
 #define ZXC_LIB_VERSION_STR    \
     ZXC_STR(ZXC_VERSION_MAJOR) \
@@ -75,6 +75,8 @@
  * header stores the content size in a 16-bit field, and LZ77 match offsets are
  * 16-bit (max distance 65535). */
 #define ZXC_DICT_SIZE_MAX ((1U << 16) - 1U)
+/** @brief Magic word opening a .zxd dictionary file, stored little-endian (C7 D1 B0 9C). */
+#define ZXC_DICT_MAGIC 0x9CB0D1C7U
 /** @brief Size of the .zxd dictionary file header in bytes. */
 #define ZXC_DICT_HEADER_SIZE 16
 /** @brief Size of a packed literal Huffman code-lengths table (256 symbols,
@@ -99,11 +101,18 @@
  *
  * @{
  */
+/** @brief Magic word opening every frame, stored little-endian (F5 2E B0 9C). */
+#define ZXC_MAGIC_WORD 0x9CB02EF5U
 /** @brief File header size: Magic(4) + Version(1) + Chunk(1) + Flags(1) + Reserved(7) +
  * Checksum(2). */
 #define ZXC_FILE_HEADER_SIZE 16
-/** @brief File footer size: original_size(8) + global_checksum(4). */
-#define ZXC_FILE_FOOTER_SIZE 12
+/** @brief Smallest file footer: original_size(1) + compressed_size(1) + lengths(1). */
+#define ZXC_FILE_FOOTER_MIN_SIZE 3
+/** @brief Largest file footer, digest excluded: original_size(8) + compressed_size(8) + lengths(1).
+ */
+#define ZXC_FILE_FOOTER_MAX_SIZE 17
+/** @brief Archive digest, opening the footer when the header sets HAS_CHECKSUM. */
+#define ZXC_FILE_DIGEST_SIZE 8
 /** @} */ /* end of file_format */
 
 /**

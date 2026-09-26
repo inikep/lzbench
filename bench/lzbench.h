@@ -290,7 +290,7 @@ static const compressor_desc_t comp_desc[] =
     { "zstd24LDM",  "zstd 1.5.7 --long -d24", "LZ77 + FSE/Huffman",          16,  22,   24, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstdLDM",    "zstd 1.5.7 --long",       "LZ77 + FSE/Huffman",          1,  22,    0, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
     { "zstd_fast",  "zstd 1.5.7 --fast",      "LZ77 + FSE/Huffman",          -5,  -1,    0, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zxc",        "zxc 0.14.1",              "LZ77 + Huffman",              1,   7,    0, BENCH_POOL_MT,  lzbench_zxc_compress,        lzbench_zxc_decompress,        lzbench_zxc_init,        lzbench_zxc_deinit },
+    { "zxc",        "zxc 0.15.0",              "LZ77 + Huffman",              1,   7,    0, BENCH_POOL_MT,  lzbench_zxc_compress,        lzbench_zxc_decompress,        lzbench_zxc_init,        lzbench_zxc_deinit },
 };
 
 const long int LZBENCH_COMPRESSOR_COUNT = sizeof(comp_desc)/sizeof(comp_desc[0]);

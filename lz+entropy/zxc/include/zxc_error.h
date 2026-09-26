@@ -1,8 +1,8 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 /*
  * ZXC - High-performance lossless compression
  *
- * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
- * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) Bertrand Lebonnois and contributors.
  */
 
 /**
@@ -48,7 +48,9 @@ typedef enum {
     ZXC_ERROR_BAD_MAGIC = -4,    /**< Invalid magic word in file header. */
     ZXC_ERROR_BAD_VERSION = -5,  /**< Unsupported file format version. */
     ZXC_ERROR_BAD_HEADER = -6,   /**< Corrupted or invalid header (checksum mismatch). */
-    ZXC_ERROR_BAD_CHECKSUM = -7, /**< Block or global checksum verification failed. */
+    ZXC_ERROR_BAD_CHECKSUM = -7, /**< A block's decoded bytes fail its checksum, or the
+                                      archive digest mismatches. Corrupt compressed bytes
+                                      may trip the decoder first, with another code. */
 
     /* Data integrity errors */
     ZXC_ERROR_CORRUPT_DATA = -8, /**< Corrupted compressed data. */

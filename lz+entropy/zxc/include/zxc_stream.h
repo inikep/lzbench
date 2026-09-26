@@ -1,8 +1,8 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 /*
  * ZXC - High-performance lossless compression
  *
- * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
- * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) Bertrand Lebonnois and contributors.
  */
 
 /**
@@ -38,6 +38,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "zxc_buffer.h"
 #include "zxc_export.h"
 #include "zxc_opts.h"
 #include "zxc_seekable.h"
@@ -65,13 +66,19 @@ extern "C" {
  *
  * @return Total compressed bytes written, or a negative @ref zxc_error_t
  *         (e.g. @ref ZXC_ERROR_IO).
+ *
+ * @note @p f_out is flushed before returning, so a write error that stdio
+ *       buffering would otherwise defer (e.g. disk full) is reported as
+ *       @ref ZXC_ERROR_IO. @p f_out is left open: still check the result of
+ *       your own @c fclose(), which can fail on its own (e.g. on NFS).
  */
 ZXC_EXPORT int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const zxc_compress_opts_t* opts);
 
 /**
  * @brief Decompresses one file stream into another.
  *
- * Same pipeline as compression, for the same throughput reasons.
+ * Same pipeline as compression. After a footer comes the end of the input,
+ * another frame or @ref ZXC_ERROR_CORRUPT_DATA.
  *
  * @param[in]  f_in   Input stream, opened in "rb" mode.
  * @param[out] f_out  Output stream, opened in "wb" mode.
@@ -79,21 +86,59 @@ ZXC_EXPORT int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const zxc_compre
  *
  * @return Total decompressed bytes written, or a negative @ref zxc_error_t
  *         (e.g. @ref ZXC_ERROR_BAD_HEADER).
+ *
+ * @note @p f_out is flushed before returning; see @ref zxc_stream_compress.
+ *
+ * @note A regular file is read ahead in batches; a pipe or socket is decoded block
+ *       by block, so a live stream's output is never held back.
  */
 ZXC_EXPORT int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out,
                                          const zxc_decompress_opts_t* opts);
 
 /**
- * @brief Reads the original size from a ZXC file's footer, without decoding.
+ * @brief Reads the original size from a ZXC file's footers, without decoding.
  *
+ * zxc_get_decompressed_size() on the whole file: concatenated frames add up.
  * The file position is restored afterwards.
  *
  * @param[in] f_in  Input stream, opened in "rb" mode.
  *
- * @return Original uncompressed size in bytes, or a negative @ref zxc_error_t
- *         (e.g. @ref ZXC_ERROR_BAD_MAGIC) on an invalid file or an I/O error.
+ * @return Original uncompressed size in bytes, or a negative @ref zxc_error_t code:
+ *         the header's verdict (e.g. @ref ZXC_ERROR_BAD_MAGIC,
+ *         @ref ZXC_ERROR_BAD_HEADER), @ref ZXC_ERROR_SRC_TOO_SMALL,
+ *         @ref ZXC_ERROR_CORRUPT_DATA for an implausible size, or an I/O error.
  */
 ZXC_EXPORT int64_t zxc_stream_get_decompressed_size(FILE* f_in);
+
+/**
+ * @brief Reads a file's frame header and footer, without decoding.
+ *
+ * Same checks as zxc_get_frame_info(), on the whole file from offset 0. The
+ * file position is restored afterwards.
+ *
+ * @param[in]  f_in       Input stream, opened in "rb" mode; must be seekable.
+ * @param[out] info       Filled on success, untouched otherwise.
+ * @param[in]  info_size  `sizeof(*info)` as the caller compiled it.
+ * @return @ref ZXC_OK, or a negative @ref zxc_error_t, @ref ZXC_ERROR_IO
+ *         included.
+ */
+ZXC_EXPORT int zxc_stream_get_frame_info(FILE* f_in, zxc_frame_info_t* info, size_t info_size);
+
+/**
+ * @brief Reads the frame that ends at offset @p end of a file, without decoding.
+ *
+ * zxc_get_last_frame_info() on the first @p end bytes of @p f_in: pass the file
+ * size, then `end - info->compressed_size`. The file position is restored.
+ *
+ * @param[in]  f_in       Input stream, opened in "rb" mode; must be seekable.
+ * @param[in]  end        Offset just past the frame; at most the file size.
+ * @param[out] info       Filled on success, untouched otherwise.
+ * @param[in]  info_size  `sizeof(*info)` as the caller compiled it.
+ * @return @ref ZXC_OK, or a negative @ref zxc_error_t (@ref ZXC_ERROR_SRC_TOO_SMALL
+ *         past the end of the file, @ref ZXC_ERROR_IO included).
+ */
+ZXC_EXPORT int zxc_stream_get_last_frame_info(FILE* f_in, uint64_t end, zxc_frame_info_t* info,
+                                              size_t info_size);
 
 /* ========================================================================= */
 /*  Seekable FILE* open helper                                               */

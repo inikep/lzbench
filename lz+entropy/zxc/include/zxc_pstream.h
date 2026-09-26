@@ -1,8 +1,8 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 /*
  * ZXC - High-performance lossless compression
  *
- * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
- * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) Bertrand Lebonnois and contributors.
  */
 
 /**
@@ -216,7 +216,7 @@ ZXC_EXPORT size_t zxc_cstream_out_size(const zxc_cstream* cs);
  * @brief Creates a push decompression stream.
  *
  * @p opts is copied into the context. Only @c checksum_enabled is honoured: it
- * decides whether per-block and global checksums are verified when present.
+ * decides whether the block checksums and archive digest are verified when present.
  * Push streams take no dictionary yet (support can be added if a need
  * arises): @c dict / @c dict_size / @c dict_huf fail creation, and an archive
  * whose header requires one fails with @ref ZXC_ERROR_DICT_REQUIRED at the
@@ -243,9 +243,12 @@ ZXC_EXPORT void zxc_dstream_free(zxc_dstream* ds);
  * call goes as far as @p in and @p out allow.
  *
  * @par End of stream
- * Validating the file footer puts the stream in DONE state; later calls return
- * @c 0 and produce nothing, even with bytes left in @p in. Those trailing bytes
- * are ignored, and @c in->pos tells the caller how much real data was consumed.
+ * Validating a frame's footer puts the stream in DONE state and ends the call,
+ * @c in->pos just past the frame: a caller after one frame stops there. A later
+ * call with input decodes the next frame (archives concatenated) into the same
+ * output. Input that does not open with the magic word is
+ * @ref ZXC_ERROR_CORRUPT_DATA, from its first byte; a frame that does is checked
+ * like the first, so a bad header gets its own code.
  *
  * @par Errors
  * Sticky: once a negative code comes back, every later call returns it too.
@@ -264,7 +267,8 @@ ZXC_EXPORT int64_t zxc_dstream_decompress(zxc_dstream* ds, zxc_outbuf_t* out, zx
 /**
  * @brief Reports whether the decoder has fully consumed a valid stream.
  *
- * True only once the parser has reached the file footer **and** validated it.
+ * True when the last call ended on a validated footer, until a call with more
+ * input starts the next frame.
  * That is how a caller done feeding input detects truncation: if
  * @ref zxc_dstream_decompress returns @c 0 with no output and this returns
  * @c 0, the input ended early.

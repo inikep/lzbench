@@ -1,8 +1,8 @@
+// SPDX-License-Identifier: BSD-3-Clause
 /*
  * ZXC - High-performance lossless compression
  *
- * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
- * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) Bertrand Lebonnois and contributors.
  */
 
 /**
@@ -39,7 +39,7 @@ uint32_t zxc_dict_id(const void* RESTRICT dict, const size_t dict_size,
 //
 //  Layout (ZXC_DICT_HEADER_SIZE = 16 bytes + content + Huffman table):
 //    0x00  4  Magic   (0x9CB0D1C7 LE)
-//    0x04  1  Version (1)
+//    0x04  1  Version (2)
 //    0x05  1  Flags   (bits 0-3: checksum algo id, 0=RapidHash; bits 4-7 reserved)
 //    0x06  2  Content size (u16 LE)
 //    0x08  4  Dictionary ID (u32 LE; covers content AND the Huffman table)
@@ -192,7 +192,7 @@ const void* zxc_dict_huf(const void* buf, const size_t buf_size) {
 static uint32_t zxc_dict_hash(const uint8_t* p) {
     uint32_t v = zxc_le32(p);
     v ^= (uint32_t)p[4];
-    return (v * ZXC_LZ_HASH_PRIME1) >> (32 - ZXC_DICT_HASH_BITS);
+    return (v * ZXC_HASH_MULT32) >> (32 - ZXC_DICT_HASH_BITS);
 }
 
 /**
@@ -487,7 +487,7 @@ int zxc_train_dict_huf(const void* const* RESTRICT samples, const size_t* RESTRI
                                      : ZXC_DICT_HUF_TRAIN_BLOCK;
             ZXC_MEMCPY(work + dict_size, sample + off, slice);
             const int r =
-                zxc_compress_chunk_wrapper(&cctx, work, dict_size + slice, out_scratch, out_cap);
+                zxc_compress_chunk_wrapper(&cctx, work, dict_size + slice, out_scratch, out_cap, 0);
             if (UNLIKELY(r < 0)) {
                 rc = r;
                 break;
@@ -514,7 +514,7 @@ int zxc_train_dict_huf(const void* const* RESTRICT samples, const size_t* RESTRI
             if (rc == ZXC_OK) {
                 // Dict tables serve the most literal-bound decode path, so the
                 // flat/length nudge pays off most here.
-                (void)zxc_huf_nudge_code_lengths(freq, code_len, NULL,
+                (void)zxc_huf_nudge_code_lengths(freq, code_len, NULL, 0,
                                                  ZXC_HUF_MAX_CODE_LEN_DENSITY);
                 zxc_huf_pack_lengths(code_len, huf_lengths_out);
             }
