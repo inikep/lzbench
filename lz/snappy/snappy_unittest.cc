@@ -28,6 +28,7 @@
 
 #include <algorithm>
 #include <cinttypes>
+#include <cstdint>
 #include <cmath>
 #include <cstdlib>
 #include <random>
@@ -543,6 +544,174 @@ TEST(Snappy, RandomData) {
   }
 }
 
+TEST(Snappy, CompressionContext) {
+  std::minstd_rand0 rng(snappy::GetFlag(FLAGS_test_random_seed));
+  std::uniform_int_distribution<int> uniform_byte(0, 255);
+
+  // A single context, reused across every compression below.
+  CompressionContext ctx;
+
+  const size_t sizes[] = {0,
+                          1,
+                          100,
+                          kBlockSize - 1,
+                          kBlockSize,
+                          kBlockSize + 1,
+                          2 * kBlockSize,
+                          (1 << 20) + 17};
+  for (int level = CompressionOptions::MinCompressionLevel();
+       level <= CompressionOptions::MaxCompressionLevel(); ++level) {
+    CompressionOptions options(level);
+    for (size_t len : sizes) {
+      for (bool compressible : {true, false}) {
+        std::string input;
+        input.reserve(len);
+        while (input.size() < len) {
+          input.push_back(compressible
+                              ? static_cast<char>('a' + input.size() % 4)
+                              : static_cast<char>(uniform_byte(rng)));
+        }
+
+        std::string plain(MaxCompressedLength(len), '\0');
+        size_t plain_len = 0;
+        RawCompress(input.data(), input.size(), &plain[0], &plain_len, options);
+        plain.resize(plain_len);
+
+        std::string with_context(MaxCompressedLength(len), '\0');
+        size_t with_context_len = 0;
+        RawCompress(input.data(), input.size(), &with_context[0],
+                    &with_context_len, options, &ctx);
+        with_context.resize(with_context_len);
+
+        // Compressing with a reused context must produce output identical to
+        // the context-free API.
+        EXPECT_EQ(plain, with_context) << "level=" << level << " len=" << len
+                                       << " compressible=" << compressible;
+
+        std::string uncompressed;
+        EXPECT_TRUE(Uncompress(with_context, &uncompressed));
+        EXPECT_EQ(input, uncompressed);
+      }
+    }
+  }
+}
+
+TEST(Snappy, CompressionContextStaticWorkspace) {
+  // The library performs no allocation for a context constructed over a
+  // caller-provided workspace.
+  std::vector<char> workspace(CompressionContext::WorkspaceSize());
+  CompressionContext static_ctx(workspace.data(), workspace.size());
+  CompressionContext heap_ctx;
+
+  const size_t sizes[] = {0, 1, kBlockSize - 1, kBlockSize + 1,
+                          2 * kBlockSize + 17};
+  for (size_t len : sizes) {
+    std::string input;
+    input.reserve(len);
+    while (input.size() < len) {
+      input.push_back(static_cast<char>('a' + input.size() % 7));
+    }
+
+    std::string with_static(MaxCompressedLength(len), '\0');
+    size_t with_static_len = 0;
+    RawCompress(input.data(), input.size(), &with_static[0], &with_static_len,
+                CompressionOptions{}, &static_ctx);
+    with_static.resize(with_static_len);
+
+    std::string with_heap(MaxCompressedLength(len), '\0');
+    size_t with_heap_len = 0;
+    RawCompress(input.data(), input.size(), &with_heap[0], &with_heap_len,
+                CompressionOptions{}, &heap_ctx);
+    with_heap.resize(with_heap_len);
+
+    EXPECT_EQ(with_static, with_heap) << "len=" << len;
+
+    std::string uncompressed;
+    EXPECT_TRUE(Uncompress(with_static, &uncompressed));
+    EXPECT_EQ(input, uncompressed);
+  }
+
+  // Both context flavors keep working after being moved.
+  CompressionContext moved_static(std::move(static_ctx));
+  CompressionContext moved_heap = std::move(heap_ctx);
+  const std::string input = "the quick brown fox jumps over the lazy dog";
+  std::string a(MaxCompressedLength(input.size()), '\0');
+  std::string b(MaxCompressedLength(input.size()), '\0');
+  size_t a_len = 0;
+  size_t b_len = 0;
+  RawCompress(input.data(), input.size(), &a[0], &a_len, CompressionOptions{},
+              &moved_static);
+  RawCompress(input.data(), input.size(), &b[0], &b_len, CompressionOptions{},
+              &moved_heap);
+  a.resize(a_len);
+  b.resize(b_len);
+  EXPECT_EQ(a, b);
+}
+
+// An input of 2^32 bytes or more cannot be expressed by the stream format and
+// must be refused rather than compressed under a truncated length.
+#if SIZE_MAX > 0xFFFFFFFFu
+
+// Reports an arbitrary number of bytes available without materializing them.
+class OversizedSource : public Source {
+ public:
+  explicit OversizedSource(uint64_t total)
+      : left_(total), buf_(1 << 16, 'a') {}
+  size_t Available() const override { return static_cast<size_t>(left_); }
+  const char* Peek(size_t* len) override {
+    *len = static_cast<size_t>(std::min<uint64_t>(left_, buf_.size()));
+    return buf_.data();
+  }
+  void Skip(size_t n) override { left_ -= n; }
+
+ private:
+  uint64_t left_;
+  std::string buf_;
+};
+
+// Counts every appended byte and keeps the first few, which is where the
+// uncompressed-length varint lives.
+class CountingSink : public Sink {
+ public:
+  void Append(const char* data, size_t n) override {
+    for (size_t i = 0; i < n && head_.size() < 8; ++i) head_.push_back(data[i]);
+    total_ += n;
+  }
+
+  std::string head_;
+  uint64_t total_ = 0;
+};
+
+// Decodes the uncompressed-length varint a compressed stream starts with.
+uint32_t DeclaredLength(const std::string& stream) {
+  uint32_t result = 0;
+  int shift = 0;
+  for (size_t i = 0; i < stream.size(); ++i) {
+    const unsigned char c = static_cast<unsigned char>(stream[i]);
+    result |= static_cast<uint32_t>(c & 0x7f) << shift;
+    if (c < 128) break;
+    shift += 7;
+  }
+  return result;
+}
+
+TEST(Snappy, RefusesInputLongerThanTheFormatCanExpress) {
+  OversizedSource too_big(uint64_t{1} << 32);
+  CountingSink refused;
+  EXPECT_EQ(0u, Compress(&too_big, &refused));
+  EXPECT_EQ(0u, refused.total_);
+  EXPECT_TRUE(refused.head_.empty());
+
+  // One byte below that is the largest input the format can express, and it
+  // still compresses to a stream whose header names its real length.
+  OversizedSource largest((uint64_t{1} << 32) - 1);
+  CountingSink accepted;
+  EXPECT_GT(Compress(&largest, &accepted), 0u);
+  EXPECT_EQ(0xFFFFFFFFu, DeclaredLength(accepted.head_));
+}
+
+#endif  // SIZE_MAX > 0xFFFFFFFFu
+
 TEST(Snappy, FourByteOffset) {
   // The new compressor cannot generate four-byte offsets since
   // it chops up the input into 32KB pieces.  So we hand-emit the
@@ -788,6 +957,61 @@ TEST(Snappy, ZeroOffsetCopyValidation) {
   //  \x05              Length
   //  \x12\x00\x00      Copy with offset==0, length==5
   EXPECT_FALSE(snappy::IsValidCompressedBuffer(compressed, 4));
+}
+
+// A 4-byte extended literal length of 0xffffffff decodes as length =
+// 0xffffffff + 1.  In correct (64-bit or overflow-checked) arithmetic this is
+// 4294967296, which exceeds the source buffer and must be rejected.  In
+// vulnerable 32-bit unsigned arithmetic the +1 wraps to 0, causing the
+// decoder to skip the literal entirely and continue, silently producing
+// wrong output that happens to match the preamble length (65536).
+//
+// Payload structure:
+//   Bytes 0-2:     Varint 0x80 0x80 0x04 → expected length 65536
+//   Bytes 3-4:     Literal tag 0x00 + data 0x44 → 1-byte literal
+//   Bytes 5-784:   260× copy2 (0xfe 0x01 0x00) → 64 bytes from offset 1
+//   Bytes 785-786: Literal tag 0x00 + data 0x46 → 1-byte literal
+//   Bytes 787:     0xfc → literal tag with 4-byte length prefix (m=63)
+//   Bytes 788-791: 0xff 0xff 0xff 0xff → length-1 = 0xffffffff → +1 wraps
+//   Bytes 792+:    763× copy2 + 1× copy2(len=62) to fill remaining output
+TEST(Snappy, LiteralLengthU32Overflow) {
+  std::string compressed;
+  // Varint: expected output length 65536
+  compressed.push_back('\x80');
+  compressed.push_back('\x80');
+  compressed.push_back('\x04');
+  // 1-byte literal (0x44)
+  AppendLiteral(&compressed, "D");
+  // 260 copy2 elements: each copies 64 bytes from offset 1
+  // Output after this section: 1 + 260*64 = 16641
+  for (int i = 0; i < 260; i++) {
+    AppendCopy(&compressed, 1, 64);
+  }
+  // 1-byte literal (0x46)
+  AppendLiteral(&compressed, "F");
+  // Output so far (if wrapping): 16642
+
+  // Poison literal: tag 0xfc (m=63 → 4-byte extended length), length bytes
+  // 0xffffffff.  Correct length = 0xffffffff + 1 = 4294967296.
+  // Wrapping length = 0.
+  compressed.push_back('\xfc');  // literal tag, 4 extra length bytes
+  compressed.push_back('\xff');
+  compressed.push_back('\xff');
+  compressed.push_back('\xff');
+  compressed.push_back('\xff');
+
+  // Remaining copies to fill output to 65536 if the literal is skipped:
+  // 65536 - 16642 = 48894 = 763*64 + 62
+  for (int i = 0; i < 763; i++) {
+    AppendCopy(&compressed, 1, 64);
+  }
+  AppendCopy(&compressed, 1, 62);
+
+  std::string uncompressed;
+  EXPECT_FALSE(snappy::Uncompress(compressed.data(), compressed.size(),
+                                  &uncompressed));
+  EXPECT_FALSE(snappy::IsValidCompressedBuffer(compressed.data(),
+                                               compressed.size()));
 }
 
 int TestFindMatchLength(const char* s1, const char *s2, unsigned length) {

@@ -22,7 +22,8 @@ stored as a little-endian varint. Varints consist of a series of bytes,
 where the lower 7 bits are data and the upper bit is set iff there are
 more bytes to be read. In other words, an uncompressed length of 64 would
 be stored as 0x40, and an uncompressed length of 2097150 (0x1FFFFE)
-would be stored as 0xFE 0xFF 0x7F.
+would be stored as 0xFE 0xFF 0x7F. Given the maximum, 5 bytes are sufficient for
+any value.
 
 
 2. The compressed stream itself

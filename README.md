@@ -95,7 +95,7 @@ sources, the Notes column says so.
 | [quicklz 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/) | 2011-10-07 | |
 | [skim 0.1.0](https://github.com/vantorrewannes/skim) | 2026-06-07 | Linux x86-64 and macOS only — requires the [Zig](https://ziglang.org) compiler |
 | [slz 1.2.2](http://www.libslz.org/) | 2026-04-09 | Compressor only; decompresses via zlib |
-| [snappy 1.2.2](https://github.com/google/snappy) | 2025-03-26 | Patched in lzbench: RISC-V support in `snappy-internal.h` |
+| [snappy 1.3.1](https://github.com/google/snappy) | 2026-09-18 | |
 | [tamp 2.2.4](https://github.com/BrianPugh/tamp) | 2026-06-11 | |
 | [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | Disabled on RISC-V unless the build machine does misaligned access at full speed (asked via the hwprobe syscall); such a build is then not portable to a slower RISC-V machine |
 | [ucl 1.03](http://www.oberhumer.com/opensource/ucl/) | 2004-07-20 | |
