@@ -240,7 +240,7 @@ HAVE_CARGO  := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
 
 ifeq ($(HAVE_CARGO),1)
     CARGO_VERSION := $(shell cargo --version | awk '{print $$2}')
-    HAVE_EDITION_2024 := $(shell printf "%s\n1.82.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.82.0 && echo 1 || echo 0)
+    HAVE_RUST_1_85 := $(shell printf "%s\n1.85.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.85.0 && echo 1 || echo 0)
     HAVE_RUST_1_89 := $(shell printf "%s\n1.89.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.89.0 && echo 1 || echo 0)
 endif
 
@@ -262,8 +262,9 @@ endif
 
 RUST_FEATURES :=
 ifneq ($(DONT_BUILD_DENSITY),1)
-    ifneq ($(HAVE_EDITION_2024),1)
-        $(info Cargo $(CARGO_VERSION) does not support edition 2024 – skipping Density build)
+    # density uses edition 2024, stable since Rust 1.85
+    ifneq ($(HAVE_RUST_1_85),1)
+        $(info Cargo $(CARGO_VERSION) is older than 1.85 – skipping Density build)
         DONT_BUILD_DENSITY := 1
     else
         RUST_FEATURES += density
