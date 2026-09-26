@@ -1,0 +1,44 @@
+[package]
+name = "fearless_simd"
+version = "1.0.0"
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+authors = ["Raph Levien <raph.levien@gmail.com>"]
+keywords = ["simd"]
+categories = ["hardware-support"]
+description = "Safer and easier SIMD"
+readme = "README.md"
+
+[package.metadata.docs.rs]
+all-features = true
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "i686-unknown-linux-gnu",
+  "aarch64-apple-darwin",
+  "wasm32-unknown-unknown",
+]
+rustdoc-args = [
+  "--cfg",
+  'target_feature="simd128"',
+] # otherwise WASM docs only show the fallback level
+
+
+[features]
+default = ["std"]
+# Get floating point functions from the standard library (likely using your targets libc).
+# Also allows using `Level::new` on all platforms, to detect which target features are enabled
+std = []
+# Use floating point implementations from libm
+libm = ["dep:libm"]
+
+# Force the "fallback" SIMD level to be supported, even if SIMD is always available.
+# This is primarily used for tests
+force_support_fallback = []
+
+[lints]
+workspace = true
+
+[dependencies]
+libm = { version = "0.2.15", optional = true }

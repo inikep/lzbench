@@ -1388,12 +1388,13 @@ $(BSC_CUDA_FILES): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
 	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) $(BSC_FLAGS) -c $< -o $@
 
+# --offline: the dependencies are vendored in misc/rust-codecs/vendor
 RUST_LIB:
 ifneq ($(strip $(RUST_FEATURES)),)
 	@echo "Building Rust codecs ($(strip $(RUST_FEATURES)))..."
 	cd $(RUST_SRC_DIR) && \
 	RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" \
-	cargo rustc --locked --features "$(strip $(RUST_FEATURES))" --crate-type=$(RUST_BUILD_TYPE) --release -- --print=native-static-libs
+	cargo rustc --locked --offline --features "$(strip $(RUST_FEATURES))" --crate-type=$(RUST_BUILD_TYPE) --release -- --print=native-static-libs
 endif
 
 misc/skim/libskim.a: misc/skim/src/root.zig

@@ -1,0 +1,8 @@
+# The crates.io dependencies are vendored (cargo vendor --locked vendor), so the
+# Rust codecs build without network access. After changing Cargo.lock, rerun
+# "cargo vendor --locked vendor" in misc/rust-codecs and commit vendor/.
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"

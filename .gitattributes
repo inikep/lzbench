@@ -11,6 +11,9 @@
 *.jpg binary
 *.bin binary
 
+# vendored Rust crates: cargo checks every file against .cargo-checksum.json
+misc/rust-codecs/vendor/** -text
+
 # Visual Studio
 *.sln binary
 *.suo binary

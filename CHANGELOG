@@ -21,6 +21,8 @@ v2.x.y (work-in-progress)
 - improvement: added a CUDA build job (nvcc 13.2, Ubuntu 24.04) to the Azure Pipelines CI
 - improvement: the Rust codecs (density, mbrotli) are built into a single library from
                misc/rust-codecs, so a BUILD_STATIC=1 binary can link more than one of them
+- improvement: the crates.io dependencies of the Rust codecs are vendored in
+               misc/rust-codecs/vendor, so they build without network access
 - improvement: tornado is now benchmarked on RISC-V hardware whose misaligned scalar access
                is fast (detected with the hwprobe syscall), instead of being disabled outright
                (thanks to @zqb-all)
