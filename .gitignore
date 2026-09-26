@@ -19,6 +19,9 @@ misc/density/src/Cargo.lock
 # Compiler-generated header dependencies (make DEPFLAGS)
 *.d
 
+# Set of BENCH_REMOVE_* defines the bench/*.o were built with (Makefile)
+bench/codecs.stamp
+
 # Libraries
 *.lib
 *.a
