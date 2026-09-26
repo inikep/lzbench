@@ -22,7 +22,7 @@
 # direct GNU Make to search the directories relative to the
 # parent directory of this file
 
-SOURCE_PATH=$(dir $(lastword $(MAKEFILE_LIST)))
+SOURCE_PATH := $(dir $(lastword $(MAKEFILE_LIST)))
 vpath
 vpath %.c $(SOURCE_PATH)
 vpath %.cc $(SOURCE_PATH)
