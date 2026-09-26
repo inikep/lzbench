@@ -253,7 +253,7 @@ static const compressor_desc_t comp_desc[] =
     { "openzl_generic", "openzl 0.2.3 'generic'",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_generic,           lzbench_openzl_deinit },
     { "openzl_zstd",    "openzl 0.2.3 'zstd'",   -99,  22,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_zstd,              lzbench_openzl_deinit },
     { "openzl_lz4",     "openzl 0.2.3 'lz4'",    -99,  12,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_lz4,               lzbench_openzl_deinit },
-    { "ppmd8",      "ppmd8 26.01",             1,   9,    0,  BENCH_POOL_MT, lzbench_ppmd_compress,       lzbench_ppmd_decompress,       NULL,                    NULL },
+    { "ppmd8",      "ppmd8 26.03",             1,   9,    0,  BENCH_POOL_MT, lzbench_ppmd_compress,       lzbench_ppmd_decompress,       NULL,                    NULL },
     { "quicklz",    "quicklz 1.5.1 beta 7",    1,   3,    0,  BENCH_POOL_MT, lzbench_quicklz_compress,    lzbench_quicklz_decompress,    NULL,                    NULL },
     { "skim",       "skim 0.1.0",              0,   0,    0,  BENCH_POOL_MT, lzbench_skim_compress,       lzbench_skim_decompress,       lzbench_skim_init,       lzbench_skim_deinit },
     { "slz_deflate","slz_deflate 1.3.1",       1,   3,    2,  BENCH_POOL_MT, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
