@@ -139,6 +139,27 @@ int64_t lzbench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 
+#ifndef BENCH_REMOVE_MBROTLI
+#include "mbrotli/mbrotli-ffi/include/mbrotli.h"
+
+int64_t lzbench_mbrotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    int windowLog = codec_options->additional_param;
+    if (!windowLog) windowLog = 22; // sliding window size. Range is 10 to 24.
+
+    size_t actual_osize = outsize;
+    return mbrotli_compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize, codec_options->level, windowLog) == MBROTLI_OK ? actual_osize : 0;
+}
+int64_t lzbench_mbrotli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    size_t actual_osize = outsize;
+    return mbrotli_decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize) == MBROTLI_OK ? actual_osize : 0;
+}
+
+#endif // BENCH_REMOVE_MBROTLI
+
+
+
 #ifndef BENCH_REMOVE_CRUSH
 #include "lz/crush/crush.hpp"
 
