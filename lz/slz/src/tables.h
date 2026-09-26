@@ -141,15 +141,7 @@ static const uint32_t len_fh[259] = {
 #  endif
 #endif
 
-#ifndef PRECOMPUTE_TABLES
-
-#if !defined(__ARM_FEATURE_CRC32)
-static uint32_t crc32_fast[4][256];
-#endif
-
-static uint32_t fh_dist_table[32768];
-
-#else  /* ifndef PRECOMPUTE_TABLES */
+#if defined(PRECOMPUTE_TABLES)
 
 #if !defined(__ARM_FEATURE_CRC32)
 /* Table of *inverted* CRC32 for each 8-bit quantity based on the position of
@@ -4533,116 +4525,140 @@ static const uint32_t fh_dist_table[32768] = {
 	0x007fc2f2, 0x007fc6f2, 0x007fcaf2, 0x007fcef2, 0x007fd2f2, 0x007fd6f2, 0x007fdaf2, 0x007fdef2, // 32752-32759
 	0x007fe2f2, 0x007fe6f2, 0x007feaf2, 0x007feef2, 0x007ff2f2, 0x007ff6f2, 0x007ffaf2, 0x007ffef2, // 32760-32767
 };
-#endif /* ifndef PRECOMPUTE_TABLES */
 
-/* Make the table for a fast CRC.
- * Not thread-safe, must be called exactly once.
+/* This table contains the fixed huffman decoding table for direct 9bits lookup
+ * decoding. It was generated using __slz_prepare_fixed_huff_dec_table().
+ * It is only relevant for decoding static huffman as performed by gethuff_fixed().
  */
-static inline void __slz_make_crc_table(void)
-{
-#if !defined(PRECOMPUTE_TABLES) && !defined(__ARM_FEATURE_CRC32)
+static const uint16_t fixed_huff_dec_table[512] = {
+	0x008007,  0x002808,  0x000808,  0x008c08,   /* 0-3 */
+	0x008807,  0x003808,  0x001808,  0x006009,   /* 4-7 */
+	0x008407,  0x003008,  0x001008,  0x005009,   /* 8-11 */
+	0x000008,  0x004008,  0x002008,  0x007009,   /* 12-15 */
+	0x008207,  0x002c08,  0x000c08,  0x004809,   /* 16-19 */
+	0x008a07,  0x003c08,  0x001c08,  0x006809,   /* 20-23 */
+	0x008607,  0x003408,  0x001408,  0x005809,   /* 24-27 */
+	0x000408,  0x004408,  0x002408,  0x007809,   /* 28-31 */
+	0x008107,  0x002a08,  0x000a08,  0x008e08,   /* 32-35 */
+	0x008907,  0x003a08,  0x001a08,  0x006409,   /* 36-39 */
+	0x008507,  0x003208,  0x001208,  0x005409,   /* 40-43 */
+	0x000208,  0x004208,  0x002208,  0x007409,   /* 44-47 */
+	0x008307,  0x002e08,  0x000e08,  0x004c09,   /* 48-51 */
+	0x008b07,  0x003e08,  0x001e08,  0x006c09,   /* 52-55 */
+	0x008707,  0x003608,  0x001608,  0x005c09,   /* 56-59 */
+	0x000608,  0x004608,  0x002608,  0x007c09,   /* 60-63 */
+	0x008087,  0x002908,  0x000908,  0x008d08,   /* 64-67 */
+	0x008887,  0x003908,  0x001908,  0x006209,   /* 68-71 */
+	0x008487,  0x003108,  0x001108,  0x005209,   /* 72-75 */
+	0x000108,  0x004108,  0x002108,  0x007209,   /* 76-79 */
+	0x008287,  0x002d08,  0x000d08,  0x004a09,   /* 80-83 */
+	0x008a87,  0x003d08,  0x001d08,  0x006a09,   /* 84-87 */
+	0x008687,  0x003508,  0x001508,  0x005a09,   /* 88-91 */
+	0x000508,  0x004508,  0x002508,  0x007a09,   /* 92-95 */
+	0x008187,  0x002b08,  0x000b08,  0x008f08,   /* 96-99 */
+	0x008987,  0x003b08,  0x001b08,  0x006609,   /* 100-103 */
+	0x008587,  0x003308,  0x001308,  0x005609,   /* 104-107 */
+	0x000308,  0x004308,  0x002308,  0x007609,   /* 108-111 */
+	0x008387,  0x002f08,  0x000f08,  0x004e09,   /* 112-115 */
+	0x008b87,  0x003f08,  0x001f08,  0x006e09,   /* 116-119 */
+	0x008787,  0x003708,  0x001708,  0x005e09,   /* 120-123 */
+	0x000708,  0x004708,  0x002708,  0x007e09,   /* 124-127 */
+	0x008007,  0x002888,  0x000888,  0x008c88,   /* 128-131 */
+	0x008807,  0x003888,  0x001888,  0x006109,   /* 132-135 */
+	0x008407,  0x003088,  0x001088,  0x005109,   /* 136-139 */
+	0x000088,  0x004088,  0x002088,  0x007109,   /* 140-143 */
+	0x008207,  0x002c88,  0x000c88,  0x004909,   /* 144-147 */
+	0x008a07,  0x003c88,  0x001c88,  0x006909,   /* 148-151 */
+	0x008607,  0x003488,  0x001488,  0x005909,   /* 152-155 */
+	0x000488,  0x004488,  0x002488,  0x007909,   /* 156-159 */
+	0x008107,  0x002a88,  0x000a88,  0x008e88,   /* 160-163 */
+	0x008907,  0x003a88,  0x001a88,  0x006509,   /* 164-167 */
+	0x008507,  0x003288,  0x001288,  0x005509,   /* 168-171 */
+	0x000288,  0x004288,  0x002288,  0x007509,   /* 172-175 */
+	0x008307,  0x002e88,  0x000e88,  0x004d09,   /* 176-179 */
+	0x008b07,  0x003e88,  0x001e88,  0x006d09,   /* 180-183 */
+	0x008707,  0x003688,  0x001688,  0x005d09,   /* 184-187 */
+	0x000688,  0x004688,  0x002688,  0x007d09,   /* 188-191 */
+	0x008087,  0x002988,  0x000988,  0x008d88,   /* 192-195 */
+	0x008887,  0x003988,  0x001988,  0x006309,   /* 196-199 */
+	0x008487,  0x003188,  0x001188,  0x005309,   /* 200-203 */
+	0x000188,  0x004188,  0x002188,  0x007309,   /* 204-207 */
+	0x008287,  0x002d88,  0x000d88,  0x004b09,   /* 208-211 */
+	0x008a87,  0x003d88,  0x001d88,  0x006b09,   /* 212-215 */
+	0x008687,  0x003588,  0x001588,  0x005b09,   /* 216-219 */
+	0x000588,  0x004588,  0x002588,  0x007b09,   /* 220-223 */
+	0x008187,  0x002b88,  0x000b88,  0x008f88,   /* 224-227 */
+	0x008987,  0x003b88,  0x001b88,  0x006709,   /* 228-231 */
+	0x008587,  0x003388,  0x001388,  0x005709,   /* 232-235 */
+	0x000388,  0x004388,  0x002388,  0x007709,   /* 236-239 */
+	0x008387,  0x002f88,  0x000f88,  0x004f09,   /* 240-243 */
+	0x008b87,  0x003f88,  0x001f88,  0x006f09,   /* 244-247 */
+	0x008787,  0x003788,  0x001788,  0x005f09,   /* 248-251 */
+	0x000788,  0x004788,  0x002788,  0x007f09,   /* 252-255 */
+	0x008007,  0x002808,  0x000808,  0x008c08,   /* 256-259 */
+	0x008807,  0x003808,  0x001808,  0x006089,   /* 260-263 */
+	0x008407,  0x003008,  0x001008,  0x005089,   /* 264-267 */
+	0x000008,  0x004008,  0x002008,  0x007089,   /* 268-271 */
+	0x008207,  0x002c08,  0x000c08,  0x004889,   /* 272-275 */
+	0x008a07,  0x003c08,  0x001c08,  0x006889,   /* 276-279 */
+	0x008607,  0x003408,  0x001408,  0x005889,   /* 280-283 */
+	0x000408,  0x004408,  0x002408,  0x007889,   /* 284-287 */
+	0x008107,  0x002a08,  0x000a08,  0x008e08,   /* 288-291 */
+	0x008907,  0x003a08,  0x001a08,  0x006489,   /* 292-295 */
+	0x008507,  0x003208,  0x001208,  0x005489,   /* 296-299 */
+	0x000208,  0x004208,  0x002208,  0x007489,   /* 300-303 */
+	0x008307,  0x002e08,  0x000e08,  0x004c89,   /* 304-307 */
+	0x008b07,  0x003e08,  0x001e08,  0x006c89,   /* 308-311 */
+	0x008707,  0x003608,  0x001608,  0x005c89,   /* 312-315 */
+	0x000608,  0x004608,  0x002608,  0x007c89,   /* 316-319 */
+	0x008087,  0x002908,  0x000908,  0x008d08,   /* 320-323 */
+	0x008887,  0x003908,  0x001908,  0x006289,   /* 324-327 */
+	0x008487,  0x003108,  0x001108,  0x005289,   /* 328-331 */
+	0x000108,  0x004108,  0x002108,  0x007289,   /* 332-335 */
+	0x008287,  0x002d08,  0x000d08,  0x004a89,   /* 336-339 */
+	0x008a87,  0x003d08,  0x001d08,  0x006a89,   /* 340-343 */
+	0x008687,  0x003508,  0x001508,  0x005a89,   /* 344-347 */
+	0x000508,  0x004508,  0x002508,  0x007a89,   /* 348-351 */
+	0x008187,  0x002b08,  0x000b08,  0x008f08,   /* 352-355 */
+	0x008987,  0x003b08,  0x001b08,  0x006689,   /* 356-359 */
+	0x008587,  0x003308,  0x001308,  0x005689,   /* 360-363 */
+	0x000308,  0x004308,  0x002308,  0x007689,   /* 364-367 */
+	0x008387,  0x002f08,  0x000f08,  0x004e89,   /* 368-371 */
+	0x008b87,  0x003f08,  0x001f08,  0x006e89,   /* 372-375 */
+	0x008787,  0x003708,  0x001708,  0x005e89,   /* 376-379 */
+	0x000708,  0x004708,  0x002708,  0x007e89,   /* 380-383 */
+	0x008007,  0x002888,  0x000888,  0x008c88,   /* 384-387 */
+	0x008807,  0x003888,  0x001888,  0x006189,   /* 388-391 */
+	0x008407,  0x003088,  0x001088,  0x005189,   /* 392-395 */
+	0x000088,  0x004088,  0x002088,  0x007189,   /* 396-399 */
+	0x008207,  0x002c88,  0x000c88,  0x004989,   /* 400-403 */
+	0x008a07,  0x003c88,  0x001c88,  0x006989,   /* 404-407 */
+	0x008607,  0x003488,  0x001488,  0x005989,   /* 408-411 */
+	0x000488,  0x004488,  0x002488,  0x007989,   /* 412-415 */
+	0x008107,  0x002a88,  0x000a88,  0x008e88,   /* 416-419 */
+	0x008907,  0x003a88,  0x001a88,  0x006589,   /* 420-423 */
+	0x008507,  0x003288,  0x001288,  0x005589,   /* 424-427 */
+	0x000288,  0x004288,  0x002288,  0x007589,   /* 428-431 */
+	0x008307,  0x002e88,  0x000e88,  0x004d89,   /* 432-435 */
+	0x008b07,  0x003e88,  0x001e88,  0x006d89,   /* 436-439 */
+	0x008707,  0x003688,  0x001688,  0x005d89,   /* 440-443 */
+	0x000688,  0x004688,  0x002688,  0x007d89,   /* 444-447 */
+	0x008087,  0x002988,  0x000988,  0x008d88,   /* 448-451 */
+	0x008887,  0x003988,  0x001988,  0x006389,   /* 452-455 */
+	0x008487,  0x003188,  0x001188,  0x005389,   /* 456-459 */
+	0x000188,  0x004188,  0x002188,  0x007389,   /* 460-463 */
+	0x008287,  0x002d88,  0x000d88,  0x004b89,   /* 464-467 */
+	0x008a87,  0x003d88,  0x001d88,  0x006b89,   /* 468-471 */
+	0x008687,  0x003588,  0x001588,  0x005b89,   /* 472-475 */
+	0x000588,  0x004588,  0x002588,  0x007b89,   /* 476-479 */
+	0x008187,  0x002b88,  0x000b88,  0x008f88,   /* 480-483 */
+	0x008987,  0x003b88,  0x001b88,  0x006789,   /* 484-487 */
+	0x008587,  0x003388,  0x001388,  0x005789,   /* 488-491 */
+	0x000388,  0x004388,  0x002388,  0x007789,   /* 492-495 */
+	0x008387,  0x002f88,  0x000f88,  0x004f89,   /* 496-499 */
+	0x008b87,  0x003f88,  0x001f88,  0x006f89,   /* 500-503 */
+	0x008787,  0x003788,  0x001788,  0x005f89,   /* 504-507 */
+	0x000788,  0x004788,  0x002788,  0x007f89,   /* 508-511 */
+};
 
-	uint32_t c;
-	int n, k;
-
-	for (n = 0; n < 256; n++) {
-		c = (uint32_t) n ^ 255;
-		for (k = 0; k < 8; k++) {
-			if (c & 1) {
-				c = 0xedb88320 ^ (c >> 1);
-			} else {
-				c = c >> 1;
-			}
-		}
-		crc32_fast[0][n] = c ^ 0xff000000;
-	}
-
-	/* Note: here we *do not* have to invert the bits corresponding to the
-	 * byte position, because [0] already has the 8 highest bits inverted,
-	 * and these bits are shifted by 8 at the end of the operation, which
-	 * results in having the next 8 bits shifted in turn. That's why we
-	 * have the xor in the index used just after a computation.
-	 */
-	for (n = 0; n < 256; n++) {
-		crc32_fast[1][n] = 0xff000000 ^ crc32_fast[0][(0xff000000 ^ crc32_fast[0][n] ^ 0xff) & 0xff] ^ (crc32_fast[0][n] >> 8);
-		crc32_fast[2][n] = 0xff000000 ^ crc32_fast[0][(0x00ff0000 ^ crc32_fast[1][n] ^ 0xff) & 0xff] ^ (crc32_fast[1][n] >> 8);
-		crc32_fast[3][n] = 0xff000000 ^ crc32_fast[0][(0x0000ff00 ^ crc32_fast[2][n] ^ 0xff) & 0xff] ^ (crc32_fast[2][n] >> 8);
-	}
-#endif
-}
-
-/* Returns code for lengths 1 to 32768. The bit size for the next value can be
- * found this way :
- *
- *	bits = code >> 1;
- *	if (bits)
- *		bits--;
- *
- */
-static inline uint32_t dist_to_code(uint32_t l)
-{
-	uint32_t code;
-
-	code = 0;
-	switch (l) {
-	case 24577 ... 32768: code++; __fallthrough;
-	case 16385 ... 24576: code++; __fallthrough;
-	case 12289 ... 16384: code++; __fallthrough;
-	case  8193 ... 12288: code++; __fallthrough;
-	case  6145 ...  8192: code++; __fallthrough;
-	case  4097 ...  6144: code++; __fallthrough;
-	case  3073 ...  4096: code++; __fallthrough;
-	case  2049 ...  3072: code++; __fallthrough;
-	case  1537 ...  2048: code++; __fallthrough;
-	case  1025 ...  1536: code++; __fallthrough;
-	case   769 ...  1024: code++; __fallthrough;
-	case   513 ...   768: code++; __fallthrough;
-	case   385 ...   512: code++; __fallthrough;
-	case   257 ...   384: code++; __fallthrough;
-	case   193 ...   256: code++; __fallthrough;
-	case   129 ...   192: code++; __fallthrough;
-	case    97 ...   128: code++; __fallthrough;
-	case    65 ...    96: code++; __fallthrough;
-	case    49 ...    64: code++; __fallthrough;
-	case    33 ...    48: code++; __fallthrough;
-	case    25 ...    32: code++; __fallthrough;
-	case    17 ...    24: code++; __fallthrough;
-	case    13 ...    16: code++; __fallthrough;
-	case     9 ...    12: code++; __fallthrough;
-	case     7 ...     8: code++; __fallthrough;
-	case     5 ...     6: code++; __fallthrough;
-	case     4          : code++; __fallthrough;
-	case     3          : code++; __fallthrough;
-	case     2          : code++;
-	}
-
-	return code;
-}
-
-/* not thread-safe, must be called exactly once */
-static inline void __slz_prepare_dist_table()
-{
-#ifndef PRECOMPUTE_TABLES
-	uint32_t dist;
-	uint32_t code;
-	uint32_t bits;
-
-	for (dist = 0; dist < sizeof(fh_dist_table) / sizeof(*fh_dist_table); dist++) {
-		code = dist_to_code(dist + 1);
-		bits = code >> 1;
-		if (bits)
-			bits--;
-
-		/* Distance codes are stored on 5 bits reversed. The RFC
-		 * doesn't state that they are reversed, but it's the only
-		 * way it works.
-		 */
-		code = ((code & 0x01) << 4) | ((code & 0x02) << 2) |
-		       (code & 0x04) |
-		       ((code & 0x08) >> 2) | ((code & 0x10) >> 4);
-
-		code += (dist & ((1 << bits) - 1)) << 5;
-		fh_dist_table[dist] = (code << 5) + bits + 5;
-	}
-#endif
-}
+#endif /* defined(PRECOMPUTE_TABLES) */

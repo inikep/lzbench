@@ -1,9 +1,11 @@
-SLZ / StateLess Zip - v1.2.2 - 2026/04/09 - Willy Tarreau <w+slz@1wt.eu>
+SLZ / StateLess Zip - v1.3.1 - 2026/07/28 - Willy Tarreau <w+slz@1wt.eu>
 ------------------------------------------------------------------------
 
 SLZ is a fast and memory-less stream compressor which produces an output that
-can be decompressed with zlib or gzip. It does not implement decompression at
-all, zlib is perfectly fine for this.
+can be decompressed with slz, zlib or gzip. It provides uslz API for
+lightweight decompression using 32K sliding buffer. However if decompression
+performance is the only priority zlib is perfectly fine for this, though some
+significant improvements are available in the development branch.
 
 The purpose is to use SLZ in situations where a zlib-compatible stream is
 needed and zlib's resource usage would be too high while the compression ratio

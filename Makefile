@@ -766,7 +766,7 @@ endif
 ifeq "$(DONT_BUILD_SLZ)" "1"
     DEFINES += -DBENCH_REMOVE_SLZ
 else
-    MISC_FILES += lz/slz/src/slz.o
+    MISC_FILES += lz/slz/src/slz.o lz/slz/src/slz_common.o
 endif
 
 

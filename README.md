@@ -94,7 +94,7 @@ sources, the Notes column says so.
 | [ppmd8 26.01](http://7-zip.org) | 2026-04-27 | |
 | [quicklz 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/) | 2011-10-07 | |
 | [skim 0.1.0](https://github.com/vantorrewannes/skim) | 2026-06-07 | Linux x86-64 and macOS only — requires the [Zig](https://ziglang.org) compiler |
-| [slz 1.2.2](http://www.libslz.org/) | 2026-04-09 | Compressor only; decompresses via zlib |
+| [slz 1.3.1](http://www.libslz.org/) | 2026-07-28 | Compressor only; decompresses via zlib |
 | [snappy 1.3.1](https://github.com/google/snappy) | 2026-09-18 | |
 | [tamp 2.3.0](https://github.com/BrianPugh/tamp) | 2026-07-09 | |
 | [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | Disabled on RISC-V unless the build machine does misaligned access at full speed (asked via the hwprobe syscall); such a build is then not portable to a slower RISC-V machine |
