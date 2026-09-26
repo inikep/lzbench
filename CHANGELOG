@@ -4,6 +4,7 @@ v2.x.y (work-in-progress)
 - added misa77 0.6.0 (by @welcome-to-the-sunny-side)
 - added OpenZL v0.2.3 (thanks to @fwyzard)
 - updated aceapex to 1.0.1 (thanks to @yasha1971-coder)
+- updated bzip3 to 1.5.4
 - updated libdeflate to v1.26
 - updated lzav to 5.16 (thanks to @avaneev)
 - updated memlz to 0.5 beta (thanks to @rrrlasse); fixes unaligned accesses, re-enabled on 32-bit ARM

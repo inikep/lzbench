@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
 project(
   bzip3
-  VERSION 1.5.3
+  VERSION 1.5.4
   DESCRIPTION "A better and stronger spiritual successor to BZip2"
   HOMEPAGE_URL "https://github.com/iczelia/bzip3"
   LANGUAGES C)
@@ -82,9 +82,9 @@ endif()
 set_target_properties(
   bz3
   PROPERTIES OUTPUT_NAME bzip3
-             SOVERSION "0.0.0"
+             SOVERSION "1"
              PUBLIC_HEADER include/libbz3.h
-             VERSION "0")
+             VERSION "1.0.0")
 if(BUILD_SHARED_LIBS)
   set_target_properties(bz3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
@@ -141,15 +141,17 @@ if(BZIP3_BUILD_APPS)
         bz3most.1
         bzip3.1)
     foreach(BZIP3_MAN ${BZIP3_MANS})
-      if(EXISTS ${BZIP3_MAN}.in)
+      if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/${BZIP3_MAN}.in)
         string(TIMESTAMP MAN_DATE "%d %B %Y" UTC)
         set(TRANSFORMED_PACKAGE_NAME ${CMAKE_PROJECT_NAME})
         set(MAN_DATE ${MAN_DATE})
         set(VERSION ${PROJECT_VERSION})
-        configure_file(${BZIP3_MAN}.in ${CMAKE_CURRENT_BINARY_DIR}/${BZIP3_MAN}
+        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/${BZIP3_MAN}.in
+		       ${CMAKE_CURRENT_BINARY_DIR}/${BZIP3_MAN}
                        @ONLY)
       else()
-        configure_file(${BZIP3_MAN} ${CMAKE_CURRENT_BINARY_DIR}/${BZIP3_MAN}
+        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/${BZIP3_MAN}
+		       ${CMAKE_CURRENT_BINARY_DIR}/${BZIP3_MAN}
                        COPYONLY)
       endif()
       install(FILES ${CMAKE_CURRENT_BINARY_DIR}/${BZIP3_MAN}

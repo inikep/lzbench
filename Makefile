@@ -1242,7 +1242,7 @@ $(LBZIP2_FILES): %.o : %.c
 
 $(BZIP3_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DVERSION=\"1.5.3\" -Ibwt/bzip3/include $< -c -o $@
+	$(CC) $(CFLAGS) -DVERSION=\"1.5.4\" -Ibwt/bzip3/include $< -c -o $@
 
 $(CSC_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
