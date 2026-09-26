@@ -2,8 +2,10 @@
 _codelite/
 _visual/
 .vscode/
+.idea
 
-# Rust-based Density
+# Rust codecs (built through misc/rust-codecs)
+misc/rust-codecs/target/
 misc/density/src/target/
 misc/density/src/Cargo.lock
 

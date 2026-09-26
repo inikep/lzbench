@@ -1,0 +1,39 @@
+mbrotli
+=======
+
+This crate is a Rust port of the Brotli reference encoder from
+https://github.com/google/brotli (v1.2.0, commit 028fb5a).
+
+Portions of this software — including the static dictionary data, the transform
+tables, the prefix-code tables, the context-mode lookup tables and the encoder
+algorithms they belong to — are derived from that work, which is distributed
+under the MIT license reproduced below. The upstream license text is also
+vendored verbatim at `brotli-ffi/vendor/brotli/LICENSE`.
+
+The native Rust decoder shares those format tables and dictionary bytes under
+`src/shared/`. Its independently structured state machines follow RFC 7932 and
+RFC 9841, with Google Brotli 1.2.0 used as a format reference and test oracle.
+The borrowed word transformation implementation serves both codecs. The
+upstream compressed regression fixtures retain the same Brotli Authors license.
+
+--------------------------------------------------------------------------------
+
+Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.

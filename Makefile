@@ -231,7 +231,9 @@ SNAPPY_RVV_1:=$(shell $(SNAPPY_RVV))
 rvv_prefix=
 SNAPPY_RVV_0_7:=$(shell $(SNAPPY_RVV))
 
-# Density and Rust related detection
+# Rust codecs (density, mbrotli) are built into one library from
+# misc/rust-codecs: two Rust staticlibs each carry their own copy of std and
+# cannot be linked into the same binary.
 HOST_ARCH   := $(shell uname -m)
 TARGET_ARCH := $(firstword $(subst -, ,$(shell $(CXX) -dumpmachine)))
 HAVE_CARGO  := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
@@ -239,30 +241,52 @@ HAVE_CARGO  := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
 ifeq ($(HAVE_CARGO),1)
     CARGO_VERSION := $(shell cargo --version | awk '{print $$2}')
     HAVE_EDITION_2024 := $(shell printf "%s\n1.82.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.82.0 && echo 1 || echo 0)
+    HAVE_RUST_1_89 := $(shell printf "%s\n1.89.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.89.0 && echo 1 || echo 0)
 endif
 
-ifneq ($(DONT_BUILD_DENSITY),1)
-    DENSITY_SRC_DIR=misc/density/src/
+# Only build Rust codecs if native build, not 32-bit, not Windows
+ifneq ($(HAVE_CARGO),1)
+    $(info Cargo not found – skipping Rust codecs (density, mbrotli))
     DONT_BUILD_DENSITY := 1
+    DONT_BUILD_MBROTLI := 1
+else ifneq ($(HOST_ARCH),$(TARGET_ARCH)) # Skip cross-compilation
+    DONT_BUILD_DENSITY := 1
+    DONT_BUILD_MBROTLI := 1
+else ifeq ($(BUILD_ARCH),32-bit)         # Skip user requested 32-bit compilation
+    DONT_BUILD_DENSITY := 1
+    DONT_BUILD_MBROTLI := 1
+else ifneq (,$(filter Windows%,$(OS)))   # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
+    DONT_BUILD_DENSITY := 1
+    DONT_BUILD_MBROTLI := 1
+endif
 
-    # Only build Density if native build, not 32-bit, not Windows
-    ifneq ($(HAVE_CARGO),1)
-        $(info Cargo not found – skipping Density build)
-    else ifneq ($(HAVE_EDITION_2024),1)
+RUST_FEATURES :=
+ifneq ($(DONT_BUILD_DENSITY),1)
+    ifneq ($(HAVE_EDITION_2024),1)
         $(info Cargo $(CARGO_VERSION) does not support edition 2024 – skipping Density build)
-    else ifneq ($(HOST_ARCH),$(TARGET_ARCH)) # Skip cross-compilation
-    else ifeq ($(BUILD_ARCH),32-bit)         # Skip user requested 32-bit compilation
-    else ifneq (,$(filter Windows%,$(OS)))   # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
+        DONT_BUILD_DENSITY := 1
     else
-        ifeq ($(BUILD_STATIC),1)
-            DENSITY_BUILD_TYPE=staticlib
-        else
-            DENSITY_BUILD_TYPE=cdylib
-        endif
-
-        LDFLAGS += -Wl,-rpath,$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
-        DONT_BUILD_DENSITY := 0
+        RUST_FEATURES += density
     endif
+endif
+ifneq ($(DONT_BUILD_MBROTLI),1)
+    ifneq ($(HAVE_RUST_1_89),1)
+        $(info Cargo $(CARGO_VERSION) is older than 1.89 – skipping mbrotli build)
+        DONT_BUILD_MBROTLI := 1
+    else
+        RUST_FEATURES += mbrotli
+    endif
+endif
+
+ifneq ($(strip $(RUST_FEATURES)),)
+    RUST_SRC_DIR=misc/rust-codecs/
+    ifeq ($(BUILD_STATIC),1)
+        RUST_BUILD_TYPE=staticlib
+    else
+        RUST_BUILD_TYPE=cdylib
+    endif
+
+    LDFLAGS += -Wl,-rpath,$(RUST_SRC_DIR)target/release -L$(RUST_SRC_DIR)target/release -llzbench_rust
 endif
 
 HAVE_ZIG := $(shell command -v zig >/dev/null 2>&1 && echo 1 || echo 0)
@@ -1075,6 +1099,11 @@ ifeq "$(DONT_BUILD_DENSITY)" "1"
 endif
 
 
+ifeq "$(DONT_BUILD_MBROTLI)" "1"
+    DEFINES += -DBENCH_REMOVE_MBROTLI
+endif
+
+
 ifeq "$(DONT_BUILD_GIPFELI)" "1"
     DEFINES += -DBENCH_REMOVE_GIPFELI
 else
@@ -1187,7 +1216,7 @@ lzbench: $(LZBENCH_OBJS)
 	$(CXX) $^ -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
-$(BENCH_MAIN): bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h DENSITY_LIB
+$(BENCH_MAIN): bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h RUST_LIB
 
 # disable the implicit rule for making a binary out of a single object file
 %: %.o
@@ -1359,12 +1388,12 @@ $(BSC_CUDA_FILES): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
 	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) $(BSC_FLAGS) -c $< -o $@
 
-DENSITY_LIB:
-ifneq ($(DONT_BUILD_DENSITY),1)
-	@echo "Building Density..."
-	cd $(DENSITY_SRC_DIR) && \
+RUST_LIB:
+ifneq ($(strip $(RUST_FEATURES)),)
+	@echo "Building Rust codecs ($(strip $(RUST_FEATURES)))..."
+	cd $(RUST_SRC_DIR) && \
 	RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" \
-	cargo rustc --crate-type=$(DENSITY_BUILD_TYPE) --release -- --print=native-static-libs
+	cargo rustc --locked --features "$(strip $(RUST_FEATURES))" --crate-type=$(RUST_BUILD_TYPE) --release -- --print=native-static-libs
 endif
 
 misc/skim/libskim.a: misc/skim/src/root.zig
@@ -1375,7 +1404,7 @@ clean:
 	rm -rf lzbench lzbench.exe
 	find . -type f -name "*.o" -exec rm -f {} +
 	find . -type f -name "*.d" -exec rm -f {} +
-	rm -rf $(DENSITY_SRC_DIR)target/
+	rm -rf misc/rust-codecs/target/
 	rm -f misc/skim/libskim.a
 
 # Pull in the header dependencies generated by $(DEPFLAGS). Missing .d files

@@ -1,0 +1,29 @@
+# Trimmed for lzbench: dev-dependencies and benches were removed and
+# crate-type reduced to rlib.
+[package]
+name = "mbrotli-ffi"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+description = "C ABI for mbrotli: one-shot Brotli compression and decompression"
+repository = "https://github.com/Mnwa/mbrotli"
+homepage = "https://github.com/Mnwa/mbrotli"
+readme = "README.md"
+keywords = ["brotli", "compression", "ffi", "c"]
+categories = ["compression", "external-ffi-bindings"]
+include = ["src/**", "include/**", "README.md"]
+
+[lib]
+# lzbench links this through misc/rust-codecs, which produces the single
+# staticlib/cdylib, so only the rlib is built here.
+crate-type = ["rlib"]
+
+[dependencies.mbrotli]
+path = ".."
+version = "0.5.2"
+default-features = false
+features = ["std", "compression", "decompression"]
+
+[dependencies.thiserror]
+version = "2"
