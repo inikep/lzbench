@@ -12,4 +12,5 @@ CLEAN_FILES += misc/skim/libskim.a
 
 misc/skim/libskim.a: misc/skim/src/root.zig
 	@echo "Building Skim (Zig)..."
-	cd misc/skim && zig build-lib -O ReleaseFast -femit-bin=libskim.a src/root.zig -lc
+	@$(MKDIR) $(dir $@)
+	cd $(SRC)misc/skim && zig build-lib -O ReleaseFast -femit-bin=$(abspath $@) src/root.zig -lc

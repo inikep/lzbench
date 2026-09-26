@@ -4,9 +4,9 @@ ifeq ($(HAVE_CUDA),1)
 ifneq ($(DONT_BUILD_NVCOMP),1)
     DEFINES    += -DBENCH_HAS_NVCOMP
     OBJ_GROUPS += NVCOMP
-    NVCOMP_OBJS  := $(addsuffix .o,$(wildcard misc/nvcomp/src/*.cu misc/nvcomp/src/lowlevel/*.cu \
-                                              misc/nvcomp/src/*.cpp misc/nvcomp/src/lowlevel/*.cpp))
-    NVCOMP_FLAGS := -Imisc/nvcomp/include -Imisc/nvcomp/src -Imisc/nvcomp/src/lowlevel
+    NVCOMP_OBJS  := $(patsubst $(SRC)%,%.o,$(wildcard $(addprefix $(SRC)misc/nvcomp/src/, \
+                        *.cu lowlevel/*.cu *.cpp lowlevel/*.cpp)))
+    NVCOMP_FLAGS := -I$(SRC)misc/nvcomp/include -I$(SRC)misc/nvcomp/src -I$(SRC)misc/nvcomp/src/lowlevel
     LDFLAGS_LIBDL = $(LIBDL)
 endif
 endif

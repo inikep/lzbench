@@ -26,15 +26,20 @@
 #
 # Every codec is described by its own file in mk/, see "Codecs" below.
 
-# direct GNU Make to search the directories relative to the
-# parent directory of this file
+# Out-of-tree builds are supported: "make -f /path/to/lzbench/Makefile" builds in
+# the current directory. vpath finds the sources for the rules, and paths into
+# the source tree that are used in commands (-I flags, wildcards, cd) are
+# prefixed with $(SRC), which is empty for an in-tree build.
 SOURCE_PATH := $(dir $(lastword $(MAKEFILE_LIST)))
+SRC := $(filter-out ./,$(SOURCE_PATH))
 vpath
-vpath %.c $(SOURCE_PATH)
-vpath %.cc $(SOURCE_PATH)
+vpath %.c   $(SOURCE_PATH)
+vpath %.cc  $(SOURCE_PATH)
 vpath %.cpp $(SOURCE_PATH)
-vpath bench/lzbench.h $(SOURCE_PATH)
-vpath wflz/wfLZ.h $(SOURCE_PATH)
+vpath %.S   $(SOURCE_PATH)
+vpath %.cu  $(SOURCE_PATH)
+vpath %.h   $(SOURCE_PATH)
+vpath %.zig $(SOURCE_PATH)
 
 
 #------------------------------------------------------------------------------
@@ -95,7 +100,7 @@ endif
 # Compiler flags
 #------------------------------------------------------------------------------
 
-DEFINES     += -I.
+DEFINES     += -I$(or $(SRC),.)
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
 
 # don't use "-ffast-math" for clang < 10.0
@@ -178,7 +183,8 @@ ifeq "$(ENABLE_CUDA)" "1"
         LDFLAGS += -L$(CUDA_BASE)/lib64 -lcudart -Wl,-rpath=$(CUDA_BASE)/lib64
         CUDA_COMPILER = nvcc
         CUDA_CC = $(CUDA_BASE)/bin/nvcc --compiler-bindir $(CXX)
-        CUDA_VERSION := $(shell awk '$$1 == "#define" && $$2 == "CUDA_VERSION" { print $$3; exit;}' $(CUDA_H))
+        # ("?define" rather than "#define": GNU make 3.81 takes the '#' for a comment)
+        CUDA_VERSION := $(shell awk '$$1 ~ /^.define$$/ && $$2 == "CUDA_VERSION" { print $$3; exit;}' $(CUDA_H))
         ifeq "$(CUDA_VERSION)" ""
             $(error Could not determine CUDA_VERSION from $(CUDA_H))
         endif
@@ -279,7 +285,7 @@ CODEC_OBJS := $(foreach g,$(CODECS_ON) $(OBJ_GROUPS),$($(g)_OBJS))
 # two Rust staticlibs each carry their own copy of std and cannot be linked into
 # the same binary.
 
-CLEAN_DIRS += misc/rust-codecs/target/
+CLEAN_DIRS += $(SRC)misc/rust-codecs/target/
 
 # CPU the Rust codecs are compiled for. "native" optimizes them for the build
 # machine, and the binary may then die with SIGILL on other CPUs (e.g. AVX-512
@@ -289,7 +295,7 @@ CLEAN_DIRS += misc/rust-codecs/target/
 RUST_TARGET_CPU ?= native
 
 ifneq ($(strip $(RUST_FEATURES)),)
-    RUST_SRC_DIR := misc/rust-codecs/
+    RUST_SRC_DIR := $(SRC)misc/rust-codecs/
     ifeq ($(BUILD_STATIC),1)
         RUST_BUILD_TYPE := staticlib
         RUST_LIB := $(RUST_SRC_DIR)target/release/liblzbench_rust.a
@@ -335,8 +341,8 @@ ifneq "$(DISABLE_THREADING)" "1"
     BENCH_OBJS += bench/threadpool.o
 endif
 
-bench/lz_codecs.o:        CODEC_FLAGS = -Ilz -Ilz/brotli/include -Ilz/openzl/include -Ilz/zxc/src/lib/vendors -Ilz/misa77/include
-bench/buggy_codecs.o:     CODEC_FLAGS = -Ilz/libcsc
+bench/lz_codecs.o:        CODEC_FLAGS = $(addprefix -I$(SRC),lz lz/brotli/include lz/openzl/include lz/zxc/src/lib/vendors lz/misa77/include)
+bench/buggy_codecs.o:     CODEC_FLAGS = -I$(SRC)lz/libcsc
 bench/symmetric_codecs.o: CODEC_FLAGS = $(OPENMP_CXXFLAGS)
 bench/lzbench.o:          CODEC_FLAGS = $(OPENMP_CXXFLAGS)
 
@@ -349,7 +355,7 @@ bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/code
 BENCH_STAMP  := bench/codecs.stamp
 BENCH_CONFIG := codecs: $(sort $(filter -DBENCH_%,$(subst ",,$(DEFINES))))
 ifneq ($(shell cat $(BENCH_STAMP) 2>/dev/null),$(BENCH_CONFIG))
-    $(shell echo '$(BENCH_CONFIG)' > $(BENCH_STAMP))
+    $(shell mkdir -p $(dir $(BENCH_STAMP)) && echo '$(BENCH_CONFIG)' > $(BENCH_STAMP))
 endif
 $(BENCH_OBJS): $(BENCH_STAMP)
 CLEAN_FILES += $(BENCH_STAMP)

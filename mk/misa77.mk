@@ -21,7 +21,7 @@ endif
 ifneq (,$(filter arm64% aarch64%,$(TARGET_ARCH)))
     MISA77_OBJS += lz/misa77/src/isa/target_neon.o
 endif
-MISA77_FLAGS = -std=c++20 -Ilz/misa77/include -Ilz/misa77/src $(MISA77_ISA_FLAGS)
+MISA77_FLAGS = -std=c++20 -I$(SRC)lz/misa77/include -I$(SRC)lz/misa77/src $(MISA77_ISA_FLAGS)
 
 # target_avx2.cpp is the only TU needing extra ISA flags: SSE2 and NEON are baseline on
 # 64-bit x86 and ARM, and the probe above already disabled misa77 on 32-bit targets. A

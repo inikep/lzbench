@@ -10,6 +10,6 @@ ifneq ($(DONT_BUILD_MBROTLI),1)
         DONT_BUILD_MBROTLI := 1
     else
         RUST_FEATURES += mbrotli
-        RUST_DEPS += $(shell find lz/mbrotli/Cargo.toml lz/mbrotli/src lz/mbrotli/mbrotli-ffi -type f)
+        RUST_DEPS += $(shell find $(addprefix $(SRC)lz/mbrotli/,Cargo.toml src mbrotli-ffi) -type f)
     endif
 endif

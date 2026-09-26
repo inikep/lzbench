@@ -24,7 +24,7 @@ LZHAM_OBJS := $(addprefix lz/lzham/, \
     lzhamdecomp/lzham_symbol_codec.o lzhamdecomp/lzham_vector.o lzhamlib/lzham_lib.o \
     lzhamcomp/lzham_lzbase.o lzhamcomp/lzham_lzcomp.o lzhamcomp/lzham_lzcomp_internal.o \
     lzhamcomp/lzham_lzcomp_state.o lzhamcomp/lzham_match_accel.o)
-LZHAM_FLAGS := -Ilz/lzham/include -Ilz/lzham/lzhamcomp -Ilz/lzham/lzhamdecomp
+LZHAM_FLAGS := -I$(SRC)lz/lzham/include -I$(SRC)lz/lzham/lzhamcomp -I$(SRC)lz/lzham/lzhamdecomp
 
 ifneq ($(DISABLE_THREADING),1)
     ifeq ($(THREAD_MODEL),win32)

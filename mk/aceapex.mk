@@ -1,7 +1,7 @@
 # aceapex
 CODECS += ACEAPEX
 ACEAPEX_OBJS  := lz/aceapex/aceapex_lzbench.o
-ACEAPEX_FLAGS := -Ilz/aceapex -Ibench
+ACEAPEX_FLAGS := -I$(SRC)lz/aceapex -I$(SRC)bench
 
 # Optional CUDA decoder for the aceapex format (make ENABLE_CUDA=1). It is not
 # switched off by DONT_BUILD_ACEAPEX.

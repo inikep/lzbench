@@ -5,4 +5,4 @@ LBZIP2_OBJS := $(addprefix bwt/lbzip2/, \
 # -Ibwt/lbzip2 also picks up the <arpa/inet.h> shim there, which MinGW needs.
 # zstd's dictBuilder exports a divbwt() too, and xmalloc() is a name anything
 # might take, so rename both rather than patch the vendored source.
-LBZIP2_FLAGS := -Ibwt/lbzip2 -Ddivbwt=lbzip2_divbwt -Dxmalloc=lbzip2_xmalloc
+LBZIP2_FLAGS := -I$(SRC)bwt/lbzip2 -Ddivbwt=lbzip2_divbwt -Dxmalloc=lbzip2_xmalloc

@@ -9,4 +9,4 @@ LZO_OBJS := $(addprefix lz/lzo/, \
     lzo1x_9x.o lzo1x_d1.o lzo1x_d2.o lzo1x_d3.o lzo1x_o.o lzo1y_1.o lzo1y_9x.o lzo1y_d1.o \
     lzo1y_d2.o lzo1y_d3.o lzo1y_o.o lzo1z_9x.o lzo1z_d1.o lzo1z_d2.o lzo1z_d3.o lzo1_99.o \
     lzo2a_9x.o lzo2a_d1.o lzo2a_d2.o lzo_crc.o lzo_init.o lzo_ptr.o lzo_str.o lzo_util.o)
-LZO_FLAGS := -Ilz
+LZO_FLAGS := -I$(SRC)lz

@@ -11,6 +11,6 @@ ifneq ($(DONT_BUILD_DENSITY),1)
         DONT_BUILD_DENSITY := 1
     else
         RUST_FEATURES += density
-        RUST_DEPS += $(shell find misc/density/src/Cargo.toml misc/density/src/src -type f)
+        RUST_DEPS += $(shell find $(addprefix $(SRC)misc/density/src/,Cargo.toml src) -type f)
     endif
 endif

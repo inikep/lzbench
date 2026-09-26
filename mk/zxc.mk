@@ -22,7 +22,7 @@ ifneq (,$(filter arm% aarch64%,$(TARGET_ARCH)))
         ZXC_NEON_FLAGS := -march=armv7-a -mfpu=neon
     endif
 endif
-ZXC_FLAGS = -I$(ZXC_DIR)/vendors $(ZXC_ISA_FLAGS)
+ZXC_FLAGS = -I$(SRC)$(ZXC_DIR)/vendors $(ZXC_ISA_FLAGS)
 
 $(ZXC_DIR)/%_default.o: ZXC_ISA_FLAGS := -DZXC_FUNCTION_SUFFIX=_default
 $(ZXC_DIR)/%_avx2.o:    ZXC_ISA_FLAGS := -mavx2 -mbmi -mbmi2 -mlzcnt -mno-avx512f -DZXC_FUNCTION_SUFFIX=_avx2 -DZXC_USE_AVX2

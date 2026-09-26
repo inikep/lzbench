@@ -9,4 +9,4 @@ BROTLI_OBJS := $(addprefix lz/brotli/, \
     enc/static_init.o enc/utf8_util.o enc/compress_fragment.o enc/compress_fragment_two_pass.o \
     enc/cluster.o enc/bit_cost.o enc/backward_references_hq.o enc/dictionary_hash.o \
     common/shared_dictionary.o enc/compound_dictionary.o)
-BROTLI_FLAGS := -Ilz/brotli/include
+BROTLI_FLAGS := -I$(SRC)lz/brotli/include

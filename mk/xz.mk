@@ -12,7 +12,7 @@ XZ_OBJS := $(addprefix lz/xz/src/liblzma/, \
     lzma/lzma2_encoder.o common/easy_preset.o common/block_encoder.o common/index_encoder.o \
     common/filter_decoder.o lzma/lzma2_decoder.o common/block_header_decoder.o common/vli_decoder.o \
     common/filter_flags_decoder.o common/index_hash.o)
-XZ_FLAGS := $(addprefix -I$(SOURCE_PATH),. lz/xz/src lz/xz/src/common lz/xz/src/liblzma/delta \
+XZ_FLAGS := $(addprefix -I$(SRC),lz/xz/src lz/xz/src/common lz/xz/src/liblzma/delta \
                 lz/xz/src/liblzma/simple lz/xz/src/liblzma/api lz/xz/src/liblzma/common \
                 lz/xz/src/liblzma/lzma lz/xz/src/liblzma/lz lz/xz/src/liblzma/check \
                 lz/xz/src/liblzma/rangecoder) \

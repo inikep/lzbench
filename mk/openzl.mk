@@ -136,4 +136,4 @@ OPENZL_OBJS := $(addprefix lz/openzl/src/openzl/, \
     shared/histogram.o shared/numeric_operations.o)
 # assembled from huf_decompress_amd64.S
 OPENZL_OBJS  += lz/openzl/src/openzl/fse/decompress/huf_decompress_amd64.o
-OPENZL_FLAGS := -Ilz/zstd/lib -Ilz/lz4/lib -Ilz/openzl/include -Ilz/openzl/src
+OPENZL_FLAGS := -I$(SRC)lz/zstd/lib -I$(SRC)lz/lz4/lib -I$(SRC)lz/openzl/include -I$(SRC)lz/openzl/src

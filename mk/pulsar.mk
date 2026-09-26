@@ -12,6 +12,6 @@ ifneq ($(DONT_BUILD_PULSAR),1)
         DONT_BUILD_PULSAR := 1
     else
         RUST_FEATURES += pulsar
-        RUST_DEPS += $(shell find bwt/pulsar/Cargo.toml bwt/pulsar/src -type f)
+        RUST_DEPS += $(shell find $(addprefix $(SRC)bwt/pulsar/,Cargo.toml src) -type f)
     endif
 endif

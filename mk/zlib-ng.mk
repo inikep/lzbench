@@ -7,4 +7,4 @@ ZLIB_NG_OBJS := $(addprefix lz/zlib-ng/, \
     trees.o arch/generic/adler32_c.o arch/generic/chunkset_c.o arch/generic/crc32_braid_c.o \
     arch/generic/slide_hash_c.o arch/generic/adler32_fold_c.o arch/generic/compare256_c.o \
     arch/generic/crc32_fold_c.o)
-ZLIB_NG_FLAGS := -DWITH_ALL_FALLBACKS -Ilz/zlib-ng
+ZLIB_NG_FLAGS := -DWITH_ALL_FALLBACKS -I$(SRC)lz/zlib-ng
