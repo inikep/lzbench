@@ -103,10 +103,13 @@ else
     endif
 
     # some compressors use dlopen(), which requires linking with -ldl on glibc
-    # 2.33 and older, and other libc libraries.
+    # 2.33 and older, and other libc libraries. Use -ldl only when dlopen()
+    # links with it but not without it: a MinGW cross build from Linux has no
+    # dlopen() at all, and no libdl either.
     # GNU Make 3.8.x fails to parse \# inside the $(shell ...) function.
     LIBDL_TEST_SRC := \#include <dlfcn.h>\nint main(){dlopen(0,0);return 0;}\n
-    LIBDL := $(shell printf '${LIBDL_TEST_SRC}' | $(CXX) -x c - -o /dev/null 2>/dev/null && echo "" || echo "-ldl")
+    LIBDL := $(shell printf '${LIBDL_TEST_SRC}' | $(CXX) -x c - -o /dev/null 2>/dev/null || \
+               { printf '${LIBDL_TEST_SRC}' | $(CXX) -x c - -ldl -o /dev/null 2>/dev/null && echo "-ldl"; })
 
     # detect MacOS
     detected_OS := $(shell uname -s)
