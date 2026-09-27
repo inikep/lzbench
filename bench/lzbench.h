@@ -225,7 +225,7 @@ static const compressor_desc_t comp_desc[] =
     { "lzo1a",      "lzo1a 2.10",              1,  99,    0,  BENCH_POOL_MT, lzbench_lzo1a_compress,      lzbench_lzo1a_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
     { "lzo1b",      "lzo1b 2.10",              1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1b_compress,      lzbench_lzo1b_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
     { "lzo1c",      "lzo1c 2.10",              1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1c_compress,      lzbench_lzo1c_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
-    { "lzo1f",      "lzof 2.10",               1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1f_compress,      lzbench_lzo1f_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
+    { "lzo1f",      "lzo1f 2.10",              1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1f_compress,      lzbench_lzo1f_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
     { "lzo1x",      "lzo1x 2.10",              1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1x_compress,      lzbench_lzo1x_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
     { "lzo1y",      "lzo1y 2.10",              1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1y_compress,      lzbench_lzo1y_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
     { "lzo1z",      "lzo1z 2.10",            999, 999,    0,  BENCH_POOL_MT, lzbench_lzo1z_compress,      lzbench_lzo1z_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
