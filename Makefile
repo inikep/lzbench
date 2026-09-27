@@ -283,10 +283,14 @@ ifneq ($(DONT_BUILD_MBROTLI),1)
     endif
 endif
 ifneq ($(DONT_BUILD_PULSAR),1)
-    # pulsar uses edition 2021; no extra cargo-version gate. It rides along in
-    # misc/rust-codecs (which itself needs 1.85 for density's edition), so it
-    # is only skipped by the shared native/32-bit/Windows checks above.
-    RUST_FEATURES += pulsar
+    # pulsar itself is edition 2021, but it is built through misc/rust-codecs,
+    # which is edition 2024 (rust-version 1.85)
+    ifneq ($(HAVE_RUST_1_85),1)
+        $(info Cargo $(CARGO_VERSION) is older than 1.85 – skipping pulsar build)
+        DONT_BUILD_PULSAR := 1
+    else
+        RUST_FEATURES += pulsar
+    endif
 endif
 
 ifneq ($(strip $(RUST_FEATURES)),)
