@@ -55,8 +55,19 @@ COMPILER = $(shell $(CC) -v 2>&1 | grep -q "clang version" && echo clang || echo
 GCC_VERSION = $(shell echo | $(CC) -dM -E - | grep __VERSION__  | sed -e 's:\#define __VERSION__ "\([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*version \([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 
-HOST_ARCH   := $(shell uname -m)
-TARGET_ARCH := $(firstword $(subst -, ,$(shell $(CXX) -dumpmachine)))
+HOST_ARCH      := $(shell uname -m)
+TARGET_MACHINE := $(shell $(CXX) -dumpmachine)
+TARGET_ARCH    := $(firstword $(subst -, ,$(TARGET_MACHINE)))
+# 1 for a Windows target (e.g. x86_64-w64-mingw32), also when cross-compiling
+TARGET_WINDOWS := $(if $(filter mingw% cygwin% windows%,$(subst -, ,$(TARGET_MACHINE))),1)
+HOST_WINDOWS   := $(if $(filter Windows%,$(OS)),1)
+# 1 when the target CPU or OS is not the build machine's. A MinGW build from
+# Linux targets x86_64 like the host, so the CPU alone does not tell.
+ifneq ($(HOST_ARCH),$(TARGET_ARCH))
+    CROSS_BUILD := 1
+else ifneq ($(HOST_WINDOWS),$(TARGET_WINDOWS))
+    CROSS_BUILD := 1
+endif
 
 # detect thread model for gcc or clang
 THREAD_MODEL := $(shell $(CXX) -v 2>&1 | grep '^Thread model:' | awk '{print $$3}')
@@ -222,9 +233,9 @@ ifneq ($(HAVE_CARGO),1)
 else
     CARGO_VERSION := $(shell cargo --version | awk '{print $$2}')
     # Only build Rust codecs if native build, not 32-bit, not Windows
-    ifneq ($(HOST_ARCH),$(TARGET_ARCH))    # Skip cross-compilation
+    ifeq ($(CROSS_BUILD),1)                # Skip cross-compilation
     else ifeq ($(BUILD_ARCH),32-bit)       # Skip user requested 32-bit compilation
-    else ifneq (,$(filter Windows%,$(OS))) # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
+    else ifeq ($(TARGET_WINDOWS),1)        # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
     else
         HAVE_RUST := 1
     endif
