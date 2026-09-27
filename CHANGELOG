@@ -1,4 +1,15 @@
 v2.x.y (work-in-progress)
+- improvement: the Makefile describes each codec in its own mk/<codec>.mk (objects, flags,
+               platform checks) instead of spreading it over the 1,400-line Makefile;
+               CONTRIBUTING.md shows the mk file for a new codec
+- improvement: out-of-tree builds: "make -f /path/to/lzbench/Makefile" builds in the current
+               directory
+- improvement: cross builds (e.g. MinGW from Linux, ARM, PowerPC) no longer need DONT_BUILD_*
+               options: skim and the Rust codecs are skipped automatically
+- improvement: DONT_BUILD_LZAV=1 and DONT_BUILD_YALZ77=1 work like the other DONT_BUILD_* options
+- fix: "make ENABLE_CUDA=1" failed to parse with GNU make 3.81, the version on macOS
+- fix: the C++ sources of csc, gipfeli, lzham and yappy were compiled with USER_CFLAGS instead of
+       USER_CXXFLAGS
 
 v2.4 (Sep 27, 2026)
 - added GPUCompact 1.1 (by @UDPSendToFailed)
