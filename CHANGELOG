@@ -1,4 +1,4 @@
-v2.x.y (work-in-progress)
+v2.4 (Sep 27, 2026)
 - added GPUCompact 1.1 (by @UDPSendToFailed)
 - added lbzip2 2.6.5 (thanks to @caius72)
 - added mbrotli 0.5.2 (by @Mnwa)
@@ -9,6 +9,7 @@ v2.x.y (work-in-progress)
 - updated bzip3 to 1.5.4
 - updated libdeflate to v1.26
 - updated lzav to 5.17 (thanks to @avaneev)
+- updated lzham to upstream master as of 2020-09-15 (public-domain licence)
 - updated lzma to 26.03
 - updated memlz to 0.5 beta (thanks to @rrrlasse); fixes unaligned accesses, re-enabled on 32-bit ARM
 - updated nvcomp to support CUDA 13 and cccl 3 (thanks to @fwyzard)
@@ -32,12 +33,20 @@ v2.x.y (work-in-progress)
 - improvement: the Makefile now generates header dependencies (-MMD -MP), so editing a header
                or a .cpp that another .cpp #includes (aceapex, lzo, ucl, tamp, 7-zip) rebuilds the
                affected objects instead of relinking stale ones
+- improvement: CI now runs every codec on incompressible and tiny inputs, and has a native
+               static build job that links the Rust (density, mbrotli, pulsar) and Zig (skim)
+               codecs
 - fix: codecs whose init() fails are now skipped instead of being benchmarked with a
        NULL work_mem, which used to SEGFAULT (e.g. "lzbench -eCUDA" without a GPU)
 - fix: libdeflate leaked a decompressor on every decompression call (thanks to @wu-zhao-min)
 - fix: aceapex corrupted inputs smaller than 768 bytes (thanks to @yasha1971-coder)
 - fix: memory and file handle leaks when an input file cannot be read, or when a memory
        allocation fails (thanks to @wu-zhao-min)
+- fix: density was enabled with Cargo 1.82-1.84, which cannot build its edition 2024 crate,
+       so the build failed; it is now skipped below 1.85
+- fix: aceapex double-free on empty compression streams (thanks to @zqb-all)
+- fix: changing the set of codecs (e.g. DONT_BUILD_MBROTLI=1) left stale bench objects
+       that failed to link; they are now rebuilt
 
 v2.3 (Jun 15, 2026)
 - improvement: Reorganized compressor alias groups by type — ALL is now a composite of LZ /
