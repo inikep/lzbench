@@ -1,24 +1,19 @@
-pulsar is available under two licenses. You choose one.
+Copyright (c) 2026 Corey Tasz / Slid Phi Labs
 
-1. GNU General Public License v3.0 or later
-   See LICENSE.GPL-3.0
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-2. Slid Phi Labs Commercial License
-   See LICENSE.COMMERCIAL
-   Use this to put pulsar inside a closed-source product.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
 
-This grant never includes Combined GC, LBR1 / splb / ASMD,
-AWARE encoder source, Chamber kernel, or Agent-Rider signing keys
-unless the invoice names them.
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-Copyright (c) 2026 Slid Phi Labs / Corey Tasz.
+SPDX-License-Identifier: GPL-3.0-or-later
 
-Legal identity
-- Trade name: Slid Phi Labs
-- Public author / copyright: Corey Tasz
-- Legal name on manuscript: Corey Robert Ptaszenski
-
-Seats and current terms: https://www.slidphilabs.com/licensing.json
-Contact: corey@slidphilabs.com
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+Releases 2.3.1 and earlier of this repository were offered under the MIT
+License. Those snapshots remain MIT. This tree, from 2.4.0 onward, is GPL-3.0-or-later.
