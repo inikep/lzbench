@@ -338,6 +338,7 @@ endif
 HAVE_ZIG := $(shell command -v zig >/dev/null 2>&1 && echo 1 || echo 0)
 
 ifneq ($(HAVE_ZIG),1)
+    $(info Zig not found – skipping skim build)
     DONT_BUILD_SKIM ?= 1
 endif
 
