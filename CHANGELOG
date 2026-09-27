@@ -36,6 +36,9 @@ v2.4 (Sep 27, 2026)
 - improvement: CI now runs every codec on incompressible and tiny inputs, and has a native
                static build job that links the Rust (density, mbrotli, pulsar) and Zig (skim)
                codecs
+- improvement: RUST_TARGET_CPU sets the CPU the Rust codecs are compiled for (default: native);
+               the release binaries use x86-64, as a native build contains e.g. AVX-512 code and
+               dies with SIGILL on CPUs without it
 - fix: codecs whose init() fails are now skipped instead of being benchmarked with a
        NULL work_mem, which used to SEGFAULT (e.g. "lzbench -eCUDA" without a GPU)
 - fix: libdeflate leaked a decompressor on every decompression call (thanks to @wu-zhao-min)

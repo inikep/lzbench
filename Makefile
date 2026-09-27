@@ -296,6 +296,13 @@ ifneq ($(DONT_BUILD_PULSAR),1)
     endif
 endif
 
+# CPU the Rust codecs are compiled for. "native" optimizes them for the build
+# machine, and the binary may then die with SIGILL on other CPUs (e.g. AVX-512
+# code on a CPU without it); for binaries that are run elsewhere, such as
+# releases, use e.g. RUST_TARGET_CPU=x86-64, the baseline the C codecs are
+# built for. Empty leaves the choice to rustc.
+RUST_TARGET_CPU ?= native
+
 ifneq ($(strip $(RUST_FEATURES)),)
     RUST_SRC_DIR=misc/rust-codecs/
     ifeq ($(BUILD_STATIC),1)
@@ -307,10 +314,10 @@ ifneq ($(strip $(RUST_FEATURES)),)
     endif
 
     # RUST_LIB is rebuilt when a source of an enabled codec changes, and when the
-    # crate type or the set of codecs does: RUST_STAMP records those and is
+    # crate type, target CPU or set of codecs does: RUST_STAMP records those and is
     # rewritten, while the Makefile is read, whenever they differ.
     RUST_STAMP  := $(RUST_SRC_DIR)target/lzbench-config
-    RUST_CONFIG := $(RUST_BUILD_TYPE) $(strip $(RUST_FEATURES))
+    RUST_CONFIG := $(RUST_BUILD_TYPE) cpu=$(RUST_TARGET_CPU) $(strip $(RUST_FEATURES))
     ifneq ($(shell cat $(RUST_STAMP) 2>/dev/null),$(RUST_CONFIG))
         $(shell mkdir -p $(RUST_SRC_DIR)target && echo '$(RUST_CONFIG)' > $(RUST_STAMP))
     endif
@@ -1451,7 +1458,7 @@ ifneq ($(RUST_LIB),)
 $(RUST_LIB): $(RUST_DEPS)
 	@echo "Building Rust codecs ($(strip $(RUST_FEATURES)))..."
 	cd $(RUST_SRC_DIR) && \
-	RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" \
+	RUSTFLAGS="$(if $(RUST_TARGET_CPU),-C target-cpu=$(RUST_TARGET_CPU) )-C linker=$(lastword $(CXX))" \
 	cargo rustc --locked --offline --features "$(strip $(RUST_FEATURES))" --crate-type=$(RUST_BUILD_TYPE) --release -- --print=native-static-libs
 	touch $@
 endif
