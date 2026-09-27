@@ -10,7 +10,8 @@ v2.x.y (work-in-progress)
 - improvement: "lzbench -V" shows the git commit it was built from, with "-dirty" for local changes
 - improvement: doc/results: an interactive results page (sortable table, speed vs. size charts with
                the Pareto frontier) published to GitHub Pages, and lzbench_json.py to make its data
-               from lzbench's -o1 or -o4 output
+               from lzbench's -o1 or -o4 output; README.md shows a chart made by lzbench_svg.py
+               that links to it
 - fix: "make ENABLE_CUDA=1" failed to parse with GNU make 3.81, the version on macOS
 - fix: the C++ sources of csc, gipfeli, lzham and yappy were compiled with USER_CFLAGS instead of
        USER_CXXFLAGS
