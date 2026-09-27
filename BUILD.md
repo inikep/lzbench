@@ -117,7 +117,7 @@ Compilation for various CPU architectures
 
 Known issues
 ------------
-With all issues refer to `Makefile`, as they may already be suppressed.
+With all issues refer to `Makefile` and the codec's `mk/<codec>.mk`, as they may already be suppressed.
 
 ### All operating systems
 - LZSSE requires 64-bit Intel CPU with SSE4.1 for compilation and execution (a support for `__SSE4_1__` is auto-detected)

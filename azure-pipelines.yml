@@ -337,7 +337,7 @@ jobs:
   # compiled and round-trip tested. Linux native builds only: a native x86_64
   # libskim.a cannot be linked into the cross-compiled (QEMU) or 32-bit targets,
   # and the macOS job is skipped on purpose; those keep skim disabled via the
-  # Makefile's 'command -v zig' auto-detection.
+  # 'command -v zig' auto-detection in mk/skim.mk.
   - script: |
       sudo snap install zig --classic --channel=latest/beta
       echo "##vso[task.prependpath]/snap/bin"

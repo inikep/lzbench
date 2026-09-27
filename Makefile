@@ -17,11 +17,17 @@
 #	make MOREFLAGS="-march=native"
 # or
 #	make USER_CFLAGS="-march=native" USER_CXXFLAGS="-march=native"
-
+#
+# To leave a codec out (the names are the ones used in mk/*.mk):
+#	make DONT_BUILD_LZHAM=1
+#
+# CUDA codecs (nvcomp, bsc_cuda, aceapex_cuda, gpucompact):
+#	make ENABLE_CUDA=1 [CUDA_BASE=/usr/local/cuda]
+#
+# Every codec is described by its own file in mk/, see "Codecs" below.
 
 # direct GNU Make to search the directories relative to the
 # parent directory of this file
-
 SOURCE_PATH := $(dir $(lastword $(MAKEFILE_LIST)))
 vpath
 vpath %.c $(SOURCE_PATH)
@@ -30,37 +36,27 @@ vpath %.cpp $(SOURCE_PATH)
 vpath bench/lzbench.h $(SOURCE_PATH)
 vpath wflz/wfLZ.h $(SOURCE_PATH)
 
+
+#------------------------------------------------------------------------------
+# Toolchain and platform
+#------------------------------------------------------------------------------
+
 ifeq ($(BUILD_ARCH),32-bit)
     CODE_FLAGS += -m32
     LDFLAGS += -m32
-    DONT_BUILD_LZSSE ?= 1
-    # lzham's 64 MB dict overflows the 32-bit address space (see TARGET_ARCH note below)
-    DONT_BUILD_LZHAM ?= 1
 endif
-
-CC?=gcc
 
 COMPILER = $(shell $(CC) -v 2>&1 | grep -q "clang version" && echo clang || echo gcc)
 GCC_VERSION = $(shell echo | $(CC) -dM -E - | grep __VERSION__  | sed -e 's:\#define __VERSION__ "\([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*version \([0-9.]*\).*:\1:' -e 's:\.\([0-9][0-9]\):\1:g' -e 's:\.\([0-9]\):0\1:g')
 
-# LZSSE requires compiler with __SSE4_1__ support and 64-bit CPU
-ifneq ($(shell echo|$(CC) -dM -E - -march=native 2>/dev/null|egrep -c '__(SSE4_1|x86_64)__'), 2)
-    DONT_BUILD_LZSSE ?= 1
-endif
-
-# OpenZL requires a 64-bit platform (src/openzl/shared/portability.h emits an
-# #error on 32-bit). Probe the pointer size with the active CODE_FLAGS so this
-# also catches -m32 (BUILD_ARCH=32-bit) builds, not just native 32-bit targets.
-ifneq ($(shell echo|$(CC) $(CODE_FLAGS) -dM -E - 2>/dev/null|grep -c '__SIZEOF_POINTER__ 8'), 1)
-    DONT_BUILD_OPENZL ?= 1
-endif
+HOST_ARCH   := $(shell uname -m)
+TARGET_ARCH := $(firstword $(subst -, ,$(shell $(CXX) -dumpmachine)))
 
 # detect thread model for gcc or clang
 THREAD_MODEL := $(shell $(CXX) -v 2>&1 | grep '^Thread model:' | awk '{print $$3}')
 $(info Detected thread model: $(THREAD_MODEL))
 
-# detect Windows
 ifneq (,$(filter Windows%,$(OS)))
     THREAD_MODEL := $(or $(THREAD_MODEL),win32)
     BUILD_STATIC ?= 1
@@ -69,37 +65,11 @@ ifneq (,$(filter Windows%,$(OS)))
     endif
 else
     THREAD_MODEL := $(or $(THREAD_MODEL),posix)
-    ifeq ($(shell uname -p),powerpc)
-        # yappy doesn't work with big-endian PowerPC
-        DONT_BUILD_YAPPY ?= 1
-        DONT_BUILD_ZLING ?= 1
-    endif
+    detected_OS := $(shell uname -s)
+    UNAME_P     := $(shell uname -p)
 
-    ifneq (,$(filter riscv%,$(shell uname -m)))
+    ifneq (,$(filter riscv%,$(HOST_ARCH)))
         MOREFLAGS += -mno-strict-align
-
-        # tornado dereferences unaligned 16/32/64-bit values directly (see
-        # value32() in lz/tornado/Common.h). On RISC-V such an access is either
-        # performed by the hardware, or trapped and emulated by the kernel
-        # (orders of magnitude slower), or not supported at all (SIGBUS), so it
-        # is only worth benchmarking where the hardware handles it at full
-        # speed. lz/tornado/check_riscv_fast_unaligned.c asks the kernel through
-        # the hwprobe syscall and exits 0 only on a clear "fast"; anything else,
-        # including a probe that cannot be built or run, leaves tornado disabled.
-        ifeq "$(DONT_BUILD_TORNADO)" ""
-            ifeq ($(shell uname -s),Linux)
-                RISCV_FAST_UNALIGNED := $(shell t=$$(mktemp "$${TMPDIR:-/tmp}/lzbench_hwprobe.XXXXXX" 2>/dev/null) && \
-                    $(CC) $(SOURCE_PATH)lz/tornado/check_riscv_fast_unaligned.c -o "$$t" 2>/dev/null && "$$t"; \
-                    r=$$?; rm -f "$$t"; [ "$$r" = 0 ] && echo 1 || echo 0)
-            endif
-
-            ifeq ($(RISCV_FAST_UNALIGNED),1)
-                $(info RISC-V: misaligned scalar access is fast, benchmarking tornado)
-            else
-                $(info RISC-V: misaligned scalar access is slow, emulated or unsupported, disabling tornado)
-                DONT_BUILD_TORNADO := 1
-            endif
-        endif
     endif
 
     # some compressors use dlopen(), which requires linking with -ldl on glibc
@@ -111,14 +81,6 @@ else
     LIBDL := $(shell printf '${LIBDL_TEST_SRC}' | $(CXX) -x c - -o /dev/null 2>/dev/null || \
                { printf '${LIBDL_TEST_SRC}' | $(CXX) -x c - -ldl -o /dev/null 2>/dev/null && echo "-ldl"; })
 
-    # detect MacOS
-    detected_OS := $(shell uname -s)
-    ifeq ($(detected_OS), Darwin)
-        DONT_BUILD_LZHAM ?= 1
-        DONT_BUILD_CSC ?= 1
-        DEFINES += -Dunix
-    endif
-
     ifneq ($(THREAD_MODEL), win32)
         DEFINES += -Dunix
     endif
@@ -128,6 +90,10 @@ else
     endif
 endif
 
+
+#------------------------------------------------------------------------------
+# Compiler flags
+#------------------------------------------------------------------------------
 
 DEFINES     += -I.
 CODE_FLAGS  += -Wno-unknown-pragmas -Wno-sign-compare -Wno-conversion
@@ -147,6 +113,10 @@ else
     OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
 endif
 
+# Everything is built with -O3, except the objects of codecs that set
+# <NAME>_OPT := O2 in their mk file (OPT_LEVEL is set per object below).
+OPT_LEVEL = O3
+
 # Automatic header dependencies. -MMD writes "<object>.d" next to each object,
 # listing every file the translation unit included; -MP adds a phony target for
 # each of them so that deleting or renaming a header does not break the next
@@ -157,9 +127,8 @@ endif
 # fall back to the old behaviour on a compiler that does not understand them.
 DEPFLAGS := $(shell printf 'int main(){return 0;}' | $(CXX) -x c++ - -MMD -MP -MF /dev/null -c -o /dev/null 2>/dev/null && printf -- '-MMD -MP')
 
-CXXFLAGS  = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS) $(USER_CXXFLAGS) $(DEPFLAGS)
-CFLAGS    = $(CODE_FLAGS) $(OPT_FLAGS_O3) $(DEFINES) $(MOREFLAGS) $(USER_CFLAGS) $(DEPFLAGS)
-CFLAGS_O2 = $(CODE_FLAGS) $(OPT_FLAGS_O2) $(DEFINES) $(MOREFLAGS) $(USER_CFLAGS) $(DEPFLAGS)
+CXXFLAGS  = $(CODE_FLAGS) $(OPT_FLAGS_$(OPT_LEVEL)) $(DEFINES) $(MOREFLAGS) $(USER_CXXFLAGS) $(DEPFLAGS)
+CFLAGS    = $(CODE_FLAGS) $(OPT_FLAGS_$(OPT_LEVEL)) $(DEFINES) $(MOREFLAGS) $(USER_CFLAGS) $(DEPFLAGS)
 # nvcc does not reliably accept -MMD/-MP, so CUDA rules use the host flags without them
 CUDA_HOST_CXXFLAGS = $(filter-out $(DEPFLAGS),$(CXXFLAGS))
 LDFLAGS  += -pthread $(MOREFLAGS) $(USER_LDFLAGS)
@@ -168,133 +137,149 @@ ifeq ($(detected_OS), Darwin)
 endif
 
 
-LZ_CODECS     = bench/lz_codecs.o
-BUGGY_CODECS  = bench/buggy_codecs.o
-SYMMETRIC_CODECS = bench/symmetric_codecs.o
-BENCH_MAIN = bench/lzbench.o
-BENCH_FILES = $(LZ_CODECS) $(BUGGY_CODECS) $(SYMMETRIC_CODECS) $(BENCH_MAIN) bench/misc_codecs.o
+#------------------------------------------------------------------------------
+# Threading
+#------------------------------------------------------------------------------
 
 ifeq "$(DISABLE_THREADING)" "1"
     DEFINES += -DDISABLE_THREADING
-    FASTLZMA2_FLAGS = -DFL2_SINGLETHREAD
 else
-    BENCH_FILES += bench/threadpool.o
-    ZSTD_FLAGS = -DZSTD_MULTITHREAD
-
     OMP_TEST_CODE = \#include <omp.h>\nint main(){return 0;}\n
     HAVE_OPENMP := $(shell printf '$(OMP_TEST_CODE)' | $(CXX) -x c++ - -fopenmp -o /dev/null 2>/dev/null && echo 1 || echo 0)
 
     ifeq ($(HAVE_OPENMP),1)
         $(info OpenMP found: compiling bsc with OMP multithreading)
-        BSC_FLAGS = -fopenmp -DLIBBSC_OPENMP_SUPPORT -DLIBSAIS_OPENMP
+        OPENMP_CXXFLAGS = -fopenmp
         LDFLAGS += -fopenmp
-        SYMMETRIC_CXXFLAGS += -fopenmp
-        BENCH_CXXFLAGS += -fopenmp
     else
         $(info OpenMP not found: compiling bsc without multithreading)
     endif
 endif
 
-# Try compiling a small test with __builtin_ctz
-# Efficient on CPUs with bit-manipulation support (e.g., RISC-V Zbb, x86 BMI1/TZCNT, ARM).
-HAVE_BUILTIN_CTZ := $(shell echo 'int main(void){return __builtin_ctz(8);}' \
-    | $(CC) $(CFLAGS) -x c -o /dev/null - 2>/dev/null && echo 1 || echo 0)
 
-# Detect RISC-V Vector (RVV) support in the compiler and header files.
-# Background: Snappy upstream recently added an RVV-accelerated path for
-# RISC-V.  The source code uses two different spellings:
-#   1. With __riscv_ prefix (new spec, e.g. __riscv_vsetvl_e8m1)
-#   2. Without prefix           (old spec, e.g. vsetvl_e8m1)
-#
-# Implementation notes:
-#  - A one-line C file is generated on-the-fly with printf.
-#  - The "pound" trick. This is the simplest and most effective way to handle '#'
-    # in Makefiles. 'pound' will hold a literal '#' character.
+#------------------------------------------------------------------------------
+# CUDA toolkit (make ENABLE_CUDA=1)
+#------------------------------------------------------------------------------
 
-pound := \#
-rvv_prefix=__riscv_
-# We use $(pound) to insert the '#' character. This happens *before* the shell
-SNAPPY_RVV=printf '%s\n' \
-        '$(pound)include <riscv_vector.h>' \
-        '$(pound)include <stdint.h>' \
-        '$(pound)include <stddef.h>' \
-        'int main() {' \
-        '    uint8_t val = 3;' \
-        '    size_t vl = $(rvv_prefix)vsetvl_e8m1(8);' \
-        '    vuint8m1_t v = $(rvv_prefix)vmv_v_x_u8m1(val, vl);' \
-        '    (void)v;' \
-        '    return 0;' \
-        '}' \
-    | $(CC)  $(CFLAGS) -x c -o /dev/null - 2>/dev/null \
-    && echo 1 || echo 0
+ifeq "$(ENABLE_CUDA)" "1"
+    CUDA_BASE ?= /usr/local/cuda
+    LIBCUDART = $(wildcard $(CUDA_BASE)/lib64/libcudart.so)
+    CUDA_H    = $(wildcard $(CUDA_BASE)/include/cuda.h)
 
-#   1. With __riscv_ prefix (new spec, e.g. __riscv_vsetvl_e8m1)
-SNAPPY_RVV_1:=$(shell $(SNAPPY_RVV))
-#   2. Without prefix           (old spec, e.g. vsetvl_e8m1)
-rvv_prefix=
-SNAPPY_RVV_0_7:=$(shell $(SNAPPY_RVV))
-
-# Rust codecs (density, mbrotli, pulsar) are built into one library from
-# misc/rust-codecs: two Rust staticlibs each carry their own copy of std and
-# cannot be linked into the same binary.
-HOST_ARCH   := $(shell uname -m)
-TARGET_ARCH := $(firstword $(subst -, ,$(shell $(CXX) -dumpmachine)))
-HAVE_CARGO  := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
-
-ifeq ($(HAVE_CARGO),1)
-    CARGO_VERSION := $(shell cargo --version | awk '{print $$2}')
-    HAVE_RUST_1_85 := $(shell printf "%s\n1.85.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.85.0 && echo 1 || echo 0)
-    HAVE_RUST_1_89 := $(shell printf "%s\n1.89.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.89.0 && echo 1 || echo 0)
+    ifeq "$(and $(LIBCUDART),$(CUDA_H))" ""
+        $(info CUDA Toolkit not found at $(CUDA_BASE), CUDA support will be disabled.)
+        $(info Run "make CUDA_BASE=..." to use a different path.)
+        CUDA_BASE =
+        LIBCUDART =
+        CUDA_H =
+    else
+        HAVE_CUDA := 1
+        DEFINES += -DBENCH_HAS_CUDA -I$(CUDA_BASE)/include
+        LDFLAGS += -L$(CUDA_BASE)/lib64 -lcudart -Wl,-rpath=$(CUDA_BASE)/lib64
+        CUDA_COMPILER = nvcc
+        CUDA_CC = $(CUDA_BASE)/bin/nvcc --compiler-bindir $(CXX)
+        CUDA_VERSION := $(shell awk '$$1 == "#define" && $$2 == "CUDA_VERSION" { print $$3; exit;}' $(CUDA_H))
+        ifeq "$(CUDA_VERSION)" ""
+            $(error Could not determine CUDA_VERSION from $(CUDA_H))
+        endif
+        CUDA_ARCH := $(shell \
+          if [ $(CUDA_VERSION) -ge 13000 ]; then \
+              echo 75 80 86 89 90 100 120; \
+          elif [ $(CUDA_VERSION) -ge 12080 ]; then \
+              echo 50 52 60 61 70 75 80 86 89 90 100 120; \
+          elif [ $(CUDA_VERSION) -ge 11080 ]; then \
+              echo 50 52 60 61 70 75 80 86 89 90; \
+          elif [ $(CUDA_VERSION) -ge 11010 ]; then \
+              echo 50 52 60 61 70 75 80 86; \
+          elif [ $(CUDA_VERSION) -ge 11000 ]; then \
+              echo 50 52 60 61 70 75 80; \
+          else \
+              echo 50 52 60 61 70 75; fi)
+        CUDA_CXXSTD := $(shell \
+          if [ $(CUDA_VERSION) -ge 13000 ]; then \
+              echo c++17; \
+          else \
+              echo c++14; \
+          fi)
+        CUDA_CXXFLAGS = -x cu -std=$(CUDA_CXXSTD) -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
+    endif
 endif
 
-# Only build Rust codecs if native build, not 32-bit, not Windows
+
+#------------------------------------------------------------------------------
+# Rust toolchain (for the Rust codecs, see "Rust codecs" below)
+#------------------------------------------------------------------------------
+
+HAVE_CARGO := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
 ifneq ($(HAVE_CARGO),1)
     $(info Cargo not found – skipping Rust codecs (density, mbrotli, pulsar))
-    DONT_BUILD_DENSITY := 1
-    DONT_BUILD_MBROTLI := 1
-    DONT_BUILD_PULSAR := 1
-else ifneq ($(HOST_ARCH),$(TARGET_ARCH)) # Skip cross-compilation
-    DONT_BUILD_DENSITY := 1
-    DONT_BUILD_MBROTLI := 1
-    DONT_BUILD_PULSAR := 1
-else ifeq ($(BUILD_ARCH),32-bit)         # Skip user requested 32-bit compilation
-    DONT_BUILD_DENSITY := 1
-    DONT_BUILD_MBROTLI := 1
-    DONT_BUILD_PULSAR := 1
-else ifneq (,$(filter Windows%,$(OS)))   # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
-    DONT_BUILD_DENSITY := 1
-    DONT_BUILD_MBROTLI := 1
-    DONT_BUILD_PULSAR := 1
+else
+    CARGO_VERSION := $(shell cargo --version | awk '{print $$2}')
+    # Only build Rust codecs if native build, not 32-bit, not Windows
+    ifneq ($(HOST_ARCH),$(TARGET_ARCH))    # Skip cross-compilation
+    else ifeq ($(BUILD_ARCH),32-bit)       # Skip user requested 32-bit compilation
+    else ifneq (,$(filter Windows%,$(OS))) # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
+    else
+        HAVE_RUST := 1
+    endif
 endif
 
-RUST_FEATURES :=
-ifneq ($(DONT_BUILD_DENSITY),1)
-    # density uses edition 2024, stable since Rust 1.85
-    ifneq ($(HAVE_RUST_1_85),1)
-        $(info Cargo $(CARGO_VERSION) is older than 1.85 – skipping Density build)
-        DONT_BUILD_DENSITY := 1
-    else
-        RUST_FEATURES += density
-    endif
-endif
-ifneq ($(DONT_BUILD_MBROTLI),1)
-    ifneq ($(HAVE_RUST_1_89),1)
-        $(info Cargo $(CARGO_VERSION) is older than 1.89 – skipping mbrotli build)
-        DONT_BUILD_MBROTLI := 1
-    else
-        RUST_FEATURES += mbrotli
-    endif
-endif
-ifneq ($(DONT_BUILD_PULSAR),1)
-    # pulsar itself is edition 2021, but it is built through misc/rust-codecs,
-    # which is edition 2024 (rust-version 1.85)
-    ifneq ($(HAVE_RUST_1_85),1)
-        $(info Cargo $(CARGO_VERSION) is older than 1.85 – skipping pulsar build)
-        DONT_BUILD_PULSAR := 1
-    else
-        RUST_FEATURES += pulsar
-    endif
-endif
+# $(call cargo_at_least,1.85.0) is 1 when cargo is at least that version
+cargo_at_least = $(shell printf "%s\n$(1)\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx $(1) && echo 1)
+
+
+#------------------------------------------------------------------------------
+# Codecs
+#------------------------------------------------------------------------------
+#
+# mk/<name>.mk describes one codec NAME (e.g. mk/zlib-ng.mk is ZLIB_NG):
+#
+#   CODECS     += NAME
+#   NAME_OBJS  := objects to compile and link into lzbench
+#   NAME_FLAGS := extra compiler flags for NAME_OBJS (optional)
+#   NAME_OPT   := O2 to build NAME_OBJS with -O2 instead of -O3 (optional)
+#
+# "make DONT_BUILD_NAME=1" leaves NAME_OBJS out and defines BENCH_REMOVE_NAME,
+# which removes the codec from bench/*.cpp. A mk file may also:
+#   - disable its codec on some platforms with "DONT_BUILD_NAME ?= 1",
+#   - add to DEFINES, LDFLAGS, LINK_DEPS, CLEAN_FILES or CLEAN_DIRS,
+#   - for a Rust codec, add its cargo feature to RUST_FEATURES and its sources
+#     to RUST_DEPS (see "Rust codecs" below),
+#   - add rules for objects the generic %.o rules below cannot build,
+#   - add objects that DONT_BUILD_NAME does not switch off as a separate
+#     group: "OBJ_GROUPS += GROUP" with GROUP_OBJS and GROUP_FLAGS.
+#
+# To add a codec, add mk/<name>.mk and the codec's entry in bench/.
+
+MKDIR = mkdir -p
+
+# the mk files define rules too, so name the default target explicitly
+.DEFAULT_GOAL := lzbench
+
+include $(sort $(wildcard $(SOURCE_PATH)mk/*.mk))
+
+CODECS_OFF := $(foreach c,$(CODECS),$(if $(filter 1,$(DONT_BUILD_$(c))),$(c)))
+CODECS_ON  := $(filter-out $(CODECS_OFF),$(CODECS))
+DEFINES    += $(addprefix -DBENCH_REMOVE_,$(CODECS_OFF))
+
+# Give each group's objects its compiler flags and optimization level.
+$(foreach g,$(CODECS_ON) $(OBJ_GROUPS),$(if $($(g)_OBJS), \
+    $(eval $$($(g)_OBJS): CODEC_FLAGS = $$($(g)_FLAGS)) \
+    $(if $($(g)_OPT),$(eval $$($(g)_OBJS): OPT_LEVEL = $($(g)_OPT)))))
+
+CODEC_OBJS := $(foreach g,$(CODECS_ON) $(OBJ_GROUPS),$($(g)_OBJS))
+
+
+#------------------------------------------------------------------------------
+# Rust codecs
+#------------------------------------------------------------------------------
+#
+# The Rust codecs (density, mbrotli, pulsar) are built into one library,
+# liblzbench_rust, from misc/rust-codecs, which has a cargo feature per codec:
+# two Rust staticlibs each carry their own copy of std and cannot be linked into
+# the same binary.
+
+CLEAN_DIRS += misc/rust-codecs/target/
 
 # CPU the Rust codecs are compiled for. "native" optimizes them for the build
 # machine, and the binary may then die with SIGILL on other CPUs (e.g. AVX-512
@@ -304,12 +289,12 @@ endif
 RUST_TARGET_CPU ?= native
 
 ifneq ($(strip $(RUST_FEATURES)),)
-    RUST_SRC_DIR=misc/rust-codecs/
+    RUST_SRC_DIR := misc/rust-codecs/
     ifeq ($(BUILD_STATIC),1)
-        RUST_BUILD_TYPE=staticlib
+        RUST_BUILD_TYPE := staticlib
         RUST_LIB := $(RUST_SRC_DIR)target/release/liblzbench_rust.a
     else
-        RUST_BUILD_TYPE=cdylib
+        RUST_BUILD_TYPE := cdylib
         RUST_LIB := $(RUST_SRC_DIR)target/release/liblzbench_rust$(if $(filter Darwin,$(detected_OS)),.dylib,.so)
     endif
 
@@ -321,1136 +306,12 @@ ifneq ($(strip $(RUST_FEATURES)),)
     ifneq ($(shell cat $(RUST_STAMP) 2>/dev/null),$(RUST_CONFIG))
         $(shell mkdir -p $(RUST_SRC_DIR)target && echo '$(RUST_CONFIG)' > $(RUST_STAMP))
     endif
-    RUST_DEPS := $(RUST_STAMP) $(addprefix $(RUST_SRC_DIR),Cargo.toml Cargo.lock lib.rs .cargo/config.toml)
-    ifneq (,$(filter density,$(RUST_FEATURES)))
-        RUST_DEPS += $(shell find misc/density/src/Cargo.toml misc/density/src/src -type f)
-    endif
-    ifneq (,$(filter mbrotli,$(RUST_FEATURES)))
-        RUST_DEPS += $(shell find lz/mbrotli/Cargo.toml lz/mbrotli/src lz/mbrotli/mbrotli-ffi -type f)
-    endif
-    ifneq (,$(filter pulsar,$(RUST_FEATURES)))
-        RUST_DEPS += $(shell find bwt/pulsar/Cargo.toml bwt/pulsar/src -type f)
-    endif
+    RUST_DEPS += $(RUST_STAMP) $(addprefix $(RUST_SRC_DIR),Cargo.toml Cargo.lock lib.rs .cargo/config.toml)
 
+    # linked with -l, but lzbench is relinked when the library changes
+    LINK_DEPS += $(RUST_LIB)
     LDFLAGS += -Wl,-rpath,$(RUST_SRC_DIR)target/release -L$(RUST_SRC_DIR)target/release -llzbench_rust
 endif
-
-HAVE_ZIG := $(shell command -v zig >/dev/null 2>&1 && echo 1 || echo 0)
-
-ifneq ($(HAVE_ZIG),1)
-    $(info Zig not found – skipping skim build)
-    DONT_BUILD_SKIM ?= 1
-endif
-
-ifeq "$(DONT_BUILD_SKIM)" "1"
-    DEFINES += -DBENCH_REMOVE_SKIM
-else
-    SKIM_FILE = misc/skim/libskim.a
-endif
-
-# On 32-bit ARM (armv5/v7): bsc crashes in its multithreaded decompress path
-# (lzbench#293); disable it. (aceapex uses alignment-safe loads since ax_align.h,
-# and memlz since 0.5 beta, so both build everywhere.)
-ifneq (,$(filter arm armeb armv%,$(TARGET_ARCH)))
-    DONT_BUILD_BSC ?= 1
-endif
-
-# zpaq's JIT emits x86 machine code and crashes on other CPUs (SIGSEGV on
-# 32-bit ARM, SIGILL on aarch64). On non-x86 targets build it with -DNOJIT so
-# it uses its portable (slower) interpreter instead.
-ifeq (,$(filter x86_64% amd64% i%86,$(TARGET_ARCH)))
-    ZPAQ_FLAGS += -DNOJIT
-endif
-
-# lzham uses a 64 MB dictionary (m_dict_size_log2=26) and multiplies that working
-# set across helper threads; on 32-bit x86 it overflows the limited address space
-# and every chunk fails to compress (seen on 32-bit Windows under -T). Disable it
-# on native 32-bit x86 (mingw32 etc.); the -m32 build is handled separately above.
-# (Pattern is i%86 -- a single '%' wildcard, matching i386/i586/i686. GNU make
-# allows only one '%' per word, so the old i%86% never matched anything.)
-ifneq (,$(filter i%86,$(TARGET_ARCH)))
-    DONT_BUILD_LZHAM ?= 1
-endif
-
-ifeq "$(DONT_BUILD_ACEAPEX)" "1"
-    DEFINES += -DBENCH_REMOVE_ACEAPEX
-else
-    ACEAPEX_FILES = lz/aceapex/aceapex_lzbench.o
-endif
-
-ifeq "$(DONT_BUILD_MEMLZ)" "1"
-    DEFINES += -DBENCH_REMOVE_MEMLZ
-endif
-
-
-ifeq "$(DONT_BUILD_BRIEFLZ)" "1"
-    DEFINES += -DBENCH_REMOVE_BRIEFLZ
-else
-    BRIEFLZ_FILES = lz/brieflz/brieflz.o lz/brieflz/depack.o lz/brieflz/depacks.o
-endif
-
-
-ifeq "$(DONT_BUILD_BROTLI)" "1"
-    DEFINES += -DBENCH_REMOVE_BROTLI
-else
-    BROTLI_FILES = lz/brotli/common/constants.o lz/brotli/common/context.o lz/brotli/common/dictionary.o lz/brotli/common/platform.o lz/brotli/common/transform.o
-    BROTLI_FILES += lz/brotli/dec/bit_reader.o lz/brotli/dec/decode.o lz/brotli/dec/huffman.o lz/brotli/dec/prefix.o lz/brotli/dec/state.o lz/brotli/dec/static_init.o
-    BROTLI_FILES += lz/brotli/enc/backward_references.o lz/brotli/enc/block_splitter.o lz/brotli/enc/brotli_bit_stream.o lz/brotli/enc/encode.o lz/brotli/enc/encoder_dict.o
-    BROTLI_FILES += lz/brotli/enc/entropy_encode.o lz/brotli/enc/fast_log.o lz/brotli/enc/histogram.o lz/brotli/enc/command.o lz/brotli/enc/literal_cost.o lz/brotli/enc/memory.o
-    BROTLI_FILES += lz/brotli/enc/metablock.o lz/brotli/enc/static_dict.o lz/brotli/enc/static_dict_lut.o lz/brotli/enc/static_init.o lz/brotli/enc/utf8_util.o
-    BROTLI_FILES += lz/brotli/enc/compress_fragment.o lz/brotli/enc/compress_fragment_two_pass.o lz/brotli/enc/cluster.o lz/brotli/enc/bit_cost.o lz/brotli/enc/backward_references_hq.o
-    BROTLI_FILES += lz/brotli/enc/dictionary_hash.o lz/brotli/common/shared_dictionary.o lz/brotli/enc/compound_dictionary.o
-endif
-
-
-ifeq "$(DONT_BUILD_CRUSH)" "1"
-    DEFINES += -DBENCH_REMOVE_CRUSH
-else
-    MISC_FILES += lz/crush/crush.o
-endif
-
-
-ifeq "$(DONT_BUILD_FASTLZ)" "1"
-    DEFINES += -DBENCH_REMOVE_FASTLZ
-else
-    MISC_FILES += lz/fastlz/fastlz.o
-endif
-
-
-ifeq "$(DONT_BUILD_FASTLZMA2)" "1"
-    DEFINES += -DBENCH_REMOVE_FASTLZMA2
-else
-    FASTLZMA2_SRC = $(wildcard lz/fast-lzma2/*.c)
-    FASTLZMA2_OBJ = $(FASTLZMA2_SRC:.c=.o)
-endif
-
-
-ifeq "$(DONT_BUILD_KANZI)" "1"
-    DEFINES += -DBENCH_REMOVE_KANZI
-else
-    KANZI_FILES = misc/kanzi-cpp/src/io/CompressedOutputStream.o misc/kanzi-cpp/src/io/CompressedInputStream.o
-    KANZI_FILES += misc/kanzi-cpp/src/entropy/EntropyUtils.o misc/kanzi-cpp/src/entropy/ExpGolombEncoder.o
-    KANZI_FILES += misc/kanzi-cpp/src/entropy/FPAQEncoder.o misc/kanzi-cpp/src/entropy/ANSRangeEncoder.o
-    KANZI_FILES += misc/kanzi-cpp/src/entropy/ANSRangeDecoder.o misc/kanzi-cpp/src/entropy/BinaryEntropyDecoder.o
-    KANZI_FILES += misc/kanzi-cpp/src/entropy/BinaryEntropyEncoder.o misc/kanzi-cpp/src/entropy/ExpGolombDecoder.o
-    KANZI_FILES += misc/kanzi-cpp/src/entropy/HuffmanEncoder.o misc/kanzi-cpp/src/entropy/FPAQDecoder.o
-    KANZI_FILES += misc/kanzi-cpp/src/entropy/TPAQPredictor.o misc/kanzi-cpp/src/entropy/CMPredictor.o
-    KANZI_FILES += misc/kanzi-cpp/src/entropy/HuffmanCommon.o misc/kanzi-cpp/src/entropy/RangeDecoder.o
-    KANZI_FILES += misc/kanzi-cpp/src/entropy/RangeEncoder.o misc/kanzi-cpp/src/entropy/BinaryEntropyEncoder.o
-    KANZI_FILES += misc/kanzi-cpp/src/entropy/HuffmanDecoder.o misc/kanzi-cpp/src/entropy/BinaryEntropyDecoder.o
-    KANZI_FILES += misc/kanzi-cpp/src/bitstream/DefaultInputBitStream.o misc/kanzi-cpp/src/bitstream/DebugOutputBitStream.o
-    KANZI_FILES += misc/kanzi-cpp/src/bitstream/DebugInputBitStream.o misc/kanzi-cpp/src/bitstream/DefaultOutputBitStream.o
-    KANZI_FILES += misc/kanzi-cpp/src/Event.o misc/kanzi-cpp/src/Global.o misc/kanzi-cpp/src/transform/AliasCodec.o
-    KANZI_FILES += misc/kanzi-cpp/src/transform/BWT.o misc/kanzi-cpp/src/transform/RLT.o misc/kanzi-cpp/src/transform/TextCodec.o
-    KANZI_FILES += misc/kanzi-cpp/src/transform/EXECodec.o misc/kanzi-cpp/src/transform/SBRT.o
-    KANZI_FILES += misc/kanzi-cpp/src/transform/ROLZCodec.o misc/kanzi-cpp/src/transform/LZCodec.o
-    KANZI_FILES += misc/kanzi-cpp/src/transform/SRT.o misc/kanzi-cpp/src/transform/DivSufSort.o
-    KANZI_FILES += misc/kanzi-cpp/src/transform/BWTBlockCodec.o misc/kanzi-cpp/src/transform/BWTS.o
-    KANZI_FILES += misc/kanzi-cpp/src/transform/UTFCodec.o misc/kanzi-cpp/src/transform/ZRLT.o
-    KANZI_FILES += misc/kanzi-cpp/src/transform/FSDCodec.o
-endif
-
-
-ifeq "$(DONT_BUILD_LIBDEFLATE)" "1"
-    DEFINES += -DBENCH_REMOVE_LIBDEFLATE
-else
-    LIBDEFLATE_FILES  = lz/libdeflate/lib/adler32.o lz/libdeflate/lib/crc32.o lz/libdeflate/lib/deflate_compress.o
-    LIBDEFLATE_FILES += lz/libdeflate/lib/deflate_decompress.o lz/libdeflate/lib/gzip_compress.o
-    LIBDEFLATE_FILES += lz/libdeflate/lib/gzip_decompress.o lz/libdeflate/lib/utils.o lz/libdeflate/lib/zlib_compress.o
-    LIBDEFLATE_FILES += lz/libdeflate/lib/zlib_decompress.o lz/libdeflate/lib/x86/cpu_features.o
-    LIBDEFLATE_FILES += lz/libdeflate/lib/arm/cpu_features.o
-endif
-
-
-ifeq "$(DONT_BUILD_LIZARD)" "1"
-    DEFINES += -DBENCH_REMOVE_LIZARD
-else
-    LIZARD_FILES = lz/lizard/lizard_compress.o lz/lizard/lizard_decompress.o
-    LIZARD_FILES += lz/lizard/entropy/huf_compress.o lz/lizard/entropy/huf_decompress.o lz/lizard/entropy/entropy_common.o
-    LIZARD_FILES += lz/lizard/entropy/fse_compress.o lz/lizard/entropy/fse_decompress.o lz/lizard/entropy/hist.o
-endif
-
-
-ifeq "$(DONT_BUILD_LZ4)" "1"
-    DEFINES += -DBENCH_REMOVE_LZ4
-else
-    LZ4_FILES = lz/lz4/lib/lz4.o lz/lz4/lib/lz4hc.o
-endif
-
-
-ifeq "$(DONT_BUILD_LZF)" "1"
-    DEFINES += -DBENCH_REMOVE_LZF
-else
-    LZF_FILES = lz/lzf/lzf_c_ultra.o lz/lzf/lzf_c_very.o lz/lzf/lzf_d.o
-endif
-
-
-ifeq "$(DONT_BUILD_LZFSE)" "1"
-    DEFINES += -DBENCH_REMOVE_LZFSE
-else
-    LZFSE_FILES  = lz/lzfse/lzfse_decode.o lz/lzfse/lzfse_decode_base.o lz/lzfse/lzfse_encode.o lz/lzfse/lzfse_encode_base.o
-    LZFSE_FILES += lz/lzfse/lzfse_fse.o lz/lzfse/lzvn_decode.o lz/lzfse/lzvn_decode_base.o lz/lzfse/lzvn_encode_base.o
-endif
-
-
-ifeq "$(DONT_BUILD_LZG)" "1"
-    DEFINES += -DBENCH_REMOVE_LZG
-else
-    LIBLZG_FILES = lz/liblzg/decode.o lz/liblzg/encode.o lz/liblzg/checksum.o
-endif
-
-
-ifeq "$(DONT_BUILD_LZHAM)" "1"
-    DEFINES += -DBENCH_REMOVE_LZHAM
-else
-    LZHAM_FILES  = lz/lzham/lzhamdecomp/lzham_assert.o lz/lzham/lzhamdecomp/lzham_checksum.o lz/lzham/lzhamdecomp/lzham_huffman_codes.o
-    LZHAM_FILES += lz/lzham/lzhamdecomp/lzham_lzdecomp.o lz/lzham/lzhamdecomp/lzham_lzdecompbase.o lz/lzham/lzhamdecomp/lzham_mem.o
-    LZHAM_FILES += lz/lzham/lzhamdecomp/lzham_platform.o lz/lzham/lzhamdecomp/lzham_prefix_coding.o lz/lzham/lzhamdecomp/lzham_timer.o
-    LZHAM_FILES += lz/lzham/lzhamdecomp/lzham_symbol_codec.o lz/lzham/lzhamdecomp/lzham_vector.o lz/lzham/lzhamlib/lzham_lib.o
-    LZHAM_FILES += lz/lzham/lzhamcomp/lzham_lzbase.o lz/lzham/lzhamcomp/lzham_lzcomp.o lz/lzham/lzhamcomp/lzham_lzcomp_internal.o
-    LZHAM_FILES += lz/lzham/lzhamcomp/lzham_lzcomp_state.o lz/lzham/lzhamcomp/lzham_match_accel.o
-
-    ifneq "$(DISABLE_THREADING)" "1"
-        ifeq ($(THREAD_MODEL), win32)
-            LZHAM_FILES += lz/lzham/lzhamcomp/lzham_win32_threading.o
-        else
-            LZHAM_FILES += lz/lzham/lzhamcomp/lzham_pthreads_threading.o
-            LZHAM_FLAGS = -DTHREAD_MODEL_POSIX
-        endif
-    endif
-endif
-
-
-ifeq "$(DONT_BUILD_LZLIB)" "1"
-    DEFINES += -DBENCH_REMOVE_LZLIB
-else
-    MISC_FILES += lz/lzlib/lzlib.o
-endif
-
-
-ifeq "$(DONT_BUILD_LZMA)" "1"
-    DEFINES += -DBENCH_REMOVE_LZMA
-else
-    LZMA_FILES  = misc/7-zip/CpuArch.o misc/7-zip/LzFind.o misc/7-zip/LzFindOpt.o misc/7-zip/LzFindMt.o
-    LZMA_FILES += misc/7-zip/LzmaDec.o misc/7-zip/LzmaEnc.o misc/7-zip/Threads.o misc/7-zip/7zStream.o misc/7-zip/Alloc.o
-    LZMA_FILES += misc/7-zip/Lzma2Dec.o misc/7-zip/Lzma2DecMt.o misc/7-zip/Lzma2Enc.o misc/7-zip/MtCoder.o misc/7-zip/MtDec.o
-endif
-
-
-ifeq "$(DONT_BUILD_LZO)" "1"
-    DEFINES += -DBENCH_REMOVE_LZO
-else
-    LZO_FILES = lz/lzo/lzo1.o lz/lzo/lzo1a.o lz/lzo/lzo1a_99.o lz/lzo/lzo1b_1.o lz/lzo/lzo1b_2.o lz/lzo/lzo1b_3.o lz/lzo/lzo1b_4.o lz/lzo/lzo1b_5.o
-    LZO_FILES += lz/lzo/lzo1b_6.o lz/lzo/lzo1b_7.o lz/lzo/lzo1b_8.o lz/lzo/lzo1b_9.o lz/lzo/lzo1b_99.o lz/lzo/lzo1b_9x.o lz/lzo/lzo1b_cc.o
-    LZO_FILES += lz/lzo/lzo1b_d1.o lz/lzo/lzo1b_d2.o lz/lzo/lzo1b_rr.o lz/lzo/lzo1b_xx.o lz/lzo/lzo1c_1.o lz/lzo/lzo1c_2.o lz/lzo/lzo1c_3.o
-    LZO_FILES += lz/lzo/lzo1c_4.o lz/lzo/lzo1c_5.o lz/lzo/lzo1c_6.o lz/lzo/lzo1c_7.o lz/lzo/lzo1c_8.o lz/lzo/lzo1c_9.o lz/lzo/lzo1c_99.o
-    LZO_FILES += lz/lzo/lzo1c_9x.o lz/lzo/lzo1c_cc.o lz/lzo/lzo1c_d1.o lz/lzo/lzo1c_d2.o lz/lzo/lzo1c_rr.o lz/lzo/lzo1c_xx.o lz/lzo/lzo1f_1.o
-    LZO_FILES += lz/lzo/lzo1f_9x.o lz/lzo/lzo1f_d1.o lz/lzo/lzo1f_d2.o lz/lzo/lzo1x_1.o lz/lzo/lzo1x_1k.o lz/lzo/lzo1x_1l.o lz/lzo/lzo1x_1o.o
-    LZO_FILES += lz/lzo/lzo1x_9x.o lz/lzo/lzo1x_d1.o lz/lzo/lzo1x_d2.o lz/lzo/lzo1x_d3.o lz/lzo/lzo1x_o.o lz/lzo/lzo1y_1.o lz/lzo/lzo1y_9x.o
-    LZO_FILES += lz/lzo/lzo1y_d1.o lz/lzo/lzo1y_d2.o lz/lzo/lzo1y_d3.o lz/lzo/lzo1y_o.o lz/lzo/lzo1z_9x.o lz/lzo/lzo1z_d1.o lz/lzo/lzo1z_d2.o
-    LZO_FILES += lz/lzo/lzo1z_d3.o lz/lzo/lzo1_99.o lz/lzo/lzo2a_9x.o lz/lzo/lzo2a_d1.o lz/lzo/lzo2a_d2.o lz/lzo/lzo_crc.o lz/lzo/lzo_init.o
-    LZO_FILES += lz/lzo/lzo_ptr.o lz/lzo/lzo_str.o lz/lzo/lzo_util.o
-endif
-
-
-ifeq "$(DONT_BUILD_LZSSE)" "1"
-    DEFINES += -DBENCH_REMOVE_LZSSE
-else
-    LZSSE_FILES = lz/lzsse/lzsse2/lzsse2.o lz/lzsse/lzsse4/lzsse4.o lz/lzsse/lzsse8/lzsse8.o
-endif
-
-
-ifeq "$(DONT_BUILD_QUICKLZ)" "1"
-    DEFINES += -DBENCH_REMOVE_QUICKLZ
-else
-    QUICKLZ_FILES = lz/quicklz/quicklz_lvl1.o lz/quicklz/quicklz_lvl2.o lz/quicklz/quicklz_lvl3.o
-endif
-
-
-ifeq "$(DONT_BUILD_OPENZL)" "1"
-    DEFINES += -DBENCH_REMOVE_OPENZL
-else
-    OPENZL_C_FILES  = lz/openzl/src/openzl/codecs/bitSplit/common_bitSplit_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/decode_bitSplit_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/decode_bitSplit_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/encode_bitSplit_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/encode_bitSplit_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/encode_bitsplit_bf16_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/encode_bitsplit_fp_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitSplit/encode_bitsplit_top8_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitpack/common_bitpack_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitpack/decode_bitpack_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitpack/encode_bitpack_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitunpack/decode_bitunpack_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/bitunpack/encode_bitunpack_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/common/fast_table.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/common/fast_table16.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/common/fast_tag_table.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/common/window.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/concat/decode_concat_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/concat/encode_concat_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/constant/decode_constant_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/constant/decode_constant_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/constant/encode_constant_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/constant/encode_constant_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/conversion/decode_conversion_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/conversion/encode_conversion_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/conversion/encode_setStringSizes_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/conversion/graph_conversion.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/decoder_registry.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dedup/decode_dedup_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dedup/encode_dedup_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/delta/decode_delta_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/delta/decode_delta_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/delta/encode_delta_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/delta/encode_delta_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatchN_byTag/decode_dispatchN_byTag_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatchN_byTag/decode_dispatchN_byTag_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatchN_byTag/encode_dispatchN_byTag_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatchN_byTag/encode_dispatchN_byTag_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_by_tag/decode_dispatch_by_tag_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_by_tag/encode_dispatch_by_tag_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_string/decode_dispatch_string_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_string/decode_dispatch_string_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_string/encode_dispatch_string_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/dispatch_string/encode_dispatch_string_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/divide_by/decode_divide_by_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/divide_by/decode_divide_by_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/divide_by/encode_divide_by_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/divide_by/encode_divide_by_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/encoder_registry.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/decode_entropy_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/decode_huffman_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/decode_entropy_decompress.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/decode_fse_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/decode_huf_avx2_decompress.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/encode_entropy_compress.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/encode_fse_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/deprecated/encode_huf_avx2_compress.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/encode_entropy_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/encode_entropy_selector.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/entropy/encode_huffman_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/flatpack/decode_flatpack_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/flatpack/decode_flatpack_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/flatpack/encode_flatpack_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/flatpack/encode_flatpack_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/float_deconstruct/decode_float_deconstruct_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/float_deconstruct/decode_float_deconstruct_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/float_deconstruct/encode_float_deconstruct_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/float_deconstruct/encode_float_deconstruct_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/interleave/decode_interleave_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/interleave/encode_interleave_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/decode_field_lz.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/decode_lz_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/decode_lz_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_field_lz.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_field_lz_literals_selector.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_field_lz_sequences.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_lz_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_lz_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_match_finder_fast_field_lz.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz/encode_match_finder_greedy_field_lz.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz4/decode_lz4_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/lz4/encode_lz4_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/merge_sorted/decode_merge_sorted_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/merge_sorted/decode_merge_sorted_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/merge_sorted/encode_merge_sorted_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/merge_sorted/encode_merge_sorted_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/mux_lengths/decode_mux_lengths_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/mux_lengths/decode_mux_lengths_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/mux_lengths/encode_mux_lengths_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/mux_lengths/encode_mux_lengths_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/parse_int/decode_parse_int_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/parse_int/decode_parse_int_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/parse_int/encode_parse_int_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/parse_int/encode_parse_int_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/common_partition.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/decode_partition_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/decode_partition_bitpack_fusion.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/decode_partition_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/encode_partition_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/encode_partition_bitpack.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/partition/encode_partition_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/pivco_huffman/arch/decode_pivco_arch.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/pivco_huffman/arch/decode_pivco_avx512.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/pivco_huffman/arch/encode_pivco_arch.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/pivco_huffman/arch/encode_pivco_avx512.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/pivco_huffman/common_pivco_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/pivco_huffman/decode_pivco_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/pivco_huffman/decode_pivco_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/pivco_huffman/encode_pivco_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/pivco_huffman/encode_pivco_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/prefix/decode_prefix_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/prefix/decode_prefix_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/prefix/encode_prefix_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/prefix/encode_prefix_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/quantize/common_quantize.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/quantize/decode_quantize_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/quantize/decode_quantize_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/quantize/encode_quantize_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/quantize/encode_quantize_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/range_pack/decode_range_pack_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/range_pack/decode_range_pack_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/range_pack/encode_range_pack_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/range_pack/encode_range_pack_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/decode_experimental_dec.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/decode_fast_dec.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/decode_rolz_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/decode_rolz_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_experimental_enc.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_fast_enc.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_match_finder_double_fast_lc.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_match_finder_lazy.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_rolz_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_rolz_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/rolz/encode_rolz_sequences.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sentinel/decode_sentinel_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sentinel/decode_sentinel_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sentinel/encode_sentinel_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sentinel/encode_sentinel_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sparse_num/decode_sparse_num_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sparse_num/decode_sparse_num_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sparse_num/encode_sparse_num_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/sparse_num/encode_sparse_num_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitByStruct/decode_splitByStruct_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitByStruct/decode_splitByStruct_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitByStruct/encode_splitByStruct_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitByStruct/encode_splitByStruct_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitN/decode_splitN_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitN/decode_splitN_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitN/encode_splitN_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/splitN/encode_split_byrange_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/decode_tokenize2to1_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/decode_tokenize4to2_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/decode_tokenizeVarto4_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/decode_tokenize_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/decode_tokenize_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenize2to1_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenize4to2_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenizeVarto4_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenize_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenize_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/tokenize/encode_tokenize_kernel_sort.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/transpose/decode_transpose_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/transpose/decode_transpose_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/transpose/encode_transpose_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/transpose/encode_transpose_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zigzag/decode_zigzag_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zigzag/decode_zigzag_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zigzag/encode_zigzag_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zigzag/encode_zigzag_kernel.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zstd/common_zstd.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zstd/decode_zstd_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/codecs/zstd/encode_zstd_binding.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/a1cbor_helpers.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/allocation.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/errors.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/limits.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/logging.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/materializer_ctx.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/opaque.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/operation_context.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/refcount.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/sha256.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/stream.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/unique_id.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/common/wire_format.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/cctx.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/cdictmgr.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/cgraph.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/cnode.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/cnodes.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/compress2.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/compressor_serialization.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/dyngraph_interface.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/enc_interface.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/encode_frameheader.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/gcparams.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graph_registry.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphmgr.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/automated_compressor_explorer.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/generic_clustering_graph.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl/simple_data_description_language.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl/simple_data_description_language_source_code.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl2/sddl2.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl2/sddl2_disasm.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl2/sddl2_interpreter.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/sddl2/sddl2_vm.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/small_lengths_graph.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/graphs/split_graph.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/implicit_conversion.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/localparams.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/name.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/nodemgr.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/rtgraphs.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/segmenter.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/segmenters/segmenter_numeric.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/segmenters/segmenter_serial.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selector.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/ml/features.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/ml/gbt.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/ml/ml_selector_graph.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/ml/mlselector.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/ml/selector_numeric_model.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_brute_force.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_compress.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_constant.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_genericLZ.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_numeric.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/selectors/selector_store.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/compress/trStates.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/decode_frameheader.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/decoder_fusion.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/decompress2.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/dictx.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/dtransforms.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/gdparams.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/decompress/reflection.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/dict/bundle.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/dict/dict.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/dict/dictloader.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/dict/fatbundle_dictloader.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/fse/common/debug.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/fse/common/entropy_common.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/fse/common/error_private.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/fse/compress/fse_compress.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/fse/compress/hist.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/fse/compress/huf_compress.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/fse/decompress/fse_decompress.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/fse/decompress/huf_decompress.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/a1cbor.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/base64.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/clustering_common.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/clustering_compress.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/data_stats.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/detail/pdqsort1.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/detail/pdqsort2.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/detail/pdqsort4.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/detail/pdqsort8.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/estimate.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/histogram.o
-    OPENZL_C_FILES += lz/openzl/src/openzl/shared/numeric_operations.o
-    OPENZL_S_FILES += lz/openzl/src/openzl/fse/decompress/huf_decompress_amd64.o
-endif
-
-
-ifeq "$(DONT_BUILD_SLZ)" "1"
-    DEFINES += -DBENCH_REMOVE_SLZ
-else
-    MISC_FILES += lz/slz/src/slz.o lz/slz/src/slz_common.o
-endif
-
-
-ifeq "$(DONT_BUILD_SNAPPY)" "1"
-    DEFINES += -DBENCH_REMOVE_SNAPPY
-else
-    SNAPPY_FILES = lz/snappy/snappy-sinksource.o lz/snappy/snappy-stubs-internal.o lz/snappy/snappy.o
-    ifeq ($(HAVE_BUILTIN_CTZ), 1)
-        SNAPPY_FLAGS += -DHAVE_BUILTIN_CTZ
-    endif
-    ifeq ($(SNAPPY_RVV_1),1)
-        SNAPPY_FLAGS += -DSNAPPY_RVV_1
-    endif
-
-    ifeq ($(SNAPPY_RVV_0_7),1)
-        SNAPPY_FLAGS += -DSNAPPY_RVV_0_7
-    endif
-endif
-
-
-ifeq "$(DONT_BUILD_TORNADO)" "1"
-    DEFINES += "-DBENCH_REMOVE_TORNADO"
-else
-    MISC_FILES += lz/tornado/tor_test.o
-endif
-
-
-ifeq "$(DONT_BUILD_UCL)" "1"
-    DEFINES += -DBENCH_REMOVE_UCL
-else
-    UCL_FILES = lz/ucl/alloc.o lz/ucl/n2b_99.o lz/ucl/n2b_d.o lz/ucl/n2b_ds.o lz/ucl/n2b_to.o lz/ucl/n2d_99.o lz/ucl/n2d_d.o lz/ucl/n2d_ds.o
-    UCL_FILES += lz/ucl/n2d_to.o lz/ucl/n2e_99.o lz/ucl/n2e_d.o lz/ucl/n2e_ds.o lz/ucl/n2e_to.o lz/ucl/ucl_crc.o lz/ucl/ucl_init.o
-    UCL_FILES += lz/ucl/ucl_ptr.o lz/ucl/ucl_str.o lz/ucl/ucl_util.o
-endif
-
-
-ifeq "$(DONT_BUILD_XZ)" "1"
-    DEFINES += -DBENCH_REMOVE_XZ
-else
-    XZ_FILES = lz/xz/src/liblzma/lzma/lzma_decoder.o lz/xz/src/liblzma/lzma/lzma_encoder.o lz/xz/src/liblzma/lzma/lzma_encoder_optimum_fast.o lz/xz/src/liblzma/lzma/lzma_encoder_optimum_normal.o lz/xz/src/liblzma/lzma/fastpos_table.o
-    XZ_FILES += lz/xz/src/liblzma/lzma/lzma_encoder_presets.o lz/xz/src/liblzma/lz/lz_decoder.o lz/xz/src/liblzma/lz/lz_encoder.o lz/xz/src/liblzma/lz/lz_encoder_mf.o lz/xz/src/liblzma/common/common.o lz/xz/src/liblzma/rangecoder/price_table.o
-    XZ_FILES += lz/xz/src/liblzma/common/block_decoder.o lz/xz/src/liblzma/common/block_util.o lz/xz/src/liblzma/common/outqueue.o
-    XZ_FILES += lz/xz/src/liblzma/common/stream_flags_common.o lz/xz/src/liblzma/common/index.o lz/xz/src/liblzma/check/check.o
-    XZ_FILES += lz/xz/src/liblzma/common/stream_encoder_mt.o lz/xz/src/liblzma/common/stream_decoder_mt.o
-    XZ_FILES += lz/xz/src/liblzma/common/filter_common.o lz/xz/src/liblzma/common/stream_flags_decoder.o
-    XZ_FILES += lz/xz/src/liblzma/common/stream_flags_encoder.o lz/xz/src/liblzma/common/block_buffer_encoder.o
-    XZ_FILES += lz/xz/src/liblzma/check/crc32_fast.o lz/xz/src/liblzma/common/block_header_encoder.o lz/xz/src/liblzma/common/vli_encoder.o
-    XZ_FILES += lz/xz/src/liblzma/common/vli_size.o lz/xz/src/liblzma/common/filter_flags_encoder.o lz/xz/src/liblzma/common/filter_encoder.o
-    XZ_FILES += lz/xz/src/liblzma/lzma/lzma2_encoder.o lz/xz/src/liblzma/common/easy_preset.o lz/xz/src/liblzma/common/block_encoder.o
-    XZ_FILES += lz/xz/src/liblzma/common/index_encoder.o lz/xz/src/liblzma/common/filter_decoder.o lz/xz/src/liblzma/lzma/lzma2_decoder.o
-    XZ_FILES += lz/xz/src/liblzma/common/block_header_decoder.o lz/xz/src/liblzma/common/vli_decoder.o lz/xz/src/liblzma/common/filter_flags_decoder.o
-    XZ_FILES += lz/xz/src/liblzma/common/index_hash.o
-    XZ_FLAGS = $(addprefix -I$(SOURCE_PATH),. lz/xz/src lz/xz/src/common lz/xz/src/liblzma/delta lz/xz/src/liblzma/simple lz/xz/src/liblzma/api lz/xz/src/liblzma/common lz/xz/src/liblzma/lzma lz/xz/src/liblzma/lz lz/xz/src/liblzma/check lz/xz/src/liblzma/rangecoder)
-endif
-
-
-ifeq "$(DONT_BUILD_ZLIB)" "1"
-    DEFINES += -DBENCH_REMOVE_ZLIB
-else
-    ZLIB_FILES  = lz/zlib/adler32.o lz/zlib/compress.o lz/zlib/crc32.o lz/zlib/deflate.o lz/zlib/gzclose.o
-    ZLIB_FILES += lz/zlib/gzlib.o lz/zlib/gzread.o lz/zlib/gzwrite.o lz/zlib/infback.o lz/zlib/inffast.o
-    ZLIB_FILES += lz/zlib/inflate.o lz/zlib/inftrees.o lz/zlib/trees.o lz/zlib/uncompr.o lz/zlib/zutil.o
-endif
-
-
-ifeq "$(DONT_BUILD_ZLIB_NG)" "1"
-    DEFINES += -DBENCH_REMOVE_ZLIB_NG
-else
-    ZLIB_NG_FILES  = lz/zlib-ng/adler32.o lz/zlib-ng/crc32.o lz/zlib-ng/deflate_medium.o lz/zlib-ng/deflate_stored.o lz/zlib-ng/inftrees.o lz/zlib-ng/uncompr.o
-    ZLIB_NG_FILES += lz/zlib-ng/compress.o lz/zlib-ng/deflate.o lz/zlib-ng/deflate_quick.o lz/zlib-ng/functable.o lz/zlib-ng/insert_string.o lz/zlib-ng/zutil.o
-    ZLIB_NG_FILES += lz/zlib-ng/cpu_features.o lz/zlib-ng/deflate_fast.o lz/zlib-ng/deflate_rle.o lz/zlib-ng/infback.o lz/zlib-ng/insert_string_roll.o
-    ZLIB_NG_FILES += lz/zlib-ng/crc32_braid_comb.o lz/zlib-ng/deflate_huff.o lz/zlib-ng/deflate_slow.o lz/zlib-ng/inflate.o lz/zlib-ng/trees.o
-
-    ZLIB_NG_FILES += lz/zlib-ng/arch/generic/adler32_c.o lz/zlib-ng/arch/generic/chunkset_c.o lz/zlib-ng/arch/generic/crc32_braid_c.o lz/zlib-ng/arch/generic/slide_hash_c.o
-    ZLIB_NG_FILES += lz/zlib-ng/arch/generic/adler32_fold_c.o lz/zlib-ng/arch/generic/compare256_c.o lz/zlib-ng/arch/generic/crc32_fold_c.o
-
-#    ZLIB_NG_FILES += lz/zlib-ng/arch/x86/adler32_avx2.o lz/zlib-ng/arch/x86/adler32_ssse3.o lz/zlib-ng/arch/x86/chunkset_ssse3.o lz/zlib-ng/arch/x86/crc32_vpclmulqdq.o
-#    ZLIB_NG_FILES += lz/zlib-ng/arch/x86/adler32_avx512.o lz/zlib-ng/arch/x86/chunkset_avx2.o lz/zlib-ng/arch/x86/compare256_avx2.o lz/zlib-ng/arch/x86/slide_hash_avx2.o
-#    ZLIB_NG_FILES += lz/zlib-ng/arch/x86/adler32_avx512_vnni.o lz/zlib-ng/arch/x86/chunkset_avx512.o lz/zlib-ng/arch/x86/compare256_sse2.o lz/zlib-ng/arch/x86/slide_hash_sse2.o
-#    ZLIB_NG_FILES += lz/zlib-ng/arch/x86/adler32_sse42.o lz/zlib-ng/arch/x86/chunkset_sse2.o lz/zlib-ng/arch/x86/crc32_pclmulqdq.o lz/zlib-ng/arch/x86/x86_features.o
-endif
-
-
-ifeq "$(DONT_BUILD_ZLING)" "1"
-    DEFINES += -DBENCH_REMOVE_ZLING
-else
-    ZLING_FILES = lz/libzling/libzling.o lz/libzling/libzling_huffman.o lz/libzling/libzling_lz.o lz/libzling/libzling_utils.o
-endif
-
-
-ifeq "$(DONT_BUILD_ZSTD)" "1"
-    DEFINES += -DBENCH_REMOVE_ZSTD
-else
-    ZSTD_FILES  = lz/zstd/lib/common/zstd_common.o
-    ZSTD_FILES += lz/zstd/lib/common/fse_decompress.o
-    ZSTD_FILES += lz/zstd/lib/common/xxhash.o
-    ZSTD_FILES += lz/zstd/lib/common/error_private.o
-    ZSTD_FILES += lz/zstd/lib/common/entropy_common.o
-    ZSTD_FILES += lz/zstd/lib/common/pool.o
-    ZSTD_FILES += lz/zstd/lib/common/debug.o
-    ZSTD_FILES += lz/zstd/lib/common/threading.o
-    ZSTD_FILES += lz/zstd/lib/compress/zstd_compress.o
-    ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_literals.o
-    ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_sequences.o
-    ZSTD_FILES += lz/zstd/lib/compress/zstd_compress_superblock.o
-    ZSTD_FILES += lz/zstd/lib/compress/zstdmt_compress.o
-    ZSTD_FILES += lz/zstd/lib/compress/zstd_double_fast.o
-    ZSTD_FILES += lz/zstd/lib/compress/zstd_fast.o
-    ZSTD_FILES += lz/zstd/lib/compress/zstd_lazy.o
-    ZSTD_FILES += lz/zstd/lib/compress/zstd_ldm.o
-    ZSTD_FILES += lz/zstd/lib/compress/zstd_opt.o
-    ZSTD_FILES += lz/zstd/lib/compress/zstd_preSplit.o
-    ZSTD_FILES += lz/zstd/lib/compress/fse_compress.o
-    ZSTD_FILES += lz/zstd/lib/compress/huf_compress.o
-    ZSTD_FILES += lz/zstd/lib/compress/hist.o
-    ZSTD_FILES += lz/zstd/lib/decompress/zstd_decompress.o
-    ZSTD_FILES += lz/zstd/lib/decompress/huf_decompress.o
-    ZSTD_FILES += lz/zstd/lib/decompress/zstd_ddict.o
-    ZSTD_FILES += lz/zstd/lib/decompress/zstd_decompress_block.o
-    ZSTD_FILES += lz/zstd/lib/dictBuilder/cover.o
-    ZSTD_FILES += lz/zstd/lib/dictBuilder/divsufsort.o
-    ZSTD_FILES += lz/zstd/lib/dictBuilder/fastcover.o
-    ZSTD_FILES += lz/zstd/lib/dictBuilder/zdict.o
-    MISC_FILES += lz/zstd/lib/decompress/huf_decompress_amd64.S
-endif
-
-ifeq "$(DONT_BUILD_ZXC)" "1"
-    DEFINES += -DBENCH_REMOVE_ZXC
-else
-    DEFINES += -DZXC_STATIC_DEFINE
-    ZXC_DIR = lz/zxc/src/lib
-    ZXC_FILES = $(ZXC_DIR)/zxc_common.o $(ZXC_DIR)/zxc_dict.o $(ZXC_DIR)/zxc_dispatch.o $(ZXC_DIR)/zxc_driver.o $(ZXC_DIR)/zxc_pivco_tables.o $(ZXC_DIR)/zxc_pstream.o $(ZXC_DIR)/zxc_seekable.o
-    ZXC_FILES += $(ZXC_DIR)/zxc_compress_default.o $(ZXC_DIR)/zxc_decompress_default.o $(ZXC_DIR)/zxc_huffman_default.o
-
-    ifneq (,$(filter x86_64% amd64% i%86,$(TARGET_ARCH)))
-        ifneq (,$(filter x86_64% amd64%,$(TARGET_ARCH)))
-            ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx2.o $(ZXC_DIR)/zxc_decompress_avx2.o $(ZXC_DIR)/zxc_huffman_avx2.o
-            ZXC_FILES += $(ZXC_DIR)/zxc_compress_avx512.o $(ZXC_DIR)/zxc_decompress_avx512.o $(ZXC_DIR)/zxc_huffman_avx512.o
-        endif
-    endif
-
-    # 32-bit ARM only (AArch64's NEON tier is _default).
-    ifneq (,$(filter arm% aarch64%,$(TARGET_ARCH)))
-        ifeq (,$(filter arm64% aarch64%,$(TARGET_ARCH)))
-            ZXC_FILES += $(ZXC_DIR)/zxc_compress_neon32.o $(ZXC_DIR)/zxc_decompress_neon32.o $(ZXC_DIR)/zxc_huffman_neon32.o
-            NEON_FLAGS = -march=armv7-a -mfpu=neon
-        endif
-    endif
-
-    CMD_BUILD_ZXC = @$(MKDIR) $(dir $@) && $(CC) $(CFLAGS) -I$(ZXC_DIR)/vendors $(ZXC_FLAGS) $< -c -o $@
-
-    $(ZXC_DIR)/%.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
-
-    $(ZXC_DIR)/%_default.o: ZXC_FLAGS = -DZXC_FUNCTION_SUFFIX=_default
-    $(ZXC_DIR)/%_default.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
-
-    $(ZXC_DIR)/%_avx2.o: ZXC_FLAGS = -mavx2 -mbmi -mbmi2 -mlzcnt -mno-avx512f -DZXC_FUNCTION_SUFFIX=_avx2 -DZXC_USE_AVX2
-    $(ZXC_DIR)/%_avx2.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
-
-    $(ZXC_DIR)/%_avx512.o: ZXC_FLAGS = -mavx512f -mavx512bw -mavx512vbmi -mavx512vbmi2 -mbmi -mbmi2 -mlzcnt -DZXC_FUNCTION_SUFFIX=_avx512 -DZXC_USE_AVX512
-    $(ZXC_DIR)/%_avx512.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
-
-    $(ZXC_DIR)/%_neon32.o: ZXC_FLAGS = $(NEON_FLAGS) -DZXC_FUNCTION_SUFFIX=_neon32
-    $(ZXC_DIR)/%_neon32.o: $(ZXC_DIR)/%.c ; $(CMD_BUILD_ZXC)
-endif
-
-
-# misa77 targets 64-bit little-endian systems and needs C++20.
-# The probe is skipped when misa77 is already disabled with DONT_BUILD_MISA77=1.
-ifneq ($(DONT_BUILD_MISA77),1)
-    MISA77_OK := $(shell printf 'int main(){static_assert(__BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__);static_assert(sizeof(void*)==8);return 0;}' | $(CXX) $(CODE_FLAGS) -std=c++20 -fsyntax-only -x c++ - 2>/dev/null && echo ok)
-    ifneq ($(MISA77_OK),ok)
-        DONT_BUILD_MISA77 ?= 1
-        ifeq "$(DONT_BUILD_MISA77)" "1"
-            $(info C++20 and a 64-bit little-endian target required – skipping misa77 build)
-        endif
-    endif
-endif
-
-ifeq "$(DONT_BUILD_MISA77)" "1"
-    DEFINES += -DBENCH_REMOVE_MISA77
-else
-    MISA77_DIR = lz/misa77
-    MISA77_INC = -I$(MISA77_DIR)/include -I$(MISA77_DIR)/src
-    # always built:
-    MISA77_FILES  = $(MISA77_DIR)/src/compress.o $(MISA77_DIR)/src/decompress.o
-    MISA77_FILES += $(MISA77_DIR)/src/isa/target_portable.o
-
-    # 64-bit x86 only (the probe above already rejected 32-bit and big-endian targets):
-    ifneq (,$(filter x86_64% amd64%,$(TARGET_ARCH)))
-        MISA77_FILES += $(MISA77_DIR)/src/isa/target_sse2.o $(MISA77_DIR)/src/isa/target_avx2.o
-    endif
-    # 64-bit ARM only:
-    ifneq (,$(filter arm64% aarch64%,$(TARGET_ARCH)))
-        MISA77_FILES += $(MISA77_DIR)/src/isa/target_neon.o
-    endif
-
-    CMD_BUILD_MISA77 = @$(MKDIR) $(dir $@) && $(CXX) $(CXXFLAGS) -std=c++20 $(MISA77_INC) $(MISA77_FLAGS) $< -c -o $@
-
-    # target_avx2.cpp is the only TU needing extra ISA flags: SSE2 and NEON are baseline on
-    # 64-bit x86 and ARM, and the probe above already disabled misa77 on 32-bit targets. A
-    # 32-bit x86 port would have to add -msse2 back for target_sse2.cpp, as i686 has neither
-    # __SSE__ nor __SSE2__ by default.
-    # A pattern-specific variable applies to every target matching the pattern, so -mavx2
-    # reaches target_avx2.o through the generic rule below.
-    $(MISA77_DIR)/%_avx2.o: MISA77_FLAGS = -mavx2
-
-    $(MISA77_DIR)/%.o: $(MISA77_DIR)/%.cpp ; $(CMD_BUILD_MISA77)
-endif
-
-# Symmetric codecs
-ifeq "$(DONT_BUILD_BSC)" "1"
-    DEFINES += -DBENCH_REMOVE_BSC
-else
-    BSC_C_FILES = bwt/libbsc/libbsc/bwt/libsais/libsais.o
-
-    BSC_CXX_FILES  = bwt/libbsc/libbsc/adler32/adler32.o
-    BSC_CXX_FILES += bwt/libbsc/libbsc/bwt/bwt.o
-    BSC_CXX_FILES += bwt/libbsc/libbsc/coder/coder.o
-    BSC_CXX_FILES += bwt/libbsc/libbsc/coder/qlfc/qlfc.o
-    BSC_CXX_FILES += bwt/libbsc/libbsc/coder/qlfc/qlfc_model.o
-    BSC_CXX_FILES += bwt/libbsc/libbsc/filters/detectors.o
-    BSC_CXX_FILES += bwt/libbsc/libbsc/filters/preprocessing.o
-    BSC_CXX_FILES += bwt/libbsc/libbsc/libbsc/libbsc.o
-    BSC_CXX_FILES += bwt/libbsc/libbsc/lzp/lzp.o
-    BSC_CXX_FILES += bwt/libbsc/libbsc/platform/platform.o
-    BSC_CXX_FILES += bwt/libbsc/libbsc/st/st.o
-
-    LDFLAGS_LIBDL  = $(LIBDL)
-endif
-
-
-ifeq "$(DONT_BUILD_BZIP2)" "1"
-    DEFINES += -DBENCH_REMOVE_BZIP2
-else
-    BZIP2_FILES += bwt/bzip2/blocksort.o bwt/bzip2/huffman.o bwt/bzip2/crctable.o bwt/bzip2/randtable.o
-    BZIP2_FILES += bwt/bzip2/compress.o bwt/bzip2/decompress.o bwt/bzip2/bzlib.o
-endif
-
-
-ifeq "$(DONT_BUILD_LBZIP2)" "1"
-    DEFINES += -DBENCH_REMOVE_LBZIP2
-else
-    LBZIP2_FILES += bwt/lbzip2/crctab.o bwt/lbzip2/decode.o bwt/lbzip2/divbwt.o
-    LBZIP2_FILES += bwt/lbzip2/encode.o bwt/lbzip2/parse.o bwt/lbzip2/lbzip2_lzbench.o
-endif
-
-
-ifeq "$(DONT_BUILD_BZIP3)" "1"
-    DEFINES += -DBENCH_REMOVE_BZIP3
-else
-    BZIP3_FILES += bwt/bzip3/src/libbz3.o
-endif
-
-
-ifeq "$(DONT_BUILD_PPMD)" "1"
-    DEFINES += -DBENCH_REMOVE_PPMD
-else
-    PPMD_FILES += misc/7-zip/Ppmd8.o misc/7-zip/Ppmd8Dec.o misc/7-zip/Ppmd8Enc.o
-endif
-
-
-
-# Misc codecs
-ifeq "$(DONT_BUILD_GLZA)" "1"
-    DEFINES += -DBENCH_REMOVE_GLZA
-else
-    MISC_FILES += misc/glza/GLZAcomp.o misc/glza/GLZAformat.o misc/glza/GLZAcompress.o
-    MISC_FILES += misc/glza/GLZAencode.o misc/glza/GLZAdecode.o misc/glza/GLZAmodel.o
-endif
-
-
-ifeq "$(DONT_BUILD_LZJB)" "1"
-    DEFINES += -DBENCH_REMOVE_LZJB
-else
-    MISC_FILES += lz/lzjb/lzjb2010.o
-endif
-
-
-ifeq "$(DONT_BUILD_TAMP)" "1"
-    DEFINES += -DBENCH_REMOVE_TAMP
-else
-    MISC_FILES += lz/tamp/common.o lz/tamp/compressor.o lz/tamp/decompressor.o
-endif
-
-
-ifeq "$(DONT_BUILD_ZPAQ)" "1"
-    DEFINES += -DBENCH_REMOVE_ZPAQ
-else
-    MISC_FILES += misc/zpaq/libzpaq.o
-endif
-
-
-# Buggy codecs
-ifeq "$(DONT_BUILD_CSC)" "1"
-    DEFINES += -DBENCH_REMOVE_CSC
-else
-    CSC_FILES += lz/libcsc/csc_analyzer.o lz/libcsc/csc_coder.o lz/libcsc/csc_dec.o lz/libcsc/csc_enc.o
-    CSC_FILES += lz/libcsc/csc_encoder_main.o lz/libcsc/csc_filters.o lz/libcsc/csc_lz.o lz/libcsc/csc_memio.o
-    CSC_FILES += lz/libcsc/csc_mf.o lz/libcsc/csc_model.o lz/libcsc/csc_profiler.o lz/libcsc/csc_default_alloc.o
-endif
-
-
-ifeq "$(DONT_BUILD_DENSITY)" "1"
-    DEFINES += -DBENCH_REMOVE_DENSITY
-endif
-
-ifeq "$(DONT_BUILD_PULSAR)" "1"
-    DEFINES += -DBENCH_REMOVE_PULSAR
-endif
-
-
-ifeq "$(DONT_BUILD_MBROTLI)" "1"
-    DEFINES += -DBENCH_REMOVE_MBROTLI
-endif
-
-
-ifeq "$(DONT_BUILD_GIPFELI)" "1"
-    DEFINES += -DBENCH_REMOVE_GIPFELI
-else
-    BUGGY_CC_FILES += lz/gipfeli/decompress.o lz/gipfeli/entropy.o lz/gipfeli/entropy_code_builder.o lz/gipfeli/gipfeli-internal.o lz/gipfeli/lz77.o
-endif
-
-
-ifeq "$(DONT_BUILD_LZMAT)" "1"
-    DEFINES += -DBENCH_REMOVE_LZMAT
-else
-    BUGGY_C_FILES += lz/lzmat/lzmat_dec.o lz/lzmat/lzmat_enc.o
-endif
-
-
-ifeq "$(DONT_BUILD_LZRW)" "1"
-    DEFINES += -DBENCH_REMOVE_LZRW
-else
-    BUGGY_C_FILES += lz/lzrw/lzrw1-a.o lz/lzrw/lzrw1.o lz/lzrw/lzrw2.o lz/lzrw/lzrw3.o lz/lzrw/lzrw3-a.o
-endif
-
-
-ifeq "$(DONT_BUILD_WFLZ)" "1"
-    DEFINES += -DBENCH_REMOVE_WFLZ
-else
-    BUGGY_C_FILES += lz/wflz/wfLZ.o
-endif
-
-
-ifeq "$(DONT_BUILD_YAPPY)" "1"
-    DEFINES += -DBENCH_REMOVE_YAPPY
-else
-    BUGGY_CXX_FILES += lz/yappy/yappy.o
-endif
-
-
-
-ifeq "$(ENABLE_CUDA)" "1"
-  # CUDA-based codecs
-  CUDA_BASE ?= /usr/local/cuda
-  LIBCUDART=$(wildcard $(CUDA_BASE)/lib64/libcudart.so)
-  CUDA_H=$(wildcard $(CUDA_BASE)/include/cuda.h)
-
-  ifeq "$(and $(LIBCUDART),$(CUDA_H))" ""
-    $(info CUDA Toolkit not found at $(CUDA_BASE), CUDA support will be disabled.)
-    $(info Run "make CUDA_BASE=..." to use a different path.)
-    CUDA_BASE =
-    LIBCUDART =
-    CUDA_H =
-  else
-    DEFINES += -DBENCH_HAS_CUDA -I$(CUDA_BASE)/include
-    LDFLAGS += -L$(CUDA_BASE)/lib64 -lcudart -Wl,-rpath=$(CUDA_BASE)/lib64
-    CUDA_COMPILER = nvcc
-    CUDA_CC = $(CUDA_BASE)/bin/nvcc --compiler-bindir $(CXX)
-    CUDA_VERSION := $(shell awk '$$1 == "#define" && $$2 == "CUDA_VERSION" { print $$3; exit;}' $(CUDA_H))
-    ifeq "$(CUDA_VERSION)" ""
-      $(error Could not determine CUDA_VERSION from $(CUDA_H))
-    endif
-    CUDA_ARCH := $(shell \
-      if [ $(CUDA_VERSION) -ge 13000 ]; then \
-	  echo 75 80 86 89 90 100 120; \
-      elif [ $(CUDA_VERSION) -ge 12080 ]; then \
-	  echo 50 52 60 61 70 75 80 86 89 90 100 120; \
-      elif [ $(CUDA_VERSION) -ge 11080 ]; then \
-	  echo 50 52 60 61 70 75 80 86 89 90; \
-      elif [ $(CUDA_VERSION) -ge 11010 ]; then \
-	  echo 50 52 60 61 70 75 80 86; \
-      elif [ $(CUDA_VERSION) -ge 11000 ]; then \
-	  echo 50 52 60 61 70 75 80; \
-      else \
-	  echo 50 52 60 61 70 75; fi)
-    CUDA_CXXSTD := $(shell \
-      if [ $(CUDA_VERSION) -ge 13000 ]; then \
-	  echo c++17; \
-      else \
-	  echo c++14; \
-      fi)
-    CUDA_CXXFLAGS = -x cu -std=$(CUDA_CXXSTD) -O3 $(foreach ARCH, $(CUDA_ARCH), --generate-code=arch=compute_$(ARCH),code=[compute_$(ARCH),sm_$(ARCH)]) --expt-extended-lambda -forward-unknown-to-host-compiler -Wno-deprecated-gpu-targets
-
-    ACEAPEX_CUDA_FILES = lz/aceapex/cuda/aceapex_cuda.cu.o lz/aceapex/cuda/aceapex_cuda_lzbench.o
-
-  ifeq "$(DONT_BUILD_GPUCOMPACT)" "1"
-    DEFINES += -DBENCH_REMOVE_GPUCOMPACT
-  else
-    GPUCOMPACT_FILES = lz/gpucompact/kernels.cu.o lz/gpucompact/context.cu.o lz/gpucompact/gpucompact_lzbench.o
-  endif
-
-  ifneq "$(DONT_BUILD_NVCOMP)" "1"
-    DEFINES += -DBENCH_HAS_NVCOMP
-    NVCOMP_CPP_SRC = $(wildcard misc/nvcomp/src/*.cpp misc/nvcomp/src/lowlevel/*.cpp)
-    NVCOMP_CPP_OBJ = $(NVCOMP_CPP_SRC:%=%.o)
-    NVCOMP_CU_SRC  = $(wildcard misc/nvcomp/src/*.cu misc/nvcomp/src/lowlevel/*.cu)
-    NVCOMP_CU_OBJ  = $(NVCOMP_CU_SRC:%=%.o)
-    NVCOMP_FILES   = $(NVCOMP_CU_OBJ) $(NVCOMP_CPP_OBJ)
-    LDFLAGS_LIBDL  = $(LIBDL)
-  endif
-
-  ifneq "$(DONT_BUILD_BSC)" "1"
-    BSC_FLAGS += -DLIBBSC_CUDA_SUPPORT
-    BSC_CUDA_FILES = bwt/libbsc/libbsc/bwt/libcubwt/libcubwt.cu.o bwt/libbsc/libbsc/st/st.cu.o
-  endif
-  endif # ifeq "$(and $(LIBCUDART),$(CUDA_H))"
-endif # ifeq "$(ENABLE_CUDA)"
-
-
-MKDIR = mkdir -p
-
-LZBENCH_OBJS = $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(GPUCOMPACT_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(LBZIP2_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISA77_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
-
-# RUST_LIB is linked with -l (see LDFLAGS), but it has to be built first and a
-# new one has to relink lzbench
-lzbench: $(LZBENCH_OBJS) $(RUST_LIB)
-	$(CXX) $(filter-out $(RUST_LIB),$^) -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
-	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
-
-# bench/*.cpp compile each codec in or out with BENCH_REMOVE_* (and the CUDA
-# codecs with BENCH_HAS_*), so they are rebuilt when that set changes, e.g. with
-# DONT_BUILD_<codec>=1: BENCH_STAMP records it and is rewritten, while the
-# Makefile is read, whenever it differs.
-BENCH_STAMP  := bench/codecs.stamp
-BENCH_CONFIG := codecs: $(sort $(filter -DBENCH_%,$(subst ",,$(DEFINES))))
-ifneq ($(shell cat $(BENCH_STAMP) 2>/dev/null),$(BENCH_CONFIG))
-    $(shell echo '$(BENCH_CONFIG)' > $(BENCH_STAMP))
-endif
-$(BENCH_FILES): $(BENCH_STAMP)
-
-$(BENCH_MAIN): bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h
-
-# disable the implicit rule for making a binary out of a single object file
-%: %.o
-
-.c.o:
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $< -std=gnu99 -c -o $@
-
-.cc.o:
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) $< -c -o $@
-
-.cpp.o:
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) $< -c -o $@
-
-$(ACEAPEX_FILES): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz/aceapex -Ibench $< -c -o $@
-
-$(BROTLI_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz/brotli/include $< -c -o $@
-
-# FIX for SEGFAULT on GCC 4.9+
-$(BUGGY_C_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS_O2) $< -c -o $@
-
-$(BUGGY_CC_FILES): %.o : %.cc
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CFLAGS_O2) $< -c -o $@
-
-$(BENCH_MAIN): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) $(BENCH_CXXFLAGS) $< -c -o $@
-
-$(BUGGY_CODECS): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz/libcsc $< -c -o $@
-
-$(BUGGY_CXX_FILES): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CFLAGS_O2) $< -c -o $@
-
-# -Ibwt/lbzip2 also picks up the <arpa/inet.h> shim there, which MinGW needs.
-# zstd's dictBuilder exports a divbwt() too, and xmalloc() is a name anything
-# might take, so rename both rather than patch the vendored source.
-$(LBZIP2_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ibwt/lbzip2 -Ddivbwt=lbzip2_divbwt -Dxmalloc=lbzip2_xmalloc $< -c -o $@
-
-$(BZIP3_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DVERSION=\"1.5.4\" -Ibwt/bzip3/include $< -c -o $@
-
-$(CSC_FILES): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CFLAGS_O2) -Ilz/libcsc $< -c -o $@
-
-$(FASTLZMA2_OBJ): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $(FASTLZMA2_FLAGS) -DNO_XXHASH $< -c -o $@
-
-$(LIBDEFLATE_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz/libdeflate $< -c -o $@
-
-$(LIZARD_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS_O2) $< -c -o $@
-
-$(LZ_CODECS): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Ilz -Ilz/brotli/include -Ilz/openzl/include -Ilz/zxc/src/lib/vendors -Ilz/misa77/include $< -c -o $@
-
-$(LZHAM_FILES): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CFLAGS) $(LZHAM_FLAGS) -Ilz/lzham/include -Ilz/lzham/lzhamcomp -Ilz/lzham/lzhamdecomp $< -c -o $@
-
-$(LZO_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz $< -c -o $@
-
-$(LZSSE_FILES): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -std=c++0x -msse4.1 $< -c -o $@
-
-$(OPENZL_C_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz/zstd/lib -Ilz/lz4/lib -Ilz/openzl/include -Ilz/openzl/src $< -c -o $@
-
-$(OPENZL_S_FILES): %.o : %.S
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz/zstd/lib -Ilz/lz4/lib -Ilz/openzl/include -Ilz/openzl/src $< -c -o $@
-
-$(SNAPPY_FILES): %.o : %.cc
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) $(SNAPPY_FLAGS) $< -c -o $@
-
-$(SYMMETRIC_CODECS): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) $(SYMMETRIC_CXXFLAGS) $< -c -o $@
-
-lz/quicklz/quicklz_lvl%.o: lz/quicklz/quicklz151b7.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DQLZ_COMPRESSION_LEVEL=$* $< -c -o $@
-
-$(UCL_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -Ilz $< -c -o $@
-
-$(XZ_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $(XZ_FLAGS) -DHAVE_CHECK_CRC32 -DMYTHREAD_POSIX -DHAVE_CONFIG_H $< -c -o $@
-
-$(ZLIB_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DZ_HAVE_UNISTD_H $< -c -o $@
-
-$(ZLIB_NG_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DWITH_ALL_FALLBACKS -Ilz/zlib-ng $< -c -o $@
-
-$(ZSTD_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $(ZSTD_FLAGS) $< -c -o $@
-
-misc/zpaq/libzpaq.o: misc/zpaq/libzpaq.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) $(ZPAQ_FLAGS) -I misc/zpaq $< -c -o $@
-
-
-# CUDA compressors
-$(NVCOMP_CU_OBJ): %.cu.o: %.cu
-	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) -Imisc/nvcomp/include -Imisc/nvcomp/src -Imisc/nvcomp/src/lowlevel -c $< -o $@
-
-$(NVCOMP_CPP_OBJ): %.cpp.o: %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -Imisc/nvcomp/include -Imisc/nvcomp/src -Imisc/nvcomp/src/lowlevel -c $< -o $@
-
-$(BSC_C_FILES): %.o : %.c
-	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) $(BSC_FLAGS) $< -c -o $@
-
-$(BSC_CXX_FILES): %.o : %.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) $(BSC_FLAGS) $< -c -o $@
-
-
-# ACEAPEX CUDA decoder
-lz/aceapex/cuda/aceapex_cuda.cu.o: lz/aceapex/cuda/aceapex_cuda.cu
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) -c $< -o $@
-
-lz/aceapex/cuda/aceapex_cuda_lzbench.o: lz/aceapex/cuda/aceapex_cuda_lzbench.cpp
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-# GPUCOMPACT CUDA compressor
-lz/gpucompact/%.cu.o: lz/gpucompact/%.cu
-	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) -c $< -o $@
-
-lz/gpucompact/gpucompact_lzbench.o: lz/gpucompact/gpucompact_lzbench.cpp
-	@$(MKDIR) $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-$(BSC_CUDA_FILES): %.cu.o: %.cu
-	@$(MKDIR) $(dir $@)
-	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) $(BSC_FLAGS) -c $< -o $@
 
 # cargo leaves an up-to-date library alone, so touch it: otherwise it would stay
 # older than a source edited without effect on the output, and cargo would run on
@@ -1464,17 +325,87 @@ $(RUST_LIB): $(RUST_DEPS)
 	touch $@
 endif
 
-misc/skim/libskim.a: misc/skim/src/root.zig
-	@echo "Building Skim (Zig)..."
-	cd misc/skim && zig build-lib -O ReleaseFast -femit-bin=libskim.a src/root.zig -lc
+
+#------------------------------------------------------------------------------
+# lzbench itself
+#------------------------------------------------------------------------------
+
+BENCH_OBJS := bench/lz_codecs.o bench/buggy_codecs.o bench/symmetric_codecs.o bench/lzbench.o bench/misc_codecs.o
+ifneq "$(DISABLE_THREADING)" "1"
+    BENCH_OBJS += bench/threadpool.o
+endif
+
+bench/lz_codecs.o:        CODEC_FLAGS = -Ilz -Ilz/brotli/include -Ilz/openzl/include -Ilz/zxc/src/lib/vendors -Ilz/misa77/include
+bench/buggy_codecs.o:     CODEC_FLAGS = -Ilz/libcsc
+bench/symmetric_codecs.o: CODEC_FLAGS = $(OPENMP_CXXFLAGS)
+bench/lzbench.o:          CODEC_FLAGS = $(OPENMP_CXXFLAGS)
+
+bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h
+
+# bench/*.cpp compile each codec in or out with BENCH_REMOVE_* (and the CUDA
+# codecs with BENCH_HAS_*), so they are rebuilt when that set changes, e.g. with
+# DONT_BUILD_<codec>=1: BENCH_STAMP records it and is rewritten, while the
+# Makefile is read, whenever it differs.
+BENCH_STAMP  := bench/codecs.stamp
+BENCH_CONFIG := codecs: $(sort $(filter -DBENCH_%,$(subst ",,$(DEFINES))))
+ifneq ($(shell cat $(BENCH_STAMP) 2>/dev/null),$(BENCH_CONFIG))
+    $(shell echo '$(BENCH_CONFIG)' > $(BENCH_STAMP))
+endif
+$(BENCH_OBJS): $(BENCH_STAMP)
+CLEAN_FILES += $(BENCH_STAMP)
+
+# static libraries (skim) go last, after the objects that use them
+LZBENCH_OBJS = $(filter-out %.a,$(CODEC_OBJS)) $(BENCH_OBJS) $(filter %.a,$(CODEC_OBJS))
+
+# LINK_DEPS: libraries that are linked with -l (the Rust codecs), but still have
+# to be built first and trigger a relink when they change
+lzbench: $(LZBENCH_OBJS) $(LINK_DEPS)
+	$(CXX) $(filter-out $(LINK_DEPS),$^) -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
+	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
+
+
+#------------------------------------------------------------------------------
+# Rules
+#------------------------------------------------------------------------------
+
+COMPILE_C   = $(CC) $(CFLAGS) $(CODEC_FLAGS) $< -c -o $@
+COMPILE_CXX = $(CXX) $(CXXFLAGS) $(CODEC_FLAGS) $< -c -o $@
+COMPILE_CU  = $(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) $(CODEC_FLAGS) -c $< -o $@
+
+# disable the implicit rule for making a binary out of a single object file
+%: %.o
+
+%.o: %.c
+	@$(MKDIR) $(dir $@)
+	$(COMPILE_C)
+
+%.o: %.cc
+	@$(MKDIR) $(dir $@)
+	$(COMPILE_CXX)
+
+%.o: %.cpp
+	@$(MKDIR) $(dir $@)
+	$(COMPILE_CXX)
+
+%.o: %.S
+	@$(MKDIR) $(dir $@)
+	$(COMPILE_C)
+
+# CUDA objects are named after their source (foo.cu.o, and foo.cpp.o in nvcomp)
+%.cu.o: %.cu
+	@$(MKDIR) $(dir $@)
+	$(COMPILE_CU)
+
+%.cpp.o: %.cpp
+	@$(MKDIR) $(dir $@)
+	$(COMPILE_CXX)
 
 clean:
 	rm -rf lzbench lzbench.exe
 	find . -type f -name "*.o" -exec rm -f {} +
 	find . -type f -name "*.d" -exec rm -f {} +
-	rm -rf misc/rust-codecs/target/
-	rm -f $(BENCH_STAMP)
-	rm -f misc/skim/libskim.a
+	rm -rf $(CLEAN_DIRS)
+	rm -f $(CLEAN_FILES)
 
 # Pull in the header dependencies generated by $(DEPFLAGS). Missing .d files
 # (a fresh tree, or a CUDA object built by nvcc) are silently ignored.

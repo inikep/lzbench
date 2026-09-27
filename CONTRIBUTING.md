@@ -18,8 +18,8 @@ deliberate choice — please do not propose converting a codec to a submodule. T
   it. One lzbench commit pins every codec.
 - **Clone reliability.** A single renamed or deleted upstream would break `git clone --recursive`
   for everyone.
-- **Build integration.** Every codec is built from lzbench's single `Makefile` with per-codec flags,
-  so a submodule's own build system would be bypassed anyway.
+- **Build integration.** Every codec is built by lzbench's `Makefile`, with per-codec objects and
+  flags in `mk/<codec>.mk`, so a submodule's own build system would be bypassed anyway.
 
 The trade-off is that local patches must be re-applied when a codec is updated. If you carry one
 forward, say so in the commit message so it is not silently lost on the next update.
@@ -28,7 +28,7 @@ forward, say so in the commit message so it is not silently lost on the next upd
 When updating an existing codec, please follow these steps:
 
 - Update the codec files (e.g., `lz/zlib-ng/*`).
-- Update `Makefile` if there are new source files that need to be built.
+- Update the codec's `mk/<codec>.mk` if there are new source files that need to be built.
 - Update the codec version in `bench/lzbench.h` and `README.md`.
 - Add a new entry in `CHANGELOG`
 - Refer to example commit: [Update zlib-ng to 2.2.5](https://github.com/inikep/lzbench/commit/5eed568).
@@ -71,20 +71,18 @@ int64_t lzbench_xxxx_decompress(char* inbuf, size_t insize, char* outbuf, size_t
 ```
 - If a codec supports multi-threading, it should use a number of threads provided with `codec_options->threads`.
 
-- Update `Makefile`:
+- Add `mk/xxxx.mk`, which the `Makefile` picks up automatically:
 
 ```
-ifeq "$(DONT_BUILD_XXXX)" "1"
-    DEFINES += -DBENCH_REMOVE_XXXX
-else
-    XXXX_FILES = XXXX/YYYY.o XXXX/YYYY_Dec.o XXXX/YYYY_Enc.o
-endif
+# xxxx
+CODECS += XXXX
+XXXX_OBJS  := $(addprefix lz/xxxx/, YYYY.o YYYY_Dec.o YYYY_Enc.o)
+XXXX_FLAGS := -Ilz/xxxx/include
 ```
 
-And ensure the new codec in `Makefile` is linked in:
-
-```
-lzbench: $(BZIP2_FILES) $(KANZI_FILES) ... $(XXXX_FILES)
-```
+`XXXX_OBJS` are compiled with the generic rules and linked into lzbench, with `XXXX_FLAGS` (optional)
+added to their compiler command line. `make DONT_BUILD_XXXX=1` leaves them out and defines
+`BENCH_REMOVE_XXXX`. The "Codecs" section of the `Makefile` lists what else a mk file may do, e.g.
+disable its codec on some platforms with `DONT_BUILD_XXXX ?= 1`.
 
 - Refer to example commit: [Add zpaq 7.15](https://github.com/inikep/lzbench/commit/20f553b).
