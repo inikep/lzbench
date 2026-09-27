@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lzbench results</title>
+<meta name="description" content="lzbench results: a sortable table and speed vs. compressed size charts with the Pareto frontier.">
+<style>
+  :root {
+    --plane: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #7a7873;
+    --grid: #e1e0d9;
+    --axis: #c3c2b7;
+    --ring: rgba(11, 11, 11, 0.10);
+    --wash: rgba(42, 120, 214, 0.08);
+    --select: rgba(42, 120, 214, 0.16);
+    --focus: #2a78d6;
+    --lz: #2a78d6;
+    --sym: #eb6834;
+    --misc: #1baf7a;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --plane: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #9a988f;
+      --grid: #2c2c2a;
+      --axis: #383835;
+      --ring: rgba(255, 255, 255, 0.10);
+      --wash: rgba(57, 135, 229, 0.12);
+      --select: rgba(57, 135, 229, 0.24);
+      --focus: #6da7ec;
+      --lz: #3987e5;
+      --sym: #d95926;
+      --misc: #199e70;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #9a988f;
+    --grid: #2c2c2a;
+    --axis: #383835;
+    --ring: rgba(255, 255, 255, 0.10);
+    --wash: rgba(57, 135, 229, 0.12);
+    --select: rgba(57, 135, 229, 0.24);
+    --focus: #6da7ec;
+    --lz: #3987e5;
+    --sym: #d95926;
+    --misc: #199e70;
+  }
+
+  [hidden] { display: none !important; }
+  body {
+    background: var(--plane);
+    color: var(--ink);
+    font: 14px/1.5 var(--sans);
+  }
+  .page {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding-inline: 16px;
+    padding-block: 28px 48px;
+    display: grid;
+    gap: 20px;
+  }
+  header { display: grid; gap: 6px; }
+  h1 { margin: 0; font-size: 24px; line-height: 1.25; font-weight: 650; text-wrap: balance; }
+  .setup { margin: 0; color: var(--ink-2); max-width: 78ch; }
+  .setup code, .note code { font-family: var(--mono); font-size: 0.92em; white-space: nowrap; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; }
+  .field { display: grid; gap: 4px; }
+  .field > .label {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+  }
+  .seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; background: var(--surface); padding: 2px; gap: 2px; }
+  .seg button {
+    font: inherit; color: var(--ink-2); background: transparent; border: 0; border-radius: 6px;
+    padding: 5px 11px; cursor: pointer;
+  }
+  .seg button:hover { background: var(--wash); color: var(--ink); }
+  .seg button[aria-pressed="true"] { background: var(--select); color: var(--ink); font-weight: 600; }
+  .seg button:focus-visible, input:focus-visible, th button:focus-visible, .legend button:focus-visible {
+    outline: 2px solid var(--focus); outline-offset: 2px;
+  }
+  input[type="search"] {
+    font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--ring);
+    border-radius: 8px; padding: 6px 10px; width: 220px; max-width: 100%;
+  }
+  .check { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); padding-block: 6px; cursor: pointer; }
+  .check input { accent-color: var(--focus); width: 16px; height: 16px; margin: 0; }
+
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px; display: grid; gap: 12px; }
+  .card-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; align-items: baseline; }
+  .card-head h2 { margin: 0; font-size: 15px; font-weight: 650; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--ink-2); font-size: 13px; }
+  .legend button {
+    font: inherit; color: inherit; background: none; border: 0; padding: 2px 4px; border-radius: 6px;
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  }
+  .legend button[aria-pressed="false"] { opacity: 0.45; text-decoration: line-through; }
+  .legend .key-line { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  .line-key { width: 18px; height: 2px; background: var(--ink); display: inline-block; border-radius: 1px; }
+
+  .chart-wrap { position: relative; }
+  svg { display: block; width: 100%; height: auto; overflow: visible; }
+  svg text { font-family: var(--sans); fill: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  svg .axis-title { fill: var(--ink-2); font-size: 12px; }
+  svg .endlabel { fill: var(--ink-2); font-family: var(--mono); font-size: 11.5px; }
+  .tip {
+    position: absolute; pointer-events: none; background: var(--surface); color: var(--ink);
+    border: 1px solid var(--ring); border-radius: 8px; padding: 8px 10px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    font-size: 13px; line-height: 1.4; min-width: 170px; max-width: 260px; z-index: 2;
+  }
+  .tip .name { font-family: var(--mono); font-size: 12px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+  .tip .vals { display: grid; grid-template-columns: auto auto; gap: 0 12px; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .tip .vals b { font-weight: 650; text-align: right; }
+  .tip .front { margin-top: 4px; font-size: 12px; color: var(--ink-2); }
+
+  .summary { margin: 0; color: var(--ink-2); }
+  .summary strong { color: var(--ink); font-weight: 650; }
+
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; font-variant-numeric: tabular-nums; }
+  th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  th { font-size: 12px; font-weight: 600; color: var(--muted); position: sticky; top: env(safe-area-inset-top, 0px); background: var(--surface); z-index: 1; }
+  th button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  th button:hover { color: var(--ink); }
+  th[aria-sort="ascending"] button::after { content: " \2191"; }
+  th[aria-sort="descending"] button::after { content: " \2193"; }
+  th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--ink); }
+  td.name { font-family: var(--mono); font-size: 13px; }
+  td.name .dot { margin-right: 8px; vertical-align: 1px; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--wash); }
+  tbody tr.selected { background: var(--select); }
+  tbody tr.ref td { color: var(--ink-2); }
+  .pill {
+    display: inline-block; font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 6px; margin-left: 4px;
+    border-radius: 999px; border: 1px solid var(--axis); color: var(--ink-2);
+  }
+  .note { color: var(--ink-2); font-size: 13px; margin: 0; max-width: 90ch; }
+  .empty { color: var(--muted); padding: 16px 10px; text-align: left; }
+
+  @media (max-width: 560px) {
+    h1 { font-size: 20px; }
+    input[type="search"] { width: 100%; }
+    .controls .field.grow { flex: 1 1 100%; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    circle.pt { transition: r 120ms ease-out; }
+  }
+  a { color: var(--focus); }
+  .error { color: var(--ink); background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1 id="title">lzbench results</h1>
+    <p class="setup" id="setup"></p>
+  </header>
+
+  <div class="controls" role="group" aria-label="Result set and chart options">
+    <div class="field" id="set-field">
+      <span class="label" id="lbl-set">Results</span>
+      <div class="seg" role="group" aria-labelledby="lbl-set">
+        <button type="button" id="set-single" data-set="single" aria-pressed="true">Single-threaded</button>
+        <button type="button" id="set-multi" data-set="multi" aria-pressed="false">Multi-threaded</button>
+      </div>
+    </div>
+    <div class="field" id="threads-field" hidden>
+      <span class="label" id="lbl-threads">Threads</span>
+      <div class="seg" role="group" aria-labelledby="lbl-threads" id="threads">
+      </div>
+    </div>
+    <div class="field">
+      <span class="label" id="lbl-metric">Speed on the chart</span>
+      <div class="seg" role="group" aria-labelledby="lbl-metric">
+        <button type="button" id="met-c" data-metric="c" aria-pressed="true">Compression</button>
+        <button type="button" id="met-d" data-metric="d" aria-pressed="false">Decompression</button>
+      </div>
+    </div>
+    <div class="field grow">
+      <label class="label" for="q">Find a compressor</label>
+      <input type="search" id="q" placeholder="e.g. zstd, lz4hc, -9" autocomplete="off">
+    </div>
+    <label class="check" for="front-only"><input type="checkbox" id="front-only"> Frontier only in the table</label>
+  </div>
+
+  <section class="card" aria-labelledby="chart-title">
+    <div class="card-head">
+      <h2 id="chart-title">Compressed size vs. speed</h2>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="chart-wrap" id="chart-wrap">
+      <svg id="chart" role="img" aria-labelledby="chart-title chart-desc"><desc id="chart-desc"></desc></svg>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <p class="summary" id="summary"></p>
+  </section>
+
+  <section class="card" aria-labelledby="table-title">
+    <div class="card-head">
+      <h2 id="table-title">All results</h2>
+      <span class="note" id="table-count"></span>
+    </div>
+    <div class="table-wrap">
+      <table id="table">
+        <thead>
+          <tr>
+            <th scope="col" data-key="n"><button type="button">Compressor</button></th>
+            <th scope="col" data-key="g"><button type="button">Group</button></th>
+            <th scope="col" data-key="c"><button type="button">Compression MB/s</button></th>
+            <th scope="col" data-key="d"><button type="button">Decompression MB/s</button></th>
+            <th scope="col" data-key="s"><button type="button">Compressed size</button></th>
+            <th scope="col" data-key="r"><button type="button">Ratio %</button></th>
+            <th scope="col">Frontier</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="note">
+    A result is on the <strong>Pareto frontier</strong> when no other result is both faster and smaller.
+    There is one frontier for compression speed (<span class="pill">C</span>) and one for decompression speed
+    (<span class="pill">D</span>); <code>memcpy</code> is shown as the memory-bandwidth reference and left out of both.
+    Ratio is the compressed size as a percentage of the <span id="orig"></span>-byte <code id="file"></code>, so lower is better.
+    Groups are lzbench's own aliases: LZ, SYMMETRIC (BWT, PPM and other codecs with similar compression and
+    decompression speed) and MISC.
+    The data comes from <a href="https://github.com/inikep/lzbench">lzbench</a>'s
+    <code>doc/results</code> directory; <code>lzbench_json.py</code> there converts lzbench's output for this page.
+  </p>
+</div>
+
+<script>
+// A data file next to this page can be chosen with ?data=NAME.json
+const DATA_FILE = (() => {
+  const q = new URLSearchParams(location.search).get('data');
+  return q && /^[\w.-]+\.json$/.test(q) ? q : 'lzbench24_9555p.json';
+})();
+let DATA;
+
+const GROUPS = [
+  { key: 'LZ', label: 'LZ', color: '--lz' },
+  { key: 'SYMMETRIC', label: 'SYMMETRIC', color: '--sym' },
+  { key: 'MISC', label: 'MISC', color: '--misc' },
+];
+const GROUP_COLOR = Object.fromEntries(GROUPS.map(g => [g.key, g.color]));
+
+// Notes are plain text: `backticks` become code, # becomes the thread count
+function setNote(el, text, threads) {
+  el.replaceChildren();
+  text.replace(/#/g, threads).split('`').forEach((part, i) => {
+    if (!part) return;
+    if (i % 2) { const c = document.createElement('code'); c.textContent = part; el.append(c); }
+    else el.append(document.createTextNode(part));
+  });
+}
+
+const state = { set: 'single', threads: 32, metric: 'c', query: '', frontOnly: false, sortKey: 'n', sortDir: 1, selected: null, hidden: new Set() };
+
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function fmtSpeed(v) {
+  if (v >= 1000) return Math.round(v).toLocaleString('en-US');
+  if (v >= 100) return v.toFixed(0);
+  if (v >= 10) return v.toFixed(1);
+  return v.toFixed(2);
+}
+const fmtInt = v => v.toLocaleString('en-US');
+
+function currentRows() {
+  if (state.set === 'single') return DATA.single.rows.map(r => ({ ...r }));
+  return DATA.multi.rows.map(r => ({ n: r.n, g: r.g, s: r.s, r: r.r, c: r.c[state.threads], d: r.d[state.threads] }));
+}
+
+// Pareto frontier for one speed metric: a result is on it when no other result is both faster and smaller.
+function frontier(rows, metric) {
+  const pts = rows.filter(r => r.n !== 'memcpy').slice().sort((a, b) => b[metric] - a[metric] || a.s - b.s);
+  const out = new Set();
+  let best = Infinity;
+  for (const p of pts) {
+    if (p.s < best) { out.add(p.n); best = p.s; }
+  }
+  return out;
+}
+
+function matches(r) {
+  if (!state.query) return true;
+  const q = state.query.toLowerCase();
+  return r.n.toLowerCase().includes(q) || r.g.toLowerCase() === q;
+}
+
+/* ---------- chart ---------- */
+const svgNS = 'http://www.w3.org/2000/svg';
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(svgNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+let plotted = [];   // [{r, x, y}] for hit testing
+
+function drawChart(rows, fr) {
+  const svg = document.getElementById('chart');
+  const wrap = document.getElementById('chart-wrap');
+  const W = Math.max(300, wrap.clientWidth);
+  const H = Math.round(Math.min(540, Math.max(320, W * 0.56)));
+  const m = { l: 52, r: 16, t: 14, b: 46 };
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  [...svg.querySelectorAll(':scope > :not(desc)')].forEach(n => n.remove());
+
+  const pts = rows.filter(r => r.n !== 'memcpy' && r[state.metric] > 0);
+  const speeds = pts.map(p => p[state.metric]);
+  const lx0 = Math.floor(Math.log10(Math.min(...speeds)));
+  const lx1 = Math.ceil(Math.log10(Math.max(...speeds)));
+  const ratios = pts.map(p => p.r);
+  const y0 = Math.floor(Math.min(...ratios) / 10) * 10;
+  const y1 = Math.ceil(Math.max(...ratios) / 10) * 10;
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const X = v => m.l + (Math.log10(v) - lx0) / (lx1 - lx0) * pw;
+  const Y = v => m.t + (v - y0) / (y1 - y0) * ph;   // smaller ratio (better) at the top
+
+  const grid = el('g', {}, svg);
+  for (let e = lx0; e <= lx1; e++) {
+    const x = X(10 ** e);
+    el('line', { x1: x, x2: x, y1: m.t, y2: m.t + ph, stroke: css('--grid'), 'stroke-width': 1 }, grid);
+    const t = el('text', { x, y: m.t + ph + 18, 'text-anchor': 'middle' }, grid);
+    t.textContent = fmtInt(10 ** e);
+  }
+  for (let v = y0; v <= y1; v += 10) {
+    const y = Y(v);
+    el('line', { x1: m.l, x2: m.l + pw, y1: y, y2: y, stroke: css('--grid'), 'stroke-width': 1 }, grid);
+    const t = el('text', { x: m.l - 8, y: y + 4, 'text-anchor': 'end' }, grid);
+    t.textContent = v + '%';
+  }
+  el('line', { x1: m.l, x2: m.l + pw, y1: m.t + ph, y2: m.t + ph, stroke: css('--axis'), 'stroke-width': 1 }, grid);
+  const xt = el('text', { x: m.l + pw / 2, y: H - 6, 'text-anchor': 'middle', class: 'axis-title' }, grid);
+  xt.textContent = (state.metric === 'c' ? 'Compression' : 'Decompression') + ' speed, MB/s (log scale) → faster';
+  const yt = el('text', { x: 12, y: m.t + ph / 2, 'text-anchor': 'middle', class: 'axis-title', transform: `rotate(-90 12 ${m.t + ph / 2})` }, grid);
+  yt.textContent = 'Compressed size, % of original ↑ smaller';
+
+  // frontier line
+  const fpts = pts.filter(p => fr.has(p.n)).sort((a, b) => a[state.metric] - b[state.metric]);
+  if (fpts.length > 1) {
+    const d = fpts.map((p, i) => (i ? 'L' : 'M') + X(p[state.metric]).toFixed(1) + ',' + Y(p.r).toFixed(1)).join('');
+    el('path', { d, fill: 'none', stroke: css('--ink'), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', opacity: 0.85 }, svg);
+  }
+
+  // points: filtered-out ones first (dimmed), frontier last so it sits on top
+  const surface = css('--surface');
+  const order = pts.slice().sort((a, b) => (matches(a) - matches(b)) || (fr.has(a.n) - fr.has(b.n)));
+  const dots = el('g', {}, svg);
+  plotted = [];
+  for (const p of order) {
+    if (state.hidden.has(p.g)) continue;
+    const x = X(p[state.metric]), y = Y(p.r);
+    const on = matches(p);
+    const c = el('circle', {
+      class: 'pt', cx: x.toFixed(1), cy: y.toFixed(1), r: p.n === state.selected ? 8 : fr.has(p.n) ? 5.5 : 4.5,
+      fill: css(GROUP_COLOR[p.g] || '--muted'), stroke: surface, 'stroke-width': 2,
+      opacity: on ? 1 : 0.15,
+    }, dots);
+    c.dataset.name = p.n;
+    if (on) plotted.push({ p, x, y, c });
+  }
+
+  // selective direct labels: the two ends of the frontier
+  if (fpts.length) {
+    const ends = [fpts[0], fpts[fpts.length - 1]];
+    ends.forEach((p, i) => {
+      if (state.hidden.has(p.g)) return;
+      const x = X(p[state.metric]), y = Y(p.r);
+      const t = el('text', { x: i ? x - 9 : x + 9, y: y - 12, 'text-anchor': i ? 'end' : 'start', class: 'endlabel' }, svg);
+      t.textContent = p.n;
+    });
+  }
+
+  const sel = dots.querySelector(`circle[data-name="${CSS.escape(state.selected || '')}"]`);
+  if (sel) dots.appendChild(sel);
+  document.getElementById('chart-desc').textContent =
+    `Scatter plot of ${pts.length} results, ${state.metric === 'c' ? 'compression' : 'decompression'} speed against compressed size, with ${fpts.length} results on the Pareto frontier. The table below lists every value.`;
+}
+
+/* ---------- tooltip & hit testing ---------- */
+const tip = document.getElementById('tip');
+function showTip(hit, fr) {
+  const { p } = hit;
+  tip.replaceChildren();
+  const name = document.createElement('div'); name.className = 'name';
+  const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = `var(${GROUP_COLOR[p.g] || '--muted'})`;
+  const nt = document.createElement('span'); nt.textContent = p.n;
+  name.append(dot, nt);
+  const vals = document.createElement('div'); vals.className = 'vals';
+  const add = (label, value) => {
+    const l = document.createElement('span'); l.textContent = label;
+    const v = document.createElement('b'); v.textContent = value;
+    vals.append(l, v);
+  };
+  add('Compression', fmtSpeed(p.c) + ' MB/s');
+  add('Decompression', fmtSpeed(p.d) + ' MB/s');
+  add('Ratio', p.r.toFixed(2) + '%');
+  tip.append(name, vals);
+  const f = [fr.c.has(p.n) ? 'compression' : '', fr.d.has(p.n) ? 'decompression' : ''].filter(Boolean);
+  if (f.length) {
+    const fe = document.createElement('div'); fe.className = 'front';
+    fe.textContent = 'On the ' + f.join(' and ') + ' frontier';
+    tip.append(fe);
+  }
+  tip.hidden = false;
+  const svg = document.getElementById('chart');
+  const scale = svg.clientWidth / svg.viewBox.baseVal.width;
+  const wrapW = document.getElementById('chart-wrap').clientWidth;
+  let left = hit.x * scale + 14, top = hit.y * scale - 14;
+  if (left + tip.offsetWidth > wrapW) left = hit.x * scale - tip.offsetWidth - 14;
+  tip.style.left = Math.max(0, left) + 'px';
+  tip.style.top = Math.max(0, top - tip.offsetHeight / 2) + 'px';
+}
+
+function nearest(evt) {
+  const svg = document.getElementById('chart');
+  const rect = svg.getBoundingClientRect();
+  const scale = svg.viewBox.baseVal.width / rect.width;
+  const mx = (evt.clientX - rect.left) * scale, my = (evt.clientY - rect.top) * scale;
+  let best = null, bd = (24 * scale) ** 2;
+  for (const h of plotted) {
+    const d = (h.x - mx) ** 2 + (h.y - my) ** 2;
+    if (d < bd) { bd = d; best = h; }
+  }
+  return best;
+}
+
+/* ---------- table ---------- */
+function renderTable(rows, fr) {
+  const body = document.getElementById('rows');
+  body.replaceChildren();
+  const k = state.sortKey, dir = state.sortDir;
+  const ref = rows.filter(r => r.n === 'memcpy');
+  let list = rows.filter(r => r.n !== 'memcpy' && matches(r) && !state.hidden.has(r.g));
+  if (state.frontOnly) list = list.filter(r => fr.c.has(r.n) || fr.d.has(r.n));
+  if (k === 'n') {
+    // keep each compressor's levels in lzbench's own order
+    const pos = new Map(rows.map((r, i) => [r.n, i]));
+    list.sort((a, b) => dir * (a.n.split(' ')[0].toLowerCase().localeCompare(b.n.split(' ')[0].toLowerCase()) || pos.get(a.n) - pos.get(b.n)));
+  } else if (k === 'g') {
+    list.sort((a, b) => dir * a.g.localeCompare(b.g) || a.n.localeCompare(b.n));
+  } else {
+    list.sort((a, b) => dir * (a[k] - b[k]));
+  }
+  for (const r of ref.concat(list)) {
+    const tr = document.createElement('tr');
+    tr.dataset.name = r.n;
+    if (r.n === 'memcpy') tr.className = 'ref';
+    if (r.n === state.selected) tr.classList.add('selected');
+    const td = (text, cls) => { const c = document.createElement('td'); if (cls) c.className = cls; c.textContent = text; tr.append(c); return c; };
+    const nm = td('', 'name');
+    const dot = document.createElement('span'); dot.className = 'dot';
+    dot.style.background = r.g ? `var(${GROUP_COLOR[r.g]})` : 'transparent';
+    nm.append(dot, document.createTextNode(r.n));
+    td(r.g || 'reference');
+    td(fmtSpeed(r.c));
+    td(fmtSpeed(r.d));
+    td(fmtInt(r.s));
+    td(r.r.toFixed(2));
+    const f = td('');
+    if (fr.c.has(r.n)) { const s = document.createElement('span'); s.className = 'pill'; s.textContent = 'C'; s.title = 'On the compression-speed frontier'; f.append(s); }
+    if (fr.d.has(r.n)) { const s = document.createElement('span'); s.className = 'pill'; s.textContent = 'D'; s.title = 'On the decompression-speed frontier'; f.append(s); }
+    body.append(tr);
+  }
+  if (!list.length) {
+    const tr = document.createElement('tr'); const c = document.createElement('td');
+    c.colSpan = 7; c.className = 'empty'; c.textContent = 'No compressor matches. Clear the search or the frontier filter to see all results.';
+    tr.append(c); body.append(tr);
+  }
+  document.querySelectorAll('th[data-key]').forEach(th => {
+    th.setAttribute('aria-sort', th.dataset.key === k ? (dir > 0 ? 'ascending' : 'descending') : 'none');
+  });
+  const total = rows.length - ref.length;
+  document.getElementById('table-count').textContent = `${list.length} of ${total} results, plus memcpy`;
+}
+
+/* ---------- render ---------- */
+function render() {
+  const rows = currentRows();
+  const fr = { c: frontier(rows, 'c'), d: frontier(rows, 'd') };
+  setNote(document.getElementById('setup'), DATA[state.set].note, state.threads);
+  document.getElementById('threads-field').hidden = state.set !== 'multi';
+  document.getElementById('chart-title').textContent =
+    `Compressed size vs. ${state.metric === 'c' ? 'compression' : 'decompression'} speed` + (state.set === 'multi' ? `, ${state.threads} thread${state.threads > 1 ? 's' : ''}` : '');
+
+  const used = GROUPS.filter(g => rows.some(r => r.g === g.key));
+  const legend = document.getElementById('legend');
+  legend.replaceChildren();
+  for (const g of used) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.setAttribute('aria-pressed', String(!state.hidden.has(g.key)));
+    b.title = 'Show or hide ' + g.label;
+    const d = document.createElement('span'); d.className = 'dot'; d.style.background = `var(${g.color})`;
+    b.append(d, document.createTextNode(`${g.label} (${rows.filter(r => r.g === g.key).length})`));
+    b.addEventListener('click', () => { state.hidden.has(g.key) ? state.hidden.delete(g.key) : state.hidden.add(g.key); render(); });
+    legend.append(b);
+  }
+  const lk = document.createElement('span'); lk.className = 'key-line';
+  const ln = document.createElement('span'); ln.className = 'line-key';
+  lk.append(ln, document.createTextNode('Pareto frontier'));
+  legend.append(lk);
+
+  const mf = fr[state.metric];
+  drawChart(rows, mf);
+
+  const fl = rows.filter(r => mf.has(r.n)).sort((a, b) => b[state.metric] - a[state.metric]);
+  const sum = document.getElementById('summary');
+  sum.replaceChildren();
+  const strong = document.createElement('strong');
+  strong.textContent = `${fl.length} of ${rows.length - 1} results`;
+  sum.append(strong, document.createTextNode(
+    ` are on the ${state.metric === 'c' ? 'compression' : 'decompression'}-speed frontier, from ${fl[0].n} (${fmtSpeed(fl[0][state.metric])} MB/s, ${fl[0].r.toFixed(2)}%) to ${fl[fl.length - 1].n} (${fmtSpeed(fl[fl.length - 1][state.metric])} MB/s, ${fl[fl.length - 1].r.toFixed(2)}%). Hover a point for its values; click it to find it in the table.`));
+
+  renderTable(rows, fr);
+  render.fr = fr;
+}
+
+/* ---------- events ---------- */
+function press(groupAttr, value) {
+  document.querySelectorAll(`[data-${groupAttr}]`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset[groupAttr] === String(value))));
+}
+document.querySelectorAll('[data-set]').forEach(b => b.addEventListener('click', () => { state.set = b.dataset.set; state.selected = null; press('set', state.set); render(); }));
+document.querySelectorAll('[data-metric]').forEach(b => b.addEventListener('click', () => { state.metric = b.dataset.metric; press('metric', state.metric); render(); }));
+document.getElementById('q').addEventListener('input', e => { state.query = e.target.value.trim(); render(); });
+document.getElementById('front-only').addEventListener('change', e => { state.frontOnly = e.target.checked; render(); });
+document.querySelectorAll('th[data-key] button').forEach(b => b.addEventListener('click', () => {
+  const k = b.parentElement.dataset.key;
+  if (state.sortKey === k) state.sortDir = -state.sortDir;
+  else { state.sortKey = k; state.sortDir = (k === 'c' || k === 'd') ? -1 : 1; }
+  render();
+}));
+
+const svg = document.getElementById('chart');
+svg.addEventListener('pointermove', e => {
+  const h = nearest(e);
+  if (!h) { tip.hidden = true; return; }
+  showTip(h, render.fr);
+});
+svg.addEventListener('pointerleave', () => { tip.hidden = true; });
+svg.addEventListener('click', e => {
+  const h = nearest(e);
+  if (!h) return;
+  select(h.p.n, true);
+});
+document.getElementById('rows').addEventListener('click', e => {
+  const tr = e.target.closest('tr[data-name]');
+  if (tr && tr.dataset.name !== 'memcpy') select(tr.dataset.name, false);
+});
+
+function select(name, scrollTable) {
+  state.selected = state.selected === name ? null : name;
+  render();
+  if (scrollTable && state.selected) {
+    const tr = document.querySelector(`#rows tr[data-name="${CSS.escape(state.selected)}"]`);
+    if (tr) tr.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
+}
+
+let rt;
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => DATA && render());
+
+function start(data) {
+  DATA = data;
+  document.title = DATA.title;
+  document.getElementById('title').textContent = DATA.title;
+  document.getElementById('orig').textContent = fmtInt(DATA.orig);
+  document.getElementById('file').textContent = DATA.file;
+  document.getElementById('set-field').hidden = !DATA.multi;
+  if (DATA.multi) {
+    const counts = Object.keys(DATA.multi.rows[0].c).map(Number).sort((a, b) => a - b);
+    state.threads = counts[counts.length - 1];
+    const seg = document.getElementById('threads');
+    for (const t of counts) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.dataset.threads = t; b.textContent = t;
+      b.setAttribute('aria-pressed', String(t === state.threads));
+      b.addEventListener('click', () => { state.threads = t; press('threads', t); render(); });
+      seg.append(b);
+    }
+  }
+  render();
+  new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(render, 80); }).observe(document.getElementById('chart-wrap'));
+}
+
+fetch(DATA_FILE)
+  .then(r => { if (!r.ok) throw new Error(`${DATA_FILE}: HTTP ${r.status}`); return r.json(); })
+  .then(start)
+  .catch(err => {
+    const p = document.createElement('p'); p.className = 'error';
+    p.textContent = `Could not load the results (${err.message}). When opening this page from disk, serve the directory instead, e.g. "python3 -m http.server -d doc/results".`;
+    document.querySelector('.page').replaceChildren(p);
+  });
+</script>
+</body>
+</html>

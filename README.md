@@ -131,7 +131,8 @@ boost disabled for stability. The operating system was `Ubuntu 26.04`, and the b
 [`silesia.tar`](https://github.com/DataCompression/corpus-collection/tree/main/Silesia-Corpus), which contains tarred files from the
 [Silesia compression corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
 
-The results sorted by ratio are available [here](doc/lzbench24_sorted.md).
+The results sorted by ratio are available [here](doc/lzbench24_sorted.md). An [interactive version](https://inikep.github.io/lzbench/)
+of the single- and multi-threaded results can be sorted and searched, and charts compressed size against speed with the Pareto frontier.
 
 | Compressor name         | Compression| Decompress.| Compr. size | Ratio |
 | ---------------         | -----------| -----------| ----------- | ----- |

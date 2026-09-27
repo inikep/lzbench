@@ -8,6 +8,9 @@ v2.x.y (work-in-progress)
                options: skim and the Rust codecs are skipped automatically
 - improvement: DONT_BUILD_LZAV=1 and DONT_BUILD_YALZ77=1 work like the other DONT_BUILD_* options
 - improvement: "lzbench -V" shows the git commit it was built from, with "-dirty" for local changes
+- improvement: doc/results: an interactive results page (sortable table, speed vs. size charts with
+               the Pareto frontier) published to GitHub Pages, and lzbench_json.py to make its data
+               from lzbench's -o1 or -o4 output
 - fix: "make ENABLE_CUDA=1" failed to parse with GNU make 3.81, the version on macOS
 - fix: the C++ sources of csc, gipfeli, lzham and yappy were compiled with USER_CFLAGS instead of
        USER_CXXFLAGS
