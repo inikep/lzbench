@@ -21,6 +21,7 @@ misc/density/src/Cargo.lock
 
 # Set of BENCH_REMOVE_* defines the bench/*.o were built with (Makefile)
 bench/codecs.stamp
+bench/git-commit.stamp
 
 # Libraries
 *.lib

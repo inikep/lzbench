@@ -355,9 +355,26 @@ endif
 bench/lz_codecs.o:        CODEC_FLAGS = $(addprefix -I$(SRC),lz lz/brotli/include lz/openzl/include lz/zxc/src/lib/vendors lz/misa77/include)
 bench/buggy_codecs.o:     CODEC_FLAGS = -I$(SRC)lz/libcsc
 bench/symmetric_codecs.o: CODEC_FLAGS = $(OPENMP_CXXFLAGS)
-bench/lzbench.o:          CODEC_FLAGS = $(OPENMP_CXXFLAGS)
+bench/lzbench.o:          CODEC_FLAGS = $(OPENMP_CXXFLAGS) $(if $(GIT_COMMIT),-DLZBENCH_GIT_COMMIT=\"$(GIT_COMMIT)\")
 
 bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h
+
+# The commit lzbench is built from, shown by "lzbench -V": the short hash, with
+# "-dirty" when tracked files differ from it. Empty when the sources are not the
+# top of a git checkout (e.g. a release archive, or a copy inside another
+# repository), and on a Windows host, whose shell may not be a POSIX one.
+# GIT_STAMP records it and is rewritten, while the Makefile is read, whenever it
+# differs, so that bench/lzbench.o is rebuilt for a new commit, and only then.
+ifneq ($(HOST_WINDOWS),1)
+    GIT_COMMIT := $(shell cd $(SOURCE_PATH) && [ "$$(git rev-parse --show-toplevel 2>/dev/null)" = "$$(pwd -P)" ] && \
+                    h=$$(git rev-parse --short=12 HEAD) && { git diff --quiet HEAD -- || h=$$h-dirty; } && echo $$h)
+endif
+GIT_STAMP := bench/git-commit.stamp
+ifneq ($(shell cat $(GIT_STAMP) 2>/dev/null),commit: $(GIT_COMMIT))
+    $(shell mkdir -p $(dir $(GIT_STAMP)) && echo 'commit: $(GIT_COMMIT)' > $(GIT_STAMP))
+endif
+bench/lzbench.o: $(GIT_STAMP)
+CLEAN_FILES += $(GIT_STAMP)
 
 # bench/*.cpp compile each codec in or out with BENCH_REMOVE_* (and the CUDA
 # codecs with BENCH_HAS_*), so they are rebuilt when that set changes, e.g. with

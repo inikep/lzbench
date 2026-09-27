@@ -1056,7 +1056,11 @@ void usage(lzbench_params_t* params)
 void show_version()
 {
     fprintf(stdout,
-            "" PROGNAME " " PROGVERSION "\n"
+            "" PROGNAME " " PROGVERSION
+#ifdef LZBENCH_GIT_COMMIT
+            " (commit " LZBENCH_GIT_COMMIT ")"
+#endif
+            "\n"
             "Copyright (C) 2011-2025 Przemyslaw Skibinski\n"
             "License GPL v2 or v3: GNU GPL version 2 or 3 <http://gnu.org/licenses/gpl.html>\n"
             "This is free software: you are free to change and redistribute it.\n"

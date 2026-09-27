@@ -7,6 +7,7 @@ v2.x.y (work-in-progress)
 - improvement: cross builds (e.g. MinGW from Linux, ARM, PowerPC) no longer need DONT_BUILD_*
                options: skim and the Rust codecs are skipped automatically
 - improvement: DONT_BUILD_LZAV=1 and DONT_BUILD_YALZ77=1 work like the other DONT_BUILD_* options
+- improvement: "lzbench -V" shows the git commit it was built from, with "-dirty" for local changes
 - fix: "make ENABLE_CUDA=1" failed to parse with GNU make 3.81, the version on macOS
 - fix: the C++ sources of csc, gipfeli, lzham and yappy were compiled with USER_CFLAGS instead of
        USER_CXXFLAGS
