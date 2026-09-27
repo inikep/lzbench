@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: xz-man-5.8.2-pre1\n"
 "POT-Creation-Date: 2025-10-31 13:23+0200\n"
-"PO-Revision-Date: 2026-02-04 11:05+0400\n"
+"PO-Revision-Date: 2026-06-17 17:38+0400\n"
 "Last-Translator: Zayed Al-Saidi <zayed.alsaidi@gmail.com>\n"
 "Language-Team: Arabic <(nothing)>\n"
 "Language: ar\n"
@@ -758,31 +758,31 @@ msgstr "المستوى"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "DictSize"
-msgstr "حجم القاموس"
+msgstr "ح_القاموس"
 
 #. type: tbl table
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "CompCPU"
-msgstr "معالج الضغط"
+msgstr "م_المعالجة"
 
 #. type: tbl table
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "CompMem"
-msgstr "ذاكرة الضغط"
+msgstr "ذ_الضغط"
 
 #. type: tbl table
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "DecMem"
-msgstr "ذاكرة فك الضغط"
+msgstr "ذ_الفك"
 
 #. type: tbl table
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-0"
-msgstr "-0"
+msgstr "‏‎-0‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -812,7 +812,7 @@ msgstr "1 ميجابايت"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-1"
-msgstr "-1"
+msgstr "‏‎-1‏"
 
 #. type: TP
 #: ../src/xz/xz.1 ../src/scripts/xzgrep.1
@@ -836,7 +836,7 @@ msgstr "2 ميجابايت"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-2"
-msgstr "-2"
+msgstr "‏‎-2‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -854,7 +854,7 @@ msgstr "17 ميجابايت"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-3"
-msgstr "-3"
+msgstr "‏‎-3‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -884,7 +884,7 @@ msgstr "5 ميجابايت"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-4"
-msgstr "-4"
+msgstr "‏‎-4‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -902,7 +902,7 @@ msgstr "48 ميجابايت"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-5"
-msgstr "-5"
+msgstr "‏‎-5‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -926,7 +926,7 @@ msgstr "94 ميجابايت"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-6"
-msgstr "-6"
+msgstr "‏‎-6‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -938,7 +938,7 @@ msgstr "6"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-7"
-msgstr "-7"
+msgstr "‏‎-7‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -956,7 +956,7 @@ msgstr "186 ميجابايت"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-8"
-msgstr "-8"
+msgstr "‏‎-8‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -974,7 +974,7 @@ msgstr "33 ميجابايت"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-9"
-msgstr "-9"
+msgstr "‏‎-9‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -1002,27 +1002,27 @@ msgstr "وصف الأعمدة:"
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "DictSize is the LZMA2 dictionary size.  It is waste of memory to use a dictionary bigger than the size of the uncompressed file.  This is why it is good to avoid using the presets B<-7> ... B<-9> when there's no real need for them.  At B<-6> and lower, the amount of memory wasted is usually low enough to not matter."
-msgstr "DictSize هو حجم قاموس LZMA2. من هدر الذاكرة استخدام قاموس أكبر من حجم الملف غير المضغوط. لهذا السبب من الجيد تجنب استخدام الإعدادات المسبقة B<-7> ... B<-9> عندما لا تكون هناك حاجة حقيقية لها. في المستوى B<-6> وما دونه، تكون كمية الذاكرة المهدرة عادة منخفضة بما يكفي بحيث لا تهم."
+msgstr "ح_القاموس هو حجم قاموس LZMA2. من هدر الذاكرة استخدام قاموس أكبر من حجم الملف غير المضغوط. لهذا السبب من الجيد تجنب استخدام الإعدادات المسبقة B<-7> ... B<-9> عندما لا تكون هناك حاجة حقيقية لها. في المستوى B<-6> وما دونه، تكون كمية الذاكرة المهدرة عادة منخفضة بما يكفي بحيث لا تهم."
 
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "CompCPU is a simplified representation of the LZMA2 settings that affect compression speed.  The dictionary size affects speed too, so while CompCPU is the same for levels B<-6> ... B<-9>, higher levels still tend to be a little slower.  To get even slower and thus possibly better compression, see B<--extreme>."
-msgstr "CompCPU هو تمثيل مبسط لإعدادات LZMA2 التي تؤثر على سرعة الضغط. يؤثر حجم القاموس على السرعة أيضاً، لذا بينما CompCPU هو نفسه للمستويات B<-6> ... B<-9>، فإن المستويات الأعلى لا تزال تميل إلى أن تكون أبطأ قليلاً. للحصول على ضغط أبطأ وبالتالي ربما أفضل، انظر B<--extreme>."
+msgstr "م_المعالجة (مستوى المعالجة) هو تمثيل مبسط لإعدادات LZMA2 التي تؤثر على سرعة الضغط. يؤثر حجم القاموس على السرعة أيضاً، لذا بينما م_المعالجة هو نفسه للمستويات B<-6> ... B<-9>، فإن المستويات الأعلى لا تزال تميل إلى أن تكون أبطأ قليلاً. للحصول على ضغط أبطأ وبالتالي ربما أفضل، انظر B<--extreme>."
 
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "CompMem contains the compressor memory requirements in the single-threaded mode.  It may vary slightly between B<xz> versions."
-msgstr "CompMem يحتوي على متطلبات ذاكرة الضغط في وضع الخيط الواحد. قد يختلف قليلاً بين إصدارات B<xz>."
+msgstr "ذ_الضغط (ذاكرة الضغط) يحتوي على متطلبات ذاكرة الضغط في وضع الخيط الواحد. قد يختلف قليلاً بين إصدارات B<xz>."
 
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "DecMem contains the decompressor memory requirements.  That is, the compression settings determine the memory requirements of the decompressor.  The exact decompressor memory usage is slightly more than the LZMA2 dictionary size, but the values in the table have been rounded up to the next full MiB."
-msgstr "DecMem يحتوي على متطلبات ذاكرة فك الضغط. أي أن إعدادات الضغط تحدد متطلبات الذاكرة لفك الضغط. استهلاك ذاكرة فك الضغط الفعلي هو أكثر بقليل من حجم قاموس LZMA2، ولكن تم تقريب القيم في الجدول إلى أقرب ميجابايت كاملة."
+msgstr "ذ_الفك (ذاكرة الفك) يحتوي على متطلبات ذاكرة فك الضغط. أي أن إعدادات الضغط تحدد متطلبات الذاكرة لفك الضغط. استهلاك ذاكرة فك الضغط الفعلي هو أكثر بقليل من حجم قاموس LZMA2، ولكن تم تقريب القيم في الجدول إلى أقرب ميجابايت كاملة."
 
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "Memory requirements of the multi-threaded mode are significantly higher than that of the single-threaded mode.  With the default value of B<--block-size>, each thread needs 3*3*DictSize plus CompMem or DecMem.  For example, four threads with preset B<-6> needs 660\\(en670\\ MiB of memory."
-msgstr "متطلبات الذاكرة لوضع الخيوط المتعددة أعلى بكثير من وضع الخيط الواحد. مع القيمة المبدئية لـ B<--block-size>، يحتاج كل خيط إلى 3*3*DictSize بالإضافة إلى CompMem أو DecMem. على سبيل المثال، أربعة خيوط مع المستوى B<-6> تحتاج من 660 إلى 670 ميجابايت من الذاكرة."
+msgstr "متطلبات الذاكرة لوضع الخيوط المتعددة أعلى بكثير من وضع الخيط الواحد. مع القيمة المبدئية لـ B<--block-size>، يحتاج كل خيط إلى 3*3*ح_القاموس بالإضافة إلى ذ_الضغط أو ذ_الفك. على سبيل المثال، أربعة خيوط مع المستوى B<-6> تحتاج من 660 إلى 670 ميجابايت من الذاكرة."
 
 #. type: TP
 #: ../src/xz/xz.1
@@ -1038,13 +1038,13 @@ msgstr "استخدم نوعاً أبطأ من مستوى الضغط المختا
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "Since there are two presets with dictionary sizes 4\\ MiB and 8\\ MiB, the presets B<-3e> and B<-5e> use slightly faster settings (lower CompCPU) than B<-4e> and B<-6e>, respectively.  That way no two presets are identical."
-msgstr "بما أن هناك مستويين بحجم قاموس 4 ميجابايت و 8 ميجابايت، فإن المستويين B<-3e> و B<-5e> يستخدمان إعدادات أسرع قليلاً (CompCPU أقل) من B<-4e> و B<-6e> على التوالي. بهذه الطريقة لا توجد مستويات متطابقة."
+msgstr "بما أن هناك مستويين بحجم قاموس 4 ميجابايت و 8 ميجابايت، فإن المستويين B<-3e> و B<-5e> يستخدمان إعدادات أسرع قليلاً (م_المعالجة أقل) من B<-4e> و B<-6e> على التوالي. بهذه الطريقة لا توجد مستويات متطابقة."
 
 #. type: tbl table
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-0e"
-msgstr "-0e"
+msgstr "‏‎-0e‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -1056,7 +1056,7 @@ msgstr "8"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-1e"
-msgstr "-1e"
+msgstr "‏‎-1e‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -1068,7 +1068,7 @@ msgstr "13 ميجابايت"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-2e"
-msgstr "-2e"
+msgstr "‏‎-2e‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -1080,7 +1080,7 @@ msgstr "25 ميجابايت"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-3e"
-msgstr "-3e"
+msgstr "‏‎-3e‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -1092,37 +1092,37 @@ msgstr "7"
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-4e"
-msgstr "-4e"
+msgstr "‏‎-4e‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-5e"
-msgstr "-5e"
+msgstr "‏‎-5e‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-6e"
-msgstr "-6e"
+msgstr "‏‎-6e‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-7e"
-msgstr "-7e"
+msgstr "‏‎-7e‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-8e"
-msgstr "-8e"
+msgstr "‏‎-8e‏"
 
 #. type: tbl table
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "-9e"
-msgstr "-9e"
+msgstr "‏‎-9e‏"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -2953,12 +2953,12 @@ msgstr "تُعد صيغة سطر أوامر B<xz> عملياً مجموعة فو
 #: ../src/xz/xz.1
 #, no-wrap
 msgid "Compression preset levels"
-msgstr "مستويات الضبط المسبق للضغط"
+msgstr "مستويات الضغط المعدة مسبقًا"
 
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "The numbering of the compression level presets is not identical in B<xz> and LZMA Utils.  The most important difference is how dictionary sizes are mapped to different presets.  Dictionary size is roughly equal to the decompressor memory usage."
-msgstr "ترقيم مستويات الضبط المسبق للضغط ليس متطابقاً في B<xz> وأدوات LZMA. الاختلاف الأهم هو كيفية تعيين أحجام القواميس لمختلف مستويات الضبط. حجم القاموس يساوي تقريباً استهلاك الذاكرة عند فك الضغط."
+msgstr "ترقيم مستويات الضغط المعدة مسبقًا ليس متطابقاً في B<xz> وأدوات LZMA. الاختلاف الأهم هو كيفية تعيين أحجام القواميس لمختلف مستويات الضبط. حجم القاموس يساوي تقريباً استهلاك الذاكرة عند فك الضغط."
 
 #. type: tbl table
 #: ../src/xz/xz.1
@@ -3305,12 +3305,12 @@ msgstr "أبسط استخدام لسلاسل المرشحات المخصصة ه�
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "The CompCPU columns of the tables from the descriptions of the options B<-0> ... B<-9> and B<--extreme> are useful when customizing LZMA2 presets.  Here are the relevant parts collected from those two tables:"
-msgstr "تُعد أعمدة CompCPU في الجداول الموجودة في أوصاف الخيارات B<-0> ... B<-9> وB<--extreme> مفيدة عند تخصيص إعدادات LZMA2 المسبقة. إليك الأجزاء ذات الصلة المجموعة من هذين الجدولين:"
+msgstr "تُعد أعمدة م_المعالجة في الجداول الموجودة في أوصاف الخيارات B<-0> ... B<-9> وB<--extreme> مفيدة عند تخصيص إعدادات LZMA2 المسبقة. إليك الأجزاء ذات الصلة المجموعة من هذين الجدولين:"
 
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "If you know that a file requires somewhat big dictionary (for example, 32\\ MiB) to compress well, but you want to compress it quicker than B<xz -8> would do, a preset with a low CompCPU value (for example, 1)  can be modified to use a bigger dictionary:"
-msgstr "إذا كنت تعرف أن ملفاً يتطلب قاموساً كبيراً نوعاً ما (مثلاً 32 م.بايت) ليُضغط جيداً، ولكنك تريد ضغطه بشكل أسرع مما يفعله B<xz -8>، يمكن تعديل ضبط مسبق بقيمة CompCPU منخفضة (مثلاً 1) لاستخدام قاموس أكبر:"
+msgstr "إذا كنت تعرف أن ملفاً يتطلب قاموساً كبيراً نوعاً ما (مثلاً 32 م.بايت) ليُضغط جيداً، ولكنك تريد ضغطه بشكل أسرع مما يفعله B<xz -8>، يمكن تعديل ضبط مسبق بقيمة م_المعالجة منخفضة (مثلاً 1) لاستخدام قاموس أكبر:"
 
 #. type: Plain text
 #: ../src/xz/xz.1
@@ -3321,7 +3321,7 @@ msgstr "\\f(CRxz --lzma2=preset=1,dict=32MiB foo.tar\\fR\n"
 #. type: Plain text
 #: ../src/xz/xz.1
 msgid "With certain files, the above command may be faster than B<xz -6> while compressing significantly better.  However, it must be emphasized that only some files benefit from a big dictionary while keeping the CompCPU value low.  The most obvious situation, where a big dictionary can help a lot, is an archive containing very similar files of at least a few megabytes each.  The dictionary size has to be significantly bigger than any individual file to allow LZMA2 to take full advantage of the similarities between consecutive files."
-msgstr "مع ملفات معينة، قد يكون الأمر أعلاه أسرع من B<xz -6> مع ضغط أفضل بكثير. ومع ذلك، يجب التأكيد على أن بعض الملفات فقط تستفيد من قاموس كبير مع إبقاء قيمة CompCPU منخفضة. الحالة الأكثر وضوحاً التي يمكن أن يساعد فيها قاموس كبير هي أرشيف يحتوي ملفات متشابهة جداً حجم كل منها بضعة ميجابايتات على الأقل. يجب أن يكون حجم القاموس أكبر بكثير من أي ملف فردي للسماح لـ LZMA2 بالاستفادة الكاملة من أوجه التشابه بين الملفات المتتالية."
+msgstr "مع ملفات معينة، قد يكون الأمر أعلاه أسرع من B<xz -6> مع ضغط أفضل بكثير. ومع ذلك، يجب التأكيد على أن بعض الملفات فقط تستفيد من قاموس كبير مع إبقاء قيمة م_المعالجة منخفضة. الحالة الأكثر وضوحاً التي يمكن أن يساعد فيها قاموس كبير هي أرشيف يحتوي ملفات متشابهة جداً حجم كل منها بضعة ميجابايتات على الأقل. يجب أن يكون حجم القاموس أكبر بكثير من أي ملف فردي للسماح لـ LZMA2 بالاستفادة الكاملة من أوجه التشابه بين الملفات المتتالية."
 
 #. type: Plain text
 #: ../src/xz/xz.1

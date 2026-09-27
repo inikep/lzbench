@@ -22,7 +22,7 @@
 # direct GNU Make to search the directories relative to the
 # parent directory of this file
 
-SOURCE_PATH=$(dir $(lastword $(MAKEFILE_LIST)))
+SOURCE_PATH := $(dir $(lastword $(MAKEFILE_LIST)))
 vpath
 vpath %.c $(SOURCE_PATH)
 vpath %.cc $(SOURCE_PATH)
@@ -231,60 +231,94 @@ SNAPPY_RVV_1:=$(shell $(SNAPPY_RVV))
 rvv_prefix=
 SNAPPY_RVV_0_7:=$(shell $(SNAPPY_RVV))
 
-# Density and Rust related detection
+# Rust codecs (density, mbrotli, pulsar) are built into one library from
+# misc/rust-codecs: two Rust staticlibs each carry their own copy of std and
+# cannot be linked into the same binary.
 HOST_ARCH   := $(shell uname -m)
 TARGET_ARCH := $(firstword $(subst -, ,$(shell $(CXX) -dumpmachine)))
 HAVE_CARGO  := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
 
 ifeq ($(HAVE_CARGO),1)
     CARGO_VERSION := $(shell cargo --version | awk '{print $$2}')
-    HAVE_EDITION_2024 := $(shell printf "%s\n1.82.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.82.0 && echo 1 || echo 0)
+    HAVE_RUST_1_85 := $(shell printf "%s\n1.85.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.85.0 && echo 1 || echo 0)
+    HAVE_RUST_1_89 := $(shell printf "%s\n1.89.0\n" "$(CARGO_VERSION)" | sort -V | head -n1 | grep -qx 1.89.0 && echo 1 || echo 0)
 endif
 
-ifneq ($(DONT_BUILD_DENSITY),1)
-    DENSITY_SRC_DIR=misc/density/src/
+# Only build Rust codecs if native build, not 32-bit, not Windows
+ifneq ($(HAVE_CARGO),1)
+    $(info Cargo not found – skipping Rust codecs (density, mbrotli, pulsar))
     DONT_BUILD_DENSITY := 1
-
-    # Only build Density if native build, not 32-bit, not Windows
-    ifneq ($(HAVE_CARGO),1)
-        $(info Cargo not found – skipping Density build)
-    else ifneq ($(HAVE_EDITION_2024),1)
-        $(info Cargo $(CARGO_VERSION) does not support edition 2024 – skipping Density build)
-    else ifneq ($(HOST_ARCH),$(TARGET_ARCH)) # Skip cross-compilation
-    else ifeq ($(BUILD_ARCH),32-bit)         # Skip user requested 32-bit compilation
-    else ifneq (,$(filter Windows%,$(OS)))   # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
-    else
-        ifeq ($(BUILD_STATIC),1)
-            DENSITY_BUILD_TYPE=staticlib
-        else
-            DENSITY_BUILD_TYPE=cdylib
-        endif
-
-        LDFLAGS += -Wl,-rpath,$(DENSITY_SRC_DIR)target/release -L$(DENSITY_SRC_DIR)target/release -ldensity_rs
-        DONT_BUILD_DENSITY := 0
-    endif
+    DONT_BUILD_MBROTLI := 1
+    DONT_BUILD_PULSAR := 1
+else ifneq ($(HOST_ARCH),$(TARGET_ARCH)) # Skip cross-compilation
+    DONT_BUILD_DENSITY := 1
+    DONT_BUILD_MBROTLI := 1
+    DONT_BUILD_PULSAR := 1
+else ifeq ($(BUILD_ARCH),32-bit)         # Skip user requested 32-bit compilation
+    DONT_BUILD_DENSITY := 1
+    DONT_BUILD_MBROTLI := 1
+    DONT_BUILD_PULSAR := 1
+else ifneq (,$(filter Windows%,$(OS)))   # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
+    DONT_BUILD_DENSITY := 1
+    DONT_BUILD_MBROTLI := 1
+    DONT_BUILD_PULSAR := 1
 endif
 
-PULSAR_SRC_DIR=bwt/pulsar/
-ifneq ($(DONT_BUILD_PULSAR),1)
-    DONT_BUILD_PULSAR := 1
-
-    # Only build Pulsar for native, non-32-bit, non-Windows builds (mirrors
-    # the Density block). Pulsar uses edition 2021, so unlike Density it
-    # needs no minimum-cargo-version check.
-    ifneq ($(HAVE_CARGO),1)
-        $(info Cargo not found – skipping Pulsar build)
-    else ifneq ($(HOST_ARCH),$(TARGET_ARCH)) # Skip cross-compilation
-    else ifeq ($(BUILD_ARCH),32-bit)         # Skip user requested 32-bit compilation
-    else ifneq (,$(filter Windows%,$(OS)))   # Skip Windows builds
-    else ifeq ($(BUILD_STATIC),1)            # Skip static builds: a Rust staticlib carries its own std, clashing with density's at link time
-        $(info Skipping Pulsar build for BUILD_STATIC=1)
+RUST_FEATURES :=
+ifneq ($(DONT_BUILD_DENSITY),1)
+    # density uses edition 2024, stable since Rust 1.85
+    ifneq ($(HAVE_RUST_1_85),1)
+        $(info Cargo $(CARGO_VERSION) is older than 1.85 – skipping Density build)
+        DONT_BUILD_DENSITY := 1
     else
-        PULSAR_BUILD_TYPE=cdylib
-
-        LDFLAGS += -Wl,-rpath,$(PULSAR_SRC_DIR)target/release -L$(PULSAR_SRC_DIR)target/release -lpulsar
-        DONT_BUILD_PULSAR := 0
+        RUST_FEATURES += density
     endif
+endif
+ifneq ($(DONT_BUILD_MBROTLI),1)
+    ifneq ($(HAVE_RUST_1_89),1)
+        $(info Cargo $(CARGO_VERSION) is older than 1.89 – skipping mbrotli build)
+        DONT_BUILD_MBROTLI := 1
+    else
+        RUST_FEATURES += mbrotli
+    endif
+endif
+ifneq ($(DONT_BUILD_PULSAR),1)
+    # pulsar uses edition 2021; no extra cargo-version gate. It rides along in
+    # misc/rust-codecs (which itself needs 1.85 for density's edition), so it
+    # is only skipped by the shared native/32-bit/Windows checks above.
+    RUST_FEATURES += pulsar
+endif
+
+ifneq ($(strip $(RUST_FEATURES)),)
+    RUST_SRC_DIR=misc/rust-codecs/
+    ifeq ($(BUILD_STATIC),1)
+        RUST_BUILD_TYPE=staticlib
+        RUST_LIB := $(RUST_SRC_DIR)target/release/liblzbench_rust.a
+    else
+        RUST_BUILD_TYPE=cdylib
+        RUST_LIB := $(RUST_SRC_DIR)target/release/liblzbench_rust$(if $(filter Darwin,$(detected_OS)),.dylib,.so)
+    endif
+
+    # RUST_LIB is rebuilt when a source of an enabled codec changes, and when the
+    # crate type or the set of codecs does: RUST_STAMP records those and is
+    # rewritten, while the Makefile is read, whenever they differ.
+    RUST_STAMP  := $(RUST_SRC_DIR)target/lzbench-config
+    RUST_CONFIG := $(RUST_BUILD_TYPE) $(strip $(RUST_FEATURES))
+    ifneq ($(shell cat $(RUST_STAMP) 2>/dev/null),$(RUST_CONFIG))
+        $(shell mkdir -p $(RUST_SRC_DIR)target && echo '$(RUST_CONFIG)' > $(RUST_STAMP))
+    endif
+    RUST_DEPS := $(RUST_STAMP) $(addprefix $(RUST_SRC_DIR),Cargo.toml Cargo.lock lib.rs .cargo/config.toml)
+    ifneq (,$(filter density,$(RUST_FEATURES)))
+        RUST_DEPS += $(shell find misc/density/src/Cargo.toml misc/density/src/src -type f)
+    endif
+    ifneq (,$(filter mbrotli,$(RUST_FEATURES)))
+        RUST_DEPS += $(shell find lz/mbrotli/Cargo.toml lz/mbrotli/src lz/mbrotli/mbrotli-ffi -type f)
+    endif
+    ifneq (,$(filter pulsar,$(RUST_FEATURES)))
+        RUST_DEPS += $(shell find bwt/pulsar/Cargo.toml bwt/pulsar/src -type f)
+    endif
+
+    LDFLAGS += -Wl,-rpath,$(RUST_SRC_DIR)target/release -L$(RUST_SRC_DIR)target/release -llzbench_rust
 endif
 
 HAVE_ZIG := $(shell command -v zig >/dev/null 2>&1 && echo 1 || echo 0)
@@ -299,11 +333,10 @@ else
     SKIM_FILE = misc/skim/libskim.a
 endif
 
-# On 32-bit ARM (armv5/v7): memlz does unaligned 64-bit loads (SIGBUS), and bsc
-# crashes in its multithreaded decompress path (lzbench#293); disable both.
-# (aceapex uses alignment-safe loads since ax_align.h and builds everywhere.)
+# On 32-bit ARM (armv5/v7): bsc crashes in its multithreaded decompress path
+# (lzbench#293); disable it. (aceapex uses alignment-safe loads since ax_align.h,
+# and memlz since 0.5 beta, so both build everywhere.)
 ifneq (,$(filter arm armeb armv%,$(TARGET_ARCH)))
-    DONT_BUILD_MEMLZ ?= 1
     DONT_BUILD_BSC ?= 1
 endif
 
@@ -789,7 +822,7 @@ endif
 ifeq "$(DONT_BUILD_SLZ)" "1"
     DEFINES += -DBENCH_REMOVE_SLZ
 else
-    MISC_FILES += lz/slz/src/slz.o
+    MISC_FILES += lz/slz/src/slz.o lz/slz/src/slz_common.o
 endif
 
 
@@ -1102,6 +1135,11 @@ ifeq "$(DONT_BUILD_PULSAR)" "1"
 endif
 
 
+ifeq "$(DONT_BUILD_MBROTLI)" "1"
+    DEFINES += -DBENCH_REMOVE_MBROTLI
+endif
+
+
 ifeq "$(DONT_BUILD_GIPFELI)" "1"
     DEFINES += -DBENCH_REMOVE_GIPFELI
 else
@@ -1210,11 +1248,24 @@ MKDIR = mkdir -p
 
 LZBENCH_OBJS = $(BUGGY_C_FILES) $(BUGGY_CC_FILES) $(BUGGY_CXX_FILES) $(ACEAPEX_FILES) $(BSC_C_FILES) $(BSC_CXX_FILES) $(BSC_CUDA_FILES) $(ACEAPEX_CUDA_FILES) $(GPUCOMPACT_FILES) $(BZIP2_FILES) $(BZIP3_FILES) $(LBZIP2_FILES) $(CSC_FILES) $(KANZI_FILES) $(FASTLZMA2_OBJ) $(ZSTD_FILES) $(LZSSE_FILES) $(LZFSE_FILES) $(XZ_FILES) $(LIBLZG_FILES) $(BRIEFLZ_FILES) $(LZF_FILES) $(BROTLI_FILES) $(LZMA_FILES) $(ZLING_FILES) $(QUICKLZ_FILES) $(OPENZL_C_FILES) $(OPENZL_S_FILES) $(SNAPPY_FILES) $(ZLIB_FILES) $(ZLIB_NG_FILES) $(LZHAM_FILES) $(LZO_FILES) $(UCL_FILES) $(LZ4_FILES) $(LIZARD_FILES) $(LIBDEFLATE_FILES) $(ZXC_FILES) $(MISA77_FILES) $(MISC_FILES) $(NVCOMP_FILES) $(PPMD_FILES) $(BENCH_FILES) $(SKIM_FILE)
 
-lzbench: $(LZBENCH_OBJS)
-	$(CXX) $^ -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
+# RUST_LIB is linked with -l (see LDFLAGS), but it has to be built first and a
+# new one has to relink lzbench
+lzbench: $(LZBENCH_OBJS) $(RUST_LIB)
+	$(CXX) $(filter-out $(RUST_LIB),$^) -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
-$(BENCH_MAIN): bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h DENSITY_LIB PULSAR_LIB
+# bench/*.cpp compile each codec in or out with BENCH_REMOVE_* (and the CUDA
+# codecs with BENCH_HAS_*), so they are rebuilt when that set changes, e.g. with
+# DONT_BUILD_<codec>=1: BENCH_STAMP records it and is rewritten, while the
+# Makefile is read, whenever it differs.
+BENCH_STAMP  := bench/codecs.stamp
+BENCH_CONFIG := codecs: $(sort $(filter -DBENCH_%,$(subst ",,$(DEFINES))))
+ifneq ($(shell cat $(BENCH_STAMP) 2>/dev/null),$(BENCH_CONFIG))
+    $(shell echo '$(BENCH_CONFIG)' > $(BENCH_STAMP))
+endif
+$(BENCH_FILES): $(BENCH_STAMP)
+
+$(BENCH_MAIN): bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h
 
 # disable the implicit rule for making a binary out of a single object file
 %: %.o
@@ -1269,7 +1320,7 @@ $(LBZIP2_FILES): %.o : %.c
 
 $(BZIP3_FILES): %.o : %.c
 	@$(MKDIR) $(dir $@)
-	$(CC) $(CFLAGS) -DVERSION=\"1.5.3\" -Ibwt/bzip3/include $< -c -o $@
+	$(CC) $(CFLAGS) -DVERSION=\"1.5.4\" -Ibwt/bzip3/include $< -c -o $@
 
 $(CSC_FILES): %.o : %.cpp
 	@$(MKDIR) $(dir $@)
@@ -1386,20 +1437,16 @@ $(BSC_CUDA_FILES): %.cu.o: %.cu
 	@$(MKDIR) $(dir $@)
 	$(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) $(BSC_FLAGS) -c $< -o $@
 
-DENSITY_LIB:
-ifneq ($(DONT_BUILD_DENSITY),1)
-	@echo "Building Density..."
-	cd $(DENSITY_SRC_DIR) && \
+# cargo leaves an up-to-date library alone, so touch it: otherwise it would stay
+# older than a source edited without effect on the output, and cargo would run on
+# every make. --offline: the dependencies are vendored in misc/rust-codecs/vendor.
+ifneq ($(RUST_LIB),)
+$(RUST_LIB): $(RUST_DEPS)
+	@echo "Building Rust codecs ($(strip $(RUST_FEATURES)))..."
+	cd $(RUST_SRC_DIR) && \
 	RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" \
-	cargo rustc --crate-type=$(DENSITY_BUILD_TYPE) --release -- --print=native-static-libs
-endif
-
-PULSAR_LIB:
-ifneq ($(DONT_BUILD_PULSAR),1)
-	@echo "Building Pulsar..."
-	cd $(PULSAR_SRC_DIR) && \
-	RUSTFLAGS="-C target-cpu=native -C linker=$(lastword $(CXX))" \
-	cargo rustc --crate-type=$(PULSAR_BUILD_TYPE) --release -- --print=native-static-libs
+	cargo rustc --locked --offline --features "$(strip $(RUST_FEATURES))" --crate-type=$(RUST_BUILD_TYPE) --release -- --print=native-static-libs
+	touch $@
 endif
 
 misc/skim/libskim.a: misc/skim/src/root.zig
@@ -1410,8 +1457,8 @@ clean:
 	rm -rf lzbench lzbench.exe
 	find . -type f -name "*.o" -exec rm -f {} +
 	find . -type f -name "*.d" -exec rm -f {} +
-	rm -rf $(DENSITY_SRC_DIR)target/
-	rm -rf $(PULSAR_SRC_DIR)target/
+	rm -rf misc/rust-codecs/target/
+	rm -f $(BENCH_STAMP)
 	rm -f misc/skim/libskim.a
 
 # Pull in the header dependencies generated by $(DEPFLAGS). Missing .d files

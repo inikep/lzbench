@@ -88,8 +88,12 @@ static inline void find_best_match(TampCompressor *compressor, uint16_t *match_i
     const uint8_t max_pattern_size = MIN(compressor->input_size, MAX_PATTERN_SIZE);
     const unsigned char *window = compressor->window;
 
-    // Pre-load input bytes into linear array to avoid repeated modular arithmetic
-    uint8_t input_bytes[16];
+    // Pre-load input bytes into linear array to avoid repeated modular arithmetic.
+    // Zero-initialized: entries at max_pattern_size and beyond are read when
+    // assembling input_word_ext below. Their values never affect the result (the
+    // max_pattern_size >= 10 guard in EXTEND_MATCH sees to that), but reading
+    // indeterminate bytes is UB (MSan finding, -Werror=maybe-uninitialized).
+    uint8_t input_bytes[16] = {0};
     for (uint8_t i = 0; i < max_pattern_size && i < 16; i++) {
         input_bytes[i] = read_input(i);
     }

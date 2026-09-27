@@ -1,4 +1,4 @@
-AC_PREREQ([2.68])
+AC_PREREQ([2.69])
 AC_INIT([bzip3], [m4_esyscmd(build-aux/git-version-gen .tarball-version)], [https://github.com/iczelia/bzip3])
 AC_CONFIG_AUX_DIR([build-aux])
 AM_INIT_AUTOMAKE([foreign subdir-objects tar-ustar dist-bzip2 dist-xz dist-zip color-tests])
@@ -34,6 +34,7 @@ AM_CONDITIONAL([ENABLE_ARCH_NATIVE], [test x"$enable_arch_native" != xno])
 AC_ARG_ENABLE([static-exe],
 			AS_HELP_STRING([--enable-static-exe], [Enable static builds of the executable.]))
 AM_CONDITIONAL([ENABLE_STATIC], [test x"$enable_static_exe" = xyes])
+AC_SUBST([extra_cflags], [])
 
 AM_COND_IF([PASSED_CFLAGS], [
 	AC_MSG_NOTICE([skipping compiler feature detection, using '$CFLAGS'])

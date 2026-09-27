@@ -76,7 +76,7 @@ jobs:
         cd examples
         wget https://github.com/iczelia/bzip3/raw/${{ github.sha }}/examples/shakespeare.txt \
              https://github.com/iczelia/bzip3/raw/${{ github.sha }}/examples/shakespeare.txt.bz3
-    - uses: uraimo/run-on-arch-action@v2
+    - uses: uraimo/run-on-arch-action@v3
       name: Run in the container
       with:
         arch: ${{ matrix.arch }}
@@ -114,7 +114,7 @@ jobs:
         cd examples
         wget https://github.com/iczelia/bzip3/raw/${{ github.sha }}/examples/shakespeare.txt \
              https://github.com/iczelia/bzip3/raw/${{ github.sha }}/examples/shakespeare.txt.bz3
-    - uses: uraimo/run-on-arch-action@v2
+    - uses: uraimo/run-on-arch-action@v3
       name: Run in the container
       with:
         arch: ${{ matrix.arch }}

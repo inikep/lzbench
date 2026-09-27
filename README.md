@@ -65,7 +65,7 @@ sources, the Notes column says so.
 | [brotli 1.2.0](https://github.com/google/brotli) | 2025-10-27 | |
 | [bsc 3.3.12](https://github.com/IlyaGrebnov/libbsc) | 2025-09-10 | Disabled on 32-bit ARM — multithreaded decompress faults (SIGBUS, lzbench#293) |
 | [bzip2 1.0.8](https://www.sourceware.org/bzip2/downloads.html) | 2019-07-13 | |
-| [bzip3 1.5.3](https://github.com/kspalaiologos/bzip3) | 2025-08-13 | |
+| [bzip3 1.5.4](https://github.com/kspalaiologos/bzip3) | 2026-09-07 | |
 | [crush 1.0](https://sourceforge.net/projects/crush/) | 2013-07-01 | |
 | [density 0.16.6](https://github.com/g1mv/density) | 2025-08-27 | Linux x86-64 and macOS only — requires the Rust toolchain (skipped for 32-bit, cross-compiled and Windows builds) |
 | [fastlz 0.5.0](https://github.com/ariya/FastLZ) | 2020-02-02 | |
@@ -74,33 +74,34 @@ sources, the Notes column says so.
 | [gpucompact 1.1](https://github.com/UDPSendToFailed/gpucompact) | 2026-08-14 | CUDA only |
 | [kanzi 2.5.3](https://github.com/flanglet/kanzi-cpp) | 2026-04-22 | |
 | [lbzip2 2.6.5](https://github.com/caius72/lbzip2) | 2026-08-18 | bzip2 format; benchmarked single-threaded |
-| [libdeflate v1.25](https://github.com/ebiggers/libdeflate) | 2025-11-01 | |
+| [libdeflate v1.26](https://github.com/ebiggers/libdeflate) | 2026-08-22 | |
 | [lizard v2.1](https://github.com/inikep/lizard) | 2025-01-26 | |
 | [lz4/lz4hc v1.10.0](https://github.com/lz4/lz4) | 2024-07-21 | |
-| [lzav 5.16](https://github.com/avaneev/lzav) | 2026-07-21 | |
+| [lzav 5.17](https://github.com/avaneev/lzav) | 2026-07-29 | |
 | [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html) | 2014-03-13 | |
 | [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse) | 2017-03-08 | |
 | [lzg 1.0.10](https://github.com/mbitsnbites/liblzg) | 2018-11-29 | |
 | [lzham 1.0](https://github.com/richgel999/lzham_codec) | 2020-09-15 | Public domain since 2020-09-15. Build fixed in lzbench for MinGW and newer compilers (`<cstdint>` includes, `GetSystemInfo`, `DISABLE_THREADING`). Disabled on macOS and 32-bit x86 — 64 MB dictionary overflows the 32-bit address space |
 | lzjb 2010 | 2010 | |
 | [lzlib 1.16](https://www.nongnu.org/lzip/lzlib.html) | 2026-03-11 | |
-| [lzma v26.01](http://7-zip.org) | 2026-04-27 | |
+| [lzma v26.03](http://7-zip.org) | 2026-09-03 | |
 | [lzo 2.10](http://www.oberhumer.com/opensource/lzo) | 2017-03-01 | |
 | [lzsse 2019-04-18 (1847c3e827)](https://github.com/ConorStokes/LZSSE) | 2019-04-18 | 64-bit x86 only — requires SSE4.1 (Windows: MinGW-w64 only); lzsse8fast has a [bug](https://github.com/ConorStokes/LZSSE/issues/14) |
-| [memlz 0.4 beta](https://github.com/rrrlasse/memlz) | 2026-09-19 | Disabled on 32-bit ARM — unaligned access faults (SIGBUS) |
+| [mbrotli 0.5.2](https://github.com/Mnwa/mbrotli) | 2026-09-26 | Requires the Rust toolchain 1.89+ (skipped for 32-bit, cross-compiled and Windows builds). Built through the `mbrotli-ffi` C ABI; manifests trimmed in lzbench (no dev-dependencies, rlib only) |
+| [memlz 0.5 beta](https://github.com/rrrlasse/memlz) | 2026-09-24 | Patched in lzbench: SSE4.2 target attribute also applied for MinGW (`memlz.h`) |
 | [misa77 0.6.0](https://github.com/welcome-to-the-sunny-side/misa77) | 2026-07-30 | Little-endian 64-bit only — needs a C++20 compiler (GCC 10+, Clang 12+); skipped automatically |
 | [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) | 2022-02-07 | CUDA only — built with `make ENABLE_CUDA=1`; not in the default CI matrix |
 | [openzl 0.2.3](https://openzl.org/) | 2026-07-28 | 64-bit only — upstream does not support 32-bit builds |
-| [ppmd8 26.01](http://7-zip.org) | 2026-04-27 | |
-| [pulsar 2.5.0](https://github.com/ceedot-rock/pulsar-best) | 2026-09-02 | GPL-3; Linux/macOS with Cargo (skipped 32-bit/cross like density). Reported compression speed includes candidate verification: each candidate is fully decoded to verify it, i.e. up to 3 extra decompressions per block |
+| [ppmd8 26.03](http://7-zip.org) | 2026-09-03 | |
+| [pulsar 2.5.0](https://github.com/ceedot-rock/pulsar-best) | 2026-09-02 | GPL-3; built through misc/rust-codecs with density/mbrotli (skipped 32-bit/cross/Windows). The lzbench FFI path does not re-decode candidates to verify them |
 | [quicklz 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/) | 2011-10-07 | |
 | [skim 0.1.0](https://github.com/vantorrewannes/skim) | 2026-06-07 | Linux x86-64 and macOS only — requires the [Zig](https://ziglang.org) compiler |
-| [slz 1.2.2](http://www.libslz.org/) | 2026-04-09 | Compressor only; decompresses via zlib |
-| [snappy 1.2.2](https://github.com/google/snappy) | 2025-03-26 | Patched in lzbench: RISC-V support in `snappy-internal.h` |
-| [tamp 2.2.4](https://github.com/BrianPugh/tamp) | 2026-06-11 | |
+| [slz 1.3.1](http://www.libslz.org/) | 2026-07-28 | Compressor only; decompresses via zlib |
+| [snappy 1.3.1](https://github.com/google/snappy) | 2026-09-18 | |
+| [tamp 2.3.0](https://github.com/BrianPugh/tamp) | 2026-07-09 | |
 | [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | Disabled on RISC-V unless the build machine does misaligned access at full speed (asked via the hwprobe syscall); such a build is then not portable to a slower RISC-V machine |
 | [ucl 1.03](http://www.oberhumer.com/opensource/ucl/) | 2004-07-20 | |
-| [xz 5.8.3](https://github.com/tukaani-project/xz) | 2026-03-31 | Built in lzbench with a hand-written `config.h` (upstream uses autotools) |
+| [xz 5.8.4](https://github.com/tukaani-project/xz) | 2026-09-09 | Built in lzbench with a hand-written `config.h` (upstream uses autotools) |
 | [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) | 2022-07-06 | |
 | [zlib 1.3.2](http://zlib.net) | 2026-02-17 | |
 | [zlib-ng 2.3.3](https://github.com/zlib-ng/zlib-ng) | 2026-02-03 | |

@@ -14,8 +14,6 @@ autobenches = false
 [lib]
 name = "pulsar"
 path = "src/lib.rs"
-crate-type = ["cdylib", "staticlib"]
-
-[profile.release]
-lto = false
-codegen-units = 1
+# lzbench links this through misc/rust-codecs, which produces the single
+# staticlib/cdylib, so only the rlib is built here.
+crate-type = ["rlib"]

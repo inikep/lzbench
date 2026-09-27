@@ -27,7 +27,12 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 cmake_minimum_required(VERSION 3.10)
-project(Snappy VERSION 1.2.2 LANGUAGES C CXX)
+
+if(POLICY CMP0091)
+  cmake_policy(SET CMP0091 NEW)
+endif()
+
+project(Snappy VERSION 1.3.1 LANGUAGES C CXX)
 
 # C++ standard can be overridden when this is used as a sub-project.
 if(NOT CMAKE_CXX_STANDARD)
@@ -55,6 +60,21 @@ if(MSVC)
   # Disable RTTI.
   string(REGEX REPLACE "/GR" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR-")
+
+  # Support static MSVC runtime when building static library.
+  option(SNAPPY_MSVC_STATIC_RUNTIME "Link to static MSVC runtime (/MT or /MTd)" OFF)
+  if(SNAPPY_MSVC_STATIC_RUNTIME)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    foreach(flag_var
+        CMAKE_C_FLAGS CMAKE_C_FLAGS_DEBUG CMAKE_C_FLAGS_RELEASE
+        CMAKE_C_FLAGS_MINSIZEREL CMAKE_C_FLAGS_RELWITHDEBINFO
+        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+        CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+      if(${flag_var} MATCHES "/MD")
+        string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+      endif()
+    endforeach()
+  endif()
 else(MSVC)
   # Use -Wall for clang and gcc.
   if(NOT CMAKE_CXX_FLAGS MATCHES "-Wall")
@@ -155,10 +175,20 @@ int main() {
   return __builtin_expect(0, 1);
 }" HAVE_BUILTIN_EXPECT)
 
+# Check if the built-in __builtin_ctz (count trailing zeros) is available.
+# Require either a non-RISC-V target, or a RISC-V core that implements
+# the Zbb bit-manipulation extension where ctz is guaranteed.
 check_cxx_source_compiles("
-int main() {
-  return __builtin_ctzll(0);
-}" HAVE_BUILTIN_CTZ)
+#ifdef __riscv
+  #ifdef __riscv_zbb
+    int main() { return __builtin_ctzll(0); }
+  #else
+    #error \"ZBB not enabled in current config\"
+  #endif
+#else
+  int main() { return __builtin_ctzll(0); }
+#endif
+" HAVE_BUILTIN_CTZ)
 
 check_cxx_source_compiles("
 int main() {
@@ -216,6 +246,31 @@ int main() {
   return 0;
 }" SNAPPY_HAVE_NEON)
 
+#check RVV 1.0 need __riscv_ prefix
+check_cxx_source_compiles("
+  #include <riscv_vector.h>
+  #include <stdint.h>
+  #include <stddef.h>
+  int main() {
+    uint8_t val = 3, dup[8];
+    size_t vl = __riscv_vsetvl_e8m1(8);
+    vuint8m1_t v = __riscv_vmv_v_x_u8m1(val, vl);
+    return 0;
+  }" SNAPPY_RVV_1)
+
+
+#check RVV 0.7.1 not  __riscv_ prefix
+check_cxx_source_compiles("
+  #include <riscv_vector.h>
+  #include <stdint.h>
+  #include <stddef.h>
+  int main() {
+    uint8_t val = 3, dup[8];
+    size_t vl = vsetvl_e8m1(8);
+    vuint8m1_t v = vmv_v_x_u8m1(val, vl);
+    return 0;
+  }" SNAPPY_RVV_0_7)
+
 include(CheckSymbolExists)
 check_symbol_exists("mmap" "sys/mman.h" HAVE_FUNC_MMAP)
 check_symbol_exists("sysconf" "unistd.h" HAVE_FUNC_SYSCONF)
@@ -251,6 +306,9 @@ configure_file(
   "snappy-stubs-public.h.in"
   "${PROJECT_BINARY_DIR}/snappy-stubs-public.h")
 
+# Must be included before CMAKE_INSTALL_INCLUDEDIR is used.
+include(GNUInstallDirs)
+
 add_library(snappy "")
 target_sources(snappy
   PRIVATE
@@ -263,19 +321,19 @@ target_sources(snappy
     "${PROJECT_BINARY_DIR}/config.h"
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/snappy-c.h>
-    $<INSTALL_INTERFACE:include/snappy-c.h>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/snappy-c.h>
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/snappy-sinksource.h>
-    $<INSTALL_INTERFACE:include/snappy-sinksource.h>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/snappy-sinksource.h>
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/snappy.h>
-    $<INSTALL_INTERFACE:include/snappy.h>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/snappy.h>
     $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/snappy-stubs-public.h>
-    $<INSTALL_INTERFACE:include/snappy-stubs-public.h>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/snappy-stubs-public.h>
 )
 target_include_directories(snappy
   PUBLIC
     $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}>
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 set_target_properties(snappy
   PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
@@ -398,9 +456,6 @@ if(SNAPPY_FUZZING_BUILD)
     PROPERTIES LINK_FLAGS "-fsanitize=fuzzer"
   )
 endif(SNAPPY_FUZZING_BUILD)
-
-# Must be included before CMAKE_INSTALL_INCLUDEDIR is used.
-include(GNUInstallDirs)
 
 if(SNAPPY_INSTALL)
   install(TARGETS snappy

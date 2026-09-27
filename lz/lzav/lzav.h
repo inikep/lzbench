@@ -1,7 +1,7 @@
 /**
  * @file lzav.h
  *
- * @version 5.16
+ * @version 5.17
  *
  * @brief Self-contained header file for the "LZAV" in-memory data compression
  * and decompression algorithms.
@@ -40,7 +40,7 @@
 #define LZAV_INCLUDED
 
 #define LZAV_API_VER 0x206 ///< API version; unrelated to the code version.
-#define LZAV_VER_STR "5.16" ///< LZAV source code version string.
+#define LZAV_VER_STR "5.17" ///< LZAV source code version string.
 
 /**
  * @def LZAV_FMT_MIN
@@ -243,6 +243,12 @@
  *
  * When C++20 is available, this macro is defined as 0, and the actual
  * endianness is determined at compile time via std::endian::native.
+ * This means that a value of 0 for this macro indicates "big-endian" or
+ * "unknown".
+ *
+ * Note that for exotic platforms, you may need to include
+ * a compiler-dependent `endian.h` header before including `lzav.h` to avoid
+ * using a potentially slower fallback.
  */
 
 /**
@@ -255,19 +261,33 @@
 		__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__ ) || \
 	( defined( __BYTE_ORDER ) && defined( __LITTLE_ENDIAN ) && \
 		__BYTE_ORDER == __LITTLE_ENDIAN ) || \
-	defined( __LITTLE_ENDIAN__ ) || defined( _LITTLE_ENDIAN ) || \
-	defined( LZAV_X86 ) || defined( _WIN32 ) || defined( _M_ARM ) || \
-	defined( _M_ARM64EC )
+	( defined( _BYTE_ORDER ) && defined( _LITTLE_ENDIAN ) && \
+		_BYTE_ORDER == _LITTLE_ENDIAN ) || \
+	defined( __LITTLE_ENDIAN__ ) || defined( __little_endian__ ) || \
+	( !defined( __BYTE_ORDER ) && !defined( __BIG_ENDIAN ) && \
+		defined( __LITTLE_ENDIAN )) || \
+	( !defined( _BYTE_ORDER ) && !defined( _BIG_ENDIAN ) && \
+		defined( _LITTLE_ENDIAN )) || \
+	( defined( LZAV_X86 ) && !defined( __VOS__ )) || defined( _WIN32 ) || \
+	defined( _M_ARM ) || defined( _M_ARM64EC )
 
 	#define LZAV_LITTLE_ENDIAN 1
+	#define LZAV_COND_EC( vl, vb ) ( vl )
 
 #elif ( defined( __BYTE_ORDER__ ) && defined( __ORDER_BIG_ENDIAN__ ) && \
 		__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__ ) || \
 	( defined( __BYTE_ORDER ) && defined( __BIG_ENDIAN ) && \
 		__BYTE_ORDER == __BIG_ENDIAN ) || \
-	defined( __BIG_ENDIAN__ ) || defined( _BIG_ENDIAN ) || \
+	( defined( _BYTE_ORDER ) && defined( _BIG_ENDIAN ) && \
+		_BYTE_ORDER == _BIG_ENDIAN ) || \
+	defined( __BIG_ENDIAN__ ) || defined( __big_endian__ ) || \
+	( !defined( __BYTE_ORDER ) && !defined( __LITTLE_ENDIAN ) && \
+		defined( __BIG_ENDIAN )) || \
+	( !defined( _BYTE_ORDER ) && !defined( _LITTLE_ENDIAN ) && \
+		defined( _BIG_ENDIAN )) || \
 	defined( __SYSC_ZARCH__ ) || defined( __zarch__ ) || \
-	defined( __s390x__ ) || defined( __sparc ) || defined( __sparc__ )
+	defined( __s390__ ) || defined( __s390x__ ) || defined( __sparc ) || \
+	defined( __sparc__ ) || defined( __VOS__ )
 
 	#define LZAV_LITTLE_ENDIAN 0
 	#define LZAV_COND_EC( vl, vb ) ( vb )
@@ -371,7 +391,6 @@
 
 #if LZAV_LITTLE_ENDIAN
 
-	#define LZAV_COND_EC( vl, vb ) ( vl )
 	#define LZAV_IEC32( x ) (void) 0
 
 #else // LZAV_LITTLE_ENDIAN
@@ -655,24 +674,6 @@ enum LZAV_PARAM
 	LZAV_MR5_THR = ( 1 << 18 ), ///< `srclen` threshold for using `mref=5`.
 	LZAV_FMT_CUR = 3 ///< Data format identifier used by the compressor.
 };
-
-
-/**
- * @typedef lzav_shift_t
- * @brief Defines a type for shift-count variables, depending on the platform.
- *
- * This specialization prevents implicit type conversions.
- */
-
-#if defined( LZAV_X86 )
-
-	typedef unsigned int lzav_shift_t;
-
-#else // defined( LZAV_X86 )
-
-	typedef size_t lzav_shift_t;
-
-#endif // defined( LZAV_X86 )
 
 /**
  * @brief Determines the platform's endianness at runtime.
@@ -1992,6 +1993,23 @@ LZAV_NO_INLINE int lzav_compress_hi( const void* const src, void* const dst,
 
 	return( (int) ( op - (uint8_t*) dst ));
 }
+
+/**
+ * @typedef lzav_shift_t
+ * @brief Defines a type for shift-count variables, depending on the platform.
+ *
+ * This specialization prevents implicit type conversions.
+ */
+
+#if defined( LZAV_X86 )
+
+	typedef unsigned int lzav_shift_t;
+
+#else // defined( LZAV_X86 )
+
+	typedef size_t lzav_shift_t;
+
+#endif // defined( LZAV_X86 )
 
 /**
  * @def LZAV_SET_IPD_CV( x, v, sh )

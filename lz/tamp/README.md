@@ -322,13 +322,14 @@ low-memory compressor.
 
 To give an idea of Tamp's speed on an embedded device, the following table shows
 compression/decompression in **bytes/second of the first 100KB of enwik8 on a pi
-pico (rp2040)** at the default 125MHz clock rate. The C benchmark **does not**
+pico (rp2040)** at the default 125MHz clock rate, with native-module
+measurements taken on MicroPython v1.26.1 firmware. The C benchmark **does not**
 use a filesystem nor dynamic memory allocation, so it represents the maximum
 speed Tamp can achieve. In all tests, a 1KB window (10 bit) was used.
 
 |                                  | Compression (bytes/s) | Decompression (bytes/s) |
 | -------------------------------- | --------------------- | ----------------------- |
-| Tamp (Micropython Native Module) | 31,328                | 990,099                 |
+| Tamp (Micropython Native Module) | 34,510                | 980,392                 |
 | Tamp (C)                         | 36,127                | 1,400,600               |
 | Deflate (micropython builtin)    | 6,885                 | 294,985                 |
 
@@ -344,11 +345,11 @@ Numbers reported in bytes. Tamp sizes were measured using `arm-none-eabi-gcc`
 
 |                                  | Compressor | Decompressor | Compressor + Decompressor |
 | -------------------------------- | ---------- | ------------ | ------------------------- |
-| Tamp (MicroPython Native)        | 4700       | 4347         | 8024                      |
-| Tamp (C, no extended, no stream) | 1754       | 1656         | 3172                      |
-| Tamp (C, no extended)            | 2036       | 1894         | 3692                      |
-| Tamp (C, extended, no stream)    | 2838       | 2452         | 5052                      |
-| Tamp (C, extended)               | 3120       | 2690         | 5572                      |
+| Tamp (MicroPython Native)        | 5469       | 4725         | 9125                      |
+| Tamp (C, no extended, no stream) | 1932       | 1634         | 3328                      |
+| Tamp (C, no extended)            | 2214       | 1872         | 3848                      |
+| Tamp (C, extended, no stream)    | 3120       | 2452         | 5334                      |
+| Tamp (C, extended)               | 3402       | 2690         | 5854                      |
 | Heatshrink (C)                   | 2956       | 3876         | 6832                      |
 | uzlib (C)                        | 2355       | 3963         | 6318                      |
 

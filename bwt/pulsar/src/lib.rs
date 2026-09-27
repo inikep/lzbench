@@ -17,34 +17,57 @@ pub mod bwt_ans;
 pub const VERSION: &str = "2.5.0";
 pub const LOCK_DICKENS_REF: u32 = 243675;
 pub fn version() -> &'static str { VERSION }
-fn verified(raw: &[u8], blob: Vec<u8>) -> Option<Vec<u8>> {
-    if blob.len() >= raw.len() { return None; }
+/// Accept a candidate blob that is strictly smaller than the input.
+/// When `verify` is true (CLI / unit tests), fully decode and compare so a
+/// buggy encoder cannot ship a bad frame. The lzbench FFI path passes
+/// `verify = false`: round-trip checking there would add up to three full
+/// decompressions to every reported compression timing.
+fn accept_candidate(raw: &[u8], blob: Vec<u8>, verify: bool) -> Option<Vec<u8>> {
+    if blob.len() >= raw.len() {
+        return None;
+    }
+    if !verify {
+        return Some(blob);
+    }
     match pulsar_decode(&blob) {
         Ok(back) if back == raw => Some(blob),
         _ => None,
     }
 }
 
-pub fn pulsar_encode(data: &[u8]) -> Option<Vec<u8>> {
+fn pulsar_encode_inner(data: &[u8], verify: bool) -> Option<Vec<u8>> {
     let mut cand: Vec<Vec<u8>> = Vec::new();
     // OZL2 never won Silesia/Calgary vs BW; skip the slow matcher on large files.
     if data.len() < 256 * 1024 {
         if let Some(e) = own_lz::own_lz_encode(data) {
-            if let Some(ok) = verified(data, e) { cand.push(ok); }
+            if let Some(ok) = accept_candidate(data, e, verify) {
+                cand.push(ok);
+            }
         }
     }
     // PZ22 is a residual wrapper; skip on large files (never won vs OZL2 on Silesia/Calgary).
     if data.len() < 64 * 1024 {
-        if let Some(ok) = verified(data, zpaq_fixed::compress_fixed(data)) {
+        if let Some(ok) = accept_candidate(data, zpaq_fixed::compress_fixed(data), verify) {
             cand.push(ok);
         }
     }
     if data.len() >= 256 {
-        if let Some(ok) = verified(data, bwt_ans::compress(data)) {
+        if let Some(ok) = accept_candidate(data, bwt_ans::compress(data), verify) {
             cand.push(ok);
         }
     }
     cand.into_iter().min_by_key(|v| v.len())
+}
+
+/// Encode with candidate verification (safe for CLI / tests).
+pub fn pulsar_encode(data: &[u8]) -> Option<Vec<u8>> {
+    pulsar_encode_inner(data, true)
+}
+
+/// Encode without the verify round-trip; used by the lzbench FFI so reported
+/// compression speed is encoder-only.
+pub fn pulsar_encode_unchecked(data: &[u8]) -> Option<Vec<u8>> {
+    pulsar_encode_inner(data, false)
 }
 
 pub fn pulsar_decode(data: &[u8]) -> Result<Vec<u8>, &'static str> {
@@ -106,7 +129,8 @@ pub unsafe extern "C" fn pulsar_compress(
             return -1isize;
         }
         let input = std::slice::from_raw_parts(in_ptr, in_len);
-        match pulsar_encode(input) {
+        // Unchecked: lzbench timings must not include the verify round-trips.
+        match pulsar_encode_unchecked(input) {
             Some(enc) if enc.len() + 1 <= out_len => {
                 *out_ptr = PULSAR_FRAME_CODED;
                 std::ptr::copy_nonoverlapping(enc.as_ptr(), out_ptr.add(1), enc.len());

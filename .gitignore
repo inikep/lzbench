@@ -2,9 +2,12 @@
 _codelite/
 _visual/
 .vscode/
+.idea
 
-# Rust-based Density
+# Rust codecs (built through misc/rust-codecs)
+misc/rust-codecs/target/
 misc/density/src/target/
+bwt/pulsar/target/
 misc/density/src/Cargo.lock
 
 # Archives
@@ -16,6 +19,9 @@ misc/density/src/Cargo.lock
 
 # Compiler-generated header dependencies (make DEPFLAGS)
 *.d
+
+# Set of BENCH_REMOVE_* defines the bench/*.o were built with (Makefile)
+bench/codecs.stamp
 
 # Libraries
 *.lib
