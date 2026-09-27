@@ -1,4 +1,5 @@
 v2.x.y (work-in-progress)
+- added pulsar 2.5.0 (thanks to @ceedot-rock)
 - added GPUCompact 1.1 (by @UDPSendToFailed)
 - added lbzip2 2.6.5 (thanks to @caius72)
 - added mbrotli 0.5.2 (by @Mnwa)
@@ -19,7 +20,7 @@ v2.x.y (work-in-progress)
 - updated zxc to 0.14.1 (thanks to @hellobertrand)
 - improvement: autodetect whether linking with -ldl is required (thanks to @fwyzard)
 - improvement: added a CUDA build job (nvcc 13.2, Ubuntu 24.04) to the Azure Pipelines CI
-- improvement: the Rust codecs (density, mbrotli) are built into a single library from
+- improvement: the Rust codecs (density, mbrotli, pulsar) are built into a single library from
                misc/rust-codecs, so a BUILD_STATIC=1 binary can link more than one of them
 - improvement: the crates.io dependencies of the Rust codecs are vendored in
                misc/rust-codecs/vendor, so they build without network access

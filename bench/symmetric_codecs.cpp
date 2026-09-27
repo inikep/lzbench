@@ -428,3 +428,23 @@ int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, siz
 }
 
 #endif // BENCH_REMOVE_DENSITY
+
+
+#ifndef BENCH_REMOVE_PULSAR
+#include "bwt/pulsar/pulsar.h"
+
+int64_t lzbench_pulsar_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    (void)codec_options;
+    intptr_t n = pulsar_compress((const uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+    return (int64_t)n;
+}
+
+int64_t lzbench_pulsar_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    (void)codec_options;
+    intptr_t n = pulsar_decompress((const uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+    return (int64_t)n;
+}
+
+#endif // BENCH_REMOVE_PULSAR

@@ -19,13 +19,15 @@ path = "lib.rs"
 [dependencies]
 density-rs = { path = "../density/src", optional = true }
 mbrotli-ffi = { path = "../../lz/mbrotli/mbrotli-ffi", optional = true }
+pulsar = { path = "../../bwt/pulsar", optional = true }
 
 [features]
 density = ["dep:density-rs"]
 mbrotli = ["dep:mbrotli-ffi"]
+pulsar = ["dep:pulsar"]
 
 # Carried over from density's own manifest, which is ignored now that it is a
-# dependency. mbrotli-ffi catches panics at the C boundary, so keep unwinding.
+# dependency. mbrotli-ffi and pulsar catch panics at the C boundary, so keep unwinding.
 [profile.release]
 opt-level = 3
 debug = false

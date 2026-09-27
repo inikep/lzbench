@@ -18,6 +18,7 @@ version = "0.0.0"
 dependencies = [
  "density-rs",
  "mbrotli-ffi",
+ "pulsar",
 ]
 
 [[package]]
@@ -44,6 +45,10 @@ checksum = "985e7ec9bb745e6ce6535b544d84d6cd6f7ad8bd711c398938ae983b91a766d9"
 dependencies = [
  "unicode-ident",
 ]
+
+[[package]]
+name = "pulsar"
+version = "2.5.0"
 
 [[package]]
 name = "quote"

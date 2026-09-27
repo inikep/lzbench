@@ -231,7 +231,7 @@ SNAPPY_RVV_1:=$(shell $(SNAPPY_RVV))
 rvv_prefix=
 SNAPPY_RVV_0_7:=$(shell $(SNAPPY_RVV))
 
-# Rust codecs (density, mbrotli) are built into one library from
+# Rust codecs (density, mbrotli, pulsar) are built into one library from
 # misc/rust-codecs: two Rust staticlibs each carry their own copy of std and
 # cannot be linked into the same binary.
 HOST_ARCH   := $(shell uname -m)
@@ -246,18 +246,22 @@ endif
 
 # Only build Rust codecs if native build, not 32-bit, not Windows
 ifneq ($(HAVE_CARGO),1)
-    $(info Cargo not found – skipping Rust codecs (density, mbrotli))
+    $(info Cargo not found – skipping Rust codecs (density, mbrotli, pulsar))
     DONT_BUILD_DENSITY := 1
     DONT_BUILD_MBROTLI := 1
+    DONT_BUILD_PULSAR := 1
 else ifneq ($(HOST_ARCH),$(TARGET_ARCH)) # Skip cross-compilation
     DONT_BUILD_DENSITY := 1
     DONT_BUILD_MBROTLI := 1
+    DONT_BUILD_PULSAR := 1
 else ifeq ($(BUILD_ARCH),32-bit)         # Skip user requested 32-bit compilation
     DONT_BUILD_DENSITY := 1
     DONT_BUILD_MBROTLI := 1
+    DONT_BUILD_PULSAR := 1
 else ifneq (,$(filter Windows%,$(OS)))   # Skip Windows builds due to undefined reference errors on linking even when adding required native static libs to linking dependencies
     DONT_BUILD_DENSITY := 1
     DONT_BUILD_MBROTLI := 1
+    DONT_BUILD_PULSAR := 1
 endif
 
 RUST_FEATURES :=
@@ -277,6 +281,12 @@ ifneq ($(DONT_BUILD_MBROTLI),1)
     else
         RUST_FEATURES += mbrotli
     endif
+endif
+ifneq ($(DONT_BUILD_PULSAR),1)
+    # pulsar uses edition 2021; no extra cargo-version gate. It rides along in
+    # misc/rust-codecs (which itself needs 1.85 for density's edition), so it
+    # is only skipped by the shared native/32-bit/Windows checks above.
+    RUST_FEATURES += pulsar
 endif
 
 ifneq ($(strip $(RUST_FEATURES)),)
@@ -303,6 +313,9 @@ ifneq ($(strip $(RUST_FEATURES)),)
     endif
     ifneq (,$(filter mbrotli,$(RUST_FEATURES)))
         RUST_DEPS += $(shell find lz/mbrotli/Cargo.toml lz/mbrotli/src lz/mbrotli/mbrotli-ffi -type f)
+    endif
+    ifneq (,$(filter pulsar,$(RUST_FEATURES)))
+        RUST_DEPS += $(shell find bwt/pulsar/Cargo.toml bwt/pulsar/src -type f)
     endif
 
     LDFLAGS += -Wl,-rpath,$(RUST_SRC_DIR)target/release -L$(RUST_SRC_DIR)target/release -llzbench_rust
@@ -1115,6 +1128,10 @@ endif
 
 ifeq "$(DONT_BUILD_DENSITY)" "1"
     DEFINES += -DBENCH_REMOVE_DENSITY
+endif
+
+ifeq "$(DONT_BUILD_PULSAR)" "1"
+    DEFINES += -DBENCH_REMOVE_PULSAR
 endif
 
 

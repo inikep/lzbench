@@ -1,0 +1,19 @@
+[package]
+name = "pulsar"
+version = "2.5.0"
+edition = "2021"
+description = "pulsar 2.5.0 own-only lossless compressor (BW23)"
+license = "GPL-3.0-or-later"
+authors = ["Corey Tasz <Slid Phi Labs>"]
+publish = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+
+[lib]
+name = "pulsar"
+path = "src/lib.rs"
+# lzbench links this through misc/rust-codecs, which produces the single
+# staticlib/cdylib, so only the rlib is built here.
+crate-type = ["rlib"]
