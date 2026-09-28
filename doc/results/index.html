@@ -89,6 +89,8 @@
     border-radius: 8px; padding: 5px 11px; cursor: pointer; white-space: nowrap; flex: none;
   }
   .theme-btn:hover { background: var(--wash); color: var(--ink); }
+  .controls .theme-btn { font-size: 14px; padding: 6px 12px; margin-left: auto; }
+  .theme-btn:disabled { opacity: 0.5; cursor: default; background: var(--surface); color: var(--ink-2); }
   .theme-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   h1 { margin: 0; font-size: 24px; line-height: 1.25; font-weight: 650; text-wrap: balance; }
   .setup { margin: 0; color: var(--ink-2); }
@@ -169,7 +171,7 @@
     display: inline-block; font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 6px; margin-left: 4px;
     border-radius: 999px; border: 1px solid var(--axis); color: var(--ink-2);
   }
-  .note { color: var(--ink-2); font-size: 13px; margin: 0; max-width: 90ch; }
+  .note { color: var(--ink-2); font-size: 13px; margin: 0; }
   .empty { color: var(--muted); padding: 16px 10px; text-align: left; }
 
   @media (max-width: 560px) {
@@ -181,6 +183,17 @@
     circle.pt { transition: r 120ms ease-out; }
   }
   a { color: var(--focus); }
+  /* compare mode */
+  #cmp { display: grid; gap: 20px; }
+  .line-key.dashed { width: 22px; background: repeating-linear-gradient(90deg, var(--muted) 0 6px, transparent 6px 10px); }
+  .line-key.dotted { width: 22px; background: repeating-linear-gradient(90deg, var(--muted) 0 2px, transparent 2px 5px); }
+  .line-key.muted { width: 22px; background: var(--muted); }
+  svg text.val { fill: var(--ink); font-size: 12px; font-weight: 600; }
+  svg text.halo { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+  #scale-table { min-width: 980px; }
+  #scale-table th.grp { text-align: center; border-bottom: 0; padding-bottom: 0; }
+  #scale-table td.x, #scale-table th.x { color: var(--ink); font-weight: 600; }
+  #scale-table tbody tr.picked td:first-child { box-shadow: inset 3px 0 0 var(--focus); }
   .error { color: var(--ink); background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 16px; }
 </style>
 </head>
@@ -229,16 +242,29 @@
       <label class="label" for="q">Find a compressor</label>
       <input type="search" id="q" placeholder="e.g. zstd, lz4hc, -9" autocomplete="off">
     </div>
-    <div class="field">
+    <button type="button" class="theme-btn" id="clear-picks" hidden>Clear selection</button>
+    <div class="field" id="front-field">
       <span class="label" id="lbl-front">Pareto frontier</span>
       <div class="checks" role="group" aria-labelledby="lbl-front">
-        <label class="check" for="front-line"><input type="checkbox" id="front-line" checked> Show on the chart</label>
-        <label class="check" for="front-only"><input type="checkbox" id="front-only"> Only these in the table</label>
+        <label class="check" for="front-line"><input type="checkbox" id="front-line" checked> Show</label>
+        <label class="check" for="front-only"><input type="checkbox" id="front-only"> Only Pareto in the table</label>
       </div>
     </div>
   </div>
 
-  <section class="card" aria-labelledby="table-title">
+  <div id="cmp" hidden>
+    <section class="card" aria-labelledby="scale-table-title">
+      <div class="card-head">
+        <h2 id="scale-table-title">Thread scaling</h2>
+        <span class="note" id="scale-count"></span>
+      </div>
+      <div class="table-wrap">
+        <table id="scale-table"><thead></thead><tbody></tbody></table>
+      </div>
+    </section>
+  </div>
+
+  <section class="card" aria-labelledby="table-title" id="main-table">
     <div class="card-head">
       <h2 id="table-title">All results</h2>
       <span class="note" id="table-count"></span>
@@ -298,7 +324,15 @@ function setNote(el, text, threads) {
   });
 }
 
-const state = { set: 'single', threads: 32, metric: 'c', query: '', frontOnly: false, showFront: true, sortKey: 'n', sortDir: 1, selected: null, hidden: new Set() };
+let COUNTS = [];                 // thread counts in the multi-threaded results, e.g. [1, 8, 32]
+const BLOCK = 4 * 1024 * 1024;  // -b4096
+// the compressors on the speedup chart until the table changes them
+const DEFAULT_PICKS = ['lz4 1.10.0', 'lz4hc 1.10.0 -9', 'snappy 1.3.1', 'lzav 5.17 -1', 'lzo1x 2.10 -1', 'zxc 0.14.1 -1',
+  'zstd 1.5.7 -1', 'zstd 1.5.7 -8', 'zstd 1.5.7 -18', 'zlib 1.3.2 -6', 'libdeflate 1.26 -6', 'brotli 1.2.0 -5', 'kanzi 2.5.3 -3',
+  'lzma 26.03 -4', 'xz 5.8.4 -5', 'bzip2 1.0.8 -9', 'bzip3 1.5.4 -5', 'ppmd8 26.03 -4'];
+
+// picked: the compressors on the speedup chart (null until Compare is first shown)
+const state = { set: 'single', threads: 32, picked: null, cmpSort: { key: 'n', dir: 1 }, metric: 'c', query: '', frontOnly: false, showFront: true, sortKey: 'n', sortDir: 1, selected: null, hidden: new Set() };
 
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
@@ -537,8 +571,195 @@ function renderTable(rows, fr) {
   document.getElementById('table-count').textContent = `${list.length} of ${total} results, plus memcpy`;
 }
 
+
+/* ---------- compare 1, 8, 32 threads ---------- */
+const tlabel = t => `${t} thread${t > 1 ? 's' : ''}`;
+
+function compareRows() {
+  const top = COUNTS[COUNTS.length - 1];
+  return DATA.multi.rows.map(r => ({ n: r.n, g: r.g, s: r.s, r: r.r, c: r.c[top], d: r.d[top], cT: r.c, dT: r.d }));
+}
+function showCompareTip(hit) {
+  const { p } = hit;
+  tip.replaceChildren();
+  const name = document.createElement('div'); name.className = 'name';
+  const dot = document.createElement('span'); dot.className = 'dot'; dot.style.background = `var(${GROUP_COLOR[p.g] || '--muted'})`;
+  const nt = document.createElement('span'); nt.textContent = `${p.n} · ratio ${p.r.toFixed(2)}%`;
+  name.append(dot, nt);
+  const vals = document.createElement('div'); vals.className = 'vals';
+  const key = state.metric + 'T', base = p[key][COUNTS[0]];
+  for (const t of COUNTS) {
+    const l = document.createElement('span'); l.textContent = tlabel(t) + (t === hit.t ? ' ◂' : '');
+    const v = document.createElement('b'); v.textContent = `${fmtSpeed(p[key][t])} MB/s` + (t === COUNTS[0] ? '' : ` (${(p[key][t] / base).toFixed(1)}×)`);
+    vals.append(l, v);
+  }
+  tip.append(name, vals);
+  const fe = document.createElement('div'); fe.className = 'front';
+  fe.textContent = (state.metric === 'c' ? 'Compression' : 'Decompression') + ' speed';
+  tip.append(fe);
+  tip.hidden = false;
+  const svg = document.getElementById('chart');
+  const scale = svg.clientWidth / svg.viewBox.baseVal.width, wrapW = document.getElementById('chart-wrap').clientWidth;
+  let left = hit.x * scale + 14;
+  if (left + tip.offsetWidth > wrapW) left = hit.x * scale - tip.offsetWidth - 14;
+  tip.style.left = Math.max(0, left) + 'px';
+  tip.style.top = Math.max(0, hit.y * scale - 14 - tip.offsetHeight / 2) + 'px';
+}
+
+// speedup over 1 thread: one row per picked compressor, sorted by its speedup at the most threads
+function drawSpeedup(metric, picks, mem) {
+  const svg = document.getElementById('chart');
+  const W = Math.max(300, document.getElementById('chart-wrap').clientWidth);
+  const t0 = COUNTS[0], tN = COUNTS[COUNTS.length - 1], mid = COUNTS.slice(1, -1);
+  const key = metric + 'T';
+  const sp = (r, t) => r[key][t] / r[key][t0];
+  const blocks = Math.ceil(DATA.orig / BLOCK), limit = blocks / Math.ceil(blocks / tN) * t0;
+  const list = picks.slice().sort((a, b) => sp(b, tN) - sp(a, tN));
+  if (mem) list.push(mem);
+  const rh = 24, narrow = W < 560;
+  const m = { l: narrow ? 128 : 176, r: 56, t: 24, b: 34 };
+  const H = m.t + m.b + list.length * rh;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  [...svg.querySelectorAll(':scope > :not(desc)')].forEach(n => n.remove());
+  const pw = W - m.l - m.r, xmax = tN / t0;
+  const X = v => m.l + v / xmax * pw;
+  const step = xmax > 16 ? 4 : 2;
+  for (let v = 0; v <= xmax; v += step) {
+    const perfect = COUNTS.some(t => t / t0 === v && t !== t0);
+    el('line', { x1: X(v), x2: X(v), y1: m.t - 6, y2: H - m.b, stroke: css(perfect ? '--axis' : '--grid'), 'stroke-width': perfect ? 1.5 : 1 }, svg);
+    el('text', { x: X(v), y: H - 12, 'text-anchor': 'middle' }, svg).textContent = v + '×';
+  }
+  for (const t of COUNTS.slice(1)) {
+    el('text', { x: X(t / t0), y: 12, 'text-anchor': t === tN ? 'end' : 'middle', class: 'axis-title' }, svg).textContent = `perfect at ${t}`;
+  }
+  el('line', { x1: X(limit), x2: X(limit), y1: m.t - 6, y2: H - m.b, stroke: css('--muted'), 'stroke-width': 1.5, 'stroke-dasharray': '2 3' }, svg);
+  const surface = css('--surface'), wash = css('--wash');
+  plotted = [];
+  list.forEach((r, i) => {
+    const y = m.t + i * rh + rh / 2, ref = r.n === 'memcpy';
+    if (i % 2) el('rect', { x: 0, y: y - rh / 2, width: W, height: rh, fill: wash }, svg);
+    const name = el('text', { x: m.l - 10, y: y + 4, 'text-anchor': 'end', class: 'endlabel' }, svg);
+    name.textContent = narrow && r.n.length > 18 ? r.n.slice(0, 17) + '…' : r.n;
+    const a = mid.length ? sp(r, mid[mid.length - 1]) : null, b = sp(r, tN);
+    const color = css(ref ? '--muted' : '--lz');
+    if (a != null) {
+      el('line', { x1: X(Math.min(a, b)), x2: X(Math.max(a, b)), y1: y, y2: y, stroke: css('--axis'), 'stroke-width': 3, 'stroke-linecap': 'round' }, svg);
+      el('circle', { cx: X(a), cy: y, r: 5, fill: css('--muted'), stroke: surface, 'stroke-width': 2 }, svg);
+      // the label goes left of the dot; right of it if the name is in the way; none if neither fits (hover shows it)
+      const lw = 30;
+      if (X(a) - 9 - lw > m.l) el('text', { x: X(a) - 9, y: y + 4, 'text-anchor': 'end', class: 'val' }, svg).textContent = a.toFixed(1) + '×';
+      else if (X(b) - X(a) > lw + 20) el('text', { x: X(a) + 9, y: y + 4, class: 'val halo' }, svg).textContent = a.toFixed(1) + '×';
+      plotted.push({ p: r, x: X(a), y, t: mid[mid.length - 1] });
+    }
+    el('circle', { cx: X(b), cy: y, r: 6, fill: color, stroke: surface, 'stroke-width': 2 }, svg);
+    el('text', { x: X(b) + 10, y: y + 4, class: 'val' }, svg).textContent = b.toFixed(1) + '×';
+    plotted.push({ p: r, x: X(b), y, t: tN });
+  });
+  document.getElementById('chart-desc').textContent =
+    `Dot plot of the ${metric === 'c' ? 'compression' : 'decompression'} speedup over ${tlabel(t0)} at ${COUNTS.slice(1).join(' and ')} threads for ${picks.length} compressors and memcpy, sorted by the speedup at ${tlabel(tN)}. The table below lists every value.`;
+  return limit;
+}
+
+// 1. speeds at every thread count with speedups, sortable
+function renderScaleTable(rows) {
+  const table = document.getElementById('scale-table');
+  const head = table.tHead, body = table.tBodies[0];
+  head.replaceChildren(); body.replaceChildren();
+  const t0 = COUNTS[0], more = COUNTS.slice(1);
+  const cols = [{ key: 'n', label: 'Compressor' }, { key: 'r', label: 'Ratio %' }];
+  for (const m of ['c', 'd']) {
+    for (const t of COUNTS) cols.push({ key: `${m}${t}`, label: String(t), m });
+    for (const t of more) cols.push({ key: `${m}x${t}`, label: `×${t}`, m, x: t });
+  }
+  const g = head.insertRow();
+  for (const [label, span] of [['', 2], ['Compression MB/s and speedup', COUNTS.length + more.length], ['Decompression MB/s and speedup', COUNTS.length + more.length]]) {
+    const th = document.createElement('th'); th.colSpan = span; th.textContent = label; th.className = 'grp'; g.append(th);
+  }
+  const hr = head.insertRow();
+  for (const c of cols) {
+    const th = document.createElement('th'); th.scope = 'col'; if (c.x) th.className = 'x';
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = c.label;
+    b.title = c.x ? `Speedup from ${tlabel(t0)} to ${tlabel(c.x)}` : '';
+    b.addEventListener('click', () => {
+      const s = state.cmpSort;
+      if (s.key === c.key) s.dir = -s.dir; else { s.key = c.key; s.dir = c.key === 'n' || c.key === 'r' ? 1 : -1; }
+      render();
+    });
+    th.append(b);
+    th.setAttribute('aria-sort', state.cmpSort.key === c.key ? (state.cmpSort.dir > 0 ? 'ascending' : 'descending') : 'none');
+    hr.append(th);
+  }
+  const data = rows.filter(r => matches(r)).map(r => {
+    const o = { n: r.n, g: r.g, r: r.r };
+    for (const m of ['c', 'd']) {
+      for (const t of COUNTS) o[`${m}${t}`] = r[m + 'T'][t];
+      for (const t of more) o[`${m}x${t}`] = r[m + 'T'][t] / r[m + 'T'][t0];
+    }
+    return o;
+  });
+  const { key: k, dir } = state.cmpSort;
+  const pos = new Map(rows.map((r, i) => [r.n, i]));
+  const ref = data.filter(r => r.n === 'memcpy'), list = data.filter(r => r.n !== 'memcpy');
+  if (k === 'n') list.sort((a, b) => dir * (a.n.split(' ')[0].toLowerCase().localeCompare(b.n.split(' ')[0].toLowerCase()) || pos.get(a.n) - pos.get(b.n)));
+  else list.sort((a, b) => dir * (a[k] - b[k]));
+  for (const r of ref.concat(list)) {
+    const tr = body.insertRow(); tr.dataset.name = r.n;
+    if (r.n === 'memcpy') tr.className = 'ref';
+    if (state.picked.includes(r.n)) tr.classList.add('picked', 'selected');
+    const nm = tr.insertCell(); nm.className = 'name';
+    const dot = document.createElement('span'); dot.className = 'dot';
+    dot.style.background = r.g ? `var(${GROUP_COLOR[r.g]})` : 'transparent';
+    nm.append(dot, document.createTextNode(r.n));
+    tr.insertCell().textContent = r.r.toFixed(2);
+    for (const c of cols.slice(2)) {
+      const td = tr.insertCell();
+      if (c.x) { td.className = 'x'; td.textContent = r[c.key].toFixed(1) + '×'; td.title = `${Math.round(100 * r[c.key] / (c.x / t0))}% of perfect scaling`; }
+      else td.textContent = fmtSpeed(r[c.key]);
+    }
+  }
+  document.getElementById('scale-count').textContent = `${list.length} results, plus memcpy; click a row to add it to the speedup chart or remove it`;
+}
+
+function renderCompare() {
+  const rows = compareRows();
+  const note = DATA.multi.note.replace(/-T#/g, '-TN').replace(/#/g, 'N') + ` N is ${COUNTS.slice(0, -1).join(', ')} or ${COUNTS[COUNTS.length - 1]}.`;
+  setNote(document.getElementById('setup'), note, '');
+  const byName = new Map(rows.map(r => [r.n, r]));
+  if (!state.picked) state.picked = DEFAULT_PICKS.filter(n => byName.has(n));
+  const picks = state.picked.map(n => byName.get(n)).filter(Boolean);
+  const t0 = COUNTS[0], tN = COUNTS[COUNTS.length - 1], mid = COUNTS.slice(1, -1);
+  document.getElementById('chart-title').textContent =
+    `${state.metric === 'c' ? 'Compression' : 'Decompression'} speedup over ${tlabel(t0)}`;
+  const limit = drawSpeedup(state.metric, picks, byName.get('memcpy'));
+  const clear = document.getElementById('clear-picks');
+  clear.disabled = !picks.length;
+  const legend = document.getElementById('legend');
+  legend.replaceChildren();
+  const key = (cls, text, color) => {
+    const k = document.createElement('span'); k.className = 'key-line';
+    const d = document.createElement('span'); d.className = cls; if (color) d.style.background = `var(${color})`;
+    k.append(d, document.createTextNode(text)); legend.append(k);
+  };
+  for (const t of mid) key('dot', tlabel(t), '--muted');
+  key('dot', tlabel(tN), '--lz');
+  key('line-key dotted', `block limit ${limit.toFixed(1)}×`);
+  const blocks = Math.ceil(DATA.orig / BLOCK);
+  document.getElementById('summary').textContent =
+    (picks.length ? '' : 'No compressors are selected. ') +
+    `Click a row in the thread scaling table below to add or remove it; click a row here to remove it. Perfect scaling is the thread count; ` +
+    `the block limit comes from ${DATA.file}'s ${blocks} blocks of 4 MB, as the busiest thread gets ${Math.ceil(blocks / tN)} of them at ${tlabel(tN)}. ` +
+    `memcpy shows the memory bandwidth available to that many cores.`;
+  renderScaleTable(rows);
+}
+
 /* ---------- render ---------- */
 function render() {
+  const cmp = state.set === 'compare';
+  document.getElementById('cmp').hidden = !cmp;
+  document.getElementById('main-table').hidden = cmp;
+  document.getElementById('front-field').hidden = cmp;
+  document.getElementById('clear-picks').hidden = !cmp;
+  if (cmp) { renderCompare(); return; }
   const rows = currentRows();
   const fr = { c: frontier(rows, 'c'), d: frontier(rows, 'd') };
   setNote(document.getElementById('setup'), DATA[state.set].note, state.threads);
@@ -589,6 +810,8 @@ function showSet(set, threads) {
   document.getElementById('set-single').setAttribute('aria-pressed', String(set === 'single'));
   document.querySelectorAll('[data-threads]').forEach(b =>
     b.setAttribute('aria-pressed', String(set === 'multi' && +b.dataset.threads === state.threads)));
+  const cb = document.getElementById('set-compare');
+  if (cb) cb.setAttribute('aria-pressed', String(set === 'compare'));
   render();
 }
 document.getElementById('set-single').addEventListener('click', () => showSet('single'));
@@ -607,17 +830,31 @@ const svg = document.getElementById('chart');
 svg.addEventListener('pointermove', e => {
   const h = nearest(e);
   if (!h) { tip.hidden = true; return; }
-  showTip(h, render.fr);
+  if (state.set === 'compare') showCompareTip(h); else showTip(h, render.fr);
 });
 svg.addEventListener('pointerleave', () => { tip.hidden = true; });
 svg.addEventListener('click', e => {
   const h = nearest(e);
   if (!h) return;
-  select(h.p.n, true);
+  if (state.set === 'compare') pick(h.p.n); else select(h.p.n, true);
 });
 document.getElementById('rows').addEventListener('click', e => {
   const tr = e.target.closest('tr[data-name]');
   if (tr && tr.dataset.name !== 'memcpy') select(tr.dataset.name, false);
+});
+
+document.getElementById('clear-picks').addEventListener('click', () => { state.picked = []; render(); });
+
+// add a compressor to the speedup chart, or remove it
+function pick(name) {
+  if (name === 'memcpy') return;
+  const i = state.picked.indexOf(name);
+  if (i >= 0) state.picked.splice(i, 1); else state.picked.push(name);
+  render();
+}
+document.getElementById('scale-table').addEventListener('click', e => {
+  const tr = e.target.closest('tbody tr[data-name]');
+  if (tr) pick(tr.dataset.name);
 });
 
 function select(name, scrollTable) {
@@ -660,6 +897,7 @@ function start(data) {
   document.getElementById('multi-field').hidden = !DATA.multi;
   if (DATA.multi) {
     const counts = Object.keys(DATA.multi.rows[0].c).map(Number).sort((a, b) => a - b);
+    COUNTS = counts;
     state.threads = counts[counts.length - 1];
     const seg = document.getElementById('threads');
     for (const t of counts) {
@@ -668,6 +906,14 @@ function start(data) {
       b.setAttribute('aria-pressed', 'false');
       b.setAttribute('aria-label', `Multi-threaded, ${t} thread${t > 1 ? 's' : ''}`);
       b.addEventListener('click', () => showSet('multi', t));
+      seg.append(b);
+    }
+    if (counts.length > 1) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.id = 'set-compare'; b.textContent = 'Compare';
+      b.setAttribute('aria-pressed', 'false');
+      b.setAttribute('aria-label', `Compare ${counts.join(', ')} threads`);
+      b.addEventListener('click', () => showSet('compare'));
       seg.append(b);
     }
   }
