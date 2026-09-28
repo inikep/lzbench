@@ -36,7 +36,7 @@ jobs:
         imageName: 'macOS-14'
         SELECTED_CC: clang
         SELECTED_CXX: clang++
-        ARTIFACT_SLUG: clang-arm64-macos
+        ARTIFACT_SLUG: clang-x86_64-macos
 
       # clang-6 and newer compilers
       clang-22 [Ubuntu 24.04 Noble]:
@@ -290,8 +290,14 @@ jobs:
         fi
       else
          REAL_COMPILER_VER=`$SELECTED_CC --version | grep -o "clang version.*" | awk '{print $3}'`
-         brew update
-         brew install ccache libomp
+         # Homebrew no longer builds bottles for Intel macOS (Tier 3), so "brew install
+         # ccache" builds ccache, LLVM and Rust from source and runs out of time. Use
+         # ccache's own universal binary instead. libomp is not needed: Apple clang
+         # doesn't accept -fopenmp, so bsc is built without OpenMP either way.
+         CCACHE_VER=4.14.1
+         curl -fsSL https://github.com/ccache/ccache/releases/download/v$CCACHE_VER/ccache-$CCACHE_VER-darwin.tar.gz | tar xz || exit 1
+         sudo install ccache-$CCACHE_VER-darwin/ccache /usr/local/bin/ || exit 1
+         rm -rf ccache-$CCACHE_VER-darwin
       fi
 
       UPDATE_TIME=$SECONDS
@@ -301,6 +307,7 @@ jobs:
       echo "##vso[task.setvariable variable=UPDATE_TIME]$UPDATE_TIME"
 
     displayName: '*** Install Build Dependencies'
+    timeoutInMinutes: 20
 
   - task: Cache@2
     continueOnError: true
