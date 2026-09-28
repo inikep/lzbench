@@ -97,8 +97,9 @@
   }
   input[type="search"] {
     font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--ring);
-    border-radius: 8px; padding: 6px 10px; width: 220px; max-width: 100%;
+    border-radius: 8px; padding: 6px 10px; width: 180px; max-width: 100%;
   }
+  .checks { display: flex; flex-wrap: wrap; gap: 0 16px; }
   .check { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-2); padding-block: 6px; cursor: pointer; }
   .check input { accent-color: var(--focus); width: 16px; height: 16px; margin: 0; }
 
@@ -199,7 +200,13 @@
       <label class="label" for="q">Find a compressor</label>
       <input type="search" id="q" placeholder="e.g. zstd, lz4hc, -9" autocomplete="off">
     </div>
-    <label class="check" for="front-only"><input type="checkbox" id="front-only"> Frontier only in the table</label>
+    <div class="field">
+      <span class="label" id="lbl-front">Pareto frontier</span>
+      <div class="checks" role="group" aria-labelledby="lbl-front">
+        <label class="check" for="front-line"><input type="checkbox" id="front-line" checked> Show on the chart</label>
+        <label class="check" for="front-only"><input type="checkbox" id="front-only"> Only these in the table</label>
+      </div>
+    </div>
   </div>
 
   <section class="card" aria-labelledby="chart-title">
@@ -274,7 +281,7 @@ function setNote(el, text, threads) {
   });
 }
 
-const state = { set: 'single', threads: 32, metric: 'c', query: '', frontOnly: false, sortKey: 'n', sortDir: 1, selected: null, hidden: new Set() };
+const state = { set: 'single', threads: 32, metric: 'c', query: '', frontOnly: false, showFront: true, sortKey: 'n', sortDir: 1, selected: null, hidden: new Set() };
 
 function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 
@@ -360,7 +367,7 @@ function drawChart(rows, fr) {
 
   // frontier line
   const fpts = pts.filter(p => fr.has(p.n)).sort((a, b) => a[state.metric] - b[state.metric]);
-  if (fpts.length > 1) {
+  if (state.showFront && fpts.length > 1) {
     const d = fpts.map((p, i) => (i ? 'L' : 'M') + X(p[state.metric]).toFixed(1) + ',' + Y(p.r).toFixed(1)).join('');
     el('path', { d, fill: 'none', stroke: css('--ink'), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', opacity: 0.85 }, svg);
   }
@@ -375,7 +382,7 @@ function drawChart(rows, fr) {
     const x = X(p[state.metric]), y = Y(p.r);
     const on = matches(p);
     const c = el('circle', {
-      class: 'pt', cx: x.toFixed(1), cy: y.toFixed(1), r: p.n === state.selected ? 8 : fr.has(p.n) ? 5.5 : 4.5,
+      class: 'pt', cx: x.toFixed(1), cy: y.toFixed(1), r: p.n === state.selected ? 8 : state.showFront && fr.has(p.n) ? 5.5 : 4.5,
       fill: css(GROUP_COLOR[p.g] || '--muted'), stroke: surface, 'stroke-width': 2,
       opacity: on ? 1 : 0.15,
     }, dots);
@@ -384,7 +391,7 @@ function drawChart(rows, fr) {
   }
 
   // selective direct labels: the two ends of the frontier
-  if (fpts.length) {
+  if (state.showFront && fpts.length) {
     const ends = [fpts[0], fpts[fpts.length - 1]];
     ends.forEach((p, i) => {
       if (state.hidden.has(p.g)) return;
@@ -521,7 +528,7 @@ function render() {
   const lk = document.createElement('span'); lk.className = 'key-line';
   const ln = document.createElement('span'); ln.className = 'line-key';
   lk.append(ln, document.createTextNode('Pareto frontier'));
-  legend.append(lk);
+  if (state.showFront) legend.append(lk);
 
   const mf = fr[state.metric];
   drawChart(rows, mf);
@@ -545,6 +552,7 @@ function press(groupAttr, value) {
 document.querySelectorAll('[data-set]').forEach(b => b.addEventListener('click', () => { state.set = b.dataset.set; state.selected = null; press('set', state.set); render(); }));
 document.querySelectorAll('[data-metric]').forEach(b => b.addEventListener('click', () => { state.metric = b.dataset.metric; press('metric', state.metric); render(); }));
 document.getElementById('q').addEventListener('input', e => { state.query = e.target.value.trim(); render(); });
+document.getElementById('front-line').addEventListener('change', e => { state.showFront = e.target.checked; render(); });
 document.getElementById('front-only').addEventListener('change', e => { state.frontOnly = e.target.checked; render(); });
 document.querySelectorAll('th[data-key] button').forEach(b => b.addEventListener('click', () => {
   const k = b.parentElement.dataset.key;
