@@ -194,6 +194,18 @@
     <p class="setup" id="setup"></p>
   </header>
 
+  <section class="card" aria-labelledby="chart-title">
+    <div class="card-head">
+      <h2 id="chart-title">Compression ratio vs. speed</h2>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="chart-wrap" id="chart-wrap">
+      <svg id="chart" role="img" aria-labelledby="chart-title chart-desc"><desc id="chart-desc"></desc></svg>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <p class="summary" id="summary"></p>
+  </section>
+
   <div class="controls" role="group" aria-label="Result set and chart options">
     <div class="field">
       <span class="label" id="lbl-single">Single-threaded</span>
@@ -225,18 +237,6 @@
       </div>
     </div>
   </div>
-
-  <section class="card" aria-labelledby="chart-title">
-    <div class="card-head">
-      <h2 id="chart-title">Compression ratio vs. speed</h2>
-      <div class="legend" id="legend"></div>
-    </div>
-    <div class="chart-wrap" id="chart-wrap">
-      <svg id="chart" role="img" aria-labelledby="chart-title chart-desc"><desc id="chart-desc"></desc></svg>
-      <div class="tip" id="tip" hidden></div>
-    </div>
-    <p class="summary" id="summary"></p>
-  </section>
 
   <section class="card" aria-labelledby="table-title">
     <div class="card-head">
