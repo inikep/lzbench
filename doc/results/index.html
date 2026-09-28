@@ -312,7 +312,8 @@ const fmtInt = v => v.toLocaleString('en-US');
 
 function currentRows() {
   if (state.set === 'single') return DATA.single.rows.map(r => ({ ...r }));
-  return DATA.multi.rows.map(r => ({ n: r.n, g: r.g, s: r.s, r: r.r, c: r.c[state.threads], d: r.d[state.threads] }));
+  // th: the threads a codec without multithreading actually used, e.g. [1, 1]
+  return DATA.multi.rows.map(r => ({ n: r.n, g: r.g, s: r.s, r: r.r, c: r.c[state.threads], d: r.d[state.threads], th: r.th && r.th[state.threads] }));
 }
 
 // Pareto frontier for one speed metric: a result is on it when no other result is both faster and has a better (lower) ratio.
@@ -324,6 +325,11 @@ function frontier(rows, metric) {
     if (p.s < best) { out.add(p.n); best = p.s; }
   }
   return out;
+}
+
+function threadsNote(th) {
+  const t = n => `${n} thread${n > 1 ? 's' : ''}`;
+  return th[0] === th[1] ? `No multithreading: runs on ${t(th[0])}` : `Runs on ${t(th[0])} to compress, ${t(th[1])} to decompress`;
 }
 
 function matches(r) {
@@ -443,6 +449,11 @@ function showTip(hit, fr) {
   add('Decompression', fmtSpeed(p.d) + ' MB/s');
   add('Ratio', p.r.toFixed(2) + '%');
   tip.append(name, vals);
+  if (p.th) {
+    const te = document.createElement('div'); te.className = 'front';
+    te.textContent = threadsNote(p.th);
+    tip.append(te);
+  }
   const f = [fr.c.has(p.n) ? 'compression' : '', fr.d.has(p.n) ? 'decompression' : ''].filter(Boolean);
   if (f.length) {
     const fe = document.createElement('div'); fe.className = 'front';
@@ -499,6 +510,11 @@ function renderTable(rows, fr) {
     const dot = document.createElement('span'); dot.className = 'dot';
     dot.style.background = r.g ? `var(${GROUP_COLOR[r.g]})` : 'transparent';
     nm.append(dot, document.createTextNode(r.n));
+    if (r.th) {
+      const s = document.createElement('span'); s.className = 'pill'; s.title = threadsNote(r.th);
+      s.textContent = r.th[0] === r.th[1] ? `${r.th[0]} thread${r.th[0] > 1 ? 's' : ''}` : `${r.th[0]},${r.th[1]} threads`;
+      nm.append(s);
+    }
     td(r.g || 'reference');
     td(fmtSpeed(r.c));
     td(fmtSpeed(r.d));

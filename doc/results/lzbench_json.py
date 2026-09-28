@@ -10,7 +10,7 @@ Single-threaded results come from one run of lzbench with -o1 (markdown) or
 memcpy, so the memcpy rows split the results into groups named by --groups.
 Multi-threaded results are one file per thread count, for example:
 
-    lzbench -eMAINSTREAM -b4096 -T8 -t8,8 -o4 silesia.tar > mt8.csv
+    lzbench -eALL -b4096 -T8 -t8,8 -o1 silesia.tar > mt8.md
 
 and their groups are taken from the single-threaded results of the same codec.
 
@@ -30,12 +30,15 @@ import json
 import re
 import sys
 
-MD_ROW = re.compile(r'^\|\s*(?P<n>[^|]+?)\s*\|\s*(?P<c>[\d.]+) MB/s\s*\|\s*(?P<d>[\d.]+) MB/s\s*\|'
+# -T# adds a "C,D Threads" column: the threads used for compression and decompression
+MD_ROW = re.compile(r'^\|\s*(?P<n>[^|]+?)\s*\|(?:\s*(?P<ct>\d+),\s*(?P<dt>\d+)\s*\|)?'
+                    r'\s*(?P<c>[\d.]+) MB/s\s*\|\s*(?P<d>[\d.]+) MB/s\s*\|'
                     r'\s*(?P<s>\d+)\s*\|\s*(?P<r>[\d.]+)\s*\|\s*(?P<f>[^|]+?)\s*\|')
 
 
 def read_results(path):
-    """Return [(name, compr MB/s, decompr MB/s, compressed size, ratio %, filename)] in run order."""
+    """Return [(name, compr MB/s, decompr MB/s, compressed size, ratio %, filename, threads)]
+    in run order, where threads is (compression, decompression) or None if not shown."""
     rows = []
     with open(path, newline='') as f:
         text = f.read()
@@ -43,12 +46,13 @@ def read_results(path):
         for rec in csv.DictReader(text.splitlines()):
             rows.append((rec['Compressor name'].strip(), float(rec['Compression speed']),
                          float(rec['Decompression speed']), int(rec['Compressed size']),
-                         float(rec['Ratio']), rec['Filename'].strip()))
+                         float(rec['Ratio']), rec['Filename'].strip(), None))
     else:
         for line in text.splitlines():
             m = MD_ROW.match(line)
             if m:
-                rows.append((m['n'], float(m['c']), float(m['d']), int(m['s']), float(m['r']), m['f']))
+                threads = (int(m['ct']), int(m['dt'])) if m['ct'] else None
+                rows.append((m['n'], float(m['c']), float(m['d']), int(m['s']), float(m['r']), m['f'], threads))
     if not rows:
         sys.exit(f'{path}: no lzbench results found (expected -o1 or -o4 output)')
     files = {r[5] for r in rows}
@@ -59,7 +63,7 @@ def read_results(path):
 
 def single_threaded(path, groups):
     out, seen, group = [], set(), -1
-    for n, c, d, s, r, _ in read_results(path):
+    for n, c, d, s, r, _, _ in read_results(path):
         if n == 'memcpy':
             group += 1
         # -o1c# prints a sorted copy of the table after the results; a repeated
@@ -89,11 +93,21 @@ def multi_threaded(specs, single):
         threads, _, path = spec.partition('=')
         if not threads.isdigit() or not path:
             sys.exit(f'--multi {spec}: expected THREADS=FILE')
-        for n, c, d, s, r, _ in read_results(path):
+        seen = set()
+        for n, c, d, s, r, _, used in read_results(path):
+            # keep the first memcpy, and stop at the sorted copy that -o1c# prints
+            if n in seen:
+                if n == 'memcpy':
+                    continue
+                break
+            seen.add(n)
             row = out.setdefault(n, {'n': n, 'g': by_name.get(n, by_codec.get(codec(n), '')) if n != 'memcpy' else '',
                                      's': s, 'r': r, 'c': {}, 'd': {}})
             row['c'][threads] = c
             row['d'][threads] = d
+            # codecs without multithreading (e.g. crush, tornado) run on fewer threads
+            if used and used != (int(threads), int(threads)):
+                row.setdefault('th', {})[threads] = list(used)
     counts = {len(r['c']) for r in out.values()}
     if len(counts) > 1:
         sys.exit('--multi: the files do not have the same compressors')
