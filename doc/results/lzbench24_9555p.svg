@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="880" height="420" viewBox="0 0 880 420" role="img" aria-label="lzbench 2.4 on Silesia: compressed size against compression and decompression speed">
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="420" viewBox="0 0 880 420" role="img" aria-label="lzbench 2.4 on Silesia: compression ratio against compression and decompression speed">
 <style>
   .bg { fill: #fcfcfb; stroke: rgba(11,11,11,0.10); }
   .grid { stroke: #e1e0d9; }
@@ -27,7 +27,7 @@
 </style>
 <rect class="bg" x="0.5" y="0.5" width="879" height="419" rx="12"/>
 <text class="title" x="20" y="30">lzbench 2.4 on Silesia</text>
-<text class="sub" x="20" y="50">AMD EPYC 9555P, single thread; y: compressed size, % of original</text>
+<text class="sub" x="20" y="50">AMD EPYC 9555P, single thread; ratio in %, lower is better</text>
 <text class="link" x="864" y="30" text-anchor="end">Open the interactive version →</text>
 <circle class="lz" cx="468" cy="46" r="4.5"/><text class="key" x="477" y="50">LZ (173)</text>
 <circle class="sym" cx="546" cy="46" r="4.5"/><text class="key" x="555" y="50">SYMMETRIC (26)</text>
@@ -40,7 +40,7 @@
 <text x="40" y="275.3" text-anchor="end">50%</text>
 <text x="40" y="321.7" text-anchor="end">60%</text>
 <text x="40" y="368.0" text-anchor="end">70%</text>
-<text class="panel" x="48" y="74">Compression speed</text>
+<text class="panel" x="48" y="74">Compression ratio vs. compression speed</text>
 <line class="grid" x1="48.0" x2="48.0" y1="86" y2="364"/>
 <text x="48.0" y="381" text-anchor="middle">0.1</text>
 <line class="grid" x1="123.4" x2="123.4" y1="86" y2="364"/>
@@ -277,7 +277,7 @@
 <circle class="misc ring" stroke-width="1.5" cx="262.2" cy="174.1" r="4.5"/>
 <polyline class="front" fill="none" stroke-width="2" stroke-linejoin="round" opacity="0.85" points="398.5,317.2 340.9,261.8 330.0,260.2 327.5,246.5 323.7,229.7 323.5,224.6 320.5,199.7 315.4,191.2 297.2,189.7 285.0,188.5 281.8,176.8 262.2,174.1 258.4,170.2 253.6,169.9 240.8,166.4 233.4,150.5 231.2,148.1 220.5,147.4 204.5,142.9 164.0,134.2 153.1,131.1 100.0,128.1"/>
 <text class="label" x="108.0" y="119.1">zpaq 7.15 -5</text>
-<text class="panel" x="473.0" y="74">Decompression speed</text>
+<text class="panel" x="473.0" y="74">Compression ratio vs. decompression speed</text>
 <line class="grid" x1="473.0" x2="473.0" y1="86" y2="364"/>
 <text x="473.0" y="381" text-anchor="middle">0.1</text>
 <line class="grid" x1="548.4" x2="548.4" y1="86" y2="364"/>

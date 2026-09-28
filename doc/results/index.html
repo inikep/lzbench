@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>lzbench results</title>
-<meta name="description" content="lzbench results: a sortable table and speed vs. compressed size charts with the Pareto frontier.">
+<meta name="description" content="lzbench results: a sortable table and compression ratio vs. speed charts with the Pareto frontier.">
 <style>
   :root {
     --plane: #f9f9f7;
@@ -204,7 +204,7 @@
 
   <section class="card" aria-labelledby="chart-title">
     <div class="card-head">
-      <h2 id="chart-title">Compressed size vs. speed</h2>
+      <h2 id="chart-title">Compression ratio vs. speed</h2>
       <div class="legend" id="legend"></div>
     </div>
     <div class="chart-wrap" id="chart-wrap">
@@ -238,7 +238,7 @@
   </section>
 
   <p class="note">
-    A result is on the <strong>Pareto frontier</strong> when no other result is both faster and smaller.
+    A result is on the <strong>Pareto frontier</strong> when no other result is both faster and has a better (lower) ratio.
     There is one frontier for compression speed (<span class="pill">C</span>) and one for decompression speed
     (<span class="pill">D</span>); <code>memcpy</code> is shown as the memory-bandwidth reference and left out of both.
     Ratio is the compressed size as a percentage of the <span id="orig"></span>-byte <code id="file"></code>, so lower is better.
@@ -291,7 +291,7 @@ function currentRows() {
   return DATA.multi.rows.map(r => ({ n: r.n, g: r.g, s: r.s, r: r.r, c: r.c[state.threads], d: r.d[state.threads] }));
 }
 
-// Pareto frontier for one speed metric: a result is on it when no other result is both faster and smaller.
+// Pareto frontier for one speed metric: a result is on it when no other result is both faster and has a better (lower) ratio.
 function frontier(rows, metric) {
   const pts = rows.filter(r => r.n !== 'memcpy').slice().sort((a, b) => b[metric] - a[metric] || a.s - b.s);
   const out = new Set();
@@ -356,7 +356,7 @@ function drawChart(rows, fr) {
   const xt = el('text', { x: m.l + pw / 2, y: H - 6, 'text-anchor': 'middle', class: 'axis-title' }, grid);
   xt.textContent = (state.metric === 'c' ? 'Compression' : 'Decompression') + ' speed, MB/s (log scale) → faster';
   const yt = el('text', { x: 12, y: m.t + ph / 2, 'text-anchor': 'middle', class: 'axis-title', transform: `rotate(-90 12 ${m.t + ph / 2})` }, grid);
-  yt.textContent = 'Compressed size, % of original ↑ smaller';
+  yt.textContent = 'Compression ratio, % (lower is better) ↑';
 
   // frontier line
   const fpts = pts.filter(p => fr.has(p.n)).sort((a, b) => a[state.metric] - b[state.metric]);
@@ -397,7 +397,7 @@ function drawChart(rows, fr) {
   const sel = dots.querySelector(`circle[data-name="${CSS.escape(state.selected || '')}"]`);
   if (sel) dots.appendChild(sel);
   document.getElementById('chart-desc').textContent =
-    `Scatter plot of ${pts.length} results, ${state.metric === 'c' ? 'compression' : 'decompression'} speed against compressed size, with ${fpts.length} results on the Pareto frontier. The table below lists every value.`;
+    `Scatter plot of ${pts.length} results, ${state.metric === 'c' ? 'compression' : 'decompression'} speed against compression ratio, with ${fpts.length} results on the Pareto frontier. The table below lists every value.`;
 }
 
 /* ---------- tooltip & hit testing ---------- */
@@ -504,7 +504,7 @@ function render() {
   setNote(document.getElementById('setup'), DATA[state.set].note, state.threads);
   document.getElementById('threads-field').hidden = state.set !== 'multi';
   document.getElementById('chart-title').textContent =
-    `Compressed size vs. ${state.metric === 'c' ? 'compression' : 'decompression'} speed` + (state.set === 'multi' ? `, ${state.threads} thread${state.threads > 1 ? 's' : ''}` : '');
+    `Compression ratio vs. ${state.metric === 'c' ? 'compression' : 'decompression'} speed` + (state.set === 'multi' ? `, ${state.threads} thread${state.threads > 1 ? 's' : ''}` : '');
 
   const used = GROUPS.filter(g => rows.some(r => r.g === g.key));
   const legend = document.getElementById('legend');

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Draw the single-threaded results of a JSON file made by lzbench_json.py as a
-static SVG chart for README.md: compressed size against compression and against
+static SVG chart for README.md: compression ratio against compression and against
 decompression speed, with the Pareto frontier. The chart follows the viewer's
 light or dark color scheme.
 
@@ -47,7 +47,7 @@ STYLE = """
 
 
 def frontier(rows, metric):
-    """Results that no other result is both faster and smaller than, fastest first."""
+    """Results that no other result is both faster and better (lower ratio) than, fastest first."""
     out, best = [], math.inf
     for r in sorted(rows, key=lambda r: (-r[metric], r['s'])):
         if r['s'] < best:
@@ -102,13 +102,13 @@ def main():
     y_lo, y_hi = math.floor(min(ratios) / 10) * 10, math.ceil(max(ratios) / 10) * 10
 
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}" '
-           f'role="img" aria-label="{escape(data["title"])}: compressed size against compression and decompression speed">',
+           f'role="img" aria-label="{escape(data["title"])}: compression ratio against compression and decompression speed">',
            f'<style>{STYLE}</style>',
            f'<rect class="bg" x="0.5" y="0.5" width="{W - 1}" height="{H - 1}" rx="12"/>',
            f'<text class="title" x="{LEFT - 28}" y="30">{escape(data["title"])}</text>']
     if args.subtitle:
         out.append(f'<text class="sub" x="{LEFT - 28}" y="50">{escape(args.subtitle)}; '
-                   f"y: compressed size, % of original</text>")
+                   f"ratio in %, lower is better</text>")
     out.append(f'<text class="link" x="{W - 16}" y="30" text-anchor="end">Open the interactive version →</text>')
 
     # legend
@@ -128,8 +128,8 @@ def main():
         y = top + (v - y_lo) / (y_hi - y_lo) * height
         out.append(f'<text x="{LEFT - 8}" y="{y + 4:.1f}" text-anchor="end">{v}%</text>')
     width = (W - LEFT - GAP - RIGHT) / 2
-    panel(out, rows, 'c', LEFT, width, y_lo, y_hi, 'Compression speed')
-    panel(out, rows, 'd', LEFT + width + GAP, width, y_lo, y_hi, 'Decompression speed')
+    panel(out, rows, 'c', LEFT, width, y_lo, y_hi, 'Compression ratio vs. compression speed')
+    panel(out, rows, 'd', LEFT + width + GAP, width, y_lo, y_hi, 'Compression ratio vs. decompression speed')
     out.append('</svg>')
     print('\n'.join(out))
 

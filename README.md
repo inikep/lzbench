@@ -132,9 +132,9 @@ boost disabled for stability. The operating system was `Ubuntu 26.04`, and the b
 [Silesia compression corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia).
 
 The results sorted by ratio are available [here](doc/lzbench24_sorted.md). An [interactive version](https://inikep.github.io/lzbench/)
-of the single- and multi-threaded results can be sorted and searched, and charts compressed size against speed with the Pareto frontier.
+of the single- and multi-threaded results can be sorted and searched, and charts compression ratio against speed with the Pareto frontier.
 
-[![lzbench 2.4 results: compressed size against compression and decompression speed, with the Pareto frontier. Click for the interactive version.](doc/results/lzbench24_9555p.svg)](https://inikep.github.io/lzbench/)
+[![lzbench 2.4 results: compression ratio against compression and decompression speed, with the Pareto frontier. Click for the interactive version.](doc/results/lzbench24_9555p.svg)](https://inikep.github.io/lzbench/)
 
 | Compressor name         | Compression| Decompress.| Compr. size | Ratio |
 | ---------------         | -----------| -----------| ----------- | ----- |
