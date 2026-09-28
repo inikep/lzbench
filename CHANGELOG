@@ -16,6 +16,9 @@ v2.x.y (work-in-progress)
 - fix: the C++ sources of csc, gipfeli, lzham and yappy were compiled with USER_CFLAGS instead of
        USER_CXXFLAGS
 - fix: lzo1f was shown as "lzof" in the results (since 2.3)
+- fix: tornado -1, which expands incompressible data by up to 25%, overflowed the output buffer
+       (12.5% extra) and wrote a truncated stream that failed to decompress, e.g. with -b4096 on
+       silesia.tar; it now reports a compression error
 
 v2.4 (Sep 27, 2026)
 - added GPUCompact 1.1 (by @UDPSendToFailed)

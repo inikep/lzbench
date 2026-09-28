@@ -47,6 +47,7 @@ struct Results
 {
 	uint32_t inpos, inlen, outpos, outlen;
 	uint8_t *inbuf, *outbuf;
+	int overflow;                    // a write did not fit in outbuf
 };
 
 // Callback function called by compression routine to read/write data.
@@ -60,6 +61,7 @@ int ReadWriteCallback (const char *what, void *buf, int size, void *r_)
   if (strequ(what,"init")) {
   
 	  r.inpos = r.outpos = 0;
+	  r.overflow = 0;
 	  return FREEARC_OK;
 
   } else if (strequ(what,"read")) {
@@ -72,8 +74,10 @@ int ReadWriteCallback (const char *what, void *buf, int size, void *r_)
 
   } else if (strequ(what,"write") || strequ(what,"quasiwrite")) {
     if (strequ(what,"write")) {
-        if (r.outpos + size > r.outlen)
+        if (r.outpos + size > r.outlen) {
+            r.overflow = 1;
             return 0;
+        }
 		memcpy(r.outbuf+r.outpos, buf, size);
 		r.outpos += size;
 		return size;
@@ -120,6 +124,10 @@ uint32_t tor_compress(uint8_t method, uint8_t* inbuf, uint32_t inlen, uint8_t* o
 			
 	m.buffer = mymin (m.buffer, r.inlen+LOOKAHEAD*2);
 	int result = tor_compress (m, ReadWriteCallback, &r, NULL, -1); 
+	// incompressible data can expand by up to 25% (level 1); report a stream
+	// that did not fit instead of returning it with the rest dropped
+	if (result < 0 || r.overflow)
+		return 0;
 	return r.outpos;
 }
 
@@ -134,5 +142,7 @@ uint32_t tor_decompress(uint8_t* inbuf, uint32_t inlen, uint8_t* outbuf, uint32_
 	ReadWriteCallback ("init", NULL, 0, &r);
 	int result = tor_decompress(ReadWriteCallback, &r, NULL, -1); 
 	ReadWriteCallback ("done", NULL, 0, &r); 
+	if (result < 0 || r.overflow)
+		return 0;
 	return r.outpos;
 }

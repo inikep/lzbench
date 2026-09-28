@@ -308,7 +308,7 @@ static const alias_desc_t alias_desc[] =
     { "SYMMETRIC", "Includes compressors with similar compression and decompression speeds.",
               "memcpy/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,1,5,9/density,1,2,3/kanzi,5,6,7,8,9/lbzip2,1,5,9/ppmd8,1,4,9/pulsar/zpaq,1,5" },
     { "MISC", "Covers miscellaneous compressors.",
-              "memcpy/crush,0,2/lzjb/skim/tamp,8,12,15/tornado,1,6,11,16/zling,0,2,4" },
+              "memcpy/crush,0,2/lzjb/skim/tamp,8,12,15/tornado,2,6,11,16/zling,0,2,4" },
     { "ALL",  "Represents all major compressors.",
               "LZ/SYMMETRIC/MISC" },
     // CI uses FASTEST for multi-threaded testing
