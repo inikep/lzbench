@@ -16,7 +16,7 @@ and their groups are taken from the single-threaded results of the same codec.
 
 Example:
 
-    doc/results/lzbench_json.py --title "lzbench 2.4 on Silesia" \\
+    doc/results/lzbench_json.py --title "lzbench 2.4 on Silesia Corpus" \\
         --single st.csv --single-note "..." \\
         --multi 1=mt1.csv --multi 8=mt8.csv --multi 32=mt32.csv --multi-note "..." \\
         > doc/results/lzbench24_9555p.json
