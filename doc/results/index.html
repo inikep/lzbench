@@ -99,6 +99,7 @@
   .field > .label {
     font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
   }
+  .field > .seg { justify-self: start; }
   .seg { display: inline-flex; border: 1px solid var(--ring); border-radius: 8px; background: var(--surface); padding: 2px; gap: 2px; }
   .seg button {
     font: inherit; color: var(--ink-2); background: transparent; border: 0; border-radius: 6px;
@@ -194,16 +195,15 @@
   </header>
 
   <div class="controls" role="group" aria-label="Result set and chart options">
-    <div class="field" id="set-field">
-      <span class="label" id="lbl-set">Results</span>
-      <div class="seg" role="group" aria-labelledby="lbl-set">
-        <button type="button" id="set-single" data-set="single" aria-pressed="true">Single-threaded</button>
-        <button type="button" id="set-multi" data-set="multi" aria-pressed="false">Multi-threaded</button>
+    <div class="field">
+      <span class="label" id="lbl-single">Single-threaded</span>
+      <div class="seg" role="group" aria-labelledby="lbl-single">
+        <button type="button" id="set-single" aria-pressed="true">1 thread</button>
       </div>
     </div>
-    <div class="field" id="threads-field" hidden>
-      <span class="label" id="lbl-threads">Threads</span>
-      <div class="seg" role="group" aria-labelledby="lbl-threads" id="threads">
+    <div class="field" id="multi-field" hidden>
+      <span class="label" id="lbl-multi">Multi-threaded</span>
+      <div class="seg" role="group" aria-labelledby="lbl-multi" id="threads">
       </div>
     </div>
     <div class="field">
@@ -542,7 +542,6 @@ function render() {
   const rows = currentRows();
   const fr = { c: frontier(rows, 'c'), d: frontier(rows, 'd') };
   setNote(document.getElementById('setup'), DATA[state.set].note, state.threads);
-  document.getElementById('threads-field').hidden = state.set !== 'multi';
   document.getElementById('chart-title').textContent =
     `Compression ratio vs. ${state.metric === 'c' ? 'compression' : 'decompression'} speed` + (state.set === 'multi' ? `, ${state.threads} thread${state.threads > 1 ? 's' : ''}` : '');
 
@@ -582,7 +581,17 @@ function render() {
 function press(groupAttr, value) {
   document.querySelectorAll(`[data-${groupAttr}]`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset[groupAttr] === String(value))));
 }
-document.querySelectorAll('[data-set]').forEach(b => b.addEventListener('click', () => { state.set = b.dataset.set; state.selected = null; press('set', state.set); render(); }));
+// one result set is shown: single-threaded, or multi-threaded with a thread count
+function showSet(set, threads) {
+  if (set !== state.set) state.selected = null;
+  state.set = set;
+  if (threads) state.threads = threads;
+  document.getElementById('set-single').setAttribute('aria-pressed', String(set === 'single'));
+  document.querySelectorAll('[data-threads]').forEach(b =>
+    b.setAttribute('aria-pressed', String(set === 'multi' && +b.dataset.threads === state.threads)));
+  render();
+}
+document.getElementById('set-single').addEventListener('click', () => showSet('single'));
 document.querySelectorAll('[data-metric]').forEach(b => b.addEventListener('click', () => { state.metric = b.dataset.metric; press('metric', state.metric); render(); }));
 document.getElementById('q').addEventListener('input', e => { state.query = e.target.value.trim(); render(); });
 document.getElementById('front-line').addEventListener('change', e => { state.showFront = e.target.checked; render(); });
@@ -648,7 +657,7 @@ function start(data) {
   document.getElementById('title').textContent = DATA.title;
   document.getElementById('orig').textContent = fmtInt(DATA.orig);
   document.getElementById('file').textContent = DATA.file;
-  document.getElementById('set-field').hidden = !DATA.multi;
+  document.getElementById('multi-field').hidden = !DATA.multi;
   if (DATA.multi) {
     const counts = Object.keys(DATA.multi.rows[0].c).map(Number).sort((a, b) => a - b);
     state.threads = counts[counts.length - 1];
@@ -656,8 +665,9 @@ function start(data) {
     for (const t of counts) {
       const b = document.createElement('button');
       b.type = 'button'; b.dataset.threads = t; b.textContent = t;
-      b.setAttribute('aria-pressed', String(t === state.threads));
-      b.addEventListener('click', () => { state.threads = t; press('threads', t); render(); });
+      b.setAttribute('aria-pressed', 'false');
+      b.setAttribute('aria-label', `Multi-threaded, ${t} thread${t > 1 ? 's' : ''}`);
+      b.addEventListener('click', () => showSet('multi', t));
       seg.append(b);
     }
   }
