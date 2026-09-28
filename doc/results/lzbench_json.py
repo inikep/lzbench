@@ -124,9 +124,13 @@ def main():
     ap.add_argument('--multi', action='append', default=[], metavar='THREADS=FILE',
                     help='multi-threaded results for one thread count (repeat for each)')
     ap.add_argument('--multi-note', default='', help='how the multi-threaded results were made; # is the thread count')
+    ap.add_argument('--multi-threads-only', action='store_true',
+                    help='leave out multi-threaded results of codecs that ran on fewer threads (no multithreading)')
+    ap.add_argument('--exclude', action='append', default=[], metavar='NAME',
+                    help='leave out a result, e.g. "tornado 0.6a -1" (repeat for each)')
     args = ap.parse_args()
 
-    single = single_threaded(args.single, args.groups.split(','))
+    single = [r for r in single_threaded(args.single, args.groups.split(',')) if r['n'] not in args.exclude]
     data = {
         'title': args.title,
         'orig': next(r['s'] for r in single if r['n'] == 'memcpy'),
@@ -134,7 +138,9 @@ def main():
         'single': {'note': args.single_note, 'rows': single},
     }
     if args.multi:
-        data['multi'] = {'note': args.multi_note, 'rows': multi_threaded(args.multi, single)}
+        data['multi'] = {'note': args.multi_note,
+                         'rows': [r for r in multi_threaded(args.multi, single) if r['n'] not in args.exclude
+                                  and not (args.multi_threads_only and 'th' in r)]}
     json.dump(data, sys.stdout, separators=(',', ':'))
     sys.stdout.write('\n')
 
