@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>lzbench results</title>
 <meta name="description" content="lzbench results: a sortable table and compression ratio vs. speed charts with the Pareto frontier.">
+<script>
+  // apply a theme chosen with the page's button before the first paint
+  try {
+    const t = localStorage.getItem('lzbench-theme');
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
 <style>
   :root {
     --plane: #f9f9f7;
@@ -76,6 +83,13 @@
     gap: 20px;
   }
   header { display: grid; gap: 6px; }
+  .title-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .theme-btn {
+    font: inherit; font-size: 13px; color: var(--ink-2); background: var(--surface); border: 1px solid var(--ring);
+    border-radius: 8px; padding: 5px 11px; cursor: pointer; white-space: nowrap; flex: none;
+  }
+  .theme-btn:hover { background: var(--wash); color: var(--ink); }
+  .theme-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   h1 { margin: 0; font-size: 24px; line-height: 1.25; font-weight: 650; text-wrap: balance; }
   .setup { margin: 0; color: var(--ink-2); max-width: 78ch; }
   .setup code, .note code { font-family: var(--mono); font-size: 0.92em; white-space: nowrap; }
@@ -172,7 +186,10 @@
 <body>
 <div class="page">
   <header>
-    <h1 id="title">lzbench results</h1>
+    <div class="title-row">
+      <h1 id="title">lzbench results</h1>
+      <button type="button" class="theme-btn" id="theme-btn"></button>
+    </div>
     <p class="setup" id="setup"></p>
   </header>
 
@@ -588,7 +605,26 @@ function select(name, scrollTable) {
 }
 
 let rt;
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => DATA && render());
+// Theme: follows the system until the button picks one, which is remembered
+const themeBtn = document.getElementById('theme-btn');
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+function isDark() {
+  const t = document.documentElement.dataset.theme;
+  return t ? t === 'dark' : darkQuery.matches;
+}
+function updateThemeBtn() {
+  themeBtn.textContent = isDark() ? 'Light mode' : 'Dark mode';
+  themeBtn.setAttribute('aria-label', isDark() ? 'Switch to light mode' : 'Switch to dark mode');
+}
+themeBtn.addEventListener('click', () => {
+  const t = isDark() ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem('lzbench-theme', t); } catch (e) {}
+  updateThemeBtn();
+  if (DATA) render();
+});
+darkQuery.addEventListener('change', () => { updateThemeBtn(); if (DATA) render(); });
+updateThemeBtn();
 
 function start(data) {
   DATA = data;
