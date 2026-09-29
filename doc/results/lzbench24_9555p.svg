@@ -3,7 +3,7 @@
   .bg { fill: #fcfcfb; stroke: rgba(11,11,11,0.10); }
   .grid { stroke: #e1e0d9; }
   .axis { stroke: #c3c2b7; }
-  .front { stroke: #0b0b0b; }
+  .front { stroke: #808080; }
   text { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #7a7873; font-size: 12px; }
   .title { fill: #0b0b0b; font-size: 16px; font-weight: 650; }
   .sub, .panel, .key { fill: #52514e; font-size: 13px; }
