@@ -296,30 +296,3 @@ int64_t lzbench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_
 }
 
 #endif
-
-
-
-#ifndef BENCH_REMOVE_YALZ77
-#include "lz/yalz77/lz77.h"
-
-int64_t lzbench_yalz77_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    lz77::compress_t compress(codec_options->level, lz77::DEFAULT_BLOCKSIZE);
-    std::string compressed = compress.feed((unsigned char*)inbuf, (unsigned char*)inbuf+insize);
-    if (compressed.size() > outsize) return 0;
-    memcpy(outbuf, compressed.c_str(), compressed.size());
-    return compressed.size();
-}
-
-int64_t lzbench_yalz77_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    lz77::decompress_t decompress;
-    std::string temp;
-    decompress.feed((unsigned char*)inbuf, (unsigned char*)inbuf+insize, temp);
-    const std::string& decompressed = decompress.result();
-    if (decompressed.size() > outsize) return 0;
-    memcpy(outbuf, decompressed.c_str(), decompressed.size());
-    return decompressed.size();
-}
-
-#endif
