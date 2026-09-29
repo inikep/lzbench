@@ -16,7 +16,7 @@ from xml.sax.saxutils import escape
 W, H = 880, 420
 PANEL_TOP, PANEL_BOTTOM = 86, 56
 LEFT, GAP, RIGHT = 48, 48, 30
-GROUPS = [('LZ', 'lz'), ('SYMMETRIC', 'sym'), ('MISC', 'misc')]
+GROUPS = [('LZ', 'lz'), ('LZ+ENTROPY', 'lzent'), ('SYMMETRIC', 'sym')]
 
 STYLE = """
   .bg { fill: #fcfcfb; stroke: rgba(11,11,11,0.10); }
@@ -30,7 +30,7 @@ STYLE = """
   .label { fill: #52514e; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
   .link { fill: #2a78d6; font-size: 13px; font-weight: 600; }
   .ring { stroke: #fcfcfb; }
-  .lz { fill: #2a78d6; } .sym { fill: #eb6834; } .misc { fill: #1baf7a; }
+  .lz { fill: #2a78d6; } .sym { fill: #eb6834; } .lzent { fill: #1baf7a; }
   @media (prefers-color-scheme: dark) {
     .bg { fill: #1a1a19; stroke: rgba(255,255,255,0.10); }
     .grid { stroke: #2c2c2a; }
@@ -41,7 +41,7 @@ STYLE = """
     .sub, .panel, .key, .label { fill: #c3c2b7; }
     .link { fill: #6da7ec; }
     .ring { stroke: #1a1a19; }
-    .lz { fill: #3987e5; } .sym { fill: #d95926; } .misc { fill: #199e70; }
+    .lz { fill: #3987e5; } .sym { fill: #d95926; } .lzent { fill: #199e70; }
   }
 """
 

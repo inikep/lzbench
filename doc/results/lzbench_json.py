@@ -6,8 +6,11 @@ Single-threaded results come from one run of lzbench with -o1 (markdown) or
 
     lzbench -eALL -t8,8 -o4 silesia.tar > st.csv
 
-"-eALL" expands to LZ/SYMMETRIC/MISC and each of these aliases starts with
-memcpy, so the memcpy rows split the results into groups named by --groups.
+"-eALL" expands to LZ/LZ+ENTROPY/SYMMETRIC and each of these aliases starts
+with memcpy, so the memcpy rows split the results into groups named by
+--groups. With --aliases bench/lzbench.h, each result is put in the alias of
+--groups that lists its codec and level instead, which also regroups results
+from lzbench versions with other aliases (e.g. 2.4: LZ/SYMMETRIC/MISC).
 Multi-threaded results are one file per thread count, for example:
 
     lzbench -eALL -b4096 -T8 -t8,8 -o1 silesia.tar > mt8.md
@@ -79,6 +82,58 @@ def single_threaded(path, groups):
     return out
 
 
+def alias_groups(header, names):
+    """Map (codec, level) and (codec, None) -> group, from the aliases in lzbench.h."""
+    h = open(header).read()
+    versions = {m[0]: m[1] for m in re.findall(r'\{\s*"([^"]+)",\s*"([^"]+)",\s*-?\d+,\s*-?\d+,', h)}
+    seg = h[h.index('alias_desc[]'):]
+    aliases = {}
+    for m in re.finditer(r'\{\s*"([A-Za-z_0-9+]+)",\s*"[^"]*",((?:\s|\\|/\*.*?\*/|"[^"]*")+)\}', seg, re.S):
+        body = re.sub(r'/\*.*?\*/', '', m.group(2), flags=re.S)
+        aliases[m.group(1).upper()] = ''.join(re.findall(r'"([^"]*)"', body))
+    def expand(a):
+        out = []
+        for part in aliases[a].split('/'):
+            n, *levels = part.split(',')
+            if n.upper() in aliases and n not in versions:
+                out += expand(n.upper())
+            elif n != 'memcpy':
+                out += [(n, int(l)) for l in levels] or [(n, None)]
+        return out
+    group = {}
+    for g in names:
+        if g.upper() not in aliases:
+            sys.exit(f'{header}: no alias {g}')
+        for n, l in expand(g.upper()):
+            group.setdefault((versions[n], l), g)
+    return group
+
+
+def regroup(rows, group):
+    """Set each row's group from its name ("<name_version>" or "<name_version> -<level>")."""
+    missing = []
+    for r in rows:
+        if r['n'] == 'memcpy':
+            continue
+        n, _, level = r['n'].rpartition(' -')
+        try:
+            key = (n, int(level))
+        except ValueError:
+            key = (r['n'], None)
+        g = group.get(key) or group.get((key[0], None))
+        if g is None and key[1] is not None:
+            # a level no alias lists (e.g. from an older lzbench): use the codec's nearest listed level
+            listed = [l for (v, l) in group if v == key[0] and l is not None]
+            if listed:
+                g = group[(key[0], min(listed, key=lambda l: (abs(l - key[1]), l)))]
+        if g is None:
+            missing.append(r['n'])
+        else:
+            r['g'] = g
+    if missing:
+        sys.exit('--aliases: in none of the --groups aliases: ' + ', '.join(missing))
+
+
 def codec(name):
     return name.split(' ')[0]
 
@@ -118,8 +173,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--title', required=True)
     ap.add_argument('--single', required=True, metavar='FILE', help='single-threaded results (-o1 or -o4)')
-    ap.add_argument('--groups', default='LZ,SYMMETRIC,MISC',
+    ap.add_argument('--groups', default='LZ,LZ+ENTROPY,SYMMETRIC',
                     help='names of the memcpy-separated groups in --single (default: %(default)s)')
+    ap.add_argument('--aliases', metavar='LZBENCH_H',
+                    help='take the groups from the aliases in this lzbench.h instead of the memcpy rows')
     ap.add_argument('--single-note', default='', help='how the single-threaded results were made')
     ap.add_argument('--multi', action='append', default=[], metavar='THREADS=FILE',
                     help='multi-threaded results for one thread count (repeat for each)')
@@ -131,6 +188,8 @@ def main():
     args = ap.parse_args()
 
     single = [r for r in single_threaded(args.single, args.groups.split(',')) if r['n'] not in args.exclude]
+    if args.aliases:
+        regroup(single, alias_groups(args.aliases, args.groups.split(',')))
     data = {
         'title': args.title,
         'orig': next(r['s'] for r in single if r['n'] == 'memcpy'),

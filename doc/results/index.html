@@ -27,7 +27,7 @@
     --focus: #2a78d6;
     --lz: #2a78d6;
     --sym: #eb6834;
-    --misc: #1baf7a;
+    --lzent: #1baf7a;
     --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
@@ -47,7 +47,7 @@
       --focus: #6da7ec;
       --lz: #3987e5;
       --sym: #d95926;
-      --misc: #199e70;
+      --lzent: #199e70;
     }
   }
   :root[data-theme="dark"] {
@@ -65,7 +65,7 @@
     --focus: #6da7ec;
     --lz: #3987e5;
     --sym: #d95926;
-    --misc: #199e70;
+    --lzent: #199e70;
   }
 
   [hidden] { display: none !important; }
@@ -292,8 +292,8 @@
     There is one frontier for compression speed (<span class="pill">C</span>) and one for decompression speed
     (<span class="pill">D</span>); <code>memcpy</code> is shown as the memory-bandwidth reference and left out of both.
     Ratio is the compressed size as a percentage of the <span id="orig"></span>-byte <code id="file"></code>, so lower is better.
-    Groups are lzbench's own aliases: LZ, SYMMETRIC (BWT, PPM and other codecs with similar compression and
-    decompression speed) and MISC.
+    Groups are lzbench's own aliases: LZ (LZ codecs without an entropy coder), LZ+ENTROPY (LZ followed by Huffman,
+    FSE/ANS or range coding) and SYMMETRIC (BWT, PPM and other codecs with similar compression and decompression speed).
     The data comes from <a href="https://github.com/inikep/lzbench">lzbench</a>'s
     <code>doc/results</code> directory; <code>lzbench_json.py</code> there converts lzbench's output for this page.
   </p>
@@ -309,8 +309,8 @@ let DATA;
 
 const GROUPS = [
   { key: 'LZ', label: 'LZ', color: '--lz' },
+  { key: 'LZ+ENTROPY', label: 'LZ+ENTROPY', color: '--lzent' },
   { key: 'SYMMETRIC', label: 'SYMMETRIC', color: '--sym' },
-  { key: 'MISC', label: 'MISC', color: '--misc' },
 ];
 const GROUP_COLOR = Object.fromEntries(GROUPS.map(g => [g.key, g.color]));
 

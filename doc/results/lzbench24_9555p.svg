@@ -11,7 +11,7 @@
   .label { fill: #52514e; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px; }
   .link { fill: #2a78d6; font-size: 13px; font-weight: 600; }
   .ring { stroke: #fcfcfb; }
-  .lz { fill: #2a78d6; } .sym { fill: #eb6834; } .misc { fill: #1baf7a; }
+  .lz { fill: #2a78d6; } .sym { fill: #eb6834; } .lzent { fill: #1baf7a; }
   @media (prefers-color-scheme: dark) {
     .bg { fill: #1a1a19; stroke: rgba(255,255,255,0.10); }
     .grid { stroke: #2c2c2a; }
@@ -22,16 +22,16 @@
     .sub, .panel, .key, .label { fill: #c3c2b7; }
     .link { fill: #6da7ec; }
     .ring { stroke: #1a1a19; }
-    .lz { fill: #3987e5; } .sym { fill: #d95926; } .misc { fill: #199e70; }
+    .lz { fill: #3987e5; } .sym { fill: #d95926; } .lzent { fill: #199e70; }
   }
 </style>
 <rect class="bg" x="0.5" y="0.5" width="879" height="419" rx="12"/>
 <text class="title" x="20" y="30">lzbench 2.4 on Silesia Corpus</text>
 <text class="sub" x="20" y="50">AMD EPYC 9555P, single thread; ratio in %, lower is better</text>
 <text class="link" x="864" y="30" text-anchor="end">Open the interactive version →</text>
-<circle class="lz" cx="468" cy="46" r="4.5"/><text class="key" x="477" y="50">LZ (173)</text>
-<circle class="sym" cx="546" cy="46" r="4.5"/><text class="key" x="555" y="50">SYMMETRIC (26)</text>
-<circle class="misc" cx="666" cy="46" r="4.5"/><text class="key" x="675" y="50">MISC (14)</text>
+<circle class="lz" cx="426" cy="46" r="4.5"/><text class="key" x="435" y="50">LZ (107)</text>
+<circle class="lzent" cx="504" cy="46" r="4.5"/><text class="key" x="513" y="50">LZ+ENTROPY (79)</text>
+<circle class="sym" cx="631" cy="46" r="4.5"/><text class="key" x="640" y="50">SYMMETRIC (27)</text>
 <line class="front" stroke-width="2" x1="746" x2="762" y1="46" y2="46"/><text class="key" x="768" y="50">Pareto frontier</text>
 <text x="40" y="90.0" text-anchor="end">10%</text>
 <text x="40" y="136.3" text-anchor="end">20%</text>
@@ -62,30 +62,30 @@
 <line class="grid" x1="48" x2="425.0" y1="364.0" y2="364.0"/>
 <line class="axis" x1="48" x2="425.0" y1="364" y2="364"/>
 <text x="236.5" y="398" text-anchor="middle">MB/s, log scale; faster to the right</text>
-<circle class="lz ring" stroke-width="1.5" cx="255.2" cy="189.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="243.5" cy="188.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="255.2" cy="189.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="243.5" cy="188.8" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="295.6" cy="217.0" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="281.2" cy="204.8" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="225.8" cy="186.6" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="159.6" cy="180.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="314.4" cy="211.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="206.4" cy="164.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="104.4" cy="149.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="314.4" cy="211.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="206.4" cy="164.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="104.4" cy="149.8" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="307.1" cy="268.4" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="309.5" cy="260.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="224.3" cy="168.7" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="205.0" cy="157.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="191.8" cy="151.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="172.8" cy="147.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="163.3" cy="146.0" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="224.3" cy="168.7" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="205.0" cy="157.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="191.8" cy="151.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="172.8" cy="147.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="163.3" cy="146.0" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="296.2" cy="213.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="273.9" cy="180.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="248.1" cy="171.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="297.2" cy="200.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="283.5" cy="193.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="267.7" cy="187.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="235.4" cy="185.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="174.3" cy="181.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="273.9" cy="180.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="248.1" cy="171.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="297.2" cy="200.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="283.5" cy="193.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="267.7" cy="187.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="235.4" cy="185.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="174.3" cy="181.1" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="324.5" cy="265.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="290.6" cy="228.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="265.3" cy="217.2" r="3.5"/>
@@ -94,14 +94,14 @@
 <circle class="lz ring" stroke-width="1.5" cx="288.3" cy="225.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="226.4" cy="203.9" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="147.4" cy="189.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="315.8" cy="227.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="289.2" cy="211.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="267.9" cy="202.7" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="168.5" cy="192.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="308.4" cy="216.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="284.5" cy="200.0" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="225.4" cy="185.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="145.9" cy="172.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="315.8" cy="227.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="289.2" cy="211.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="267.9" cy="202.7" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="168.5" cy="192.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="308.4" cy="216.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="284.5" cy="200.0" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="225.4" cy="185.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="145.9" cy="172.3" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="347.0" cy="327.6" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="340.7" cy="302.3" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="333.9" cy="273.7" r="3.5"/>
@@ -112,22 +112,22 @@
 <circle class="lz ring" stroke-width="1.5" cx="246.4" cy="201.1" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="312.1" cy="270.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="311.6" cy="262.7" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="271.1" cy="187.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="271.1" cy="187.5" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="270.5" cy="277.0" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="251.7" cy="249.4" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="236.1" cy="235.3" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="198.5" cy="222.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="202.2" cy="179.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="161.1" cy="159.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="236.6" cy="179.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="192.8" cy="162.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="160.1" cy="148.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="142.8" cy="145.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="234.2" cy="171.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="226.1" cy="164.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="208.9" cy="161.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="160.8" cy="148.0" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="154.1" cy="146.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="202.2" cy="179.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="161.1" cy="159.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="236.6" cy="179.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="192.8" cy="162.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="160.1" cy="148.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="142.8" cy="145.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="234.2" cy="171.9" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="226.1" cy="164.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="208.9" cy="161.9" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="160.8" cy="148.0" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="154.1" cy="146.1" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="301.2" cy="272.4" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="273.5" cy="247.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="299.7" cy="267.4" r="3.5"/>
@@ -169,11 +169,11 @@
 <circle class="lz ring" stroke-width="1.5" cx="194.8" cy="204.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="194.9" cy="204.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="262.0" cy="216.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="314.4" cy="211.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="282.0" cy="188.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="251.5" cy="169.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="210.7" cy="164.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="110.3" cy="149.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="314.4" cy="211.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="282.0" cy="188.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="251.5" cy="169.9" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="210.7" cy="164.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="110.3" cy="149.8" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="313.9" cy="256.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="304.2" cy="246.3" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="264.3" cy="237.3" r="3.5"/>
@@ -188,9 +188,9 @@
 <circle class="lz ring" stroke-width="1.5" cx="324.4" cy="246.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="297.2" cy="224.5" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="255.3" cy="218.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="311.9" cy="257.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="310.9" cy="251.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="310.1" cy="249.7" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="311.9" cy="257.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="310.9" cy="251.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="310.1" cy="249.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="324.0" cy="261.4" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="251.5" cy="218.3" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="221.3" cy="201.2" r="3.5"/>
@@ -201,27 +201,27 @@
 <circle class="lz ring" stroke-width="1.5" cx="252.2" cy="217.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="221.0" cy="199.9" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="152.1" cy="191.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="220.2" cy="168.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="198.1" cy="162.0" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="167.5" cy="149.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="159.5" cy="146.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="156.5" cy="146.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="220.2" cy="168.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="198.1" cy="162.0" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="167.5" cy="149.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="159.5" cy="146.9" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="156.5" cy="146.3" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="279.6" cy="245.1" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="252.7" cy="227.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="239.7" cy="223.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="270.4" cy="208.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="231.1" cy="188.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="202.8" cy="187.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="296.2" cy="245.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="258.6" cy="190.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="229.3" cy="187.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="330.8" cy="264.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="196.7" cy="164.0" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="169.8" cy="156.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="145.9" cy="154.0" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="333.6" cy="325.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="291.2" cy="253.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="195.5" cy="207.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="270.4" cy="208.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="231.1" cy="188.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="202.8" cy="187.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="296.2" cy="245.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="258.6" cy="190.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="229.3" cy="187.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="330.8" cy="264.9" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="196.7" cy="164.0" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="169.8" cy="156.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="145.9" cy="154.0" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="333.6" cy="325.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="291.2" cy="253.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="195.5" cy="207.8" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="208.6" cy="171.9" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="207.9" cy="161.5" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="206.6" cy="159.0" r="3.5"/>
@@ -240,32 +240,32 @@
 <circle class="sym ring" stroke-width="1.5" cx="154.8" cy="145.1" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="140.0" cy="161.7" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="235.3" cy="192.2" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="258.0" cy="199.4" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="126.8" cy="179.0" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="308.4" cy="307.8" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="377.1" cy="338.7" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="227.9" cy="290.7" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="172.7" cy="248.6" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="118.8" cy="237.8" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="315.5" cy="274.4" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="248.7" cy="176.0" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="211.4" cy="168.5" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="151.0" cy="156.1" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="269.3" cy="177.4" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="252.7" cy="172.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="285.0" cy="188.5" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="253.6" cy="169.9" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="297.2" cy="189.7" r="4.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="258.0" cy="199.4" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="126.8" cy="179.0" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="308.4" cy="307.8" r="3.5"/>
+<circle class="sym ring" stroke-width="1.5" cx="377.1" cy="338.7" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="227.9" cy="290.7" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="172.7" cy="248.6" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="118.8" cy="237.8" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="315.5" cy="274.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="248.7" cy="176.0" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="211.4" cy="168.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="151.0" cy="156.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="269.3" cy="177.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="252.7" cy="172.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="285.0" cy="188.5" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="253.6" cy="169.9" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="297.2" cy="189.7" r="4.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="330.0" cy="260.2" r="4.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="323.5" cy="224.6" r="4.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="398.5" cy="317.2" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="327.5" cy="246.5" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="323.7" cy="229.7" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="320.5" cy="199.7" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="315.4" cy="191.2" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="281.8" cy="176.8" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="258.4" cy="170.2" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="240.8" cy="166.4" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="327.5" cy="246.5" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="323.7" cy="229.7" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="320.5" cy="199.7" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="315.4" cy="191.2" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="281.8" cy="176.8" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="258.4" cy="170.2" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="240.8" cy="166.4" r="4.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="220.5" cy="147.4" r="4.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="233.4" cy="150.5" r="4.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="231.2" cy="148.1" r="4.5"/>
@@ -274,7 +274,7 @@
 <circle class="sym ring" stroke-width="1.5" cx="164.0" cy="134.2" r="4.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="153.1" cy="131.1" r="4.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="100.0" cy="128.1" r="4.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="262.2" cy="174.1" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="262.2" cy="174.1" r="4.5"/>
 <polyline class="front" fill="none" stroke-width="2" stroke-linejoin="round" opacity="0.85" points="398.5,317.2 340.9,261.8 330.0,260.2 327.5,246.5 323.7,229.7 323.5,224.6 320.5,199.7 315.4,191.2 297.2,189.7 285.0,188.5 281.8,176.8 262.2,174.1 258.4,170.2 253.6,169.9 240.8,166.4 233.4,150.5 231.2,148.1 220.5,147.4 204.5,142.9 164.0,134.2 153.1,131.1 100.0,128.1"/>
 <text class="label" x="108.0" y="119.1">zpaq 7.15 -5</text>
 <text class="panel" x="473.0" y="74">Compression ratio vs. decompression speed</text>
@@ -299,31 +299,31 @@
 <line class="grid" x1="473.0" x2="850.0" y1="364.0" y2="364.0"/>
 <line class="axis" x1="473.0" x2="850.0" y1="364" y2="364"/>
 <text x="661.5" y="398" text-anchor="middle">MB/s, log scale; faster to the right</text>
-<circle class="lz ring" stroke-width="1.5" cx="761.7" cy="189.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="761.9" cy="188.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="761.7" cy="189.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="761.9" cy="188.8" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="734.4" cy="217.0" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="735.3" cy="204.8" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="738.1" cy="186.6" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="740.7" cy="180.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="737.5" cy="211.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="742.7" cy="188.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="746.1" cy="169.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="747.9" cy="164.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="737.5" cy="211.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="742.7" cy="188.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="746.1" cy="169.9" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="747.9" cy="164.6" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="757.2" cy="268.4" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="755.7" cy="260.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="685.1" cy="168.7" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="687.5" cy="157.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="690.1" cy="151.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="691.3" cy="147.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="685.1" cy="168.7" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="687.5" cy="157.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="690.1" cy="151.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="691.3" cy="147.1" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="778.1" cy="213.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="761.3" cy="189.7" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="739.1" cy="180.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="716.2" cy="171.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="766.6" cy="200.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="767.7" cy="193.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="768.1" cy="187.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="767.5" cy="185.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="768.6" cy="181.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="761.3" cy="189.7" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="739.1" cy="180.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="716.2" cy="171.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="766.6" cy="200.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="767.7" cy="193.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="768.1" cy="187.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="767.5" cy="185.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="768.6" cy="181.1" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="795.8" cy="265.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="793.3" cy="228.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="794.9" cy="217.2" r="3.5"/>
@@ -331,14 +331,14 @@
 <circle class="lz ring" stroke-width="1.5" cx="783.2" cy="251.5" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="785.2" cy="225.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="785.8" cy="203.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="779.3" cy="227.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="781.1" cy="211.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="787.3" cy="202.7" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="786.1" cy="192.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="773.7" cy="216.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="776.7" cy="200.0" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="779.1" cy="185.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="776.4" cy="172.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="779.3" cy="227.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="781.1" cy="211.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="787.3" cy="202.7" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="786.1" cy="192.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="773.7" cy="216.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="776.7" cy="200.0" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="779.1" cy="185.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="776.4" cy="172.3" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="819.8" cy="327.6" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="818.5" cy="302.3" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="818.2" cy="273.7" r="3.5"/>
@@ -350,21 +350,21 @@
 <circle class="lz ring" stroke-width="1.5" cx="805.0" cy="224.6" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="753.8" cy="270.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="754.9" cy="262.7" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="764.4" cy="187.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="764.4" cy="187.5" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="750.4" cy="277.0" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="750.4" cy="249.4" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="752.3" cy="235.3" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="755.3" cy="222.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="721.9" cy="179.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="732.1" cy="159.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="676.8" cy="179.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="681.6" cy="162.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="684.5" cy="148.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="683.7" cy="171.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="687.6" cy="164.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="689.2" cy="161.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="691.2" cy="148.0" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="691.1" cy="146.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="721.9" cy="179.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="732.1" cy="159.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="676.8" cy="179.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="681.6" cy="162.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="684.5" cy="148.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="683.7" cy="171.9" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="687.6" cy="164.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="689.2" cy="161.9" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="691.2" cy="148.0" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="691.1" cy="146.1" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="756.7" cy="272.4" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="758.4" cy="247.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="758.5" cy="267.4" r="3.5"/>
@@ -406,11 +406,11 @@
 <circle class="lz ring" stroke-width="1.5" cx="827.4" cy="204.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="827.4" cy="204.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="767.3" cy="216.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="734.2" cy="211.1" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="740.1" cy="188.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="743.6" cy="169.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="746.1" cy="164.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="742.1" cy="149.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="734.2" cy="211.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="740.1" cy="188.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="743.6" cy="169.9" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="746.1" cy="164.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="742.1" cy="149.8" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="797.9" cy="317.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="830.4" cy="256.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="837.5" cy="246.3" r="3.5"/>
@@ -422,9 +422,9 @@
 <circle class="lz ring" stroke-width="1.5" cx="754.5" cy="246.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="754.8" cy="224.5" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="765.7" cy="218.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="738.2" cy="257.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="738.5" cy="251.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="738.3" cy="249.7" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="738.2" cy="257.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="738.5" cy="251.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="738.3" cy="249.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="773.8" cy="261.4" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="731.4" cy="218.3" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="735.8" cy="201.2" r="3.5"/>
@@ -435,28 +435,28 @@
 <circle class="lz ring" stroke-width="1.5" cx="731.5" cy="217.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="736.2" cy="199.9" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="739.0" cy="191.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="700.8" cy="168.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="704.1" cy="162.0" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="705.4" cy="149.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="700.8" cy="168.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="704.1" cy="162.0" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="705.4" cy="149.5" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="752.7" cy="245.1" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="753.7" cy="227.7" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="754.1" cy="223.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="734.8" cy="208.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="736.7" cy="188.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="737.1" cy="187.6" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="749.6" cy="245.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="751.8" cy="190.3" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="752.3" cy="187.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="796.5" cy="264.9" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="793.9" cy="246.5" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="792.1" cy="229.7" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="784.5" cy="199.7" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="782.1" cy="191.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="779.8" cy="176.8" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="783.2" cy="170.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="783.7" cy="166.4" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="825.4" cy="253.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="819.5" cy="207.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="734.8" cy="208.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="736.7" cy="188.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="737.1" cy="187.6" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="749.6" cy="245.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="751.8" cy="190.3" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="752.3" cy="187.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="796.5" cy="264.9" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="793.9" cy="246.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="792.1" cy="229.7" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="784.5" cy="199.7" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="782.1" cy="191.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="779.8" cy="176.8" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="783.2" cy="170.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="783.7" cy="166.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="825.4" cy="253.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="819.5" cy="207.8" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="653.8" cy="147.4" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="638.8" cy="150.5" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="636.4" cy="148.1" r="3.5"/>
@@ -478,35 +478,35 @@
 <circle class="sym ring" stroke-width="1.5" cx="579.1" cy="145.1" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="648.4" cy="161.7" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="695.3" cy="192.2" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="736.9" cy="199.4" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="742.2" cy="179.0" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="742.9" cy="307.8" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="815.6" cy="338.7" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="716.6" cy="290.7" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="719.3" cy="248.6" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="722.2" cy="237.8" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="746.5" cy="274.4" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="724.3" cy="176.0" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="725.6" cy="168.5" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="728.8" cy="156.1" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="719.0" cy="177.4" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="720.0" cy="174.1" r="3.5"/>
-<circle class="misc ring" stroke-width="1.5" cx="720.6" cy="172.2" r="3.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="743.2" cy="149.8" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="691.5" cy="146.0" r="4.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="736.9" cy="199.4" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="742.2" cy="179.0" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="742.9" cy="307.8" r="3.5"/>
+<circle class="sym ring" stroke-width="1.5" cx="815.6" cy="338.7" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="716.6" cy="290.7" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="719.3" cy="248.6" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="722.2" cy="237.8" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="746.5" cy="274.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="724.3" cy="176.0" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="725.6" cy="168.5" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="728.8" cy="156.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="719.0" cy="177.4" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="720.0" cy="174.1" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="720.6" cy="172.2" r="3.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="743.2" cy="149.8" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="691.5" cy="146.0" r="4.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="787.2" cy="189.8" r="4.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="804.0" cy="201.1" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="685.2" cy="145.3" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="685.2" cy="145.3" r="4.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="841.9" cy="237.3" r="4.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="836.8" cy="226.5" r="4.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="835.7" cy="214.6" r="4.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="828.4" cy="204.2" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="706.2" cy="146.9" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="705.7" cy="146.3" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="784.3" cy="164.0" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="779.9" cy="156.1" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="777.3" cy="154.0" r="4.5"/>
-<circle class="lz ring" stroke-width="1.5" cx="843.3" cy="325.8" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="706.2" cy="146.9" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="705.7" cy="146.3" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="784.3" cy="164.0" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="779.9" cy="156.1" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="777.3" cy="154.0" r="4.5"/>
+<circle class="lzent ring" stroke-width="1.5" cx="843.3" cy="325.8" r="4.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="630.8" cy="142.9" r="4.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="638.8" cy="143.1" r="4.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="588.4" cy="134.2" r="4.5"/>
