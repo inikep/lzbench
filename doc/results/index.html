@@ -152,7 +152,7 @@
   .summary strong { color: var(--ink); font-weight: 650; }
 
   .table-wrap { overflow-x: auto; }
-  table { border-collapse: collapse; width: 100%; min-width: 760px; font-variant-numeric: tabular-nums; }
+  table { border-collapse: collapse; width: 100%; min-width: 900px; font-variant-numeric: tabular-nums; }
   th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
   th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
   th { font-size: 12px; font-weight: 600; color: var(--muted); position: sticky; top: env(safe-area-inset-top, 0px); background: var(--surface); z-index: 1; }
@@ -274,12 +274,13 @@
         <thead>
           <tr>
             <th scope="col" data-key="n"><button type="button">Compressor</button></th>
-            <th scope="col" data-key="g"><button type="button">Group</button></th>
+            <th scope="col" data-key="a"><button type="button">Algorithm</button></th>
             <th scope="col" data-key="c"><button type="button">Compression MB/s</button></th>
             <th scope="col" data-key="d"><button type="button">Decompression MB/s</button></th>
             <th scope="col" data-key="s"><button type="button">Compressed size</button></th>
             <th scope="col" data-key="r"><button type="button">Ratio %</button></th>
             <th scope="col">Frontier</th>
+            <th scope="col" data-key="g"><button type="button">Group</button></th>
           </tr>
         </thead>
         <tbody id="rows"></tbody>
@@ -347,7 +348,7 @@ const fmtInt = v => v.toLocaleString('en-US');
 function currentRows() {
   if (state.set === 'single') return DATA.single.rows.map(r => ({ ...r }));
   // th: the threads a codec without multithreading actually used, e.g. [1, 1]
-  return DATA.multi.rows.map(r => ({ n: r.n, g: r.g, s: r.s, r: r.r, c: r.c[state.threads], d: r.d[state.threads], th: r.th && r.th[state.threads] }));
+  return DATA.multi.rows.map(r => ({ n: r.n, g: r.g, a: r.a, s: r.s, r: r.r, c: r.c[state.threads], d: r.d[state.threads], th: r.th && r.th[state.threads] }));
 }
 
 // Pareto frontier for one speed metric: a result is on it when no other result is both faster and has a better (lower) ratio.
@@ -529,8 +530,8 @@ function renderTable(rows, fr) {
     // keep each compressor's levels in lzbench's own order
     const pos = new Map(rows.map((r, i) => [r.n, i]));
     list.sort((a, b) => dir * (a.n.split(' ')[0].toLowerCase().localeCompare(b.n.split(' ')[0].toLowerCase()) || pos.get(a.n) - pos.get(b.n)));
-  } else if (k === 'g') {
-    list.sort((a, b) => dir * a.g.localeCompare(b.g) || a.n.localeCompare(b.n));
+  } else if (k === 'g' || k === 'a') {
+    list.sort((a, b) => dir * (a[k] || '').localeCompare(b[k] || '') || a.n.localeCompare(b.n));
   } else {
     list.sort((a, b) => dir * (a[k] - b[k]));
   }
@@ -549,7 +550,7 @@ function renderTable(rows, fr) {
       s.textContent = r.th[0] === r.th[1] ? `${r.th[0]} thread${r.th[0] > 1 ? 's' : ''}` : `${r.th[0]},${r.th[1]} threads`;
       nm.append(s);
     }
-    td(r.g || 'reference');
+    td(r.a || '');
     td(fmtSpeed(r.c));
     td(fmtSpeed(r.d));
     td(fmtInt(r.s));
@@ -557,11 +558,12 @@ function renderTable(rows, fr) {
     const f = td('');
     if (fr.c.has(r.n)) { const s = document.createElement('span'); s.className = 'pill'; s.textContent = 'C'; s.title = 'On the compression-speed frontier'; f.append(s); }
     if (fr.d.has(r.n)) { const s = document.createElement('span'); s.className = 'pill'; s.textContent = 'D'; s.title = 'On the decompression-speed frontier'; f.append(s); }
+    td(r.g || 'reference');
     body.append(tr);
   }
   if (!list.length) {
     const tr = document.createElement('tr'); const c = document.createElement('td');
-    c.colSpan = 7; c.className = 'empty'; c.textContent = 'No compressor matches. Clear the search or the frontier filter to see all results.';
+    c.colSpan = 8; c.className = 'empty'; c.textContent = 'No compressor matches. Clear the search or the frontier filter to see all results.';
     tr.append(c); body.append(tr);
   }
   document.querySelectorAll('th[data-key]').forEach(th => {
