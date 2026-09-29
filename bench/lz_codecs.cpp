@@ -198,7 +198,7 @@ int64_t lzbench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 #ifndef BENCH_REMOVE_FASTLZMA2
-#include "lz/fast-lzma2/fast-lzma2.h"
+#include "lz+entropy/fast-lzma2/fast-lzma2.h"
 
 int64_t lzbench_fastlzma2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
@@ -330,7 +330,7 @@ int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 #ifndef BENCH_REMOVE_LIBDEFLATE
-#include "lz/libdeflate/libdeflate.h"
+#include "lz+entropy/libdeflate/libdeflate.h"
 int64_t lzbench_libdeflate_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
     struct libdeflate_compressor *compressor = libdeflate_alloc_compressor(codec_options->level);
@@ -358,8 +358,8 @@ int64_t lzbench_libdeflate_decompress(char *inbuf, size_t insize, char *outbuf, 
 
 
 #ifndef BENCH_REMOVE_LIZARD
-#include "lz/lizard/lizard_compress.h"
-#include "lz/lizard/lizard_decompress.h"
+#include "lz+entropy/lizard/lizard_compress.h"
+#include "lz+entropy/lizard/lizard_decompress.h"
 
 int64_t lzbench_lizard_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
@@ -447,7 +447,7 @@ int64_t lzbench_lzf_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 #ifndef BENCH_REMOVE_LZFSE
 extern "C"
 {
-    #include "lz/lzfse/lzfse.h"
+    #include "lz+entropy/lzfse/lzfse.h"
 }
 
 char* lzbench_lzfse_init(size_t insize, size_t level, size_t)
@@ -477,7 +477,7 @@ int64_t lzbench_lzfse_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #ifndef BENCH_REMOVE_LZFSE
 extern "C"
 {
-    #include "lz/lzfse/lzvn.h"
+    #include "lz+entropy/lzfse/lzvn.h"
 }
 
 char* lzbench_lzvn_init(size_t insize, size_t level, size_t)
@@ -527,7 +527,7 @@ int64_t lzbench_lzg_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 #ifndef BENCH_REMOVE_LZHAM
-#include "lz/lzham/include/lzham.h"
+#include "lz+entropy/lzham/include/lzham.h"
 #include <memory.h>
 
 int64_t lzbench_lzham_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
@@ -572,7 +572,7 @@ int64_t lzbench_lzham_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 #ifndef BENCH_REMOVE_LZLIB
-#include "lz/lzlib/lzlib.h"
+#include "lz+entropy/lzlib/lzlib.h"
 
 int64_t lzbench_lzlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
@@ -1392,7 +1392,7 @@ int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 #undef Z_NULL
 
 #define in_func zlibng_in_func
-#include "lz/zlib-ng/zlib-ng.h"
+#include "lz+entropy/zlib-ng/zlib-ng.h"
 #undef in_func
 
 int64_t lzbench_zlib_ng_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
@@ -1487,7 +1487,7 @@ int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 #ifndef BENCH_REMOVE_XZ
-#include "lz/xz/src/liblzma/api/lzma.h"
+#include "lz+entropy/xz/src/liblzma/api/lzma.h"
 
 int64_t lzbench_xz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
@@ -1576,7 +1576,7 @@ int64_t lzbench_xz_decompress(char *inbuf, size_t insize, char *outbuf, size_t o
 
 
 #ifndef BENCH_REMOVE_ZLING
-#include "lz/libzling/libzling.h"
+#include "lz+entropy/libzling/libzling.h"
 
 namespace baidu {
 namespace zling {

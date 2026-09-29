@@ -18,7 +18,7 @@ path = "lib.rs"
 
 [dependencies]
 density-rs = { path = "../density/src", optional = true }
-mbrotli-ffi = { path = "../../lz/mbrotli/mbrotli-ffi", optional = true }
+mbrotli-ffi = { path = "../../lz+entropy/mbrotli/mbrotli-ffi", optional = true }
 pulsar = { path = "../../bwt/pulsar", optional = true }
 
 [features]

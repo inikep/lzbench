@@ -1,5 +1,5 @@
 // =============================================================================
-// lz/aceapex/cuda/aceapex_cuda.cu
+// lz+entropy/aceapex/cuda/aceapex_cuda.cu
 // GPU LZ match decode for the ACEAPEX .aet format (lzbench codec variant).
 // Dependency: CUDA Runtime only. Entropy is decoded by the existing in-tree
 // CPU code (aceapex_decode_streams); this module executes the LZ match phase

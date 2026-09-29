@@ -138,7 +138,7 @@ OPT_LEVEL = O3
 # each of them so that deleting or renaming a header does not break the next
 # build. Without this, `make` only knows about the one source file named in the
 # rule, so editing a header -- or a .cpp that another .cpp #includes, as
-# lz/aceapex, lz/lzo, lz/ucl, lz/tamp and misc/7-zip do -- silently relinks a
+# lz+entropy/aceapex, lz/lzo, lz/ucl, lz/tamp and misc/7-zip do -- silently relinks a
 # stale object. The flags are a gcc/clang/mingw extension, so probe for them and
 # fall back to the old behaviour on a compiler that does not understand them.
 DEPFLAGS := $(shell printf 'int main(){return 0;}' | $(CXX) -x c++ - -MMD -MP -MF /dev/null -c -o /dev/null 2>/dev/null && printf -- '-MMD -MP')
@@ -352,8 +352,8 @@ ifneq "$(DISABLE_THREADING)" "1"
     BENCH_OBJS += bench/threadpool.o
 endif
 
-bench/lz_codecs.o:        CODEC_FLAGS = $(addprefix -I$(SRC),lz lz/brotli/include lz/openzl/include lz/zxc/src/lib/vendors lz/misa77/include)
-bench/buggy_codecs.o:     CODEC_FLAGS = -I$(SRC)lz/libcsc
+bench/lz_codecs.o:        CODEC_FLAGS = $(addprefix -I$(SRC),lz lz+entropy lz+entropy/brotli/include lz+entropy/openzl/include lz+entropy/zxc/src/lib/vendors lz/misa77/include)
+bench/buggy_codecs.o:     CODEC_FLAGS = -I$(SRC)lz+entropy/libcsc
 bench/symmetric_codecs.o: CODEC_FLAGS = $(OPENMP_CXXFLAGS)
 bench/lzbench.o:          CODEC_FLAGS = $(OPENMP_CXXFLAGS) $(if $(GIT_COMMIT),-DLZBENCH_GIT_COMMIT=\"$(GIT_COMMIT)\")
 

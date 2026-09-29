@@ -27,7 +27,7 @@ forward, say so in the commit message so it is not silently lost on the next upd
 ## 3. Updating Existing Codecs
 When updating an existing codec, please follow these steps:
 
-- Update the codec files (e.g., `lz/zlib-ng/*`).
+- Update the codec files (e.g., `lz+entropy/zlib-ng/*`).
 - Update the codec's `mk/<codec>.mk` if there are new source files that need to be built.
 - Update the codec version in `bench/lzbench.h` and `README.md`.
 - Add a new entry in `CHANGELOG`
@@ -45,7 +45,12 @@ Before proposing a new codec for inclusion, please make sure it is a good fit fo
 
 When adding a new codec, please follow these steps:
 
-- Create a new subdirectory with the codec files (e.g., `xxxx`) in `lz`, `bwt`, or `misc` directory.
+- Create a new subdirectory with the codec files (e.g., `xxxx`) in one of these directories:
+  - `lz`: LZ codecs without an entropy coder (byte- or bit-oriented, e.g. lz4, lzo, snappy)
+  - `lz+entropy`: LZ codecs whose format has an entropy-coding stage: Huffman, FSE/ANS or
+    range coding (e.g. zlib, zstd, brotli, xz)
+  - `bwt`: BWT-based codecs (e.g. bzip2, bsc)
+  - `misc`: everything else, e.g. context mixing, PPM, or libraries with several algorithms
 - Add a new codec to `README.md` with a proper link to the upstream repository.
 - Add a new entry in `CHANGELOG`
 - Add declarations of compression and decompression functions in `bench/codecs.h`, e.g.:

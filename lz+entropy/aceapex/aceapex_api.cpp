@@ -103,7 +103,7 @@ int64_t aceapex_decompress(
 }
 
 
-// ---- stream-level decode export for the CUDA decoder (lz/aceapex/cuda) ----
+// ---- stream-level decode export for the CUDA decoder (lz+entropy/aceapex/cuda) ----
 extern "C" {
 typedef struct {
     uint8_t *lit, *off, *len, *cmd;

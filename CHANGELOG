@@ -9,6 +9,8 @@ v2.x.y (work-in-progress)
 - improvement: DONT_BUILD_LZAV=1 and DONT_BUILD_YALZ77=1 work like the other DONT_BUILD_* options
 - improvement: "lzbench -V" shows the git commit it was built from, with "-dirty" for local changes
 - improvement: gpucompact moved from lz/ to bwt/, as it is BWT-based (BWT + RLE + tANS)
+- improvement: lz/ is split in two: lz/ keeps the LZ codecs without an entropy coder (21), and
+               lz+entropy/ has those with Huffman, FSE/ANS or range coding (20)
 - improvement: doc/results: an interactive results page (sortable table, ratio vs. speed charts with
                the Pareto frontier) published to GitHub Pages, and lzbench_json.py to make its data
                from lzbench's -o1 or -o4 output; README.md shows a chart made by lzbench_svg.py

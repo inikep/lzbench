@@ -1,6 +1,6 @@
 # zstd
 CODECS += ZSTD
-ZSTD_OBJS := $(addprefix lz/zstd/lib/, \
+ZSTD_OBJS := $(addprefix lz+entropy/zstd/lib/, \
     common/zstd_common.o common/fse_decompress.o common/xxhash.o common/error_private.o \
     common/entropy_common.o common/pool.o common/debug.o common/threading.o \
     compress/zstd_compress.o compress/zstd_compress_literals.o compress/zstd_compress_sequences.o \
@@ -11,7 +11,7 @@ ZSTD_OBJS := $(addprefix lz/zstd/lib/, \
     decompress/zstd_decompress_block.o dictBuilder/cover.o dictBuilder/divsufsort.o \
     dictBuilder/fastcover.o dictBuilder/zdict.o)
 # passed to the link command as is: the compiler driver assembles it
-ZSTD_OBJS += lz/zstd/lib/decompress/huf_decompress_amd64.S
+ZSTD_OBJS += lz+entropy/zstd/lib/decompress/huf_decompress_amd64.S
 
 ifneq ($(DISABLE_THREADING),1)
     ZSTD_FLAGS := -DZSTD_MULTITHREAD

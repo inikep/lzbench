@@ -17,20 +17,20 @@ ifeq ($(detected_OS),Darwin)
     DONT_BUILD_LZHAM ?= 1
 endif
 
-LZHAM_OBJS := $(addprefix lz/lzham/, \
+LZHAM_OBJS := $(addprefix lz+entropy/lzham/, \
     lzhamdecomp/lzham_assert.o lzhamdecomp/lzham_checksum.o lzhamdecomp/lzham_huffman_codes.o \
     lzhamdecomp/lzham_lzdecomp.o lzhamdecomp/lzham_lzdecompbase.o lzhamdecomp/lzham_mem.o \
     lzhamdecomp/lzham_platform.o lzhamdecomp/lzham_prefix_coding.o lzhamdecomp/lzham_timer.o \
     lzhamdecomp/lzham_symbol_codec.o lzhamdecomp/lzham_vector.o lzhamlib/lzham_lib.o \
     lzhamcomp/lzham_lzbase.o lzhamcomp/lzham_lzcomp.o lzhamcomp/lzham_lzcomp_internal.o \
     lzhamcomp/lzham_lzcomp_state.o lzhamcomp/lzham_match_accel.o)
-LZHAM_FLAGS := -I$(SRC)lz/lzham/include -I$(SRC)lz/lzham/lzhamcomp -I$(SRC)lz/lzham/lzhamdecomp
+LZHAM_FLAGS := -I$(SRC)lz+entropy/lzham/include -I$(SRC)lz+entropy/lzham/lzhamcomp -I$(SRC)lz+entropy/lzham/lzhamdecomp
 
 ifneq ($(DISABLE_THREADING),1)
     ifeq ($(THREAD_MODEL),win32)
-        LZHAM_OBJS += lz/lzham/lzhamcomp/lzham_win32_threading.o
+        LZHAM_OBJS += lz+entropy/lzham/lzhamcomp/lzham_win32_threading.o
     else
-        LZHAM_OBJS  += lz/lzham/lzhamcomp/lzham_pthreads_threading.o
+        LZHAM_OBJS  += lz+entropy/lzham/lzhamcomp/lzham_pthreads_threading.o
         LZHAM_FLAGS += -DTHREAD_MODEL_POSIX
     endif
 endif

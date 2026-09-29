@@ -6,4 +6,4 @@ ifeq ($(UNAME_P),powerpc)
     DONT_BUILD_ZLING ?= 1
 endif
 
-ZLING_OBJS := $(addprefix lz/libzling/, libzling.o libzling_huffman.o libzling_lz.o libzling_utils.o)
+ZLING_OBJS := $(addprefix lz+entropy/libzling/, libzling.o libzling_huffman.o libzling_lz.o libzling_utils.o)

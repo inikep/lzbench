@@ -1,7 +1,7 @@
 # zxc: the *_default/_avx2/_avx512/_neon32 objects are built from the same
 # sources with different ISA flags, selected at run time
 CODECS += ZXC
-ZXC_DIR := lz/zxc/src/lib
+ZXC_DIR := lz+entropy/zxc/src/lib
 
 # bench/lz_codecs.cpp includes the zxc headers too
 ifneq ($(DONT_BUILD_ZXC),1)
