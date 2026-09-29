@@ -3,7 +3,7 @@
 CODECS += ZXC
 ZXC_DIR := lz+entropy/zxc/src/lib
 
-# bench/lz_codecs.cpp includes the zxc headers too
+# bench/lz_entropy_codecs.cpp includes the zxc headers too
 ifneq ($(DONT_BUILD_ZXC),1)
     DEFINES += -DZXC_STATIC_DEFINE
 endif

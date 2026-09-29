@@ -347,12 +347,13 @@ endif
 # lzbench itself
 #------------------------------------------------------------------------------
 
-BENCH_OBJS := bench/lz_codecs.o bench/buggy_codecs.o bench/symmetric_codecs.o bench/lzbench.o bench/misc_codecs.o
+BENCH_OBJS := bench/lz_codecs.o bench/lz_entropy_codecs.o bench/buggy_codecs.o bench/symmetric_codecs.o bench/lzbench.o bench/misc_codecs.o
 ifneq "$(DISABLE_THREADING)" "1"
     BENCH_OBJS += bench/threadpool.o
 endif
 
-bench/lz_codecs.o:        CODEC_FLAGS = $(addprefix -I$(SRC),lz lz+entropy lz+entropy/brotli/include lz+entropy/openzl/include lz+entropy/zxc/src/lib/vendors lz/misa77/include)
+bench/lz_codecs.o:        CODEC_FLAGS = $(addprefix -I$(SRC),lz lz/misa77/include)
+bench/lz_entropy_codecs.o: CODEC_FLAGS = $(addprefix -I$(SRC),lz+entropy lz+entropy/brotli/include lz+entropy/openzl/include lz+entropy/zxc/src/lib/vendors)
 bench/buggy_codecs.o:     CODEC_FLAGS = -I$(SRC)lz+entropy/libcsc
 bench/symmetric_codecs.o: CODEC_FLAGS = $(OPENMP_CXXFLAGS)
 bench/lzbench.o:          CODEC_FLAGS = $(OPENMP_CXXFLAGS) $(if $(GIT_COMMIT),-DLZBENCH_GIT_COMMIT=\"$(GIT_COMMIT)\")

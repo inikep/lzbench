@@ -65,7 +65,7 @@ int64_t lzbench_xxxx_decompress(char* inbuf, size_t insize, char* outbuf, size_t
 #endif // BENCH_REMOVE_XXXX
 ```
 
-- Add definitions of compression and decompression functions in `bench/lz_codecs.cpp`, `bench/symmetric_codecs.cpp` (BWT, PPM-based), or `bench/misc_codecs.cpp`, e.g.:
+- Add definitions of compression and decompression functions in `bench/lz_codecs.cpp` (codecs in `lz`), `bench/lz_entropy_codecs.cpp` (`lz+entropy`), `bench/symmetric_codecs.cpp` (BWT, PPM-based), or `bench/misc_codecs.cpp`, e.g.:
 
 ```
 #ifndef BENCH_REMOVE_XXXX
