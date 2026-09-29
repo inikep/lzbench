@@ -480,6 +480,7 @@ function showTip(hit, fr) {
     const v = document.createElement('b'); v.textContent = value;
     vals.append(l, v);
   };
+  if (p.a) add('Algorithm', p.a);
   add('Compression', fmtSpeed(p.c) + ' MB/s');
   add('Decompression', fmtSpeed(p.d) + ' MB/s');
   add('Ratio', p.r.toFixed(2) + '%');
@@ -579,7 +580,7 @@ const tlabel = t => `${t} thread${t > 1 ? 's' : ''}`;
 
 function compareRows() {
   const top = COUNTS[COUNTS.length - 1];
-  return DATA.multi.rows.map(r => ({ n: r.n, g: r.g, s: r.s, r: r.r, c: r.c[top], d: r.d[top], cT: r.c, dT: r.d }));
+  return DATA.multi.rows.map(r => ({ n: r.n, g: r.g, a: r.a, s: r.s, r: r.r, c: r.c[top], d: r.d[top], cT: r.c, dT: r.d }));
 }
 function showCompareTip(hit) {
   const { p } = hit;
@@ -590,6 +591,11 @@ function showCompareTip(hit) {
   name.append(dot, nt);
   const vals = document.createElement('div'); vals.className = 'vals';
   const key = state.metric + 'T', base = p[key][COUNTS[0]];
+  if (p.a) {
+    const l = document.createElement('span'); l.textContent = 'Algorithm';
+    const v = document.createElement('b'); v.textContent = p.a;
+    vals.append(l, v);
+  }
   for (const t of COUNTS) {
     const l = document.createElement('span'); l.textContent = tlabel(t) + (t === hit.t ? ' ◂' : '');
     const v = document.createElement('b'); v.textContent = `${fmtSpeed(p[key][t])} MB/s` + (t === COUNTS[0] ? '' : ` (${(p[key][t] / base).toFixed(1)}×)`);
