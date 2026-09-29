@@ -1276,7 +1276,19 @@ int main( int argc, char** argv)
                         ;//printf("threading=-T");
                     else
                         printf("; threading=none");
-                    printf("\n");
+
+                    // algorithm, per level range for the codecs in algorithm_by_level
+                    std::string per_level;
+                    for (size_t j = 0; j < sizeof(algorithm_by_level)/sizeof(algorithm_by_level[0]); j++)
+                    {
+                        const algorithm_desc_t& a = algorithm_by_level[j];
+                        if (strcmp(a.name, comp_desc[i].name) != 0) continue;
+                        char range[32];
+                        if (a.first_level == a.last_level) snprintf(range, sizeof(range), "%d", a.first_level);
+                        else snprintf(range, sizeof(range), "%d-%d", a.first_level, a.last_level);
+                        per_level += std::string(per_level.empty() ? "" : ", ") + range + ": " + a.algorithm;
+                    }
+                    printf("; algorithm=%s\n", per_level.empty() ? comp_desc[i].algorithm : per_level.c_str());
                 }
             }
 

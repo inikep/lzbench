@@ -15,6 +15,7 @@
 
 #include <vector>
 #include <string>
+#include <string.h> // strcmp
 #include "codecs.h"
 
 
@@ -138,6 +139,7 @@ typedef struct
 {
     const char* name;
     const char* name_version;
+    const char* algorithm;   // modelling stage [+ entropy coder]; some codecs differ by level, see algorithm_by_level
     int first_level;
     int last_level;
     int additional_param;
@@ -165,129 +167,169 @@ typedef struct
 
 static const compressor_desc_t comp_desc[] =
 {
-     //                                       last_level,       mt_mode,
-     // name,       name_version,    first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func,             max_input_size
-    { "memcpy",     "memcpy",                  0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
-    { "aceapex",    "aceapex 1.0.1",           1,   2,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
-    { "aceapex_cuda","aceapex_cuda 0.9",       1,   2,    0,  NO_THREADING,  lzbench_aceapex_compress,    lzbench_aceapex_cuda_decompress, lzbench_aceapex_cuda_init, lzbench_aceapex_cuda_deinit },
-    { "brieflz",    "brieflz 1.3.0",           1,   9,    0,  BENCH_POOL_MT, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
-    { "brotli",     "brotli 1.2.0",            0,  11,    0,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
-    { "brotli22",   "brotli 1.2.0 -d22",       0,  11,   22,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
-    { "brotli24",   "brotli 1.2.0 -d24",       0,  11,   24,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
-    { "bsc0",       "bsc 3.3.12 -m0 -e2",      0,   0,    0,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc1",       "bsc 3.3.12 -m0 -e1",      0,   0,    1,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc2",       "bsc 3.3.12 -m0 -e0",      0,   0,    2,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc3",       "bsc 3.3.12 -m3 -e1",      0,   0,    3,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc4",       "bsc 3.3.12 -m4 -e1",      0,   0,    4,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc5",       "bsc 3.3.12 -m5 -e1",      0,   0,    5,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc6",       "bsc 3.3.12 -m6 -e1",      0,   0,    6,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc_cuda0",  "bsc 3.3.12 -G -m0 -e2",   0,   0,    0,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc_cuda1",  "bsc 3.3.12 -G -m0 -e1",   0,   0,    1,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc_cuda2",  "bsc 3.3.12 -G -m0 -e0",   0,   0,    2,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc_cuda3",  "bsc 3.3.12 -G -m3 -e1",   0,   0,    3,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc_cuda4",  "bsc 3.3.12 -G -m4 -e1",   0,   0,    4,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc_cuda5",  "bsc 3.3.12 -G -m5 -e1",   0,   0,    5,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc_cuda6",  "bsc 3.3.12 -G -m6 -e1",   0,   0,    6,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc_cuda7",  "bsc 3.3.12 -G -m7 -e0",   0,   0,    7,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bsc_cuda8",  "bsc 3.3.12 -G -m8 -e0",   0,   0,    8,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
-    { "bzip2",      "bzip2 1.0.8",             1,   9,    0,  BENCH_POOL_MT, lzbench_bzip2_compress,      lzbench_bzip2_decompress,      NULL,                    NULL },
-    { "bzip3",      "bzip3 1.5.4",             1,  10,    0,  BENCH_POOL_MT, lzbench_bzip3_compress,      lzbench_bzip3_decompress,      NULL,                    NULL },
-    { "crush",      "crush 1.0",               0,   2,    0,   NO_THREADING, lzbench_crush_compress,      lzbench_crush_decompress,      NULL,                    NULL },
-    { "csc",        "csc 2016-10-13",          1,   5,    0,  BENCH_POOL_MT, lzbench_csc_compress,        lzbench_csc_decompress,        NULL,                    NULL },
-    { "cudaMemcpy", "cudaMemcpy",              0,   0,    0,  BENCH_POOL_MT, lzbench_cuda_memcpy,         lzbench_cuda_memcpy,           lzbench_cuda_init,       lzbench_cuda_deinit },
-    { "density",    "density 0.16.6",          1,   3,    0,  BENCH_POOL_MT, lzbench_density_compress,    lzbench_density_decompress,    lzbench_density_init,    lzbench_density_deinit },
-    { "fastlz",     "fastlz 0.5.0",            1,   2,    0,  BENCH_POOL_MT, lzbench_fastlz_compress,     lzbench_fastlz_decompress,     NULL,                    NULL },
-    { "fastlzma2",  "fastlzma2 1.0.1",         1,  10,    0, FULL_THREADING, lzbench_fastlzma2_compress,  lzbench_fastlzma2_decompress,  NULL,                    NULL },
-    { "gipfeli",    "gipfeli 2016-07-13",      0,   0,    0,  BENCH_POOL_MT, lzbench_gipfeli_compress,    lzbench_gipfeli_decompress,    NULL,                    NULL },
-    { "glza",       "glza 0.12",               0,   0,    0,   NO_THREADING, lzbench_glza_compress,       lzbench_glza_decompress,       NULL,                    NULL },
+     //                                                                      last_level,       mt_mode,
+     // name,       name_version,    algorithm,                     first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func,             max_input_size
+    { "memcpy",     "memcpy",                  "copy",                        0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
+    { "aceapex",    "aceapex 1.0.1",           "LZ77 + FSE/Huffman",          1,   2,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
+    { "aceapex_cuda","aceapex_cuda 0.9",       "LZ77 + FSE/Huffman",          1,   2,    0,  NO_THREADING,  lzbench_aceapex_compress,    lzbench_aceapex_cuda_decompress, lzbench_aceapex_cuda_init, lzbench_aceapex_cuda_deinit },
+    { "brieflz",    "brieflz 1.3.0",           "LZ77",                        1,   9,    0,  BENCH_POOL_MT, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
+    { "brotli",     "brotli 1.2.0",            "LZ77 + Huffman",              0,  11,    0,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
+    { "brotli22",   "brotli 1.2.0 -d22",       "LZ77 + Huffman",              0,  11,   22,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
+    { "brotli24",   "brotli 1.2.0 -d24",       "LZ77 + Huffman",              0,  11,   24,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
+    { "bsc0",       "bsc 3.3.12 -m0 -e2",      "BWT + QLFC",                  0,   0,    0,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc1",       "bsc 3.3.12 -m0 -e1",      "BWT + QLFC",                  0,   0,    1,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc2",       "bsc 3.3.12 -m0 -e0",      "BWT + QLFC",                  0,   0,    2,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc3",       "bsc 3.3.12 -m3 -e1",      "ST + QLFC",                   0,   0,    3,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc4",       "bsc 3.3.12 -m4 -e1",      "ST + QLFC",                   0,   0,    4,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc5",       "bsc 3.3.12 -m5 -e1",      "ST + QLFC",                   0,   0,    5,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc6",       "bsc 3.3.12 -m6 -e1",      "ST + QLFC",                   0,   0,    6,  BSC_THREADING, lzbench_bsc_compress,        lzbench_bsc_decompress,        lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda0",  "bsc 3.3.12 -G -m0 -e2",   "BWT + QLFC",                  0,   0,    0,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda1",  "bsc 3.3.12 -G -m0 -e1",   "BWT + QLFC",                  0,   0,    1,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda2",  "bsc 3.3.12 -G -m0 -e0",   "BWT + QLFC",                  0,   0,    2,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda3",  "bsc 3.3.12 -G -m3 -e1",   "ST + QLFC",                   0,   0,    3,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda4",  "bsc 3.3.12 -G -m4 -e1",   "ST + QLFC",                   0,   0,    4,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda5",  "bsc 3.3.12 -G -m5 -e1",   "ST + QLFC",                   0,   0,    5,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda6",  "bsc 3.3.12 -G -m6 -e1",   "ST + QLFC",                   0,   0,    6,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda7",  "bsc 3.3.12 -G -m7 -e0",   "ST + QLFC",                   0,   0,    7,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bsc_cuda8",  "bsc 3.3.12 -G -m8 -e0",   "ST + QLFC",                   0,   0,    8,  BENCH_POOL_MT, lzbench_bsc_cuda_compress,   lzbench_bsc_cuda_decompress,   lzbench_bsc_init,        NULL,                    LZBENCH_BSC_MAX_INPUT_SIZE },
+    { "bzip2",      "bzip2 1.0.8",             "BWT + Huffman",               1,   9,    0,  BENCH_POOL_MT, lzbench_bzip2_compress,      lzbench_bzip2_decompress,      NULL,                    NULL },
+    { "bzip3",      "bzip3 1.5.4",             "BWT + CM",                    1,  10,    0,  BENCH_POOL_MT, lzbench_bzip3_compress,      lzbench_bzip3_decompress,      NULL,                    NULL },
+    { "crush",      "crush 1.0",               "LZ77",                        0,   2,    0,   NO_THREADING, lzbench_crush_compress,      lzbench_crush_decompress,      NULL,                    NULL },
+    { "csc",        "csc 2016-10-13",          "LZ77 + range",                1,   5,    0,  BENCH_POOL_MT, lzbench_csc_compress,        lzbench_csc_decompress,        NULL,                    NULL },
+    { "cudaMemcpy", "cudaMemcpy",              "copy",                        0,   0,    0,  BENCH_POOL_MT, lzbench_cuda_memcpy,         lzbench_cuda_memcpy,           lzbench_cuda_init,       lzbench_cuda_deinit },
+    { "density",    "density 0.16.6",          "dictionary",                  1,   3,    0,  BENCH_POOL_MT, lzbench_density_compress,    lzbench_density_decompress,    lzbench_density_init,    lzbench_density_deinit },
+    { "fastlz",     "fastlz 0.5.0",            "LZ77",                        1,   2,    0,  BENCH_POOL_MT, lzbench_fastlz_compress,     lzbench_fastlz_decompress,     NULL,                    NULL },
+    { "fastlzma2",  "fastlzma2 1.0.1",         "LZ77 + range",                1,  10,    0, FULL_THREADING, lzbench_fastlzma2_compress,  lzbench_fastlzma2_decompress,  NULL,                    NULL },
+    { "gipfeli",    "gipfeli 2016-07-13",      "LZ77 + prefix code",          0,   0,    0,  BENCH_POOL_MT, lzbench_gipfeli_compress,    lzbench_gipfeli_decompress,    NULL,                    NULL },
+    { "glza",       "glza 0.12",               "grammar + range",             0,   0,    0,   NO_THREADING, lzbench_glza_compress,       lzbench_glza_decompress,       NULL,                    NULL },
 #if !defined(BENCH_REMOVE_GPUCOMPACT) && defined(BENCH_HAS_CUDA)
-    { "gpucompact", "gpucompact 1.1",          1,   5,    0,  NO_THREADING,  lzbench_gpucompact_compress, lzbench_gpucompact_decompress, lzbench_gpucompact_init,  lzbench_gpucompact_deinit },
+    { "gpucompact", "gpucompact 1.1",          "BWT + tANS",                  1,   5,    0,  NO_THREADING,  lzbench_gpucompact_compress, lzbench_gpucompact_decompress, lzbench_gpucompact_init,  lzbench_gpucompact_deinit },
 #endif
-    { "kanzi",      "kanzi 2.5.3",             1,   9,    0, FULL_THREADING, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
-    { "lbzip2",     "lbzip2 2.6.5",            1,   9,    0,  BENCH_POOL_MT, lzbench_lbzip2_compress,     lzbench_lbzip2_decompress,     NULL,                    NULL },
-    { "libdeflate", "libdeflate 1.26",         1,  12,    0,  BENCH_POOL_MT, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
-    { "lizard",     "lizard 2.1",             10,  49,    0,  BENCH_POOL_MT, lzbench_lizard_compress,     lzbench_lizard_decompress,     NULL,                    NULL },
-    { "lz4",        "lz4 1.10.0",              0,   0,    0,  BENCH_POOL_MT, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
-    { "lz4fast",    "lz4 1.10.0 --fast",       1,  99,    0,  BENCH_POOL_MT, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
-    { "lz4hc",      "lz4hc 1.10.0",            1,  12,    0,  BENCH_POOL_MT, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },
-    { "lzav",       "lzav 5.17",               1,   2,    0,  BENCH_POOL_MT, lzbench_lzav_compress,       lzbench_lzav_decompress,       NULL,                    NULL },
-    { "lzf",        "lzf 3.6",                 0,   1,    0,  BENCH_POOL_MT, lzbench_lzf_compress,        lzbench_lzf_decompress,        NULL,                    NULL },
-    { "lzfse",      "lzfse 2017-03-08",        0,   0,    0,  BENCH_POOL_MT, lzbench_lzfse_compress,      lzbench_lzfse_decompress,      lzbench_lzfse_init,      lzbench_lzfse_deinit },
-    { "lzg",        "lzg 1.0.10",              1,   9,    0,  BENCH_POOL_MT, lzbench_lzg_compress,        lzbench_lzg_decompress,        NULL,                    NULL },
-    { "lzham",      "lzham 1.0 -d26",          0,   4,    0, FULL_THREADING, lzbench_lzham_compress,      lzbench_lzham_decompress,      NULL,                    NULL },
-    { "lzham22",    "lzham 1.0 -d22",          0,   4,   22, FULL_THREADING, lzbench_lzham_compress,      lzbench_lzham_decompress,      NULL,                    NULL },
-    { "lzham24",    "lzham 1.0 -d24",          0,   4,   24, FULL_THREADING, lzbench_lzham_compress,      lzbench_lzham_decompress,      NULL,                    NULL },
-    { "lzjb",       "lzjb 2010",               0,   0,    0,  BENCH_POOL_MT, lzbench_lzjb_compress,       lzbench_lzjb_decompress,       NULL,                    NULL },
-    { "lzlib",      "lzlib 1.16",              0,   9,    0,  BENCH_POOL_MT, lzbench_lzlib_compress,      lzbench_lzlib_decompress,      NULL,                    NULL },
-    { "lzma",       "lzma 26.03",              0,   9,    0, FULL_THREADING, lzbench_lzma_compress,       lzbench_lzma_decompress,       NULL,                    NULL },
-    { "lzmat",      "lzmat 1.01",              0,   0,    0,  BENCH_POOL_MT, lzbench_lzmat_compress,      lzbench_lzmat_decompress,      NULL,                    NULL }, // decompression error (returns 0) and SEGFAULT (?)
-    { "lzo1",       "lzo1 2.10",               1,  99,    0,  BENCH_POOL_MT, lzbench_lzo1_compress,       lzbench_lzo1_decompress,       lzbench_lzo_init,        lzbench_lzo_deinit },
-    { "lzo1a",      "lzo1a 2.10",              1,  99,    0,  BENCH_POOL_MT, lzbench_lzo1a_compress,      lzbench_lzo1a_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
-    { "lzo1b",      "lzo1b 2.10",              1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1b_compress,      lzbench_lzo1b_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
-    { "lzo1c",      "lzo1c 2.10",              1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1c_compress,      lzbench_lzo1c_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
-    { "lzo1f",      "lzo1f 2.10",              1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1f_compress,      lzbench_lzo1f_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
-    { "lzo1x",      "lzo1x 2.10",              1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1x_compress,      lzbench_lzo1x_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
-    { "lzo1y",      "lzo1y 2.10",              1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1y_compress,      lzbench_lzo1y_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
-    { "lzo1z",      "lzo1z 2.10",            999, 999,    0,  BENCH_POOL_MT, lzbench_lzo1z_compress,      lzbench_lzo1z_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
-    { "lzo2a",      "lzo2a 2.10",            999, 999,    0,  BENCH_POOL_MT, lzbench_lzo2a_compress,      lzbench_lzo2a_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
-    { "lzrw",       "lzrw 15-Jul-1991",        1,   5,    0,  BENCH_POOL_MT, lzbench_lzrw_compress,       lzbench_lzrw_decompress,       lzbench_lzrw_init,       lzbench_lzrw_deinit },
-    { "lzsse2",     "lzsse2 2019-04-18",       0,  17,    0,  BENCH_POOL_MT, lzbench_lzsse2_compress,     lzbench_lzsse2_decompress,     lzbench_lzsse2_init,     lzbench_lzsse2_deinit },
-    { "lzsse4",     "lzsse4 2019-04-18",       0,  17,    0,  BENCH_POOL_MT, lzbench_lzsse4_compress,     lzbench_lzsse4_decompress,     lzbench_lzsse4_init,     lzbench_lzsse4_deinit },
-    { "lzsse4fast", "lzsse4fast 2019-04-18",   0,   0,    0,  BENCH_POOL_MT, lzbench_lzsse4fast_compress, lzbench_lzsse4_decompress,     lzbench_lzsse4fast_init, lzbench_lzsse4fast_deinit },
-    { "lzsse8",     "lzsse8 2019-04-18",       0,  17,    0,  BENCH_POOL_MT, lzbench_lzsse8_compress,     lzbench_lzsse8_decompress,     lzbench_lzsse8_init,     lzbench_lzsse8_deinit },
-    { "lzsse8fast", "lzsse8fast 2019-04-18",   0,   0,    0,  BENCH_POOL_MT, lzbench_lzsse8fast_compress, lzbench_lzsse8_decompress,     lzbench_lzsse8fast_init, lzbench_lzsse8fast_deinit },
-    { "lzvn",       "lzvn 2017-03-08",         0,   0,    0,  BENCH_POOL_MT, lzbench_lzvn_compress,       lzbench_lzvn_decompress,       lzbench_lzvn_init,       lzbench_lzvn_deinit },
-    { "mbrotli",    "mbrotli 0.5.2",           0,  11,    0,  BENCH_POOL_MT, lzbench_mbrotli_compress,    lzbench_mbrotli_decompress,    NULL,                    NULL },
-    { "mbrotli22",  "mbrotli 0.5.2 -d22",      0,  11,   22,  BENCH_POOL_MT, lzbench_mbrotli_compress,    lzbench_mbrotli_decompress,    NULL,                    NULL },
-    { "mbrotli24",  "mbrotli 0.5.2 -d24",      0,  11,   24,  BENCH_POOL_MT, lzbench_mbrotli_compress,    lzbench_mbrotli_decompress,    NULL,                    NULL },
-    { "memlz",      "memlz 0.5 beta",          0,   0,    0,  BENCH_POOL_MT, lzbench_memlz_compress,      lzbench_memlz_decompress,      lzbench_memlz_init,      lzbench_memlz_deinit },
-    { "misa77",      "misa77 0.6.0",          -1,   4,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_decompress,      NULL, NULL },
-    { "misa77_safe", "misa77 0.6.0 safe",     -1,   3,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_safe_decompress, NULL, NULL },
-    { "nvcomp_lz4", "nvcomp_lz4 2.2.0",        0,   7,    0,  BENCH_POOL_MT, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },
-    { "openzl_u8",      "openzl 0.2.3 -p u8",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint8_t),  lzbench_openzl_deinit },
-    { "openzl_i8",      "openzl 0.2.3 -p i8",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int8_t),   lzbench_openzl_deinit },
-    { "openzl_le_u16",  "openzl 0.2.3 -p le-u16",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint16_t), lzbench_openzl_deinit },
-    { "openzl_le_i16",  "openzl 0.2.3 -p le-i16",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int16_t),  lzbench_openzl_deinit },
-    { "openzl_le_u32",  "openzl 0.2.3 -p le-u32",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint32_t), lzbench_openzl_deinit },
-    { "openzl_le_i32",  "openzl 0.2.3 -p le-i32",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int32_t),  lzbench_openzl_deinit },
-    { "openzl_le_u64",  "openzl 0.2.3 -p le-u64",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint64_t), lzbench_openzl_deinit },
-    { "openzl_le_i64",  "openzl 0.2.3 -p le-i64",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int64_t),  lzbench_openzl_deinit },
-    { "openzl_serial",  "openzl 0.2.3 -p serial",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_serial,            lzbench_openzl_deinit },
-    { "openzl_generic", "openzl 0.2.3 'generic'",  0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_generic,           lzbench_openzl_deinit },
-    { "openzl_zstd",    "openzl 0.2.3 'zstd'",   -99,  22,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_zstd,              lzbench_openzl_deinit },
-    { "openzl_lz4",     "openzl 0.2.3 'lz4'",    -99,  12,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_lz4,               lzbench_openzl_deinit },
-    { "ppmd8",      "ppmd8 26.03",             1,   9,    0,  BENCH_POOL_MT, lzbench_ppmd_compress,       lzbench_ppmd_decompress,       NULL,                    NULL },
-    { "pulsar",     "pulsar 2.5.0",            0,   0,    0,  BENCH_POOL_MT, lzbench_pulsar_compress,     lzbench_pulsar_decompress,     NULL,                    NULL },
-    { "quicklz",    "quicklz 1.5.1 beta 7",    1,   3,    0,  BENCH_POOL_MT, lzbench_quicklz_compress,    lzbench_quicklz_decompress,    NULL,                    NULL },
-    { "skim",       "skim 0.1.0",              0,   0,    0,  BENCH_POOL_MT, lzbench_skim_compress,       lzbench_skim_decompress,       lzbench_skim_init,       lzbench_skim_deinit },
-    { "slz_deflate","slz_deflate 1.3.1",       1,   3,    2,  BENCH_POOL_MT, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
-    { "slz_gzip",   "slz_gzip 1.3.1",          1,   3,    1,  BENCH_POOL_MT, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
-    { "slz_zlib",   "slz_zlib 1.3.1",          1,   3,    0,  BENCH_POOL_MT, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
-    { "snappy",     "snappy 1.3.1",            0,   0,    0,  BENCH_POOL_MT, lzbench_snappy_compress,     lzbench_snappy_decompress,     NULL,                    NULL },
-    { "tamp",       "tamp 2.3.0",              8,  15,    0,  BENCH_POOL_MT, lzbench_tamp_compress,       lzbench_tamp_decompress,       lzbench_tamp_init,       lzbench_tamp_deinit },
-    { "tornado",    "tornado 0.6a",            1,  16,    0,   NO_THREADING, lzbench_tornado_compress,    lzbench_tornado_decompress,    NULL,                    NULL },
-    { "ucl_nrv2b",  "ucl_nrv2b 1.03",          1,   9,    0,  BENCH_POOL_MT, lzbench_ucl_nrv2b_compress,  lzbench_ucl_nrv2b_decompress,  NULL,                    NULL },
-    { "ucl_nrv2d",  "ucl_nrv2d 1.03",          1,   9,    0,  BENCH_POOL_MT, lzbench_ucl_nrv2d_compress,  lzbench_ucl_nrv2d_decompress,  NULL,                    NULL },
-    { "ucl_nrv2e",  "ucl_nrv2e 1.03",          1,   9,    0,  BENCH_POOL_MT, lzbench_ucl_nrv2e_compress,  lzbench_ucl_nrv2e_decompress,  NULL,                    NULL },
-    { "wflz",       "wflz 2015-09-16",         0,   0,    0,  BENCH_POOL_MT, lzbench_wflz_compress,       lzbench_wflz_decompress,       lzbench_wflz_init,       lzbench_wflz_deinit }, // SEGFAULT on decompression with gcc 4.9+ -O3 on Ubuntu
-    { "xz",         "xz 5.8.4",                0,   9,    0, FULL_THREADING, lzbench_xz_compress,         lzbench_xz_decompress,         NULL,                    NULL },
-    { "yalz77",     "yalz77 2022-07-06",       1,  12,    0,  BENCH_POOL_MT, lzbench_yalz77_compress,     lzbench_yalz77_decompress,     NULL,                    NULL },
-    { "yappy",      "yappy 2014-03-22",        1,  12,    0,   NO_THREADING, lzbench_yappy_compress,      lzbench_yappy_decompress,      lzbench_yappy_init,      NULL },
-    { "zlib",       "zlib 1.3.2",              1,   9,    0,  BENCH_POOL_MT, lzbench_zlib_compress,       lzbench_zlib_decompress,       NULL,                    NULL },
-    { "zlib-ng",    "zlib-ng 2.3.3",           1,   9,    0,  BENCH_POOL_MT, lzbench_zlib_ng_compress,    lzbench_zlib_ng_decompress,    NULL,                    NULL },
-    { "zling",      "zling 2018-10-12",        0,   4,    0,  BENCH_POOL_MT, lzbench_zling_compress,      lzbench_zling_decompress,      NULL,                    NULL },
-    { "zpaq",       "zpaq 7.15",               1,   5,    0,  BENCH_POOL_MT, lzbench_zpaq_compress,       lzbench_zpaq_decompress,       NULL,                    NULL },
-    { "zstd",       "zstd 1.5.7",              1,  22,    0, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zstd22",     "zstd 1.5.7 -d22",        16,  22,   22, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zstd22LDM",  "zstd 1.5.7 --long -d22", 16,  22,   22, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
-    { "zstd24",     "zstd 1.5.7 -d24",        16,  22,   24, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zstd24LDM",  "zstd 1.5.7 --long -d24", 16,  22,   24, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
-    { "zstdLDM",    "zstd 1.5.7 --long",       1,  22,    0, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
-    { "zstd_fast",  "zstd 1.5.7 --fast",      -5,  -1,    0, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
-    { "zxc",        "zxc 0.14.1",              1,   7,    0, BENCH_POOL_MT,  lzbench_zxc_compress,        lzbench_zxc_decompress,        lzbench_zxc_init,        lzbench_zxc_deinit },
+    { "kanzi",      "kanzi 2.5.3",             "LZ77, ROLZ, BWT or CM",       1,   9,    0, FULL_THREADING, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
+    { "lbzip2",     "lbzip2 2.6.5",            "BWT + Huffman",               1,   9,    0,  BENCH_POOL_MT, lzbench_lbzip2_compress,     lzbench_lbzip2_decompress,     NULL,                    NULL },
+    { "libdeflate", "libdeflate 1.26",         "LZ77 + Huffman",              1,  12,    0,  BENCH_POOL_MT, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
+    { "lizard",     "lizard 2.1",             "LZ77 (+ Huffman)",            10,  49,    0,  BENCH_POOL_MT, lzbench_lizard_compress,     lzbench_lizard_decompress,     NULL,                    NULL },
+    { "lz4",        "lz4 1.10.0",              "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
+    { "lz4fast",    "lz4 1.10.0 --fast",       "LZ77",                        1,  99,    0,  BENCH_POOL_MT, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
+    { "lz4hc",      "lz4hc 1.10.0",            "LZ77",                        1,  12,    0,  BENCH_POOL_MT, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },
+    { "lzav",       "lzav 5.17",               "LZ77",                        1,   2,    0,  BENCH_POOL_MT, lzbench_lzav_compress,       lzbench_lzav_decompress,       NULL,                    NULL },
+    { "lzf",        "lzf 3.6",                 "LZ77",                        0,   1,    0,  BENCH_POOL_MT, lzbench_lzf_compress,        lzbench_lzf_decompress,        NULL,                    NULL },
+    { "lzfse",      "lzfse 2017-03-08",        "LZ77 + FSE",                  0,   0,    0,  BENCH_POOL_MT, lzbench_lzfse_compress,      lzbench_lzfse_decompress,      lzbench_lzfse_init,      lzbench_lzfse_deinit },
+    { "lzg",        "lzg 1.0.10",              "LZ77",                        1,   9,    0,  BENCH_POOL_MT, lzbench_lzg_compress,        lzbench_lzg_decompress,        NULL,                    NULL },
+    { "lzham",      "lzham 1.0 -d26",          "LZ77 + Huffman/arithmetic",   0,   4,    0, FULL_THREADING, lzbench_lzham_compress,      lzbench_lzham_decompress,      NULL,                    NULL },
+    { "lzham22",    "lzham 1.0 -d22",          "LZ77 + Huffman/arithmetic",   0,   4,   22, FULL_THREADING, lzbench_lzham_compress,      lzbench_lzham_decompress,      NULL,                    NULL },
+    { "lzham24",    "lzham 1.0 -d24",          "LZ77 + Huffman/arithmetic",   0,   4,   24, FULL_THREADING, lzbench_lzham_compress,      lzbench_lzham_decompress,      NULL,                    NULL },
+    { "lzjb",       "lzjb 2010",               "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_lzjb_compress,       lzbench_lzjb_decompress,       NULL,                    NULL },
+    { "lzlib",      "lzlib 1.16",              "LZ77 + range",                0,   9,    0,  BENCH_POOL_MT, lzbench_lzlib_compress,      lzbench_lzlib_decompress,      NULL,                    NULL },
+    { "lzma",       "lzma 26.03",              "LZ77 + range",                0,   9,    0, FULL_THREADING, lzbench_lzma_compress,       lzbench_lzma_decompress,       NULL,                    NULL },
+    { "lzmat",      "lzmat 1.01",              "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_lzmat_compress,      lzbench_lzmat_decompress,      NULL,                    NULL }, // decompression error (returns 0) and SEGFAULT (?)
+    { "lzo1",       "lzo1 2.10",               "LZ77",                        1,  99,    0,  BENCH_POOL_MT, lzbench_lzo1_compress,       lzbench_lzo1_decompress,       lzbench_lzo_init,        lzbench_lzo_deinit },
+    { "lzo1a",      "lzo1a 2.10",              "LZ77",                        1,  99,    0,  BENCH_POOL_MT, lzbench_lzo1a_compress,      lzbench_lzo1a_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
+    { "lzo1b",      "lzo1b 2.10",              "LZ77",                        1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1b_compress,      lzbench_lzo1b_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
+    { "lzo1c",      "lzo1c 2.10",              "LZ77",                        1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1c_compress,      lzbench_lzo1c_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
+    { "lzo1f",      "lzo1f 2.10",              "LZ77",                        1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1f_compress,      lzbench_lzo1f_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
+    { "lzo1x",      "lzo1x 2.10",              "LZ77",                        1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1x_compress,      lzbench_lzo1x_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
+    { "lzo1y",      "lzo1y 2.10",              "LZ77",                        1, 999,    0,  BENCH_POOL_MT, lzbench_lzo1y_compress,      lzbench_lzo1y_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
+    { "lzo1z",      "lzo1z 2.10",            "LZ77",                        999, 999,    0,  BENCH_POOL_MT, lzbench_lzo1z_compress,      lzbench_lzo1z_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
+    { "lzo2a",      "lzo2a 2.10",            "LZ77",                        999, 999,    0,  BENCH_POOL_MT, lzbench_lzo2a_compress,      lzbench_lzo2a_decompress,      lzbench_lzo_init,        lzbench_lzo_deinit },
+    { "lzrw",       "lzrw 15-Jul-1991",        "LZ77",                        1,   5,    0,  BENCH_POOL_MT, lzbench_lzrw_compress,       lzbench_lzrw_decompress,       lzbench_lzrw_init,       lzbench_lzrw_deinit },
+    { "lzsse2",     "lzsse2 2019-04-18",       "LZ77",                        0,  17,    0,  BENCH_POOL_MT, lzbench_lzsse2_compress,     lzbench_lzsse2_decompress,     lzbench_lzsse2_init,     lzbench_lzsse2_deinit },
+    { "lzsse4",     "lzsse4 2019-04-18",       "LZ77",                        0,  17,    0,  BENCH_POOL_MT, lzbench_lzsse4_compress,     lzbench_lzsse4_decompress,     lzbench_lzsse4_init,     lzbench_lzsse4_deinit },
+    { "lzsse4fast", "lzsse4fast 2019-04-18",   "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_lzsse4fast_compress, lzbench_lzsse4_decompress,     lzbench_lzsse4fast_init, lzbench_lzsse4fast_deinit },
+    { "lzsse8",     "lzsse8 2019-04-18",       "LZ77",                        0,  17,    0,  BENCH_POOL_MT, lzbench_lzsse8_compress,     lzbench_lzsse8_decompress,     lzbench_lzsse8_init,     lzbench_lzsse8_deinit },
+    { "lzsse8fast", "lzsse8fast 2019-04-18",   "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_lzsse8fast_compress, lzbench_lzsse8_decompress,     lzbench_lzsse8fast_init, lzbench_lzsse8fast_deinit },
+    { "lzvn",       "lzvn 2017-03-08",         "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_lzvn_compress,       lzbench_lzvn_decompress,       lzbench_lzvn_init,       lzbench_lzvn_deinit },
+    { "mbrotli",    "mbrotli 0.5.2",           "LZ77 + Huffman",              0,  11,    0,  BENCH_POOL_MT, lzbench_mbrotli_compress,    lzbench_mbrotli_decompress,    NULL,                    NULL },
+    { "mbrotli22",  "mbrotli 0.5.2 -d22",      "LZ77 + Huffman",              0,  11,   22,  BENCH_POOL_MT, lzbench_mbrotli_compress,    lzbench_mbrotli_decompress,    NULL,                    NULL },
+    { "mbrotli24",  "mbrotli 0.5.2 -d24",      "LZ77 + Huffman",              0,  11,   24,  BENCH_POOL_MT, lzbench_mbrotli_compress,    lzbench_mbrotli_decompress,    NULL,                    NULL },
+    { "memlz",      "memlz 0.5 beta",          "LZP",                         0,   0,    0,  BENCH_POOL_MT, lzbench_memlz_compress,      lzbench_memlz_decompress,      lzbench_memlz_init,      lzbench_memlz_deinit },
+    { "misa77",      "misa77 0.6.0",          "LZ77",                        -1,   4,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_decompress,      NULL, NULL },
+    { "misa77_safe", "misa77 0.6.0 safe",     "LZ77",                        -1,   3,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_safe_decompress, NULL, NULL },
+    { "nvcomp_lz4", "nvcomp_lz4 2.2.0",        "LZ77",                        0,   7,    0,  BENCH_POOL_MT, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },
+    { "openzl_u8",      "openzl 0.2.3 -p u8",      "field LZ + FSE/Huffman",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint8_t),  lzbench_openzl_deinit },
+    { "openzl_i8",      "openzl 0.2.3 -p i8",      "field LZ + FSE/Huffman",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int8_t),   lzbench_openzl_deinit },
+    { "openzl_le_u16",  "openzl 0.2.3 -p le-u16",  "field LZ + FSE/Huffman",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint16_t), lzbench_openzl_deinit },
+    { "openzl_le_i16",  "openzl 0.2.3 -p le-i16",  "field LZ + FSE/Huffman",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int16_t),  lzbench_openzl_deinit },
+    { "openzl_le_u32",  "openzl 0.2.3 -p le-u32",  "field LZ + FSE/Huffman",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint32_t), lzbench_openzl_deinit },
+    { "openzl_le_i32",  "openzl 0.2.3 -p le-i32",  "field LZ + FSE/Huffman",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int32_t),  lzbench_openzl_deinit },
+    { "openzl_le_u64",  "openzl 0.2.3 -p le-u64",  "field LZ + FSE/Huffman",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(uint64_t), lzbench_openzl_deinit },
+    { "openzl_le_i64",  "openzl 0.2.3 -p le-i64",  "field LZ + FSE/Huffman",      0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_integer(int64_t),  lzbench_openzl_deinit },
+    { "openzl_serial",  "openzl 0.2.3 -p serial",  "LZ77 + FSE/Huffman",          0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_serial,            lzbench_openzl_deinit },
+    { "openzl_generic", "openzl 0.2.3 'generic'",  "LZ77 + FSE/Huffman",          0,   0,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_generic,           lzbench_openzl_deinit },
+    { "openzl_zstd",    "openzl 0.2.3 'zstd'",   "LZ77 + FSE/Huffman",          -99,  22,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_zstd,              lzbench_openzl_deinit },
+    { "openzl_lz4",     "openzl 0.2.3 'lz4'",    "LZ77",                        -99,  12,    0,  BENCH_POOL_MT, lzbench_openzl_compress,     lzbench_openzl_decompress,     lzbench_openzl_init_lz4,               lzbench_openzl_deinit },
+    { "ppmd8",      "ppmd8 26.03",             "PPM + range",                 1,   9,    0,  BENCH_POOL_MT, lzbench_ppmd_compress,       lzbench_ppmd_decompress,       NULL,                    NULL },
+    { "pulsar",     "pulsar 2.5.0",            "BWT + ANS",                   0,   0,    0,  BENCH_POOL_MT, lzbench_pulsar_compress,     lzbench_pulsar_decompress,     NULL,                    NULL },
+    { "quicklz",    "quicklz 1.5.1 beta 7",    "LZ77",                        1,   3,    0,  BENCH_POOL_MT, lzbench_quicklz_compress,    lzbench_quicklz_decompress,    NULL,                    NULL },
+    { "skim",       "skim 0.1.0",              "dictionary",                  0,   0,    0,  BENCH_POOL_MT, lzbench_skim_compress,       lzbench_skim_decompress,       lzbench_skim_init,       lzbench_skim_deinit },
+    { "slz_deflate","slz_deflate 1.3.1",       "LZ77 + Huffman",              1,   3,    2,  BENCH_POOL_MT, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
+    { "slz_gzip",   "slz_gzip 1.3.1",          "LZ77 + Huffman",              1,   3,    1,  BENCH_POOL_MT, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
+    { "slz_zlib",   "slz_zlib 1.3.1",          "LZ77 + Huffman",              1,   3,    0,  BENCH_POOL_MT, lzbench_slz_compress,        lzbench_slz_decompress,        NULL,                    NULL },
+    { "snappy",     "snappy 1.3.1",            "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_snappy_compress,     lzbench_snappy_decompress,     NULL,                    NULL },
+    { "tamp",       "tamp 2.3.0",              "LZ77",                        8,  15,    0,  BENCH_POOL_MT, lzbench_tamp_compress,       lzbench_tamp_decompress,       lzbench_tamp_init,       lzbench_tamp_deinit },
+    { "tornado",    "tornado 0.6a",            "LZ77 (+ Huffman/arithmetic)", 1,  16,    0,   NO_THREADING, lzbench_tornado_compress,    lzbench_tornado_decompress,    NULL,                    NULL },
+    { "ucl_nrv2b",  "ucl_nrv2b 1.03",          "LZ77",                        1,   9,    0,  BENCH_POOL_MT, lzbench_ucl_nrv2b_compress,  lzbench_ucl_nrv2b_decompress,  NULL,                    NULL },
+    { "ucl_nrv2d",  "ucl_nrv2d 1.03",          "LZ77",                        1,   9,    0,  BENCH_POOL_MT, lzbench_ucl_nrv2d_compress,  lzbench_ucl_nrv2d_decompress,  NULL,                    NULL },
+    { "ucl_nrv2e",  "ucl_nrv2e 1.03",          "LZ77",                        1,   9,    0,  BENCH_POOL_MT, lzbench_ucl_nrv2e_compress,  lzbench_ucl_nrv2e_decompress,  NULL,                    NULL },
+    { "wflz",       "wflz 2015-09-16",         "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_wflz_compress,       lzbench_wflz_decompress,       lzbench_wflz_init,       lzbench_wflz_deinit }, // SEGFAULT on decompression with gcc 4.9+ -O3 on Ubuntu
+    { "xz",         "xz 5.8.4",                "LZ77 + range",                0,   9,    0, FULL_THREADING, lzbench_xz_compress,         lzbench_xz_decompress,         NULL,                    NULL },
+    { "yalz77",     "yalz77 2022-07-06",       "LZ77",                        1,  12,    0,  BENCH_POOL_MT, lzbench_yalz77_compress,     lzbench_yalz77_decompress,     NULL,                    NULL },
+    { "yappy",      "yappy 2014-03-22",        "LZ77",                        1,  12,    0,   NO_THREADING, lzbench_yappy_compress,      lzbench_yappy_decompress,      lzbench_yappy_init,      NULL },
+    { "zlib",       "zlib 1.3.2",              "LZ77 + Huffman",              1,   9,    0,  BENCH_POOL_MT, lzbench_zlib_compress,       lzbench_zlib_decompress,       NULL,                    NULL },
+    { "zlib-ng",    "zlib-ng 2.3.3",           "LZ77 + Huffman",              1,   9,    0,  BENCH_POOL_MT, lzbench_zlib_ng_compress,    lzbench_zlib_ng_decompress,    NULL,                    NULL },
+    { "zling",      "zling 2018-10-12",        "ROLZ + Huffman",              0,   4,    0,  BENCH_POOL_MT, lzbench_zling_compress,      lzbench_zling_decompress,      NULL,                    NULL },
+    { "zpaq",       "zpaq 7.15",               "LZ77, BWT or CM",             1,   5,    0,  BENCH_POOL_MT, lzbench_zpaq_compress,       lzbench_zpaq_decompress,       NULL,                    NULL },
+    { "zstd",       "zstd 1.5.7",              "LZ77 + FSE/Huffman",          1,  22,    0, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstd22",     "zstd 1.5.7 -d22",        "LZ77 + FSE/Huffman",          16,  22,   22, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstd22LDM",  "zstd 1.5.7 --long -d22", "LZ77 + FSE/Huffman",          16,  22,   22, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
+    { "zstd24",     "zstd 1.5.7 -d24",        "LZ77 + FSE/Huffman",          16,  22,   24, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zstd24LDM",  "zstd 1.5.7 --long -d24", "LZ77 + FSE/Huffman",          16,  22,   24, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
+    { "zstdLDM",    "zstd 1.5.7 --long",       "LZ77 + FSE/Huffman",          1,  22,    0, FULL_THREADING, lzbench_zstd_LDM_compress,   lzbench_zstd_decompress,       lzbench_zstd_LDM_init,   lzbench_zstd_deinit },
+    { "zstd_fast",  "zstd 1.5.7 --fast",      "LZ77 + FSE/Huffman",          -5,  -1,    0, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },
+    { "zxc",        "zxc 0.14.1",              "LZ77 + Huffman",              1,   7,    0, BENCH_POOL_MT,  lzbench_zxc_compress,        lzbench_zxc_decompress,        lzbench_zxc_init,        lzbench_zxc_deinit },
 };
 
 const long int LZBENCH_COMPRESSOR_COUNT = sizeof(comp_desc)/sizeof(comp_desc[0]);
+
+
+// Codecs whose algorithm depends on the level; comp_desc[].algorithm is their summary.
+// Levels a codec supports but this table does not list fall back to comp_desc[].algorithm.
+typedef struct
+{
+    const char* name;
+    int first_level;
+    int last_level;
+    const char* algorithm;
+} algorithm_desc_t;
+
+static const algorithm_desc_t algorithm_by_level[] =
+{
+    { "kanzi",    1,  1, "LZ77" },                  // LZX, no entropy coder
+    { "kanzi",    2,  3, "LZ77 + Huffman" },
+    { "kanzi",    4,  4, "ROLZ + ANS" },
+    { "kanzi",    5,  5, "BWT + ANS" },
+    { "kanzi",    6,  6, "BWT + arithmetic" },      // FPAQ
+    { "kanzi",    7,  7, "BWT + CM" },
+    { "kanzi",    8,  9, "CM" },                    // TPAQ, TPAQX
+    { "lizard",  10, 29, "LZ77" },
+    { "lizard",  30, 49, "LZ77 + Huffman" },
+    { "tornado",  1,  2, "LZ77" },                  // byte and bit codes
+    { "tornado",  3,  4, "LZ77 + Huffman" },
+    { "tornado",  5, 16, "LZ77 + arithmetic" },
+    { "zpaq",     1,  2, "LZ77" },
+    { "zpaq",     3,  4, "LZ77/BWT + CM" },         // chosen per block from the data
+    { "zpaq",     5,  5, "CM" },
+};
+
+// The algorithm of a codec at a level: from algorithm_by_level, else the codec's own
+static inline const char* lzbench_algorithm(const compressor_desc_t* desc, int level)
+{
+    for (size_t i = 0; i < sizeof(algorithm_by_level)/sizeof(algorithm_by_level[0]); i++)
+        if (strcmp(algorithm_by_level[i].name, desc->name) == 0
+            && level >= algorithm_by_level[i].first_level && level <= algorithm_by_level[i].last_level)
+            return algorithm_by_level[i].algorithm;
+    return desc->algorithm;
+}
 
 
 static const alias_desc_t alias_desc[] =

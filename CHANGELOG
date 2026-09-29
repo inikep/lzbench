@@ -19,6 +19,8 @@ v2.x.y (work-in-progress)
                EPYC 9555P (77 instead of 39)
 - improvement: OPT lists only levels that use optimal parsing, and adds brieflz, libdeflate, lizard
                and lz4hc
+- improvement: "lzbench -l" shows each codec's algorithm (modelling stage + entropy coder, e.g.
+               "LZ77 + Huffman", "ROLZ + ANS", "BWT + CM"), per level for kanzi, lizard, tornado and zpaq
 - improvement: doc/results: an interactive results page (sortable table, ratio vs. speed charts with
                the Pareto frontier) published to GitHub Pages, and lzbench_json.py to make its data
                from lzbench's -o1 or -o4 output; README.md shows a chart made by lzbench_svg.py

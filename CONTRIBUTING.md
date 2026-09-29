@@ -76,6 +76,12 @@ int64_t lzbench_xxxx_decompress(char* inbuf, size_t insize, char* outbuf, size_t
 ```
 - If a codec supports multi-threading, it should use a number of threads provided with `codec_options->threads`.
 
+- Add the codec to `comp_desc` in `bench/lzbench.h` with its name, version, algorithm, levels and
+  functions, and to the aliases it belongs to (`LZ`, `LZ+ENTROPY` or `SYMMETRIC`, and e.g. `FASTEST`).
+  The algorithm is the modelling stage and, if there is one, the entropy coder, e.g. `"LZ77"`,
+  `"LZ77 + Huffman"`, `"ROLZ + ANS"` or `"BWT + CM"`; if it depends on the level, give a summary and
+  list the levels in `algorithm_by_level`.
+
 - Add `mk/xxxx.mk`, which the `Makefile` picks up automatically:
 
 ```
