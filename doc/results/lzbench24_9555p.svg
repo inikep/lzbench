@@ -29,9 +29,9 @@
 <text class="title" x="20" y="30">lzbench 2.4 on Silesia Corpus</text>
 <text class="sub" x="20" y="50">AMD EPYC 9555P, single thread; ratio in %, lower is better</text>
 <text class="link" x="864" y="30" text-anchor="end">Open the interactive version →</text>
-<circle class="lz" cx="426" cy="46" r="4.5"/><text class="key" x="435" y="50">LZ (107)</text>
+<circle class="lz" cx="426" cy="46" r="4.5"/><text class="key" x="435" y="50">LZ (108)</text>
 <circle class="lzent" cx="504" cy="46" r="4.5"/><text class="key" x="513" y="50">LZ+ENTROPY (79)</text>
-<circle class="sym" cx="631" cy="46" r="4.5"/><text class="key" x="640" y="50">SYMMETRIC (27)</text>
+<circle class="sym" cx="631" cy="46" r="4.5"/><text class="key" x="640" y="50">SYMMETRIC (26)</text>
 <line class="front" stroke-width="2" x1="746" x2="762" y1="46" y2="46"/><text class="key" x="768" y="50">Pareto frontier</text>
 <text x="40" y="90.0" text-anchor="end">10%</text>
 <text x="40" y="136.3" text-anchor="end">20%</text>
@@ -239,7 +239,7 @@
 <circle class="sym ring" stroke-width="1.5" cx="206.9" cy="151.7" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="154.8" cy="145.1" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="140.0" cy="161.7" r="3.5"/>
-<circle class="sym ring" stroke-width="1.5" cx="235.3" cy="192.2" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="235.3" cy="192.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="258.0" cy="199.4" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="126.8" cy="179.0" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="308.4" cy="307.8" r="3.5"/>
@@ -477,7 +477,7 @@
 <circle class="sym ring" stroke-width="1.5" cx="628.4" cy="151.7" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="579.1" cy="145.1" r="3.5"/>
 <circle class="sym ring" stroke-width="1.5" cx="648.4" cy="161.7" r="3.5"/>
-<circle class="sym ring" stroke-width="1.5" cx="695.3" cy="192.2" r="3.5"/>
+<circle class="lz ring" stroke-width="1.5" cx="695.3" cy="192.2" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="736.9" cy="199.4" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="742.2" cy="179.0" r="3.5"/>
 <circle class="lz ring" stroke-width="1.5" cx="742.9" cy="307.8" r="3.5"/>
