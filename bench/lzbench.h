@@ -292,33 +292,38 @@ const long int LZBENCH_COMPRESSOR_COUNT = sizeof(comp_desc)/sizeof(comp_desc[0])
 
 static const alias_desc_t alias_desc[] =
 {   // default alias
+    // FAST: every level that compressed silesia.tar at 100 MB/s or more on one thread of an AMD EPYC 9555P
+    // (3.20 GHz, lzbench 2.4, doc/results); tornado -1 is left out as it fails on incompressible data
     { "FAST", "Refers to compressors capable of achieving compression speeds exceeding 100 MB/s (default alias).",
-              "memcpy/density,1,2,3/fastlz/kanzi,1,2,3/lizard,10,11,12,13,14/lz4/lz4fast,3,17/lzav/lzf/lzfse/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/" \
-              "lzsse4fast/lzsse8,1/lzvn/quicklz,1,2/skim/snappy/yalz77,1/zstd,1,2,3,4,5" },
-    // CI uses LZ + SYMMETRIC + MISC for single-threaded testing
-    { "LZ",   "Represents all major LZ-based compressors.",
-              "memcpy/aceapex,1,2/brieflz,1,3,6,8/brotli,0,2,5,8,11/" \
-              "fastlz,1,2/fastlzma2,1,3,5,8,10/kanzi,1,2,3,4/libdeflate,1,3,6,9,12/" \
-              "lizard,10,12,15,19,20,22,25,29,30,32,35,39,40,42,45,49/lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzav/" \
-              "lzf,0,1/lzfse/lzg,1,4,6,8/lzham,0,1/lzlib,0,3,6,9/lzma,0,2,4,6,9/" \
-              "lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
-              "lzsse2,1,6,12,16/lzsse4fast/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/mbrotli,0,2,5,8,11/memlz/misa77,-1,0,1,2,3,4/misa77_safe,-1,0,1,2,3/quicklz,1,2,3/" \
-              "slz_gzip/snappy/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/" \
-              "xz,1,3,5,7,9/yalz77,1,6,12/zlib,1,6,9/zlib-ng,1,6,9/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22/zxc,1,3,6" },
+              "memcpy/brieflz,1,3/brotli,0,2/density/fastlz/kanzi,1,2/libdeflate,1,3/lizard,10,11,12,20,22,30,32,40,42/lz4/" \
+              "lz4fast,3,9,17/lz4hc,1/lzav,1/lzf/lzjb/lzo1,1/lzo1a/lzo1b,1,3,6,9,99/lzo1c,1,3,6,9,99/lzo1f,1/lzo1x,1,11,12,15/lzo1y,1/" \
+              "lzsse4fast/mbrotli,0,2/memlz/misa77,-1,0/misa77_safe,-1,0/quicklz,1,2/skim/slz_gzip/snappy/yalz77,1/zlib-ng,1/" \
+              "zstd,1,2,3,4,5/zstd_fast,-5,-3,-1/zxc,1,3" },
+    // CI uses LZ + LZ+ENTROPY + SYMMETRIC for single-threaded testing
+    // LZ: LZ codecs, or levels of them, without an entropy coder
+    { "LZ",   "Represents LZ-based compressors without an entropy coder.",
+              "memcpy/brieflz,1,3,6,8/crush,0,2/fastlz,1,2/kanzi,1/lizard,10,12,15,19,20,22,25,29/lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzav/" \
+              "lzf,0,1/lzg,1,4,6,8/lzjb/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
+              "lzsse2,1,6,12,16/lzsse4fast/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/memlz/misa77,-1,0,1,2,3,4/misa77_safe,-1,0,1,2,3/quicklz,1,2,3/" \
+              "snappy/tamp,8,12,15/tornado,2/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/yalz77,1,6,12" },
+    // LZ+ENTROPY: LZ codecs, or levels of them, followed by Huffman, FSE/ANS or range coding
+    { "LZ+ENTROPY", "Represents LZ-based compressors with an entropy coder (Huffman, FSE/ANS or range coding).",
+              "memcpy/aceapex,1,2/brotli,0,2,5,8,11/fastlzma2,1,3,5,8,10/kanzi,2,3,4/libdeflate,1,3,6,9,12/" \
+              "lizard,30,32,35,39,40,42,45,49/lzfse/lzham,0,1/lzlib,0,3,6,9/lzma,0,2,4,6,9/mbrotli,0,2,5,8,11/slz_gzip/" \
+              "tornado,6,11,16/xz,1,3,5,7,9/zlib,1,6,9/zlib-ng,1,6,9/zling,0,2,4/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22/zxc,1,3,6" },
     { "SYMMETRIC", "Includes compressors with similar compression and decompression speeds.",
-              "memcpy/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,1,5,9/density,1,2,3/kanzi,5,6,7,8,9/lbzip2,1,5,9/ppmd8,1,4,9/pulsar/zpaq,1,5" },
-    { "MISC", "Covers miscellaneous compressors.",
-              "memcpy/crush,0,2/lzjb/skim/tamp,8,12,15/tornado,2,6,11,16/zling,0,2,4" },
+              "memcpy/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,1,5,9/density,1,2,3/kanzi,5,6,7,8,9/lbzip2,1,5,9/ppmd8,1,4,9/pulsar/skim/zpaq,1,5" },
     { "ALL",  "Represents all major compressors.",
-              "LZ/SYMMETRIC/MISC" },
-    // CI uses FASTEST for multi-threaded testing
-    { "FASTEST", "All LZ/SYMMETRIC/MISC compressors, each at only its fastest level.",
-     /* LZ */ "memcpy/aceapex,1/brieflz,1/brotli,0/fastlz,1/fastlzma2,1/kanzi,1/libdeflate,1/lizard,10/lz4fast,99/lz4/lz4hc,1/lzav,1/" \
-              "lzf,0/lzfse/lzham,0/lzlib,0/lzma,0/lzo1,1/lzo1a,1/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/lzo1z/lzo2a/lzsse2,1/" \
-              "lzsse4fast/lzsse4,1/lzsse8,1/lzvn/mbrotli,0/memlz/misa77,0/misa77_safe,0/quicklz,1/slz_gzip,1/snappy/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/xz,0/yalz77,1/" \
-              "zlib,1/zlib-ng,1/zstd_fast,-5/zstd,1/zxc,1/" \
-/* SYMMETR */ "bsc1/bzip2,1/bzip3,1/density,1/lbzip2,1/ppmd8,1/zpaq,1/" \
-   /* MISC */ "crush,0/lzjb/skim/tamp,8/tornado-DISABLED,1/zling,0" }, /* Tornado is disabled as it has issues with incompressible data */
+              "LZ/LZ+ENTROPY/SYMMETRIC" },
+    // CI uses FASTEST for multi-threaded testing (except Tornado, which is disabled as it has issues with incompressible data)
+    // lzg is left out too: its fast mode is very slow on small files (0.16 MB/s with -T2 -jr on 468 files of lz/lzo and lz/lz4)
+    { "FASTEST", "All LZ/LZ+ENTROPY/SYMMETRIC compressors, each at only its fastest level.",
+       /* LZ */ "memcpy/brieflz,1/crush,0/fastlz,1/kanzi,1/lizard,10/lz4fast,99/lz4/lz4hc,1/lzav,1/lzf,0/lzjb/" \
+              "lzo1,1/lzo1a,1/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/lzo1z/lzo2a/lzsse2,1/lzsse4fast/lzsse4,1/lzsse8,1/lzvn/memlz/" \
+              "misa77,0/misa77_safe,0/quicklz,1/snappy/tamp,8/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/yalz77,1/" \
+/* LZ+ENTROPY */ "aceapex,1/brotli,0/fastlzma2,1/libdeflate,1/lzfse/lzham,0/lzlib,0/lzma,0/mbrotli,0/slz_gzip,1/xz,0/" \
+              "zlib,1/zlib-ng,1/zling,0/zstd_fast,-5/zstd,1/zxc,1/" \
+  /* SYMMETR */ "bsc1/bzip2,1/bzip3,1/density,1/lbzip2,1/ppmd8,1/skim/zpaq,1" },
     { "SLOW", "Lists very slow compressors.",
               "memcpy/glza" },
     { "BUGGY", "Lists potentially unstable codecs that may cause segmentation faults.",
@@ -331,9 +336,13 @@ static const alias_desc_t alias_desc[] =
               "memcpy/lz4fast,17,9,5/lz4/lz4hc,1,3,9/zstd_fast,-5,-3,-1/zstd,1,3,7,12,17,22/zlib,1,6,9/lzma,0,4,9/bzip2,1,9/ppmd8,4" },
     { "INT_MT", "Covers all compressors supporting internal multi-threading with -I option.",
               "memcpy/bsc0/bsc1/bsc4/bsc5/bsc6/fastlzma2,1,5,10/kanzi,1,2,3,4,5,6,7/lzham,1,4/lzma,0,4,9/xz,0,4,9/zstd,1,5,9,14,18,22" },
+    // OPT: levels that use an optimal (dynamic programming) parser, from each codec's source: brieflz leparse/btparse,
+    // brotli zopfli (quality 10-11), fast-lzma2 FL2_opt/ultra, libdeflate near-optimal, lizard optimalPrice, lz4hc
+    // LZ4HC_CLEVEL_OPT_MIN, lzham, lzlib and 7-zip/xz LZMA normal mode, zstd btopt/btultra
     { "OPT", "Includes compressors that use optimal parsing (slow compression, fast decompression).",
-              "memcpy/brotli,6,7,8,9,10,11/fastlzma2,1,2,3,4,5,6,7,8,9,10/lzham,0,1,2,3,4/" \
-              "lzlib,0,1,2,3,4,5,6,7,8,9/lzma,0,1,2,3,4,5,6,7,8,9/xz,1,2,3,4,5,6,7,8,9/zstd,18,19,20,21,22" },
+              "memcpy/brieflz,5,6,7,8,9/brotli,10,11/fastlzma2,3,4,5,6,7,8,9,10/libdeflate,10,11,12/" \
+              "lizard,18,19,26,27,28,29,39,46,47,48,49/lz4hc,10,11,12/" \
+              "lzham,0,1,2,3,4/lzlib,1,2,3,4,5,6,7,8,9/lzma,5,6,7,8,9/xz,4,5,6,7,8,9/zstd,16,17,18,19,20,21,22" },
 #if !defined(BENCH_REMOVE_UCL)
     { "UCL",      "Refers to all UCL compressor variants.",
                   "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },

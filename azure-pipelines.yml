@@ -389,16 +389,16 @@ jobs:
     displayName: '*** Run LZ'
 
   - script: |
+      $QEMU_INTERPRETER ./lzbench -eLZ+ENTROPY -v5 ./lzbench || exit 1
+    displayName: '*** Run LZ+ENTROPY'
+
+  - script: |
       $QEMU_INTERPRETER ./lzbench -eSYMMETRIC -v5 ./lzbench || exit 1
     displayName: '*** Run SYMMETRIC'
 
-  - script: |
-      $QEMU_INTERPRETER ./lzbench -eMISC -v5 ./lzbench || exit 1
-    displayName: '*** Run MISC'
-
   # Every built codec at its first level, on data it cannot compress. The codec
   # list comes from 'lzbench -l', so this also covers codecs that are missing
-  # from the LZ/SYMMETRIC/MISC/FASTEST aliases used above. A compressor must
+  # from the LZ/LZ+ENTROPY/SYMMETRIC/FASTEST aliases used above. A compressor must
   # store such input rather than fail: lzbench exits with 10 when compress()
   # returns <= 0 and with 11 when the round trip does not match.
   - script: |
@@ -548,12 +548,12 @@ jobs:
     displayName: '*** Run LZ'
 
   - script: |
-      ./lzbench -eSYMMETRIC -v5 ./lzbench || exit 1
-    displayName: '*** Run SYMMETRIC'
+      ./lzbench -eLZ+ENTROPY -v5 ./lzbench || exit 1
+    displayName: '*** Run LZ+ENTROPY'
 
   - script: |
-      ./lzbench -eMISC -v5 ./lzbench || exit 1
-    displayName: '*** Run MISC'
+      ./lzbench -eSYMMETRIC -v5 ./lzbench || exit 1
+    displayName: '*** Run SYMMETRIC'
 
   - script: |
       ./lzbench -eFASTEST -t0,0 -T2 -jr . || exit 1
@@ -631,12 +631,12 @@ jobs:
     displayName: 'Run LZ for $(arch) architecture'
 
   - script: |
-      lzbench.exe -eSYMMETRIC -v5 lzbench.exe || exit 1
-    displayName: 'Run SYMMETRIC for $(arch) architecture'
+      lzbench.exe -eLZ+ENTROPY -v5 lzbench.exe || exit 1
+    displayName: 'Run LZ+ENTROPY for $(arch) architecture'
 
   - script: |
-      lzbench.exe -eMISC -v5 lzbench.exe || exit 1
-    displayName: 'Run MISC for $(arch) architecture'
+      lzbench.exe -eSYMMETRIC -v5 lzbench.exe || exit 1
+    displayName: 'Run SYMMETRIC for $(arch) architecture'
 
   - script: |
       lzbench.exe -eFASTEST -t0,0 -T2 -jr . || exit 1

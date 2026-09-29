@@ -12,6 +12,13 @@ v2.x.y (work-in-progress)
 - improvement: lz/ is split in two: lz/ keeps the LZ codecs without an entropy coder (21), and
                lz+entropy/ has those with Huffman, FSE/ANS or range coding (20); their benchmark
                wrappers are split the same way, into bench/lz_codecs.cpp and bench/lz_entropy_codecs.cpp
+- improvement: aliases follow the same split: LZ has the LZ codecs (or levels) without an entropy
+               coder, the new LZ+ENTROPY those with one, and ALL is LZ/LZ+ENTROPY/SYMMETRIC; the MISC
+               alias is gone: crush, lzjb, tamp, tornado and zling moved to LZ or LZ+ENTROPY, skim to SYMMETRIC
+- improvement: FAST, the default alias, lists the levels that compress at 100 MB/s or more on the
+               EPYC 9555P (77 instead of 39)
+- improvement: OPT lists only levels that use optimal parsing, and adds brieflz, libdeflate, lizard
+               and lz4hc
 - improvement: doc/results: an interactive results page (sortable table, ratio vs. speed charts with
                the Pareto frontier) published to GitHub Pages, and lzbench_json.py to make its data
                from lzbench's -o1 or -o4 output; README.md shows a chart made by lzbench_svg.py
