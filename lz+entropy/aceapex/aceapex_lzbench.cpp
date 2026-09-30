@@ -31,9 +31,11 @@ int64_t lzbench_aceapex_decompress(char* inbuf, size_t insize,
                                     char* outbuf, size_t outsize,
                                     codec_options_t* opts) {
     AcepxState* s = (AcepxState*)opts->work_mem;
+    // thr == 1 (lzbench -T: one codec copy per pool thread) decodes on the calling
+    // thread and spawns nothing; -I# gives the codec its own budget.
     int thr = opts->threads > 0 ? opts->threads : (s ? s->threads : 1);
-    int64_t r = aceapex_decompress(inbuf, insize, outbuf, outsize, thr);
-    return r >= 0 ? (int64_t)outsize : -1;
+    int64_t r = aceapex_decompress_mt(inbuf, insize, outbuf, outsize, thr);
+    return r >= 0 ? r : -1;
 }
 
 char* lzbench_aceapex_stream_init(size_t insize, size_t level, size_t threads) {
