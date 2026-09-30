@@ -37,31 +37,3 @@ int64_t lzbench_aceapex_decompress(char* inbuf, size_t insize,
     int64_t r = aceapex_decompress_mt(inbuf, insize, outbuf, outsize, thr);
     return r >= 0 ? r : -1;
 }
-
-char* lzbench_aceapex_stream_init(size_t insize, size_t level, size_t threads) {
-    return lzbench_aceapex_init(insize, level, threads);
-}
-int64_t lzbench_aceapex_stream_compress(char* inbuf, size_t insize,
-                                         char* outbuf, size_t outsize,
-                                         codec_options_t* opts) {
-    return lzbench_aceapex_compress(inbuf, insize, outbuf, outsize, opts);
-}
-int64_t lzbench_aceapex_stream_decompress(char* inbuf, size_t insize,
-                                           char* outbuf, size_t outsize,
-                                           codec_options_t* opts) {
-    return lzbench_aceapex_decompress(inbuf, insize, outbuf, outsize, opts);
-}
-
-char* lzbench_aceapex3_init(size_t insize, size_t level, size_t threads) {
-    return lzbench_aceapex_init(insize, level, threads);
-}
-int64_t lzbench_aceapex3_compress(char* inbuf, size_t insize,
-                                   char* outbuf, size_t outsize,
-                                   codec_options_t* opts) {
-    return lzbench_aceapex_compress(inbuf, insize, outbuf, outsize, opts);
-}
-int64_t lzbench_aceapex3_decompress(char* inbuf, size_t insize,
-                                     char* outbuf, size_t outsize,
-                                     codec_options_t* opts) {
-    return lzbench_aceapex_decompress(inbuf, insize, outbuf, outsize, opts);
-}
