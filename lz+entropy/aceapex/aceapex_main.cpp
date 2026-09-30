@@ -52,8 +52,23 @@ static inline std::atomic<int>& ax_dec_err(){ return t_dec_err ? *t_dec_err : t_
 struct AxSpawn { void* (*fn)(void*); void* arg; std::atomic<int>* err; size_t bs; int dna; };
 static void* ax_tramp(void* p){ AxSpawn s=*(AxSpawn*)p; delete (AxSpawn*)p;
     t_dec_err=s.err; g_block_size=s.bs; g_input_is_dna=s.dna; return s.fn(s.arg); }
+static std::atomic<long> g_ax_spawned{0};             // threads started by the codec (claim head_enc_threads)
 static int ax_thread(pthread_t* t, void* (*fn)(void*), void* arg){
+    g_ax_spawned.fetch_add(1);
     return pthread_create(t,nullptr,ax_tramp,new AxSpawn{fn,arg,&ax_dec_err(),g_block_size,g_input_is_dna}); }
+// Encoder thread budget of the current call (2.2.1): encode_file sets it from its `threads`; the entropy
+// stage (literal lanes, the three token streams) keeps to it. Before 2.2.1 that stage started up to
+// 3 + CPU-count threads whatever the budget (lzbench -I1: 146 % CPU). 0 = not set (no cap).
+static thread_local int g_enc_threads = 0;
+static inline int ax_enc_budget(int want){ return g_enc_threads > 0 ? std::max(1, std::min(want, g_enc_threads)) : std::max(1, want); }
+// run a pool-style worker on n threads: n-1 started, one is the caller (n <= 1: no thread at all)
+static void ax_run_pool(int n, void* (*fn)(void*), void* arg){
+    if (n <= 1) { fn(arg); return; }
+    std::vector<pthread_t> t(n-1);
+    for (int i = 0; i < n-1; i++) ax_thread(&t[i], fn, arg);
+    fn(arg);
+    for (int i = 0; i < n-1; i++) pthread_join(t[i], nullptr);
+}
 #define MAX_THREADS  16
 #define BLOCK_MARKER 0xFF
 #define ZSTD_LEVEL   22
@@ -865,6 +880,7 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
     uint8_t*& raw_cmd, size_t& total_cmd,
     size_t& num_blocks)
 {
+    g_enc_threads = threads > 0 ? threads : 1;              // entropy stage keeps to this (2.2.1)
     g_block_size = compute_block_size(src_size, threads);
     // Подсказка для lit_chunk_size(): проверяем сам вход, не литералы.
     if(!getenv("LIT_CHUNK"))
@@ -916,11 +932,10 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
     WorkerArgs* wargs=(WorkerArgs*)calloc(threads,sizeof(WorkerArgs));
     pthread_t* pts=(pthread_t*)calloc(threads,sizeof(pthread_t));
     if(!wargs||!pts){free(results);return false;}
-    for(int i=0;i<threads;i++) {
-        wargs[i].thread_id=i; wargs[i].htab=htabs[i]; wargs[i].pool=&pool;
-        ax_thread(&pts[i],worker_func,&wargs[i]);
-    }
-    for(int i=0;i<threads;i++) pthread_join(pts[i],nullptr);
+    for(int i=0;i<threads;i++) { wargs[i].thread_id=i; wargs[i].htab=htabs[i]; wargs[i].pool=&pool; }
+    for(int i=1;i<threads;i++) ax_thread(&pts[i],worker_func,&wargs[i]);   // worker 0 is the caller
+    worker_func(&wargs[0]);
+    for(int i=1;i<threads;i++) pthread_join(pts[i],nullptr);
 
     total_lit=0; total_off=0; total_len=0; total_cmd=0;
     for(size_t b=0;b<num_blocks;b++) {
@@ -1236,15 +1251,17 @@ static uint8_t* lit_compress_legacy(const uint8_t* src, size_t sz, size_t& out_s
         zws[t]={src+off,isz,nullptr,0,ZSTD_compressBound(isz)+8};
         zws[t].out=(uint8_t*)malloc(zws[t].cap);
         if(!zws[t].out){out_sz=0;return nullptr;}}
-    auto zfn=[](void*a)->void*{ZW*z=(ZW*)a;
-        ZSTD_CCtx*ctx=ZSTD_createCCtx();
-        if(!ctx){z->osz=0; return nullptr;}
-        ZSTD_CCtx_setParameter(ctx,ZSTD_c_compressionLevel,3);
-        z->osz=ZSTD_compress2(ctx,z->out,z->cap,z->in,z->isz);
-        ZSTD_freeCCtx(ctx); return nullptr;};
-    pthread_t pts[NW];
-    for(int t=0;t<NW;t++) ax_thread(&pts[t],zfn,&zws[t]);
-    for(int t=0;t<NW;t++) pthread_join(pts[t],nullptr);
+    struct LPool{ ZW* w; std::atomic<int> next; };
+    LPool lp{zws,{0}};
+    auto zfn=[](void*a)->void*{LPool*q=(LPool*)a;
+        for(int i; (i=q->next.fetch_add(1))<NW;){ ZW*z=&q->w[i];
+            ZSTD_CCtx*ctx=ZSTD_createCCtx();
+            if(!ctx){z->osz=0; continue;}
+            ZSTD_CCtx_setParameter(ctx,ZSTD_c_compressionLevel,3);
+            z->osz=ZSTD_compress2(ctx,z->out,z->cap,z->in,z->isz);
+            ZSTD_freeCCtx(ctx); }
+        return nullptr;};
+    ax_run_pool(ax_enc_budget(NW),zfn,&lp);
     size_t hdrsz=8+NW*8,totalsz=hdrsz;
     for(int t=0;t<NW;t++) totalsz+=zws[t].osz;
     uint8_t* res=(uint8_t*)malloc(totalsz);
@@ -1326,10 +1343,7 @@ static uint8_t* lit_compress(const uint8_t* src, size_t sz, size_t& out_sz) {
             free(db);
         }
         ZSTD_freeCCtx(ctx); return nullptr;};
-    const int LANES=std::min(lit_lanes(),NW);
-    std::vector<pthread_t> pts(LANES);
-    for(int t=0;t<LANES;t++) ax_thread(&pts[t],zfn,&cpool);
-    for(int t=0;t<LANES;t++) pthread_join(pts[t],nullptr);
+    ax_run_pool(ax_enc_budget(std::min(lit_lanes(),NW)),zfn,&cpool);
     size_t hdrsz=8+8+(size_t)NW*8,totalsz=hdrsz;
     for(int t=0;t<NW;t++) totalsz+=zws[t].osz;
     uint8_t* res=(uint8_t*)malloc(totalsz);
@@ -1539,9 +1553,11 @@ static void entropy_encode(
         {raw_len,total_len,&zlen,&zlen_sz},
         {raw_cmd,total_cmd,&zcmd,&zcmd_sz}
     };
-    pthread_t epts[3];
-    for(int i=0;i<3;i++) ax_thread(&epts[i],ew,&ea[i]);
-    for(int i=0;i<3;i++) pthread_join(epts[i],nullptr);
+    struct EPool{ EA* a; std::atomic<int> next; void* (*fn)(void*); };
+    EPool ep{ea,{0},ew};
+    ax_run_pool(ax_enc_budget(3),[](void* x)->void*{ EPool* q=(EPool*)x;
+        for(int i; (i=q->next.fetch_add(1))<3;) q->fn(&q->a[i]);
+        return nullptr; },&ep);
 }
  
 static int do_compress(const char* in_path, const char* out_path, int threads, int level=2) {

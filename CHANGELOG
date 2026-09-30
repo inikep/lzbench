@@ -1,5 +1,5 @@
 v2.x.y (work-in-progress)
-- updated aceapex to 2.2.0; level 3 added (thanks to @yasha1971-coder)
+- updated aceapex to 2.2.1; level 3 added (thanks to @yasha1971-coder)
 - improvement: the Makefile describes each codec in its own mk/<codec>.mk (objects, flags,
                platform checks) instead of spreading it over the 1,400-line Makefile;
                CONTRIBUTING.md shows the mk file for a new codec
