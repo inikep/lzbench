@@ -28,6 +28,7 @@
     --lz: #2a78d6;
     --sym: #eb6834;
     --lzent: #1baf7a;
+    --front: #808080;   /* Pareto frontier line, as in the README chart */
     --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
@@ -48,6 +49,7 @@
       --lz: #3987e5;
       --sym: #d95926;
       --lzent: #199e70;
+      --front: #ffffff;
     }
   }
   :root[data-theme="dark"] {
@@ -66,6 +68,7 @@
     --lz: #3987e5;
     --sym: #d95926;
     --lzent: #199e70;
+    --front: #ffffff;
   }
 
   [hidden] { display: none !important; }
@@ -131,7 +134,7 @@
   .legend button[aria-pressed="false"] { opacity: 0.45; text-decoration: line-through; }
   .legend .key-line { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-  .line-key { width: 18px; height: 2px; background: var(--ink); display: inline-block; border-radius: 1px; }
+  .line-key { width: 18px; height: 2px; background: var(--front); display: inline-block; border-radius: 1px; }
 
   .chart-wrap { position: relative; }
   svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -467,7 +470,7 @@ function drawChart(rows, fr) {
   const fpts = pts.filter(p => fr.has(p.n)).sort((a, b) => a[state.metric] - b[state.metric]);
   if (state.showFront && fpts.length > 1) {
     const d = fpts.map((p, i) => (i ? 'L' : 'M') + X(p[state.metric]).toFixed(1) + ',' + Y(p.r).toFixed(1)).join('');
-    el('path', { d, fill: 'none', stroke: css('--ink'), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', opacity: 0.85 }, svg);
+    el('path', { d, fill: 'none', stroke: css('--front'), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
   }
 
   // points: filtered-out ones first (dimmed), frontier last so it sits on top
