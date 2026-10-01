@@ -1,5 +1,6 @@
 #include "aceapex.h"
 #include "ax_align.h"
+#include "ax_env.h"      // ax_getenv: tuning knobs only with ACEAPEX_ENV_TUNING (lzbench #336)
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
@@ -856,7 +857,7 @@ static void* dec_worker(void* arg) {
 }
  
 static size_t compute_block_size(size_t src_size, int threads) {
-    { const char* _e=getenv("ACEAPEX_BS"); if(_e){ size_t _v=strtoull(_e,0,10); if(_v>=4096) return _v; } }
+    { const char* _e=ax_getenv("ACEAPEX_BS"); if(_e){ size_t _v=strtoull(_e,0,10); if(_v>=4096) return _v; } }
     const size_t MIN_BS = 256*1024, MAX_BS = 1*1024*1024;
     if (threads < 1) threads = 1;
     size_t want_blocks = (size_t)threads * 4;
@@ -883,7 +884,7 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
     g_enc_threads = threads > 0 ? threads : 1;              // entropy stage keeps to this (2.2.1)
     g_block_size = compute_block_size(src_size, threads);
     // Подсказка для lit_chunk_size(): проверяем сам вход, не литералы.
-    if(!getenv("LIT_CHUNK"))
+    if(!ax_getenv("LIT_CHUNK"))
         g_input_is_dna = dna_worth(src, src_size < (1u<<22) ? src_size : (1u<<22)) ? 1 : -1;
     num_blocks = (src_size + g_block_size - 1) / g_block_size;
     boffs.resize(num_blocks);
@@ -893,12 +894,12 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
                         (src_size < 128*1024*1024) ? 15 : 17;
     // Encoder (ADR-020): l1 for DNA by default, the chain matcher for everything else.
     // AX_ENC=l1 / AX_ENC=chain force one; the probe is the same 4 MiB dna_worth sample.
-    const char* ax_enc=getenv("AX_ENC");
+    const char* ax_enc=ax_getenv("AX_ENC");
     // level 3 asks for l1 on any input (the lzbench level of the l1 encoder).
     int l1 = ax_enc ? !strcmp(ax_enc,"l1")
                     : level == 3 || dna_worth(src, src_size < (1u<<22) ? src_size : (1u<<22));
     if (l1) hash_log = 13;
-    { const char* e=getenv("AX_HLOG"); if(e&&atoi(e)>=8&&atoi(e)<=24) hash_log=(uint32_t)atoi(e); }
+    { const char* e=ax_getenv("AX_HLOG"); if(e&&atoi(e)>=8&&atoi(e)<=24) hash_log=(uint32_t)atoi(e); }
     uint32_t hash_mask = (1u << hash_log) - 1;
     size_t ht_sz = (hash_mask+1);
     uint32_t chain_mask = 1; while ((size_t)chain_mask + 1 < g_block_size) chain_mask = chain_mask * 2 + 1;   // one link per block position
@@ -918,10 +919,10 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
         htabs[i]->max_attempts=(level>=2)?32:4;
         htabs[i]->l1=l1; if (l1) htabs[i]->max_attempts=1;
         // l1 knobs; AX_NOFLAT / AX_MINL / AX_SKIP override (measurement only)
-        htabs[i]->noflat = getenv("AX_NOFLAT") ? atoi(getenv("AX_NOFLAT")) : l1;
-        htabs[i]->minl = !l1 ? 0 : getenv("AX_MINL") ? (uint32_t)atoi(getenv("AX_MINL")) : 32;
-        htabs[i]->skip = !l1 ? 0 : getenv("AX_SKIP") ? (uint32_t)atoi(getenv("AX_SKIP")) : 4;
-        { const char* e=getenv("AX_ATT"); if(e) htabs[i]->max_attempts=atoi(e); }
+        { const char* e=ax_getenv("AX_NOFLAT"); htabs[i]->noflat = e ? atoi(e) : l1; }
+        { const char* e=ax_getenv("AX_MINL"); htabs[i]->minl = !l1 ? 0 : e ? (uint32_t)atoi(e) : 32; }
+        { const char* e=ax_getenv("AX_SKIP"); htabs[i]->skip = !l1 ? 0 : e ? (uint32_t)atoi(e) : 4; }
+        { const char* e=ax_getenv("AX_ATT"); if(e) htabs[i]->max_attempts=atoi(e); }
     }
     BlockResult* results=(BlockResult*)calloc(num_blocks,sizeof(BlockResult));
     if(!results){return false;}
@@ -1012,10 +1013,10 @@ static inline size_t ax_ce_size(uint64_t e){ return (size_t)(e & (((uint64_t)1<<
 static inline bool   ax_ce_raw (uint64_t e){ return (e >> 63) != 0; }
 static inline bool   ax_ce_rans(uint64_t e){ return ((e >> 62) & 1) != 0; }
 static inline bool   ax_ce_bad (uint64_t e){ return ((e >> 48) & 0x3FFF) != 0 || (ax_ce_raw(e) && ax_ce_rans(e)); }
-static inline bool   ax_profile_open(){ const char* e=getenv("AX_PROFILE"); return e && !strcmp(e,"open"); }
-static inline bool   ax_tok_rans(){ const char* e=getenv("AX_TOK"); return (e && !strcmp(e,"rans")) || ax_profile_open(); }
+static inline bool   ax_profile_open(){ const char* e=ax_getenv("AX_PROFILE"); return e && !strcmp(e,"open"); }
+static inline bool   ax_tok_rans(){ const char* e=ax_getenv("AX_TOK"); return (e && !strcmp(e,"rans")) || ax_profile_open(); }
 // zstd-free literal chunks (ax_lit_open.h, ADR-019): mode 2 open DNA pack, mode 3 open plain
-static inline bool   ax_lit_open(){ const char* e=getenv("AX_LIT"); return (e && !strcmp(e,"open")) || ax_profile_open(); }
+static inline bool   ax_lit_open(){ const char* e=ax_getenv("AX_LIT"); return (e && !strcmp(e,"open")) || ax_profile_open(); }
 // decode one token chunk of any kind; false on any error
 static inline bool ax_tok_chunk(uint64_t e, uint8_t* dst, size_t raw, const uint8_t* p, size_t z){
     if (ax_ce_bad(e)) return false;
@@ -1024,7 +1025,7 @@ static inline bool ax_tok_chunk(uint64_t e, uint8_t* dst, size_t raw, const uint
     return zdec_ok(dst, raw, p, z);
 }
 static size_t fse_chunk_size(){
-    const char* e=getenv("FSE_CHUNK");
+    const char* e=ax_getenv("FSE_CHUNK");
     if(e){ size_t v=strtoull(e,0,10); if(v>=4096){ v&=~(size_t)4095; if(v>((size_t)16<<20)) v=(size_t)16<<20; return v; } }
     return 512*1024;
 }
@@ -1134,14 +1135,14 @@ static void ax_entropy_split(size_t zlit, size_t ztok, int budget, int& lit_t, i
 
 // Parallel entropy encode — 4 streams simultaneously
 static int lit_lanes(){
-    const char* e=getenv("LIT_LANES");
+    const char* e=ax_getenv("LIT_LANES");
     if(e){ int v=atoi(e); if(v>0) return v; }
     unsigned n=std::thread::hardware_concurrency();     // online CPUs (sysconf is not on Windows)
     return n>0 ? (int)n : 8;
 }
 
 static int lit_level(){
-    const char* e=getenv("LIT_LEVEL");
+    const char* e=ax_getenv("LIT_LEVEL");
     if(e){ int v=atoi(e); if(v>=-5 && v<=19 && v!=0) return v; }
     return 3;
 }
@@ -1281,7 +1282,7 @@ static uint8_t* lit_compress_legacy(const uint8_t* src, size_t sz, size_t& out_s
 thread_local int g_input_is_dna = 0;
 
 static size_t lit_chunk_size(){
-    const char* e=getenv("LIT_CHUNK");
+    const char* e=ax_getenv("LIT_CHUNK");
     if(e){ size_t v=strtoull(e,0,10); return v<(1u<<16) ? 0 : v; }
     // Дефолт по данным (11.09). Чанкование литералов стоит таблиц zstd на кусок,
     // но открывает DNA-трансформ, который на чистой ДНК с лихвой окупает:
@@ -1415,7 +1416,7 @@ static uint8_t* lit_decompress(const uint8_t* src, size_t src_sz, size_t& orig_s
     // Чанки независимы как кадры zstd, пул динамический — берём по числу ядер.
     int hw=(int)std::thread::hardware_concurrency(); if(hw<1) hw=8;
     if(lanes_req>0) hw=lanes_req;
-    const char* le=getenv("LIT_LANES_DEC"); if(le) hw=atoi(le);
+    const char* le=ax_getenv("LIT_LANES_DEC"); if(le) hw=atoi(le);
     if(hw<1) hw=1;
     const int LANES=std::min(hw,NW);
     if(LANES<=1){ dfn(&pool); return out; }          // lanes=1: decode inline, spawn nothing
@@ -1519,7 +1520,7 @@ static void entropy_encode(
         const bool rans=ax_tok_rans();
         // rANS profile: 64 KiB chunks unless FSE_CHUNK says otherwise (4 KiB chunks
         // carry a 32-lane state block and a table each: +5-6 % on chr1 tokens)
-        const size_t CHUNK=(rans && !getenv("FSE_CHUNK")) ? (size_t)65536 : fse_chunk_size();
+        const size_t CHUNK=(rans && !ax_getenv("FSE_CHUNK")) ? (size_t)65536 : fse_chunk_size();
         size_t nc=(e->isz+CHUNK-1)/CHUNK;
         size_t hdrsz=8+nc*8;
         size_t cap=hdrsz+e->isz+nc*(64+axr_bound(0));
@@ -1764,7 +1765,7 @@ static int do_decompress(const char* in_path, const char* out_path, int threads=
         free(lit);free(off);free(len);free(cmd);free(dst); return 1; }
     // ACEAPEX_DUMP=1: write streams.bin (header, block table, decoded lit/off/len/cmd) for
     // the GPU harnesses (e2e_full.cu and kin); same layout the depth tool has written since v2.
-    if(getenv("ACEAPEX_DUMP")){
+    if(ax_getenv("ACEAPEX_DUMP")){
         FILE* fs=fopen("streams.bin","wb");
         if(fs){ fwrite(&hdr,sizeof(hdr),1,fs); fwrite(boffs.data(),sizeof(BlockOffsets),nb,fs);
             fwrite(lit,1,lit_sz,fs); fwrite(off,1,off_sz,fs); fwrite(len,1,len_sz,fs); fwrite(cmd,1,cmd_sz,fs);
