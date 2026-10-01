@@ -32,10 +32,7 @@ namespace kanzi
 
        static int generateCanonicalCodes(const uint16 sizes[], uint16 codes[], uint ranks[], int count);
 
-   private:
-       static const int BUFFER_SIZE;
    };
 
 }
 #endif
-

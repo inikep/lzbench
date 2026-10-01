@@ -87,6 +87,10 @@ namespace kanzi
 
    inline void FPAQEncoder::flush()
    {
+       // Reserve space for the four-byte range coder output.
+       if (size_t(_index) + 4 > _buf.size())
+           _buf.resize(size_t(_index) + 4);
+
        BigEndian::writeInt32(&_buf[_index], int32(_high >> 24));
        _index += 4;
        _low <<= 32;

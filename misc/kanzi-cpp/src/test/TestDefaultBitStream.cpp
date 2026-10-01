@@ -19,6 +19,7 @@ limitations under the License.
 #include <fstream>
 #include <streambuf>
 #include <time.h>
+#include "../util/strings.hpp"
 #include "../bitstream/DebugOutputBitStream.hpp"
 #include "../bitstream/DefaultInputBitStream.hpp"
 #include "../bitstream/DefaultOutputBitStream.hpp"
@@ -522,6 +523,26 @@ int testSeek(const string& name)
     obs.close();
     ofs.close();
     cout << "Bits written: " << obs.written() << endl;
+
+    ifstream chk(name.c_str(), ios_base::in | ios_base::binary);
+    chk.read(reinterpret_cast<char*>(output), 128);
+    chk.close();
+
+    for (int i = 0; i < 128; i++) {
+       kanzi::byte expected = kanzi::byte(0xAA);
+
+       if ((i >= 2) && (i < 34))
+           expected = input[98 + i];
+       else if ((i >= 32) && (i < 64))
+           expected = input[i - 22];
+
+       if (output[i] != expected) {
+          cout << "Write failure at index " << i << endl;
+          remove(name.c_str());
+          return 1;
+       }
+    }
+
     remove(name.c_str());
 
     cout << endl;
@@ -692,6 +713,55 @@ int testHasMoreToRead()
     return 0;
 }
 
+int testInputErrorState()
+{
+    cout << endl << "Input Error-State Test" << endl << endl;
+    stringbuf buffer;
+    iostream ios(&buffer);
+    ios.setstate(ios_base::failbit);
+    DefaultInputBitStream ibs(ios, 1024);
+
+    try {
+        ibs.hasMoreToRead();
+        cout << "Expected input error" << endl;
+        return 1;
+    }
+    catch (const BitStreamException& e) {
+        if (e.error() != BitStreamException::INPUT_OUTPUT) {
+            cout << "Unexpected exception code: " << e.error() << endl;
+            return 2;
+        }
+    }
+
+    cout << "Success" << endl;
+    return 0;
+}
+
+int testOutputErrorState()
+{
+    cout << endl << "Output Error-State Test" << endl << endl;
+    stringbuf buffer;
+    iostream ios(&buffer);
+    DefaultOutputBitStream obs(ios, 1024);
+    obs.writeBits(0xAB, 8);
+    ios.setstate(ios_base::failbit);
+
+    try {
+        obs.close();
+        cout << "Expected output error" << endl;
+        return 1;
+    }
+    catch (const BitStreamException& e) {
+        if (e.error() != BitStreamException::INPUT_OUTPUT) {
+            cout << "Unexpected exception code: " << e.error() << endl;
+            return 2;
+        }
+    }
+
+    cout << "Success" << endl;
+    return 0;
+}
+
 
 #ifdef __GNUG__
 int main(int argc, const char* argv[])
@@ -708,7 +778,7 @@ int TestDefaultBitStream_main(int argc, const char* argv[])
 
     if (argc > 2) {
         string str = argv[2];
-        transform(str.begin(), str.end(), str.begin(), ::toupper);
+        transform(str.begin(), str.end(), str.begin(), safeToUpper);
         doPerf = str != "-NOPERF";
     }
 
@@ -728,6 +798,8 @@ int TestDefaultBitStream_main(int argc, const char* argv[])
        res |= testBitStreamCorrectnessMisaligned1();
        res |= testBitStreamCorrectnessMisaligned2();
        res |= testHasMoreToRead();
+       res |= testInputErrorState();
+       res |= testOutputErrorState();
        res |= testSeek(fileName);
 
        if (doPerf == true) {

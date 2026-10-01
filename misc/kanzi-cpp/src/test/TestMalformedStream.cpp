@@ -97,6 +97,38 @@ static string buildHeader(int type, int bsVersion, uint64 checksumSize, short en
     return buffer.str();
 }
 
+static string buildMalformedBlockStream()
+{
+    const int version = 6;
+    const int type = 0x4B414E5A;
+    const int blockSize = 1024;
+    const short entropy = EntropyDecoderFactory::NONE_TYPE;
+    const uint64 transform = uint64(TransformFactory<kanzi::byte>::NONE_TYPE) << 42;
+    const string header = buildHeader(type, version, 0, entropy, transform, blockSize, 0, 0, true);
+
+    stringbuf blockBuffer;
+    iostream blockIO(&blockBuffer);
+    DefaultOutputBitStream blockObs(blockIO, 16384);
+
+    // mode=0 => no copy block, 1-byte pre-transform length follows.
+    // A zero pre-transform length is invalid and must be rejected.
+    blockObs.writeBits(uint64(0), 8);
+    blockObs.writeBits(uint64(0), 8);
+    blockObs.close();
+    const string block = blockBuffer.str();
+    const uint64 blockBits = uint64(block.size()) << 3;
+
+    stringbuf buffer;
+    iostream io(&buffer);
+    DefaultOutputBitStream obs(io, 16384);
+    obs.writeBits(reinterpret_cast<const kanzi::byte*>(header.data()), uint(header.size() << 3));
+    obs.writeBits(uint64(5), 5); // 3 + 5 = 8 bits to encode blockBits below
+    obs.writeBits(blockBits, 8);
+    obs.writeBits(reinterpret_cast<const kanzi::byte*>(block.data()), uint(blockBits));
+    obs.close();
+    return buffer.str();
+}
+
 static int expectHeaderFailure(const string& name, const string& data,
     int expectedError, const string& expectedText)
 {
@@ -123,9 +155,36 @@ static int expectHeaderFailure(const string& name, const string& data,
     return 1;
 }
 
+static int expectBlockFailure(const string& name, const string& data,
+    int expectedError, const string& expectedText, int jobs)
+{
+    cout << "Test malformed block: " << name << endl;
+    istringstream is(data);
+    CompressedInputStream cis(is, jobs);
+    char dst[1];
+
+    try {
+        cis.read(dst, 1);
+    }
+    catch (const IOException& e) {
+        ASSERT_TRUE(e.error() == expectedError, "Unexpected IOException error code");
+        ASSERT_TRUE(string(e.what()).find(expectedText) != string::npos,
+            "Unexpected IOException message");
+        ASSERT_TRUE(cis.bad(), "Read failure did not set badbit");
+        return 0;
+    }
+    catch (const exception& e) {
+        cerr << "Unexpected exception: " << e.what() << endl;
+        return 1;
+    }
+
+    cerr << "Expected an exception for malformed block: " << name << endl;
+    return 1;
+}
+
 int main()
 {
-    const int version = 6;
+    const int version = 7;
     const int type = 0x4B414E5A;
     const int blockSize = 1024;
     const short entropy = EntropyDecoderFactory::ANS0_TYPE;
@@ -170,6 +229,18 @@ int main()
     if (expectHeaderFailure("header checksum mismatch",
             buildHeader(type, version, 0, entropy, transform, blockSize, 0, 0, false),
             Error::ERR_CRC_CHECK, "header checksum mismatch") != 0) {
+        return 1;
+    }
+
+    if (expectBlockFailure("zero pre-transform length",
+            buildMalformedBlockStream(),
+            Error::ERR_READ_FILE, "Invalid compressed block length", 1) != 0) {
+        return 1;
+    }
+
+    if (expectBlockFailure("zero pre-transform length (multi-job)",
+            buildMalformedBlockStream(),
+            Error::ERR_READ_FILE, "Invalid compressed block length", 4) != 0) {
         return 1;
     }
 

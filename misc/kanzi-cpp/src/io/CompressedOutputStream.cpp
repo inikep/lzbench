@@ -28,9 +28,17 @@ limitations under the License.
 using namespace kanzi;
 using namespace std;
 
+// Clear ownership before delete so a throwing destructor cannot leave a
+// dangling non-null pointer for later cleanup.
+#define DELETE_AND_NULL(TYPE, PTR) \
+    do { \
+        TYPE* knzTmpPtr = (PTR); \
+        (PTR) = nullptr; \
+        delete knzTmpPtr; \
+    } while (0)
 
 const int CompressedOutputStream::BITSTREAM_TYPE = 0x4B414E5A; // "KANZ"
-const int CompressedOutputStream::BITSTREAM_FORMAT_VERSION = 6;
+const int CompressedOutputStream::BITSTREAM_FORMAT_VERSION = 7;
 const int CompressedOutputStream::DEFAULT_BUFFER_SIZE = 256 * 1024;
 const kanzi::byte CompressedOutputStream::COPY_BLOCK_MASK = kanzi::byte(0x80);
 const kanzi::byte CompressedOutputStream::TRANSFORMS_MASK = kanzi::byte(0x10);
@@ -89,7 +97,7 @@ CompressedOutputStream::CompressedOutputStream(OutputStream& os,
     _bufferThreshold = blockSize;
     _inputSize = fileSize;
     const int nbBlocks = (_inputSize == 0) ? 0 : int((_inputSize + int64(blockSize - 1)) / int64(blockSize));
-    _nbInputBlocks = min(nbBlocks, MAX_CONCURRENCY - 1);
+    _nbInputBlocks = min(nbBlocks, MAX_CONCURRENCY);
     _headless = headerless;
     _initialized = 0;
     _closed = 0;
@@ -184,7 +192,7 @@ CompressedOutputStream::CompressedOutputStream(OutputStream& os, Context& ctx, b
 
     _inputSize = ctx.getLong("fileSize", 0);
     const int nbBlocks = (_inputSize == 0) ? 0 : int((_inputSize + int64(blockSize - 1)) / int64(blockSize));
-    _nbInputBlocks = min(nbBlocks, MAX_CONCURRENCY - 1);
+    _nbInputBlocks = min(nbBlocks, MAX_CONCURRENCY);
     _jobs = tasks;
     _blockId = 0;
     _inputBlockId = 0;
@@ -325,20 +333,20 @@ void CompressedOutputStream::writeHeader()
     uint32 seed = 0x01030507 * BITSTREAM_FORMAT_VERSION; // no const to avoid VS2008 warning
     const uint32 HASH = 0x1E35A7BD;
     uint32 cksum = HASH * seed;
-    cksum ^= (HASH * uint32(~ckSize));
-    cksum ^= (HASH * uint32(~_entropyType));
-    cksum ^= (HASH * uint32((~_transformType) >> 32));
-    cksum ^= (HASH * uint32(~_transformType));
-    cksum ^= (HASH * uint32(~_blockSize));
+    cksum = CompressedOutputStream::mix32(cksum, HASH, ckSize);
+    cksum = CompressedOutputStream::mix32(cksum, HASH, uint32(_entropyType));
+    cksum = CompressedOutputStream::mix32(cksum, HASH, uint32(_transformType >> 32));
+    cksum = CompressedOutputStream::mix32(cksum, HASH, uint32(_transformType));
+    cksum = CompressedOutputStream::mix32(cksum, HASH, uint32(_blockSize));
 
     if (szMask != 0) {
-        cksum ^= (HASH * uint32((~_inputSize) >> 32));
-        cksum ^= (HASH * uint32(~_inputSize));
+        cksum = CompressedOutputStream::mix32(cksum, HASH, uint32(_inputSize >> 32));
+        cksum = CompressedOutputStream::mix32(cksum, HASH, uint32(_inputSize));
     }
 
     cksum = (cksum >> 23) ^ (cksum >> 3);
 
-    if (_obs->writeBits(cksum, 24) != 24)
+    if (_obs->writeBits(uint64(cksum & 0xFFFFFFu), 24) != 24)
         throw IOException("Cannot write checksum to header", Error::ERR_WRITE_FILE);
 }
 
@@ -396,6 +404,7 @@ void CompressedOutputStream::close()
         return;
 
     string errMsg;
+    int errCode = Error::ERR_WRITE_FILE;
 
     try {
         // Submit the last partial block (if any)
@@ -405,23 +414,56 @@ void CompressedOutputStream::close()
         // Wait for ALL pending tasks to complete
         for (int i = 0; i < _jobs; i++) {
             if (_futures[i].valid()) {
-                EncodingTaskResult res = _futures[i].get();
+                try {
+                    EncodingTaskResult res = _futures[i].get();
 
-                if (res._error != 0)
-                    throw IOException(res._msg, res._error);
+                    // Keep the first real worker error. Later tasks may only
+                    // report cancellation or a secondary cleanup failure.
+                    if ((res._error != 0) && (errMsg == "")) {
+                        errMsg = res._msg;
+                        errCode = res._error;
+                    }
+                }
+                catch (const exception& e) {
+                    if (errMsg == "") {
+                        errMsg = e.what();
+                        errCode = Error::ERR_PROCESS_BLOCK;
+                    }
+                }
+                catch (...) {
+                    if (errMsg == "") {
+                        errMsg = "Unknown asynchronous block processing error";
+                        errCode = Error::ERR_PROCESS_BLOCK;
+                    }
+                }
             }
         }
 #endif
 
-        // Write last block: length-3 (0) and 0 bits
-        _obs->writeBits(uint64(0), 5);
-        _obs->writeBits(uint64(0), 3);
-        _obs->close();
+        if (errMsg == "") {
+            // Write last block: length-3 (0) and 0 bits
+            _obs->writeBits(uint64(0), 5);
+            _obs->writeBits(uint64(0), 3);
+            _obs->close();
+        }
+    }
+    catch (const IOException& e) {
+        setstate(ios::badbit);
+        errMsg = e.what();
+        errCode = e.error();
     }
     catch (const exception& e) {
         setstate(ios::badbit);
         errMsg = e.what();
     }
+    catch (...) {
+        setstate(ios::badbit);
+        errMsg = "Unknown compressed stream error";
+        errCode = Error::ERR_WRITE_FILE;
+    }
+
+    if (errMsg != "")
+        setstate(ios::badbit);
 
     STORE_ATOMIC(_closed, 1);
 
@@ -439,7 +481,7 @@ void CompressedOutputStream::close()
     }
 
     if (errMsg != "")
-       throw IOException(errMsg, Error::ERR_WRITE_FILE);
+       throw IOException(errMsg, errCode);
 
     setstate(ios::eofbit);
 }
@@ -452,10 +494,19 @@ void CompressedOutputStream::processBuffer()
 
 #ifdef CONCURRENCY_ENABLED
     if (_futures[_bufferId].valid()) {
-        EncodingTaskResult res = _futures[_bufferId].get();
+        try {
+            EncodingTaskResult res = _futures[_bufferId].get();
 
-        if (res._error != 0)
-            throw IOException(res._msg, res._error);
+            if (res._error != 0) {
+                throw IOException(res._msg, res._error);
+            }
+        }
+        catch (...) {
+            // Do not let another worker access buffers or the shared bitstream
+            // after the caller starts destroying this stream.
+            drainTasks();
+            throw;
+        }
     }
 #endif
 
@@ -472,6 +523,24 @@ void CompressedOutputStream::processBuffer()
 
     _buffers[_bufferId]->_index = 0;
 }
+
+
+#ifdef CONCURRENCY_ENABLED
+void CompressedOutputStream::drainTasks() noexcept
+{
+    for (int i = 0; i < _jobs; i++) {
+        if (_futures[i].valid()) {
+            try {
+                _futures[i].get();
+            }
+            catch (...) {
+                // The caller already has the primary error. The purpose of
+                // this method is to complete every worker before teardown.
+            }
+        }
+    }
+}
+#endif
 
 
 void CompressedOutputStream::submitBlock()
@@ -643,7 +712,8 @@ void EncodingTask<T>::fetchAddProcessedBlockId()
 }
 
 // Encode mode + transformed entropy coded data
-// mode | 0b1yy0xxxx => copy block
+// mode | 0b1yy0xxxx => raw copy block
+//      | 0b1yy1xxxx => transformed copy block (version >= 7)
 //      | 0b0yy00000 => size(size(block))-1
 //  case 4 transforms or less
 //      | 0b0001xxxx => transform sequence skip flags (1 means skip)
@@ -703,7 +773,7 @@ T EncodingTask<T>::run()
                 if (skip == false) {
                     uint histo[256] = { 0 };
                     Global::computeHistogram(&_data->_array[_data->_index], blockLength, histo);
-                    const int entropy = Global::computeFirstOrderEntropy1024(blockLength, histo);
+                    const int entropy = Global::computeOrder0Entropy1024(blockLength, histo);
                     skip = entropy >= EntropyUtils::INCOMPRESSIBLE_THRESHOLD;
                     //_ctx.putString("histo0", toString(histo, 256));
                 }
@@ -745,8 +815,7 @@ T EncodingTask<T>::run()
         transform->forward(*_data, *_buffer, blockLength);
         const int nbTransforms = transform->getNbTransforms();
         const kanzi::byte skipFlags = transform->getSkipFlags();
-        delete transform;
-        transform = nullptr;
+        DELETE_AND_NULL(TransformSequence<kanzi::byte>, transform);
         postTransformLength = _buffer->_index;
 
         if (postTransformLength < 0) {
@@ -764,6 +833,19 @@ T EncodingTask<T>::run()
 
         // Record size of 'block size' - 1 in bytes
         mode |= kanzi::byte(((dataSize - 1) & 0x03) << 5);
+
+        // Binary entropy codecs reject blocks at or above 1 GiB. The
+        // transformed-copy representation can preserve the transformed data
+        // without passing it through entropy coding.
+        bool transformedCopy = false;
+
+        if ((mode & CompressedOutputStream::COPY_BLOCK_MASK) == kanzi::byte(0)) {
+            if (uint(postTransformLength) >= uint(CompressedOutputStream::MAX_BITSTREAM_BLOCK_SIZE)) {
+                transformedCopy = true;
+                mode |= CompressedOutputStream::COPY_BLOCK_MASK |
+                    CompressedOutputStream::TRANSFORMS_MASK;
+            }
+        }
 
         if (_listeners.size() > 0) {
             // Notify after transform
@@ -784,13 +866,35 @@ T EncodingTask<T>::run()
         }
 
         _data->_index = 0;
-        ofixedbuf buf(reinterpret_cast<char*>(&_data->_array[_data->_index]), streamsize(_data->_length));
+        growable_ofixedbuf buf(_data);
         ostream os(&buf);
         DefaultOutputBitStream obs(os);
 
         // Write block 'header' (mode + compressed length)
-        if (((mode & CompressedOutputStream::COPY_BLOCK_MASK) != kanzi::byte(0)) || (nbTransforms <= 4)) {
+        kanzi::byte headerSkipFlags = skipFlags;
+
+        if (transformedCopy == true) {
+            if (nbTransforms <= 4) {
+                mode |= kanzi::byte(skipFlags >> 4);
+                headerSkipFlags = (mode << 4) | kanzi::byte(0x0F);
+            }
+            else {
+                headerSkipFlags = skipFlags;
+            }
+
+            obs.writeBits(uint64(mode), 8);
+
+            if (nbTransforms > 4)
+                obs.writeBits(uint64(skipFlags), 8);
+        }
+        else if (((mode & CompressedOutputStream::COPY_BLOCK_MASK) != kanzi::byte(0)) || (nbTransforms <= 4)) {
             mode |= kanzi::byte(skipFlags >> 4);
+
+            if ((mode & CompressedOutputStream::COPY_BLOCK_MASK) != kanzi::byte(0))
+                headerSkipFlags = kanzi::byte(0);
+            else
+                headerSkipFlags = (mode << 4) | kanzi::byte(0x0F);
+
             obs.writeBits(uint64(mode), 8);
         }
         else {
@@ -800,6 +904,15 @@ T EncodingTask<T>::run()
         }
 
         obs.writeBits(postTransformLength, 8 * dataSize);
+        // Reserve the block header checksum byte. The encoded block length is
+        // only known after entropy coding, so patch this byte once the complete
+        // temporary block has been written.
+        uint headerChecksumIndex = uint(1 + dataSize);
+
+        if (((mode & CompressedOutputStream::TRANSFORMS_MASK) != kanzi::byte(0)) && (nbTransforms > 4))
+            headerChecksumIndex++;
+
+        obs.writeBits(uint64(0), 8);
 
         // Write checksum
         if (_hasher32 != nullptr)
@@ -814,23 +927,111 @@ T EncodingTask<T>::run()
             CompressedOutputStream::notifyListeners(_listeners, evt);
         }
 
-        // Each block is encoded separately
-        // Rebuild the entropy encoder to reset block statistics
-        ee = EntropyEncoderFactory::newEncoder(obs, _ctx, eType);
+        uint64 written = 0;
 
-        // Entropy encode block
-        if (ee->encode(_buffer->_array, 0, postTransformLength) != postTransformLength) {
-            delete ee;
-            storeProcessedBlockId(CompressedOutputStream::CANCEL_TASKS_ID);
-            return T(blockId, Error::ERR_PROCESS_BLOCK, "Entropy coding failed");
+        if (transformedCopy == true) {
+            // Entropy coding is unavailable for this transformed block. Keep
+            // the transformed bytes and let the decoder reverse the transforms.
+            for (uint n = 0, remaining = uint(postTransformLength); remaining > 0; ) {
+                const uint chunk = min(remaining, uint(1) << 27);
+                obs.writeBits(&_buffer->_array[n], 8 * chunk);
+                n += chunk;
+                remaining -= chunk;
+            }
+
+            obs.close();
+            written = obs.written();
+        }
+        else {
+            // Each block is encoded separately
+            // Rebuild the entropy encoder to reset block statistics
+            ee = EntropyEncoderFactory::newEncoder(obs, _ctx, eType);
+
+            // Entropy encode block
+            if (ee->encode(_buffer->_array, 0, postTransformLength) != postTransformLength) {
+                try {
+                    DELETE_AND_NULL(EntropyEncoder, ee);
+                }
+                catch (...) {
+                }
+
+                storeProcessedBlockId(CompressedOutputStream::CANCEL_TASKS_ID);
+                return T(blockId, Error::ERR_PROCESS_BLOCK, "Entropy coding failed");
+            }
+
+            // Dispose before processing statistics (may write to the bitstream)
+            ee->dispose();
+            DELETE_AND_NULL(EntropyEncoder, ee);
+            obs.close();
+            written = obs.written();
         }
 
-        // Dispose before processing statistics (may write to the bitstream)
-        ee->dispose();
-        delete ee;
-        ee = nullptr;
-        obs.close();
-        uint64 written = obs.written();
+        // If not a copy block, check if entropy expanded the transformed block
+        if ((mode & CompressedOutputStream::COPY_BLOCK_MASK) == kanzi::byte(0)) {
+            const uint64 rawPayloadBytes = uint64(postTransformLength);
+            const uint64 entropyPayloadBytes = (written + 7) >> 3;
+
+            // If entropy coding expanded the block, rebuild the temporary payload as
+            // a "transformed copy" block. This keeps the transform gains while
+            // bypassing the entropy coder for pathological cases.
+            if (rawPayloadBytes < entropyPayloadBytes) {
+                _data->_index = 0;
+                growable_ofixedbuf copyBuf(_data);
+                ostream copyOs(&copyBuf);
+                DefaultOutputBitStream copyObs(copyOs);
+                kanzi::byte copyMode = kanzi::byte(mode | CompressedOutputStream::COPY_BLOCK_MASK |
+                    CompressedOutputStream::TRANSFORMS_MASK);
+
+                copyObs.writeBits(uint64(copyMode), 8);
+
+                if (nbTransforms > 4)
+                    copyObs.writeBits(uint64(skipFlags), 8);
+
+                copyObs.writeBits(postTransformLength, 8 * dataSize);
+                headerChecksumIndex = uint(1 + dataSize);
+
+                if (nbTransforms > 4) {
+                    headerChecksumIndex++;
+                    headerSkipFlags = skipFlags;
+                }
+                else {
+                    headerSkipFlags = (copyMode << 4) | kanzi::byte(0x0F);
+                }
+
+                copyObs.writeBits(uint64(0), 8);
+
+                if (_hasher32 != nullptr)
+                    copyObs.writeBits(checksum, 32);
+                else if (_hasher64 != nullptr)
+                    copyObs.writeBits(checksum, 64);
+
+                // Reuse the post-transform bytes already present in _buffer:
+                // no entropy coding, just emit the transformed payload verbatim.
+                for (uint n = 0, remaining = uint(postTransformLength); remaining > 0; ) {
+                    const uint chunk = min(remaining, uint(1) << 27);
+                    copyObs.writeBits(&_buffer->_array[n], 8 * chunk);
+                    n += chunk;
+                    remaining -= chunk;
+                }
+
+                copyObs.close();
+                written = copyObs.written();
+                mode = copyMode;
+            }
+        }
+
+        // Protect the block header and its outer encoded bit length independently
+        // from the optional checksum of the decoded payload.
+        const uint32 hash = 0x1E35A7BDu;
+        uint32 cksum = hash * 0x01030507u;
+        cksum = CompressedOutputStream::mix32(cksum, hash, uint32(mode));
+        cksum = CompressedOutputStream::mix32(cksum, hash, uint32(uint8_t(headerSkipFlags)));
+        cksum = CompressedOutputStream::mix32(cksum, hash, uint32(postTransformLength));
+        cksum = CompressedOutputStream::mix32(cksum, hash, uint32(written >> 32));
+        cksum = CompressedOutputStream::mix32(cksum, hash, uint32(written));
+        cksum = (cksum >> 23) ^ (cksum >> 3);
+        _data->_array[headerChecksumIndex] = kanzi::byte(cksum & 0xFFu);
+
         const uint lw = (written < 8) ? 3 : uint(Global::log2(uint32(written >> 3)) + 4);
 
 #ifdef CONCURRENCY_ENABLED
@@ -855,11 +1056,13 @@ T EncodingTask<T>::run()
         int64 ww = int64((written + 7) >> 3);
 
         // Emit data to shared bitstream
-        for (uint n = 0; written > 0; ) {
-            uint chkSize = uint(min(written, uint64(1) << 30));
+        uint64 remaining = written;
+
+        for (uint n = 0; remaining > 0; ) {
+            uint chkSize = uint(min(remaining, uint64(1) << 30));
             _obs->writeBits(&_data->_array[n], chkSize);
             n += ((chkSize + 7) >> 3);
-            written -= uint64(chkSize);
+            remaining -= uint64(chkSize);
         }
 
         // After completion of the entropy coding, increment the block id.
@@ -873,12 +1076,6 @@ T EncodingTask<T>::run()
 
 #if !defined(_MSC_VER) || _MSC_VER > 1500
             if (_ctx.getInt("verbosity", 0) > 4) {
-                string oName = _ctx.getString("outputName");
-
-                if (oName.length() == 4) {
-                    std::transform(oName.begin(), oName.end(), oName.begin(), ::toupper);
-                }
-
                 Event evt2(Event::BLOCK_INFO, blockId,
                    int64((written + 7) >> 3), timer.getCurrentTime(), checksum, hashType, blockOffset, uint8(skipFlags));
                 CompressedOutputStream::notifyListeners(_listeners, evt2);
@@ -892,12 +1089,50 @@ T EncodingTask<T>::run()
         // Cancel any in-flight task waiting on this block.
         storeProcessedBlockId(CompressedOutputStream::CANCEL_TASKS_ID);
 
-        if (transform != nullptr)
-            delete transform;
+        // Cleanup must not replace the original block-processing error. In
+        // particular, an encoder destructor may flush its bitstream and can
+        // itself report a stream error while unwinding.
+        if (transform != nullptr) {
+            try {
+                DELETE_AND_NULL(TransformSequence<kanzi::byte>, transform);
+            }
+            catch (...) {
+            }
+        }
 
-        if (ee != nullptr)
-            delete ee;
+        if (ee != nullptr) {
+            try {
+                DELETE_AND_NULL(EntropyEncoder, ee);
+            }
+            catch (...) {
+            }
+        }
 
         return T(blockId, Error::ERR_PROCESS_BLOCK, e.what());
     }
+    catch (...) {
+        // Keep the cancellation and cleanup guarantees even for an exception
+        // type that does not derive from std::exception.
+        storeProcessedBlockId(CompressedOutputStream::CANCEL_TASKS_ID);
+
+        if (transform != nullptr) {
+            try {
+                DELETE_AND_NULL(TransformSequence<kanzi::byte>, transform);
+            }
+            catch (...) {
+            }
+        }
+
+        if (ee != nullptr) {
+            try {
+                DELETE_AND_NULL(EntropyEncoder, ee);
+            }
+            catch (...) {
+            }
+        }
+
+        return T(blockId, Error::ERR_PROCESS_BLOCK, "Unknown block processing error");
+    }
 }
+
+#undef DELETE_AND_NULL

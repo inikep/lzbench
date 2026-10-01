@@ -656,7 +656,7 @@ static void test_headerless(void)
     dparams.blockSize     = 1 << 15;
     dparams.originalSize  = strlen(input);
     dparams.checksum      = 0;
-    dparams.bsVersion     = 1;
+    dparams.bsVersion     = 7;
 
     struct dContext* dctx = NULL;
     ASSERT(initDecompressor(&dparams, fdec, &dctx) == 0, "failed to init decompressor");

@@ -127,11 +127,10 @@ int RangeDecoder::decodeHeader(uint frequencies[])
     _cumFreqs[0] = 0;
 
     if (_lenF2S < scale) {
-        if (_f2s != nullptr)
-           delete[] _f2s;
-
+        short* f2s = new short[scale];
+        delete[] _f2s;
+        _f2s = f2s;
         _lenF2S = scale;
-        _f2s = new short[_lenF2S];
     }
 
     // Create histogram of frequencies scaled to 'range' and reverse mapping

@@ -36,6 +36,11 @@ bool BWTS::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outp
     if (!SliceArray<kanzi::byte>::isValid(output))
         throw invalid_argument("BWTS: Invalid output block");
 
+    if ((count < 0) ||
+        (count > input._length - input._index) ||
+        (count > output._length - output._index))
+        return false;
+
     if (count > MAX_BLOCK_SIZE) {
         // Not a recoverable error: instead of silently fail the transform,
         // issue a fatal error.
@@ -45,8 +50,12 @@ bool BWTS::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outp
     }
 
     if (count < 2) {
-        if (count == 1)
+        if (count == 1) {
+            if ((input._index >= input._length) || (output._index >= output._length))
+                return false;
+
             output._array[output._index++] = input._array[input._index++];
+        }
 
         return true;
     }
@@ -56,17 +65,22 @@ bool BWTS::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outp
 
     // Lazy dynamic memory allocation
     if (_bufferSize < count) {
+        int* buffer1 = new int[count];
+        int* buffer2 = nullptr;
+
+        try {
+            buffer2 = new int[count];
+        }
+        catch (...) {
+            delete[] buffer1;
+            throw;
+        }
+
+        delete[] _buffer1;
+        delete[] _buffer2;
+        _buffer1 = buffer1;
+        _buffer2 = buffer2;
         _bufferSize = count;
-
-        if (_buffer1 != nullptr)
-           delete[] _buffer1;
-
-        _buffer1 = new int[_bufferSize];
-
-        if (_buffer2 != nullptr)
-           delete[] _buffer2;
-
-        _buffer2 = new int[_bufferSize];
     }
 
     // Aliasing
@@ -183,21 +197,34 @@ bool BWTS::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outp
     if (!SliceArray<kanzi::byte>::isValid(output))
         throw invalid_argument("BWTS: Invalid output block");
 
+    if ((count < 0) ||
+        (count > input._length - input._index) ||
+        (count > output._length - output._index))
+        return false;
+
+    if (count > MAX_BLOCK_SIZE) {
+        stringstream ss;
+        ss << "The max BWTS block size is " << MAX_BLOCK_SIZE << ", got " << count;
+        throw invalid_argument(ss.str());
+    }
+
     if (count < 2) {
-        if (count == 1)
+        if (count == 1) {
+            if ((input._index >= input._length) || (output._index >= output._length))
+                return false;
+
             output._array[output._index++] = input._array[input._index++];
+        }
 
         return true;
     }
 
     // Lazy dynamic memory allocation
     if (_bufferSize < count) {
+        int* buffer1 = new int[count];
+        delete[] _buffer1;
+        _buffer1 = buffer1;
         _bufferSize = count;
-
-        if (_buffer1 != nullptr)
-           delete[] _buffer1;
-
-        _buffer1 = new int[_bufferSize];
     }
 
     // Initialize histogram

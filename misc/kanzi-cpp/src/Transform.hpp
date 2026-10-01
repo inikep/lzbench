@@ -26,17 +26,22 @@ namespace kanzi
    // the result to an output byte array. The result may have a different size.
    // The transform must be stateless to ensure that the compression results
    // are the same regardless of the number of jobs (ie no information is retained
-   // between to invocations of forward or inverse).
+   // between two invocations of forward or inverse).
    template <class T>
    class Transform
    {
    public:
        Transform(){}
 
+       // The index of each slice array returns the number of bytes read & written respectively.
+       // If the method returns false, the values of the indexes are best effort only.
        virtual bool forward(SliceArray<T>& src, SliceArray<T>& dst, int length) = 0;
 
+       // The index of each slice array returns the number of bytes read & written respectively.
+       // If the method returns false, the values of the indexes are best effort only.
        virtual bool inverse(SliceArray<T>& src, SliceArray<T>& dst, int length) = 0;
 
+       // Return the maximum possible length of the transformed data
        virtual int getMaxEncodedLength(int srcLen) const = 0;
 
        virtual ~Transform(){}

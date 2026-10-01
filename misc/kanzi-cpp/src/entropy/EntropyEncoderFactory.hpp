@@ -18,6 +18,7 @@ limitations under the License.
 #define knz_EntropyEncoderFactory
 
 #include <algorithm>
+#include "../util/strings.hpp"
 #include "../Context.hpp"
 #include "ANSRangeEncoder.hpp"
 #include "BinaryEntropyEncoder.hpp"
@@ -77,7 +78,7 @@ namespace kanzi {
            return new FPAQEncoder(obs);
 
        case CM_TYPE:
-           return new BinaryEntropyEncoder(obs, new CMPredictor());
+           return new BinaryEntropyEncoder(obs, new CMPredictor(&ctx));
 
        case TPAQ_TYPE:
            return new BinaryEntropyEncoder(obs, new TPAQPredictor<false>(&ctx));
@@ -139,7 +140,7 @@ namespace kanzi {
    inline short EntropyEncoderFactory::getType(const char* str)
    {
        std::string name = str;
-       transform(name.begin(), name.end(), name.begin(), ::toupper);
+       transform(name.begin(), name.end(), name.begin(), safeToUpper);
 
        if (name == "HUFFMAN")
            return HUFFMAN_TYPE;
@@ -172,4 +173,3 @@ namespace kanzi {
    }
 }
 #endif
-

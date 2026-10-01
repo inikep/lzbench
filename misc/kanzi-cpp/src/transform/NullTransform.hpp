@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef knz_NullTransform
 #define knz_NullTransform
 
+#include <cstring>
 #include "../Context.hpp"
 #include "../Transform.hpp"
 
@@ -59,7 +60,7 @@ namespace kanzi
        if (output._index + length > output._length)
            return false;
 
-       memcpy(&output._array[output._index], &input._array[input._index], size_t(length));
+       std::memmove(&output._array[output._index], &input._array[input._index], size_t(length));
        input._index += length;
        output._index += length;
        return true;
@@ -67,4 +68,3 @@ namespace kanzi
 
 }
 #endif
-

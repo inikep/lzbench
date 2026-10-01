@@ -161,7 +161,7 @@ void DefaultOutputBitStream::_close()
     try {
         _os.flush();
 
-        if (_os.bad())
+        if (_os.fail())
             throw BitStreamException("Write to bitstream failed.", BitStreamException::INPUT_OUTPUT);
     }
     catch (const ios_base::failure& e) {
@@ -175,10 +175,11 @@ void DefaultOutputBitStream::_close()
 
     // Reset fields to force a flush() and trigger an exception
     // on writeBit() or writeBits()
+    kanzi::byte* buffer = new kanzi::byte[8];
+    memset(&buffer[0], 0, size_t(8));
     delete[] _buffer;
+    _buffer = buffer;
     _bufferSize = 8;
-    _buffer = new kanzi::byte[_bufferSize];
-    memset(&_buffer[0], 0, size_t(_bufferSize));
 }
 
 // Write buffer to underlying stream
@@ -191,7 +192,7 @@ void DefaultOutputBitStream::flush()
         if (_position > 0) {
             _os.write(reinterpret_cast<char*>(_buffer), _position);
 
-            if (_os.bad())
+            if (_os.fail())
                 throw BitStreamException("Write to bitstream failed", BitStreamException::INPUT_OUTPUT);
 
             _written += (int64(_position) << 3);

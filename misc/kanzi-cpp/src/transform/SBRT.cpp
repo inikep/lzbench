@@ -54,6 +54,11 @@ bool SBRT::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outp
     if (!SliceArray<kanzi::byte>::isValid(output))
         throw std::invalid_argument("SBRT: Invalid output block");
 
+    if ((count < 0) ||
+        (count > input._length - input._index) ||
+        (count > output._length - output._index))
+        return false;
+
     // Aliasing
     const kanzi::byte* src = &input._array[input._index];
     kanzi::byte* dst = &output._array[output._index];
@@ -102,15 +107,22 @@ bool SBRT::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outp
     if (!SliceArray<kanzi::byte>::isValid(output))
         throw std::invalid_argument("SBRT: Invalid output block");
 
-    // Aliasing
-    const kanzi::byte* src = &input._array[input._index];
-    kanzi::byte* dst = &output._array[output._index];
     int p[256] = { 0 };
     int q[256] = { 0 };
     uint8 r2s[256];
 
     for (int i = 0; i < 256; i++)
         r2s[i] = uint8(i);
+
+    // Check before forming slice pointers. This placement also keeps the inverse loop fast.
+    if ((count < 0) ||
+        (count > input._length - input._index) ||
+        (count > output._length - output._index))
+        return false;
+
+    // Aliasing
+    const kanzi::byte* src = &input._array[input._index];
+    kanzi::byte* dst = &output._array[output._index];
 
     for (int i = 0; i < count; i++) {
         int r = int(src[i]);

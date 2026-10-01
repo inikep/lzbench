@@ -1,7 +1,5 @@
 #CC=clang
 #CXX=clang++
-OBJ_DIR = obj
-TEST_OBJ_DIR=$(OBJ_DIR)/test
 APP=kanzi
 APP_STATIC=$(APP)_static
 APP_DYNAMIC=$(APP)_dynamic
@@ -16,9 +14,22 @@ ifeq ($(CONCURRENCY_DISABLED), 1)
 	CONCURRENCY_FLAG = -DCONCURRENCY_DISABLED
 endif
 
+ifndef USE_INTRINSICS
+    USE_INTRINSICS = 0
+endif
+
+ifeq ($(USE_INTRINSICS), 1)
+    INTRINSICS_FLAG = -DUSE_INTRINSICS
+endif
+
 ifndef CXX_STD
     CXX_STD = c++17
 endif
+
+OBJ_DIR_ROOT = obj
+OBJ_DIR_TAG = $(subst +,x,$(subst /,_,$(subst =,_,$(CXX_STD))))
+OBJ_DIR = $(OBJ_DIR_ROOT)/$(OBJ_DIR_TAG)
+TEST_OBJ_DIR=$(OBJ_DIR)/test
 
 ifndef C_STD
     C_STD = c11
@@ -36,6 +47,8 @@ ifeq ($(DETECTED_OS),Windows)
 	CXXFLAGS += -c -std=$(CXX_STD) -Wall -Wextra -O3 -fomit-frame-pointer -fPIC -DNDEBUG -pedantic -march=native -fno-rtti $(CONCURRENCY_FLAG)
 else
 	ARCH ?= $(shell uname -m)
+	CFLAGS += -D_FILE_OFFSET_BITS=64
+	CXXFLAGS += -D_FILE_OFFSET_BITS=64
 
 	# Check for both x86_64 (Linux) and amd64 (FreeBSD)
 	ifneq ($(filter x86_64 amd64,$(ARCH)),)
@@ -46,6 +59,8 @@ else
 		CXXFLAGS += -c -std=$(CXX_STD) -fstrict-aliasing -Wall -Wextra -Wpedantic -Wdeprecated -O3 -fPIC -DNDEBUG -pedantic -fno-rtti $(CONCURRENCY_FLAG)
 	endif
 endif	
+
+CXXFLAGS += $(INTRINSICS_FLAG)
 
 ifeq ($(DETECTED_OS),FreeBSD)
     STATIC_LINK_FLAGS := -static
@@ -306,7 +321,7 @@ endif
 
 clean:
 ifeq ($(DETECTED_OS),Windows)
-	del /S $(OBJ_DIR)\*.o
+	if exist $(OBJ_DIR_ROOT) rmdir /S /Q $(OBJ_DIR_ROOT)
 	..\bin\$(APP)$(PROG_SUFFIX) \
 	..\bin\$(APP_STATIC)$(PROG_SUFFIX) \
 	..\bin\$(APP_DYNAMIC)$(PROG_SUFFIX) ..\bin\test*$(PROG_SUFFIX) \
@@ -321,7 +336,7 @@ else
 	../lib/$(STATIC_LIB) ../lib/$(SHARED_LIB) \
 	../lib/$(STATIC_COMP_LIB) ../lib/$(STATIC_DECOMP_LIB) \
 	../lib/$(SHARED_COMP_LIB) ../lib/$(SHARED_DECOMP_LIB)
-	rm -rf $(OBJ_DIR)
+	rm -rf $(OBJ_DIR_ROOT)
 endif
 
 ifeq ($(DETECTED_OS),Windows)

@@ -82,6 +82,8 @@ namespace kanzi {
        uint64 _high;
        uint64 _current;
        byte* _buf;
+       int _end;
+       bool _error;
        int32 _c1;
        int32 _ctx;
        int _pIdx;
@@ -89,7 +91,7 @@ namespace kanzi {
        int decodeBit();
 
    public:
-       ROLZDecoder(uint litLogSize, uint mLogSize, byte buf[], int& idx);
+       ROLZDecoder(uint litLogSize, uint mLogSize, byte buf[], int& idx, int end);
 
        ~ROLZDecoder()
        {
@@ -106,6 +108,8 @@ namespace kanzi {
        void reset();
 
        void setContext(int n, byte ctx) { _pIdx = n; _ctx = int32(ctx) << _logSizes[_pIdx]; }
+
+       bool isValid() const { return _error == false; }
    };
 
    // Use ANS to encode/decode literals and matches
@@ -292,7 +296,7 @@ namespace kanzi {
 
        if (dstIdx - ref >= 8) {
            while (matchLen > 0) {
-               memcpy(&buf[dstIdx], &buf[ref], 8);
+               KANZI_MEM_CP8(&buf[dstIdx], &buf[ref]);
                ref += 8;
                dstIdx += 8;
                matchLen -= 8;
@@ -335,6 +339,9 @@ namespace kanzi {
 
    inline int ROLZDecoder::decodeBit()
    {
+       if (_error)
+           return 0;
+
        const uint64 mid = _low + (((_high - _low) >> 4) * uint64(_probs[_pIdx][_ctx + _c1] >> 4) >> 8);
        int bit;
 
@@ -354,6 +361,11 @@ namespace kanzi {
 
        // Read 32 bits
        while (((_low ^ _high) >> 24) == 0) {
+           if ((_idx < 0) || (_idx > _end) || (_end - _idx < 4)) {
+               _error = true;
+               return bit;
+           }
+
            _low = (_low << 32) & MASK_0_56;
            _high = ((_high << 32) | MASK_0_32) & MASK_0_56;
            const uint64 val = uint64(BigEndian::readInt32(&_buf[_idx])) & MASK_0_32;

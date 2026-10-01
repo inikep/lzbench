@@ -268,20 +268,78 @@ bool UTFCodec::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& 
         dst[dstIdx++] = src[srcIdx++];
 
     // Emit data
-    while (srcIdx < srcEnd) {
-        uint alias = uint(src[srcIdx++]);
-        alias = alias >= 128 ? (uint(src[srcIdx++]) << 7) + (alias & 0x7F) : alias;
+    if (n <= 128) {
+        // All valid aliases fit in one byte.
+        while (srcIdx < srcEnd) {
+            const uint alias = uint(src[srcIdx++]);
 
-        if (alias >= uint(n))
-            return false;
+            if (KANZI_UNLIKELY(alias >= uint(n)))
+                return false;
 
-        const symb& s = m[alias];
+            const symb& s = m[alias];
 
-        if (dstIdx + int(s.len) > dstCap)
-            return false;
+            // The symbol length controls the logical output advance, but the
+            // decoder always copies four bytes from the packed symbol value.
+            if (KANZI_UNLIKELY(dstIdx + 4 > dstCap))
+                return false;
 
-        memcpy(&dst[dstIdx], &s.val, 4);
-        dstIdx += s.len;
+            memcpy(&dst[dstIdx], &s.val, 4);
+            dstIdx += s.len;
+        }
+    }
+    else {
+        // Decode the next alias and load its value before storing the current
+        // one. This allows independent dictionary lookups to overlap.
+        while (srcIdx < srcEnd) {
+            uint alias = uint(src[srcIdx++]);
+
+            if (alias >= 128) {
+                if (KANZI_UNLIKELY(srcIdx >= srcEnd))
+                    return false;
+
+                alias = (uint(src[srcIdx++]) << 7) + (alias & 0x7F);
+            }
+
+            if (KANZI_UNLIKELY(alias >= uint(n)))
+                return false;
+
+            const uint32 val0 = m[alias].val;
+            const uint8 len0 = m[alias].len;
+
+            if (srcIdx >= srcEnd) {
+                if (KANZI_UNLIKELY(dstIdx + 4 > dstCap))
+                    return false;
+
+                memcpy(&dst[dstIdx], &val0, 4);
+                dstIdx += len0;
+                break;
+            }
+
+            alias = uint(src[srcIdx++]);
+
+            if (alias >= 128) {
+                if (KANZI_UNLIKELY(srcIdx >= srcEnd))
+                    return false;
+
+                alias = (uint(src[srcIdx++]) << 7) + (alias & 0x7F);
+            }
+
+            if (KANZI_UNLIKELY(alias >= uint(n)))
+                return false;
+
+            const uint32 val1 = m[alias].val;
+            const uint8 len1 = m[alias].len;
+
+            const int needed = int(len0) + int(len1) + 4;
+
+            if (KANZI_UNLIKELY(dstCap - dstIdx < needed))
+                return false;
+
+            memcpy(&dst[dstIdx], &val0, 4);
+            dstIdx += len0;
+            memcpy(&dst[dstIdx], &val1, 4);
+            dstIdx += len1;
+        }
     }
 
     if ((srcIdx == srcEnd) && (dstIdx < dstEnd + adjust)) {

@@ -90,7 +90,8 @@ namespace kanzi {
         // Required encoding output buffer size
         int getMaxEncodedLength(int srcLen) const
         {
-            return (srcLen <= 1024) ? srcLen + 16 : srcLen + (srcLen / 64);
+            // readLength() may read two bytes past the encoded block
+            return ((srcLen <= 1024) ? srcLen + 16 : srcLen + (srcLen / 64)) + 4;
         }
 
     private:
@@ -105,6 +106,7 @@ namespace kanzi {
         static const int MIN_MATCH9;
         static const int MAX_MATCH;
         static const int MIN_BLOCK_LENGTH;
+        static const int READ_LENGTH_GUARD;
 
         int32* _hashes;
         int _hashSize;
@@ -113,6 +115,8 @@ namespace kanzi {
         byte* _tkBuf;
         int _bufferSize;
         Context* _pCtx;
+
+        bool inverseV7(SliceArray<byte>& src, SliceArray<byte>& dst, int length);
 
         bool inverseV6(SliceArray<byte>& src, SliceArray<byte>& dst, int length);
 
@@ -124,7 +128,7 @@ namespace kanzi {
 
         static int findMatch(const byte block[], const int pos, const int ref, const int maxMatch);
 
-        static int readLength(const byte block[], int& pos);
+        static uint readLength(const byte block[], int& pos);
 
         static int32 hash(const byte* p);
     };
@@ -175,8 +179,10 @@ namespace kanzi {
     template <bool T>
     inline void LZXCodec<T>::emitLiterals(const byte src[], byte dst[], int len)
     {
+        // Callers provide trailing padding for this 16-byte copy, which may
+        // read and write up to 15 bytes past the requested literal length.
         for (int i = 0; i < len; i += 16)
-            memcpy(&dst[i], &src[i], 16);
+            KANZI_MEM_CP16(&dst[i], &src[i]);
     }
 
     template <bool T>
@@ -205,20 +211,20 @@ namespace kanzi {
     }
 
     template <bool T>
-    inline int LZXCodec<T>::readLength(const byte block[], int& pos)
+    inline uint LZXCodec<T>::readLength(const byte block[], int& pos)
     {
-        int res = int(block[pos++]);
+        uint res = uint(block[pos++]);
 
         if (res < 254)
             return res;
 
         if (res == 254) {
-            res += ((kanzi::BigEndian::readInt16(&block[pos])) & 0xFFFF);
+            res += uint((kanzi::BigEndian::readInt16(&block[pos])) & 0xFFFF);
             pos += 2;
             return res;
         }
 
-        res += ((kanzi::BigEndian::readInt32(&block[pos])) >> 8);
+        res += (uint32(kanzi::BigEndian::readInt32(&block[pos])) >> 8);
         pos += 3;
         return res;
     }
@@ -243,7 +249,6 @@ namespace kanzi {
         return n;
     }
 
-
     inline int LZPCodec::findMatch(const byte src[], const int srcIdx, const int ref, const int maxMatch)
     {
         int n = 0;
@@ -264,4 +269,3 @@ namespace kanzi {
 
 }
 #endif
-

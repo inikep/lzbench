@@ -1,25 +1,26 @@
 # Kanzi
 
+Kanzi is a modern, modular, portable, and efficient lossless data compressor written in C++.
 
-Kanzi is a modern, modular, portable and efficient lossless data compressor implemented in C++.
+* Modern: Kanzi implements state-of-the-art compression algorithms and is built to fully utilize multi-core CPUs via built-in multi-threading.
+* Modular: Entropy codecs and data transforms can be selected and combined at runtime to best suit the specific data being compressed.
+* Portable: Supports a wide range of operating systems, compilers, and C++ standards (details below).
+* Expandable: A clean, interface-driven design—with no external dependencies—makes Kanzi easy to integrate, extend, and customize.
+* Efficient: Carefully optimized to balance compression ratio and speed for practical, high-performance usage.
 
-* modern: state-of-the-art algorithms are implemented and multi-core CPUs can take advantage of the built-in multi-threading.
-* modular: entropy codec and a combination of transforms can be provided at runtime to best match the kind of data to compress.
-* portable: many OSes, compilers and C++ versions are supported (see below).
-* expandable: clean design with heavy use of interfaces as contracts makes integrating and expanding the code easy. No dependencies.
-* efficient: the code is optimized for efficiency (trade-off between compression ratio and speed).
+Unlike most mainstream lossless compressors, Kanzi is not limited to a single compression paradigm. By combining multiple algorithms and techniques, it supports a broader range of compression ratios and adapts better to diverse data types.
 
-Unlike the most common lossless data compressors, Kanzi uses a variety of different compression algorithms and supports a wider range of compression ratios as a result. Most usual compressors do not take advantage of the many cores and threads available on modern CPUs (what a waste!). Kanzi is concurrent by design and uses threads to compress several blocks in parallel. It is not compatible with standard compression formats. 
+Most traditional compressors underutilize modern hardware by running single-threaded—even on machines with many cores. Kanzi, in contrast, is concurrent by design, compressing multiple blocks in parallel across threads for significant performance gains. However, it is not compatible with standard compression formats.
 
-Kanzi is a lossless data compressor, not an archiver. It uses checksums (optional but recommended) to validate data integrity but does not have a mechanism for data recovery. It also lacks data deduplication across files. However, Kanzi generates a bitstream that is seekable (one or several consecutive blocks can be decompressed without the need for the whole bitstream to be decompressed).
+It’s important to note that Kanzi is a data compressor, not an archiver. It includes optional checksums for verifying data integrity, but does not provide features like cross-file deduplication or data recovery mechanisms. That said, it produces a seekable bitstream, meaning one or more consecutive blocks can be decompressed independently, without needing to process the entire stream.
 
-For more details, see [Wiki](https://github.com/flanglet/kanzi/wiki) and [Q&A](https://github.com/flanglet/kanzi/wiki/q&a)
+For more details, see [Wiki](https://github.com/flanglet/kanzi-cpp/wiki), [Q&A](https://github.com/flanglet/kanzi-cpp/wiki/q&a) and [DeepWiki](https://deepwiki.com/flanglet/kanzi-cpp/1-overview)
 
 See how to reuse the C and C++ APIs: [here](https://github.com/flanglet/kanzi-cpp/wiki/Using-and-extending-the-code)
 
 There is a Java implementation available here: https://github.com/flanglet/kanzi
 
-There is Go implementation available here: https://github.com/flanglet/kanzi-go
+There is a Go implementation available here: https://github.com/flanglet/kanzi-go
 
 ![Build Status](https://github.com/flanglet/kanzi-cpp/actions/workflows/c-cpp.yml/badge.svg)
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=flanglet_kanzi-cpp&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=flanglet_kanzi-cpp)
@@ -29,139 +30,102 @@ There is Go implementation available here: https://github.com/flanglet/kanzi-go
        src="https://img.shields.io/coverity/scan/16859.svg"/>
 </a>
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/flanglet/kanzi-cpp)
+
 
 ## Why Kanzi
 
-There are many excellent, open-source lossless data compressors available already.
+While excellent open-source compressors like zstd and brotli exist, they are primarily based on Lempel-Ziv (LZ) algorithms. Zstd, in particular, is a fantastic general-purpose choice known for its speed. However, LZ-based tools have inherent limits regarding compression ratios.
 
-If gzip is starting to show its age, zstd and brotli are open-source, standardized and used
-daily by millions of people. Zstd is incredibly fast and probably the best choice in many cases.
-There are a few scenarios where Kanzi can be a better choice:
+Kanzi offers a compelling alternative for specific high-performance scenarios:
 
-- gzip, lzma, brotli, zstd are all LZ based. It means that they can reach certain compression
-ratios only. Kanzi also makes use of BWT and CM which can compress beyond what LZ can do.
+* Beyond LZ: By incorporating Burrows-Wheeler Transform (BWT) and Context Modeling (CM), Kanzi can achieve compression ratios that traditional LZ methods cannot.
 
-- These LZ based compressors are well suited for software distribution (one compression / many decompressions)
-due to their fast decompression (but low compression speed at high compression ratios). 
-There are other scenarios where compression speed is critical: when data is generated before being compressed and consumed
-(one compression / one decompression) or during backups (many compressions / one decompression).
+* Speed where it counts: While LZ is ideal for "compress once, decompress often" (like software distribution), it often slows down significantly at high compression settings. Kanzi leverages multi-core CPUs to maintain performance, making it highly effective for backups, real-time data generation, and one-off transfers.
 
-- Kanzi has built-in customized data transforms (multimedia, utf, text, dna, ...) that can be chosen and combined 
-at compression time to better compress specific kinds of data.
+* Content-Aware: Kanzi features built-in, customizable transforms for specific data types (e.g., multimedia, DNA, UTF text), improving efficiency where generic compressors fail.
 
-- Kanzi can take advantage of the multiple cores of a modern CPU to improve performance
+* Extensible: The architecture is developer-friendly, making it straightforward to implement new transforms or entropy codecs for experimentation or niche data types.
 
-- Implementing a new transform or entropy codec (to either test an idea or improve compression ratio on specific kinds of data) is simple.
 
 
 ## Benchmarks
 
-Test machine:
+Kanzi version 2.6.0 C++ implementation
 
-AWS c5a8xlarge: AMD EPYC 7R32 (32 vCPUs), 64 GB RAM
-
-Ubuntu clang++ version 15.0.7 + tcmalloc
-
-Ubuntu 24.04 LTS
-
-Kanzi version 2.3.0 C++ implementation
-
-On this machine, Kanzi uses up to 16 threads (half of CPUs by default).
-
-bzip3 uses 16 threads. zstd uses 16 threads for compression and 1 for decompression, 
-other compressors are single threaded.
-
-The default block size at level 9 is 32MB, severely limiting the number of threads
-in use, especially with enwik8, but all tests are performed with default values.
+_Note: The default block size at level 9 is 32MB. This limits the number of threads in use, especially with smaller files like enwik8, but all tests below are performed with default values._
 
 
 ### silesia.tar
 
+Test machine:
+
+AMD Ryzen 9 9950X 16-Core Processor running Ubuntu 26.04.1 LTS
+
+zstd was built from latest github sources.
+
 Download at http://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip
 
-|        Compressor               | Encoding (sec)  | Decoding (sec)  |    Size          |
+|        Compressor               |  Encoding (ms)  |  Decoding (ms)  |      Size        |
 |---------------------------------|-----------------|-----------------|------------------|
-|Original     	                  |                 |                 |   211,957,760    |
-|**Kanzi -l 1**                   |   	**0.263**   |    **0.231**    |  **80,277,212**  |
-|Lz4 1.9.5 -4                     |       0.321     |      0.330      |    79,912,419    |
-|Zstd 1.5.6 -2 -T16               |	      0.151     |      0.271      |    69,556,157    |
-|**Kanzi -l 2**                   |   	**0.267**   |    **0.253**    |  **68,195,845**  |
-|Brotli 1.1.0 -2                  |       1.749     |      0.761      |    68,041,629    |
-|Gzip 1.12 -9                     |      20.09      |      1.403      |    67,652,449    |
-|**Kanzi -l 3**                   |   	**0.446**   |    **0.287**    |  **65,613,695**  |
-|Zstd 1.5.6 -5 -T16               |	      0.356     |      0.289      |    63,131,656    |
-|**Kanzi -l 4**                   |   	**0.543**   |    **0.373**    |  **61,249,959**  |
-|Zstd 1.5.5 -9 -T16               |	      0.690     |      0.278      |    59,429,335    |
-|Brotli 1.1.0 -6                  |       8.388     |      0.677      |    58,571,909    |
-|Zstd 1.5.6 -13 -T16              |	      3.244     |      0.272      |    58,041,112    |
-|Brotli 1.1.0 -9                  |      70.07      |      0.761      |    56,376,419    |
-|Bzip2 1.0.8 -9	                  |      16.94      |      6.734      |    54,572,500    |
-|**Kanzi -l 5**                   |   	**1.627**   |    **0.883**    |  **54,039,773**  |
-|Zstd 1.5.6 -19 -T16              |	     20.87      |      0.303      |    52,889,925    |
-|**Kanzi -l 6**                   |   	**2.312**   |    **1.227**    |  **49,567,817**  |
-|Lzma 5.4.5 -9                    |      95.97      |      3.172      |    48,745,354    |
-|**Kanzi -l 7**                   |   	**2.686**   |    **2.553**    |  **47,520,629**  |
-|bzip3 1.3.2.r4-gb2d61e8 -j 16    |       2.682     |      3.221      |    47,237,088    |
-|**Kanzi -l 8**                   |   	**7.260**   |    **8.021**    |  **43,167,429**  |
-|**Kanzi -l 9**                   |    **18.99**    |   **21.07**     |  **41,497,835**  |
-|zpaq 7.15 -m5 -t16               |     213.8       |    213.8        |    40,050,429    |
+|Original                         |                 |                 |   211,957,760    |
+|lz4 1.1.10 -T16 -4               |        18       |         13      |    79,910,851    |
+|**kanzi -l 1**                   |      **74**     |       **41**    |    79,184,957    |
+|zstd 1.6.0 -T16 -2               |        57       |         25      |    69,443,247    |
+|**kanzi -l 2**                   |      **59**     |       **41**    |    68,627,321    |
+|brotli 1.1.0 -2                  |       880       |        333      |    68,040,160    |
+|gzip 1.13 -9                     |     10328       |        704      |    67,651,076    |
+|**kanzi -l 3**                   |     **102**     |       **55**    |    63,093,409    |
+|zstd 1.6.0 -T16 -5               |       136       |         26      |    62,867,556    |
+|**kanzi -l 4**                   |     **178**     |       **90**    |    60,518,857    |
+|zstd 1.6.0 -T16 -9               |       322       |         24      |    59,233,481    |
+|brotli 1.1.0 -6                  |      4039       |        299      |    58,511,709    |
+|zstd 1.6.0 -T16 -13              |      1820       |         26      |    57,843,283    |
+|brotli 1.1.0 -9                  |     23030       |        293      |    56,407,229    |
+|bzip2 1.0.8 -9                   |      8223       |       3453      |    54,588,597    |
+|**kanzi -l 5**                   |     **569**     |      **275**    |    53,863,205    |
+|zstd 1.6.0 -T16 -19              |     11090       |         23      |    52,830,213    |
+|**kanzi -l 6**                   |     **922**     |      **523**    |    49,472,110    |
+|xz 5.8.1 -9                      |     43611       |        931      |    48,802,580    |
+|bsc 3.3.11 -T16                  |      1201       |        698      |    47,900,848    |
+|**kanzi -l 7**                   |    **1150**     |      **885**    |    47,330,431    |
+|bzip3 1.5.1.r3-g428f422 -j 16    |      2348       |       2218      |    47,260,281    |
+|**kanzi -l 8**                   |    **4484**     |     **4911**    |    43,015,393    |
+|**kanzi -l 9**                   |   **11918**     |    **12665**    |    41,531,309    |
+
+
+
+
+![Graph for Silesia on AMD Ryzen 9950X](doc/Plot_silesia.png)
+
+Round-trip graph for Silesia on AMD Ryzen 9950X (X = compTime + 2*decompTime, Y = comp size)
 
 
 ### enwik8
 
+Test machine:
+
+AMD Ryzen 9 9950X 16-Core Processor running Ubuntu 26.04.1 LTS
+
 Download at https://mattmahoney.net/dc/enwik8.zip
 
-|      Compressor        | Encoding (sec)  | Decoding (sec)   |    Size          |
-|------------------------|-----------------|------------------|------------------|
-|Original                |                 |                  |   100,000,000    |
-|**Kanzi -l 1**          |    **0.192**    |    **0.125**     |  **43,746,017**  |
-|**Kanzi -l 2**          |    **0.184**    |    **0.133**     |  **37,816,913**  |
-|**Kanzi -l 3**          |    **0.264**    |    **0.160**     |  **33,865,383**  |
-|**Kanzi -l 4**          |	  **0.283**    |    **0.191**     |  **29,597,577**  |
-|**Kanzi -l 5**          |	  **0.481**    |    **0.311**     |  **26,528,023**  |
-|**Kanzi -l 6**          |	  **0.733**    |    **0.517**     |  **24,076,674**  |
-|**Kanzi -l 7**          |    **1.827**    |    **1.795**     |  **22,817,373**  |
-|**Kanzi -l 8**          |	  **4.680**    |    **5.404**     |  **21,181,983**  |
-|**Kanzi -l 9**          |	 **12.69**     |   **13.98**      |  **20,035,138**  |
+|   Compressor    | Encoding (ms)  | Decoding (ms)  |    Size      |
+|-----------------|----------------|----------------|--------------|
+|Original         |                |                |  100,000,000 |
+|kanzi -l 1       |        45      |         22     |   42,941,668 |
+|kanzi -l 2       |        40      |         23     |   37,688,371 |
+|kanzi -l 3       |        78      |         36     |   32,562,496 |
+|kanzi -l 4       |       101      |         65     |   29,466,291 |
+|kanzi -l 5       |       224      |        136     |   26,521,279 |
+|kanzi -l 6       |       351      |        252     |   24,076,777 |
+|kanzi -l 7       |       871      |        691     |   22,817,366 |
+|kanzi -l 8       |      2985      |       3210     |   21,181,998 |
+|kanzi -l 9       |      7163      |       7721     |   20,035,687 |
 
 
+![Graph for enwik8 on AMD Ryzen 9950X](doc/Plot_enwik8.png)
 
-### Round-trip scores for LZ
-
-Below is a table showing silesia.tar compressed using different LZ compressors (no entropy) in single-threaded mode.
-
-The efficiency score is computed as such: score(lambda) = compTime + 2 x decompTime + lambda x compSize
-
-A lower score is better. Best scores are in bold.
-
-Tested on Ubuntu 22.04.4 LTS, i7-7700K CPU @ 4.20GHz, 32 GB RAM 
-
-|      Compressor      | Encoding (sec) | Decoding (sec)  |    Size          |  Score(5)  |  Score(6)  |  Score(7)  |
-|----------------------|----------------|-----------------|------------------|------------|------------|------------|
-|FastLZ -2	           |     1.78	      |       0.77	    |     101114153	   |  1014.46	  |   104.43	 |   13.43    |
-|Lzo 2.10	             |     0.47	      |       0.24	    |     101040957	   |  1011.35	  |   101.98	 |   11.04    |
-|Lz4 1.9.3 -2	         |     0.41	      |      	0.20	    |    	100924332	   |  1010.06   |   101.74   |	 10.91    |
-|Lizard 1.1.0 -11	     |     0.76	      |      	0.24	    |      93967850	   | 	 940.91   |	  95.20	   |   10.63    |
-|lzav	                 |     0.59	      |       0.33	    |      89232384	   |	 893.57   |   90.48	   |	 10.17    |
-|Lzturbo 1.2 -11 -p0   |	   1.09	      |      	0.34	    |      88657053	   |	 888.35   |   90.43	   |	 10.64    |
-|s2 -cpu 1	           |     0.81	      |      	0.40	    |	     86646819	   |	 868.08   |   88.25	   |	 10.27    |
-|LZ4x 1.60 -2	         |     1.16	      |      	0.24	    |	     87883674	   |	 880.47   |   89.52	   |	 10.42    |
-|Lizard 1.1.0 -12	     |     1.46	      |      	0.23	    |      86340434	   |	 865.34   |   88.27	   |	 10.57    |
-|LZ4x 1.60 -3	         |     1.39	      |      	0.24	    |	     85483806	   |	 856.71   |   87.35	   |	 10.42    |
-|Kanzi 2.3 -t lz -j 1	 |     0.94	      |      	0.26	    |      83355862	   |	 835.01   |   84.81	   | ***9.79*** |
-|Lzturbo 1.2 -12 -p0	 |     2.40	      |      	0.22	    |      83179291	   |	 834.63   |   86.02	   |	 11.16    |
-|Kanzi 2.3 -t lzx -j 1 |	   1.21	      |      	0.24	    |      81485228	   |***816.55***|***83.18*** |	  9.84    |
-|Lz4 1.9.3 -3	         |     2.34	      |      	0.21	    |	     81441623	   |   817.17   |   84.20    |   10.90    |
-
-References:
-
-[FastLZ](https://github.com/ariya/FastLZ)
-[Lizard](https://github.com/inikep/lizard)
-[LZ4](https://github.com/lz4/lz4)
-[S2](https://github.com/klauspost/compress)
-[LZAV](https://github.com/avaneev/lzav)
-[LZ4x](https://github.com/tomsim/lz4x)
-[LZTurbo](https://sites.google.com/site/powturbo)
+Round-trip graph for enwik8 on AMD Ryzen 9950X  (X = compTime + 2*decompTime, Y = comp size)
 
 
 
@@ -169,26 +133,50 @@ References:
 
 [Comprehensive lzbench benchmarks](https://github.com/flanglet/kanzi-cpp/wiki/Performance)
 
-[Mode round trip scores](https://github.com/flanglet/kanzi-cpp/wiki/Round%E2%80%90trips-scores)
+[More round trip scores](https://github.com/flanglet/kanzi-cpp/wiki/Round%E2%80%90trips-scores)
 
 
 ## Build Kanzi
 
-The C++ code can be built on Windows with Visual Studio, Linux, macOS and Android with g++ and/or clang++.
-There are no dependencies. Porting to other operating systems should be straightforward.
+* Platforms: Windows (Visual Studio), Linux, macOS, BSD
+* Dependencies: None.
+* Portability: Designed for easy porting to other OSs.
+* Multithreading: Supported by default.
 
-### Visual Studio 2008
-Unzip the file "Kanzi_VS2008.zip" in place.
-The solution generates a Windows 32 binary. Multithreading is not supported with this version.
+### Visual Studio
+The Visual Studio solution and project files are in the `msvc` directory. Open the
+solution corresponding to your Visual Studio version:
 
-### Visual Studio 2022
-Unzip the file "Kanzi_VS2022.zip" in place.
-The solution generates a Windows 64 binary and library. Multithreading is supported with this version.
+* Visual Studio 2008: open `msvc/Kanzi_VS2008.sln`. The solution generates a Windows
+  32-bit binary. Multithreading is not supported with this version.
+* Visual Studio 2022: open `msvc/Kanzi_VS2022.sln`. The solution generates Windows
+  binaries and a 64-bit library.
+* Visual Studio 2026: open `msvc/Kanzi_VS2026.sln`. The solution generates Windows
+  binaries and a 64-bit library.
+
+Select the desired configuration and platform in Visual Studio, then build the
+solution.
+
+To build from the command line, open a Developer Command Prompt for the
+corresponding Visual Studio version and run the following from the repository
+root:
+
+```text
+msbuild msvc\Kanzi_VS2022.sln /m /p:Configuration=Release /p:Platform=x64
+msbuild msvc\Kanzi_VS2026.sln /m /p:Configuration=Release /p:Platform=x64
+```
+
+Use `/p:Platform=Win32` to build the 32-bit target. For Visual Studio 2008,
+use the Visual Studio command-line executable instead:
+
+```text
+VCExpress.exe msvc\Kanzi_VS2008.sln /Build "Debug|Win32"
+```
 
 ### mingw-w64
-Go to the source directory and run 'make clean && mingw32-make.exe kanzi'. The Makefile contains 
-all the necessary targets. Tested successfully on Win64 with mingw-w64 g++ 8.1.0. 
-Multithreading is supportedwith g++ version 5.0.0 or newer.
+Go to the source directory and run 'make clean && mingw32-make.exe kanzi'. The Makefile contains
+all the necessary targets. Tested successfully on Win64 with mingw-w64 g++ 8.1.0.
+Multithreading is supported with g++ version 5.0.0 or newer.
 Builds successfully with C++11, C++14, C++17.
 
 ### Linux
@@ -197,26 +185,39 @@ targets. Build successfully on Ubuntu with many versions of g++ and clang++.
 Multithreading is supported with g++ version 5.0.0 or newer.
 Builds successfully with C++98, C++11, C++14, C++17, C++20.
 
-### MacOS
+### macOS
 Go to the source directory and run 'make clean && make kanzi'. The Makefile contains all the necessary
 targets. Build successfully on MacOs with several versions of clang++.
-Multithreading is supported.
+Builds successfully with C++98, C++11, C++14, C++17, C++20.
 
 ### BSD
-The makefile uses the gnu-make syntax. First, make sure gmake is present (or install it: 'pkg_add gmake').
+The makefile uses the gnu-make syntax. First, make sure gmake is present (or install it: 'pkg install gmake').
 Go to the source directory and run 'gmake clean && gmake kanzi'. The Makefile contains all the necessary
-targets. Multithreading is supported.
+targets. Builds successfully with C++98, C++11, C++14, C++17, C++20.
 
 ### Makefile targets
 ```
-clean:     removes objects, libraries and binaries
-kanzi:     builds the kanzi executable
-lib:       builds static and dynamic libraries
-test:      builds test binaries
-all:       kanzi + lib + test
-install:   installs libraries, headers and executable
-uninstall: removes installed libraries, headers and executable
+clean:          removes objects, libraries and binaries
+kanzi:          builds the kanzi executable
+kanzi_static:   builds a statically linked executable
+kanzi_dynamic:  builds a dynamically linked executable
+lib:            builds static and dynamic libraries
+test:           builds test binaries
+all:            kanzi + kanzi_static + kanzi_dynamic + lib + test
+install:        installs libraries, headers and executable
+uninstall:      removes installed libraries, headers and executable
 ```
+
+For those who prefer cmake, run the following commands from the top directory:
+```
+mkdir build
+cd build
+cmake ..
+make
+ctest
+```
+By default, the cmake build generates a dynamically linked executable.
+Choose ```make kanzi_static``` to build a statically linked executable.
 
 Credits
 
@@ -227,10 +228,9 @@ Yuta Mori,
 Ilya Muravyov,
 Neal Burns,
 Fabian Giesen,
-Jarek Duda, 
+Jarek Duda,
 Ilya Grebnov
 
 Disclaimer
 
 Use at your own risk. Always keep a copy of your original files.
-

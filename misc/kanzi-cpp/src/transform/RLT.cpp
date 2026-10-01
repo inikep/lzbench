@@ -20,6 +20,7 @@ limitations under the License.
 #include "RLT.hpp"
 #include "../Global.hpp"
 #include "../Memory.hpp"
+#include "../util/strings.hpp"
 
 
 using namespace kanzi;
@@ -64,7 +65,7 @@ bool RLT::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outpu
             return false;
 
         std::string entropyType = _pCtx->getString("entropy");
-        transform(entropyType.begin(), entropyType.end(), entropyType.begin(), ::toupper);
+        transform(entropyType.begin(), entropyType.end(), entropyType.begin(), safeToUpper);
 
         // Fast track if fast entropy coder is used
         if ((entropyType == "NONE") || (entropyType == "ANS0") ||
@@ -121,27 +122,19 @@ bool RLT::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outpu
     // Main loop
     while (true) {
         if (prev == src[srcIdx]) {
-            const uint32 v = 0x01010101 * uint32(prev);
+            const uint32 v = 0x01010101u * uint32(prev);
+            const uint32 diff = uint32(LittleEndian::readInt32(&src[srcIdx])) ^ v;
 
-            if (KANZI_MEM_EQ4(&v, &src[srcIdx])) {
+            if (diff == 0) {
                 srcIdx += 4; run += 4;
 
                 if ((run < MAX_RUN4) && (srcIdx < srcEnd4))
                     continue;
             }
             else {
-                srcIdx++; run++;
-
-                if (prev == src[srcIdx]) {
-                    srcIdx++; run++;
-
-                    if (prev == src[srcIdx]) {
-                        srcIdx++; run++;
-
-                        if ((run < MAX_RUN4) && (srcIdx < srcEnd4))
-                            continue;
-                    }
-                }
+                const int n = Global::trailingZeros(diff) >> 3;
+                srcIdx += n;
+                run += n;
             }
         }
 
@@ -290,17 +283,28 @@ bool RLT::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outpu
 
     // Main loop
     while (srcIdx < srcEnd) {
-        if (src[srcIdx] != escape) {
-            // Literal
-            if (dstIdx >= dstEnd) {
+        // Copy a span of literals in one operation. Escaped literals are
+        // encoded as escape, 0, so the first escape always terminates the
+        // current literal span.
+        const byte* const esc = static_cast<const byte*>(
+            std::memchr(&src[srcIdx], int(uint8(escape)), size_t(srcEnd - srcIdx)));
+        const int literalLen = (esc == nullptr) ? (srcEnd - srcIdx) : int(esc - &src[srcIdx]);
+
+        if (literalLen > 0) {
+            if (literalLen > dstEnd - dstIdx) {
                 res = false;
                 break;
             }
 
-            dst[dstIdx++] = src[srcIdx++];
-            continue;
+            std::memcpy(&dst[dstIdx], &src[srcIdx], size_t(literalLen));
+            srcIdx += literalLen;
+            dstIdx += literalLen;
         }
 
+        if (srcIdx >= srcEnd)
+            break;
+
+        // An escape marker was found
         srcIdx++;
 
         if (srcIdx >= srcEnd) {
@@ -345,7 +349,7 @@ bool RLT::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outpu
 
         run += (RUN_THRESHOLD - 1);
 
-        if ((dstIdx + run >= dstEnd) || (run > MAX_RUN)) {
+        if ((dstIdx + run > dstEnd) || (run > MAX_RUN)) {
             res = false;
             break;
         }
