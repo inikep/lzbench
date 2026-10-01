@@ -43,7 +43,7 @@ uint64 compress1(kanzi::byte block[], uint length)
     while (true) {
        cis->read((char*)block, length);
 
-       if (cis->gcount() != length)
+       if (cis->gcount() != streamsize(length))
           break;
     }
 
@@ -93,7 +93,7 @@ uint64 compress2(kanzi::byte block[], uint length)
     while (true) {
        cis->read((char*)block, length);
 
-       if (cis->gcount() != length)
+       if (cis->gcount() != streamsize(length))
           break;
     }
 
@@ -126,7 +126,7 @@ uint64 compress3(kanzi::byte block[], uint length)
     while (true) {
        cis->read((char*)block, length);
 
-       if (cis->gcount() != length)
+       if (cis->gcount() != streamsize(length))
           break;
     }
 
@@ -184,7 +184,7 @@ uint64 compress5(kanzi::byte block[], uint length)
         while (true) {
             cis->read((char*)block, length);
 
-            if (cis->gcount() != length)
+            if (cis->gcount() != streamsize(length))
                 break;
         }
 
@@ -219,7 +219,9 @@ uint64 compress6(kanzi::byte block[])
         ios.seekg(0);
         cis = new CompressedInputStream(ios, 1);
         char decoded[1] = { 0 };
-        const streamsize requested = streamsize(numeric_limits<int>::max()) + streamsize(1);
+        const int64 requested64 = int64((numeric_limits<int>::max)()) + 1;
+        const streamsize requested = (int64((numeric_limits<streamsize>::max)()) >= requested64) ?
+            streamsize(requested64) : (numeric_limits<streamsize>::max)();
         cis->read(decoded, requested);
 
         if ((cis->gcount() != 1) || (decoded[0] != char(block[0]))) {

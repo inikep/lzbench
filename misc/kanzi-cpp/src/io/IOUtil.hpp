@@ -44,7 +44,6 @@ limitations under the License.
    #define STAT _stat64
    #define LSTAT _stat64
 #else
-   #define _FILE_OFFSET_BITS 64
    #define STAT stat
    #define LSTAT lstat
 #endif
@@ -359,4 +358,3 @@ namespace kanzi
 
 }
 #endif
-

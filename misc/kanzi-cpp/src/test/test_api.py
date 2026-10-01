@@ -43,9 +43,10 @@ def test_init_invalid():
             dst_path="/dev/null",
             transform=None,   # invalid
         )
-        assert False, "init should fail on invalid transform"
     except Exception:
         pass
+    else:
+        raise AssertionError("init should fail on invalid transform")
 
 
 def test_init_dispose():

@@ -93,7 +93,7 @@ namespace kanzi {
        if (!SliceArray<byte>::isValid(output))
            throw std::invalid_argument("Invalid output block");
 
-       if ((count < 0) || (count + input._index > input._length))
+       if ((count < 0) || (count > input._length - input._index))
            return false;
 
        _skipFlags = SKIP_MASK;
@@ -146,19 +146,12 @@ namespace kanzi {
        }
 
        if ((swaps & 1) == 0) {
-           if ((output._index + count > output._length) || (in->_index + count > in->_length)) {
+           if ((count > output._length - output._index) ||
+               (count > in->_length - in->_index)) {
                _skipFlags = SKIP_MASK;
            }
            else {
-                const byte* inPtr  = &in->_array[in->_index];
-                byte* outPtr = &output._array[output._index];
-
-               if ((inPtr + count >= outPtr) && (outPtr + count >= inPtr)) {
-                   std::memmove(&output._array[output._index], &in->_array[in->_index], size_t(count));
-               }
-               else {
-                   std::memcpy(&output._array[output._index], &in->_array[in->_index], size_t(count));
-               }
+               std::memmove(&output._array[output._index], &in->_array[in->_index], size_t(count));
            }
        }
 
@@ -177,22 +170,17 @@ namespace kanzi {
        if (!SliceArray<byte>::isValid(output))
            throw std::invalid_argument("Invalid output block");
 
-       if ((count < 0) || (count + input._index > input._length))
+       if ((count < 0) || (count > input._length - input._index))
            return false;
 
        if (count == 0)
            return true;
 
        if (_skipFlags == SKIP_MASK) {
-            const byte* inPtr  = &input._array[input._index];
-            byte* outPtr = &output._array[output._index];
+           if (count > output._length - output._index)
+               return false;
 
-           if ((inPtr + count >= outPtr) && (outPtr + count >= inPtr)) {
-               std::memmove(&output._array[output._index], &input._array[input._index], size_t(count));
-           }
-           else {
-               std::memcpy(&output._array[output._index], &input._array[input._index], size_t(count));
-           }
+           std::memmove(&output._array[output._index], &input._array[input._index], size_t(count));
 
            input._index += count;
            output._index += count;
@@ -244,18 +232,11 @@ namespace kanzi {
        }
 
        if ((res == true) && ((swaps & 1) == 0)) {
-           if ((output._index + count > output._length) || (input._index + count > input._length))
+           if ((count > output._length - output._index) ||
+               (count > in->_length - in->_index))
                res = false;
            else {
-                const byte* inPtr  = &in->_array[in->_index];
-                byte* outPtr = &output._array[output._index];
-
-               if ((inPtr + count >= outPtr) && (outPtr + count >= inPtr)) {
-                   std::memmove(&output._array[output._index], &input._array[input._index], size_t(count));
-               }
-               else {
-                   std::memcpy(&output._array[output._index], &input._array[input._index], size_t(count));
-               }
+               std::memmove(&output._array[output._index], &in->_array[in->_index], size_t(count));
 	   }
        }
 

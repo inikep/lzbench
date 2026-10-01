@@ -18,6 +18,7 @@ limitations under the License.
 #include <iostream>
 #include <time.h>
 #include "../types.hpp"
+#include "../util/strings.hpp"
 #include "../transform/BWT.hpp"
 #include "../transform/BWTS.hpp"
 
@@ -270,6 +271,81 @@ int testBWTSpeed(bool isBWT, int iter, bool isSmallSize)
     return res;
 }
 
+int testBWTInvalidSecondaryIndex()
+{
+    cout << endl
+         << endl
+         << "BWT invalid secondary index test" << endl;
+    int res = 0;
+    const int largeSize = 1024;
+    const int smallSize = 256;
+    BWT encoder;
+    BWT decoder;
+    kanzi::byte* largeInput = new kanzi::byte[largeSize];
+    kanzi::byte* largeTransform = new kanzi::byte[largeSize];
+    kanzi::byte* largeReverse = new kanzi::byte[largeSize];
+    kanzi::byte* smallInput = new kanzi::byte[smallSize];
+    kanzi::byte* smallTransform = new kanzi::byte[smallSize];
+    kanzi::byte* smallReverse = new kanzi::byte[smallSize];
+
+    for (int i = 0; i < largeSize; i++)
+        largeInput[i] = kanzi::byte(i);
+
+    for (int i = 0; i < smallSize; i++)
+        smallInput[i] = kanzi::byte((i * 17) & 0xFF);
+
+    SliceArray<kanzi::byte> largeIa1(largeInput, largeSize, 0);
+    SliceArray<kanzi::byte> largeIa2(largeTransform, largeSize, 0);
+    SliceArray<kanzi::byte> largeIa3(largeReverse, largeSize, 0);
+
+    if (encoder.forward(largeIa1, largeIa2, largeSize) == false) {
+        res = 1;
+    }
+    else {
+        for (int i = 0; i < BWT::getBWTChunks(largeSize); i++)
+            decoder.setPrimaryIndex(i, encoder.getPrimaryIndex(i));
+
+        largeIa2._index = 0;
+
+        if (decoder.inverse(largeIa2, largeIa3, largeSize) == false)
+            res = 1;
+    }
+
+    SliceArray<kanzi::byte> smallIa1(smallInput, smallSize, 0);
+    SliceArray<kanzi::byte> smallIa2(smallTransform, smallSize, 0);
+    SliceArray<kanzi::byte> smallIa3(smallReverse, smallSize, 0);
+
+    if (res == 0) {
+        largeIa1._index = 0;
+        smallIa1._index = 0;
+
+        if (encoder.forward(smallIa1, smallIa2, smallSize) == false) {
+            res = 1;
+        }
+        else {
+            const int chunks = BWT::getBWTChunks(smallSize);
+
+            for (int i = 0; i < chunks; i++)
+                decoder.setPrimaryIndex(i, encoder.getPrimaryIndex(i));
+
+            decoder.setPrimaryIndex(1, smallSize + 1);
+            smallIa2._index = 0;
+
+            if (decoder.inverse(smallIa2, smallIa3, smallSize) == true)
+                res = 1;
+        }
+    }
+
+    delete[] largeInput;
+    delete[] largeTransform;
+    delete[] largeReverse;
+    delete[] smallInput;
+    delete[] smallTransform;
+    delete[] smallReverse;
+    cout << (res == 0 ? "OK" : "Failed") << endl;
+    return res;
+}
+
 #ifdef __GNUG__
 int main(int argc, const char* argv[])
 #else
@@ -280,13 +356,14 @@ int TestBWT_main(int argc, const char* argv[])
 
     if (argc > 1) {
         string str = argv[1];
-        transform(str.begin(), str.end(), str.begin(), ::toupper);
+        transform(str.begin(), str.end(), str.begin(), safeToUpper);
         doPerf = str != "-NOPERF";
     }
 
     int res = 0;
     res |= testBWTCorrectness(true);
     res |= testBWTCorrectness(false);
+    res |= testBWTInvalidSecondaryIndex();
 
     if (doPerf) {
        res |= testBWTSpeed(true, 200, true); // test MergeTPSI inverse
@@ -296,4 +373,3 @@ int TestBWT_main(int argc, const char* argv[])
 
     return res;
 }
-

@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdio>
 #include <iostream>
+#include <limits>
 #include <map>
 
 #include "BlockCompressor.hpp"
@@ -51,7 +52,7 @@ static const int ARG_IDX_LEVEL = 9;
 //static const int ARG_IDX_FROM = 11;
 //static const int ARG_IDX_TO = 12;
 
-static const string KANZI_VERSION = "2.5.3";
+static const string KANZI_VERSION = "2.6.0";
 static const string APP_HEADER = "Kanzi " + KANZI_VERSION + " (c) Frederic Langlet";
 static const string APP_SUB_HEADER = "Fast lossless data compressor.";
 static const string APP_USAGE = "Usage: kanzi [-c|-d|-y] [flags and files in any order]";
@@ -363,14 +364,24 @@ void printHeader(Printer& log, int verbose, bool& showHeader)
 
 static bool toInt(const string& s, int& res)
 {
-   // Check that all characters are valid
+   if (s.empty())
+       return false;
+
+   int value = 0;
+
    for (size_t i = 0; i < s.length(); i++) {
        if ((s[i] < '0') || (s[i] > '9'))
           return false;
+
+       const int digit = s[i] - '0';
+
+       if (value > ((numeric_limits<int>::max)() - digit) / 10)
+           return false;
+
+       value = value * 10 + digit;
    }
 
-   // Use atoi because stoi can throw
-   res = atoi(s.c_str());
+   res = value;
    return true;
 }
 
@@ -882,14 +893,12 @@ int processCommandLine(int argc, const char* argv[], Context& map, Printer& log)
                     arg.resize(arg.length() - 1);
                 }
 
-                if (toInt(arg, blockSize) == false) {
+                if ((toInt(arg, blockSize) == false) ||
+                    (uint64(blockSize) > uint64((numeric_limits<int>::max)()) / scale)) {
                     cerr << "Invalid block size provided on command line: " << arg << endl;
                     return Error::ERR_INVALID_PARAM;
                 }
 
-                stringstream ss1;
-                ss1 << arg;
-                ss1 >> blockSize;
                 blockSize = int(uint64(blockSize) * scale);
             }
 
@@ -928,7 +937,7 @@ int processCommandLine(int argc, const char* argv[], Context& map, Printer& log)
             if (from >= 0) {
                 WARNING_OPT_DUPLICATE("--from", arg);
             } else {
-                if ((toInt(arg, from) == false) || (from < 0)) {
+                if ((toInt(arg, from) == false) || (from <= 0)) {
                     cerr << "Invalid start block provided on command line: " << arg << endl;
 
                     if (from == 0) {

@@ -144,6 +144,24 @@ namespace kanzi
    template <class T>
    class DecodingTask FINAL : public Task<T> {
    private:
+       struct ParsedBlockHeader {
+           byte _bytes[7];
+           uint _size;
+           byte _skipFlags;
+           int _preTransformLength;
+           bool _transformedCopy;
+           bool _rawCopy;
+
+           ParsedBlockHeader()
+               : _size(0)
+               , _skipFlags(byte(0))
+               , _preTransformLength(0)
+               , _transformedCopy(false)
+               , _rawCopy(false)
+           {
+           }
+       };
+
        SliceArray<byte>* _data;
        SliceArray<byte>* _buffer;
        uint _blockLength;
@@ -159,6 +177,9 @@ namespace kanzi
        Context _ctx;
 
        void storeProcessedBlockId(int value);
+
+       int readBlockHeader(InputBitStream* ibs, int bsVersion, uint64 encodedBlockLength,
+           uint64 transformType, ParsedBlockHeader& header, std::string& msg);
 
    public:
        DecodingTask(SliceArray<byte>* iBuffer, SliceArray<byte>* oBuffer,
@@ -244,9 +265,20 @@ namespace kanzi
        static const byte TRANSFORMS_MASK;
        static const int MIN_BITSTREAM_BLOCK_SIZE;
        static const int MAX_BITSTREAM_BLOCK_SIZE;
+       static const int TRANSFORMED_COPY_VERSION;
        static const int CANCEL_TASKS_ID;
        static const int MAX_CONCURRENCY;
        static const int MAX_BLOCK_ID;
+
+       static inline uint32 mix32_v6(uint32 checksum, uint32 hash, uint32 value) {
+           return checksum ^ (hash * uint32(~value));
+       }
+
+       static inline uint32 mix32_v7(uint32 checksum, uint32 hash, uint32 value) {
+           checksum ^= hash * uint32(~value);
+           checksum = (checksum << 13) | (checksum >> 19);
+           return checksum * 5 + 0x52DCE729;
+       }
 
        int _blockSize;
        int _bufferId; // index of current read buffer

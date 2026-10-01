@@ -44,6 +44,7 @@ namespace kanzi
        uint64 _current;
        InputBitStream& _bitstream;
        std::vector<byte> _buf;
+       uint _bufLimit;
        uint _index;
        uint16 _probs[4][256]; // probability of bit=1
        uint16* _p; // pointer to current prob
@@ -103,10 +104,16 @@ namespace kanzi
    {
        _low = (_low << 32) & MASK_0_56;
        _high = ((_high << 32) | MASK_0_32) & MASK_0_56;
+
+       if (_index + 4 > _bufLimit) {
+           _current = (_current << 32) & MASK_0_56;
+           _index = _bufLimit + 1;
+           return;
+       }
+
        const uint64 val = BigEndian::readInt32(&_buf[_index]) & MASK_0_32;
        _current = ((_current << 32) | val) & MASK_0_56;
        _index += 4;
    }
 }
 #endif
-

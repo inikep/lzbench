@@ -51,7 +51,7 @@ namespace kanzi
 
    inline byte ExpGolombDecoder::decodeByte()
    {
-       if (_bitstream.readBit() == 1)
+       if (_bitstream.readBit() != 0)
            return byte(0);
 
        uint log2 = 1;
@@ -59,20 +59,21 @@ namespace kanzi
        while (_bitstream.readBit() == 0)
            log2++;
 
-       // Clamp. Do not attempt to detect a corrupted bitstream
-       log2 &= 7;
+       // Clamp. Do not attempt to detect a corrupted bitstream.
+       // Unsigned byte 255 requires an 8-bit suffix; signed values require at most 7.
+       log2 = log2 <= 8u - uint(_signed) ? log2 : 8u - uint(_signed);
+       const uint base = (1u << log2) - 1;
 
        if (_signed == true) {
            // Decode signed: read value + sign
-           int res = int(_bitstream.readBits(log2 + 1));
-           const int sgn = res & 1;
-           res = (res >> 1) + (1 << log2) - 1;
-           return byte((res - sgn) ^ -sgn); // res or -res
+           const uint res = uint(_bitstream.readBits(log2 + 1));
+           const uint value = (res >> 1) + base;
+           const uint sgn = res & 1;
+           return byte((value ^ (0u - sgn)) + sgn); // value or -value
        }
 
        // Decode unsigned
-       return byte((1 << log2) - 1 + _bitstream.readBits(log2));
+       return byte(base + uint(_bitstream.readBits(log2)));
    }
 }
 #endif
-

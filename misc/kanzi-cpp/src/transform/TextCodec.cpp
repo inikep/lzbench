@@ -48,8 +48,15 @@ const int TextCodec::LOG_HASHES_SIZE = 24; // 16 MB
 const kanzi::byte TextCodec::MASK_NOT_TEXT = kanzi::byte(0x80);
 const kanzi::byte TextCodec::MASK_CRLF = kanzi::byte(0x40);
 const kanzi::byte TextCodec::MASK_XML_HTML = kanzi::byte(0x20);
+const kanzi::byte TextCodec::MASK_TEXT_CODEC = kanzi::byte(0x10);
 const kanzi::byte TextCodec::MASK_DT = kanzi::byte(0x0F);
-const int TextCodec::MASK_LENGTH = 0x0007FFFF; // 19 bits
+const int TextCodec::MASK_LENGTH = 0x0007FFFF; // 19-bit dictionary index
+
+// V7 ranked dictionary indexes. The one-byte form has 63 usable values
+// because 0x80 is reserved for the case-flip marker. The two-byte form has
+// 8192 values, so the three-byte form starts at index 63 + 8192.
+static const int V7_INDEX_BASE2 = 63;
+static const int V7_INDEX_BASE3 = 8255;
 
 
 
@@ -181,7 +188,6 @@ bool TextCodec::init(int8 cType[256])
 int TextCodec::createDictionary(char words[], int dictSize, DictEntry dict[], int maxWords, int startWord)
 {
     int delimAnchor = 0;
-    uint h = HASH1;
     int nbWords = startWord;
     byte* src = reinterpret_cast<byte*>(words);
 
@@ -191,20 +197,21 @@ int TextCodec::createDictionary(char words[], int dictSize, DictEntry dict[], in
 
         if (isUpperCase(src[i])) {
             if (i > delimAnchor) {
-                dict[nbWords] = DictEntry(&src[delimAnchor], h, nbWords, i - delimAnchor);
+                const int length = i - delimAnchor;
+                const uint h = computeWordHash(&src[delimAnchor], length);
+                dict[nbWords] = DictEntry(&src[delimAnchor], h, nbWords, length);
                 nbWords++;
                 delimAnchor = i;
-                h = HASH1;
             }
 
             src[i] ^= byte(0x20);
         }
-
-        h = h * HASH1 ^ uint(src[i]) * HASH2;
     }
 
     if (nbWords < maxWords) {
-        dict[nbWords] = DictEntry(&src[delimAnchor], h, nbWords, dictSize - 1 - delimAnchor);
+        const int length = dictSize - 1 - delimAnchor;
+        const uint h = computeWordHash(&src[delimAnchor], length);
+        dict[nbWords] = DictEntry(&src[delimAnchor], h, nbWords, length);
         nbWords++;
     }
 
@@ -256,6 +263,24 @@ byte TextCodec::computeStats(const byte block[], int count, uint freqs0[], bool 
 
     for (int i = 0; i < 256; i++) {
         freqs0[i] += (f0[i] + f1[i] + f2[i] + f3[i]);
+    }
+
+    // Reject simple alphabets before the text heuristic. Ignore line
+    // whitespace so wrapped DNA, Base64, and numeric data are detected too.
+    uint freqsSimple[256];
+    memcpy(&freqsSimple[0], &freqs0[0], sizeof(freqsSimple));
+    const int nbWhitespace = freqsSimple[' '] + freqsSimple['\t'] +
+                             freqsSimple['\n'] + freqsSimple['\r'];
+    const int simpleCount = count - nbWhitespace;
+    freqsSimple[' '] = 0;
+    freqsSimple['\t'] = 0;
+    freqsSimple['\n'] = 0;
+    freqsSimple['\r'] = 0;
+    const Global::DataType simpleType = Global::detectSimpleType(simpleCount, freqsSimple);
+
+    if (simpleType != Global::UNDEFINED) {
+        delete[] freqs1;
+        return TextCodec::MASK_NOT_TEXT | byte(simpleType);
     }
 
     const int cr = int(CR);
@@ -428,14 +453,32 @@ end:
 
 TextCodec::TextCodec()
 {
-    _delegate = new TextCodec1();
+    _delegate = nullptr;
+    _pCtx = nullptr;
+    _encodingType = 0;
+    _bsVersion = 7;
+    setEncodingType(1);
 }
 
 TextCodec::TextCodec(Context& ctx)
 {
-    int encodingType = ctx.getInt("textcodec", 1);
-    _delegate = (encodingType == 1) ? static_cast<Transform<byte>*>(new TextCodec1(ctx)) :
-        static_cast<Transform<byte>*>(new TextCodec2(ctx));
+    _delegate = nullptr;
+    _pCtx = &ctx;
+    _encodingType = 0;
+    _bsVersion = ctx.getInt("bsVersion", 7);
+    setEncodingType(ctx.getInt("textcodec", 1));
+}
+
+void TextCodec::setEncodingType(int encodingType)
+{
+    if ((_delegate != nullptr) && (_encodingType == encodingType))
+        return;
+
+    delete _delegate;
+    _encodingType = encodingType;
+    _delegate = (encodingType == 1) ?
+        static_cast<Transform<byte>*>(_pCtx == nullptr ? static_cast<Transform<byte>*>(new TextCodec1()) : static_cast<Transform<byte>*>(new TextCodec1(*_pCtx))) :
+        static_cast<Transform<byte>*>(_pCtx == nullptr ? static_cast<Transform<byte>*>(new TextCodec2()) : static_cast<Transform<byte>*>(new TextCodec2(*_pCtx)));
 }
 
 bool TextCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int count)
@@ -455,7 +498,17 @@ bool TextCodec::forward(SliceArray<byte>& input, SliceArray<byte>& output, int c
     if (input._array == output._array)
         return false;
 
-    return _delegate->forward(input, output, count);
+    const int dstIdx = output._index;
+    const bool res = _delegate->forward(input, output, count);
+
+    if ((res == true) && (_bsVersion >= 7)) {
+        if (_encodingType == 1)
+            output._array[dstIdx] &= ~TextCodec::MASK_TEXT_CODEC;
+        else
+            output._array[dstIdx] |= TextCodec::MASK_TEXT_CODEC;
+    }
+
+    return res;
 }
 
 bool TextCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int count)
@@ -477,6 +530,13 @@ bool TextCodec::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int c
 
     if ((count < 2) || (input._index + count > input._length))
         return false;
+
+    // Since bsVersion 7, the transform header stores which TextCodec variant
+    // produced the bitstream, so switch delegate before decoding payload bytes.
+    if (_bsVersion >= 7) {
+        const int encodingType = ((input._array[input._index] & TextCodec::MASK_TEXT_CODEC) == byte(0)) ? 1 : 2;
+        setEncodingType(encodingType);
+    }
 
     return _delegate->inverse(input, output, count);
 }
@@ -515,6 +575,7 @@ TextCodec1::TextCodec1(Context& ctx)
 void TextCodec1::reset(int count)
 {
     // Select an appropriate initial dictionary size
+    const int allocatedSize = _dictSize;
     const int log = count < 1024 ? 13 : max(min(Global::log2(uint32(count / 128)), 18), 13);
     _dictSize = max(TextCodec::STATIC_DICT_WORDS + 2, 1 << log);
     const int mapSize = 1 << _logHashSize;
@@ -525,8 +586,10 @@ void TextCodec1::reset(int count)
     for (int i = 0; i < mapSize; i++)
         _dictMap[i] = nullptr;
 
-    if (_dictList == nullptr) {
-        _dictList = new DictEntry[_dictSize];
+    if ((_dictList == nullptr) || (allocatedSize < _dictSize)) {
+        DictEntry* newDict = new DictEntry[_dictSize];
+        delete[] _dictList;
+        _dictList = newDict;
 #if __cplusplus >= 201103L
         memcpy(&_dictList[0], &TextCodec::STATIC_DICTIONARY[0], sizeof(TextCodec::STATIC_DICTIONARY));
 #else
@@ -600,36 +663,34 @@ bool TextCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
     }
 
     int delimAnchor = TextCodec::isText(src[srcIdx]) ? srcIdx - 1 : srcIdx; // previous delimiter
+    uint h1 = TextCodec::HASH1;
+    uint h2 = TextCodec::HASH1;
 
     while (srcIdx < srcEnd) {
-        const int8 cType = TextCodec::getType(src[srcIdx]);
+        const byte cur = src[srcIdx];
+        const int8 cType = TextCodec::getType(cur);
 
         if (cType == 0) {
+            if (srcIdx - delimAnchor == 1) {
+                h1 = uint(TextCodec::HASH1) * uint(TextCodec::HASH1) ^ uint(cur) * uint(TextCodec::HASH2);
+                h2 = uint(TextCodec::HASH1) * uint(TextCodec::HASH1) ^ (uint(cur) ^ 0x20U) * uint(TextCodec::HASH2);
+            }
+            else {
+                h1 = h1 * TextCodec::HASH1 ^ uint(cur) * TextCodec::HASH2;
+                h2 = h2 * TextCodec::HASH1 ^ uint(cur) * TextCodec::HASH2;
+            }
+
             srcIdx++;
             continue;
         }
 
         if ((srcIdx > delimAnchor + 2) && (cType > 0)) { // At least 2 letters
-            const byte val = src[delimAnchor + 1];
             const int length = srcIdx - delimAnchor - 1;
 
             if (length <= TextCodec::MAX_WORD_LENGTH) {
-                // Compute hashes
-                // h1 -> hash of word chars
-                // h2 -> hash of word chars with first char case flipped
-                uint h1 = TextCodec::HASH1;
-                h1 = h1 * TextCodec::HASH1 ^ uint(val) * TextCodec::HASH2;
-                uint h2 = TextCodec::HASH1;
-                h2 = h2 * TextCodec::HASH1 ^ (uint(val) ^ 0x20) * TextCodec::HASH2;
-
-                for (int i = delimAnchor + 2; i < srcIdx; i++) {
-                    h1 = h1 * TextCodec::HASH1 ^ uint(src[i]) * TextCodec::HASH2;
-                    h2 = h2 * TextCodec::HASH1 ^ uint(src[i]) * TextCodec::HASH2;
-                }
-
                 // Check word in dictionary
-                DictEntry* pe = nullptr;
                 prefetchRead(&_dictMap[h1 & _hashMask]);
+                DictEntry* pe = nullptr;
                 DictEntry* pe1 = _dictMap[h1 & _hashMask];
 
                 if ((pe1 != nullptr) && (pe1->_hash == h1) && ((pe1->_data >> 24) == length))
@@ -643,7 +704,7 @@ bool TextCodec1::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 }
 
                 // Check for hash collisions
-                if ((pe != nullptr) && (!TextCodec::sameWords(&pe->_ptr[1], &src[delimAnchor + 2], length - 1)))
+                if ((pe != nullptr) && (KANZI_UNLIKELY(!TextCodec::sameWords(&pe->_ptr[1], &src[delimAnchor + 2], length - 1))))
                     pe = nullptr;
 
                 if (pe == nullptr) {
@@ -864,11 +925,10 @@ bool TextCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 DictEntry* pe = nullptr;
                 DictEntry* pe1 = _dictMap[h1 & _hashMask];
 
-                // Check for hash collisions
-                if ((pe1 != nullptr) && (pe1->_hash == h1) && ((pe1->_data >> 24) == length)) {
-                    if (TextCodec::sameWords(&pe1->_ptr[1], &src[delimAnchor + 2], length - 1))
-                        pe = pe1;
-                }
+                // A hash collision check is not needed here: insertion is only allowed when
+                // the hash slot is null, so the candidate contents cannot affect the outcome.
+                if ((pe1 != nullptr) && (pe1->_hash == h1) && ((pe1->_data >> 24) == length))
+                    pe = pe1;
 
                 if (pe == nullptr) {
                     // Word not found in the dictionary or hash collision.
@@ -902,12 +962,27 @@ bool TextCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
         if ((cur == TextCodec::ESCAPE_TOKEN1) || (cur == TextCodec::ESCAPE_TOKEN2)) {
             // Word in dictionary
             // Read word index (varint 5 bits + 7 bits + 7 bits)
+            if (srcIdx >= srcEnd) {
+                res = false;
+                break;
+            }
+
             int idx = int(src[srcIdx++]);
 
             if (idx >= 128) {
+                if (srcIdx >= srcEnd) {
+                    res = false;
+                    break;
+                }
+
                 const int idx2 = int(src[srcIdx++]);
 
                 if (idx2 >= 128) {
+                    if (srcIdx >= srcEnd) {
+                        res = false;
+                        break;
+                    }
+
                     idx = ((idx & 0x1F) << 14) | ((idx2 & 0x7F) << 7) | int(src[srcIdx]);
                     srcIdx++;
                 }
@@ -915,7 +990,7 @@ bool TextCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
                     idx = ((idx & 0x7F) << 7) | idx2;
                 }
 
-                if (idx >= _dictSize) {
+                if (KANZI_UNLIKELY(idx >= _dictSize)) {
                     res = false;
                     break;
                 }
@@ -934,7 +1009,7 @@ bool TextCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 delimAnchor = srcIdx;
             }
             else {
-                if (length == 0) {
+                if (KANZI_UNLIKELY(length == 0)) {
                    res = false;
                    break;
                 }
@@ -945,7 +1020,7 @@ bool TextCodec1::inverse(SliceArray<byte>& input, SliceArray<byte>& output, int 
             }
 
             // Sanity check
-            if (dstIdx + length > dstEnd) {
+            if (KANZI_UNLIKELY(dstIdx + length > dstEnd)) {
                 res = false;
                 break;
             }
@@ -1011,6 +1086,7 @@ TextCodec2::TextCodec2(Context& ctx)
 void TextCodec2::reset(int count)
 {
     // Select an appropriate initial dictionary size
+    const int allocatedSize = _dictSize;
     const int log = count < 1024 ? 13 : max(min(Global::log2(uint32(count / 128)), 18), 13);
     _dictSize = max(TextCodec::STATIC_DICT_WORDS, 1 << log);
     const int mapSize = 1 << _logHashSize;
@@ -1021,8 +1097,10 @@ void TextCodec2::reset(int count)
     for (int i = 0; i < mapSize; i++)
         _dictMap[i] = nullptr;
 
-    if (_dictList == nullptr) {
-        _dictList = new DictEntry[_dictSize];
+    if ((_dictList == nullptr) || (allocatedSize < _dictSize)) {
+        DictEntry* newDict = new DictEntry[_dictSize];
+        delete[] _dictList;
+        _dictList = newDict;
 #if __cplusplus >= 201103L
         memcpy(&_dictList[0], &TextCodec::STATIC_DICTIONARY[0], sizeof(TextCodec::STATIC_DICTIONARY));
 #else
@@ -1090,36 +1168,34 @@ bool TextCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
     }
 
     int delimAnchor = TextCodec::isText(src[srcIdx]) ? srcIdx - 1 : srcIdx; // previous delimiter
+    uint h1 = TextCodec::HASH1;
+    uint h2 = TextCodec::HASH1;
 
     while (srcIdx < srcEnd) {
-        const int8 cType = TextCodec::getType(src[srcIdx]);
+        const byte cur = src[srcIdx];
+        const int8 cType = TextCodec::getType(cur);
 
         if (cType == 0) {
+            if (srcIdx - delimAnchor == 1) {
+                h1 = uint(TextCodec::HASH1) * uint(TextCodec::HASH1) ^ uint(cur) * uint(TextCodec::HASH2);
+                h2 = uint(TextCodec::HASH1) * uint(TextCodec::HASH1) ^ (uint(cur) ^ 0x20U) * uint(TextCodec::HASH2);
+            }
+            else {
+                h1 = h1 * TextCodec::HASH1 ^ uint(cur) * TextCodec::HASH2;
+                h2 = h2 * TextCodec::HASH1 ^ uint(cur) * TextCodec::HASH2;
+            }
+
             srcIdx++;
             continue;
         }
 
         if ((srcIdx > delimAnchor + 2) && (cType > 0)) {
-            const byte val = src[delimAnchor + 1];
             const int length = srcIdx - delimAnchor - 1;
 
             if (length <= TextCodec::MAX_WORD_LENGTH) {
-                // Compute hashes
-                // h1 -> hash of word chars
-                // h2 -> hash of word chars with first char case flipped
-                uint h1 = TextCodec::HASH1;
-                h1 = h1 * TextCodec::HASH1 ^ uint(val) * TextCodec::HASH2;
-                uint h2 = TextCodec::HASH1;
-                h2 = h2 * TextCodec::HASH1 ^ (uint(val) ^ 0x20) * TextCodec::HASH2;
-
-                for (int i = delimAnchor + 2; i < srcIdx; i++) {
-                    h1 = h1 * TextCodec::HASH1 ^ uint(src[i]) * TextCodec::HASH2;
-                    h2 = h2 * TextCodec::HASH1 ^ uint(src[i]) * TextCodec::HASH2;
-                }
-
                 // Check word in dictionary
-                DictEntry* pe = nullptr;
                 prefetchRead(&_dictMap[h1 & _hashMask]);
+                DictEntry* pe = nullptr;
                 DictEntry* pe1 = _dictMap[h1 & _hashMask];
 
                 if ((pe1 != nullptr) && (pe1->_hash == h1) && ((pe1->_data >> 24) == length))
@@ -1133,7 +1209,7 @@ bool TextCodec2::forward(SliceArray<byte>& input, SliceArray<byte>& output, int 
                 }
 
                 // Check for hash collisions
-                if ((pe != nullptr) && (!TextCodec::sameWords(&pe->_ptr[1], &src[delimAnchor + 2], length - 1)))
+                if ((pe != nullptr) && (KANZI_UNLIKELY(!TextCodec::sameWords(&pe->_ptr[1], &src[delimAnchor + 2], length - 1))))
                     pe = nullptr;
 
                 if (pe == nullptr) {
@@ -1317,26 +1393,25 @@ int TextCodec2::emitSymbols(const byte src[], byte dst[], const int srcEnd, cons
 int TextCodec2::emitWordIndex(kanzi::byte dst[], int wIdx)
 {
     // 0x80 is reserved to first symbol case flip
-    wIdx++;
+    if (wIdx < V7_INDEX_BASE2) {
+        dst[0] = kanzi::byte(0x81 + wIdx);
+        return 1;
+    }
 
-    if (wIdx >= TextCodec::THRESHOLD3) {
-        if (wIdx >= TextCodec::THRESHOLD4) {
-            // 3 kanzi::byte index (1111xxxx xxxxxxxx xxxxxxxx)
-            dst[0] = kanzi::byte(0xF0 | (wIdx >> 16));
-            dst[1] = kanzi::byte(wIdx >> 8);
-            dst[2] = kanzi::byte(wIdx);
-            return 3;
-        }
-
-        // 2 kanzi::byte index (110xxxxx xxxxxxxx)
+    if (wIdx < V7_INDEX_BASE3) {
+        // Encode the rank relative to the one-byte range.
+        wIdx -= V7_INDEX_BASE2;
         dst[0] = kanzi::byte(0xC0 | (wIdx >> 8));
         dst[1] = kanzi::byte(wIdx);
         return 2;
     }
 
-    // 1 kanzi::byte index (10xxxxxx) with 0x80 excluded
-    dst[0] = kanzi::byte(0x80 | wIdx);
-    return 1;
+    // Encode the rank relative to the one- and two-byte ranges.
+    wIdx -= V7_INDEX_BASE3;
+    dst[0] = kanzi::byte(0xF0 | (wIdx >> 16));
+    dst[1] = kanzi::byte(wIdx >> 8);
+    dst[2] = kanzi::byte(wIdx);
+    return 3;
 }
 
 bool TextCodec2::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& output, int count)
@@ -1385,11 +1460,10 @@ bool TextCodec2::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>
                 DictEntry* pe = nullptr;
                 DictEntry* pe1 = _dictMap[h1 & _hashMask];
 
-                // Check for hash collisions
-                if ((pe1 != nullptr) && (pe1->_hash == h1) && ((pe1->_data >> 24) == length)) {
-                    if (TextCodec::sameWords(&pe1->_ptr[1], &src[delimAnchor + 2], length - 1))
-                        pe = pe1;
-                }
+                // A hash collision check is not needed here: insertion is only allowed when
+                // the hash slot is null, so the candidate contents cannot affect the outcome.
+                if ((pe1 != nullptr) && (pe1->_hash == h1) && ((pe1->_data >> 24) == length))
+                    pe = pe1;
 
                 if (pe == nullptr) {
                     // Word not found in the dictionary or hash collision.
@@ -1431,9 +1505,19 @@ bool TextCodec2::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>
                 idx = int(cur & TextCodec::MASK_1F);
 
                 if ((cur & TextCodec::MASK_40) != kanzi::byte(0)) {
+                    if (KANZI_UNLIKELY(srcIdx >= srcEnd)) {
+                        res = false;
+                        break;
+                    }
+
                     const int idx2 = int(src[srcIdx++]);
 
                     if (idx2 >= 128) {
+                        if (KANZI_UNLIKELY(srcIdx >= srcEnd)) {
+                            res = false;
+                            break;
+                        }
+
                         idx = (idx << 14) | ((idx2 & 0x7F) << 7) | int(src[srcIdx]);
                         srcIdx++;
                     }
@@ -1442,48 +1526,80 @@ bool TextCodec2::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>
                     }
 
                     // Sanity check
-                    if (idx >= _dictSize) {
+                    if (KANZI_UNLIKELY(idx >= _dictSize)) {
                         res = false;
                         break;
                     }
                 }
             }
             else {
+                const bool rankedEncoding = _bsVersion >= 7;
+
                 if (cur == TextCodec::MASK_80) {
                     // Flip first char case
                     flipMask = TextCodec::MASK_20;
+
+                    if (KANZI_UNLIKELY(srcIdx >= srcEnd)) {
+                        res = false;
+                        break;
+                    }
+
                     cur = src[srcIdx++];
                 }
 
                 // Read word index
-                // 10xxxxxx => 1 kanzi::byte
+                // 10xxxxxx => 1 byte
                 // 110xxxxx => 2 bytes
                 // 1111xxxx => 3 bytes
                 idx = int(cur) & 0x7F;
+                const bool oneByte = idx < 64;
 
                 if (idx >= 64) {
-                    if (idx >= 112) {
+                    const bool threeBytes = idx >= 112;
+
+                    if (threeBytes) {
+                        if (KANZI_UNLIKELY(srcEnd - srcIdx < 2)) {
+                            res = false;
+                            break;
+                        }
+
                         idx = ((idx & 0x0F) << 16) | (int(src[srcIdx]) << 8) | int(src[srcIdx + 1]);
                         srcIdx += 2;
                     }
                     else {
+                        if (KANZI_UNLIKELY(srcIdx >= srcEnd)) {
+                            res = false;
+                            break;
+                        }
+
                         idx = ((idx & 0x1F) << 8) | int(src[srcIdx]);
                         srcIdx++;
                     }
 
-                    // Sanity check before adjusting index
-                    if (idx > _dictSize) {
+                    if (rankedEncoding == true) {
+                        // Add the rank of the shorter forms. This prevents
+                        // zero or negative dictionary indexes for malformed
+                        // multi-byte encodings such as C0 00 or F0 00 00.
+                        idx += threeBytes ? V7_INDEX_BASE3 : V7_INDEX_BASE2;
+
+                        if (KANZI_UNLIKELY(idx >= _dictSize)) {
+                            res = false;
+                            break;
+                        }
+                    }
+                    else if (KANZI_UNLIKELY(idx > _dictSize)) {
+                        // V6 uses the original one-based dictionary index.
                         res = false;
                         break;
                     }
                 }
-                else if (idx == 0) {
+
+                if (KANZI_UNLIKELY(idx == 0)) {
                     res = false;
                     break;
                 }
 
-                // Adjust index
-                idx--;
+                idx -= rankedEncoding ? int(oneByte) : 1;
             }
 
             const int length = (_dictList[idx]._data >> 24) & 0xFF;
@@ -1499,7 +1615,7 @@ bool TextCodec2::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>
                 delimAnchor = srcIdx;
             }
             else {
-                if (length == 0) {
+                if (KANZI_UNLIKELY(length == 0)) {
                    res = false;
                    break;
                 }
@@ -1510,7 +1626,7 @@ bool TextCodec2::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>
             }
 
             // Sanity check
-            if (dstIdx + length > dstEnd) {
+            if (KANZI_UNLIKELY(dstIdx + length > dstEnd)) {
                 res = false;
                 break;
             }
@@ -1523,13 +1639,18 @@ bool TextCodec2::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>
         }
         else {
             if (cur == TextCodec::ESCAPE_TOKEN1) {
+                if (KANZI_UNLIKELY(srcIdx >= srcEnd)) {
+                    res = false;
+                    break;
+                }
+
                 dst[dstIdx++] = src[srcIdx++];
             }
             else {
                 if ((isCRLF == true) && (cur == TextCodec::LF)) {
                     dst[dstIdx++] = TextCodec::CR;
 
-                    if (dstIdx >= dstEnd) {
+                    if (KANZI_UNLIKELY(dstIdx >= dstEnd)) {
                         res = false;
                         break;
                     }

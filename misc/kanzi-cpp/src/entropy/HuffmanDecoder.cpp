@@ -26,6 +26,7 @@ using namespace std;
 
 const int HuffmanDecoder::DECODING_BATCH_SIZE = 12; // ensures decoding table fits in L1 cache
 const int HuffmanDecoder::TABLE_MASK = (1 << DECODING_BATCH_SIZE) - 1;
+static const uint HUFFMAN_FRAGMENT_GUARD_BYTES = 8;
 
 
 // The chunk size indicates how many bytes are encoded (per block) before
@@ -154,14 +155,13 @@ int HuffmanDecoder::decode(kanzi::byte block[], uint blkptr, uint count)
 
 int HuffmanDecoder::decodeV6(kanzi::byte block[], uint blkptr, uint count)
 {
-    const uint minBufSize = 2 * uint(_chunkSize);
+    const uint minBufSize = 2 * uint(_chunkSize) + (4 * HUFFMAN_FRAGMENT_GUARD_BYTES);
 
     if (_bufferSize < minBufSize) {
-        if (_buffer != nullptr)
-           delete[] _buffer;
-
+        kanzi::byte* buffer = new kanzi::byte[minBufSize];
+        delete[] _buffer;
+        _buffer = buffer;
         _bufferSize = minBufSize;
-        _buffer = new kanzi::byte[_bufferSize];
     }
 
     uint startChunk = blkptr;
@@ -212,32 +212,39 @@ bool HuffmanDecoder::decodeChunk(kanzi::byte block[], uint count)
     if ((szBits0 < 0) || (szBits1 < 0) || (szBits2 < 0) || (szBits3 < 0))
         return false;
 
-    // Each of the 4 streams is stored in one quarter of _buffer.
-    const int maxFragBits = int((_bufferSize >> 2) << 3);
+    const uint fragCapacity = (_bufferSize - (4 * HUFFMAN_FRAGMENT_GUARD_BYTES)) >> 2;
+    const uint fragStride = fragCapacity + HUFFMAN_FRAGMENT_GUARD_BYTES;
+    const int maxFragBits = int(fragCapacity << 3);
 
     if ((szBits0 > maxFragBits) || (szBits1 > maxFragBits) || (szBits2 > maxFragBits) || (szBits3 > maxFragBits))
         return false;
 
-    memset(_buffer, 0, _bufferSize);
-
-    int idx0 = 0 * (_bufferSize / 4);
-    int idx1 = 1 * (_bufferSize / 4);
-    int idx2 = 2 * (_bufferSize / 4);
-    int idx3 = 3 * (_bufferSize / 4);
+    const int base0 = 0 * fragStride;
+    const int base1 = 1 * fragStride;
+    const int base2 = 2 * fragStride;
+    const int base3 = 3 * fragStride;
+    int idx0 = base0;
+    int idx1 = base1;
+    int idx2 = base2;
+    int idx3 = base3;
 
     // Read all compressed data from bitstream
     _bitstream.readBits(&_buffer[idx0], szBits0);
     _bitstream.readBits(&_buffer[idx1], szBits1);
     _bitstream.readBits(&_buffer[idx2], szBits2);
     _bitstream.readBits(&_buffer[idx3], szBits3);
+    memset(&_buffer[idx0 + ((szBits0 + 7) >> 3)], 0, HUFFMAN_FRAGMENT_GUARD_BYTES);
+    memset(&_buffer[idx1 + ((szBits1 + 7) >> 3)], 0, HUFFMAN_FRAGMENT_GUARD_BYTES);
+    memset(&_buffer[idx2 + ((szBits2 + 7) >> 3)], 0, HUFFMAN_FRAGMENT_GUARD_BYTES);
+    memset(&_buffer[idx3 + ((szBits3 + 7) >> 3)], 0, HUFFMAN_FRAGMENT_GUARD_BYTES);
 
     // State variables for each of the four parallel streams
     uint64 state0 = 0, state1 = 0, state2 = 0, state3 = 0; // bits read from bitstream
     uint8 bits0 = 0, bits1 = 0, bits2 = 0, bits3 = 0;      // number of available bits in state
 
-#define READ_STATE(shift, state, idx, bits) do {\
+#define READ_STATE(state, idx, bits) do {\
        const uint8 shift = (56 - bits) & -8; \
-       bits += shift - DECODING_BATCH_SIZE; \
+       bits += (shift - DECODING_BATCH_SIZE); \
        state = (state << shift) | (uint64(BigEndian::readLong64(&_buffer[idx])) >> 1 >> (63 - shift)); /* handle shift = 0 */ \
        idx += (shift >> 3); \
     } while (0);
@@ -251,58 +258,64 @@ bool HuffmanDecoder::decodeChunk(kanzi::byte block[], uint count)
 
     while (n < szFrag - 4) {
         // Fill 64 bits of state from the bitstream for each stream
-        READ_STATE(shift, state0, idx0, bits0);
-        READ_STATE(shift, state1, idx1, bits1);
-        READ_STATE(shift, state2, idx2, bits2);
-        READ_STATE(shift, state3, idx3, bits3);
+        READ_STATE(state0, idx0, bits0);
+        READ_STATE(state1, idx1, bits1);
+        READ_STATE(state2, idx2, bits2);
+        READ_STATE(state3, idx3, bits3);
 
-        // Decompress 4 symbols per stream
+        // Decompress 4 symbols per stream while keeping the decoded values short-lived.
         const uint16 val00 = _table[(state0 >> bits0) & TABLE_MASK]; bits0 -= uint8(val00);
         const uint16 val10 = _table[(state1 >> bits1) & TABLE_MASK]; bits1 -= uint8(val10);
         const uint16 val20 = _table[(state2 >> bits2) & TABLE_MASK]; bits2 -= uint8(val20);
         const uint16 val30 = _table[(state3 >> bits3) & TABLE_MASK]; bits3 -= uint8(val30);
-        const uint16 val01 = _table[(state0 >> bits0) & TABLE_MASK]; bits0 -= uint8(val01);
-        const uint16 val11 = _table[(state1 >> bits1) & TABLE_MASK]; bits1 -= uint8(val11);
-        const uint16 val21 = _table[(state2 >> bits2) & TABLE_MASK]; bits2 -= uint8(val21);
-        const uint16 val31 = _table[(state3 >> bits3) & TABLE_MASK]; bits3 -= uint8(val31);
-        const uint16 val02 = _table[(state0 >> bits0) & TABLE_MASK]; bits0 -= uint8(val02);
-        const uint16 val12 = _table[(state1 >> bits1) & TABLE_MASK]; bits1 -= uint8(val12);
-        const uint16 val22 = _table[(state2 >> bits2) & TABLE_MASK]; bits2 -= uint8(val22);
-        const uint16 val32 = _table[(state3 >> bits3) & TABLE_MASK]; bits3 -= uint8(val32);
-        const uint16 val03 = _table[(state0 >> bits0) & TABLE_MASK]; bits0 -= uint8(val03);
-        const uint16 val13 = _table[(state1 >> bits1) & TABLE_MASK]; bits1 -= uint8(val13);
-        const uint16 val23 = _table[(state2 >> bits2) & TABLE_MASK]; bits2 -= uint8(val23);
-        const uint16 val33 = _table[(state3 >> bits3) & TABLE_MASK]; bits3 -= uint8(val33);
-
-        bits0 += DECODING_BATCH_SIZE;
-        bits1 += DECODING_BATCH_SIZE;
-        bits2 += DECODING_BATCH_SIZE;
-        bits3 += DECODING_BATCH_SIZE;
 
         block0[n + 0] = kanzi::byte(val00 >> 8);
         block1[n + 0] = kanzi::byte(val10 >> 8);
         block2[n + 0] = kanzi::byte(val20 >> 8);
         block3[n + 0] = kanzi::byte(val30 >> 8);
+
+        const uint16 val01 = _table[(state0 >> bits0) & TABLE_MASK]; bits0 -= uint8(val01);
+        const uint16 val11 = _table[(state1 >> bits1) & TABLE_MASK]; bits1 -= uint8(val11);
+        const uint16 val21 = _table[(state2 >> bits2) & TABLE_MASK]; bits2 -= uint8(val21);
+        const uint16 val31 = _table[(state3 >> bits3) & TABLE_MASK]; bits3 -= uint8(val31);
+
         block0[n + 1] = kanzi::byte(val01 >> 8);
         block1[n + 1] = kanzi::byte(val11 >> 8);
         block2[n + 1] = kanzi::byte(val21 >> 8);
         block3[n + 1] = kanzi::byte(val31 >> 8);
+
+        const uint16 val02 = _table[(state0 >> bits0) & TABLE_MASK]; bits0 -= uint8(val02);
+        const uint16 val12 = _table[(state1 >> bits1) & TABLE_MASK]; bits1 -= uint8(val12);
+        const uint16 val22 = _table[(state2 >> bits2) & TABLE_MASK]; bits2 -= uint8(val22);
+        const uint16 val32 = _table[(state3 >> bits3) & TABLE_MASK]; bits3 -= uint8(val32);
+
         block0[n + 2] = kanzi::byte(val02 >> 8);
         block1[n + 2] = kanzi::byte(val12 >> 8);
         block2[n + 2] = kanzi::byte(val22 >> 8);
         block3[n + 2] = kanzi::byte(val32 >> 8);
+
+        const uint16 val03 = _table[(state0 >> bits0) & TABLE_MASK]; bits0 -= uint8(val03);
+        const uint16 val13 = _table[(state1 >> bits1) & TABLE_MASK]; bits1 -= uint8(val13);
+        const uint16 val23 = _table[(state2 >> bits2) & TABLE_MASK]; bits2 -= uint8(val23);
+        const uint16 val33 = _table[(state3 >> bits3) & TABLE_MASK]; bits3 -= uint8(val33);
+
         block0[n + 3] = kanzi::byte(val03 >> 8);
         block1[n + 3] = kanzi::byte(val13 >> 8);
         block2[n + 3] = kanzi::byte(val23 >> 8);
         block3[n + 3] = kanzi::byte(val33 >> 8);
+
+        bits0 += DECODING_BATCH_SIZE;
+        bits1 += DECODING_BATCH_SIZE;
+        bits2 += DECODING_BATCH_SIZE;
+        bits3 += DECODING_BATCH_SIZE;
         n += 4;
     }
 
     // Fill 64 bits of state from the bitstream for each stream
-    READ_STATE(shift, state0, idx0, bits0);
-    READ_STATE(shift, state1, idx1, bits1);
-    READ_STATE(shift, state2, idx2, bits2);
-    READ_STATE(shift, state3, idx3, bits3);
+    READ_STATE(state0, idx0, bits0);
+    READ_STATE(state1, idx1, bits1);
+    READ_STATE(state2, idx2, bits2);
+    READ_STATE(state3, idx3, bits3);
 
     while (n < szFrag) {
         // Decompress 1 symbol per stream
@@ -324,7 +337,13 @@ bool HuffmanDecoder::decodeChunk(kanzi::byte block[], uint count)
     for (uint i = count4; i < count; i++)
         block[i] = kanzi::byte(_bitstream.readBits(8));
 
-    return true;
+    const int used0 = ((idx0 - base0) << 3) - (int(int8(bits0)) + DECODING_BATCH_SIZE);
+    const int used1 = ((idx1 - base1) << 3) - (int(int8(bits1)) + DECODING_BATCH_SIZE);
+    const int used2 = ((idx2 - base2) << 3) - (int(int8(bits2)) + DECODING_BATCH_SIZE);
+    const int used3 = ((idx3 - base3) << 3) - (int(int8(bits3)) + DECODING_BATCH_SIZE);
+
+    return (used0 == szBits0) && (used1 == szBits1) &&
+           (used2 == szBits2) && (used3 == szBits3);
 }
 
 int HuffmanDecoder::decodeV5(kanzi::byte block[], uint blkptr, uint count)
@@ -359,20 +378,22 @@ int HuffmanDecoder::decodeV5(kanzi::byte block[], uint blkptr, uint count)
         // Read chunk size
         const int szBits = EntropyUtils::readVarInt(_bitstream);
 
-        if ((szBits < 0) || (szBits > int(sizeChunk) * HuffmanCommon::MAX_SYMBOL_SIZE))
+        // A non-empty chunk with multiple symbols cannot have an empty
+        // encoded payload. Treat it as malformed instead of reporting a
+        // successful decode while leaving the destination untouched.
+        if ((szBits <= 0) || (szBits > int(sizeChunk) * HuffmanCommon::MAX_SYMBOL_SIZE))
             return -1;
 
         // Read compressed data from bitstream
-        if (szBits != 0) {
+        {
             const int sz = (szBits + 7) >> 3;
             const uint minLenBuf = uint(max(sz + (sz >> 3), 1024));
 
             if (_bufferSize < minLenBuf) {
-                if (_buffer != nullptr)
-                   delete[] _buffer;
-
+                kanzi::byte* buffer = new kanzi::byte[minLenBuf];
+                delete[] _buffer;
+                _buffer = buffer;
                 _bufferSize = minLenBuf;
-                _buffer = new kanzi::byte[_bufferSize];
             }
 
             _bitstream.readBits(&_buffer[0], szBits);
@@ -382,7 +403,11 @@ int HuffmanDecoder::decodeV5(kanzi::byte block[], uint blkptr, uint count)
             int idx = 0;
             uint n = startChunk;
 
-            while (idx < sz - 8) {
+            // Decode groups of four only while they fit in the requested
+            // output chunk. A malformed payload can otherwise make the last
+            // group write up to three bytes past endChunk before the final
+            // payload-size check is reached.
+            while ((idx < sz - 8) && (n <= endChunk) && (endChunk - n >= 4)) {
                 const uint8 shift = (56 - bits) & -8;
                 state = (state << shift) | (uint64(BigEndian::readLong64(&_buffer[idx])) >> 1 >> (63 - shift)); // handle shift = 0
                 idx += (shift >> 3);
@@ -404,13 +429,10 @@ int HuffmanDecoder::decodeV5(kanzi::byte block[], uint blkptr, uint count)
             }
 
             // Last bytes
-            uint nbBits = idx * 8;
-
             while (n < endChunk) {
                 while ((bits < HuffmanCommon::MAX_SYMBOL_SIZE) && (idx < sz)) {
                     state = (state << 8) | uint64(_buffer[idx] & kanzi::byte(0xFF));
                     idx++;
-                    nbBits = (idx == sz) ? szBits : nbBits + 8;
 
                     // 'bits' may overshoot when idx == sz due to padding state bits
                     // It is necessary to compute proper _table indexes
@@ -432,6 +454,9 @@ int HuffmanDecoder::decodeV5(kanzi::byte block[], uint blkptr, uint count)
                 bits -= uint8(val);
                 block[n++] = kanzi::byte(val >> 8);
             }
+
+            if (((idx << 3) - int(int8(bits))) != szBits)
+                return -1;
         }
 
         startChunk = endChunk;

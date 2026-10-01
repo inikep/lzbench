@@ -92,7 +92,8 @@ namespace kanzi
        }
    }
 
-   // Write 'count' (in [1..64]) bits. Trigger exception if stream is closed
+   // Write 'count' (in [0..64]) bits. A zero count is a successful no-op,
+   // including when the stream is closed. Otherwise, trigger an exception if closed.
    inline uint DefaultOutputBitStream::writeBits(uint64 value, uint count)
    {
        if ((count == 0) || (count > 64))
@@ -161,6 +162,7 @@ namespace kanzi
        }
 
        _availBits = 64;
+       _current = 0;
        flush();
        _os.clear();
        _os.seekp(std::streampos(pos >> 3));

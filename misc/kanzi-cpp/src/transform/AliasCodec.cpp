@@ -182,8 +182,8 @@ bool AliasCodec::forward(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>
                     return false;
             }
 
-            // Sort by decreasing order 1 frequencies
-            sort(v.begin(), v.end());
+            // Only the n0 most frequent digrams are used, in decreasing order.
+            partial_sort(v.begin(), v.begin() + n0, v.end());
         }
 
         int16 map16[65536];
@@ -380,11 +380,35 @@ bool AliasCodec::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>
             srcIdx += 3;
         }
 
-        while (srcIdx < srcEnd) {
-            const int val = map16[int(src[srcIdx++])];
-            dst[dstIdx] = kanzi::byte(val);
-            dst[dstIdx + 1] = kanzi::byte(val >> 8);
-            dstIdx += (val >> 16);
+        const int nbAliases = srcEnd - srcIdx;
+        const int dstAvail = dstEnd - dstIdx;
+
+        if (nbAliases <= (dstAvail >> 1)) {
+            while (srcIdx < srcEnd) {
+                const int val = map16[int(src[srcIdx++])];
+                dst[dstIdx] = kanzi::byte(val);
+                dst[dstIdx + 1] = kanzi::byte(val >> 8);
+                dstIdx += (val >> 16);
+            }
+        } else {
+            while ((srcIdx < srcEnd) && (dstIdx + 1 < dstEnd)) {
+                const int val = map16[int(src[srcIdx++])];
+                dst[dstIdx] = kanzi::byte(val);
+                dst[dstIdx + 1] = kanzi::byte(val >> 8);
+                dstIdx += (val >> 16);
+            }
+
+            while (srcIdx < srcEnd) {
+                const int val = map16[int(src[srcIdx++])];
+                const int inc = val >> 16;
+
+                if (dstIdx + inc > dstEnd)
+                    return false;
+
+                dst[dstIdx + inc - 1] = kanzi::byte(val >> 8);
+                dst[dstIdx] = kanzi::byte(val);
+                dstIdx += inc;
+            }
         }
 
         if (adjust != 0) {

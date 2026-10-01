@@ -108,6 +108,8 @@ namespace kanzi {
        void dispose();
 
    private:
+       static std::string describeStreamState(const std::istream& is);
+
        Context _ctx;
        InputStream* _is;
        CompressedOutputStream* _cos;
@@ -164,4 +166,3 @@ namespace kanzi {
    };
 }
 #endif
-

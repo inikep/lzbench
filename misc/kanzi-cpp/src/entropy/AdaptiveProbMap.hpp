@@ -46,7 +46,9 @@ namespace kanzi {
        _index = 0;
 
        for (int j = 0; j <= 64; j++) {
-           _data[j] = uint16(j << 6) << 4;
+           // 65536 does not fit in uint16. Keep the endpoint aligned
+           // with the maximum target used by the adaptive update.
+           _data[j] = (j == 64) ? uint16(65528) : uint16(j << 10);
        }
 
        for (int i = 1; i < n; i++) {
@@ -66,9 +68,11 @@ namespace kanzi {
        // Find index: 65*ctx + quantized prediction in [0..64]
        _index = (pr >> 6) + 65 * ctx;
 
-       // Return interpolated probabibility
-       const uint16 w = uint16(pr & 127);
-       return int(_data[_index] * (128 - w) + _data[_index + 1] * w) >> 11;
+       // Return interpolated probability. The table index advances every 64
+       // prediction units, so use the matching 6-bit fractional part.
+       const uint16 w = uint16(pr & 63);
+       return ((_data[_index] << 6) +
+               (int(_data[_index + 1]) - int(_data[_index])) * int(w)) >> 10;
    }
 
 
@@ -93,18 +97,14 @@ namespace kanzi {
        const int mult = (FAST == false) ? 33 : 32;
        _index = 0;
 
-       if (n == 0) {
-           _data = new uint16[mult];
-       }
-       else {
-           _data = new uint16[n * mult];
+       const int size = (n == 0) ? mult : n * mult;
+       _data = new uint16[size];
 
-           for (int j = 0; j < mult; j++)
-               _data[j] = uint16(Global::squash((j - 16) * 128) << 4);
+       for (int j = 0; j < mult; j++)
+           _data[j] = uint16(Global::squash((j - 16) * 128) << 4);
 
-           for (int i = 1; i < n; i++)
-               memcpy(&_data[i * mult], &_data[0], mult * sizeof(uint16));
-       }
+       for (int i = 1; i < n; i++)
+           memcpy(&_data[i * mult], &_data[0], mult * sizeof(uint16));
    }
 
    // Return improved prediction given current bit, prediction and context
@@ -122,7 +122,8 @@ namespace kanzi {
 
            // Return interpolated probabibility
            const uint16 w = uint16(pr & 127);
-           return int(_data[_index] * (128 - w) + _data[_index + 1] * w) >> 11;
+           return ((_data[_index] << 7) +
+                   (int(_data[_index + 1]) - int(_data[_index])) * int(w)) >> 11;
        } else {
            _index = ((Global::stretch(pr) + 2048) >> 7) + 32 * ctx;
            return int(_data[_index]) >> 4;
@@ -131,4 +132,3 @@ namespace kanzi {
 
 }
 #endif
-

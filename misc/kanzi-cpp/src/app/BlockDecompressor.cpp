@@ -281,100 +281,136 @@ int BlockDecompressor::decompress(uint64& inputSize)
     }
     else {
         vector<FileDecompressTask<FileDecompressResult>*> tasks;
+        tasks.reserve(nbFiles);
 #ifdef CONCURRENCY_ENABLED
         vector<int> jobsPerTask(nbFiles);
+        vector<FileDecompressWorker<FDTask*, FileDecompressResult>*> workers;
         Global::computeJobsPerTask(jobsPerTask.data(), _jobs, nbFiles);
 #endif
-        sortFilesByPathAndSize(files, true);
+        
+        try {
+            sortFilesByPathAndSize(files, true);
 
-        //  Create one task per file
-        for (int i = 0; i < nbFiles; i++) {
-            string oName = formattedOutName;
-            string iName = files[i].fullPath();
-            upperInputName = iName;
-            transform(upperInputName.begin(), upperInputName.end(), upperInputName.begin(), safeToUpper);
+            //  Create one task per file
+            for (int i = 0; i < nbFiles; i++) {
+                string oName = formattedOutName;
+                string iName = files[i].fullPath();
+                upperInputName = iName;
+                transform(upperInputName.begin(), upperInputName.end(), upperInputName.begin(), safeToUpper);
 
-            if (oName.length() == 0) {
-                oName = iName;
+                if (oName.length() == 0) {
+                    oName = iName;
 
-                if ((upperInputName.length() >= 4) && (upperInputName.substr(upperInputName.length() - 4) == ".KNZ"))
-                    oName.resize(oName.length() - 4);
-                else
-                    oName = oName + ".bak";
-            }
-            else if ((inputIsDir == true) && (specialOutput == false)) {
-                oName = formattedOutName + iName.substr(formattedInName.size());
+                    if ((upperInputName.length() >= 4) && (upperInputName.substr(upperInputName.length() - 4) == ".KNZ"))
+                        oName.resize(oName.length() - 4);
+                    else
+                        oName = oName + ".bak";
+                }
+                else if ((inputIsDir == true) && (specialOutput == false)) {
+                    oName = formattedOutName + iName.substr(formattedInName.size());
 
-                if ((upperInputName.length() >= 4) && (upperInputName.substr(upperInputName.length() - 4) == ".KNZ"))
-                    oName.resize(oName.length() - 4);
-                else
-                    oName = oName + ".bak";
-            }
+                    if ((upperInputName.length() >= 4) && (upperInputName.substr(upperInputName.length() - 4) == ".KNZ"))
+                        oName.resize(oName.length() - 4);
+                    else
+                        oName = oName + ".bak";
+                }
 
 #ifdef CONCURRENCY_ENABLED
-            Context taskCtx(_ctx, &pool);
-            taskCtx.putInt("jobs", jobsPerTask[i]);
+                Context taskCtx(_ctx, &pool);
+                taskCtx.putInt("jobs", jobsPerTask[i]);
 #else
-            Context taskCtx(_ctx);
-            taskCtx.putInt("jobs", 1);
+                Context taskCtx(_ctx);
+                taskCtx.putInt("jobs", 1);
 #endif
-            taskCtx.putLong("fileSize", files[i]._size);
-            taskCtx.putString("inputName", iName);
-            taskCtx.putString("outputName", oName);
-            FileDecompressTask<FileDecompressResult>* task = new FileDecompressTask<FileDecompressResult>(taskCtx, _listeners);
-            tasks.push_back(task);
-        }
+                taskCtx.putLong("fileSize", files[i]._size);
+                taskCtx.putString("inputName", iName);
+                taskCtx.putString("outputName", oName);
+                tasks.push_back(new FileDecompressTask<FileDecompressResult>(taskCtx, _listeners));
+            }
 
-        bool doConcurrent = _jobs > 1;
+            bool doConcurrent = _jobs > 1;
 
 #ifdef CONCURRENCY_ENABLED
-        if (doConcurrent) {
-            vector<FileDecompressWorker<FDTask*, FileDecompressResult>*> workers;
-            vector<future<FileDecompressResult> > results;
-            BoundedConcurrentQueue<FDTask*> queue(nbFiles, &tasks[0]);
+            if (doConcurrent) {
+                BoundedConcurrentQueue<FDTask*> queue(nbFiles, &tasks[0]);
+                vector<future<FileDecompressResult> > results;
+                workers.reserve(_jobs);
+                results.reserve(_jobs);
 
-            // Create one worker per job and run it. A worker calls several tasks sequentially.
-            for (int i = 0; i < _jobs; i++) {
-                workers.push_back(new FileDecompressWorker<FileDecompressTask<FileDecompressResult>*, FileDecompressResult>(&queue));
+                try {
+                    // Create one worker per job and run it. A worker calls several tasks sequentially.
+                    for (int i = 0; i < _jobs; i++) {
+                        workers.push_back(new FileDecompressWorker<FileDecompressTask<FileDecompressResult>*, FileDecompressResult>(&queue));
 
-                if (_ctx.getPool() == nullptr)
-                    results.push_back(async(launch::async, &FileDecompressWorker<FDTask*, FileDecompressResult>::run, workers[i]));
-                else
-                    results.push_back(_ctx.getPool()->schedule(&FileDecompressWorker<FDTask*, FileDecompressResult>::run, workers[i]));
-            }
+                        if (_ctx.getPool() == nullptr)
+                            results.push_back(std::async(launch::async, &FileDecompressWorker<FDTask*, FileDecompressResult>::run, workers[i]));
+                        else
+                            results.push_back(_ctx.getPool()->schedule(&FileDecompressWorker<FDTask*, FileDecompressResult>::run, workers[i]));
+                    }
 
-            // Wait for results
-            for (int i = 0; i < _jobs; i++) {
-                FileDecompressResult fdr = results[i].get();
-                res = fdr._code;
-                read += fdr._read;
+                    // Wait for results
+                    for (int i = 0; i < _jobs; i++) {
+                        FileDecompressResult fdr = results[i].get();
+                        read += fdr._read;
 
-                if (res != 0) {
-                    cerr << fdr._errMsg << endl;
-                    // Exit early by telling the workers that the queue is empty
+                        if (fdr._code != 0) {
+                            if (res == 0)
+                                res = fdr._code;
+
+                            cerr << fdr._errMsg << endl;
+                            // Exit early by telling the workers that the queue is empty
+                            queue.clear();
+                        }
+                    }
+                }
+                catch (...) {
                     queue.clear();
+
+                    for (uint i = 0; i < results.size(); i++) {
+                        try {
+                            if (results[i].valid())
+                                results[i].wait();
+                        }
+                        catch (const exception&) {
+                        }
+                    }
+
+                    throw;
                 }
             }
-
-            for (int i = 0; i < _jobs; i++)
-                delete workers[i];
-        }
 #endif
 
-        if (!doConcurrent) {
-            for (uint i = 0; i < tasks.size(); i++) {
-                FileDecompressResult fdr = tasks[i]->run();
-                res = fdr._code;
-                read += fdr._read;
+            if (!doConcurrent) {
+                for (uint i = 0; i < tasks.size(); i++) {
+                    FileDecompressResult fdr = tasks[i]->run();
+                    res = fdr._code;
+                    read += fdr._read;
 
-                if (res != 0) {
-                    cerr << fdr._errMsg << endl;
-                    break;
+                    if (res != 0) {
+                        cerr << fdr._errMsg << endl;
+                        break;
+                    }
                 }
             }
         }
+        catch (...) {
+#ifdef CONCURRENCY_ENABLED
+            for (uint i = 0; i < workers.size(); i++)
+                delete workers[i];
+#endif
 
-        for (int i = 0; i < nbFiles; i++)
+            for (uint i = 0; i < tasks.size(); i++)
+                delete tasks[i];
+
+            throw;
+        }
+
+#ifdef CONCURRENCY_ENABLED
+        for (uint i = 0; i < workers.size(); i++)
+            delete workers[i];
+#endif
+
+        for (uint i = 0; i < tasks.size(); i++)
             delete tasks[i];
     }
 
@@ -492,6 +528,7 @@ T FileDecompressTask<T>::run()
 
     string str = outputName;
     transform(str.begin(), str.end(), str.begin(), safeToUpper);
+    ofstream* fos = nullptr;
 
 #if defined(WIN32) || defined(_WIN32) || defined(_WIN64)
     bool checkOutputSize = str != "NUL";
@@ -577,6 +614,7 @@ T FileDecompressTask<T>::run()
             }
 
             _os = ofs;
+            fos = ofs;
         }
         catch (const exception& e) {
             stringstream sserr;
@@ -639,6 +677,25 @@ T FileDecompressTask<T>::run()
     Clock stopClock;
     kanzi::byte* buf = new kanzi::byte[DEFAULT_BUFFER_SIZE];
 
+#define CLEANUP_DECOMP_RESOURCES(readVar) \
+    dispose(); \
+    const uint64 readVar = _cis->getRead(); \
+    delete _cis; \
+    _cis = nullptr; \
+    CLEANUP_DECOMP_IS \
+    CLEANUP_DECOMP_OS \
+    delete[] buf
+
+#define CLEANUP_DECOMP_RESOURCES_EOF(readVar, eofVar) \
+    dispose(); \
+    const uint64 readVar = _cis->getRead(); \
+    const bool eofVar = _cis->eof(); \
+    delete _cis; \
+    _cis = nullptr; \
+    CLEANUP_DECOMP_IS \
+    CLEANUP_DECOMP_OS \
+    delete[] buf
+
     try {
         SliceArray<kanzi::byte> sa(buf, DEFAULT_BUFFER_SIZE, 0);
         int decoded = 0;
@@ -649,13 +706,7 @@ T FileDecompressTask<T>::run()
             decoded = int(_cis->gcount());
 
             if (decoded < 0) {
-                dispose();
-                const uint64 d = _cis->getRead();
-                delete _cis;
-                _cis = nullptr;
-                CLEANUP_DECOMP_IS
-                CLEANUP_DECOMP_OS
-                delete[] buf;
+                CLEANUP_DECOMP_RESOURCES(d);
                 stringstream sserr;
                 sserr << "Reached end of stream";
                 return T(Error::ERR_READ_FILE, d, sserr.str());
@@ -664,17 +715,19 @@ T FileDecompressTask<T>::run()
             try {
                 if (decoded > 0) {
                     _os->write(reinterpret_cast<const char*>(&sa._array[0]), decoded);
+
+                    if (_os->fail() || _os->bad()) {
+                        CLEANUP_DECOMP_RESOURCES(d);
+                        stringstream sserr;
+                        sserr << "Failed to write decompressed block to file '" << outputName << "'";
+                        return T(Error::ERR_WRITE_FILE, d, sserr.str());
+                    }
+
                     read += decoded;
                 }
             }
                 catch (const exception& e) {
-                    dispose();
-                    const uint64 d = _cis->getRead();
-                    delete _cis;
-                    _cis = nullptr;
-                CLEANUP_DECOMP_IS
-                CLEANUP_DECOMP_OS
-                    delete[] buf;
+                    CLEANUP_DECOMP_RESOURCES(d);
                     stringstream sserr;
                     sserr << "Failed to write decompressed block to file '" << outputName << "': " << e.what();
                     return T(Error::ERR_WRITE_FILE, d, sserr.str());
@@ -682,14 +735,7 @@ T FileDecompressTask<T>::run()
             } while (_cis->eof() == 0);
     }
     catch (const IOException& e) {
-        dispose();
-        const uint64 d = _cis->getRead();
-        bool isEOF = _cis->eof();
-        delete _cis;
-        _cis = nullptr;
-        CLEANUP_DECOMP_IS
-        CLEANUP_DECOMP_OS
-        delete[] buf;
+        CLEANUP_DECOMP_RESOURCES_EOF(d, isEOF);
 
         if (isEOF == true)
             return T(Error::ERR_READ_FILE, d, "Reached end of stream");
@@ -699,14 +745,7 @@ T FileDecompressTask<T>::run()
         return T(e.error(), d, sserr.str());
     }
     catch (const exception& e) {
-        dispose();
-        const uint64 d = _cis->getRead();
-        bool isEOF = _cis->eof();
-        delete _cis;
-        _cis = nullptr;
-        CLEANUP_DECOMP_IS
-        CLEANUP_DECOMP_OS
-        delete[] buf;
+        CLEANUP_DECOMP_RESOURCES_EOF(d, isEOF);
 
         if (isEOF == true)
             return T(Error::ERR_READ_FILE, d, "Reached end of stream");
@@ -716,11 +755,53 @@ T FileDecompressTask<T>::run()
         return T(Error::ERR_UNKNOWN, d, sserr.str());
     }
 
-    // Close streams to ensure all data are flushed
+    uint64 written = 0;
+
+    try {
+        _os->flush();
+
+        if (_os->fail() || _os->bad()) {
+            CLEANUP_DECOMP_RESOURCES(d);
+            stringstream sserr;
+            sserr << "Failed to flush decompressed output file '" << outputName << "'";
+            return T(Error::ERR_WRITE_FILE, d, sserr.str());
+        }
+
+        if (checkOutputSize == true) {
+            const streampos pos = _os->tellp();
+
+            if ((pos == streampos(-1)) || _os->fail() || _os->bad()) {
+                CLEANUP_DECOMP_RESOURCES(d);
+                stringstream sserr;
+                sserr << "Failed to query decompressed output file '" << outputName << "'";
+                return T(Error::ERR_WRITE_FILE, d, sserr.str());
+            }
+
+            written = uint64(pos);
+        }
+
+        if (fos != nullptr) {
+            fos->close();
+
+            if (!*fos) {
+                CLEANUP_DECOMP_RESOURCES(d);
+                stringstream sserr;
+                sserr << "Failed to close decompressed output file '" << outputName << "'";
+                return T(Error::ERR_WRITE_FILE, d, sserr.str());
+            }
+        }
+    }
+    catch (const exception& e) {
+        CLEANUP_DECOMP_RESOURCES(d);
+        stringstream sserr;
+        sserr << "Failed to finalize decompressed output file '" << outputName << "': " << e.what();
+        return T(Error::ERR_WRITE_FILE, d, sserr.str());
+    }
+
+    // Close input stream before deleting resources
     dispose();
 
     const uint64 decoded = _cis->getRead();
-    const uint64 written = (checkOutputSize == true) ? uint64(_os->tellp()) : 0;
 
     // Clean up resources at the end of the method as the task may be
     // recycled in a threadpool and the destructor not called.
@@ -809,11 +890,16 @@ T FileDecompressTask<T>::run()
         }
     }
 
+#undef CLEANUP_DECOMP_RESOURCES
+#undef CLEANUP_DECOMP_RESOURCES_EOF
+#undef CLEANUP_DECOMP_IS
+#undef CLEANUP_DECOMP_OS
+
     delete[] buf;
     return T(0, read, "");
 }
 
-// Close and flush streams. Do not deallocate resources. Idempotent.
+// Close input stream. Do not deallocate resources. Idempotent.
 template <class T>
 void FileDecompressTask<T>::dispose()
 {

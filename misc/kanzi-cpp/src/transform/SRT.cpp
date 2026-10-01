@@ -128,11 +128,24 @@ bool SRT::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::byte>& outpu
     if (headerSize < 0)
         return false;
 
-    input._index += headerSize;
-    length -= headerSize;
+    const int dataLength = length - headerSize;
 
-    if (length < 0)
+    if (dataLength < 0)
         return false;
+
+    // The frequency table must describe exactly the data following the header.
+    // Otherwise a bucket end can point past the input block and the decoding
+    // loop below can read outside the transform payload.
+    uint64 totalFreq = 0;
+
+    for (int i = 0; i < 256; i++)
+        totalFreq += freqs[i];
+
+    if (totalFreq != uint64(dataLength))
+        return false;
+
+    input._index += headerSize;
+    length = dataLength;
 
     if (length > output._length - output._index)
         return false;

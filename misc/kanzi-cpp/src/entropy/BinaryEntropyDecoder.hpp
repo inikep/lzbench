@@ -41,8 +41,11 @@ namespace kanzi
        InputBitStream& _bitstream;
        bool _deallocate;
        SliceArray<byte> _sba;
+       uint _payloadEnd;
 
        void read();
+
+       void ensureCapacity(int required);
 
        void _dispose() const {}
 
@@ -90,4 +93,3 @@ namespace kanzi
 
 }
 #endif
-

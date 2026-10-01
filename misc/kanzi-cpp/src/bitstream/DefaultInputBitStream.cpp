@@ -180,6 +180,8 @@ int DefaultInputBitStream::readFromInputStream(uint count)
         return 0;
 
     int size = -1;
+    bool isEOF = false;
+    bool hasReadError = false;
 
     try {
         _read += (int64(_position) << 3);
@@ -187,6 +189,8 @@ int DefaultInputBitStream::readFromInputStream(uint count)
         _position = 0;
         size = (_is.good() == true) ? int(count) : int(_is.gcount());
         _maxPosition = (size <= 0) ? -1 : size - 1;
+        isEOF = (_is.eof() == true);
+        hasReadError = (_is.bad() == true) || ((_is.fail() == true) && (isEOF == false));
         // Clear flags (required for future seeks when EOF is reached)
         _is.clear();
     }
@@ -195,10 +199,14 @@ int DefaultInputBitStream::readFromInputStream(uint count)
         throw BitStreamException(e.what(), BitStreamException::INPUT_OUTPUT);
     }
 
+    if (hasReadError == true)
+        throw BitStreamException("Read from bitstream failed",
+            BitStreamException::INPUT_OUTPUT);
+
     if (size <= 0) {
-        _is.clear();
-        throw BitStreamException("No more data to read in the bitstream",
-            BitStreamException::END_OF_STREAM);
+        throw BitStreamException((isEOF == true) ?
+            "No more data to read in the bitstream" : "Read from bitstream failed",
+            (isEOF == true) ? BitStreamException::END_OF_STREAM : BitStreamException::INPUT_OUTPUT);
     }
 
     return size;
@@ -216,7 +224,10 @@ bool DefaultInputBitStream::hasMoreToRead()
     try {
         readFromInputStream(_bufferSize);
     }
-    catch (const BitStreamException&) {
+    catch (const BitStreamException& e) {
+        if (e.error() != BitStreamException::END_OF_STREAM)
+            throw;
+
         return false;
     }
 

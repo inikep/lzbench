@@ -21,7 +21,6 @@ using namespace kanzi;
 const int HuffmanCommon::LOG_MAX_CHUNK_SIZE = 14;
 const int HuffmanCommon::MAX_CHUNK_SIZE = 1 << LOG_MAX_CHUNK_SIZE;
 const int HuffmanCommon::MAX_SYMBOL_SIZE = 12;
-const int HuffmanCommon::BUFFER_SIZE = (MAX_SYMBOL_SIZE << 8) + 256;
 
 
 // Return the number of codes generated
@@ -31,21 +30,40 @@ int HuffmanCommon::generateCanonicalCodes(const uint16 sizes[], uint16 codes[], 
     if (count == 0)
         return 0;
 
+    if ((count < 0) || (count > 256))
+        return -1;
+
     if (count > 1) {
-        int8 buf[BUFFER_SIZE] = { int8(0) };
+        uint8 present[256] = { 0 };
+        uint16 offsets[MAX_SYMBOL_SIZE + 1] = { 0 };
 
         for (int i = 0; i < count; i++) {
             const uint s = symbols[i];
 
-            if ((s > 255) || (sizes[s] > MAX_SYMBOL_SIZE))
+            if (s > 255)
                 return -1;
 
-            buf[((sizes[s] - 1) << 8) | s] = int8(1);
+            const uint16 len = sizes[s];
+
+            if ((len == 0) || (len > MAX_SYMBOL_SIZE) || (present[s] != 0))
+                return -1;
+
+            present[s] = 1;
+            offsets[len]++;
         }
 
-        for (int i = 0, n = 0; n < count; i++) {
-            symbols[n] = i & 0xFF;
-            n += buf[i];
+        uint16 offset = 0;
+
+        for (int len = 1; len <= MAX_SYMBOL_SIZE; len++) {
+            const uint16 n = offsets[len];
+            offsets[len] = offset;
+            offset += n;
+        }
+
+        // Scanning symbols in value order preserves the previous tie break.
+        for (uint s = 0; s < 256; s++) {
+            if (present[s] != 0)
+                symbols[offsets[sizes[s]]++] = s;
         }
     }
 

@@ -100,6 +100,9 @@ bool BWTBlockCodec::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::by
     if (input._array == output._array)
         return false;
 
+    if ((blockSize < 1) || (input._length - input._index < 1))
+        return false;
+
     if (_bsVersion > 5) {
        // Number of chunks and primary index size in bitstream since bsVersion 6
        kanzi::byte mode = input._array[input._index++];
@@ -117,7 +120,7 @@ bool BWTBlockCodec::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::by
        // Read header
        for (int i = 0; i < chunks; i++) {
            int shift = (pIndexSize - 1) << 3;
-           int primaryIndex = 0;
+           uint primaryIndex = 0;
 
            // Extract BWT primary index
            while (shift >= 0) {
@@ -125,7 +128,10 @@ bool BWTBlockCodec::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::by
                shift -= 8;
            }
 
-           if (_pBWT->setPrimaryIndex(i, primaryIndex + 1) == false)
+           if (primaryIndex >= 0x7FFFFFFFU)
+               return false;
+
+           if (_pBWT->setPrimaryIndex(i, int(primaryIndex) + 1) == false)
                return false;
        }
 
@@ -136,6 +142,9 @@ bool BWTBlockCodec::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::by
 
        for (int i = 0; i < chunks; i++) {
            // Read block header (mode + primary index)
+           if (input._index >= input._length)
+               return false;
+
            const int blockMode = int(input._array[input._index++]);
            const int pIndexSizeBytes = 1 + ((blockMode >> 6) & 0x03);
 
@@ -160,4 +169,3 @@ bool BWTBlockCodec::inverse(SliceArray<kanzi::byte>& input, SliceArray<kanzi::by
     // Apply inverse Transform
     return _pBWT->inverse(input, output, blockSize);
 }
-
