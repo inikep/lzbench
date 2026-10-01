@@ -1,4 +1,5 @@
 v2.x.y (work-in-progress)
+- updated kanzi to 2.6.0 (by @flanglet)
 - improvement: the Makefile describes each codec in its own mk/<codec>.mk (objects, flags,
                platform checks) instead of spreading it over the 1,400-line Makefile;
                CONTRIBUTING.md shows the mk file for a new codec
