@@ -42,9 +42,9 @@ RangeEncoder::RangeEncoder(OutputBitStream& bitstream, int chunkSize, int logRan
     if (chunkSize > MAX_CHUNK_SIZE)
         throw invalid_argument("The chunk size must be at most 2^30");
 
-    if ((logRange < 8) || (logRange > 16)) {
+    if ((logRange < 8) || (logRange > 15)) {
         stringstream ss;
-        ss << "Invalid range parameter: " << logRange << " (must be in [8..16])";
+        ss << "Invalid range parameter: " << logRange << " (must be in [8..15])";
         throw invalid_argument(ss.str());
     }
 

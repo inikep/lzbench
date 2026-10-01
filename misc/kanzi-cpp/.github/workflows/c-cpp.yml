@@ -10,10 +10,11 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ ubuntu-latest, macos-latest ]
+        compiler: [ clang, gcc ]
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6.0.1
     - name: make
       run: cd src && make clean && make all

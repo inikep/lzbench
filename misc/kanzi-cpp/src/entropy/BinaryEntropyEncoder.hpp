@@ -44,6 +44,8 @@ namespace kanzi
 
        void _dispose();
 
+       void ensureCapacity(int required);
+
        void flush();
 
    public:
@@ -76,4 +78,3 @@ namespace kanzi
    }
 }
 #endif
-

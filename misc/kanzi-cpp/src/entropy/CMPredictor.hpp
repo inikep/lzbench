@@ -17,6 +17,7 @@ limitations under the License.
 #ifndef knz_CMPredictor
 #define knz_CMPredictor
 
+#include "../Context.hpp"
 #include "../Predictor.hpp"
 #include "../types.hpp"
 
@@ -41,7 +42,7 @@ namespace kanzi
        int* _pc2;
 
    public:
-       CMPredictor();
+       CMPredictor(Context* pCtx = nullptr);
 
        ~CMPredictor(){}
 
@@ -73,13 +74,16 @@ namespace kanzi
            _c1 = _ctx & 0xFF;
            _ctx = 1;
            _runMask = (_c1 == _c2) ? 0x100 : 0;
+           _pc1 = _counter1[1];
+       }
+       else {
+           _pc1 = _counter1[_ctx];
        }
    }
 
    // Return the split value representing the probability of 1 in the [0..4095] range.
    inline int CMPredictor::get()
    {
-       _pc1 = _counter1[_ctx];
        const int p = (13 * (_pc1[256] + _pc1[_c1]) + 6 * _pc1[_c2]) >> 5;
        _pc2 = &_counter2[_ctx | _runMask][p >> 12];
        return (p + p + 3 * (_pc2[0] + _pc2[1]) + 64) >> 7; // rescale to [0..4095]

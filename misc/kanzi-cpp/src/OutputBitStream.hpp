@@ -29,8 +29,9 @@ namespace kanzi
        // Throws if the stream is closed.
        virtual void writeBit(int bit) = 0;
 
-       // Length is the number of bits in [1..64]. Return the number of bits written.
-       // Throws if the stream is closed.
+       // Length is the number of bits in [0..64]. A zero length is a successful
+       // no-op regardless of the stream status. Return the number of bits written.
+       // Throws if the stream is closed and length is not zero.
        virtual uint writeBits(uint64 bits, uint length) = 0;
 
        // Write bits ouf of the byte array. Length is the number of bits.

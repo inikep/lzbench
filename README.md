@@ -72,7 +72,7 @@ sources, the Notes column says so.
 | [fast-lzma2 1.0.1](https://github.com/conor42/fast-lzma2) | 2019-05-06 | |
 | [glza 0.12](https://encode.su/threads/2427-GLZA) | 2026-03-23 | |
 | [gpucompact 1.1](https://github.com/UDPSendToFailed/gpucompact) | 2026-08-14 | CUDA only |
-| [kanzi 2.5.3](https://github.com/flanglet/kanzi-cpp) | 2026-04-22 | |
+| [kanzi 2.6.0](https://github.com/flanglet/kanzi-cpp) | 2026-09-26 | |
 | [lbzip2 2.6.5](https://github.com/caius72/lbzip2) | 2026-08-18 | bzip2 format; benchmarked single-threaded |
 | [libdeflate v1.26](https://github.com/ebiggers/libdeflate) | 2026-08-22 | |
 | [lizard v2.1](https://github.com/inikep/lizard) | 2025-01-26 | |

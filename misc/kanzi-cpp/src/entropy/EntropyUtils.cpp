@@ -150,7 +150,7 @@ int EntropyUtils::normalizeFrequencies(uint freqs[], uint alphabet[], int length
 
     // shortcut
     if (totalFreq == scale) {
-        for (int i = 0; i < 256; i++) {
+        for (int i = 0; i < length; i++) {
             if (freqs[i] != 0)
                 alphabet[alphabetSize++] = i;
         }

@@ -48,7 +48,9 @@ namespace kanzi {
 
        static void computeJobsPerTask(int jobsPerTask[], int jobs, int tasks);
 
-       static int computeFirstOrderEntropy1024(int blockLen, const uint histo[]);
+       static int computeOrder0Entropy1024(int blockLen, const uint histo[]);
+
+       static int computeOrder1Entropy1024(int blockLen, const uint histo[]);
 
        static void computeHistogram(const byte block[], int end, uint freqs[], bool isOrder0=true, bool withTotal=false);
 
@@ -176,4 +178,3 @@ namespace kanzi {
    }
 }
 #endif
-

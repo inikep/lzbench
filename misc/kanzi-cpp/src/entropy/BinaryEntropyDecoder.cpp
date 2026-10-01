@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <stdexcept>
 #include "BinaryEntropyDecoder.hpp"
+#include "../BitStreamException.hpp"
 #include "../Memory.hpp"
 #include "EntropyUtils.hpp"
 
@@ -41,6 +42,7 @@ BinaryEntropyDecoder::BinaryEntropyDecoder(InputBitStream& bitstream, Predictor*
     _low = 0;
     _high = TOP;
     _current = 0;
+    _payloadEnd = 0;
 }
 
 BinaryEntropyDecoder::~BinaryEntropyDecoder()
@@ -52,6 +54,23 @@ BinaryEntropyDecoder::~BinaryEntropyDecoder()
 
     if (_deallocate)
         delete _predictor;
+}
+
+void BinaryEntropyDecoder::ensureCapacity(int required)
+{
+    if (required <= _sba._length)
+        return;
+
+    const int grownSize = _sba._length + max(_sba._length >> 2, 1 << 20);
+    int newSize = max(required, max(grownSize, 1024));
+    kanzi::byte* buf = new kanzi::byte[newSize];
+
+    if ((_sba._array != nullptr) && (_sba._index > 0))
+        memcpy(buf, _sba._array, size_t(_sba._index));
+
+    delete[] _sba._array;
+    _sba._array = buf;
+    _sba._length = newSize;
 }
 
 int BinaryEntropyDecoder::decode(kanzi::byte block[], uint blkptr, uint count)
@@ -71,22 +90,21 @@ int BinaryEntropyDecoder::decode(kanzi::byte block[], uint blkptr, uint count)
 
     const uint bufSize = length + (length >> 3);
 
-    if (_sba._length < int(bufSize)) {
-        if (_sba._array != nullptr)
-            delete[] _sba._array;
-
-        _sba._length = int(bufSize);
-        _sba._array = new kanzi::byte[_sba._length];
-    }
+    ensureCapacity(int(bufSize));
 
     // Split block into chunks, read bit array from bitstream and decode chunk
     while (startChunk < end) {
         const uint chunkSize = min(length, end - startChunk);
         const uint szBytes = uint(EntropyUtils::readVarInt(_bitstream));
 
-        if (szBytes > bufSize)
+        const uint64 maxEncodedSize = min(uint64(chunkSize) << 5, uint64(uint(-1) >> 3));
+
+        if (uint64(szBytes) > maxEncodedSize)
            return 0;
 
+        ensureCapacity(int(szBytes));
+
+        _payloadEnd = szBytes;
         _current = _bitstream.readBits(56);
 
         if (szBytes != 0)
@@ -106,6 +124,9 @@ int BinaryEntropyDecoder::decode(kanzi::byte block[], uint blkptr, uint count)
                           |  decodeBit(_predictor->get()));
         }
 
+        if (uint(_sba._index) != _payloadEnd)
+            return 0;
+
         startChunk = endChunk;
     }
 
@@ -116,6 +137,10 @@ int BinaryEntropyDecoder::decode(kanzi::byte block[], uint blkptr, uint count)
 // no inline
 void BinaryEntropyDecoder::read()
 {
+    if (KANZI_UNLIKELY(uint(_sba._index) + 4 > _payloadEnd))
+        throw BitStreamException("Invalid bitstream: binary entropy payload underrun",
+            BitStreamException::INVALID_STREAM);
+
     _low = (_low << 32) & MASK_0_56;
     _high = ((_high << 32) | MASK_0_32) & MASK_0_56;
     const uint64 val = BigEndian::readInt32(&_sba._array[_sba._index]) & MASK_0_32;
@@ -135,4 +160,3 @@ kanzi::byte BinaryEntropyDecoder::decodeByte()
         | (decodeBit(_predictor->get()) << 1)
         |  decodeBit(_predictor->get()));
 }
-

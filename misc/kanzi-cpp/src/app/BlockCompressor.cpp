@@ -360,101 +360,136 @@ int BlockCompressor::compress(uint64& outputSize)
     }
     else {
         vector<FileCompressTask<FileCompressResult>*> tasks;
+        tasks.reserve(nbFiles);
 #ifdef CONCURRENCY_ENABLED
         vector<int> jobsPerTask(nbFiles);
+        vector<FileCompressWorker<FCTask*, FileCompressResult>*> workers;
         Global::computeJobsPerTask(jobsPerTask.data(), _jobs, nbFiles);
 #endif
 
-        if (_reorderFiles == true)
-            sortFilesByPathAndSize(files, true);
+        try {
+            if (_reorderFiles == true)
+                sortFilesByPathAndSize(files, true);
 
-        // Create one task per file
-        for (int i = 0; i < nbFiles; i++) {
-            string oName = formattedOutName;
-            string iName = files[i].fullPath();
+            // Create one task per file
+            for (int i = 0; i < nbFiles; i++) {
+                string oName = formattedOutName;
+                string iName = files[i].fullPath();
 
-            if (oName.length() == 0) {
-                oName = iName + ".knz";
-            }
-            else if ((inputIsDir == true) && (specialOutput == false)) {
-                oName = formattedOutName + iName.substr(formattedInName.size()) + ".knz";
-            }
+                if (oName.length() == 0) {
+                    oName = iName + ".knz";
+                }
+                else if ((inputIsDir == true) && (specialOutput == false)) {
+                    oName = formattedOutName + iName.substr(formattedInName.size()) + ".knz";
+                }
 
-            int blockSize = _blockSize;
+                int blockSize = _blockSize;
 
-            // Set the block size to optimize compression ratio when possible
-            if ((_autoBlockSize == true) && (_jobs > 0)) {
-                const int64 bl = files[i]._size / _jobs;
-                blockSize = int(max(min((bl + 63) & ~63, int64(MAX_BLOCK_SIZE)), int64(MIN_BLOCK_SIZE)));
-            }
+                // Set the block size to optimize compression ratio when possible
+                if ((_autoBlockSize == true) && (_jobs > 0)) {
+                    const int64 bl = files[i]._size / _jobs;
+                    blockSize = int(max(min((bl + 63) & ~63, int64(MAX_BLOCK_SIZE)), int64(MIN_BLOCK_SIZE)));
+                }
 
 #ifdef CONCURRENCY_ENABLED
-            Context taskCtx(_ctx, &pool);
-            taskCtx.putInt("jobs", jobsPerTask[i]);
+                Context taskCtx(_ctx, &pool);
+                taskCtx.putInt("jobs", jobsPerTask[i]);
 #else
-            Context taskCtx(_ctx);
-            taskCtx.putInt("jobs", 1);
+                Context taskCtx(_ctx);
+                taskCtx.putInt("jobs", 1);
 #endif
-            taskCtx.putLong("fileSize", files[i]._size);
-            taskCtx.putString("inputName", iName);
-            taskCtx.putString("outputName", oName);
-            taskCtx.putInt("blockSize", blockSize);
-            FileCompressTask<FileCompressResult>* task = new FileCompressTask<FileCompressResult>(taskCtx, _listeners);
-            tasks.push_back(task);
-        }
+                taskCtx.putLong("fileSize", files[i]._size);
+                taskCtx.putString("inputName", iName);
+                taskCtx.putString("outputName", oName);
+                taskCtx.putInt("blockSize", blockSize);
+                tasks.push_back(new FileCompressTask<FileCompressResult>(taskCtx, _listeners));
+            }
 
-        bool doConcurrent = _jobs > 1;
+            bool doConcurrent = _jobs > 1;
 
 #ifdef CONCURRENCY_ENABLED
-        if (doConcurrent) {
-            vector<FileCompressWorker<FCTask*, FileCompressResult>*> workers;
-            vector<future<FileCompressResult> > results;
-            BoundedConcurrentQueue<FCTask*> queue(nbFiles, &tasks[0]); // !tasks.empty()
+            if (doConcurrent) {
+                BoundedConcurrentQueue<FCTask*> queue(nbFiles, &tasks[0]); // !tasks.empty()
+                vector<future<FileCompressResult> > results;
+                workers.reserve(_jobs);
+                results.reserve(_jobs);
 
-            // Create one worker per job and run it. A worker calls several tasks sequentially.
-            for (int i = 0; i < _jobs; i++) {
-                workers.push_back(new FileCompressWorker<FCTask*, FileCompressResult>(&queue));
+                try {
+                    // Create one worker per job and run it. A worker calls several tasks sequentially.
+                    for (int i = 0; i < _jobs; i++) {
+                        workers.push_back(new FileCompressWorker<FCTask*, FileCompressResult>(&queue));
 
-                if (_ctx.getPool() == nullptr)
-                    results.push_back(async(launch::async, &FileCompressWorker<FCTask*, FileCompressResult>::run, workers[i]));
-                else
-                    results.push_back(_ctx.getPool()->schedule(&FileCompressWorker<FCTask*, FileCompressResult>::run, workers[i]));
-            }
+                        if (_ctx.getPool() == nullptr)
+                            results.push_back(std::async(launch::async, &FileCompressWorker<FCTask*, FileCompressResult>::run, workers[i]));
+                        else
+                            results.push_back(_ctx.getPool()->schedule(&FileCompressWorker<FCTask*, FileCompressResult>::run, workers[i]));
+                    }
 
-            // Wait for results
-            for (int i = 0; i < _jobs; i++) {
-                FileCompressResult fcr = results[i].get();
-                res = fcr._code;
-                read += fcr._read;
-                written += fcr._written;
+                    // Wait for results
+                    for (int i = 0; i < _jobs; i++) {
+                        FileCompressResult fcr = results[i].get();
+                        read += fcr._read;
+                        written += fcr._written;
 
-                if (res != 0) {
-                    cerr << fcr._errMsg << endl;
-                    // Exit early by telling the workers that the queue is empty
+                        if (fcr._code != 0) {
+                            if (res == 0)
+                                res = fcr._code;
+
+                            cerr << fcr._errMsg << endl;
+                            // Exit early by telling the workers that the queue is empty
+                            queue.clear();
+                        }
+                    }
+                }
+                catch (...) {
                     queue.clear();
+
+                    for (uint i = 0; i < results.size(); i++) {
+                        try {
+                            if (results[i].valid())
+                                results[i].wait();
+                        }
+                        catch (const exception&) {
+                        }
+                    }
+
+                    throw;
                 }
             }
-
-            for (int i = 0; i < _jobs; i++)
-                delete workers[i];
-        }
 #endif
 
-        if (!doConcurrent) {
-            for (uint i = 0; i < tasks.size(); i++) {
-                FileCompressResult fcr = tasks[i]->run();
-                res = fcr._code;
-                read += fcr._read;
-                written += fcr._written;
+            if (!doConcurrent) {
+                for (uint i = 0; i < tasks.size(); i++) {
+                    FileCompressResult fcr = tasks[i]->run();
+                    res = fcr._code;
+                    read += fcr._read;
+                    written += fcr._written;
 
-                if (res != 0) {
-                    cerr << fcr._errMsg << endl;
-                    break;
+                    if (res != 0) {
+                        cerr << fcr._errMsg << endl;
+                        break;
+                    }
                 }
             }
         }
+        catch (...) {
+#ifdef CONCURRENCY_ENABLED
+            for (uint i = 0; i < workers.size(); i++)
+                delete workers[i];
+#endif
 
-        for (int i = 0; i < nbFiles; i++)
+            for (uint i = 0; i < tasks.size(); i++)
+                delete tasks[i];
+
+            throw;
+        }
+
+#ifdef CONCURRENCY_ENABLED
+        for (uint i = 0; i < workers.size(); i++)
+            delete workers[i];
+#endif
+
+        for (uint i = 0; i < tasks.size(); i++)
             delete tasks[i];
     }
 
@@ -584,6 +619,40 @@ FileCompressTask<T>::FileCompressTask(const Context& ctx, vector<Listener<Event>
 {
     _is = nullptr;
     _cos = nullptr;
+}
+
+template <class T>
+string FileCompressTask<T>::describeStreamState(const std::istream& is)
+{
+    const ios_base::iostate state = is.rdstate();
+
+    if (state == ios_base::goodbit)
+        return "goodbit";
+
+    stringstream ss;
+    bool first = true;
+
+    if ((state & ios_base::eofbit) != 0) {
+        ss << "eofbit";
+        first = false;
+    }
+
+    if ((state & ios_base::failbit) != 0) {
+        if (first == false)
+            ss << '|';
+
+        ss << "failbit";
+        first = false;
+    }
+
+    if ((state & ios_base::badbit) != 0) {
+        if (first == false)
+            ss << '|';
+
+        ss << "badbit";
+    }
+
+    return ss.str();
 }
 
 template <class T>
@@ -764,7 +833,21 @@ T FileCompressTask<T>::run()
 
             try {
                 _is->read(reinterpret_cast<char*>(&sa._array[0]), sa._length);
-                len = *_is ? sa._length : int(_is->gcount());
+                len = int(_is->gcount());
+
+                if ((_is->bad() == true) || ((_is->fail() == true) && (_is->eof() == false))) {
+                    const string state = FileCompressTask<T>::describeStreamState(*_is);
+                    CLEANUP_COMP_IS
+                    const uint64 w = _cos->getWritten();
+                    delete[] buf;
+                    delete _cos;
+                    _cos = nullptr;
+                    CLEANUP_COMP_OS
+                    stringstream sserr;
+                    sserr << "Failed to read block from file '" << inputName << "'";
+                    sserr << " (stream state: " << state << ")";
+                    return T(Error::ERR_READ_FILE, read, w, sserr.str().c_str());
+                }
             }
             catch (const exception& e) {
                 CLEANUP_COMP_IS
@@ -928,6 +1011,9 @@ T FileCompressTask<T>::run()
         }
 
     }
+
+#undef CLEANUP_COMP_IS
+#undef CLEANUP_COMP_OS
 
     delete[] buf;
     return T(0, read, encoded, "");

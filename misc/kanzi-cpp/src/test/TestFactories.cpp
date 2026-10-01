@@ -89,6 +89,12 @@ static int testTransformFactory()
         "NONE transform must encode to zero");
     ASSERT_TRUE(TransformFactory<kanzi::byte>::getType("NONE+NONE") == 0,
         "Null transforms must be skipped");
+    ASSERT_TRUE(TransformFactory<kanzi::byte>::getTransformCount(
+        TransformFactory<kanzi::byte>::getType("LZ")) == 1,
+        "Single transform sequence must contain one transform");
+    ASSERT_TRUE(TransformFactory<kanzi::byte>::getTransformCount(
+        TransformFactory<kanzi::byte>::getType("LZ+RLT+TEXT+UTF+EXE")) == 5,
+        "Transform count must include all non-null transforms");
     ASSERT_TRUE(TransformFactory<kanzi::byte>::getName(
         TransformFactory<kanzi::byte>::getType("LZ+NONE+RLT")) == "LZ+RLT",
         "Transform names must round-trip without null transforms");

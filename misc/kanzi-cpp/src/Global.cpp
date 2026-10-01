@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <stdexcept>
 #include "Global.hpp"
+#include "util/strings.hpp"
 
 using namespace kanzi;
 using namespace std;
@@ -168,7 +169,15 @@ int Global::log2(uint64 x)
 // If withTotal is true, the last spot in each frequencies order 0 array is for the total
 void Global::computeHistogram(const kanzi::byte block[], int length, uint freqs[], bool isOrder0, bool withTotal)
 {
-    const uint8* p = reinterpret_cast<const uint8*>(&block[0]);
+    if (length <= 0) {
+        if ((isOrder0 == true) && (withTotal == true))
+            freqs[256] = 0;
+
+        return;
+    }
+
+    const uint8* const base = reinterpret_cast<const uint8*>(block);
+    const uint8* p = base;
 
     if (isOrder0 == true) {
         if (withTotal == true)
@@ -178,7 +187,7 @@ void Global::computeHistogram(const kanzi::byte block[], int length, uint freqs[
         uint f1[256] = { 0 };
         uint f2[256] = { 0 };
         uint f3[256] = { 0 };
-        const uint8* end16 = reinterpret_cast<const uint8*>(&block[length & -16]);
+        const uint8* end16 = &base[length & -16];
         uint64 q;
 
         while (p < end16) {
@@ -203,7 +212,7 @@ void Global::computeHistogram(const kanzi::byte block[], int length, uint freqs[
             p += 16;
         }
 
-        const uint8* end = reinterpret_cast<const uint8*>(&block[length]);
+        const uint8* end = &base[length];
 
         while (p < end)
             freqs[*p++]++;
@@ -301,7 +310,7 @@ void Global::computeHistogram(const kanzi::byte block[], int length, uint freqs[
 
 // Return the zero order entropy scaled to the [0..1024] range
 // Incoming array size must be 256
-int Global::computeFirstOrderEntropy1024(int blockLen, const uint histo[])
+int Global::computeOrder0Entropy1024(int blockLen, const uint histo[])
 {
     if (blockLen == 0)
         return 0;
@@ -314,6 +323,39 @@ int Global::computeFirstOrderEntropy1024(int blockLen, const uint histo[])
             continue;
 
         sum += ((uint64(histo[i]) * uint64(logLength1024 - Global::log2_1024(histo[i]))) >> 3);
+    }
+
+    return int(sum / uint64(blockLen));
+}
+
+
+// Return the order 1 entropy scaled to the [0..1024] range
+// Incoming array size must be 65536
+int Global::computeOrder1Entropy1024(int blockLen, const uint histo[])
+{
+    if (blockLen == 0)
+        return 0;
+
+    uint64 sum = 0;
+
+    for (int prev = 0; prev < 256; prev++) {
+        const int base = 256 * prev;
+        uint total = 0;
+
+        for (int cur = 0; cur < 256; cur++)
+            total += histo[base + cur];
+
+        if (total == 0)
+            continue;
+
+        const int logTotal = Global::log2_1024(total);
+
+        for (int cur = 0; cur < 256; cur++) {
+            const uint freq = histo[base + cur];
+
+            if (freq != 0)
+                sum += (uint64(freq) * uint64(logTotal - Global::log2_1024(freq))) >> 3;
+        }
     }
 
     return int(sum / uint64(blockLen));
@@ -390,7 +432,7 @@ Global::DataType Global::detectSimpleType(int count, const uint freqs0[]) {
 #if defined(WIN32) || defined(_WIN32) || defined(_WIN64)
 bool Global::isReservedName(string fileName)
 {
-    transform(fileName.begin(), fileName.end(), fileName.begin(), ::toupper);
+    transform(fileName.begin(), fileName.end(), fileName.begin(), safeToUpper);
     return _singleton._reservedNames.find(fileName) != _singleton._reservedNames.end();
 }
 #else
@@ -399,4 +441,3 @@ bool Global::isReservedName(string)
     return false;
 }
 #endif
-

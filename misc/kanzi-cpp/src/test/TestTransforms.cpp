@@ -18,7 +18,10 @@ limitations under the License.
 #include <time.h>
 #include <vector>
 #include "../types.hpp"
+#include "../util/strings.hpp"
 #include "../transform/AliasCodec.hpp"
+#include "../transform/BWT.hpp"
+#include "../transform/BWTS.hpp"
 #include "../transform/EXECodec.hpp"
 #include "../transform/FSDCodec.hpp"
 #include "../transform/LZCodec.hpp"
@@ -27,11 +30,15 @@ limitations under the License.
 #include "../transform/ROLZCodec.hpp"
 #include "../transform/SBRT.hpp"
 #include "../transform/SRT.hpp"
+#include "../transform/TextCodec.hpp"
 #include "../transform/TransformFactory.hpp"
+#include "../transform/UTFCodec.hpp"
 #include "../transform/ZRLT.hpp"
 
 using namespace std;
 using namespace kanzi;
+
+static const int BS_VERSION = 7;
 
 static void writeInt16LE(kanzi::byte buf[], int value)
 {
@@ -299,11 +306,75 @@ static int testEXECodec()
     return 0;
 }
 
+static int testTextCodecSelfDescribing()
+{
+    cout << endl
+         << "Correctness for TextCodec bitstream selector" << endl;
+    string sample;
+
+    for (int i = 0; i < 64; i++) {
+        sample += "The quick brown fox jumps over the lazy dog. ";
+        sample += "Text compression works best on repeated natural language content. ";
+        sample += "This block verifies that the codec selector is carried in the stream header.\n";
+    }
+
+    vector<kanzi::byte> data(sample.size());
+
+    for (size_t i = 0; i < sample.size(); i++)
+        data[i] = kanzi::byte(sample[i]);
+
+    const int selectorMask = 0x10;
+
+    for (int encType = 1; encType <= 2; encType++) {
+        Context encCtx;
+        encCtx.putInt("textcodec", encType);
+        encCtx.putInt("bsVersion", 7);
+        encCtx.putInt("blockSize", int(data.size()));
+        TextCodec encoder(encCtx);
+        vector<kanzi::byte> encoded(encoder.getMaxEncodedLength(int(data.size())), kanzi::byte(0));
+        SliceArray<kanzi::byte> input(&data[0], int(data.size()), 0);
+        SliceArray<kanzi::byte> output(&encoded[0], int(encoded.size()), 0);
+
+        if (encoder.forward(input, output, int(data.size())) == false) {
+            cout << "Encoding error for TextCodec" << encType << endl;
+            return 1;
+        }
+
+        if ((((int(encoded[0]) & selectorMask) != 0) ? 2 : 1) != encType) {
+            cout << "Invalid codec selector in TextCodec header" << endl;
+            return 1;
+        }
+
+        Context decCtx;
+        decCtx.putInt("textcodec", encType == 1 ? 2 : 1);
+        decCtx.putInt("bsVersion", 7);
+        TextCodec decoder(decCtx);
+        vector<kanzi::byte> decoded(data.size(), kanzi::byte(0));
+        // Keep the physical tail available to transforms that use guarded reads.
+        SliceArray<kanzi::byte> encodedInput(&encoded[0], int(encoded.size()), 0);
+        SliceArray<kanzi::byte> reverse(&decoded[0], int(decoded.size()), 0);
+
+        if (decoder.inverse(encodedInput, reverse, output._index) == false) {
+            cout << "Decoding error for TextCodec" << encType << endl;
+            return 1;
+        }
+
+        if ((reverse._index != int(data.size())) || (memcmp(&data[0], &decoded[0], data.size()) != 0)) {
+            cout << "Round-trip mismatch for TextCodec" << encType << endl;
+            return 1;
+        }
+    }
+
+    cout << "Identical" << endl;
+    return 0;
+}
+
 static int testZRLTMalformed()
 {
     cout << endl
          << "Malformed ZRLT" << endl;
     Context ctx;
+    ctx.putInt("bsVersion", BS_VERSION);
     ZRLT codec(ctx);
 
     {
@@ -389,7 +460,600 @@ static int testZRLTMalformed()
         }
     }
 
+    {
+        kanzi::byte src[1] = { kanzi::byte(0xFE) };
+        kanzi::byte encoded[2] = { kanzi::byte(0x7E), kanzi::byte(0x7E) };
+        SliceArray<kanzi::byte> input(src, 1, 0);
+        SliceArray<kanzi::byte> output(encoded, 1, 0);
+
+        if (codec.forward(input, output, 1) != false) {
+            cout << "Short escaped forward should fail" << endl;
+            return 1;
+        }
+
+        if ((output._index != 0) || (encoded[1] != kanzi::byte(0x7E))) {
+            cout << "Short escaped forward wrote past logical output" << endl;
+            return 1;
+        }
+    }
+
+    {
+        kanzi::byte src[1] = { kanzi::byte(0) };
+        kanzi::byte encoded[1] = { kanzi::byte(0x7E) };
+        SliceArray<kanzi::byte> input(src, 1, 0);
+        SliceArray<kanzi::byte> output(encoded, 1, 0);
+
+        if (codec.forward(input, output, 1) == false) {
+            cout << "Short zero run forward failed" << endl;
+            return 1;
+        }
+
+        if ((output._index != 1) || (encoded[0] != kanzi::byte(0))) {
+            cout << "Short zero run forward corrupted output" << endl;
+            return 1;
+        }
+    }
+
     cout << "Malformed ZRLT tests passed" << endl;
+    return 0;
+}
+
+static int testSRTMalformed()
+{
+    cout << endl
+         << "Malformed SRT" << endl;
+    SRT codec;
+
+    // The header declares 1025 bytes while the data area contains 1024.
+    // This used to make SRT::inverse read one byte past the data area.
+    const int headerSize = 257;
+    const int dataSize = 1024;
+    vector<kanzi::byte> encoded(headerSize + dataSize, kanzi::byte(0));
+    encoded[0] = kanzi::byte(0xFF); // frequency[0] = 1023
+    encoded[1] = kanzi::byte(0x07);
+    encoded[2] = kanzi::byte(2);    // frequency[1] = 2
+    encoded[headerSize + 1] = kanzi::byte(1);
+    encoded[headerSize + dataSize - 1] = kanzi::byte(1);
+
+    vector<kanzi::byte> decoded(dataSize, kanzi::byte(0x7E));
+    SliceArray<kanzi::byte> input(&encoded[0], int(encoded.size()), 0);
+    SliceArray<kanzi::byte> output(&decoded[0], int(decoded.size()), 0);
+
+    if (codec.inverse(input, output, int(encoded.size())) != false) {
+        cout << "Inconsistent frequency table should fail" << endl;
+        return 1;
+    }
+
+    for (size_t i = 0; i < decoded.size(); i++) {
+        if (decoded[i] != kanzi::byte(0x7E)) {
+            cout << "Malformed SRT input wrote output" << endl;
+            return 1;
+        }
+    }
+
+    if ((input._index != 0) || (output._index != 0)) {
+        cout << "Malformed SRT input moved slice indexes" << endl;
+        return 1;
+    }
+
+    cout << "Malformed SRT tests passed" << endl;
+    return 0;
+}
+
+static int testROLZXMalformed()
+{
+    cout << endl
+         << "Malformed ROLZX" << endl;
+    kanzi::byte encoded[13] = {
+        kanzi::byte(0x00), kanzi::byte(0x00), kanzi::byte(0x02), kanzi::byte(0x00),
+        kanzi::byte(0x00), kanzi::byte(0x00), kanzi::byte(0x7F), kanzi::byte(0xB1),
+        kanzi::byte(0x47), kanzi::byte(0x07), kanzi::byte(0x91), kanzi::byte(0x2F),
+        kanzi::byte(0xBF)
+    };
+    kanzi::byte decoded[512];
+    memset(decoded, 0x7E, sizeof(decoded));
+    Context ctx;
+    ctx.putString("transform", "ROLZX");
+    ROLZCodec codec(ctx);
+    SliceArray<kanzi::byte> input(encoded, int(sizeof(encoded)), 0);
+    SliceArray<kanzi::byte> output(decoded, int(sizeof(decoded)), 0);
+
+    if (codec.inverse(input, output, int(sizeof(encoded))) != false) {
+        cout << "Truncated ROLZX stream should fail" << endl;
+        return 1;
+    }
+
+    cout << "Malformed ROLZX tests passed" << endl;
+    return 0;
+}
+
+static int testTransformCapacityValidation()
+{
+    cout << endl
+         << "Transform capacity validation" << endl;
+
+    Context ctx;
+    ctx.putInt("bsVersion", BS_VERSION);
+    kanzi::byte src[2] = { kanzi::byte(1), kanzi::byte(2) };
+    kanzi::byte dst[2] = { kanzi::byte(0x7E), kanzi::byte(0x7E) };
+
+    {
+        BWT tf;
+        SliceArray<kanzi::byte> input(src, 1, 0);
+        SliceArray<kanzi::byte> output(dst, 2, 0);
+
+        if (tf.forward(input, output, 2) != false) {
+            cout << "BWT should reject oversized input count" << endl;
+            return 1;
+        }
+    }
+
+    {
+        BWTS tf;
+        SliceArray<kanzi::byte> input(src, 2, 0);
+        SliceArray<kanzi::byte> output(dst, 0, 0);
+
+        if (tf.forward(input, output, 1) != false) {
+            cout << "BWTS should reject oversized output count" << endl;
+            return 1;
+        }
+    }
+
+    {
+        SBRT tf(SBRT::MODE_RANK, ctx);
+        SliceArray<kanzi::byte> input(src, 2, 1);
+        SliceArray<kanzi::byte> output(dst, 2, 0);
+
+        if (tf.forward(input, output, 2) != false) {
+            cout << "SBRT should reject oversized remaining input count" << endl;
+            return 1;
+        }
+    }
+
+    {
+        BWT tf;
+        SliceArray<kanzi::byte> input(src, 1, 0);
+        SliceArray<kanzi::byte> output(dst, 2, 0);
+
+        if (tf.inverse(input, output, 2) != false) {
+            cout << "BWT inverse should reject oversized input count" << endl;
+            return 1;
+        }
+    }
+
+    {
+        BWTS tf;
+        SliceArray<kanzi::byte> input(src, 2, 0);
+        SliceArray<kanzi::byte> output(dst, 1, 0);
+
+        if (tf.inverse(input, output, 2) != false) {
+            cout << "BWTS inverse should reject oversized output count" << endl;
+            return 1;
+        }
+    }
+
+    {
+        SBRT tf(SBRT::MODE_RANK, ctx);
+        SliceArray<kanzi::byte> input(src, 2, 0);
+        SliceArray<kanzi::byte> output(dst, 2, 0);
+        const int savedIIdx = input._index;
+        const int savedOIdx = output._index;
+
+        if (tf.inverse(input, output, -1) != false) {
+            cout << "SBRT inverse should reject negative counts" << endl;
+            return 1;
+        }
+
+        if ((input._index != savedIIdx) || (output._index != savedOIdx)) {
+            cout << "SBRT inverse negative count should not move indexes" << endl;
+            return 1;
+        }
+    }
+
+    {
+        LZPCodec tf;
+        kanzi::byte lzSrc[128];
+        kanzi::byte lzDst[145];
+
+        for (int i = 0; i < 128; i++)
+            lzSrc[i] = kanzi::byte(i);
+
+        memset(lzDst, 0x7E, sizeof(lzDst));
+        SliceArray<kanzi::byte> input(lzSrc, 128, 0);
+        SliceArray<kanzi::byte> output(lzDst, 144, 1);
+        const int savedIIdx = input._index;
+        const int savedOIdx = output._index;
+
+        if (tf.forward(input, output, 128) != false) {
+            cout << "LZP forward should reject insufficient remaining output" << endl;
+            return 1;
+        }
+
+        if ((input._index != savedIIdx) || (output._index != savedOIdx)) {
+            cout << "LZP forward output capacity failure moved indexes" << endl;
+            return 1;
+        }
+    }
+
+    {
+        LZPCodec tf;
+        kanzi::byte lzSrc[128];
+        kanzi::byte lzDst[144];
+
+        for (int i = 0; i < 128; i++)
+            lzSrc[i] = kanzi::byte(i);
+
+        SliceArray<kanzi::byte> input(lzSrc, 128, 1);
+        SliceArray<kanzi::byte> output(lzDst, 144, 0);
+        const int savedIIdx = input._index;
+        const int savedOIdx = output._index;
+
+        if (tf.forward(input, output, 128) != false) {
+            cout << "LZP forward should reject oversized remaining input count" << endl;
+            return 1;
+        }
+
+        if ((input._index != savedIIdx) || (output._index != savedOIdx)) {
+            cout << "LZP forward input capacity failure moved indexes" << endl;
+            return 1;
+        }
+    }
+
+    {
+        LZXCodec<false> tf;
+        kanzi::byte lzSrc[128];
+        kanzi::byte lzEncoded[256];
+        // LZX inverse uses a 16-byte copy and requires trailing destination padding.
+        kanzi::byte lzDecoded[128 + 16];
+
+        for (int i = 0; i < 128; i++)
+            lzSrc[i] = kanzi::byte(i & 3);
+
+        memset(lzEncoded, 0, sizeof(lzEncoded));
+        memset(lzDecoded, 0x7E, sizeof(lzDecoded));
+        SliceArray<kanzi::byte> input(lzSrc, 128, 0);
+        SliceArray<kanzi::byte> encoded(lzEncoded, int(sizeof(lzEncoded)), 0);
+
+        if (tf.forward(input, encoded, 128) == false) {
+            cout << "LZX setup encoding failed" << endl;
+            return 1;
+        }
+
+        const int encodedSize = encoded._index;
+        SliceArray<kanzi::byte> exactInput(lzEncoded, encodedSize, 0);
+        SliceArray<kanzi::byte> output(lzDecoded, int(sizeof(lzDecoded)), 0);
+
+        if (tf.inverse(exactInput, output, encodedSize) != false) {
+            cout << "LZX should reject input without the read-length guard" << endl;
+            return 1;
+        }
+
+        if ((exactInput._index != 0) || (output._index != 0)) {
+            cout << "LZX guard failure moved slice indexes" << endl;
+            return 1;
+        }
+
+        SliceArray<kanzi::byte> paddedInput(lzEncoded, int(sizeof(lzEncoded)), 0);
+
+        if (tf.inverse(paddedInput, output, encodedSize) == false) {
+            cout << "LZX should accept input with the read-length guard" << endl;
+            return 1;
+        }
+    }
+
+    cout << "Transform capacity validation passed" << endl;
+    return 0;
+}
+
+static int testLZPMalformed()
+{
+    cout << endl
+         << "Malformed LZP" << endl;
+    LZPCodec codec;
+
+    {
+        // A MATCH_FLAG at the end of the encoded block has no token byte.
+        kanzi::byte encoded[6] = {
+            kanzi::byte(0), kanzi::byte(0), kanzi::byte(0),
+            kanzi::byte(0), kanzi::byte(0), kanzi::byte(0xFC)
+        };
+        kanzi::byte decoded[128];
+        memset(decoded, 0x7E, sizeof(decoded));
+        SliceArray<kanzi::byte> input(encoded, 6, 0);
+        SliceArray<kanzi::byte> output(decoded, 128, 0);
+
+        if (codec.inverse(input, output, 6) != false) {
+            cout << "Truncated LZP token should fail" << endl;
+            return 1;
+        }
+
+        if ((input._index != 0) || (output._index != 0)) {
+            cout << "Truncated LZP token moved slice indexes" << endl;
+            return 1;
+        }
+    }
+
+    {
+        kanzi::byte encoded[4] = {
+            kanzi::byte(0), kanzi::byte(0), kanzi::byte(0), kanzi::byte(0)
+        };
+        kanzi::byte decoded[8];
+        memset(decoded, 0x7E, sizeof(decoded));
+        SliceArray<kanzi::byte> input(encoded, 4, 0);
+        SliceArray<kanzi::byte> output(decoded, 3, 0);
+
+        if (codec.inverse(input, output, 4) != false) {
+            cout << "Short LZP output should fail" << endl;
+            return 1;
+        }
+
+        if ((input._index != 0) || (output._index != 0) ||
+            (decoded[0] != kanzi::byte(0x7E)) ||
+            (decoded[1] != kanzi::byte(0x7E)) ||
+            (decoded[2] != kanzi::byte(0x7E))) {
+            cout << "Short LZP output was modified" << endl;
+            return 1;
+        }
+    }
+
+    {
+        kanzi::byte encoded[5] = {
+            kanzi::byte(1), kanzi::byte(2), kanzi::byte(3),
+            kanzi::byte(4), kanzi::byte(5)
+        };
+        kanzi::byte decoded[8];
+        memset(decoded, 0x7E, sizeof(decoded));
+        SliceArray<kanzi::byte> input(encoded, 5, 0);
+        SliceArray<kanzi::byte> output(decoded, 4, 0);
+
+        if (codec.inverse(input, output, 5) != false) {
+            cout << "LZP literal output overflow should fail" << endl;
+            return 1;
+        }
+
+        if ((input._index != 0) || (output._index != 0) ||
+            (decoded[0] != kanzi::byte(0x7E)) ||
+            (decoded[1] != kanzi::byte(0x7E)) ||
+            (decoded[2] != kanzi::byte(0x7E)) ||
+            (decoded[3] != kanzi::byte(0x7E)) ||
+            (decoded[4] != kanzi::byte(0x7E))) {
+            cout << "LZP literal output overflow modified output" << endl;
+            return 1;
+        }
+    }
+
+    cout << "Malformed LZP tests passed" << endl;
+    return 0;
+}
+
+static int testUTFMalformed()
+{
+    cout << endl
+         << "Malformed UTF" << endl;
+
+    // One-byte symbols are logically advanced by one byte, but the decoder
+    // copies four bytes from every packed symbol. The fifth alias below is
+    // at the end of the logical output buffer and must be rejected before
+    // the four-byte copy.
+    kanzi::byte encoded[16] = {
+        kanzi::byte(0), kanzi::byte(0), kanzi::byte(0), kanzi::byte(1),
+        kanzi::byte(0), kanzi::byte(0), kanzi::byte(0x41),
+        kanzi::byte(0), kanzi::byte(0), kanzi::byte(0), kanzi::byte(0), kanzi::byte(0),
+        kanzi::byte(0), kanzi::byte(0), kanzi::byte(0), kanzi::byte(0)
+    };
+    kanzi::byte decoded[9];
+    memset(decoded, 0x7E, sizeof(decoded));
+    SliceArray<kanzi::byte> input(encoded, 16, 0);
+    SliceArray<kanzi::byte> output(decoded, 5, 0);
+    UTFCodec codec;
+
+    if (codec.inverse(input, output, 16) != false) {
+        cout << "UTF output overflow should fail" << endl;
+        return 1;
+    }
+
+    for (int i = 5; i < int(sizeof(decoded)); i++) {
+        if (decoded[i] != kanzi::byte(0x7E)) {
+            cout << "UTF output overflow modified the canary" << endl;
+            return 1;
+        }
+    }
+
+    cout << "Malformed UTF tests passed" << endl;
+    return 0;
+}
+
+static int testOverlappingTransformCopies()
+{
+    cout << endl
+         << "Overlapping transform copies" << endl;
+
+    {
+        NullTransform tf;
+        kanzi::byte buf[6] = {
+            kanzi::byte('a'), kanzi::byte('b'), kanzi::byte('c'),
+            kanzi::byte('d'), kanzi::byte('e'), kanzi::byte('f')
+        };
+        SliceArray<kanzi::byte> input(buf, 4, 0);
+        SliceArray<kanzi::byte> output(buf, 5, 1);
+
+        if (tf.forward(input, output, 4) == false) {
+            cout << "NullTransform overlapping copy failed" << endl;
+            return 1;
+        }
+
+        const kanzi::byte expected[6] = {
+            kanzi::byte('a'), kanzi::byte('a'), kanzi::byte('b'),
+            kanzi::byte('c'), kanzi::byte('d'), kanzi::byte('f')
+        };
+
+        if ((memcmp(buf, expected, 6) != 0) || (input._index != 4) || (output._index != 5)) {
+            cout << "NullTransform overlapping copy corrupted data" << endl;
+            return 1;
+        }
+    }
+
+    {
+        Transform<kanzi::byte>* transforms[8] = {
+            new NullTransform(), nullptr, nullptr, nullptr,
+            nullptr, nullptr, nullptr, nullptr
+        };
+        TransformSequence<kanzi::byte> seq(transforms);
+        seq.setSkipFlags(SKIP_MASK);
+        kanzi::byte buf[6] = {
+            kanzi::byte('a'), kanzi::byte('b'), kanzi::byte('c'),
+            kanzi::byte('d'), kanzi::byte('e'), kanzi::byte('f')
+        };
+        SliceArray<kanzi::byte> input(buf, 4, 0);
+        SliceArray<kanzi::byte> output(buf, 5, 1);
+
+        if (seq.inverse(input, output, 4) == false) {
+            cout << "TransformSequence overlapping copy failed" << endl;
+            return 1;
+        }
+
+        const kanzi::byte expected[6] = {
+            kanzi::byte('a'), kanzi::byte('a'), kanzi::byte('b'),
+            kanzi::byte('c'), kanzi::byte('d'), kanzi::byte('f')
+        };
+
+        if ((memcmp(buf, expected, 6) != 0) || (input._index != 4) || (output._index != 5)) {
+            cout << "TransformSequence overlapping copy corrupted data" << endl;
+            return 1;
+        }
+    }
+
+    cout << "Overlapping transform copies passed" << endl;
+    return 0;
+}
+
+static int testFSDBucketedRoundTrip()
+{
+    cout << endl
+         << "FSD bucket layout round trip" << endl;
+    const int dist = 4;
+    const int bucketLength = 1 << 15;
+    const int size = 2 * dist * bucketLength;
+    vector<kanzi::byte> data(size);
+
+    for (int lane = 0; lane < dist; lane++) {
+        int value = lane * 37 + 17;
+
+        for (int sample = 0; sample < size / dist; sample++) {
+            data[sample * dist + lane] = kanzi::byte(value);
+            value += (((sample * 17 + lane * 13) % 5) == 0) ? 1 : 0;
+        }
+    }
+
+    Context ctx;
+    ctx.putInt("bsVersion", BS_VERSION);
+    FSDCodec codec(ctx);
+    vector<kanzi::byte> encoded(codec.getMaxEncodedLength(size), kanzi::byte(0));
+    SliceArray<kanzi::byte> input(&data[0], size, 0);
+    SliceArray<kanzi::byte> output(&encoded[0], int(encoded.size()), 0);
+
+    if (codec.forward(input, output, size) == false) {
+        cout << "Bucketed FSD encoding was skipped or failed" << endl;
+        return 1;
+    }
+
+    if ((input._index != size) || (output._index != size + 2) ||
+        (int(output._array[1]) != dist) || ((int(output._array[0]) & 2) == 0)) {
+        cout << "Invalid bucketed FSD header or size" << endl;
+        return 1;
+    }
+
+    int outputIndex = 2 + dist;
+    const int tileLength = dist * bucketLength;
+
+    for (int tileStart = 0; tileStart < size; tileStart += tileLength) {
+        const int tileEnd = min(tileStart + tileLength, size);
+
+        for (int lane = 0; lane < dist; lane++) {
+            const int firstPos = tileStart + lane + ((tileStart == 0) ? dist : 0);
+
+            for (int pos = firstPos; pos < tileEnd; pos += dist) {
+                kanzi::byte expected;
+
+                if ((int(output._array[0]) & 1) == 0) {
+                    const uint residual = uint(uint8(int(data[pos]) - int(data[pos - dist])));
+                    const uint zigzag = (residual & 0x80) ? ((256 - residual) << 1) - 1 : residual << 1;
+                    expected = kanzi::byte(zigzag);
+                }
+                else {
+                    expected = data[pos] ^ data[pos - dist];
+                }
+
+                if (output._array[outputIndex++] != expected) {
+                    cout << "Bucketed FSD output order mismatch" << endl;
+                    return 1;
+                }
+            }
+        }
+    }
+
+    if (outputIndex != output._index) {
+        cout << "Bucketed FSD output length mismatch" << endl;
+        return 1;
+    }
+
+    const int encodedSize = output._index;
+    vector<kanzi::byte> decoded(size, kanzi::byte(0));
+    SliceArray<kanzi::byte> encodedInput(&encoded[0], int(encoded.size()), 0);
+    SliceArray<kanzi::byte> decodedOutput(&decoded[0], size, 0);
+
+    if ((codec.inverse(encodedInput, decodedOutput, encodedSize) == false) ||
+        (encodedInput._index != encodedSize) || (decodedOutput._index != size)) {
+        cout << "Bucketed FSD inverse failed" << endl;
+        return 1;
+    }
+
+    for (int i = 0; i < size; i++) {
+        if (data[i] != decoded[i]) {
+            cout << "Bucketed FSD round trip mismatch" << endl;
+            return 1;
+        }
+    }
+
+    cout << "Bucketed FSD round trip passed" << endl;
+    return 0;
+}
+
+static int testFSDLegacyInverse()
+{
+    cout << endl
+         << "FSD legacy inverse" << endl;
+    const int encodedSize = 8;
+    const int decodedSize = 6;
+    kanzi::byte encoded[encodedSize] = {
+        kanzi::byte(0), kanzi::byte(2), kanzi::byte(10), kanzi::byte(20),
+        kanzi::byte(2), kanzi::byte(3), kanzi::byte(0), kanzi::byte(2)
+    };
+    const kanzi::byte expected[decodedSize] = {
+        kanzi::byte(10), kanzi::byte(20), kanzi::byte(11), kanzi::byte(18),
+        kanzi::byte(11), kanzi::byte(19)
+    };
+    kanzi::byte decoded[decodedSize] = { kanzi::byte(0) };
+    Context ctx;
+    ctx.putInt("bsVersion", 6);
+    FSDCodec codec(ctx);
+    SliceArray<kanzi::byte> input(encoded, encodedSize, 0);
+    SliceArray<kanzi::byte> output(decoded, decodedSize, 0);
+
+    if ((codec.inverse(input, output, encodedSize) == false) ||
+        (input._index != encodedSize) || (output._index != decodedSize)) {
+        cout << "FSD legacy inverse failed" << endl;
+        return 1;
+    }
+
+    for (int i = 0; i < decodedSize; i++) {
+        if (decoded[i] != expected[i]) {
+            cout << "FSD legacy inverse mismatch" << endl;
+            return 1;
+        }
+    }
+
+    cout << "FSD legacy inverse passed" << endl;
     return 0;
 }
 
@@ -442,7 +1106,7 @@ static Transform<kanzi::byte>* getByteTransform(string name, Context& ctx)
     return nullptr;
 }
 
-int testTransformsCorrectness(const string& name)
+int testTransformsCorrectness(const string& name, int& errorIteration)
 {
     srand((uint)time(nullptr));
 
@@ -450,12 +1114,13 @@ int testTransformsCorrectness(const string& name)
          << "Correctness for " << name << endl;
     int mod = (name == "ZRLT") ? 5 : 256;
     int res = 0;
+    errorIteration = -1;
 
     for (int ii = 0; ii < 51; ii++) {
         cout << endl
              << "Test " << ii << endl;
         int size = 80000; // Declare size, will be updated in conditions
-        kanzi::byte values[1024 * 1024] = { kanzi::byte(0xAA) };
+        vector<kanzi::byte> values(1024 * 1024, kanzi::byte(0xAA));
 
         if (name == "ALIAS")
           mod = 15 + 12 * ii;
@@ -469,15 +1134,15 @@ int testTransformsCorrectness(const string& name)
                 (kanzi::byte)3, (kanzi::byte)3, (kanzi::byte)3, (kanzi::byte)3, (kanzi::byte)3, (kanzi::byte)3, (kanzi::byte)3, (kanzi::byte)3
             };
 
-            memcpy(values, &arr[0], size);
+            memcpy(&values[0], &arr[0], size);
         }
         else if (ii < 10) {
             size = ii;
-            memset(values, ii, size);
+            memset(&values[0], ii, size);
         }
         else if (ii == 10) {
             size = 255;
-            memset(values, ii, size);
+            memset(&values[0], ii, size);
             values[127] = kanzi::byte(255);
         }
         else if (ii == 11) {
@@ -488,12 +1153,12 @@ int testTransformsCorrectness(const string& name)
             for (int i = 1; i < 80000; i++)
                 arr[i] = kanzi::byte(8);
 
-            memcpy(values, &arr[0], size);
+            memcpy(&values[0], &arr[0], size);
         }
         else if (ii == 12) {
             size = 8;
             kanzi::byte arr[8] = { (kanzi::byte)0, (kanzi::byte)0, (kanzi::byte)1, (kanzi::byte)1, (kanzi::byte)2, (kanzi::byte)2, (kanzi::byte)3, (kanzi::byte)3 };
-            memcpy(values, &arr[0], size);
+            memcpy(&values[0], &arr[0], size);
         }
         else if (ii == 13) {
             // For RLT
@@ -506,7 +1171,7 @@ int testTransformsCorrectness(const string& name)
             }
 
             arr[1] = kanzi::byte(255); // force RLT escape to be first symbol
-            memcpy(values, &arr[0], size);
+            memcpy(&values[0], &arr[0], size);
         }
         else if (ii == 14) {
             // Lots of zeros
@@ -522,7 +1187,7 @@ int testTransformsCorrectness(const string& name)
                 arr[i] = kanzi::byte(val);
             }
 
-            memcpy(values, &arr[0], size);
+            memcpy(&values[0], &arr[0], size);
         }
         else if (ii == 15) {
             // Lots of zeros
@@ -538,7 +1203,7 @@ int testTransformsCorrectness(const string& name)
                 arr[i] = kanzi::byte(val);
             }
 
-            memcpy(values, &arr[0], size);
+            memcpy(&values[0], &arr[0], size);
         }
         else if (ii == 16) {
             // Totally random
@@ -549,7 +1214,7 @@ int testTransformsCorrectness(const string& name)
             for (int j = 20; j < 512; j++)
                 arr[j] = kanzi::byte(rand() % mod);
 
-            memcpy(values, &arr[0], size);
+            memcpy(&values[0], &arr[0], size);
         }
         else if (ii < 25) {
             size = 2048;
@@ -566,7 +1231,7 @@ int testTransformsCorrectness(const string& name)
                    arr[j + k] = arr[j + k - step];
             }
 
-            memcpy(values, &arr[0], size);
+            memcpy(&values[0], &arr[0], size);
         }
         else if (ii == 50) {
             cout << "Large random data" << endl;
@@ -576,7 +1241,7 @@ int testTransformsCorrectness(const string& name)
             for (int i = 0; i < size; i++)
                 arr[i] = kanzi::byte(rand() % 256);
 
-            memcpy(values, arr, size);
+            memcpy(&values[0], arr, size);
             delete[] arr;
         }
         else {
@@ -601,34 +1266,38 @@ int testTransformsCorrectness(const string& name)
                 idx += len;
             }
 
-            memcpy(values, &arr[0], size);
+            memcpy(&values[0], &arr[0], size);
         }
 
         Context ctx;
-        ctx.putInt("bsVersion", 6);
+        ctx.putInt("bsVersion", BS_VERSION);
         ctx.putString("transform", name);
         Transform<kanzi::byte>* ff = getByteTransform(name, ctx);
 
-        if (ff == nullptr)
+        if (ff == nullptr) {
+            errorIteration = ii;
             return 1;
+        }
 
         Transform<kanzi::byte>* fi = getByteTransform(name, ctx);
 
         if (fi == nullptr) {
             delete ff;
+            errorIteration = ii;
             return 1;
         }
 
         const int dstSize = ff->getMaxEncodedLength(size);
+        const int reverseSize = size + 16;
         kanzi::byte* input = new kanzi::byte[size];
         kanzi::byte* output = new kanzi::byte[dstSize];
-        kanzi::byte* reverse = new kanzi::byte[size];
+        kanzi::byte* reverse = new kanzi::byte[reverseSize];
 
         SliceArray<kanzi::byte> iba1(input, size, 0);
         SliceArray<kanzi::byte> iba2(output, dstSize, 0);
-        SliceArray<kanzi::byte> iba3(reverse, size, 0);
+        SliceArray<kanzi::byte> iba3(reverse, reverseSize, 0);
         memset(output, 0xAA, dstSize);
-        memset(reverse, 0xAA, size);
+        memset(reverse, 0xAA, reverseSize);
         int count;
 
         for (int i = 0; i < size; i++)
@@ -664,8 +1333,8 @@ int testTransformsCorrectness(const string& name)
 
             cout << endl
                  << "Encoding error" << endl;
+            errorIteration = ii;
             res = 1;
-            ff = nullptr;
             goto End;
         }
 
@@ -694,6 +1363,7 @@ int testTransformsCorrectness(const string& name)
         }
 
         cout << " (Compression ratio: " << (iba2._index * 100 / size) << "%)" << endl;
+
         count = iba2._index;
         iba1._index = 0;
         iba2._index = 0;
@@ -701,6 +1371,7 @@ int testTransformsCorrectness(const string& name)
 
         if (fi->inverse(iba2, iba3, count) == false) {
             cout << "Decoding error" << endl;
+            errorIteration = ii;
             res = 1;
             goto End;
         }
@@ -727,6 +1398,7 @@ int testTransformsCorrectness(const string& name)
                 cout << "Different (index " << i << ": ";
                 cout << (int(input[i]) & 0xFF) << " - " << (int(reverse[i]) & 0xFF);
                 cout << ")" << endl;
+                errorIteration = ii;
                 res = 1;
                 goto End;
             }
@@ -772,14 +1444,16 @@ int testTransformsSpeed(const string& name)
     kanzi::byte output[50000] = { kanzi::byte(0) };
     kanzi::byte reverse[50000] = { kanzi::byte(0) };
     Context ctx;
+    ctx.putInt("bsVersion", BS_VERSION);
     Transform<kanzi::byte>* f = getByteTransform(name, ctx);
 
     if (f == nullptr)
-        return 1;
+        return -1;
 
     SliceArray<kanzi::byte> iba1(input, size, 0);
     SliceArray<kanzi::byte> iba2(output, f->getMaxEncodedLength(size), 0);
-    SliceArray<kanzi::byte> iba3(reverse, size, 0);
+    const int reverseSize = size + 16;
+    SliceArray<kanzi::byte> iba3(reverse, reverseSize, 0);
     int mod = (name == "ZRLT") ? 5 : 256;
     delete f;
 
@@ -807,6 +1481,10 @@ int testTransformsSpeed(const string& name)
 
         for (int ii = 0; ii < iter; ii++) {
             Transform<kanzi::byte>* ff = getByteTransform(name, ctx);
+
+            if (ff == nullptr)
+                return -1;
+
             iba1._index = 0;
             iba2._index = 0;
             before = clock();
@@ -815,12 +1493,13 @@ int testTransformsSpeed(const string& name)
                 if ((iba1._index != size) || (iba2._index >= iba1._index)) {
                    cout << endl
                         << "No compression (ratio > 1.0), skip reverse" << endl;
+                   delete ff;
                    continue;
                 }
 
                 cout << "Encoding error" << endl;
                 delete ff;
-                continue;
+                return -1;
             }
 
             after = clock();
@@ -832,6 +1511,10 @@ int testTransformsSpeed(const string& name)
 
         for (int ii = 0; ii < iter; ii++) {
             Transform<kanzi::byte>* fi = getByteTransform(name, ctx);
+
+            if (fi == nullptr)
+                return -1;
+
             iba3._index = 0;
             iba2._index = 0;
             before = clock();
@@ -839,7 +1522,7 @@ int testTransformsSpeed(const string& name)
             if (fi->inverse(iba2, iba3, count) == false) {
                 cout << "Decoding error" << endl;
                 delete fi;
-                return 1;
+                return -1;
             }
 
             after = clock();
@@ -860,7 +1543,7 @@ int testTransformsSpeed(const string& name)
         if (idx >= 0) {
             cout << "Failure at index " << idx << " (" << (int)iba1._array[idx];
             cout << "<->" << (int)iba3._array[idx] << ")" << endl;
-            res = 1;
+            res = -1;
         }
 
         // MB = 1000 * 1000, MiB = 1024 * 1024
@@ -884,14 +1567,61 @@ int TestTransforms_main(int argc, const char* argv[])
 #endif
 {
     int res = 0;
+    int errorIteration = -1;
+    string errCodec;
 
     try {
+        res = testTextCodecSelfDescribing();
+
+        if (res != 0)
+            return res;
+
         res = testEXECodec();
 
         if (res != 0)
             return res;
 
         res = testZRLTMalformed();
+
+        if (res != 0)
+            return res;
+
+        res = testSRTMalformed();
+
+        if (res != 0)
+            return res;
+
+        res = testROLZXMalformed();
+
+        if (res != 0)
+            return res;
+
+        res = testLZPMalformed();
+
+        if (res != 0)
+            return res;
+
+        res = testUTFMalformed();
+
+        if (res != 0)
+            return res;
+
+        res = testTransformCapacityValidation();
+
+        if (res != 0)
+            return res;
+
+        res = testOverlappingTransformCopies();
+
+        if (res != 0)
+            return res;
+
+        res = testFSDBucketedRoundTrip();
+
+        if (res != 0)
+            return res;
+
+        res = testFSDLegacyInverse();
 
         if (res != 0)
             return res;
@@ -911,7 +1641,7 @@ int TestTransforms_main(int argc, const char* argv[])
         }
         else {
             string str = argv[1];
-            transform(str.begin(), str.end(), str.begin(), ::toupper);
+            transform(str.begin(), str.end(), str.begin(), safeToUpper);
 
             if (str != "-TYPE=ALL") {
                 codecs.push_back(str.substr(6));
@@ -933,16 +1663,17 @@ int TestTransforms_main(int argc, const char* argv[])
 
             if (argc > 2) {
                 str = argv[2];
-                transform(str.begin(), str.end(), str.begin(), ::toupper);
+                transform(str.begin(), str.end(), str.begin(), safeToUpper);
                 doPerf = str != "-NOPERF";
             }
         }
 
         for (vector<string>::iterator it = codecs.begin(); it != codecs.end(); ++it) {
+            errCodec = *it;
             cout << endl
                  << endl
                  << "Test" << *it << endl;
-            res = testTransformsCorrectness(*it);
+            res = testTransformsCorrectness(*it, errorIteration);
 
             if (res)
                break;
@@ -962,6 +1693,22 @@ int TestTransforms_main(int argc, const char* argv[])
     }
 
     cout << endl;
-    cout << ((res == 0) ? "Success" : "Failure") << endl;
+
+    if (res == 0) {
+       cout << "Success" << endl;
+    } else {
+       cout << "Failure";
+
+       if (res < 0) {
+           cout << " in benchmarking";
+       } else if (errorIteration >= 0) {
+           cout << " in test " << errorIteration;
+       }
+
+       if (errCodec.empty() == false)
+           cout << " (" << errCodec << ")";
+
+       cout << endl;
+    }
     return res;
 }

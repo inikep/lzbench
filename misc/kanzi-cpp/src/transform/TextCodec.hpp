@@ -18,6 +18,7 @@ limitations under the License.
 #define knz_TextCodec
 
 #include "../Context.hpp"
+#include "../Memory.hpp"
 #include "../Transform.hpp"
 
 
@@ -193,13 +194,14 @@ namespace kanzi {
        static const byte MASK_NOT_TEXT;
        static const byte MASK_CRLF;
        static const byte MASK_XML_HTML;
+       static const byte MASK_TEXT_CODEC;
        static const byte MASK_DT;
        static const int MASK_LENGTH;
-
        static bool init(int8 cType[256]);
        static int8 CHAR_TYPE[256];
        static const bool INIT;
 
+       static uint computeWordHash(const byte src[], int length);
        static bool sameWords(const byte src[], const byte dst[], int length);
 
        static byte computeStats(const byte block[], int count, uint freqs[], bool strict);
@@ -214,7 +216,12 @@ namespace kanzi {
        static int createDictionary(char words[], int dictSize, DictEntry dict[], int maxWords, int startWord);
        static const int STATIC_DICT_WORDS;
 
+       void setEncodingType(int encodingType);
+
        Transform<byte>* _delegate;
+       Context* _pCtx;
+       int _encodingType;
+       int _bsVersion;
    };
 
    inline DictEntry::DictEntry()
@@ -248,12 +255,22 @@ namespace kanzi {
    }
 #endif
 
+   inline uint TextCodec::computeWordHash(const byte src[], int length)
+   {
+       uint h = HASH1;
+
+       for (int i = 0; i < length; i++)
+           h = h * HASH1 ^ uint(src[i]) * HASH2;
+
+       return h;
+   }
+
    inline bool TextCodec::sameWords(const byte src[], const byte dst[], int length)
    {
        while (length >= 4) {
            length -= 4;
 
-           if (memcmp(&src[length], &dst[length], 4) != 0)
+           if (!KANZI_MEM_EQ4(&src[length], &dst[length]))
               return false;
        }
 
@@ -268,4 +285,3 @@ namespace kanzi {
    }
 }
 #endif
-

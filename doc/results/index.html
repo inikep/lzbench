@@ -28,6 +28,7 @@
     --lz: #2a78d6;
     --sym: #eb6834;
     --lzent: #1baf7a;
+    --front: #808080;   /* Pareto frontier line, as in the README chart */
     --mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, monospace;
     --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   }
@@ -48,6 +49,7 @@
       --lz: #3987e5;
       --sym: #d95926;
       --lzent: #199e70;
+      --front: #ffffff;
     }
   }
   :root[data-theme="dark"] {
@@ -66,6 +68,7 @@
     --lz: #3987e5;
     --sym: #d95926;
     --lzent: #199e70;
+    --front: #ffffff;
   }
 
   [hidden] { display: none !important; }
@@ -131,7 +134,7 @@
   .legend button[aria-pressed="false"] { opacity: 0.45; text-decoration: line-through; }
   .legend .key-line { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
-  .line-key { width: 18px; height: 2px; background: var(--ink); display: inline-block; border-radius: 1px; }
+  .line-key { width: 18px; height: 2px; background: var(--front); display: inline-block; border-radius: 1px; }
 
   .chart-wrap { position: relative; }
   svg { display: block; width: 100%; height: auto; overflow: visible; }
@@ -172,6 +175,13 @@
     border-radius: 999px; border: 1px solid var(--axis); color: var(--ink-2);
   }
   .note { color: var(--ink-2); font-size: 13px; margin: 0; }
+  .alg-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 32px; }
+  .alg-cols > div { display: grid; gap: 8px; align-content: start; }
+  .alg-cols .label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .alg-cols dl { margin: 0; display: grid; grid-template-columns: 8em 1fr; gap: 6px 14px; align-content: start; }
+  .alg-cols dt { font-family: var(--mono); font-size: 13px; color: var(--ink); white-space: nowrap; }
+  .alg-cols dd { margin: 0; font-size: 13px; color: var(--ink-2); }
+  @media (max-width: 720px) { .alg-cols { grid-template-columns: 1fr; } }
   .empty { color: var(--muted); padding: 16px 10px; text-align: left; }
 
   @media (max-width: 560px) {
@@ -274,7 +284,7 @@
         <thead>
           <tr>
             <th scope="col" data-key="n"><button type="button">Compressor</button></th>
-            <th scope="col" data-key="a"><button type="button">Algorithm</button></th>
+            <th scope="col" data-key="a"><button type="button" title="Abbreviations are explained under Algorithms below the table">Algorithm</button></th>
             <th scope="col" data-key="c"><button type="button">Compression MB/s</button></th>
             <th scope="col" data-key="d"><button type="button">Decompression MB/s</button></th>
             <th scope="col" data-key="s"><button type="button">Compressed size</button></th>
@@ -285,6 +295,39 @@
         </thead>
         <tbody id="rows"></tbody>
       </table>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="alg-title" id="alg-legend">
+    <div class="card-head">
+      <h2 id="alg-title">Algorithms</h2>
+      <span class="note">The Algorithm column is the modelling stage, then the entropy coder if there is one, e.g. LZ77 + Huffman.</span>
+    </div>
+    <div class="alg-cols">
+      <div><span class="label">Modelling stage</span>
+      <dl>
+        <dt>LZ77</dt><dd>Lempel–Ziv 1977: repeated data becomes references (offset, length) to earlier data</dd>
+        <dt>LZP</dt><dd>LZ with prediction: the match position is predicted from a hash of the preceding bytes, so only lengths are coded</dd>
+        <dt>ROLZ</dt><dd>Reduced-offset LZ: offsets pick one of a few earlier positions that followed the same context</dd>
+        <dt>field LZ</dt><dd>OpenZL's LZ for fixed-width numeric fields</dd>
+        <dt>BWT</dt><dd>Burrows–Wheeler transform: sorts a block by context so that similar data clusters together</dd>
+        <dt>ST</dt><dd>Sort transform: a faster BWT variant that sorts by a limited context (bsc -m3 to -m8)</dd>
+        <dt>PPM</dt><dd>Prediction by partial matching: predicts each byte from the longest matching earlier context</dd>
+        <dt>CM</dt><dd>Context mixing: combines the predictions of many models (PAQ-like); as an entropy stage, codes the output of a transform this way</dd>
+        <dt>dictionary</dt><dd>Words found in a hash-indexed dictionary are replaced by short codes (density, skim)</dd>
+        <dt>grammar</dt><dd>Builds a grammar of repeated strings (glza)</dd>
+        <dt>copy</dt><dd>No compression: memcpy, the memory-bandwidth reference</dd>
+      </dl></div>
+      <div><span class="label">Entropy coder</span>
+      <dl>
+        <dt>Huffman</dt><dd>Prefix code whose length per symbol follows its frequency</dd>
+        <dt>prefix code</dt><dd>A fixed set of code lengths assigned by frequency (gipfeli)</dd>
+        <dt>FSE</dt><dd>Finite State Entropy: tabled ANS, used by zstd and lzfse; zstd codes literals with Huffman (FSE/Huffman)</dd>
+        <dt>ANS, tANS</dt><dd>Asymmetric numeral systems, and its tabled form: close to arithmetic coding at Huffman-like speed</dd>
+        <dt>range</dt><dd>Range coding: arithmetic coding with integers, as in LZMA</dd>
+        <dt>arithmetic</dt><dd>Arithmetic coding, including binary adaptive coders (e.g. kanzi FPAQ, lzham's flags)</dd>
+        <dt>QLFC</dt><dd>Quantized local frequency coding, bsc's entropy coder for BWT output</dd>
+      </dl></div>
     </div>
   </section>
 
@@ -427,7 +470,7 @@ function drawChart(rows, fr) {
   const fpts = pts.filter(p => fr.has(p.n)).sort((a, b) => a[state.metric] - b[state.metric]);
   if (state.showFront && fpts.length > 1) {
     const d = fpts.map((p, i) => (i ? 'L' : 'M') + X(p[state.metric]).toFixed(1) + ',' + Y(p.r).toFixed(1)).join('');
-    el('path', { d, fill: 'none', stroke: css('--ink'), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', opacity: 0.85 }, svg);
+    el('path', { d, fill: 'none', stroke: css('--front'), 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
   }
 
   // points: filtered-out ones first (dimmed), frontier last so it sits on top

@@ -47,6 +47,7 @@ bool FPAQDecoder::reset()
     _high = TOP;
     _current = 0;
     _ctx = 1;
+    _bufLimit = 0;
     _index = 0;
 
     for (int i = 0; i < 4; i++) {
@@ -68,25 +69,27 @@ int FPAQDecoder::decode(kanzi::byte block[], uint blkptr, uint count)
 
     // Read bit array from bitstream and decode chunk
     while (startChunk < end) {
+        const uint chunkSize = min(DEFAULT_CHUNK_SIZE, end - startChunk);
         const uint szBytes = uint(EntropyUtils::readVarInt(_bitstream));
 
-        // Sanity check
-        if (szBytes >= 2 * count)
+        // A payload belongs to one chunk, not to the whole block.  Besides
+        // preventing excessive allocations, this keeps the bit count below
+        // the range where '8 * szBytes' could overflow.
+        if (uint64(szBytes) > (uint64(chunkSize) << 1))
             return 0;
 
-        const size_t bufSize = max(szBytes + (szBytes >> 3), 8192u);
-
-        if (_buf.size() < bufSize)
-            _buf.resize(bufSize);
+        if (_buf.size() < szBytes)
+            _buf.resize(szBytes);
 
         _current = _bitstream.readBits(56);
 
-        if (bufSize > szBytes)
-            memset(&_buf[szBytes], 0, bufSize - szBytes);
+        // read() checks _bufLimit before accessing the buffer, so no padding
+        // or clearing beyond the payload is necessary.
+        if (szBytes != 0)
+            _bitstream.readBits(&_buf[0], szBytes << 3);
 
-        _bitstream.readBits(&_buf[0], 8 * szBytes);
+        _bufLimit = szBytes;
         _index = 0;
-        const uint chunkSize = min(DEFAULT_CHUNK_SIZE, end - startChunk);
         const uint endChunk = startChunk + chunkSize;
         _p = _probs[0];
 
@@ -101,13 +104,18 @@ int FPAQDecoder::decode(kanzi::byte block[], uint blkptr, uint count)
             decodeBit(_p[_ctx]);
             decodeBit(_p[_ctx]);
             block[i] = kanzi::byte(_ctx);
+
+            if (_index > szBytes)
+                return 0;
+
             _p = _probs[(_ctx & 0xFF) >> 6];
         }
+
+        if (_index > szBytes)
+            return 0;
 
         startChunk = endChunk;
     }
 
     return count;
 }
-
-

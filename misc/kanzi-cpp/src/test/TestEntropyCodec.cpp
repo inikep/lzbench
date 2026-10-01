@@ -18,12 +18,14 @@ limitations under the License.
 #include <time.h>
 #include <vector>
 #include "../types.hpp"
+#include "../util/strings.hpp"
 #include "../entropy/HuffmanEncoder.hpp"
 #include "../entropy/RangeEncoder.hpp"
 #include "../entropy/ANSRangeEncoder.hpp"
 #include "../entropy/BinaryEntropyEncoder.hpp"
 #include "../entropy/ExpGolombEncoder.hpp"
 #include "../entropy/FPAQEncoder.hpp"
+#include "../entropy/EntropyUtils.hpp"
 #include "../bitstream/DefaultOutputBitStream.hpp"
 #include "../bitstream/DefaultInputBitStream.hpp"
 #include "../bitstream/DebugOutputBitStream.hpp"
@@ -38,6 +40,395 @@ limitations under the License.
 
 using namespace kanzi;
 using namespace std;
+
+static EntropyEncoder* getEncoder(string name, OutputBitStream& obs, Predictor* predictor);
+static EntropyDecoder* getDecoder(string name, InputBitStream& ibs, Predictor* predictor);
+
+static void copyBits(InputBitStream& ibs, OutputBitStream& obs, uint64 count)
+{
+    while (count >= 64) {
+        obs.writeBits(ibs.readBits(64), 64);
+        count -= 64;
+    }
+
+    if (count > 0)
+        obs.writeBits(ibs.readBits(uint(count)), uint(count));
+}
+
+static string encodeEntropyPayload(const string& name, const kanzi::byte block[], uint size)
+{
+    stringbuf encoded;
+    iostream ios(&encoded);
+    DefaultOutputBitStream obs(ios, 16384);
+    EntropyEncoder* ec = getEncoder(name, obs, NULL);
+
+    if (ec == NULL)
+        return "";
+
+    const int res = ec->encode(block, 0, size);
+    ec->dispose();
+    delete ec;
+    obs.close();
+    return (res == int(size)) ? encoded.str() : "";
+}
+
+static string shrinkFPAQDeclaredSize(const string& data)
+{
+    istringstream is(data);
+    DefaultInputBitStream ibs(is, 16384);
+    stringbuf mutated;
+    iostream ios(&mutated);
+    DefaultOutputBitStream obs(ios, 16384);
+    const uint32 sz = EntropyUtils::readVarInt(ibs);
+
+    if (sz == 0)
+        return "";
+
+    EntropyUtils::writeVarInt(obs, sz - 1);
+    copyBits(ibs, obs, uint64(data.size()) * 8 - ibs.read());
+    obs.close();
+    return mutated.str();
+}
+
+static string zeroFPAQDeclaredSize(const string& data)
+{
+    istringstream is(data);
+    DefaultInputBitStream ibs(is, 16384);
+    stringbuf mutated;
+    iostream ios(&mutated);
+    DefaultOutputBitStream obs(ios, 16384);
+    const uint32 sz = EntropyUtils::readVarInt(ibs);
+
+    if (sz == 0)
+        return "";
+
+    EntropyUtils::writeVarInt(obs, 0);
+    copyBits(ibs, obs, uint64(data.size()) * 8 - ibs.read());
+    obs.close();
+    return mutated.str();
+}
+
+static string shrinkANSDeclaredSize(const string& data)
+{
+    istringstream is(data);
+    DefaultInputBitStream ibs(is, 16384);
+    stringbuf mutated;
+    iostream ios(&mutated);
+    DefaultOutputBitStream obs(ios, 16384);
+    const uint logRange = uint(ibs.readBits(3));
+    obs.writeBits(logRange, 3);
+    uint alphabet[256];
+    const int alphabetSize = EntropyUtils::decodeAlphabet(ibs, alphabet);
+
+    if (EntropyUtils::encodeAlphabet(obs, alphabet, 256, alphabetSize) < 0)
+        return "";
+
+    if (alphabetSize > 1) {
+        const int chkSize = (alphabetSize >= 64) ? 8 : 6;
+
+        for (int i = 1; i < alphabetSize; i += chkSize) {
+            const uint logMax = uint(ibs.readBits(4));
+            obs.writeBits(logMax, 4);
+
+            if (logMax == 0)
+                continue;
+
+            const int endj = min(i + chkSize, alphabetSize);
+
+            for (int j = i; j < endj; j++)
+                obs.writeBits(ibs.readBits(logMax), logMax);
+        }
+    }
+
+    const uint32 sz = EntropyUtils::readVarInt(ibs);
+
+    if (sz == 0)
+        return "";
+
+    EntropyUtils::writeVarInt(obs, sz - 1);
+    copyBits(ibs, obs, uint64(data.size()) * 8 - ibs.read());
+    obs.close();
+    return mutated.str();
+}
+
+static string shrinkHuffmanDeclaredSize(const string& data)
+{
+    istringstream is(data);
+    DefaultInputBitStream ibs(is, 16384);
+    stringbuf mutated;
+    iostream ios(&mutated);
+    DefaultOutputBitStream obs(ios, 16384);
+    uint alphabet[256];
+    const int alphabetSize = EntropyUtils::decodeAlphabet(ibs, alphabet);
+
+    if (EntropyUtils::encodeAlphabet(obs, alphabet, 256, alphabetSize) < 0)
+        return "";
+
+    if (alphabetSize <= 1)
+        return "";
+
+    ExpGolombDecoder egdec(ibs, true);
+    ExpGolombEncoder egenc(obs, true);
+
+    for (int i = 0; i < alphabetSize; i++) {
+        const kanzi::byte delta = egdec.decodeByte();
+        egenc.encodeByte(delta);
+    }
+
+    uint32 sz[4];
+    int idx = -1;
+
+    for (int i = 0; i < 4; i++) {
+        sz[i] = EntropyUtils::readVarInt(ibs);
+
+        if ((sz[i] > 0) && ((idx < 0) || (sz[i] > sz[idx])))
+            idx = i;
+    }
+
+    if (idx < 0)
+        return "";
+
+    for (int i = 0; i < 4; i++)
+        EntropyUtils::writeVarInt(obs, sz[i] - ((i == idx) ? 1 : 0));
+
+    copyBits(ibs, obs, uint64(data.size()) * 8 - ibs.read());
+    obs.close();
+    return mutated.str();
+}
+
+static bool malformedEntropyIsRejected(const string& name, const string& data, uint size)
+{
+    istringstream is(data);
+    DefaultInputBitStream ibs(is, 16384);
+    EntropyDecoder* ed = getDecoder(name, ibs, NULL);
+
+    if (ed == NULL)
+        return false;
+
+    vector<kanzi::byte> decoded(size, kanzi::byte(0));
+
+    try {
+        const int res = ed->decode(&decoded[0], 0, size);
+        ed->dispose();
+        delete ed;
+        ibs.close();
+        return res != int(size);
+    }
+    catch (const exception&) {
+        delete ed;
+
+        try {
+            ibs.close();
+        }
+        catch (const exception&) {
+        }
+
+        return true;
+    }
+}
+
+int testDeclaredPayloadConsumption()
+{
+    cout << endl
+         << "=== Declared payload consumption test ===" << endl;
+    const uint size = 4096;
+    vector<kanzi::byte> values(size);
+
+    for (uint i = 0; i < size; i++)
+        values[i] = kanzi::byte(((i * 13) ^ (i >> 3) ^ ((i & 15) << 4)) & 0xFF);
+
+    struct TestCase {
+        const char* name;
+        string (*mutator)(const string&);
+    };
+
+    TestCase tests[3] = {
+        { "HUFFMAN", shrinkHuffmanDeclaredSize },
+        { "ANS0",    shrinkANSDeclaredSize },
+        { "FPAQ",    shrinkFPAQDeclaredSize }
+    };
+
+    for (int i = 0; i < 3; i++) {
+        const string encoded = encodeEntropyPayload(tests[i].name, &values[0], size);
+
+        if (encoded.empty()) {
+            cout << "Could not encode test payload for " << tests[i].name << endl;
+            return 1;
+        }
+
+        const string mutated = tests[i].mutator(encoded);
+
+        if (mutated.empty()) {
+            cout << "Could not mutate test payload for " << tests[i].name << endl;
+            return 2;
+        }
+
+        if (malformedEntropyIsRejected(tests[i].name, mutated, size) == false) {
+            cout << "Malformed payload accepted for " << tests[i].name << endl;
+            return 3;
+        }
+    }
+
+    cout << "Declared payload consumption test passed" << endl;
+    return 0;
+}
+
+int testFPAQZeroDeclaredSize()
+{
+    cout << endl
+         << "=== FPAQ zero declared size test ===" << endl;
+    const uint size = 1 << 20;
+    vector<kanzi::byte> values(size);
+
+    for (uint i = 0; i < size; i++)
+        values[i] = kanzi::byte((i * 17) & 0xFF);
+
+    const string encoded = encodeEntropyPayload("FPAQ", &values[0], size);
+
+    if (encoded.empty()) {
+        cout << "Could not encode test payload for FPAQ" << endl;
+        return 1;
+    }
+
+    const string mutated = zeroFPAQDeclaredSize(encoded);
+
+    if (mutated.empty()) {
+        cout << "Could not mutate test payload for FPAQ" << endl;
+        return 2;
+    }
+
+    if (malformedEntropyIsRejected("FPAQ", mutated, size) == false) {
+        cout << "Malformed zero-sized FPAQ payload accepted" << endl;
+        return 3;
+    }
+
+    cout << "FPAQ zero declared size test passed" << endl;
+    return 0;
+}
+
+int testANS1MissingContext()
+{
+    cout << endl << "=== ANS1 implicit context test ===" << endl;
+    const uint size = 40;
+    const uint alphabet[] = { 1 };
+
+    // Exercise both freshly allocated tables and tables from an earlier chunk.
+    for (int warm = 0; warm < 2; warm++) {
+        stringbuf buffer;
+        iostream ios(&buffer);
+        DefaultOutputBitStream obs(ios, 16384);
+        vector<kanzi::byte> previous(size, kanzi::byte(1));
+
+        if (warm != 0) {
+            ANSRangeEncoder encoder(obs, 1);
+            encoder.encode(&previous[0], 0, size);
+        }
+
+        // Context 0 emits 1; empty context 1 implicitly emits 0.
+        obs.writeBits(uint64(0), 3); // log range = 8
+        EntropyUtils::encodeAlphabet(obs, alphabet, 256, 1);
+
+        for (int i = 1; i < 256; i++)
+            EntropyUtils::encodeAlphabet(obs, alphabet, 256, 0);
+
+        EntropyUtils::writeVarInt(obs, 8);
+
+        for (int i = 0; i < 4; i++)
+            obs.writeBits(uint32(1 << 15), 32);
+
+        // Each lane renormalizes once, on its first symbol.
+        const kanzi::byte payload[8] = { kanzi::byte(0) };
+        obs.writeBits(payload, 64);
+        obs.close();
+
+        istringstream is(buffer.str());
+        DefaultInputBitStream ibs(is, 16384);
+        ANSRangeDecoder decoder(ibs, 1);
+        vector<kanzi::byte> decoded(size);
+
+        if (warm != 0) {
+            if ((decoder.decode(&decoded[0], 0, size) != int(size)) ||
+                (decoded != previous))
+                return 1;
+        }
+
+        if (decoder.decode(&decoded[0], 0, size) != int(size))
+            return 1;
+
+        for (uint i = 0; i < size; i++) {
+            if (decoded[i] != kanzi::byte(1 - ((i % (size / 4)) & 1))) {
+                cout << "Incorrect ANS1 implicit context output" << endl;
+                return 1;
+            }
+        }
+    }
+
+    cout << "ANS1 implicit context test passed" << endl;
+    return 0;
+}
+
+int testHuffmanFragmentedRoundTrip()
+{
+    cout << endl
+         << "=== Huffman fragmented round-trip test ===" << endl;
+    const uint size = 1649;
+    vector<kanzi::byte> values(size);
+    vector<kanzi::byte> decoded(size, kanzi::byte(0));
+    uint32 state = 3454687338U;
+
+    for (uint i = 0; i < size; i++) {
+        state = (state * 1103515245U) + 12345U;
+        const uint32 val0 = state >> 24;
+        state = (state * 1103515245U) + 12345U;
+        const uint32 val1 = state >> 24;
+        values[i] = (val0 < 192) ? kanzi::byte(val1 & 15) : kanzi::byte(val1);
+    }
+
+    stringbuf buffer;
+    iostream ios(&buffer);
+    DefaultOutputBitStream obs(ios, 1 << 15);
+    HuffmanEncoder encoder(obs);
+
+    if (encoder.encode(&values[0], 0, size) != int(size)) {
+        cout << "Encoding error in Huffman fragmented round-trip test" << endl;
+        return 1;
+    }
+
+    encoder.dispose();
+    obs.close();
+    ios.rdbuf()->pubseekpos(0);
+    DefaultInputBitStream ibs(ios, 1 << 15);
+    HuffmanDecoder decoder(ibs);
+
+    if (decoder.decode(&decoded[0], 0, size) != int(size)) {
+        cout << "Decoding error in Huffman fragmented round-trip test" << endl;
+        return 1;
+    }
+
+    decoder.dispose();
+    ibs.close();
+
+    if (memcmp(&values[0], &decoded[0], size) != 0) {
+        cout << "Mismatch in Huffman fragmented round-trip test" << endl;
+        return 1;
+    }
+
+    cout << "Huffman fragmented round-trip test passed" << endl;
+    return 0;
+}
+
+class ConstantPredictor FINAL : public Predictor
+{
+public:
+    explicit ConstantPredictor(int value) : _value(value) {}
+
+    void update(int) {}
+
+    int get() { return _value; }
+
+private:
+    int _value;
+};
 
 static Predictor* getPredictor(string type)
 {
@@ -115,6 +506,52 @@ static EntropyDecoder* getDecoder(string name, InputBitStream& ibs, Predictor* p
 
     cout << "No such entropy decoder: " << name << endl;
     return nullptr;
+}
+
+static int testBinaryPayloadBoundary()
+{
+    cout << endl
+         << "=== Binary entropy payload boundary test ===" << endl;
+    const uint size = 1 << 16;
+    vector<kanzi::byte> values(size, kanzi::byte(0));
+    stringbuf buffer;
+    iostream ios(&buffer);
+    DefaultOutputBitStream obs(ios, 16384);
+    BinaryEntropyEncoder encoder(obs, new ConstantPredictor(4095), true);
+
+    if (encoder.encode(&values[0], 0, size) != int(size))
+        return 1;
+
+    encoder.dispose();
+    obs.close();
+    const string mutated = zeroFPAQDeclaredSize(buffer.str());
+
+    if (mutated.empty())
+        return 2;
+
+    istringstream is(mutated);
+    DefaultInputBitStream ibs(is, 16384);
+    BinaryEntropyDecoder decoder(ibs, new ConstantPredictor(4095), true);
+    vector<kanzi::byte> decoded(size, kanzi::byte(0));
+    bool accepted = false;
+
+    try {
+        accepted = decoder.decode(&decoded[0], 0, size) == int(size);
+    }
+    catch (const exception&) {
+        // Expected: the first four-byte refill crosses the declared boundary.
+    }
+
+    decoder.dispose();
+    ibs.close();
+
+    if (accepted) {
+        cout << "Malformed binary entropy payload was accepted" << endl;
+        return 3;
+    }
+
+    cout << "Binary entropy payload boundary test passed" << endl;
+    return 0;
 }
 
 int testEntropyCodecCorrectness(const string& name)
@@ -227,6 +664,51 @@ int testEntropyCodecCorrectness(const string& name)
     return res;
 }
 
+static int testExpGolombUnsignedRoundTrip()
+{
+    cout << "=== Correctness test for unsigned EXPGOLOMB ===" << endl;
+    const uint size = 256;
+    kanzi::byte values[size];
+
+    for (uint i = 0; i < size; i++)
+        values[i] = kanzi::byte(i);
+
+    stringbuf buffer;
+    iostream ios(&buffer);
+    DefaultOutputBitStream obs(ios);
+    ExpGolombEncoder encoder(obs, false);
+
+    if (encoder.encode(values, 0, size) != int(size)) {
+        cout << "Unsigned EXPGOLOMB encoding failed" << endl;
+        return 1;
+    }
+
+    encoder.dispose();
+    obs.close();
+    ios.rdbuf()->pubseekpos(0);
+
+    DefaultInputBitStream ibs(ios);
+    ExpGolombDecoder decoder(ibs, false);
+    kanzi::byte decoded[size];
+
+    if (decoder.decode(decoded, 0, size) != int(size)) {
+        cout << "Unsigned EXPGOLOMB decoding failed" << endl;
+        return 1;
+    }
+
+    decoder.dispose();
+    ibs.close();
+
+    for (uint i = 0; i < size; i++) {
+        if (values[i] != decoded[i]) {
+            cout << "Unsigned EXPGOLOMB mismatch at index " << i << endl;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 int testEntropyCodecSpeed(const string& name)
 {
     // Test speed
@@ -334,6 +816,46 @@ int testEntropyCodecSpeed(const string& name)
     return res;
 }
 
+int testBinaryEntropyBufferGrowth()
+{
+    cout << endl
+         << "=== Buffer growth test for binary entropy codec ===" << endl;
+    const int size = 1 << 20;
+    vector<kanzi::byte> values(size, kanzi::byte(0));
+    vector<kanzi::byte> decoded(size, kanzi::byte(0xAA));
+    stringbuf buffer;
+    iostream ios(&buffer);
+    DefaultOutputBitStream obs(ios, 1 << 15);
+    BinaryEntropyEncoder encoder(obs, new ConstantPredictor(4095), true);
+
+    if (encoder.encode(&values[0], 0, uint(values.size())) != size) {
+        cout << "Encoding error in buffer growth test" << endl;
+        return 1;
+    }
+
+    encoder.dispose();
+    obs.close();
+    ios.rdbuf()->pubseekpos(0);
+    DefaultInputBitStream ibs(ios, 1 << 15);
+    BinaryEntropyDecoder decoder(ibs, new ConstantPredictor(4095), true);
+
+    if (decoder.decode(&decoded[0], 0, uint(decoded.size())) != size) {
+        cout << "Decoding error in buffer growth test" << endl;
+        return 1;
+    }
+
+    decoder.dispose();
+    ibs.close();
+
+    if (memcmp(&values[0], &decoded[0], values.size()) != 0) {
+        cout << "Mismatch in buffer growth test" << endl;
+        return 1;
+    }
+
+    cout << "Buffer growth test passed" << endl;
+    return 0;
+}
+
 #ifdef __GNUG__
 int main(int argc, const char* argv[])
 #else
@@ -343,14 +865,22 @@ int TestEntropyCodec_main(int argc, const char* argv[])
     int res = 0;
 
     try {
+        res |= testExpGolombUnsignedRoundTrip();
+        res |= testBinaryEntropyBufferGrowth();
+        res |= testBinaryPayloadBoundary();
+        res |= testDeclaredPayloadConsumption();
+        res |= testFPAQZeroDeclaredSize();
+        res |= testANS1MissingContext();
+        res |= testHuffmanFragmentedRoundTrip();
         vector<string> codecs;
         bool doPerf = true;
 
         if (argc == 1) {
 #if __cplusplus < 201103L
-            string allCodecs[8] = { "HUFFMAN", "ANS0", "ANS1", "RANGE", "EXPGOLOMB", "CM", "TPAQ" };
+            string allCodecs[] = { "HUFFMAN", "ANS0", "ANS1", "RANGE", "EXPGOLOMB", "CM", "TPAQ" };
+            const int count = int(sizeof(allCodecs) / sizeof(allCodecs[0]));
 
-            for (int i = 0; i < 8; i++)
+            for (int i = 0; i < count; i++)
                 codecs.push_back(allCodecs[i]);
 #else
             codecs = { "HUFFMAN", "ANS0", "ANS1", "RANGE", "EXPGOLOMB", "CM", "TPAQ" };
@@ -358,13 +888,14 @@ int TestEntropyCodec_main(int argc, const char* argv[])
         }
         else {
             string str = argv[1];
-            transform(str.begin(), str.end(), str.begin(), ::toupper);
+            transform(str.begin(), str.end(), str.begin(), safeToUpper);
 
             if (str == "-TYPE=ALL") {
 #if __cplusplus < 201103L
                string allCodecs[] = { "HUFFMAN", "ANS0", "ANS1", "RANGE", "EXPGOLOMB", "CM", "TPAQ" };
+               const int count = int(sizeof(allCodecs) / sizeof(allCodecs[0]));
 
-               for (int i = 0; i < 8; i++)
+               for (int i = 0; i < count; i++)
                    codecs.push_back(allCodecs[i]);
 #else
                codecs = { "HUFFMAN", "ANS0", "ANS1", "RANGE", "EXPGOLOMB", "CM", "TPAQ" };
@@ -376,7 +907,7 @@ int TestEntropyCodec_main(int argc, const char* argv[])
 
         if (argc > 2) {
                 str = argv[2];
-                transform(str.begin(), str.end(), str.begin(), ::toupper);
+                transform(str.begin(), str.end(), str.begin(), safeToUpper);
                 doPerf = str != "-NOPERF";
             }
         }

@@ -37,7 +37,13 @@ FPAQEncoder::FPAQEncoder(OutputBitStream& bitstream)
 
 FPAQEncoder::~FPAQEncoder()
 {
-    _dispose();
+    // Destructors must not replace an encoding error or terminate the process
+    // while unwinding after a bitstream failure.
+    try {
+        _dispose();
+    }
+    catch (...) {
+    }
 }
 
 bool FPAQEncoder::reset()
@@ -62,7 +68,9 @@ int FPAQEncoder::encode(const kanzi::byte block[], uint blkptr, uint count)
 
     uint startChunk = blkptr;
     const uint end = blkptr + count;
-    const size_t bufSize = max(DEFAULT_CHUNK_SIZE + (DEFAULT_CHUNK_SIZE >> 3), 1024u);
+    const uint size = min(DEFAULT_CHUNK_SIZE, count);
+    const uint extra = max(size >> 3, min(size, uint(1 << 16)));
+    const uint bufSize = max(size + extra, uint(1024));
 
     if (_buf.size() < bufSize)
         _buf.resize(bufSize);
