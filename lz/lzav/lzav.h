@@ -1,7 +1,7 @@
 /**
  * @file lzav.h
  *
- * @version 5.17
+ * @version 5.18
  *
  * @brief Self-contained header file for the "LZAV" in-memory data compression
  * and decompression algorithms.
@@ -39,8 +39,8 @@
 #ifndef LZAV_INCLUDED
 #define LZAV_INCLUDED
 
-#define LZAV_API_VER 0x206 ///< API version; unrelated to the code version.
-#define LZAV_VER_STR "5.17" ///< LZAV source code version string.
+#define LZAV_API_VER 0x207 ///< API version; unrelated to the code version.
+#define LZAV_VER_STR "5.18" ///< LZAV source code version string.
 
 /**
  * @def LZAV_FMT_MIN
@@ -1673,23 +1673,23 @@ LZAV_INLINE_F size_t lzav_est_blksize( const size_t lc, size_t d,
 }
 
 /**
- * @brief Inserts a tuple into a hash-table bucket.
+ * @brief Inserts a tuple into a hash-table bucket (8-bucket hash table).
  *
  * @param hp Pointer to the hash-table bucket.
  * @param iw1 Initial source bytes.
  * @param ipo Source data offset, in bytes.
- * @param htbsize Hash-table bucket size, in bytes.
  */
 
-LZAV_INLINE_F void lzav_ht_insert( uint32_t* const hp, const uint32_t iw1,
-	const uint32_t ipo, const size_t htbsize ) LZAV_NOEXC
+LZAV_INLINE_F void lzav_ht_insert8( uint32_t* const hp, const uint32_t iw1,
+	const uint32_t ipo ) LZAV_NOEXC
 {
-	size_t i;
+	uint8_t tmp1[ 32 ], tmp2[ 16 ];
 
-	for( i = htbsize - 8; i != 0; i -= 8 )
-	{
-		memcpy( (uint8_t*) hp + i, (uint8_t*) hp + i - 8, 8 );
-	}
+	memcpy( tmp1, (uint8_t*) hp + 24, 32 );
+	memcpy( tmp2, (uint8_t*) hp + 8, 16 );
+	memcpy( (uint8_t*) hp + 32, tmp1, 32 );
+	memcpy( (uint8_t*) hp + 16, tmp2, 16 );
+	memcpy( (uint8_t*) hp + 8, (uint8_t*) hp, 8 );
 
 	hp[ 0 ] = iw1;
 	hp[ 1 ] = ipo;
@@ -1822,7 +1822,7 @@ LZAV_NO_INLINE int lzav_compress_hi( const void* const src, void* const dst,
 
 		// Match-finder.
 
-		for( i = 0; i < htbsize / 4; i += 4 )
+		for( i = 0; i < ( htbsize >> 2 ); i += 4 )
 		{
 			const uint32_t ww1 = hp[ i ];
 			const uint8_t* const wp1 = (const uint8_t*) src + hp[ i + 1 ];
@@ -1859,7 +1859,7 @@ LZAV_NO_INLINE int lzav_compress_hi( const void* const src, void* const dst,
 			// Update the hash-table entry, making sure the match is not an
 			// adjacent replication.
 
-			lzav_ht_insert( hp, iw1, ipo, htbsize );
+			lzav_ht_insert8( hp, iw1, ipo );
 		}
 
 		if(( rc < mref + ( d > ( 1 << 18 )) + ( d > ( 1 << 22 ))) |
@@ -1922,7 +1922,7 @@ LZAV_NO_INLINE int lzav_compress_hi( const void* const src, void* const dst,
 				continue;
 			}
 
-			lzav_ht_insert( hp, iw1, ipo, htbsize );
+			lzav_ht_insert8( hp, iw1, ipo );
 			continue;
 		}
 
@@ -1963,14 +1963,14 @@ LZAV_NO_INLINE int lzav_compress_hi( const void* const src, void* const dst,
 		wp = ipa;
 		hp = (uint32_t*) ( ht + lzav_hash( iw1, ip[ 6 ], 8, hmask ));
 
-		lzav_ht_insert( hp, iw1, (uint32_t) ( ip + 2 - (const uint8_t*) src ),
-			htbsize );
+		lzav_ht_insert8( hp, iw1, (uint32_t) ( ip + 2 -
+			(const uint8_t*) src ));
 
 		memcpy( &iw1, ip + 4, 4 );
 		hp = (uint32_t*) ( ht + lzav_hash( iw1, ip[ 8 ], 8, hmask ));
 
-		lzav_ht_insert( hp, iw1, (uint32_t) ( ip + 4 - (const uint8_t*) src ),
-			htbsize );
+		lzav_ht_insert8( hp, iw1, (uint32_t) ( ip + 4 -
+			(const uint8_t*) src ));
 
 		ip += rc;
 		prc = 0;
