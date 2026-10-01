@@ -902,12 +902,14 @@ typedef struct {
     ZL_Compressor* cgraph;
     ZL_CCtx* cctx;
     ZL_DCtx* dctx;
+    size_t eltWidth;  // element width of the integer profiles, 1 for the others
 } openzl_params_s;
 
 static char* lzbench_openzl_init_base(size_t insize, size_t level, size_t windowLog)
 {
     openzl_params_s* params = (openzl_params_s*) malloc(sizeof(openzl_params_s));
 
+    params->eltWidth = 1;
     params->cgraph = ZL_Compressor_create();
     assert(params->cgraph);
     params->cctx = ZL_CCtx_create();
@@ -959,6 +961,7 @@ char* lzbench_openzl_init_integer_t(size_t insize, size_t level, size_t windowLo
       abort();
     }
 
+    params->eltWidth = sizeof(TInteger);
     return (char*) params;
 }
 
@@ -1059,13 +1062,22 @@ int64_t lzbench_openzl_compress(char *inbuf, size_t insize, char *outbuf, size_t
       return 0;
     }
 
-    report = ZL_CCtx_compress(params->cctx, outbuf, outsize, inbuf, insize);
+    // The integer profiles fail if the input is not a whole number of elements
+    // (OpenZL in strict mode, the library default; facebook/openzl#1085), e.g. on
+    // most files or the last -b block. Compress the whole elements and store the
+    // 1-7 trailing bytes uncompressed after the frame.
+    size_t tail = insize % params->eltWidth;
+    if (outsize < tail) return 0;
+
+    report = ZL_CCtx_compress(params->cctx, outbuf, outsize - tail, inbuf, insize - tail);
     if (ZL_isError(report)) {
       printf("OpenZL compression error: %s\n", ZL_CCtx_getErrorContextString(params->cctx, report));
       return 0;
     }
 
-    return (int64_t) ZL_validResult(report);
+    size_t clen = ZL_validResult(report);
+    memcpy(outbuf + clen, inbuf + insize - tail, tail);
+    return (int64_t) (clen + tail);
 }
 
 int64_t lzbench_openzl_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
@@ -1073,13 +1085,21 @@ int64_t lzbench_openzl_decompress(char *inbuf, size_t insize, char *outbuf, size
     openzl_params_s* params = (openzl_params_s*) codec_options->work_mem;
     if (not params or not params->dctx) return 0;
 
-    ZL_Report report = ZL_DCtx_decompress(params->dctx, outbuf, outsize, inbuf, insize);
+    // outsize is the original size, so it gives the number of trailing bytes
+    // stored after the frame (see lzbench_openzl_compress)
+    size_t tail = outsize % params->eltWidth;
+    if (insize < tail) return 0;
+
+    ZL_Report report = ZL_DCtx_decompress(params->dctx, outbuf, outsize - tail, inbuf, insize - tail);
     if (ZL_isError(report)) {
       printf("OpenZL decompression error: %s\n", ZL_DCtx_getErrorContextString(params->dctx, report));
       return 0;
     }
 
-    return (int64_t) ZL_validResult(report);
+    size_t dlen = ZL_validResult(report);
+    if (dlen != outsize - tail) return 0;
+    memcpy(outbuf + dlen, inbuf + insize - tail, tail);
+    return (int64_t) (dlen + tail);
 }
 
 #endif // BENCH_REMOVE_OPENZL
