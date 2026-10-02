@@ -382,7 +382,8 @@ jobs:
     displayName: 'Publish lzbench'
     inputs:
       targetPath: '$(Build.SourcesDirectory)/lzbench'
-      artifactName: 'lzbench-$(ARTIFACT_SLUG)'
+      # names must be unique per build; the attempt number lets "Rerun failed jobs" publish again
+      artifactName: 'lzbench-$(ARTIFACT_SLUG)-$(System.JobAttempt)'
 
   - script: |
       $QEMU_INTERPRETER ./lzbench -eLZ -v5 ./lzbench || exit 1
@@ -532,7 +533,8 @@ jobs:
     displayName: 'Publish lzbench'
     inputs:
       targetPath: '$(Build.SourcesDirectory)/lzbench'
-      artifactName: 'lzbench-$(ARTIFACT_SLUG)'
+      # names must be unique per build; the attempt number lets "Rerun failed jobs" publish again
+      artifactName: 'lzbench-$(ARTIFACT_SLUG)-$(System.JobAttempt)'
 
   # No GPU on this agent, so every CUDA codec has to fail its init() and be
   # skipped. This is the regression test for the SEGFAULT that used to happen
@@ -624,7 +626,8 @@ jobs:
     displayName: 'Publish lzbench.exe'
     inputs:
       targetPath: '$(Build.SourcesDirectory)\lzbench.exe'
-      artifactName: 'lzbench-$(ARTIFACT_SLUG)'
+      # names must be unique per build; the attempt number lets "Rerun failed jobs" publish again
+      artifactName: 'lzbench-$(ARTIFACT_SLUG)-$(System.JobAttempt)'
 
   - script: |
       lzbench.exe -eLZ -v5 lzbench.exe || exit 1
