@@ -170,7 +170,7 @@ static const compressor_desc_t comp_desc[] =
      //                                                                      last_level,       mt_mode,
      // name,       name_version,    algorithm,                     first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func,             max_input_size
     { "memcpy",     "memcpy",                  "copy",                        0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
-    { "aceapex",    "aceapex 1.0.1",           "LZ77 + FSE/Huffman",          1,   2,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
+    { "aceapex",    "aceapex 2.2.2",           "LZ77 + FSE/Huffman",          1,   3,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
     { "aceapex_cuda","aceapex_cuda 0.9",       "LZ77 + FSE/Huffman",          1,   2,    0,  NO_THREADING,  lzbench_aceapex_compress,    lzbench_aceapex_cuda_decompress, lzbench_aceapex_cuda_init, lzbench_aceapex_cuda_deinit },
     { "brieflz",    "brieflz 1.3.0",           "LZ77",                        1,   9,    0,  BENCH_POOL_MT, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
     { "brotli",     "brotli 1.2.0",            "LZ77 + Huffman",              0,  11,    0,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
@@ -363,7 +363,7 @@ static const alias_desc_t alias_desc[] =
        /* LZ */ "memcpy/brieflz,1/crush,0/fastlz,1/kanzi,1/lizard,10/lz4fast,99/lz4/lz4hc,1/lzav,1/lzf,0/lzjb/" \
               "lzo1,1/lzo1a,1/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/lzo1z/lzo2a/lzsse2,1/lzsse4fast/lzsse4,1/lzsse8,1/lzvn/memlz/" \
               "misa77,0/misa77_safe,0/quicklz,1/snappy/tamp,8/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/yalz77,1/zpaq,1/" \
-/* LZ+ENTROPY */ "aceapex,1/brotli,0/fastlzma2,1/libdeflate,1/lzfse/lzham,0/lzlib,0/lzma,0/mbrotli,0/slz_gzip,1/xz,0/" \
+/* LZ+ENTROPY */ "aceapex,3/brotli,0/fastlzma2,1/libdeflate,1/lzfse/lzham,0/lzlib,0/lzma,0/mbrotli,0/slz_gzip,1/xz,0/" \
               "zlib,1/zlib-ng,1/zling,0/zstd_fast,-5/zstd,1/zxc,1/" \
   /* SYMMETR */ "bsc1/bzip2,1/bzip3,1/density,1/lbzip2,1/ppmd8,1/skim" },
     { "SLOW", "Lists very slow compressors.",

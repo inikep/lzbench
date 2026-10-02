@@ -1,11 +1,10 @@
-#include "ax_align.h"
 #include <stdlib.h>
 #include <string.h>
 #include <cstdint>
 #include <vector>
 #include <pthread.h>
 #include <algorithm>
-#include "../zstd/lib/zstd.h"
+#include <zstd.h>
 
 static size_t LIT_compress(void* dst, size_t dstCap, const void* src, size_t srcSize) {
     return ZSTD_compress(dst, dstCap, src, srcSize, 1);
@@ -34,9 +33,9 @@ static uint8_t* fse_comp(const uint8_t* src,size_t sz,size_t& out_sz,int nc=16){
         size_t cap=LIT_compressBound(sz)+16;
         uint8_t* buf=(uint8_t*)malloc(cap);
         if(!buf){out_sz=0;return nullptr;}
-        AX_write64((void*)(buf),(uint64_t)(sz));
+        *(uint64_t*)buf=sz;
         size_t csz=LIT_compress(buf+8,cap-8,src,sz);
-        if(LIT_isError(csz)||csz==0){ AX_write64((void*)(buf),(uint64_t)(sz|(uint64_t(1)<<63))); memcpy(buf+8,src,sz); out_sz=sz+8; }
+        if(LIT_isError(csz)||csz==0){ *(uint64_t*)buf=sz|(uint64_t(1)<<63); memcpy(buf+8,src,sz); out_sz=sz+8; }
         else out_sz=csz+8;
         return buf;
     }
@@ -57,7 +56,7 @@ static uint8_t* fse_comp(const uint8_t* src,size_t sz,size_t& out_sz,int nc=16){
     for(int i=0;i<nc;i++) total+=(jobs[i].osz&~(uint64_t(1)<<62));
     uint8_t* res=(uint8_t*)malloc(total);
     if(!res){out_sz=0;return nullptr;}
-    AX_write32((void*)(res),(uint32_t)((uint32_t)nc)); AX_write32((void*)(res+4),(uint32_t)(0));
+    *(uint32_t*)res=(uint32_t)nc; *(uint32_t*)(res+4)=0;
     uint64_t* rsz=(uint64_t*)(res+8);
     uint64_t* csz2=(uint64_t*)(res+8+nc*8);
     uint8_t* p=res+hdr;
@@ -71,13 +70,12 @@ static uint8_t* fse_comp(const uint8_t* src,size_t sz,size_t& out_sz,int nc=16){
 }
 
 static uint8_t* fse_decomp(const uint8_t* src,size_t sz,size_t& orig_sz){
-    if(!src || sz < 8){ orig_sz=0; return (uint8_t*)malloc(1); }
-    uint32_t nc=AX_read32(src);
+    uint32_t nc=*(const uint32_t*)src;
     if(nc==0||nc>256){
-        uint64_t h=AX_read64(src);
-        orig_sz=h&~(uint64_t(1)<<63);
-        int raw=(h>>63)&1;
-        uint8_t* out=(uint8_t*)malloc(orig_sz?orig_sz:1);
+        orig_sz=*(const uint64_t*)src&~(uint64_t(1)<<63);
+        int raw=(*(const uint64_t*)src>>63)&1;
+        uint8_t* out=(uint8_t*)malloc(orig_sz);
+    if(!out) return nullptr;
         if(!out) return nullptr;
         if(raw) memcpy(out,src+8,orig_sz);
         else LIT_decompress(out,orig_sz,src+8,sz-8);
