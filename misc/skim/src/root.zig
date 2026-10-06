@@ -213,7 +213,7 @@ test "Encoder / Decoder full cycle" {
     var decompressor = try Decoder.init(std.testing.allocator);
     defer decompressor.deinit(std.testing.allocator);
 
-    const input_data = "A" ** 64 ++ "B" ** 64 ++ "C" ** 17;
+    const input_data = &(@as([64]u8, @splat('A')) ++ @as([64]u8, @splat('B')) ++ @as([17]u8, @splat('C')));
 
     var compressed_buffer: [Encoder.outputBufferBound(input_data.len)]u8 = undefined;
     var decompressed_buffer: [input_data.len]u8 = undefined;
