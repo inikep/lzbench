@@ -1161,7 +1161,7 @@ int main( int argc, char** argv)
         switch (argument[0])
         {
         case 'b':
-            params->chunk_size = number << 10;
+            params->chunk_size = (size_t)number << 10;
             break;
         case 'c':
             sort_col = number;
@@ -1184,7 +1184,7 @@ int main( int argc, char** argv)
             join = true;
             break;
         case 'm':
-            params->mem_limit = number << 18; /*  total memory usage = mem_limit * 4  */
+            params->mem_limit = (size_t)number << 18; /*  total memory usage = mem_limit * 4  */
             if (params->textformat == TEXT) params->textformat = TEXT_FULL;
             break;
         case 'o':
