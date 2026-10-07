@@ -182,6 +182,59 @@ int64_t lzbench_lz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
 
 
+#ifndef BENCH_REMOVE_WLZ4
+#include "lz/wlz4/WLZ4.h"
+
+typedef struct { WLZ_State_Str* lazy; WLZhc_State_Str* hc; } wlz4_states;
+
+char* lzbench_wlz4_init(size_t insize, size_t level, size_t)
+{
+    wlz4_states* s = (wlz4_states*)calloc(1, sizeof(wlz4_states));
+    if (!s) return NULL;
+    s->lazy = WLZ_New_State();
+    s->hc = WLZhc_New_State();
+    return (char*)s;
+}
+
+void lzbench_wlz4_deinit(char* workmem)
+{
+    wlz4_states* s = (wlz4_states*)workmem;
+    if (!s) return;
+    if (s->lazy) WLZ_Free_State(s->lazy);
+    if (s->hc) WLZhc_Free_State(s->hc);
+    free(s);
+}
+
+int64_t lzbench_wlz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    wlz4_states* s = (wlz4_states*)codec_options->work_mem;
+    if (!s || !s->lazy) return 0;
+    return WLZ_Compress(s->lazy, inbuf, outbuf, (unsigned)insize, (unsigned)outsize);
+}
+
+int64_t lzbench_wlz4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    wlz4_states* s = (wlz4_states*)codec_options->work_mem;
+    if (!s || !s->lazy) return 0;
+    return WLZ_Compress_Fast(s->lazy, inbuf, outbuf, (unsigned)insize, (unsigned)outsize, codec_options->level);
+}
+
+int64_t lzbench_wlz4hc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    wlz4_states* s = (wlz4_states*)codec_options->work_mem;
+    if (!s || !s->hc) return 0;
+    return WLZhc_Compress(s->hc, inbuf, outbuf, (unsigned)insize, (unsigned)outsize, codec_options->level);
+}
+
+int64_t lzbench_wlz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    return WLZ_Decompress(inbuf, outbuf, (unsigned)insize, (unsigned)outsize);
+}
+
+#endif
+
+
+
 #ifndef BENCH_REMOVE_LZAV
 #include "lz/lzav/lzav.h"
 

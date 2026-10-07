@@ -272,6 +272,10 @@ static const compressor_desc_t comp_desc[] =
     { "ucl_nrv2d",  "ucl_nrv2d 1.03",          "LZ77",                        1,   9,    0,  BENCH_POOL_MT, lzbench_ucl_nrv2d_compress,  lzbench_ucl_nrv2d_decompress,  NULL,                    NULL },
     { "ucl_nrv2e",  "ucl_nrv2e 1.03",          "LZ77",                        1,   9,    0,  BENCH_POOL_MT, lzbench_ucl_nrv2e_compress,  lzbench_ucl_nrv2e_decompress,  NULL,                    NULL },
     { "wflz",       "wflz 2015-09-16",         "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_wflz_compress,       lzbench_wflz_decompress,       lzbench_wflz_init,       lzbench_wflz_deinit }, // SEGFAULT on decompression with gcc 4.9+ -O3 on Ubuntu
+    { "wlz4",       "wlz4 1.0.0",              "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_wlz4_compress,       lzbench_wlz4_decompress,       lzbench_wlz4_init,       lzbench_wlz4_deinit, 0x7FFFFF00 },
+    { "wlz4fast",   "wlz4 1.0.0 --fast",       "LZ77",                        1,  99,    0,  BENCH_POOL_MT, lzbench_wlz4fast_compress,   lzbench_wlz4_decompress,       lzbench_wlz4_init,       lzbench_wlz4_deinit, 0x7FFFFF00 },
+    { "wlz4hc",     "wlz4hc 1.0.0",            "LZ77",                        0,  12,    0,  BENCH_POOL_MT, lzbench_wlz4hc_compress,     lzbench_wlz4_decompress,       lzbench_wlz4_init,       lzbench_wlz4_deinit, 0x7FFFFF00 },
+    { "wzip",       "wzip 1.0.0",              "LZ77 + Huffman",              0,  13,    0, FULL_THREADING, lzbench_wzip_compress,       lzbench_wzip_decompress,       NULL,                    NULL,                0x7EEEE000 },
     { "xz",         "xz 5.8.4",                "LZ77 + range",                0,   9,    0, FULL_THREADING, lzbench_xz_compress,         lzbench_xz_decompress,         NULL,                    NULL },
     { "yalz77",     "yalz77 2022-07-06",       "LZ77",                        1,  12,    0,  BENCH_POOL_MT, lzbench_yalz77_compress,     lzbench_yalz77_decompress,     NULL,                    NULL },
     { "yappy",      "yappy 2014-03-22",        "LZ77",                        1,  12,    0,   NO_THREADING, lzbench_yappy_compress,      lzbench_yappy_decompress,      lzbench_yappy_init,      NULL },
@@ -347,12 +351,14 @@ static const alias_desc_t alias_desc[] =
               "memcpy/brieflz,1,3,6,8/crush,0,2/fastlz,1,2/kanzi,1/lizard,10,12,15,19,20,22,25,29/lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzav/" \
               "lzf,0,1/lzg,1,4,6,8/lzjb/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
               "lzsse2,1,6,12,16/lzsse4fast/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/memlz/misa77,-1,0,1,2,3,4/misa77_safe,-1,0,1,2,3/quicklz,1,2,3/" \
-              "snappy/tamp,8,12,15/tornado,2/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/yalz77,1,6,12/zpaq,1" },
+              "snappy/tamp,8,12,15/tornado,2/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/wlz4fast,17,9,3/wlz4/wlz4hc,0,2,6,10,12/" \
+              "yalz77,1,6,12/zpaq,1" },
     // LZ+ENTROPY: LZ codecs, or levels of them, followed by Huffman, FSE/ANS or range coding
     { "LZ+ENTROPY", "Represents LZ-based compressors with an entropy coder (Huffman, FSE/ANS or range coding).",
               "memcpy/aceapex,1,2/brotli,0,2,5,8,11/fastlzma2,1,3,5,8,10/kanzi,2,3,4/libdeflate,1,3,6,9,12/" \
               "lizard,30,32,35,39,40,42,45,49/lzfse/lzham,0,1/lzlib,0,3,6,9/lzma,0,2,4,6,9/mbrotli,0,2,5,8,11/slz_gzip/" \
-              "tornado,6,11,16/xz,1,3,5,7,9/zlib,1,6,9/zlib-ng,1,6,9/zling,0,2,4/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22/zxc,1,3,6" },
+              "tornado,6,11,16/wzip,0,1,3,5,9,11,13/xz,1,3,5,7,9/zlib,1,6,9/zlib-ng,1,6,9/zling,0,2,4/zstd_fast,-5,-3,-1/" \
+              "zstd,1,2,5,8,11,15,18,22/zxc,1,3,6" },
     { "SYMMETRIC", "Includes compressors with similar compression and decompression speeds.",
               "memcpy/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,1,5,9/density,1,2,3/kanzi,5,6,7,8,9/lbzip2,1,5,9/ppmd8,1,4,9/pulsar/skim/zpaq,5" },
     { "ALL",  "Represents all major compressors.",
@@ -362,8 +368,8 @@ static const alias_desc_t alias_desc[] =
     { "FASTEST", "All LZ/LZ+ENTROPY/SYMMETRIC compressors, each at only its fastest level.",
        /* LZ */ "memcpy/brieflz,1/crush,0/fastlz,1/kanzi,1/lizard,10/lz4fast,99/lz4/lz4hc,1/lzav,1/lzf,0/lzjb/" \
               "lzo1,1/lzo1a,1/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/lzo1z/lzo2a/lzsse2,1/lzsse4fast/lzsse4,1/lzsse8,1/lzvn/memlz/" \
-              "misa77,0/misa77_safe,0/quicklz,1/snappy/tamp,8/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/yalz77,1/zpaq,1/" \
-/* LZ+ENTROPY */ "aceapex,3/brotli,0/fastlzma2,1/libdeflate,1/lzfse/lzham,0/lzlib,0/lzma,0/mbrotli,0/slz_gzip,1/xz,0/" \
+              "misa77,0/misa77_safe,0/quicklz,1/snappy/tamp,8/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/wlz4fast,99/wlz4hc,0/yalz77,1/zpaq,1/" \
+/* LZ+ENTROPY */ "aceapex,3/brotli,0/fastlzma2,1/libdeflate,1/lzfse/lzham,0/lzlib,0/lzma,0/mbrotli,0/slz_gzip,1/wzip,0/xz,0/" \
               "zlib,1/zlib-ng,1/zling,0/zstd_fast,-5/zstd,1/zxc,1/" \
   /* SYMMETR */ "bsc1/bzip2,1/bzip3,1/density,1/lbzip2,1/ppmd8,1/skim" },
     { "SLOW", "Lists very slow compressors.",
@@ -384,7 +390,8 @@ static const alias_desc_t alias_desc[] =
     { "OPT", "Includes compressors that use optimal parsing (slow compression, fast decompression).",
               "memcpy/brieflz,5,6,7,8,9/brotli,10,11/fastlzma2,3,4,5,6,7,8,9,10/libdeflate,10,11,12/" \
               "lizard,18,19,26,27,28,29,39,46,47,48,49/lz4hc,10,11,12/" \
-              "lzham,0,1,2,3,4/lzlib,1,2,3,4,5,6,7,8,9/lzma,5,6,7,8,9/xz,4,5,6,7,8,9/zstd,16,17,18,19,20,21,22" },
+              "lzham,0,1,2,3,4/lzlib,1,2,3,4,5,6,7,8,9/lzma,5,6,7,8,9/wlz4hc,8,9,10,11,12/wzip,7,8,9,10,11,12,13/" \
+              "xz,4,5,6,7,8,9/zstd,16,17,18,19,20,21,22" },
 #if !defined(BENCH_REMOVE_UCL)
     { "UCL",      "Refers to all UCL compressor variants.",
                   "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },

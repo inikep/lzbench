@@ -210,6 +210,30 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
 #endif
 
 
+#ifndef BENCH_REMOVE_WLZ4
+    int64_t lzbench_wlz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_wlz4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_wlz4hc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_wlz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    char* lzbench_wlz4_init(size_t insize, size_t level, size_t);
+    void lzbench_wlz4_deinit(char* workmem);
+#else
+    #define lzbench_wlz4_compress NULL
+    #define lzbench_wlz4fast_compress NULL
+    #define lzbench_wlz4hc_compress NULL
+    #define lzbench_wlz4_decompress NULL
+    #define lzbench_wlz4_init NULL
+    #define lzbench_wlz4_deinit NULL
+#endif
+
+#ifndef BENCH_REMOVE_WZIP
+    int64_t lzbench_wzip_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_wzip_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_wzip_compress NULL
+    #define lzbench_wzip_decompress NULL
+#endif
+
 #ifndef BENCH_REMOVE_LZ4
     int64_t lzbench_lz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_lz4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
