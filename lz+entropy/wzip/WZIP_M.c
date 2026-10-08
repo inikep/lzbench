@@ -1016,7 +1016,7 @@ static void Opt_Set_Prices(const Uint32* freq, int n, int* price)
 {
 	Uint64 total = 0;
 	for (int i = 0; i < n; i++) total += freq[i] + 1;
-	for (int i = 0; i < n; i++) price[i] = (int)(OPT_Unit * log2((double)total / (freq[i] + 1)));
+	for (int i = 0; i < n; i++) price[i] = Log2_Price(total, (Uint64)freq[i] + 1);     /* in 1/OPT_Unit bit */
 }
 
 static void Opt_Update_Prices(Opt_Stats* st)

@@ -247,6 +247,7 @@ typedef struct {
 	Huffman_DemapX2 x2[4 + (1 << MAX_HufWeight)];
 } Huffman_DecState;
 Uint64 Huffman_Code_Bits(const Huffman_Str* h, const HufCode_Str* code, const Uint32 n);
+int Log2_Price(const Uint64 total, const Uint64 d);
 Uint32 Huffman_Header_Bits(const HufCode_Str* hufLenHufStr, const Uint8* hufWtSeq, int seqSize);
 Uint32 Huffman_Compress_Block_Rep(const void* srcStart, Uint32 srcSize, void* dest, Huffman_Str* litHuf, Uint32 nLits,
 	Uint32 litHufCapBits, Huffman_Prev* prev);

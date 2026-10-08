@@ -162,6 +162,14 @@ static size_t Seq_Stack_Place(Seq_Stack* q, Uint8* dst)
    2^L0_SkipLog literals */
 #define   L0_HashLog           18
 #define   L0_SkipLog           8
+/* in levels 0 and 1, the probe step stops growing at 1 + L_MaxProbeStep, so that they find matches again soon after a
+   long stretch without any; a literal run of L_RunBreakAt bytes (half the format's limit of 2^24) ends at the first
+   short match L_Run_Break finds, and only without one is the input stored */
+#ifndef L_MaxProbeStep
+#define   L_MaxProbeStep       1024
+#endif
+#define   L_RunBreakAt         (1u << 23)
+#define   L_PROBE_STEP(run, skipLog)   (min((Uint32)((run) >> (skipLog)), (Uint32)L_MaxProbeStep) + 1)
 
 /* a candidate is only taken if it matches at least `need` bytes: test byte need-1 before counting, when both
    reads are in bounds. It rejects only candidates that the full count would reject. */
@@ -718,6 +726,29 @@ ForceInlineTemplate int Repeat_Match_Len(const Uint8* const source, Uint32 srcId
    is narrower (constant true on 64-bit targets) */
 #define WORD_MATCH_FITS(len, off)   (REG_SIZE >= 8 || (len) > hash2Len || (off) < WINDOW(SrchWidth[len]))
 
+/* The first position from p on (before end) whose next MinMatchLen bytes or more repeat at an offset below `window`
+   (the window of the shortest matches, so the match is valid at any length): it ends a literal run that the fast
+   levels' probes have not ended before the run outgrows the format. Each position is looked up in a table of the last
+   position per hash of its first 3 bytes, then entered. NULL if there is none. */
+static const Uint8* L_Run_Break(const Uint8* const source, const Uint8* p, const Uint8* const end, const Uint32 window,
+	Uint32* const len, Uint32* const off)
+{
+	Uint32 last[1 << 12];
+	memset(last, 0xFF, sizeof(last));
+	for (; p < end; p++) {
+		const Uint32 pos = (Uint32)(p - source);
+		const Uint32 h = (((Uint32)p[0] | (Uint32)p[1] << 8 | (Uint32)p[2] << 16) * 2654435761u) >> 20;
+		const Uint32 cand = last[h];
+		last[h] = pos;
+		if (cand != 0xFFFFFFFF && pos - cand < window && 0 == memcmp(source + cand, p, MinMatchLen)) {
+			*off = pos - cand;
+			*len = MinMatchLen + WLZ_Match_Count(p + MinMatchLen, source + cand + MinMatchLen, end, NULL);
+			return p;
+		}
+	}
+	return NULL;
+}
+
 ForceInlineTemplate Uint32 WLZ2_Compress_Fast(
 	WZIP_State_Str* const wzipStr,
 	const Uint8* const source,
@@ -790,10 +821,34 @@ ForceInlineTemplate Uint32 WLZ2_Compress_Fast(
 	for (i = 0; i < OffCasheSize; i++ )
 		lastOffset[i] = -1;                     /* unset (0xFFFFFFFF): above every offset, so never a hit */
 
+	Uint32 runBreakAt = L_RunBreakAt;
 	while (1) {
 
 		while (1) {
 			if (unlikely(srcPtr >= srcLastMatch)) goto _last_literals;
+			if (unlikely((Uint32)(srcPtr - anchor) >= runBreakAt)) {     /* a literal run nearing the format's limit */
+				Uint32 bLen, bOff;
+				const Uint8* const b = L_Run_Break(source, srcPtr, srcLastMatch, WINDOW(SrchWidth[MinMatchLen]), &bLen, &bOff);
+				if (NULL == b) runBreakAt = 0xFFFFFFFF;     /* none to the end: the run grows too long, and the input is stored */
+				else {
+					while (srcPtr < b) {
+						*lzLitPtr++ = *srcPtr;
+						litHuf[*srcPtr].freq++;
+						srcPtr++;
+						srcIdx++;
+						if (lzLitPtr == lzLitEnd) {
+							LIT_PUT_BLOCK(HUF_BlockSize);
+							wzipLitPtr += zipLitBlkSize;
+							lzLitPtr = lzLitBuffer;
+							memset(litHuf, 0, N_HufLits * sizeof(Huffman_Str));
+							nLzLits += HUF_BlockSize;
+						}
+					}
+					matchLen = (int)bLen;
+					matchOffset = (int)bOff;
+					break;
+				}
+			}
 
 			hashV1 = WLZ_Hash1(srcPtr) & wzipStr->hash1Mask;
 			hashV2 = WLZ_Hash2(srcPtr) & wzipStr->hash2Mask;
@@ -858,7 +913,7 @@ ForceInlineTemplate Uint32 WLZ2_Compress_Fast(
 				break;
 
 			/* no match: emit literals up to the next probe, which moves further apart in long literal runs */
-			const Uint8* const nextProbe = srcPtr + 1 + ((srcPtr - anchor) >> L0_SkipLog);
+			const Uint8* const nextProbe = srcPtr + L_PROBE_STEP(srcPtr - anchor, L0_SkipLog);
 			do {
 				*lzLitPtr++ = *srcPtr;
 				litHuf[*srcPtr].freq++;
@@ -1060,8 +1115,10 @@ _last_literals:
 		*lzLitPtr++ = *srcPtr++;
 	}
 	Uint32 lastBufLits = (Uint32)(lzLitPtr - lzLitBuffer);     /* remaining number literals in the buffer to be flushed */
-	LIT_PUT_BLOCK(lastBufLits);
-	wzipLitPtr += zipLitBlkSize;
+	if (lastBufLits) {                                   /* none when the literals filled their last block exactly */
+		LIT_PUT_BLOCK(lastBufLits);
+		wzipLitPtr += zipLitBlkSize;
+	}
 	nLzLits += lastBufLits;
 	if (srcSize >> 16) MemWriteLE4(wzipStream, nLzLits);       /* record the number of LZ literals at the beginning of zip stream */
 	else               MemWriteLE2(wzipStream, (Uint16)nLzLits);
@@ -1247,35 +1304,41 @@ static Uint32 WLZ2_Compress_Fast1(
 
 	const Uint8* ip = srcPtr;
 	while (ip < srcLastMatch) {
-		const Uint32 cur = (Uint32)(ip - source);
-		const Uint32 h = F_HASH(ip);
-		const int m = fTable[h];
-		fTable[h] = (int)cur;
 		const Uint8* mStart;
 		Uint32 mLen, mOff;
-
-		const Uint32 rep0 = (Uint32)lastOffset[0];
-		if (rep0 <= cur && MemRead4(ip + 1) == MemRead4(ip + 1 - rep0)) {   /* the most recent offset, one byte ahead */
-			mStart = ip + 1;
-			mOff = rep0;
-			mLen = 4 + WLZ_Match_Count(ip + 5, ip + 5 - rep0, srcLastMatch, NULL);
+		if (unlikely((Uint32)(ip - anchor) >= L_RunBreakAt)) {     /* a literal run nearing the format's limit */
+			mStart = L_Run_Break(source, ip, srcLastMatch, WINDOW(SrchWidth[MinMatchLen]), &mLen, &mOff);
+			if (NULL == mStart) break;                   /* no short match to the end: the run is too long, the input stored */
 		}
 		else {
-			if (m < 0 || (Uint32)m >= cur || cur - (Uint32)m >= fWindow) {
-				ip += ((ip - anchor) >> fStep) + 1;
-				continue;
+			const Uint32 cur = (Uint32)(ip - source);
+			const Uint32 h = F_HASH(ip);
+			const int m = fTable[h];
+			fTable[h] = (int)cur;
+
+			const Uint32 rep0 = (Uint32)lastOffset[0];
+			if (rep0 <= cur && MemRead4(ip + 1) == MemRead4(ip + 1 - rep0)) {   /* the most recent offset, one byte ahead */
+				mStart = ip + 1;
+				mOff = rep0;
+				mLen = 4 + WLZ_Match_Count(ip + 5, ip + 5 - rep0, srcLastMatch, NULL);
 			}
-			const Uint8* const mp = source + m;
-			const reg_t diff = MemReadARCH(ip) ^ MemReadARCH(mp);
-			const Uint32 len = diff ? N_ZeroBytes(diff) : REG_SIZE + WLZ_Match_Count(ip + REG_SIZE, mp + REG_SIZE, srcLastMatch, NULL);
-			if (len < (Uint32)fMls) {
-				ip += ((ip - anchor) >> fStep) + 1;
-				continue;
-			}
-			mStart = ip; mOff = cur - (Uint32)m; mLen = len;
-			while (mStart > anchor && (Uint32)(mStart - source) > mOff && mStart[-1] == mStart[-1 - (int)mOff]) {
-				mStart--;
-				mLen++;
+			else {
+				if (m < 0 || (Uint32)m >= cur || cur - (Uint32)m >= fWindow) {
+					ip += L_PROBE_STEP(ip - anchor, fStep);
+					continue;
+				}
+				const Uint8* const mp = source + m;
+				const reg_t diff = MemReadARCH(ip) ^ MemReadARCH(mp);
+				const Uint32 len = diff ? N_ZeroBytes(diff) : REG_SIZE + WLZ_Match_Count(ip + REG_SIZE, mp + REG_SIZE, srcLastMatch, NULL);
+				if (len < (Uint32)fMls) {
+					ip += L_PROBE_STEP(ip - anchor, fStep);
+					continue;
+				}
+				mStart = ip; mOff = cur - (Uint32)m; mLen = len;
+				while (mStart > anchor && (Uint32)(mStart - source) > mOff && mStart[-1] == mStart[-1 - (int)mOff]) {
+					mStart--;
+					mLen++;
+				}
 			}
 		}
 		if (mOff == 1) {                         /* a run is not bound by the match-length cap */
@@ -1326,10 +1389,12 @@ static Uint32 WLZ2_Compress_Fast1(
 		litHuf[*srcPtr].freq++;
 		*lzLitPtr++ = *srcPtr++;
 	}
-	Uint32 lastBufLits = (Uint32)(lzLitPtr - lzLitBuffer);
-	Literal_Histogram(lzLitBuffer, lastBufLits, litHuf);     /* the fast loop counts literals per block */     /* remaining number literals in the buffer to be flushed */
-	LIT_PUT_BLOCK(lastBufLits);
-	wzipLitPtr += zipLitBlkSize;
+	Uint32 lastBufLits = (Uint32)(lzLitPtr - lzLitBuffer);     /* remaining number literals in the buffer to be flushed */
+	if (lastBufLits) {                                   /* none when the literals filled their last block exactly */
+		Literal_Histogram(lzLitBuffer, lastBufLits, litHuf);     /* the fast loop counts literals per block */
+		LIT_PUT_BLOCK(lastBufLits);
+		wzipLitPtr += zipLitBlkSize;
+	}
 	nLzLits += lastBufLits;
 	if (srcSize >> 16) MemWriteLE4(wzipStream, nLzLits);       /* record the number of LZ literals at the beginning of zip stream */
 	else               MemWriteLE2(wzipStream, (Uint16)nLzLits);
@@ -1847,8 +1912,10 @@ _last_literals:
 		*lzLitPtr++ = *srcPtr++;
 	}
 	Uint32 lastBufLits = (Uint32)(lzLitPtr - lzLitBuffer);     /* remaining number literals in the buffer to be flushed */
-	LIT_PUT_BLOCK(lastBufLits);
-	wzipLitPtr += zipLitBlkSize;
+	if (lastBufLits) {                                   /* none when the literals filled their last block exactly */
+		LIT_PUT_BLOCK(lastBufLits);
+		wzipLitPtr += zipLitBlkSize;
+	}
 	nLzLits += lastBufLits;
 	if (srcSize >> 16) MemWriteLE4(wzipStream, nLzLits);       /* record the number of LZ literals at the beginning of zip stream */
 	else               MemWriteLE2(wzipStream, (Uint16)nLzLits);
@@ -1986,7 +2053,7 @@ static void Opt_Set_Prices(const Uint32* freq, int n, int* price)
 {
 	Uint64 total = 0;
 	for (int i = 0; i < n; i++) total += freq[i] + 1;
-	for (int i = 0; i < n; i++) price[i] = (int)(OPT_Unit * log2((double)total / (freq[i] + 1)));
+	for (int i = 0; i < n; i++) price[i] = Log2_Price(total, (Uint64)freq[i] + 1);     /* in 1/OPT_Unit bit */
 }
 
 static void Opt_Update_Prices(WZL_Sched* const S_, Opt_Stats* st)
@@ -2864,8 +2931,10 @@ static Uint32 WLZ2_Compress_Opt_Pass(
 		*lzLitPtr++ = *srcPtr++;
 	}
 	const Uint32 lastBufLits = (Uint32)(lzLitPtr - lzLitBuffer);
-	LIT_PUT_BLOCK(lastBufLits);
-	wzipLitPtr += zipLitBlkSize;
+	if (lastBufLits) {                                   /* none when the literals filled their last block exactly */
+		LIT_PUT_BLOCK(lastBufLits);
+		wzipLitPtr += zipLitBlkSize;
+	}
 	nLzLits += lastBufLits;
 	if (srcSize >> 16) MemWriteLE4(wzipStream, nLzLits);
 	else               MemWriteLE2(wzipStream, (Uint16)nLzLits);
@@ -3152,7 +3221,7 @@ static int Seq_Read_Tables(WZL_Sched* const S_, Bit_Stream* const bs, WLZ_HufWt_
 {
 	Bit_Stream bitStream = *bs;
 	const Uint32 nTab = 2 + MchOffGroup;
-	Uint32 reuse[2 + MaxMchOffGroup], nSent = 0, t;
+	Uint32 reuse[2 + MaxMchOffGroup] = { 0 }, nSent = 0, t;     /* initialized for GCC's -m32 flow analysis only */
 	for (t = 0; t < nTab; t++) {
 		BITStream_Read(bitStream, 1, reuse[t]);
 		nSent += !reuse[t];
