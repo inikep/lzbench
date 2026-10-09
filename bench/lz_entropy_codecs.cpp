@@ -222,6 +222,25 @@ int64_t lzbench_libdeflate_decompress(char *inbuf, size_t insize, char *outbuf, 
 
 
 
+#ifndef BENCH_REMOVE_WZIP
+#include "lz+entropy/wzip/WZIP.h"
+
+int64_t lzbench_wzip_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    int cap = outsize > 0x7FFFFFFF ? 0x7FFFFFFF : (int)outsize;
+    return wzip_compress_mt(inbuf, (int)insize, outbuf, &cap, codec_options->level, codec_options->threads);
+}
+
+int64_t lzbench_wzip_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    int cap = (int)outsize;
+    return wzip_decompress(inbuf, (int)insize, outbuf, &cap);
+}
+
+#endif
+
+
+
 #ifndef BENCH_REMOVE_LIZARD
 #include "lz+entropy/lizard/lizard_compress.h"
 #include "lz+entropy/lizard/lizard_decompress.h"
