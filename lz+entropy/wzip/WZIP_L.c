@@ -25,6 +25,16 @@
 #define   CapHufLitBits        MAX_HufWeight     
 #define   CapHufLitRunBits     11
 #define   CapHufMchLenBits     11
+/* with sized sequence blocks (format 2) the joint code may use 12-bit lengths: the encoder lets it where that saves
+   JOINT_WIDE_MIN bits or more, 1/64 bit a sequence, as a 12-bit code doubles the decoder's table (at level 11, wherever
+   it saves anything: Silesia 0.024% smaller, decoding 1.3% slower; with this bar 0.020%, decoding within 1%) */
+#define   CapHufJointWide      12
+#ifndef JOINT_WIDE_SHIFT
+#define   JOINT_WIDE_SHIFT     6
+#endif
+#ifndef JOINT_WIDE_MIN
+#define   JOINT_WIDE_MIN(nSeq) ((Uint64)(nSeq) >> JOINT_WIDE_SHIFT)
+#endif
 #define   CapHufMchOffBits     10
 
 #define   MinMatchLen          3
@@ -52,7 +62,7 @@
 #define   LitRunDirect         32
 #define   n_hufMachOff(offwidth) (2*offWidth)
 #define   N_HufMchOffMax       (27*2)                              /* offsets of up to 27 bits */
-#define   SEQ_BlockBound       (SEQ_BlockSize * 12 + 8192)         /* a block of sequences writes at most this: 93 bits a sequence, tables */
+#define   SEQ_BlockBound       (SEQ_BlockSize * 12 + 8192)         /* a block of sequences writes at most this: 94 bits a sequence, tables */
 /* The sequence blocks wait at the end of the output buffer while the literal stream, which the stream puts first, grows
    from its start; at the end they move up behind the literals. Each block is coded in a scratch buffer of
    SEQ_BlockBound bytes (wlzStream) and stacked downward from the end of the capacity, so that no buffer of the
@@ -111,8 +121,8 @@ static size_t Seq_Stack_Place(Seq_Stack* q, Uint8* dst)
 }
 
 /* codes the sequences wlzSeq..wlzSeqPtr as a block and stacks it */
-#define   SEQ_PUT_BLOCK()      { const Uint32 n_ = Huffman_Compress_WLZ(S_, wlzSeq, wlzSeqPtr, wlzStream, SEQ_BlockBound, &huffmanSet, &seqPrev); \
-		if (!Seq_Stack_Push(&seqStack, wlzStream, n_, wzipLitPtr)) goto _lit_overflow; }
+#define   SEQ_PUT_BLOCK()      { if (!Seq_Put_Blocks(S_, wlzSeq, wlzSeqPtr, wlzStream, &huffmanSet, &seqPrev, &seqStack, wzipLitPtr)) \
+		goto _lit_overflow; }
 /* codes nLits_ literals of lzLitBuffer at wzipLitPtr (zipLitBlkSize: their size), below the stacked sequences */
 #define   LIT_PUT_BLOCK(nLits_) { if (wzipLitEnd - wzipLitPtr < (ptrdiff_t)(nLits_) + LIT_BlockSlack) goto _lit_overflow;   \
 		if (seqStack.tail - wzipLitPtr >= (ptrdiff_t)(nLits_) + LIT_BlockSlack)                                         \
@@ -126,6 +136,7 @@ static size_t Seq_Stack_Place(Seq_Stack* q, Uint8* dst)
 #define   OFF_SymBits          6                                   /* a sequence packs its offset symbol in 6 bits, raw bits above */
 #define   MaxMchOffGroup       8
 #define   SEQ_BlockSize        (1<<14)                   /*unit size of WLZ sequence to be Huffman coded */
+#define   SEQ_CountBits        14                        /* a sized block's count of sequences, less one */
 
 #define   OffCasheSize          4                                   /* cashe size for the latest matching offsets */
 #define   WINDOW(w)            ( (1<<w) -OffCasheSize +1 )
@@ -189,6 +200,9 @@ typedef struct {
 	int   offGroupsFine;                               /* 1: the eight-group layout (lengths 3, 4, 5, 6, 7, 8-9, 10-15, 16+) */
 	Uint8 offGroupOf[N_HufMchLen];                     /* length symbol -> offset group */
 	int   litRunTooLong;                               /* set by the encoder: a literal run the format cannot code */
+	int   seqSized;                                    /* 1: each sequence block starts with its sequence count */
+	int   seqSplit;                                    /* the encoder's: 1 to split buffers of sequences into sized blocks */
+	int   noFilters;                                   /* the encoder's: 1 not to try filters (a filter trial's state) */
 } WZL_Sched;
 #define   OffWidth             (S_->offWidth)
 #define   SrchWidth            (S_->srchWidth)
@@ -197,6 +211,8 @@ typedef struct {
 #define   OffGroupsFine        (S_->offGroupsFine)
 #define   OffGroupOf           (S_->offGroupOf)
 #define   LitRunTooLong        (S_->litRunTooLong)
+#define   SeqSized             (S_->seqSized)
+#define   SeqSplit             (S_->seqSplit)
 #define   SCHED(wzipStr)       WZL_Sched* const S_ = (WZL_Sched*)(wzipStr)->sched
 
 /* Offset groups, contiguous ranges of length symbols: by default one per length below the widest window (natural) and
@@ -286,6 +302,7 @@ typedef struct {
 	Uint32 maxLitRunHufWt;
 	Uint32 maxMchLenHufWt;
 	Uint32 slotJoint;                                  /* the block's joint symbol carries the cache slot */
+	Uint32 seqCount;                                   /* the block's sequences: SEQ_BlockSize, or its count if sized */
 	Uint32 maxMchOffHufWt[MaxMchOffGroup];
 	Uint8 litRunHufWt[N_HufLitRun];
 	Uint8 mchLenHufWt[N_HufJoint];
@@ -573,6 +590,13 @@ ForceInlineTemplate Uint32 Huffman_Compress_WLZ(WZL_Sched* const S_, WLZ_Set* wl
 	const Uint32 nJoint = slotJoint ? N_HufJoint : N_HufJointClassic;
 	Build_Huffman_Table(huffmanSet->litRunHuf, N_HufLitRun, CapHufLitRunBits, hufCodeSet.litRun);
 	Build_Huffman_Table(huffmanSet->mchLenHuf, nJoint, CapHufMchLenBits, hufCodeSet.mchLen);
+	if (SeqSized) {                                          /* a 12-bit joint code, where it saves enough */
+		HufCode_Str wide[N_HufJoint];
+		Build_Huffman_Table(huffmanSet->mchLenHuf, nJoint, CapHufJointWide, wide);
+		const Uint64 narrowBits = Huffman_Code_Bits(huffmanSet->mchLenHuf, hufCodeSet.mchLen, nJoint);
+		const Uint64 wideBits = Huffman_Code_Bits(huffmanSet->mchLenHuf, wide, nJoint);
+		if (wideBits + JOINT_WIDE_MIN(wlzSeqEnd - wlzSeq) < narrowBits) memcpy(hufCodeSet.mchLen, wide, nJoint * sizeof(HufCode_Str));
+	}
 	for (i = 0; i < MchOffGroup; i++) {
 		Build_Huffman_Table(huffmanSet->mchOffHuf[i], N_HufMchOff[i], CapHufMchOffBits, hufCodeSet.mchOff[i]);
 	}
@@ -636,6 +660,7 @@ ForceInlineTemplate Uint32 Huffman_Compress_WLZ(WZL_Sched* const S_, WLZ_Set* wl
 	}
 
 	BITStream_Write(bitStream, (Uint32)slotJoint, 1);          /* the block's coding */
+	if (SeqSized) BITStream_Write(bitStream, (Uint32)(wlzSeqEnd - wlzSeq - 1), SEQ_CountBits);   /* its sequences - 1 */
 	for (Uint32 t = 0; t < nTab; t++)
 		BITStream_Write(bitStream, reuse[t], 1);              /* each table: its own code, or the last one */
 	BITStream_Write_Flush(bitStream);
@@ -672,6 +697,125 @@ ForceInlineTemplate Uint32 Huffman_Compress_WLZ(WZL_Sched* const S_, WLZ_Set* wl
 	return (Uint32)(wzipBufPtr - wzipBuffer);
 }
 
+
+/* Sized sequence blocks (the window header's flag; levels SEQ_SizedLevel and up): a buffer of up to SEQ_BlockSize
+   sequences is coded as one block, or split in halves, recursively down to chunks of SEQ_SplitChunk sequences,
+   wherever the halves, each with codes of its own, are estimated to take fewer bits. The estimate counts each code's
+   symbols at their entropy (an integer log2 in 1/16 bit, so that every platform splits alike), 4 bits for each used
+   symbol's length, the joint code as the cheaper of the slot-joint and classic codings, and SEQ_BlockBits for the
+   rest of a block's header. */
+#define   SEQ_SizedLevel       2
+#define   SEQ_SplitDepth       4                         /* halvings: down to SEQ_BlockSize >> 4 sequences */
+#define   SEQ_SplitChunk       (SEQ_BlockSize >> SEQ_SplitDepth)
+#define   SEQ_BlockBits        1024                      /* a block's header but for its codes' lengths, what a split
+                                                            costs the codes in general, and the decoder's table builds
+                                                            (tuned on Silesia: 512 gains 0.03% more and decodes 1-1.3%
+                                                            slower, 2048 decodes 1% faster and gains 0.08% less) */
+#define   SEQ_SymBits          4                         /* a used symbol's length in the code's header */
+
+typedef struct {
+	Uint16 joint[N_HufJoint];                            /* slot-joint symbols */
+	Uint16 classic[N_HufJointClassic];                   /* classic joint symbols */
+	Uint16 litRun[N_HufLitRun];                          /* literal-run symbols of runs of 2 and more */
+	Uint16 off[MaxMchOffGroup][N_HufMchOffMax];          /* new offsets (and run counts) per group; 0-3 unused */
+	Uint16 slot[MaxMchOffGroup][OffCasheSize];           /* cache hits per group, which classic blocks code as offsets */
+} Seq_Hist;
+
+/* log2(x) in 1/16 bit, linear between powers of two, for x >= 1 */
+static Uint32 Lg16(const Uint32 x)
+{
+	const Uint32 msb = High_Bit32(x);
+	return msb * 16 + ((x << (31 - msb)) >> 27 & 15);
+}
+
+/* a code's bits in 1/16 bit: its symbols at their entropy, and 4 bits for each used symbol's length */
+static Uint64 Hist_Bits16(const Uint16* h, const int n)
+{
+	Uint32 total = 0, used = 0;
+	Uint64 sum = 0;
+	for (int i = 0; i < n; i++)
+		if (h[i]) { total += h[i]; sum += (Uint64)h[i] * Lg16(h[i]); used++; }
+	return total ? (Uint64)total * Lg16(total) - sum + 16 * SEQ_SymBits * (Uint64)used : 0;
+}
+
+static void Seq_Hist_Count(WZL_Sched* const S_, Seq_Hist* const h, const WLZ_Set* q, const WLZ_Set* const end)
+{
+	for (; q < end; q++) {
+		const Uint32 l = q->litRun & 255, last = q->mchLen == 255, m = last ? 0 : q->mchLen & 255, o = q->mchOff & BitMask[OFF_SymBits];
+		const Uint32 slotSel = last || m == RunSym || o >= OffCasheSize ? OffCasheSize : o;
+		h->joint[JointIdx(slotSel, LitClass(l), m)]++;
+		h->classic[LitClass(l) * N_HufMchLen + m]++;
+		if (!last && slotSel == OffCasheSize) h->off[OffGroupOf[m]][o]++;
+		if (!last && slotSel < OffCasheSize) h->slot[OffGroupOf[m]][slotSel]++;
+		if (l >= 2) h->litRun[l]++;
+	}
+}
+
+/* the estimated bits of a block of the sequences counted in h, in 1/16 bit */
+static Uint64 Seq_Hist_Bits16(WZL_Sched* const S_, const Seq_Hist* const h)
+{
+	Uint64 sj = Hist_Bits16(h->joint, N_HufJoint), cl = Hist_Bits16(h->classic, N_HufJointClassic);
+	for (int g = 0; g < MchOffGroup; g++) {
+		Uint16 withSlots[N_HufMchOffMax];
+		memcpy(withSlots, h->off[g], N_HufMchOff[g] * sizeof(Uint16));
+		for (int k = 0; k < OffCasheSize; k++) withSlots[k] = h->slot[g][k];
+		sj += Hist_Bits16(h->off[g], N_HufMchOff[g]);
+		cl += Hist_Bits16(withSlots, N_HufMchOff[g]);
+	}
+	return min(sj, cl) + Hist_Bits16(h->litRun, N_HufLitRun) + 16 * SEQ_BlockBits;
+}
+
+/* the cheaper of chunks [c0, c1) as one block or split in halves (recursively); appends the chunk ends of its blocks */
+static Uint64 Seq_Split_Best(WZL_Sched* const S_, const Seq_Hist* const chunk, const int c0, const int c1, const int depth,
+	int* const ends, int* const nEnds)
+{
+	Seq_Hist h;
+	memcpy(&h, &chunk[c0], sizeof(h));
+	for (int c = c0 + 1; c < c1; c++) {
+		const Uint16* const a = (const Uint16*)&chunk[c];
+		Uint16* const s = (Uint16*)&h;
+		for (size_t i = 0; i < sizeof(h) / sizeof(Uint16); i++) s[i] = (Uint16)(s[i] + a[i]);
+	}
+	const Uint64 whole = Seq_Hist_Bits16(S_, &h);
+	if (depth < SEQ_SplitDepth && c1 - c0 >= 2) {
+		const int save = *nEnds, mid = (c0 + c1) / 2;
+		/* the left half first, so that its ends come first (the order of the operands of + is unspecified, and
+		   MSVC evaluates the right one first) */
+		const Uint64 left = Seq_Split_Best(S_, chunk, c0, mid, depth + 1, ends, nEnds);
+		const Uint64 halves = left + Seq_Split_Best(S_, chunk, mid, c1, depth + 1, ends, nEnds);
+		if (halves < whole) return halves;
+		*nEnds = save;
+	}
+	ends[(*nEnds)++] = c1;
+	return whole;
+}
+
+/* codes the sequences seq..seqEnd as one block or several (sized blocks), and stacks them; 0 if the output is full */
+static int Seq_Put_Blocks(WZL_Sched* const S_, WLZ_Set* const seq, WLZ_Set* const seqEnd, Uint8* const wlzStream,
+	WLZ_Huffman_Set* const huffmanSet, Seq_Prev* const prev, Seq_Stack* const stack, const Uint8* const litEnd)
+{
+	const int n = (int)(seqEnd - seq);
+	int ends[(SEQ_BlockSize / SEQ_SplitChunk) + 1], nEnds = 0;
+	if (SeqSplit && n >= 2 * SEQ_SplitChunk) {
+		const int nChunks = (n + SEQ_SplitChunk - 1) / SEQ_SplitChunk;
+		Seq_Hist* const chunk = (Seq_Hist*)calloc((size_t)nChunks, sizeof(Seq_Hist));
+		if (chunk) {
+			for (int c = 0; c < nChunks; c++)
+				Seq_Hist_Count(S_, &chunk[c], seq + c * SEQ_SplitChunk, seq + min(n, (c + 1) * SEQ_SplitChunk));
+			Seq_Split_Best(S_, chunk, 0, nChunks, 0, ends, &nEnds);
+			free(chunk);
+		}
+	}
+	if (0 == nEnds) ends[nEnds++] = (n + SEQ_SplitChunk - 1) / SEQ_SplitChunk;
+	WLZ_Set* from = seq;
+	for (int k = 0; k < nEnds; k++) {
+		WLZ_Set* const to = seq + min(n, ends[k] * SEQ_SplitChunk);
+		const Uint32 len = Huffman_Compress_WLZ(S_, from, to, wlzStream, SEQ_BlockBound, huffmanSet, prev);
+		if (!Seq_Stack_Push(stack, wlzStream, len, litEnd)) return 0;
+		from = to;
+	}
+	return 1;
+}
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Fast compression without using hash-chain  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
@@ -2987,9 +3131,411 @@ static Uint32 WLZ2_Compress_Opt(WZIP_State_Str* const wzipStr, const Uint8* cons
 	return size;
 }
 
+/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Region filters (format 2) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+/* A filter recodes a region of the input (2^R bytes; the last one may be shorter) before compression, and the decoder
+   undoes it once the whole input is decoded, region by region from the first (doc/WZIP_format.md, section 5.6):
+   FLT_X86    x86 calls and jumps: at each position i of the region, from its end down, where byte E8 or E9 (call, jmp)
+              is followed by a little-endian 32-bit operand inside the region whose top byte is 00 or FF, the
+              operand's low 25 bits v become v + i + 5 mod 2^25 (i counted from the input's start: relative targets
+              turn absolute) and its top byte the result's sign, 00 or FF. Going up, the decoder sees each position
+              as the encoder did. (Conditional jumps, 0F 80-8F, gain on some x86-64 code and lose more on other.)
+   delta s    each byte less the byte s before it in the input (0 before the input's start), mod 256; filters
+              FLT_Delta to FLT_DeltaS - 1 have the strides of FLT_Stride, FLT_DeltaS any stride of 1-255, in a byte
+              after its run in the map.
+   From FLT_MinLevel on, the encoder tries them per region: it compresses the region at level 0 as it is and filtered,
+   and keeps the smallest (sizes, so that every platform chooses alike). */
+enum { FLT_None, FLT_X86, FLT_Delta, FLT_DeltaS = FLT_Delta + 8, FLT_Count };
+static const Uint8 FLT_Stride[FLT_Count] = { 0, 0, 1, 2, 3, 4, 8, 16, 24, 32, 0 };
+/* a region's filter in the encoder's map: the filter, and FLT_DeltaS's stride << 8 */
+#define   FLT_ENTRY(id, s)     ((Uint16)((id) | ((id) == FLT_DeltaS ? (s) << 8 : 0)))
+#define   FLT_ID(e)            ((e) & 15)
+#define   FLT_STRIDE(e)        (FLT_ID(e) == FLT_DeltaS ? (e) >> 8 : FLT_Stride[FLT_ID(e)])
+#define   FLT_HasMap           4                         /* the window header's flag (top nibble): a filter map follows */
+#define   FLT_IdBits           4                         /* a run of the map: LEB128 (length - 1) << FLT_IdBits | filter */
+#define   FLT_MinLog           12                        /* the map's region log, FLT_MinLog to FLT_MaxLog */
+#define   FLT_MaxLog           24
+#define   FLT_RegionLog        16                        /* the encoder's */
+#ifndef FLT_MinLevel
+#define   FLT_MinLevel         7                         /* the lowest level that tries filters */
+#endif
+#define   FLT_MinRegion        (1 << 15)                 /* shorter regions (an input's tail) stay unfiltered */
+#define   FLT_X86Calls         64                        /* x86 is tried on a region with this many plausible calls */
+#define   FLT_DeltaGate        64                        /* delta is tried where it lowers the order-0 entropy of a
+                                                            sample of the region by 1/4 bit a byte (in 1/256 bit) */
+#define   FLT_DeltaMargin      2                         /* and kept if it beats the plain region by 2% */
+#define   FLT_GoodEnough       3                         /* a filter that beats it by 3% ends the trials */
+#define   FLT_SampleLog        10                        /* the entropy sample: 2^10 bytes of every 2^12 */
+#define   FLT_WorthLog         12                        /* filters are used if they save 1/2^12 of the input */
+#ifndef FLT_ScanLevel
+#define   FLT_ScanLevel        11                        /* from this level, every stride of 1 to FLT_ScanStrides */
+#endif
+#define   FLT_ScanStrides      64
+#define   FLT_ScanSampleLog    14                        /* the scan's sample: 2^10 bytes of every 2^14 */
+#define   FLT_ScanTop          2                         /* the strides of the scan tried, at most */
+#define   FLT_ScanMargin       10                        /* and kept if they beat the plain region by 10% (a fast
+                                                            trial may favor them where the optimal parser does not:
+                                                            sao's 28-byte records, 2-8% at level 0, lost 4% at 11) */
+/* the filters each level tries, the most common first: x86 code; 16-, 32- and 64-bit numbers (audio, images, tables);
+   from level 9 bytes and RGB pixels; from level 11 records of 16, 24 and 32 bytes (e.g. ELF tables); from
+   FLT_ScanLevel also the other strides of 1 to FLT_ScanStrides that lower the entropy most (records of any size) */
+static int FLT_Tries(const int level, Uint8* const ids)
+{
+	static const Uint8 order[FLT_Count - 1] = { FLT_X86, FLT_Delta + 1, FLT_Delta + 3, FLT_Delta + 4, FLT_Delta,
+	                                            FLT_Delta + 2, FLT_Delta + 5, FLT_Delta + 6, FLT_Delta + 7 };
+	const int n = level >= 11 ? 9 : level >= 9 ? 6 : 4;
+	memcpy(ids, order, (size_t)n);
+	return n;
+}
+
+#define   X86_IS_CALL(p)       (((p)[0] & 0xFE) == 0xE8 && (Uint8)((p)[4] + 1) <= 1)       /* E8/E9, operand < 2^24 */
+static Uint32 X86_Get25(const Uint8* const p) { return p[1] | (Uint32)p[2] << 8 | (Uint32)p[3] << 16 | (Uint32)(p[4] & 1) << 24; }
+static void X86_Put25(Uint8* const p, const Uint32 v)
+{
+	p[1] = (Uint8)v; p[2] = (Uint8)(v >> 8); p[3] = (Uint8)(v >> 16); p[4] = (Uint8)(0 - (v >> 24 & 1));
+}
+
+/* region [from, to) of the input src, filtered into dst (dst[0] is the region's first byte) */
+static void Flt_Encode(Uint8* const dst, const Uint8* const src, const int from, const int to, const Uint16 e)
+{
+	const int id = FLT_ID(e);
+	if (id == FLT_X86) {
+		memcpy(dst, src + from, (size_t)(to - from));
+		for (int i = to - 5; i >= from; i--) {
+			Uint8* const p = dst + (i - from);
+			if (X86_IS_CALL(p)) X86_Put25(p, (X86_Get25(p) + (Uint32)i + 5) & 0x1FFFFFF);
+		}
+	}
+	else if (id >= FLT_Delta) {
+		const int s = FLT_STRIDE(e);
+		int i = from;
+		for (; i < to && i < s; i++) dst[i - from] = src[i];
+		for (; i < to; i++) dst[i - from] = (Uint8)(src[i] - src[i - s]);
+	}
+	else memcpy(dst, src + from, (size_t)(to - from));
+}
+
+#define   SWAR_LO7             0x7F7F7F7F7F7F7F7FULL
+#define   SWAR_HI              0x8080808080808080ULL
+#define   SWAR_ONE             0x0101010101010101ULL
+/* the index of the lowest nonzero byte of m != 0 */
+static int Low_Byte64(Uint64 m)
+{
+#if defined(__GNUC__) || defined(__clang__)
+	return __builtin_ctzll(m) >> 3;
+#elif defined(_MSC_VER) && defined(_WIN64)
+	unsigned long r;
+	_BitScanForward64(&r, m);
+	return (int)(r >> 3);
+#else
+	int k = 0;
+	if (!(m & 0xFFFFFFFFu)) { m >>= 32; k = 4; }
+	if (!(m & 0xFFFF)) { m >>= 16; k += 2; }
+	return k + !(m & 0xFF);
+#endif
+}
+
+/* x + y bytewise, without carries between the bytes */
+static Uint64 Add_Bytes8(const Uint64 x, const Uint64 y) { return ((x & SWAR_LO7) + (y & SWAR_LO7)) ^ ((x ^ y) & SWAR_HI); }
+
+/* undoes the filter of region [from, to) of the decoded input b, whose regions before it are restored */
+static void Flt_Decode(Uint8* const b, const int from, const int to, const int id, const int stride)
+{
+	if (id == FLT_X86) {
+		const int last = to - 5;                           /* the last position that can hold a call */
+		for (int i = from; i <= last; ) {
+			if (i + 7 <= last) {                           /* 8 positions at a time: on to the first E8 or E9 */
+				const Uint64 t = (MemReadLE8(b + i) & 0xFEFEFEFEFEFEFEFEULL) ^ 0xE8E8E8E8E8E8E8E8ULL;
+				const Uint64 m = (t - SWAR_ONE) & ~t & SWAR_HI;     /* its lowest byte is exact */
+				if (!m) { i += 8; continue; }
+				i += Low_Byte64(m);
+			}
+			/* restored if a call, without a branch (half the E8 and E9 bytes of code are none) */
+			const Uint32 w = MemReadLE4(b + i + 1), v = ((w & 0x1FFFFFF) - (Uint32)i - 5) & 0x1FFFFFF;
+			const Uint32 call = 0u - (Uint32)(((b[i] & 0xFE) == 0xE8) & ((Uint8)(b[i + 4] + 1) <= 1));
+			MemWriteLE4(b + i + 1, (w & ~call) | (((v & 0xFFFFFF) | (0u - (v >> 24)) << 24) & call));
+			i++;
+		}
+	}
+	else if (id >= FLT_Delta) {                            /* b[i] += b[i - s], going up */
+		const int s = stride;
+		int i = max(from, s);
+		if (s >= 8)                                        /* 8 bytes at a time, from bytes before them */
+			for (; i + 8 <= to; i += 8) MemWrite8(b + i, Add_Bytes8(MemRead8(b + i), MemRead8(b + i - s)));
+		else if (s == 4) {                                 /* 4 at a time, from the 4 just restored */
+			Uint32 c = MemRead4(b + i - 4);
+			for (; i + 4 <= to; i += 4) { c = (Uint32)Add_Bytes8(MemRead4(b + i), c); MemWrite4(b + i, c); }
+		}
+		else if (s == 2) {
+			Uint8 c0 = b[i - 2], c1 = b[i - 1];
+			for (; i + 2 <= to; i += 2) { b[i] = c0 = (Uint8)(b[i] + c0); b[i + 1] = c1 = (Uint8)(b[i + 1] + c1); }
+		}
+		else if (s == 1) {
+			Uint8 c = b[i - 1];
+			for (; i < to; i++) b[i] = c = (Uint8)(b[i] + c);
+		}
+		for (; i < to; i++) b[i] = (Uint8)(b[i] + b[i - s]);
+	}
+}
+
+/* the plausible x86 calls in [from, to): E8 or E9 with a 00 or FF top byte, whose target lies in the input */
+static int X86_Calls(const Uint8* const src, const int n, const int from, const int to)
+{
+	int calls = 0;
+	for (int i = from; i <= to - 5; i++) {
+		if (!X86_IS_CALL(src + i)) continue;
+		const long long target = (long long)i + 5 + ((int)(X86_Get25(src + i) ^ 0x1000000) - 0x1000000);
+		calls += target >= 0 && target < n;
+	}
+	return calls;
+}
+
+/* the order-0 entropy of a sample of region [from, to), 2^FLT_SampleLog bytes of every 2^every, delta-coded by s (0: as
+   it is), in 1/256 bit a byte (integer logarithms: every platform gets the same) */
+static Uint32 Flt_Entropy(const Uint8* const src, const int from, const int to, const int s, const int every)
+{
+	Uint32 hist[256] = { 0 }, total = 0;
+	for (int b = from; b < to; b += 1 << every) {
+		const int e = min(to, b + (1 << FLT_SampleLog));
+		int i = b;
+		if (0 == s) for (; i < e; i++) hist[src[i]]++;
+		for (; i < e && i < s; i++) hist[src[i]]++;
+		for (; i < e; i++) hist[(Uint8)(src[i] - src[i - s])]++;
+		total += (Uint32)(e - b);
+	}
+	Uint64 bits = (Uint64)total * Lg16(total);
+	for (int k = 0; k < 256; k++)
+		if (hist[k]) bits -= (Uint64)hist[k] * Lg16(hist[k]);
+	return (Uint32)(bits * 16 / total);
+}
+
+/* a trial: the size of p[0, n) compressed at level 0 with the state st (of a region, without filters; level 0 resets
+   its table on every call) */
+static int Flt_Trial_Size(WZIP_State_Str* const st, const Uint8* const p, const int n, Uint8* const tmp, const int tmpCap)
+{
+	const int size = WZIP_Compress_L(st, p, n, tmp, tmpCap);
+	return size > 0 ? size : n;
+}
+
+/* the filter of regions first, first + step, ... of src[0, n) (regions of 2^FLT_RegionLog bytes, whose map entries are
+   FLT_None); returns the bytes the filters saved in the trials */
+static Uint64 Flt_Choose_Part(const Uint8* const src, const int n, const int level, Uint16* const map, const int first, const int step)
+{
+	const int region = 1 << FLT_RegionLog, nRegions = (int)(((Uint32)n + region - 1) >> FLT_RegionLog);
+	const int tmpCap = WZIP_Cap_CmprSize(region);
+	Uint8* const buf = (Uint8*)malloc((size_t)region + tmpCap);
+	WZIP_State_Str* const st = WZIP_New_State_L(0, region, NULL, 0);
+	if (NULL == buf || NULL == st) { free(buf); WZIP_Free_State(st); return 0; }
+	((WZL_Sched*)st->sched)->noFilters = 1;
+	Uint8* const tmp = buf + region;
+	Uint8 ids[FLT_Count];
+	const int nIds = FLT_Tries(level, ids), scan = level >= FLT_ScanLevel;
+	Uint64 saved = 0;
+	for (int r = first; r < nRegions; r += step) {
+		const int from = r << FLT_RegionLog, to = n - from > region ? from + region : n, len = to - from;
+		if (len < FLT_MinRegion) continue;
+		/* cheap checks first: which filters could pay; x86 is tried first, then the deltas, the best estimate first */
+		Uint16 cand[FLT_Count + FLT_ScanTop];
+		Uint32 gain[FLT_Count + FLT_ScanTop], plain = 0;
+		int nCand = 0, strides[FLT_Count + FLT_ScanTop], nStrides = 0;
+		for (int k = 0; k < nIds; k++) {
+			const int id = ids[k];
+			if (id == FLT_X86) {
+				if (X86_Calls(src, n, from, to) >= FLT_X86Calls) { cand[nCand] = (Uint16)id; gain[nCand++] = ~(Uint32)0; }
+			}
+			else strides[nStrides++] = FLT_Stride[id];
+		}
+		if (scan) {                                          /* the other strides that lower a small sample's entropy most */
+			const Uint32 plainS = Flt_Entropy(src, from, to, 0, FLT_ScanSampleLog);
+			Uint32 top[FLT_ScanTop] = { 0 };
+			int* const topS = strides + nStrides, nTop = 0;
+			for (int s = 1; s <= FLT_ScanStrides; s++) {
+				int fixed = 0;
+				for (int f = FLT_Delta; f < FLT_DeltaS; f++) fixed |= FLT_Stride[f] == s;
+				if (fixed) continue;
+				const Uint32 bits = Flt_Entropy(src, from, to, s, FLT_ScanSampleLog), g = plainS > bits ? plainS - bits : 0;
+				if (0 == g) continue;
+				int j = nTop < FLT_ScanTop ? nTop++ : FLT_ScanTop;   /* insert by gain, the smaller stride first */
+				for (; j > 0 && top[j - 1] < g; j--)
+					if (j < FLT_ScanTop) { top[j] = top[j - 1]; topS[j] = topS[j - 1]; }
+				if (j < FLT_ScanTop) { top[j] = g; topS[j] = s; }
+			}
+			nStrides += nTop;
+		}
+		for (int k = 0; k < nStrides; k++) {
+			const int s = strides[k];
+			if (0 == plain) plain = Flt_Entropy(src, from, to, 0, 2 + FLT_SampleLog) + 1;
+			const Uint32 bits = Flt_Entropy(src, from, to, s, 2 + FLT_SampleLog) + 1;
+			if (bits + FLT_DeltaGate < plain) {
+				int id = FLT_DeltaS;                             /* a stride with a filter of its own takes it */
+				for (int f = FLT_Delta; f < FLT_DeltaS; f++) if (FLT_Stride[f] == s) id = f;
+				int j = nCand++;                                 /* by gain, the first of equals first */
+				for (; j > 0 && gain[j - 1] < plain - bits; j--) { cand[j] = cand[j - 1]; gain[j] = gain[j - 1]; }
+				cand[j] = FLT_ENTRY(id, s); gain[j] = plain - bits;
+			}
+		}
+		if (0 == nCand) continue;
+		const int plainSize = Flt_Trial_Size(st, src + from, len, tmp, tmpCap);
+		int bestSize = plainSize;
+		Uint16 best = FLT_None;
+		for (int k = 0; k < nCand; k++) {
+			Flt_Encode(buf, src, from, to, cand[k]);
+			const int size = Flt_Trial_Size(st, buf, len, tmp, tmpCap);
+			const int bar = cand[k] == FLT_X86 ? plainSize
+			              : plainSize - plainSize / 100 * (FLT_ID(cand[k]) == FLT_DeltaS ? FLT_ScanMargin : FLT_DeltaMargin);
+			if (size < bestSize && size <= bar) { best = cand[k]; bestSize = size; }
+			if (bestSize <= plainSize - plainSize / 100 * FLT_GoodEnough) break;
+		}
+		map[r] = best;
+		saved += (Uint64)(plainSize - bestSize);
+	}
+	free(buf);
+	WZIP_Free_State(st);
+	return saved;
+}
+
+#if WZIP_MULTITHREAD
+typedef struct {
+	const Uint8* src;
+	Uint16* map;
+	int n, level, first, step;
+	Uint64 saved;
+	WZ_Thread thread;
+} Flt_Part;
+
+WZ_THREAD_FN(Flt_Part_Main, arg)
+{
+	Flt_Part* const p = (Flt_Part*)arg;
+	p->saved = Flt_Choose_Part(p->src, p->n, p->level, p->map, p->first, p->step);
+	return 0;
+}
+#endif
+
+/* the filter of each region of src[0, n), with up to `workers` threads (each region's choice is its own, so the map is
+   the same with any number); returns the bytes the filters saved in the trials */
+static Uint64 Flt_Choose(const Uint8* const src, const int n, const int level, Uint16* const map, int workers)
+{
+	const int nRegions = (int)(((Uint32)n + (1u << FLT_RegionLog) - 1) >> FLT_RegionLog);
+	memset(map, 0, (size_t)nRegions * sizeof(Uint16));
+	workers = min(min(workers, WZIP_WORKERS_MAX), nRegions / 4);
+#if WZIP_MULTITHREAD
+	if (workers > 1) {
+		Flt_Part part[WZIP_WORKERS_MAX];
+		int started[WZIP_WORKERS_MAX] = { 0 };
+		for (int k = 1; k < workers; k++) {
+			part[k].src = src; part[k].map = map; part[k].n = n; part[k].level = level;
+			part[k].first = k; part[k].step = workers; part[k].saved = 0;
+			started[k] = WZ_THREAD_START(&part[k].thread, Flt_Part_Main, &part[k]);
+		}
+		Uint64 saved = Flt_Choose_Part(src, n, level, map, 0, workers);
+		for (int k = 1; k < workers; k++) {
+			if (started[k]) WZ_THREAD_JOIN(part[k].thread);
+			else part[k].saved = Flt_Choose_Part(src, n, level, map, k, workers);     /* no thread: here */
+			saved += part[k].saved;
+		}
+		return saved;
+	}
+#endif
+	return Flt_Choose_Part(src, n, level, map, 0, 1);
+}
+
+/* writes the filter map: the region log, then runs of equal filters, each LEB128 of (length - 1) << FLT_IdBits | filter,
+   and for FLT_DeltaS a byte of the stride; returns its size, 0 if it does not fit in cap */
+static int Flt_Write_Map(Uint8* const out, const int cap, const Uint16* const map, const int nRegions, const int rlog)
+{
+	int k = 0;
+	if (cap < 1) return 0;
+	out[k++] = (Uint8)rlog;
+	for (int r = 0; r < nRegions; ) {
+		int e = r + 1;
+		while (e < nRegions && map[e] == map[r]) e++;
+		Uint32 v = (Uint32)(e - r - 1) << FLT_IdBits | FLT_ID(map[r]);
+		do {
+			if (k >= cap) return 0;
+			out[k++] = (Uint8)((v & 127) | (v > 127) << 7);
+			v >>= 7;
+		} while (v);
+		if (FLT_ID(map[r]) == FLT_DeltaS) {
+			if (k >= cap) return 0;
+			out[k++] = (Uint8)(map[r] >> 8);
+		}
+		r = e;
+	}
+	return k;
+}
+
+/* the size of the filter map at src (srcSize bytes readable) of an n-byte input, 0 if it is invalid */
+static int Flt_Map_Size(const Uint8* const src, const int srcSize, const int n)
+{
+	if (srcSize < 1 || src[0] < FLT_MinLog || src[0] > FLT_MaxLog || n <= 0) return 0;
+	const Uint32 nRegions = ((Uint32)n + (1u << src[0]) - 1) >> src[0];
+	Uint32 covered = 0;
+	int k = 1;
+	while (covered < nRegions) {
+		Uint32 v = 0;
+		for (int sh = 0; ; sh += 7) {
+			if (k >= srcSize || sh > 21) return 0;            /* at most 4 bytes */
+			const Uint8 c = src[k++];
+			v |= (Uint32)(c & 127) << sh;
+			if (!(c & 128)) break;
+		}
+		if ((v & BitMask[FLT_IdBits]) >= FLT_Count || (v >> FLT_IdBits) >= nRegions - covered) return 0;
+		if ((v & BitMask[FLT_IdBits]) == FLT_DeltaS && (k >= srcSize || 0 == src[k++])) return 0;   /* its stride, 1-255 */
+		covered += (v >> FLT_IdBits) + 1;
+	}
+	return k;
+}
+
+/* undoes the filters of the decoded input b[0, n) by the map (checked by Flt_Map_Size), region by region */
+static void Flt_Undo(Uint8* const b, const int n, const Uint8* map)
+{
+	const int region = 1 << *map++;
+	for (int from = 0; from < n; ) {
+		Uint32 v = 0;
+		for (int sh = 0; ; sh += 7) {
+			const Uint8 c = *map++;
+			v |= (Uint32)(c & 127) << sh;
+			if (!(c & 128)) break;
+		}
+		const int id = (int)(v & BitMask[FLT_IdBits]), stride = id == FLT_DeltaS ? *map++ : FLT_Stride[id];
+		for (Uint32 k = 0; k <= v >> FLT_IdBits; k++) {
+			const int to = n - from > region ? from + region : n;
+			Flt_Decode(b, from, to, id, stride);
+			from = to;
+		}
+	}
+}
+
+/* Filters the input for compression at the level, if any region gains: writes the map at out (cap bytes), sets *mapSize
+   and returns the filtered copy (the caller frees it); NULL to compress the input as it is. */
+static Uint8* Flt_Filter(WZIP_State_Str* const wzipStr, const Uint8* const src, const int n, Uint8* const out, const int cap,
+	int* const mapSize)
+{
+	const int level = wzipStr->compressLevel;
+	*mapSize = 0;
+	if (level < FLT_MinLevel || n < FLT_MinRegion || ((WZL_Sched*)wzipStr->sched)->noFilters) return NULL;
+	const int nRegions = (int)(((Uint32)n + (1u << FLT_RegionLog) - 1) >> FLT_RegionLog);
+	Uint16* const map = (Uint16*)malloc((size_t)nRegions * sizeof(Uint16));
+	if (NULL == map) return NULL;
+	Uint8* filtered = NULL;
+	const Uint64 saved = Flt_Choose(src, n, level, map, wzipStr->nbWorkers);
+	/* worth a filtered copy of the input if the trials saved at least n >> FLT_WorthLog bytes (on enwik9 a few regions
+	   saved 0.0004%, not worth 1 GB more memory; mozilla's, the least of the binaries tested, 0.12%) */
+	if (saved > 0 && saved >= (Uint64)n >> FLT_WorthLog && (*mapSize = Flt_Write_Map(out, cap, map, nRegions, FLT_RegionLog)) > 0
+	    && NULL != (filtered = (Uint8*)malloc((size_t)n))) {
+		for (int r = 0; r < nRegions; r++) {
+			const int from = r << FLT_RegionLog, to = n - from > (1 << FLT_RegionLog) ? from + (1 << FLT_RegionLog) : n;
+			Flt_Encode(filtered + from, src, from, to, map[r]);
+		}
+	}
+	else *mapSize = 0;
+	free(map);
+	return filtered;
+}
+
 /* The stream starts with the windows of lengths 3 to 7, each as its distance below the widest window (that of length 8,
-   which the decoder derives from the size), 4 bits each: d3 | d4 << 4, d5 | d6 << 4, d7 | groups << 4, where groups is
-   0 for the natural offset groups and 1 for the fine layout (other values are reserved) */
+   which the decoder derives from the size), 4 bits each: d3 | d4 << 4, d5 | d6 << 4, d7 | flags << 4, where the flags
+   are 1 for the fine offset groups (else the natural ones), 2 for sized sequence blocks and 4 for a filter map, which
+   follows the header (format 2 has flags 2 and 4) */
 #define   WIN_HeaderSize       3
 /* optimal parsing prices far short matches exactly: its windows of lengths 3, 4, 5 reach at least this close to the
    widest (on Silesia: +0.7% at level 11 over the default windows, which suit the greedy and lazy parsers better) */
@@ -3002,27 +3548,34 @@ int WZIP_Compress_L(WZIP_State_Str* wzipStr, const void* const source, int srcSi
 {
 	SCHED(wzipStr);
 	Uint8* const header = (Uint8*)wzipStream;
+	if (wzipCapSize <= WIN_HeaderSize) return 0;
+	/* filters (format 2): the map follows the window header, and the filtered copy is compressed */
+	int mapSize;
+	Uint8* const filtered = Flt_Filter(wzipStr, (const Uint8*)source, srcSize, header + WIN_HeaderSize, wzipCapSize - WIN_HeaderSize,
+	                                   &mapSize);
+	Uint8* const in = filtered ? filtered : (Uint8*)source;
 	header[0] = (Uint8)((OffWidth[8] - OffWidth[3]) | (OffWidth[8] - OffWidth[4]) << 4);
 	header[1] = (Uint8)((OffWidth[8] - OffWidth[5]) | (OffWidth[8] - OffWidth[6]) << 4);
-	header[2] = (Uint8)((OffWidth[8] - OffWidth[7]) | OffGroupsFine << 4);
-	Uint8* const stream = header + WIN_HeaderSize;
-	const int cap = wzipCapSize - WIN_HeaderSize;
+	header[2] = (Uint8)((OffWidth[8] - OffWidth[7]) | (OffGroupsFine | SeqSized << 1 | (filtered ? FLT_HasMap : 0)) << 4);
+	Uint8* const stream = header + WIN_HeaderSize + mapSize;
+	const int cap = wzipCapSize - WIN_HeaderSize - mapSize;
 	Uint32 size;
 	LitRunTooLong = 0;
 	/* a dictionary just before the input: its last 15 positions too, whose compares run on into the input */
-	if (wzipStr->dictSize && wzipStr->dictEnd == (Uint8*)source && wzipStr->compressLevel <= 6)
+	if (wzipStr->dictSize && wzipStr->dictEnd == in && wzipStr->compressLevel <= 6)
 		WZL_Insert_Dict(wzipStr, -min(wzipStr->dictSize, 15), -1);
 	if (0 == wzipStr->compressLevel && 0 == wzipStr->dictSize)      /* the fast mode; with a dictionary, level 1's loop */
-		size = WLZ2_Compress_Fast1(wzipStr, (Uint8*)source, srcSize, stream, cap);
+		size = WLZ2_Compress_Fast1(wzipStr, in, srcSize, stream, cap);
 	else if (wzipStr->compressLevel <= 1)
-		size = WLZ2_Compress_Fast(wzipStr, (Uint8*)source, srcSize, stream, cap);
+		size = WLZ2_Compress_Fast(wzipStr, in, srcSize, stream, cap);
 	else if (wzipStr->compressLevel >= 7)
-		size = WLZ2_Compress_Opt(wzipStr, (Uint8*)source, srcSize, stream, cap, wzipStr->maxSearchCnt, OPT_LevelSufficient[wzipStr->compressLevel - 7],
+		size = WLZ2_Compress_Opt(wzipStr, in, srcSize, stream, cap, wzipStr->maxSearchCnt, OPT_LevelSufficient[wzipStr->compressLevel - 7],
 		                         OPT_LevelPasses[wzipStr->compressLevel - 7], OPT_LevelStates[wzipStr->compressLevel - 7]);
 	else
-		size = WLZ2_Compress(wzipStr, (Uint8*)source, srcSize, stream, cap, wzipStr->maxSearchCnt);
+		size = WLZ2_Compress(wzipStr, in, srcSize, stream, cap, wzipStr->maxSearchCnt);
+	free(filtered);
 	if (LitRunTooLong) size = 0;                         /* a literal run the format cannot code: the caller stores */
-	return size ? (int)size + WIN_HeaderSize : 0;
+	return size ? (int)size + WIN_HeaderSize + mapSize : 0;
 }
 
 /* Inserts the dictionary positions from..to (negative) into the hash tables and chains of levels 0-6, each table only
@@ -3126,6 +3679,8 @@ WZIP_State_Str* WZIP_New_State_L(int level, int srcSize, const void* dict, int d
 
 	OffGroupsFine = level == 13;
 	Set_Offset_Groups(S_, wzipStr->hash2Len - MinMatchLen + 1, OffGroupsFine);
+	SeqSized = level >= SEQ_SizedLevel;                  /* levels 0 and 1 keep 1.0's fixed blocks (and their speed) */
+	SeqSplit = SeqSized;
 	
 
 	wzipStr->hash0Mask = BitMask[SrchWidth[3] + 4];
@@ -3186,16 +3741,22 @@ typedef struct {
 static void Build_Joint_DecTable(const Uint32 maxBits, const Uint8* wt, Joint_DemapX1* table)
 {
 	if (0 == maxBits) return;
-	Uint32 start[MAX_HufWeight + 2] = { 0 }, pos = 0;
-	Uint32 count[MAX_HufWeight + 2] = { 0 };
+	/* the used symbols in canonical order (by length, then symbol), sorted without a branch per symbol: most of the
+	   1020 are unused, unpredictably, and a branch on each cost more than the rest of the build */
+	Uint32 count[MAX_HufWeight + 2] = { 0 }, at[MAX_HufWeight + 2];
+	Uint16 order[N_HufJoint];
 	for (Uint32 k = 0; k < N_HufJoint; k++) count[wt[k]]++;
-	for (Uint32 b = 1; b <= maxBits; b++) { start[b] = pos; pos += count[b] << (maxBits - b); }
-	for (Uint32 k = 0; k < N_HufJoint; k++) {
-		const Uint32 b = wt[k];
-		if (!b) continue;
+	at[1] = 0;
+	for (Uint32 b = 1; b <= maxBits; b++) at[b + 1] = at[b] + count[b];
+	at[0] = at[maxBits + 1];                             /* unused symbols after the used ones */
+	for (Uint32 k = 0; k < N_HufJoint; k++) order[at[wt[k]]++] = (Uint16)k;
+	Joint_DemapX1* t = table;
+	const Uint32 nUsed = N_HufJoint - count[0];
+	for (Uint32 i = 0; i < nUsed; i++) {
+		const Uint32 k = order[i], b = wt[k];
 		const Joint_DemapX1 e = { (Uint8)(k % N_HufMchLen), (Uint8)(k / N_HufMchLen % N_LitClass), (Uint8)(k / (N_HufMchLen * N_LitClass)), (Uint8)b };
-		for (Uint32 r = 0; r < (1u << (maxBits - b)); r++) table[start[b] + r] = e;
-		start[b] += 1u << (maxBits - b);
+		for (Uint32 r = 0; r < (1u << (maxBits - b)); r++) t[r] = e;
+		t += 1u << (maxBits - b);
 	}
 }
 
@@ -3204,8 +3765,8 @@ static void Build_Joint_DecTable(const Uint32 maxBits, const Uint8* wt, Joint_De
    CapHufMchOffBits width, at a fixed stride: a table is selected by arithmetic on the group, and all share one shift. */
 typedef struct {
 	Huffman_DemapX1 litRun[1 << CapHufLitRunBits];
-	Joint_DemapX1 joint[1 << CapHufMchLenBits];        /* slot-joint codes */
-	Huffman_DemapX1 mchLen[1 << CapHufMchLenBits];     /* classic codes */
+	Joint_DemapX1 joint[1 << CapHufJointWide];         /* slot-joint codes */
+	Huffman_DemapX1 mchLen[1 << CapHufJointWide];      /* classic codes */
 	Huffman_DemapX1 off[MaxMchOffGroup << CapHufMchOffBits];
 	Uint32 remLitRun, remMchLen;                       /* the shifts that look them up */
 	int haveLitRun, haveMchLen, haveOff[MaxMchOffGroup];
@@ -3244,7 +3805,8 @@ static int Seq_Read_Tables(WZL_Sched* const S_, Bit_Stream* const bs, WLZ_HufWt_
 			else if ((maxBits = Huffman_Read_Code_byHuffman(&bitStream, (Uint32)maxWt, wtHufDemapX1, n_, cap_, lens_)) < 0) return 0; \
 			else max_ = (Uint32)maxBits; }
 		if (!reuse[0]) SEQ_READ_CODE(N_HufLitRun, CapHufLitRunBits, w->litRunHufWt, w->maxLitRunHufWt);
-		if (!reuse[1]) SEQ_READ_CODE(w->slotJoint ? N_HufJoint : N_HufJointClassic, CapHufMchLenBits, w->mchLenHufWt, w->maxMchLenHufWt);
+		if (!reuse[1]) SEQ_READ_CODE(w->slotJoint ? N_HufJoint : N_HufJointClassic, SeqSized ? CapHufJointWide : CapHufMchLenBits,
+		                             w->mchLenHufWt, w->maxMchLenHufWt);
 		for (t = 2; t < nTab; t++)
 			if (!reuse[t]) SEQ_READ_CODE(N_HufMchOff[t - 2], CapHufMchOffBits, w->mchOffHufWt[t - 2], w->maxMchOffHufWt[t - 2]);
 #undef SEQ_READ_CODE
@@ -3566,8 +4128,8 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Body(WZL_Sched* const S_, Uint8*
 	const Uint32 lastOffGroup = MchOffGroup - 1;
 	(void)hufWtSet;
 
-	int seqNo;
-	for(seqNo=0; seqNo<SEQ_BlockSize; seqNo++) {
+	int left = (int)hufWtSet->seqCount;              /* counted down to 0: no register holds the bound (2% at level 1) */
+	for (; left > 0; left--) {
 
 		Uint32 litClass, slotSel;
 		if (slotJoint) {                                 /* joint symbol: cache slot (or new), literal-run class, length */
@@ -3618,7 +4180,7 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Body(WZL_Sched* const S_, Uint8*
 		else n = slotSel;
 		if (likely(n >= OffCasheSize)) {
 			i = (n >> 1) - 1;
-			//lsBits = ExtHufMchOff[n].lsBits;
+			if (unlikely(bitStream.nUsedBits + i > BIT_CONTAINER_BITS)) BITStream_Read_Flush(bitStream);   /* far, after 12-bit joint codes */
 			BITStream_Read(bitStream, i, lsValue);
 			//matchOffset = (ExtHufMchOff[n].msValue << lsBits ^ lsValue) - (OffCasheSize - 1);
 			matchOffset = ((2 ^ (n & 1)) << i ^ lsValue) - (OffCasheSize - 1);
@@ -3670,7 +4232,7 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Body(WZL_Sched* const S_, Uint8*
 #endif
 
 	lits->exec = lzLitBufPtr;
-	if (seqNo & 1) { const Bit_Stream t_ = bitStream; bitStream = otherStream; otherStream = t_; }   /* bitStream: A */
+	if (((int)hufWtSet->seqCount - left) & 1) { const Bit_Stream t_ = bitStream; bitStream = otherStream; otherStream = t_; }   /* bitStream: A */
 	BITStream_Read_FlushEnd(bitStream);
 	BITStream_Read_FlushEnd(otherStream);
 	if (bitStream.streamPtr != seqA + sizeA) return -1;   /* corrupt: stream A is not of its stated size */
@@ -3736,17 +4298,26 @@ int WZIP_Decompress_L(
 	const int histSize = dict && dictSize > 0 ? dictSize : 0;
 	Uint8* const dictEnd = histSize ? (Uint8*)dict + dictSize : NULL;
 
+	const Uint8* fltMap = NULL;                        /* the filter map, if any */
+
 	if (destSize <= 0) return 0;
 	WZIP_Set_OffWidth(WZL_History(destSize, histSize), OffWidth);
 	{   /* the windows of lengths 3-7, stored below the widest one; they must not narrow with length */
-		if (srcSize < WIN_HeaderSize + 4 || (srcPtr[2] >> 4) > 1) return 0;
-		OffGroupsFine = srcPtr[2] >> 4;
+		if (srcSize < WIN_HeaderSize + 4 || (srcPtr[2] >> 4) > 7) return 0;   /* flags: fine groups, sized blocks, filters */
+		OffGroupsFine = srcPtr[2] >> 4 & 1;
+		SeqSized = srcPtr[2] >> 5 & 1;
 		const int gap[5] = { srcPtr[0] & 15, srcPtr[0] >> 4, srcPtr[1] & 15, srcPtr[1] >> 4, srcPtr[2] & 15 };
 		for (i = 3; i <= 7; i++) OffWidth[i] = OffWidth[8] - gap[i - 3];
 		if (OffWidth[3] < 4) return 0;
 		for (i = 4; i <= 8; i++)
 			if (OffWidth[i] < OffWidth[i - 1]) return 0;
 		srcPtr += WIN_HeaderSize;
+		if (srcPtr[-1] >> 4 & FLT_HasMap) {
+			const int mapSize = Flt_Map_Size(srcPtr, (int)(srcEnd - srcPtr), destSize);
+			if (0 == mapSize || srcEnd - (srcPtr + mapSize) < 4) return 0;
+			fltMap = srcPtr;
+			srcPtr += mapSize;
+		}
 	}
 	i = 8;
 	while (i > 0 && OffWidth[i] == OffWidth[i - 1])
@@ -3796,6 +4367,11 @@ int WZIP_Decompress_L(
 		bitStream.nUsedBits = 0;
 		bitStream.container = MemReadBE8(bitStream.streamPtr);
 		BITStream_Read(bitStream, 1, hufWtSet.slotJoint);           /* the block's coding: slot-joint or classic */
+		if (SeqSized) {                                              /* and its count of sequences */
+			BITStream_Read(bitStream, SEQ_CountBits, hufWtSet.seqCount);
+			hufWtSet.seqCount++;
+		}
+		else hufWtSet.seqCount = SEQ_BlockSize;
 		if (!Seq_Read_Tables(S_, &bitStream, &hufWtSet, T, 0)) { decSize = -1; break; }
 
 		const int blockStart = decSize;
@@ -3814,8 +4390,9 @@ int WZIP_Decompress_L(
 	free(T);
 	free(lits.buf);
 	free(lits.hst);
-	if (destSize == decSize) return decSize;
-	else return 0;
+	if (destSize != decSize) return 0;
+	if (fltMap) Flt_Undo((Uint8*)dest, destSize, fltMap);
+	return decSize;
 }
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Trusted mode (opt-in) ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
@@ -3881,8 +4458,8 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Trusted_Body(WZL_Sched* const S_
 	(void)hufWtSet;
 	const Uint32 lastOffGroup = MchOffGroup - 1;
 
-	int seqNo;
-	for(seqNo=0; seqNo<SEQ_BlockSize; seqNo++) {
+	int left = (int)hufWtSet->seqCount;              /* counted down to 0: no register holds the bound (2% at level 1) */
+	for (; left > 0; left--) {
 
 		Uint32 litClass, slotSel;
 		if (slotJoint) {                                 /* joint symbol: cache slot (or new), literal-run class, length */
@@ -3932,7 +4509,7 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Trusted_Body(WZL_Sched* const S_
 		else n = slotSel;
 		if (likely(n >= OffCasheSize)) {
 			i = (n >> 1) - 1;
-			//lsBits = ExtHufMchOff[n].lsBits;
+			if (unlikely(bitStream.nUsedBits + i > BIT_CONTAINER_BITS)) BITStream_Read_Flush(bitStream);   /* far, after 12-bit joint codes */
 			BITStream_Read(bitStream, i, lsValue);
 			//matchOffset = (ExtHufMchOff[n].msValue << lsBits ^ lsValue) - (OffCasheSize - 1);
 			matchOffset = ((2 ^ (n & 1)) << i ^ lsValue) - (OffCasheSize - 1);
@@ -3983,7 +4560,7 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Trusted_Body(WZL_Sched* const S_
 #endif
 
 	lits->exec = lzLitBufPtr;
-	if (seqNo & 1) { const Bit_Stream t_ = bitStream; bitStream = otherStream; otherStream = t_; }   /* bitStream: A */
+	if (((int)hufWtSet->seqCount - left) & 1) { const Bit_Stream t_ = bitStream; bitStream = otherStream; otherStream = t_; }   /* bitStream: A */
 	BITStream_Read_FlushEnd(otherStream);
 	*wzipSeqStart = otherStream.streamPtr;
 	return (Uint32)(destPtr - dest);
@@ -4023,16 +4600,25 @@ int WZIP_Decompress_L_Trusted(
 	Uint8* srcPtr = (Uint8*)source;
 	Uint8* const dictEnd = dict ? (Uint8*)dict + dictSize : NULL;
 
+	const Uint8* fltMap = NULL;                        /* the filter map, if any */
+
 	WZIP_Set_OffWidth(WZL_History(destSize, dict ? dictSize : 0), OffWidth);
 	{   /* the windows of lengths 3-7, stored below the widest one; they must not narrow with length */
-		if (srcSize < WIN_HeaderSize || (srcPtr[2] >> 4) > 1) return 0;
-		OffGroupsFine = srcPtr[2] >> 4;
+		if (srcSize < WIN_HeaderSize || (srcPtr[2] >> 4) > 7) return 0;
+		OffGroupsFine = srcPtr[2] >> 4 & 1;
+		SeqSized = srcPtr[2] >> 5 & 1;
 		const int gap[5] = { srcPtr[0] & 15, srcPtr[0] >> 4, srcPtr[1] & 15, srcPtr[1] >> 4, srcPtr[2] & 15 };
 		for (i = 3; i <= 7; i++) OffWidth[i] = OffWidth[8] - gap[i - 3];
 		if (OffWidth[3] < 4) return 0;
 		for (i = 4; i <= 8; i++)
 			if (OffWidth[i] < OffWidth[i - 1]) return 0;
 		srcPtr += WIN_HeaderSize;
+		if (srcPtr[-1] >> 4 & FLT_HasMap) {
+			const int mapSize = Flt_Map_Size(srcPtr, srcSize - WIN_HeaderSize, destSize);
+			if (0 == mapSize) return 0;
+			fltMap = srcPtr;
+			srcPtr += mapSize;
+		}
 	}
 	i = 8;
 	while (i > 0 && OffWidth[i] == OffWidth[i - 1])
@@ -4068,6 +4654,11 @@ int WZIP_Decompress_L_Trusted(
 	Uint8* const destEnd = (Uint8*)dest + destSize;
 	while (decSize < destSize) {
 		BITStream_Read(bitStream, 1, hufWtSet.slotJoint);           /* the block's coding: slot-joint or classic */
+		if (SeqSized) {                                              /* and its count of sequences */
+			BITStream_Read(bitStream, SEQ_CountBits, hufWtSet.seqCount);
+			hufWtSet.seqCount++;
+		}
+		else hufWtSet.seqCount = SEQ_BlockSize;
 		Seq_Read_Tables(S_, &bitStream, &hufWtSet, T, 1);
 		
 		const int blockStart = decSize;
@@ -4087,7 +4678,8 @@ int WZIP_Decompress_L_Trusted(
 	free(lits.buf);
 	free(lits.hst);
 	free(T);
-	if (destSize == decSize) return decSize;
-	else return 0;
+	if (destSize != decSize) return 0;
+	if (fltMap) Flt_Undo((Uint8*)dest, destSize, fltMap);
+	return decSize;
 }
 

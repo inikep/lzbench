@@ -19,10 +19,10 @@ extern "C" {
 
 /* The library's version (WZIP, WLZ4 and the WZ frame share it); see CHANGELOG.md */
 #define WZIP_VERSION_MAJOR        1
-#define WZIP_VERSION_MINOR        0
-#define WZIP_VERSION_RELEASE      1
+#define WZIP_VERSION_MINOR        1
+#define WZIP_VERSION_RELEASE      0
 #define WZIP_VERSION_NUMBER       (WZIP_VERSION_MAJOR * 10000 + WZIP_VERSION_MINOR * 100 + WZIP_VERSION_RELEASE)
-#define WZIP_VERSION_STRING       "1.0.1"
+#define WZIP_VERSION_STRING       "1.1.0"
 unsigned wzip_versionNumber(void);
 const char* wzip_versionString(void);
 

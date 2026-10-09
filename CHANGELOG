@@ -1,5 +1,5 @@
 v2.x.y (work-in-progress)
-- added wlz4 1.0.1 (wlz4, wlz4fast, wlz4hc) and wzip 1.0.1 (by @icodywu)
+- added wlz4 1.1.0 (wlz4, wlz4fast, wlz4hc) and wzip 1.1.0 (by @icodywu)
 - updated aceapex to 2.2.2 (thanks to @yasha1971-coder); adds level 3, which the FASTEST alias now uses
 - updated kanzi to 2.6.0 (by @flanglet)
 - updated lzav to 5.18 (thanks to @avaneev)
