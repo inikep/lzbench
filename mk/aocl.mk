@@ -87,24 +87,47 @@ CLEAN_FILES += $(AOCL_RAW) $(AOCL_ARCHIVE)
 # warnings on newer compilers don't fail the build.
 AOCL_INC = -I$(AOCL_SRC) -I$(AOCL_GEN) -I$(AOCL_GEN)/algos/common \
            -I$(AOCL_SRC)/algos/common -I$(AOCL_SRC)/utils -I$(AOCL_SRC)/api
-AOCL_COMMON_FLAGS = -O3 -DNDEBUG -fomit-frame-pointer -fstrict-aliasing \
-    -fstack-protector-strong -Wformat -Wformat-security -D_FORTIFY_SOURCE=2 \
+# BUILD_TYPE=debug builds AOCL with -O0 -g like the rest of lzbench
+# (_FORTIFY_SOURCE needs optimization, so it is left out there).
+ifeq ($(BUILD_TYPE),debug)
+    AOCL_OPT = -O0 -g
+else
+    AOCL_OPT = -O3 -DNDEBUG -D_FORTIFY_SOURCE=2
+endif
+AOCL_COMMON_FLAGS = $(AOCL_OPT) -fomit-frame-pointer -fstrict-aliasing \
+    -fstack-protector-strong -Wformat -Wformat-security \
     -Wall -Wpedantic -fPIC -DAOCL_DYNAMIC_DISPATCHER \
     -DAOCL_BUILD_VERSION='"lzbench"' -DAOCL_MAX_ISA_LEVEL=4 $(AOCL_INC)
 
 # AOCL sources are compiled directly by lzbench with per-codec flags mirroring
-# AOCL's Release build. Generated headers are vendored in $(AOCL_GEN).
-$(AOCL_C_OBJ):   %.o : %.c   ; @$(MKDIR) $(dir $@); $(CC)  -std=gnu11 -D_POSIX_C_SOURCE=200809L $(AOCL_COMMON_FLAGS) $(AOCL_EXTRA) $(AOCL_ARCH) -c $< -o $@
-$(AOCL_CC_OBJ):  %.o : %.cc  ; @$(MKDIR) $(dir $@); $(CXX) $(AOCL_COMMON_FLAGS) $(AOCL_EXTRA) -c $< -o $@
-$(AOCL_CPP_OBJ): %.o : %.cpp ; @$(MKDIR) $(dir $@); $(CXX) $(AOCL_COMMON_FLAGS) $(AOCL_EXTRA) -c $< -o $@
-$(AOCL_S_OBJ):   %.o : %.S   ; @$(MKDIR) $(dir $@); $(CC)  $(AOCL_COMMON_FLAGS) $(AOCL_EXTRA) $(AOCL_ARCH) -c $< -o $@
+# AOCL's Release build. Generated headers are vendored in $(AOCL_GEN). The
+# user's MOREFLAGS and USER_CFLAGS/USER_CXXFLAGS come last, as for the other
+# codecs, and DEPFLAGS writes the .d files included at the end of this file.
+AOCL_USER_CFLAGS   = $(MOREFLAGS) $(USER_CFLAGS) $(DEPFLAGS)
+AOCL_USER_CXXFLAGS = $(MOREFLAGS) $(USER_CXXFLAGS) $(DEPFLAGS)
+$(AOCL_C_OBJ):   %.o : %.c   ; @$(MKDIR) $(dir $@); $(CC)  -std=gnu11 -D_POSIX_C_SOURCE=200809L $(AOCL_COMMON_FLAGS) $(AOCL_EXTRA) $(AOCL_ARCH) $(AOCL_USER_CFLAGS) -c $< -o $@
+$(AOCL_CC_OBJ):  %.o : %.cc  ; @$(MKDIR) $(dir $@); $(CXX) $(AOCL_COMMON_FLAGS) $(AOCL_EXTRA) $(AOCL_USER_CXXFLAGS) -c $< -o $@
+$(AOCL_CPP_OBJ): %.o : %.cpp ; @$(MKDIR) $(dir $@); $(CXX) $(AOCL_COMMON_FLAGS) $(AOCL_EXTRA) $(AOCL_USER_CXXFLAGS) -c $< -o $@
+$(AOCL_S_OBJ):   %.o : %.S   ; @$(MKDIR) $(dir $@); $(CC)  $(AOCL_COMMON_FLAGS) $(AOCL_EXTRA) $(AOCL_ARCH) $(AOCL_USER_CFLAGS) -c $< -o $@
 
 # Per-codec extra flags (from AOCL's own build).
 $(AOCL_BZIP2_OBJ):  AOCL_EXTRA = -DAOCL_BZIP2_HUFFMAN_ITERATIONS=3
 $(AOCL_LZ4_OBJ):    AOCL_EXTRA = -DAOCL_LZ4_HASH_BITS_USED=41 -DAOCL_LZ4HC_DISABLE_PATTERN_ANALYSIS
 $(AOCL_ZSTD_OBJ):   AOCL_EXTRA = -DAOCL_ZSTD_SEARCH_SKIP_OPT
-$(AOCL_ZLIB_OBJ):   AOCL_EXTRA = -DHAVE_ATTRIBUTE_ALIGNED=1 -DHAVE_BUILTIN_CTZ=1 -DHAVE_BUILTIN_EXPECT=1 -DHAVE_HIDDEN -I$(AOCL_SRC)/algos/zlib -I$(AOCL_SRC)/algos/zlib/zlib-ng
+$(AOCL_ZLIB_OBJ):   AOCL_EXTRA = -DHAVE_BUILTIN_CTZ=1 -DHAVE_BUILTIN_EXPECT=1 -DHAVE_HIDDEN -I$(AOCL_SRC)/algos/zlib -I$(AOCL_SRC)/algos/zlib/zlib-ng
 $(AOCL_SNAPPY_OBJ): AOCL_EXTRA = -msse4.1 -DHAVE_ATTRIBUTE_ALWAYS_INLINE=1 -DHAVE_BUILTIN_CTZ=1 -DHAVE_BUILTIN_EXPECT=1 -DHAVE_BUILTIN_PREFETCH=1 -DHAVE_SYS_UIO_H -DSNAPPY_HAVE_X86_CRC32=1 -DAOCL_SNAPPY_MATCH_SKIP_OPT
+
+# AOCL defines HAVE_ATTRIBUTE_ALIGNED for the zlib-ng sources only: crc32_x86.h
+# defines it itself, and a -D for all of zlib warns about the redefinition.
+$(filter $(AOCL_DIR)/algos/zlib/zlib-ng/%,$(AOCL_ZLIB_OBJ)): AOCL_EXTRA += -DHAVE_ATTRIBUTE_ALIGNED=1
+
+# Clang has no per-function optimization attributes, so AOCL builds LZ4 with -O2
+# under it (LZ4_CFLAGS in AOCL's Makefile). Debug builds keep -O0.
+ifeq ($(COMPILER),clang)
+ifneq ($(BUILD_TYPE),debug)
+$(AOCL_LZ4_OBJ):    AOCL_EXTRA += -O2
+endif
+endif
 
 # Per-file ISA flags for the two runtime-dispatched zlib files.
 $(AOCL_DIR)/algos/zlib/crc32_x86_vpclmulqdq.o:             AOCL_ARCH = -mavx512f -mpclmul -mvpclmulqdq
@@ -123,5 +146,9 @@ $(AOCL_RAW): $(AOCL_LIB_OBJ) ; @$(MKDIR) $(dir $@); $(AR) rcs $@ $(AOCL_LIB_OBJ)
 $(AOCL_ARCHIVE): $(AOCL_RAW) ; @$(MKDIR) $(dir $@); $(NM) -g --defined-only $(AOCL_RAW) | awk '$$2 ~ /^[TDBRGVWC]$$/ {print $$3}' | grep -v '^aocl_llc_' | sort -u | awk 'NF{print $$1" AOCLLZB_"$$1}' > $@.redef
 	$(OBJCOPY) --redefine-syms=$@.redef $(AOCL_RAW) $@
 	rm -f $@.redef
+
+# The Makefile includes the .d files of LZBENCH_OBJS only, which name the
+# archive and not the objects in it.
+-include $(AOCL_LIB_OBJ:.o=.d)
 
 endif

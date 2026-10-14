@@ -47,6 +47,9 @@ jobs:
         SELECTED_CXX: clang++-22
         PACKAGES: 'clang-22 llvm-22-dev libomp-22-dev'
         ARTIFACT_SLUG: clang-22-x86_64
+        # AOCL is opt-in; one gcc and one clang job build and run it
+        MORE_OPTIONS: 'DONT_BUILD_AOCL=0'
+        REQUIRE_CODECS: 'aocl-zstd'
 
       clang-21 [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
@@ -165,6 +168,9 @@ jobs:
         SELECTED_CXX: g++-14
         PACKAGES: 'g++-14'
         ARTIFACT_SLUG: gcc-14-x86_64
+        # AOCL is opt-in; one gcc and one clang job build and run it
+        MORE_OPTIONS: 'DONT_BUILD_AOCL=0'
+        REQUIRE_CODECS: 'aocl-zstd'
 
       gcc-14 x86 32-bit [Ubuntu 24.04 Noble]:
         imageName: 'ubuntu-24.04'
@@ -396,6 +402,11 @@ jobs:
   - script: |
       $QEMU_INTERPRETER ./lzbench -eSYMMETRIC -v5 ./lzbench || exit 1
     displayName: '*** Run SYMMETRIC'
+
+  - script: |
+      $QEMU_INTERPRETER ./lzbench -eAOCL -v5 ./lzbench || exit 1
+    displayName: '*** Run AOCL'
+    condition: and(succeeded(), contains(variables['MORE_OPTIONS'], 'DONT_BUILD_AOCL=0'))
 
   # Every built codec at its first level, on data it cannot compress. The codec
   # list comes from 'lzbench -l', so this also covers codecs that are missing
