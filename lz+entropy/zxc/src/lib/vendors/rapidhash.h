@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: MIT */
 /*
  * rapidhash V3 - Very fast, high quality, platform-independent hashing algorithm.
  *

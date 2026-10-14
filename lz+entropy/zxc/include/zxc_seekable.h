@@ -1,8 +1,8 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 /*
  * ZXC - High-performance lossless compression
  *
- * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
- * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) Bertrand Lebonnois and contributors.
  */
 
 /**
@@ -13,10 +13,23 @@
  * them without reading the whole file.
  *
  * A seekable archive carries a Seek Table block (block_type = @c ZXC_BLOCK_SEK)
- * after the EOF block, holding the compressed size of every block. Readers find
- * it by deriving @c num_blocks from the footer's total decompressed size and the
- * header's block size, then seeking backward to validate the SEK block header.
- * Plain decompressors ignore it entirely.
+ * after the EOF block: groups of 64 blocks, each its first block's offset then
+ * every block's on-disk size. Readers derive @c num_blocks from the footer and
+ * read a group when one of its blocks is accessed: open costs the same at any
+ * block count and no table stays in memory. A header flag announces it; plain
+ * decompressors skip it and refuse a tail that disagrees.
+ *
+ * Seekable archives concatenated read as one: blocks and offsets run across the
+ * frames, at most 2^20 of them. Every frame must carry a table; block sizes,
+ * checksums and dictionaries may differ.
+ *
+ * No field holds the block count, so nothing caps it but the footer's 64-bit
+ * size: counts and block indices are 64-bit here. Writing a table still costs
+ * four bytes of memory per block, which is what limits a producer today.
+ *
+ * The table is not authenticated: a consistent forgery can point a block at
+ * another of the same size. Only checksums verified through
+ * @ref zxc_seekable_set_checksum bind a block to its position.
  *
  * This header is freestanding: only @c <stddef.h>, @c <stdint.h> and the rest
  * of the ZXC public API, no @c <stdio.h>, so kernel-space and other
@@ -77,8 +90,10 @@ typedef struct zxc_seekable_s zxc_seekable;
 /**
  * @brief Opens a seekable archive from a memory buffer.
  *
- * Parses the seek table at the end of the buffer and builds the block index.
- * @p src must stay valid for the lifetime of the handle.
+ * Locates and validates the seek table at the end of the buffer; entries are
+ * read from @p src on access. @p src must stay valid for the lifetime of the handle.
+ * An empty seekable archive opens with 0 blocks: any non-empty range is then
+ * @ref ZXC_ERROR_SRC_TOO_SMALL.
  *
  * @param[in] src       Pointer to the compressed data.
  * @param[in] src_size  Size of the compressed data in bytes.
@@ -94,9 +109,9 @@ ZXC_EXPORT zxc_seekable* zxc_seekable_open(const void* src, const size_t src_siz
  * a custom VFS, kernel @c vfs_read. Positional reads only, no seeking state.
  *
  * @par Thread safety
- * @c read_at MUST be safe to call concurrently when the handle is used with
- * zxc_seekable_decompress_range_mt(). The single-threaded path never overlaps
- * calls.
+ * @c read_at MUST be safe to call concurrently under
+ * zxc_seekable_decompress_range_mt(), or when calls on one handle overlap: all
+ * of them read through it, zxc_seekable_get_block_comp_size() included.
  *
  * @par Lifetime
  * @c ctx and the backing storage must both outlive the zxc_seekable handle
@@ -126,23 +141,26 @@ typedef struct {
 /**
  * @brief Opens a seekable archive through a user-supplied reader.
  *
- * The reader fetches the file header, footer and seek table at open time, then
- * every block during decompression. This is the entry point for backing the
- * seekable API with any storage that does positional reads (mmap, HTTP, S3, a
- * kernel file descriptor).
+ * Two reads per frame at open (at most 2^20 frames), plus the last frame's
+ * EOF/SEK headers; per range, its table groups and every block decoded. This is the entry point for
+ * backing the seekable API with any storage that does positional reads (mmap, HTTP, S3, a kernel
+ * file descriptor).
  *
  * @param[in] r  Reader interface (must remain valid for the handle lifetime).
- * @return Handle on success, or @c NULL on error.
+ * @return Handle (0 blocks if the archive is empty), or @c NULL on error.
  */
 ZXC_EXPORT zxc_seekable* zxc_seekable_open_reader(const zxc_reader_t* r);
 
 /**
  * @brief Returns the total number of blocks in the seekable archive.
  *
+ * The count is derived from the footer, not stored, so it is bounded by the
+ * archive size and not by any field: 64 bits here.
+ *
  * @param[in] s  Seekable handle.
  * @return Number of data blocks (excluding EOF).
  */
-ZXC_EXPORT uint32_t zxc_seekable_get_num_blocks(const zxc_seekable* s);
+ZXC_EXPORT uint64_t zxc_seekable_get_num_blocks(const zxc_seekable* s);
 
 /**
  * @brief Returns the total decompressed size of the seekable archive.
@@ -155,14 +173,17 @@ ZXC_EXPORT uint64_t zxc_seekable_get_decompressed_size(const zxc_seekable* s);
 /**
  * @brief Returns the compressed size of a specific block.
  *
- * The on-disk size: block header + payload + optional per-block checksum.
+ * The on-disk size: block header + payload + optional per-block checksum, from
+ * the block's seek table group: one read per call. Checked against bounds only:
+ * a forged size within them comes back as is.
  *
  * @param[in] s          Seekable handle.
  * @param[in] block_idx  Zero-based block index.
- * @return Compressed block size, or 0 if @p block_idx is out of range.
+ * @return Compressed block size, or 0 if @p block_idx is out of range or its
+ *         group is unreadable or invalid.
  */
 ZXC_EXPORT uint32_t zxc_seekable_get_block_comp_size(const zxc_seekable* s,
-                                                     const uint32_t block_idx);
+                                                     const uint64_t block_idx);
 
 /**
  * @brief Returns the decompressed size of a specific block.
@@ -172,7 +193,7 @@ ZXC_EXPORT uint32_t zxc_seekable_get_block_comp_size(const zxc_seekable* s,
  * @return Decompressed block size, or 0 if @p block_idx is out of range.
  */
 ZXC_EXPORT uint32_t zxc_seekable_get_block_decomp_size(const zxc_seekable* s,
-                                                       const uint32_t block_idx);
+                                                       const uint64_t block_idx);
 
 /**
  * @brief Decompresses an arbitrary byte range of the original data.
@@ -183,7 +204,8 @@ ZXC_EXPORT uint32_t zxc_seekable_get_block_decomp_size(const zxc_seekable* s,
  * @par Checksums
  * Per-block checksums are **not** verified unless
  * @ref zxc_seekable_set_checksum was called with a non-zero argument; a
- * mismatch then returns @ref ZXC_ERROR_BAD_CHECKSUM.
+ * mismatch then returns @ref ZXC_ERROR_BAD_CHECKSUM. Without it, a forged seek
+ * table can return another block's bytes with no error.
  *
  * @param[in,out] s            Seekable handle.
  * @param[out]    dst          Destination buffer.
@@ -204,9 +226,9 @@ ZXC_EXPORT int64_t zxc_seekable_decompress_range(zxc_seekable* s, void* dst,
  * decompression context and reads through @c pread() (POSIX) or @c ReadFile()
  * (Windows), so the I/O stays lock-free.
  *
- * Falls back to the single-threaded path when @p n_threads <= 1 or the range
- * fits in one block. Same checksum rule as
- * @ref zxc_seekable_decompress_range.
+ * Falls back to the single-threaded path when @p n_threads <= 1, the range fits
+ * in one block, or it spans more than 2^32 blocks (16 TiB of @p dst). Same
+ * checksum rule as @ref zxc_seekable_decompress_range.
  *
  * @param[in,out] s            Seekable handle.
  * @param[out]    dst          Destination buffer.
@@ -235,7 +257,9 @@ ZXC_EXPORT void zxc_seekable_free(zxc_seekable* s);
  * @brief Turns per-block checksum verification on or off.
  *
  * Off by default, as in the frame API. No effect without checksums in the
- * archive. Applies from the next call, on both paths.
+ * archive. Applies from the next call, on both paths. Checksums are seeded with
+ * each block's position, so this also binds blocks to their index, which the seek
+ * table cannot.
  *
  * @param[in,out] s       Seekable handle.
  * @param[in]     enabled Non-zero to verify, 0 to skip.
@@ -247,7 +271,8 @@ ZXC_EXPORT int zxc_seekable_set_checksum(zxc_seekable* s, int enabled);
  * @brief Attaches a pre-trained dictionary to a seekable handle.
  *
  * Content and table are copied, so the caller may free them once this returns.
- * Must happen before the first zxc_seekable_decompress_range() call.
+ * Call it once per dictionary the frames use; a range through a frame whose
+ * dictionary is missing returns @ref ZXC_ERROR_DICT_REQUIRED.
  *
  * @param[in] s         Seekable handle.
  * @param[in] dict      Dictionary content.
@@ -255,8 +280,9 @@ ZXC_EXPORT int zxc_seekable_set_checksum(zxc_seekable* s, int enabled);
  * @param[in] dict_huf  Shared literal Huffman table (128 bytes, see
  *                      zxc_dict_huf()), or NULL if the archive was compressed
  *                      without one. Must be the compression-time table: the
- *                      archive's dict_id binds the (dict, table) pair. Wrong or
- *                      missing: @ref ZXC_ERROR_DICT_MISMATCH, on this call.
+ *                      archive's dict_id binds the (dict, table) pair. A pair
+ *                      no frame uses: @ref ZXC_ERROR_DICT_MISMATCH, on this call,
+ *                      unless no frame needs a dictionary: then it is ignored.
  * @return @ref ZXC_OK on success, or a negative @ref zxc_error_t code.
  */
 ZXC_EXPORT int zxc_seekable_set_dict(zxc_seekable* s, const void* dict, size_t dict_size,
@@ -270,8 +296,9 @@ ZXC_EXPORT int zxc_seekable_set_dict(zxc_seekable* s, const void* dict, size_t d
  * @brief Writes a seek table to the destination buffer.
  *
  * Low-level helper used by the seekable compression paths. Layout is
- * block_header(8) + N entries(4 each); an entry stores only @c comp_size,
- * decompressed sizes being derived at read time from the header's block_size.
+ * block_header(8) + groups of 64 blocks, each a u64 anchor (its first block's
+ * offset) then one u32 on-disk size per block; the header's size field holds
+ * the groups' byte size folded to 32 bits, exact below 4 GiB.
  *
  * @param[out] dst             Destination buffer.
  * @param[in]  dst_capacity    Capacity of @p dst in bytes.
@@ -280,15 +307,15 @@ ZXC_EXPORT int zxc_seekable_set_dict(zxc_seekable* s, const void* dict, size_t d
  * @return Number of bytes written, or a negative @ref zxc_error_t on failure.
  */
 ZXC_EXPORT int64_t zxc_write_seek_table(uint8_t* dst, const size_t dst_capacity,
-                                        const uint32_t* comp_sizes, const uint32_t num_blocks);
+                                        const uint32_t* comp_sizes, const uint64_t num_blocks);
 
 /**
  * @brief Returns the encoded size of a seek table for the given block count.
  *
  * @param[in] num_blocks     Number of blocks.
- * @return Total byte size of the seek table.
+ * @return Total byte size of the seek table, or 0 when it does not fit @c size_t.
  */
-ZXC_EXPORT size_t zxc_seek_table_size(const uint32_t num_blocks);
+ZXC_EXPORT size_t zxc_seek_table_size(const uint64_t num_blocks);
 
 /** @} */ /* end of seekable_api */
 

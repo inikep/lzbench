@@ -1,8 +1,8 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 /*
  * ZXC - High-performance lossless compression
  *
- * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
- * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) Bertrand Lebonnois and contributors.
  */
 
 /**
@@ -16,11 +16,12 @@
  * allocator, sort, and basic header set.
  *
  * @par Stock (hosted) build
- * Pulls in @c <limits.h>, @c <stdint.h>, @c <stdlib.h>, @c <string.h> and
- * expands the macros to their libc equivalents.
+ * Pulls in @c <assert.h>, @c <limits.h>, @c <stdint.h>, @c <stdlib.h>,
+ * @c <string.h> and expands the macros to their libc equivalents.
  *
  * Per-symbol @c -D overrides are also accepted (each macro is guarded by
- * an @c ifndef), so vendoring is optional for ad-hoc consumers.
+ * an @c ifndef, the aligned pair as one), so vendoring is optional for ad-hoc
+ * consumers.
  */
 
 #ifndef ZXC_DEPS_H
@@ -33,16 +34,17 @@
 
 /**
  * @name Standard Headers
- * @brief Pulled in by the stock libzxc build to provide @c size_t,
- * @c uintN_t / @c intN_t, @c CHAR_BIT, @c malloc / @c calloc /
+ * @brief Pulled in by the stock libzxc build to provide @c static_assert,
+ * @c size_t, @c uintN_t / @c intN_t, @c CHAR_BIT, @c malloc / @c calloc /
  * @c realloc / @c free, and @c memcpy / @c memset / @c memmove /
  * @c memcmp.
  *
- * Vendored overrides of this file typically substitute @c <linux/limits.h>,
- * @c <linux/types.h>, @c <linux/string.h>, @c <linux/slab.h>,
+ * Vendored overrides of this file typically substitute @c <linux/build_bug.h>,
+ * @c <linux/limits.h>, @c <linux/types.h>, @c <linux/string.h>, @c <linux/slab.h>,
  * @c <linux/sort.h>.
  * @{
  */
+#include <assert.h>
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -91,32 +93,85 @@
  * @brief Macros around the cache-line-aligned allocator used for compression
  * workspace and per-context scratch buffers.
  *
- * The default expansion calls the internal helpers @ref zxc_aligned_malloc /
- * @ref zxc_aligned_free (forward-declared in @c zxc_internal.h, defined in
- * @c zxc_common.c), which wrap @c _aligned_malloc / @c _aligned_free on
- * Windows and @c posix_memalign / @c free on POSIX.
+ * The default is the pair defined below, wrapping @c _aligned_malloc on Windows
+ * and @c posix_memalign elsewhere - the core's only use of either. A host
+ * overrides both macros or neither; a vendored copy of this file defines both.
  *
- * Kernel builds typically map this to the slab allocator: @c kmalloc already
- * returns @c ARCH_KMALLOC_MINALIGN-aligned memory, which is greater than or
- * equal to the cache line size on every supported architecture.
+ * Kernel builds align by hand over the slab allocator (see contrib/linux-kernel):
+ * @c kmalloc guarantees only @c ARCH_KMALLOC_MINALIGN, 8 bytes on x86 and on
+ * arm64 since 6.5, short of the cache line the workspace layout assumes.
  * @{
  */
 
-/** @def ZXC_ALIGNED_MALLOC
- *  @brief Cache-line-aligned allocator.
- *         Default: @c zxc_aligned_malloc (wraps @c posix_memalign /
- *         @c _aligned_malloc). */
-#ifndef ZXC_ALIGNED_MALLOC
-#define ZXC_ALIGNED_MALLOC(size, alignment) zxc_aligned_malloc(size, alignment)
+#if defined(ZXC_ALIGNED_MALLOC) != defined(ZXC_ALIGNED_FREE)
+#error "ZXC_ALIGNED_MALLOC and ZXC_ALIGNED_FREE are overridden together"
 #endif
 
+#ifndef ZXC_ALIGNED_MALLOC
+
+/** @brief Default cache-line-aligned allocator; release with @ref zxc_aligned_free. */
+static inline void* zxc_aligned_malloc(const size_t size, const size_t alignment) {
+#if defined(_WIN32)
+    return _aligned_malloc(size, alignment);
+#else
+    void* ptr = NULL;
+    if (posix_memalign(&ptr, alignment, size) != 0) return NULL;
+    return ptr;
+#endif
+}
+
+/** @brief Counterpart of @ref zxc_aligned_malloc; NULL is a no-op. */
+static inline void zxc_aligned_free(void* ptr) {
+#if defined(_WIN32)
+    _aligned_free(ptr);
+#else
+    free(ptr);
+#endif
+}
+
+/** @def ZXC_ALIGNED_MALLOC
+ *  @brief Cache-line-aligned allocator. */
+#define ZXC_ALIGNED_MALLOC(size, alignment) zxc_aligned_malloc(size, alignment)
 /** @def ZXC_ALIGNED_FREE
  *  @brief Counterpart deallocator for @ref ZXC_ALIGNED_MALLOC. */
-#ifndef ZXC_ALIGNED_FREE
 #define ZXC_ALIGNED_FREE(ptr) zxc_aligned_free(ptr)
-#endif
+
+#endif  // ZXC_ALIGNED_MALLOC
 
 /** @} */ /* end of Aligned Allocator Abstraction */
+
+/**
+ * @name Population Count
+ * @brief @c ZXC_POPCOUNT32 / @c ZXC_POPCOUNT64. Default: the builtins, libgcc
+ * calls without a hardware count; a kernel maps them onto @c hweight32/64.
+ * @{
+ */
+
+#if defined(ZXC_POPCOUNT32) != defined(ZXC_POPCOUNT64)
+#error "ZXC_POPCOUNT32 and ZXC_POPCOUNT64 are overridden together"
+#endif
+
+#ifndef ZXC_POPCOUNT32
+#if defined(__GNUC__) || defined(__clang__)
+#define ZXC_POPCOUNT32(v) __builtin_popcount(v)
+#define ZXC_POPCOUNT64(v) __builtin_popcountll(v)
+#else
+/** @brief Portable SWAR popcount (MSVC). */
+static inline int zxc_popcount32(const uint32_t v) {
+    uint32_t x = v - ((v >> 1) & 0x55555555U);
+    x = (x & 0x33333333U) + ((x >> 2) & 0x33333333U);
+    x = (x + (x >> 4)) & 0x0F0F0F0FU;
+    return (int)((x * 0x01010101U) >> 24);
+}
+static inline int zxc_popcount64(const uint64_t v) {
+    return zxc_popcount32((uint32_t)v) + zxc_popcount32((uint32_t)(v >> 32));
+}
+#define ZXC_POPCOUNT32(v) zxc_popcount32(v)
+#define ZXC_POPCOUNT64(v) zxc_popcount64(v)
+#endif
+#endif  // ZXC_POPCOUNT32
+
+/** @} */ /* end of Population Count */
 
 /** @} */ /* end of addtogroup internal */
 

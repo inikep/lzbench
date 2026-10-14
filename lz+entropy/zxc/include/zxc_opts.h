@@ -1,8 +1,8 @@
+/* SPDX-License-Identifier: BSD-3-Clause */
 /*
  * ZXC - High-performance lossless compression
  *
- * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
- * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) Bertrand Lebonnois and contributors.
  */
 
 /**
@@ -32,7 +32,7 @@ extern "C" {
 /**
  * @brief Progress callback function type.
  *
- * Called from the writer thread after each block is processed.
+ * Called from the writer thread after each block, or batch of blocks, is processed.
  *
  * @param[in] bytes_processed Input bytes processed so far.
  * @param[in] bytes_total     Total input bytes to process (0 if unknown, e.g. stdin).
@@ -60,7 +60,7 @@ typedef struct {
     int level;         /**< Compression level 1-7 (0 = default, ZXC_LEVEL_DEFAULT). */
     size_t block_size; /**< Block size in bytes (0 = default ZXC_BLOCK_SIZE_DEFAULT). Must be power
                           of 2, [4KB - 2MB]. */
-    int checksum_enabled; /**< 1 to enable per-block and global checksums, 0 to disable. */
+    int checksum_enabled; /**< 1 to append the block checksums and archive digest, 0 to disable. */
     int seekable;         /**< 1 to append a seek table for random-access decompression. */
     const void* dict;     /**< Pre-trained dictionary content (NULL = none). */
     size_t dict_size;     /**< Dictionary size in bytes (0 = none, max ZXC_DICT_SIZE_MAX). */
@@ -85,7 +85,7 @@ typedef struct {
  */
 typedef struct {
     int n_threads;        /**< Worker thread count (0 = auto-detect CPU cores). */
-    int checksum_enabled; /**< 1 to verify per-block and global checksums, 0 to skip. */
+    int checksum_enabled; /**< 1 to verify the block checksums and archive digest, 0 to skip. */
     const void* dict;     /**< Pre-trained dictionary content (NULL = none). */
     size_t dict_size;     /**< Dictionary size in bytes (0 = none). */
     const void* dict_huf; /**< Shared literal Huffman table: the same 128-byte header

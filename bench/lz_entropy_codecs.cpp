@@ -1236,7 +1236,6 @@ int64_t lzbench_zstd_LDM_compress(char *inbuf, size_t insize, char *outbuf, size
 typedef struct {
     zxc_cctx *cctx;
     zxc_dctx *dctx;
-    int level;
 } zxc_bench_t;
 
 char *lzbench_zxc_init(size_t insize, size_t level, size_t)
@@ -1245,23 +1244,9 @@ char *lzbench_zxc_init(size_t insize, size_t level, size_t)
     if (!bench)
         return NULL;
 
-    bench->level = (int)level;
-
     zxc_compress_opts_t copts = {0};
     copts.level = (int)level;
-
-    /* ZXC block_size must be a power of 2 in [4KB, 2MB].
-     * Valid values:  4096  (4KB)    1 << 12
-     *                8192  (8KB)    1 << 13
-     *               16384  (16KB)   1 << 14
-     *               32768  (32KB)   1 << 15
-     *               65536  (64KB)   1 << 16
-     *              131072  (128KB)  1 << 17
-     *              262144  (256KB)  1 << 18
-     *              524288  (512KB)  1 << 19  (default)
-     *             1048576  (1MB)    1 << 20
-     *             2097152  (2MB)    1 << 21
-     * Set to 0 to use the default (512KB). */
+    /* 0 = default block size (512KB); otherwise a power of 2 in [4KB, 2MB]. */
     copts.block_size = 0;
 
     bench->cctx = zxc_create_cctx(&copts);

@@ -1,8 +1,8 @@
+// SPDX-License-Identifier: BSD-3-Clause
 /*
  * ZXC - High-performance lossless compression
  *
- * Copyright (c) 2025-2026 Bertrand Lebonnois and contributors.
- * SPDX-License-Identifier: BSD-3-Clause
+ * Copyright (c) Bertrand Lebonnois and contributors.
  */
 
 /**
@@ -21,32 +21,6 @@
 // ============================================================================
 // CONTEXT MANAGEMENT
 // ============================================================================
-
-/**
- * @brief Allocates memory aligned to the specified boundary.
- *
- * Uses `_aligned_malloc` on Windows and `posix_memalign` elsewhere.
- */
-void* zxc_aligned_malloc(const size_t size, const size_t alignment) {
-#if defined(_WIN32)
-    return _aligned_malloc(size, alignment);
-#else
-    void* ptr = NULL;
-    if (posix_memalign(&ptr, alignment, size) != 0) return NULL;
-    return ptr;
-#endif
-}
-
-/**
- * @brief Frees memory previously allocated by zxc_aligned_malloc().
- */
-void zxc_aligned_free(void* ptr) {
-#if defined(_WIN32)
-    _aligned_free(ptr);
-#else
-    free(ptr);
-#endif
-}
 
 /**
  * @brief Returns @c sizeof(zxc_compress_opts_t) for ABI-safe allocation.
@@ -68,6 +42,14 @@ size_t zxc_compress_opts_size(void) { return sizeof(zxc_compress_opts_t); }
  */
 size_t zxc_decompress_opts_size(void) { return sizeof(zxc_decompress_opts_t); }
 
+/**
+ * @brief Returns @c sizeof(zxc_frame_info_t) for ABI-safe mirroring.
+ *
+ * Public API; see @c zxc_buffer.h.
+ */
+// cppcheck-suppress unusedFunction
+size_t zxc_frame_info_size(void) { return sizeof(zxc_frame_info_t); }
+
 // Offset table of the persistent buffer carved by every cctx/dctx init. Both
 // modes compute it identically, for the workspace sizer and the in-place init.
 typedef struct {
@@ -86,6 +68,7 @@ typedef struct {
     size_t off_hash_tags;
     size_t off_chain;
     size_t off_seq_union;
+    size_t off_split_hist;
     size_t off_extras;
     size_t off_lit_cctx;
     // meaningful only when sz_opt > 0 (level >= ZXC_LEVEL_DENSITY).
@@ -137,8 +120,9 @@ static void zxc_dctx_entropy_sizes(const size_t chunk_size, size_t* RESTRICT sz_
  * Decompress (@p mode == 0) reserves @c work_buf, @c lit_buffer (both padded
  * for wild-copy overshoot) and the token / PivCo decode scratch buffers.
  * Compress (@p mode == 1) reserves the LZ match-finder
- * tables (hash positions, tags, chain), the sequence / extras / literal buffers
- * and - only at @c level >= ZXC_LEVEL_DENSITY - the optimal-parser scratch. A
+ * tables (hash positions, tags, chain), the sequence buffers, the match-split
+ * histograms, the extras and literal buffers and - only at @c level >=
+ * ZXC_LEVEL_DENSITY - the optimal-parser scratch. A
  * @p dict_size > 0 appends the [dict | data] concat scratch in both modes.
  *
  * Every offset is cache-line aligned via @c ZXC_ALIGN_CL.
@@ -188,23 +172,23 @@ static zxc_cctx_layout_t compute_cctx_layout(const size_t chunk_size, const int 
             layout.total += ZXC_ALIGN_CL(layout.sz_pivco_dctx);
         }
     } else {
-        // Compress: 6 partitions + optional opt_scratch at level >= ZXC_LEVEL_DENSITY.
+        // Compress: 7 partitions + optional opt_scratch at level >= ZXC_LEVEL_DENSITY.
         const uint32_t offset_bits = zxc_log2_u32((uint32_t)chunk_size);
         layout.max_seq = max_seq;
         layout.sz_hash_pos = ZXC_LZ_HASH_SIZE * sizeof(uint32_t);
         layout.sz_hash_tags = ZXC_LZ_HASH_SIZE * sizeof(uint8_t);
         const size_t sz_chain = ZXC_LZ_WINDOW_SIZE * sizeof(uint16_t);
-        // buf_sequences (GHI, level <= ZXC_LEVEL_FAST) aliases buf_offsets + buf_tokens (GLO,
-        // level >= ZXC_LEVEL_DEFAULT). Mutually exclusive per block; sized for the larger.
+        // buf_sequences (GHI, level <= ZXC_LEVEL_FAST) aliases buf_offsets, buf_tokens and
+        // buf_split (GLO, level >= ZXC_LEVEL_DEFAULT): 4 bytes per sequence either way.
         const size_t sz_seq_union = layout.max_seq * sizeof(uint32_t);
         const size_t vbyte_len = (offset_bits + 6) / 7;
         const size_t sz_extras = layout.max_seq * 2 * vbyte_len;
         const size_t sz_lit = chunk_size + ZXC_PAD_SIZE;
 
         // opt_scratch (level >= ZXC_LEVEL_DENSITY): the optimal parser's DP arrays,
-        // reused transiently as package-merge scratch by the code-length builder,
-        // so sized to the larger demand. Keep in sync with zxc_estimate_cctx_size()
-        // and its consumer in zxc_compress.c.
+        // reused transiently by the code-length builder and its nudge, so sized to
+        // the larger demand. Keep in sync with zxc_estimate_cctx_size() and its
+        // consumer in zxc_compress.c.
         if (level >= ZXC_LEVEL_DENSITY) {
             size_t sz_dp;
             size_t sz_pl;
@@ -213,7 +197,7 @@ static zxc_cctx_layout_t compute_cctx_layout(const size_t chunk_size, const int 
             zxc_opt_dp_sizes(chunk_size, &sz_dp, &sz_pl, &sz_po, &sz_bm);
             const size_t dp_needed = sz_dp + sz_pl + sz_po + sz_bm;
             layout.sz_opt =
-                (dp_needed > ZXC_HUF_BUILD_SCRATCH_SIZE) ? dp_needed : ZXC_HUF_BUILD_SCRATCH_SIZE;
+                (dp_needed > ZXC_HUF_NUDGE_SCRATCH_SIZE) ? dp_needed : ZXC_HUF_NUDGE_SCRATCH_SIZE;
         }
 
         layout.off_hash_pos = layout.total;
@@ -224,6 +208,8 @@ static zxc_cctx_layout_t compute_cctx_layout(const size_t chunk_size, const int 
         layout.total += ZXC_ALIGN_CL(sz_chain);
         layout.off_seq_union = layout.total;
         layout.total += ZXC_ALIGN_CL(sz_seq_union);
+        layout.off_split_hist = layout.total;
+        layout.total += ZXC_ALIGN_CL(sizeof(zxc_glo_split_hist_t));
         layout.off_extras = layout.total;
         layout.total += ZXC_ALIGN_CL(sz_extras);
         layout.off_lit_cctx = layout.total;
@@ -323,6 +309,8 @@ int zxc_cctx_init_in_workspace(zxc_cctx_t* RESTRICT ctx, void* RESTRICT workspac
     ctx->buf_sequences = (uint32_t*)(mem + layout.off_seq_union);
     ctx->buf_offsets = (uint16_t*)(mem + layout.off_seq_union);
     ctx->buf_tokens = mem + layout.off_seq_union + layout.max_seq * sizeof(uint16_t);
+    ctx->buf_split = ctx->buf_tokens + layout.max_seq;
+    ctx->buf_split_hist = (zxc_glo_split_hist_t*)(void*)(mem + layout.off_split_hist);
     ctx->buf_extras = mem + layout.off_extras;
     ctx->literals = mem + layout.off_lit_cctx;
     if (layout.sz_opt) {
@@ -385,9 +373,11 @@ int zxc_cctx_init(zxc_cctx_t* RESTRICT ctx, const size_t chunk_size, const int m
 int zxc_cctx_alloc_entropy_scratch(zxc_cctx_t* ctx) {
     if (LIKELY(ctx->pivco_scratch)) return ZXC_OK;
 
+    // Sized for the block the context was carved for, not chunk_size: a reader
+    // over frames of several block sizes lowers chunk_size per block.
     size_t sz_tok = 0;
     size_t sz_pivco = 0;
-    zxc_dctx_entropy_sizes(ctx->chunk_size, &sz_tok, &sz_pivco);
+    zxc_dctx_entropy_sizes(ctx->work_buf_cap - ZXC_DECOMPRESS_TAIL_PAD, &sz_tok, &sz_pivco);
     const size_t total = ZXC_ALIGN_CL(sz_tok) + ZXC_ALIGN_CL(sz_pivco);
 
     uint8_t* const mem = (uint8_t*)ZXC_ALIGNED_MALLOC(total, ZXC_CACHE_LINE_SIZE);
@@ -425,6 +415,8 @@ void zxc_cctx_free(zxc_cctx_t* ctx) {
     ctx->buf_tokens = NULL;
     ctx->buf_offsets = NULL;
     ctx->buf_extras = NULL;
+    ctx->buf_split = NULL;
+    ctx->buf_split_hist = NULL;
     ctx->literals = NULL;
     ctx->work_buf = NULL;
     ctx->tok_buffer = NULL;
@@ -473,11 +465,9 @@ int zxc_cctx_attach_dict_huf(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT l
     }
     if (UNLIKELY(empty || !ctx->dict_huf)) return ZXC_OK;
 
-    // Tree-at-attach: unpack + build the PivCo tree, codes and decoder tables
-    // once here; the per-block encode/estimate/decode paths reuse them via
-    // the context.
+    // Tree-at-attach: built once, reused by every block.
     const int rc = zxc_huf_dict_tree_build(lengths, &ctx->dict_huf->tree, ctx->dict_huf->codes,
-                                           ctx->dict_huf->code_len, &ctx->dict_huf->dec);
+                                           ctx->dict_huf->code_len);
     if (UNLIKELY(rc != ZXC_OK)) return rc;
     ctx->dict_huf_tree_ok = 1;
     return ZXC_OK;
@@ -494,7 +484,7 @@ int zxc_cctx_attach_dict_huf(zxc_cctx_t* RESTRICT ctx, const uint8_t* RESTRICT l
  * Reserved (7) | Checksum-16 (2).
  */
 int zxc_write_file_header(uint8_t* RESTRICT dst, const size_t dst_capacity, const size_t chunk_size,
-                          const int has_checksum, const uint32_t dict_id) {
+                          const int has_checksum, const uint32_t dict_id, const int has_seek) {
     if (UNLIKELY(dst_capacity < ZXC_FILE_HEADER_SIZE)) return ZXC_ERROR_DST_TOO_SMALL;
 
     zxc_store_le32(dst, ZXC_MAGIC_WORD);
@@ -505,6 +495,7 @@ int zxc_write_file_header(uint8_t* RESTRICT dst, const size_t dst_capacity, cons
 
     uint8_t flags = has_checksum ? (ZXC_FILE_FLAG_HAS_CHECKSUM | ZXC_CHECKSUM_RAPIDHASH) : 0;
     if (dict_id != 0) flags |= ZXC_FILE_FLAG_HAS_DICTIONARY;
+    if (has_seek) flags |= ZXC_FILE_FLAG_HAS_SEEK_TABLE;
     dst[6] = flags;
 
     // Bytes 7-13: Reserved / Dictionary ID
@@ -512,9 +503,7 @@ int zxc_write_file_header(uint8_t* RESTRICT dst, const size_t dst_capacity, cons
     if (dict_id != 0) zxc_store_le32(dst + 7, dict_id);
 
     // Bytes 14-15: Header Checksum (16-bit)
-    zxc_store_le16(dst + 14, 0);  // Zero out before hashing
-    const uint16_t sum = zxc_hash16(dst);
-    zxc_store_le16(dst + 14, sum);
+    zxc_file_header_sign(dst);
 
     return ZXC_FILE_HEADER_SIZE;
 }
@@ -526,7 +515,7 @@ int zxc_write_file_header(uint8_t* RESTRICT dst, const size_t dst_capacity, cons
  */
 int zxc_read_file_header(const uint8_t* RESTRICT src, const size_t src_size,
                          size_t* RESTRICT out_block_size, int* RESTRICT out_has_checksum,
-                         uint32_t* RESTRICT out_dict_id) {
+                         uint32_t* RESTRICT out_dict_id, int* RESTRICT out_has_seek) {
     if (UNLIKELY(src_size < ZXC_FILE_HEADER_SIZE)) return ZXC_ERROR_SRC_TOO_SMALL;
     if (UNLIKELY(zxc_le32(src) != ZXC_MAGIC_WORD)) return ZXC_ERROR_BAD_MAGIC;
     if (UNLIKELY(src[4] != ZXC_FILE_FORMAT_VERSION)) return ZXC_ERROR_BAD_VERSION;
@@ -551,7 +540,141 @@ int zxc_read_file_header(const uint8_t* RESTRICT src, const size_t src_size,
     }
     if (out_has_checksum) *out_has_checksum = (src[6] & ZXC_FILE_FLAG_HAS_CHECKSUM) ? 1 : 0;
     if (out_dict_id) *out_dict_id = (src[6] & ZXC_FILE_FLAG_HAS_DICTIONARY) ? zxc_le32(src + 7) : 0;
+    if (out_has_seek) *out_has_seek = (src[6] & ZXC_FILE_FLAG_HAS_SEEK_TABLE) ? 1 : 0;
 
+    return ZXC_OK;
+}
+
+/** @brief Reads a byte range of a scan source, refusing ranges past its end. */
+static int zxc_scan_read(const zxc_scan_src_t* src, const uint64_t off, void* dst,
+                         const size_t len) {
+    if (UNLIKELY(off > src->size || (uint64_t)len > src->size - off))
+        return ZXC_ERROR_SRC_TOO_SMALL;
+    if (src->read_at) return src->read_at(src, off, dst, len);
+    ZXC_MEMCPY(dst, src->data + off, len);
+    return ZXC_OK;
+}
+
+int zxc_container_next(const zxc_scan_src_t* src, const uint64_t pos) {
+    if (pos == src->size) return 0;
+    uint8_t m[sizeof(uint32_t)];
+    if (src->size - pos >= sizeof(m)) {
+        const int rc = zxc_scan_read(src, pos, m, sizeof(m));
+        if (UNLIKELY(rc != ZXC_OK)) return rc;
+        if (zxc_magic_prefix_ok(m, sizeof(m))) return 1;
+    }
+    return pos == 0 ? ZXC_ERROR_BAD_MAGIC : ZXC_ERROR_CORRUPT_DATA;
+}
+
+int zxc_scan_frame(const zxc_scan_src_t* src, const uint64_t end, uint64_t* start,
+                   zxc_frame_info_t* info, size_t* footer_len) {
+    uint8_t h[ZXC_FILE_HEADER_SIZE];
+    int rc;
+    // Too short for a frame: what is left starts the input, its header speaks first.
+    if (UNLIKELY(end < ZXC_FRAME_MIN_SIZE)) {
+        const size_t n = end < sizeof(h) ? (size_t)end : sizeof(h);
+        rc = zxc_scan_read(src, 0, h, n);
+        return rc != ZXC_OK ? rc : zxc_short_input_verdict(h, n);
+    }
+    uint8_t tail[ZXC_FOOTER_MAX_SIZE_WITH_DIGEST];  // end > sizeof(tail)
+    rc = zxc_scan_read(src, end - sizeof(tail), tail, sizeof(tail));
+    if (UNLIKELY(rc != ZXC_OK)) return rc;
+    uint64_t dsize = 0;
+    uint64_t frame = 0;
+    size_t sizes = 0;
+    rc = zxc_parse_file_footer(tail + sizeof(tail), sizeof(tail), &dsize, &frame, &sizes);
+    if (UNLIKELY(rc != ZXC_OK)) return rc;
+    if (UNLIKELY(frame < ZXC_FRAME_MIN_SIZE || frame > end)) return ZXC_ERROR_CORRUPT_DATA;
+
+    const uint64_t at = end - frame;
+    rc = zxc_scan_read(src, at, h, sizeof(h));
+    if (UNLIKELY(rc != ZXC_OK)) return rc;
+    const size_t tl = zxc_frame_tail_len(frame);
+    rc = zxc_read_frame_info(h, tail + sizeof(tail) - tl, tl, frame, info, footer_len);
+    // Past the first frame, a wrong magic word is a broken container.
+    if (UNLIKELY(rc == ZXC_ERROR_BAD_MAGIC && at != 0)) return ZXC_ERROR_CORRUPT_DATA;
+    if (UNLIKELY(rc != ZXC_OK)) return rc;
+    *start = at;
+    return ZXC_OK;
+}
+
+int zxc_scan_whole_frame(const zxc_scan_src_t* src, zxc_frame_info_t* info, size_t* footer_len) {
+    uint8_t h[ZXC_FILE_HEADER_SIZE];
+    const size_t n = src->size < sizeof(h) ? (size_t)src->size : sizeof(h);
+    int rc = zxc_scan_read(src, 0, h, n);
+    if (UNLIKELY(rc != ZXC_OK)) return rc;
+    rc = zxc_short_input_verdict(h, n);  // the header speaks first
+    if (UNLIKELY(rc != ZXC_ERROR_SRC_TOO_SMALL || src->size < ZXC_FRAME_MIN_SIZE)) return rc;
+    uint64_t start = 0;
+    rc = zxc_scan_frame(src, src->size, &start, info, footer_len);
+    return rc == ZXC_OK && start != 0 ? ZXC_ERROR_CORRUPT_DATA : rc;
+}
+
+int zxc_scan_container(const zxc_scan_src_t* src, const size_t req_chunk,
+                       zxc_container_info_t* info) {
+    ZXC_MEMSET(info, 0, sizeof(*info));
+    // The first header speaks first, as for a single frame: junk is a bad magic word.
+    uint8_t h[ZXC_FILE_HEADER_SIZE];
+    const size_t n = src->size < sizeof(h) ? (size_t)src->size : sizeof(h);
+    size_t chunk = 0;
+    int hrc = zxc_scan_read(src, 0, h, n);
+    if (hrc == ZXC_OK) hrc = zxc_read_file_header(h, n, &chunk, NULL, NULL, NULL);
+    if (UNLIKELY(hrc != ZXC_OK)) return hrc;
+
+    uint64_t end = src->size;
+    do {
+        zxc_frame_info_t fi;
+        uint64_t start = 0;
+        const int rc = zxc_scan_frame(src, end, &start, &fi, NULL);
+        if (UNLIKELY(rc != ZXC_OK)) return rc;
+        if (UNLIKELY(req_chunk && fi.block_size != req_chunk)) return ZXC_ERROR_BAD_BLOCK_SIZE;
+        if (UNLIKELY(fi.decompressed_size > UINT64_MAX - info->dsize))
+            return ZXC_ERROR_CORRUPT_DATA;
+        info->dsize += fi.decompressed_size;
+        info->frames++;
+        info->first_dict_id = fi.dict_id;  // walking back, the last one seen is first
+        if (fi.dict_id) info->uses_dict = 1;
+        end = start;
+    } while (end > 0);
+    return ZXC_OK;
+}
+
+/**
+ * @brief Validates a frame from its header and the end of its bytes.
+ *
+ * Header first, as every decoder does; then the footer, whose frame must span
+ * @p total bytes and whose size the blocks could hold.
+ */
+int zxc_read_frame_info(const uint8_t* header, const uint8_t* tail, const size_t tail_len,
+                        const uint64_t total, zxc_frame_info_t* info, size_t* footer_len) {
+    size_t chunk = 0;
+    int cs = 0;
+    int seek = 0;
+    uint32_t did = 0;
+    const int hrc = zxc_read_file_header(header, ZXC_FILE_HEADER_SIZE, &chunk, &cs, &did, &seek);
+    if (UNLIKELY(hrc != ZXC_OK)) return hrc;
+
+    uint64_t stored = 0;
+    uint64_t frame = 0;
+    size_t sizes = 0;
+    const int frc = zxc_parse_file_footer(tail + tail_len, tail_len, &stored, &frame, &sizes);
+    if (UNLIKELY(frc != ZXC_OK)) return frc;
+    const size_t flen = sizes + (cs ? (size_t)ZXC_FILE_DIGEST_SIZE : 0U);
+    // All the frame's bytes are there: a footer longer than they allow is forged.
+    if (UNLIKELY(flen > tail_len)) return ZXC_ERROR_CORRUPT_DATA;
+    if (UNLIKELY(frame != total || !zxc_footer_dsize_plausible(stored, chunk, total)))
+        return ZXC_ERROR_CORRUPT_DATA;
+
+    ZXC_MEMSET(info, 0, sizeof(*info));  // padding too: zxc_frame_info_copy() hands it out
+    info->decompressed_size = stored;
+    info->compressed_size = frame;
+    info->digest = cs ? zxc_le64(tail + tail_len - flen) : 0;
+    info->block_size = chunk;
+    info->dict_id = did;
+    info->format_version = header[4];
+    info->has_checksum = (uint8_t)cs;
+    info->has_seek_table = (uint8_t)seek;
+    if (footer_len) *footer_len = flen;
     return ZXC_OK;
 }
 
@@ -595,22 +718,170 @@ int zxc_read_block_header(const uint8_t* RESTRICT src, const size_t src_size,
     return ZXC_OK;
 }
 
+// =========================================================================
+// SEEK TABLE WRITER (a frame block; zxc_seekable.c is the random-access reader)
+// =========================================================================
+
 /**
- * @brief Writes the 12-byte file footer (source size + global checksum).
+ * @brief Byte size of a seek table holding @p num_blocks blocks: header, then groups.
+ *
+ * Public API; sizes the destination of @ref zxc_write_seek_table. 0 when the table
+ * does not fit size_t (32-bit hosts) or @p num_blocks is past what one can describe.
  */
-int zxc_write_file_footer(uint8_t* RESTRICT dst, const size_t dst_capacity, const uint64_t src_size,
-                          const uint32_t global_hash, const int checksum_enabled) {
-    if (UNLIKELY(dst_capacity < ZXC_FILE_FOOTER_SIZE)) return ZXC_ERROR_DST_TOO_SMALL;
+size_t zxc_seek_table_size(const uint64_t num_blocks) {
+    if (UNLIKELY(num_blocks > UINT64_MAX / ZXC_SEEK_ANCHOR_SIZE)) return 0;
+    const uint64_t bytes = zxc_seek_table_bytes(num_blocks);
+    if (UNLIKELY(bytes > SIZE_MAX - ZXC_BLOCK_HEADER_SIZE)) return 0;
+    return ZXC_BLOCK_HEADER_SIZE + (size_t)bytes;
+}
 
-    zxc_store_le64(dst, src_size);
+int zxc_seek_table_header(uint8_t* dst, const size_t dst_capacity, const uint64_t num_blocks) {
+    // The field keeps the table size modulo 2^32; readers derive the count from the footer.
+    const zxc_block_header_t bh = {
+        .block_type = ZXC_BLOCK_SEK,
+        .block_flags = 0,
+        .reserved = 0,
+        .comp_size = zxc_seek_size_field(zxc_seek_table_bytes(num_blocks))};
+    return zxc_write_block_header(dst, dst_capacity, &bh);
+}
 
-    if (checksum_enabled) {
-        zxc_store_le32(dst + sizeof(uint64_t), global_hash);
-    } else {
-        ZXC_MEMSET(dst + sizeof(uint64_t), 0, sizeof(uint32_t));
+int zxc_check_eof_header(const uint8_t* hdr) {
+    const zxc_block_header_t eof = {
+        .block_type = ZXC_BLOCK_EOF, .block_flags = 0, .reserved = 0, .comp_size = 0};
+    uint8_t want[ZXC_BLOCK_HEADER_SIZE];
+    if (UNLIKELY(zxc_write_block_header(want, sizeof(want), &eof) < 0))
+        return ZXC_ERROR_BAD_HEADER;  // LCOV_EXCL_LINE
+    return memcmp(hdr, want, sizeof(want)) == 0 ? ZXC_OK : ZXC_ERROR_BAD_HEADER;
+}
+
+int zxc_check_seek_header(const uint8_t* hdr, const size_t avail, const uint64_t total_out,
+                          const size_t block_size, uint64_t* sek_bytes) {
+    const uint64_t n = zxc_seek_block_count(total_out, block_size);
+    uint8_t want[ZXC_BLOCK_HEADER_SIZE];
+    if (UNLIKELY(zxc_seek_table_header(want, sizeof(want), n) < 0))
+        return ZXC_ERROR_CORRUPT_DATA;  // LCOV_EXCL_LINE
+    const size_t m = avail < sizeof(want) ? avail : sizeof(want);
+    if (memcmp(hdr, want, m) != 0) return ZXC_ERROR_CORRUPT_DATA;
+    if (avail < sizeof(want)) return ZXC_ERROR_SRC_TOO_SMALL;
+    if (sek_bytes) *sek_bytes = zxc_seek_table_bytes(n);
+    return ZXC_OK;
+}
+
+size_t zxc_seek_write_group(uint8_t* RESTRICT dst, uint64_t* RESTRICT anchor,
+                            const uint32_t* RESTRICT sizes, const uint32_t cnt) {
+    zxc_store_le64(dst, *anchor);
+    uint8_t* p = dst + ZXC_SEEK_ANCHOR_SIZE;
+    for (uint32_t k = 0; k < cnt; k++, p += ZXC_SEEK_SIZE_ENTRY) {
+        zxc_store_le32(p, sizes[k]);
+        *anchor += sizes[k];
     }
+    return (size_t)(p - dst);
+}
 
-    return ZXC_FILE_FOOTER_SIZE;
+/**
+ * @brief Serialises a seek table (a @c ZXC_BLOCK_SEK block) into @p dst.
+ *
+ * Public API; contract in @c zxc_seekable.h. Block header, then the groups.
+ */
+int64_t zxc_write_seek_table(uint8_t* dst, const size_t dst_capacity, const uint32_t* comp_sizes,
+                             const uint64_t num_blocks) {
+    const size_t total = zxc_seek_table_size(num_blocks);
+    if (UNLIKELY(total == 0)) return ZXC_ERROR_OVERFLOW;
+    if (UNLIKELY(dst_capacity < total)) return ZXC_ERROR_DST_TOO_SMALL;
+    if (UNLIKELY(!dst || !comp_sizes)) return ZXC_ERROR_NULL_INPUT;
+
+    const int hdr_res = zxc_seek_table_header(dst, dst_capacity, num_blocks);
+    if (UNLIKELY(hdr_res < 0)) return hdr_res;
+    uint8_t* p = dst + hdr_res;
+
+    uint64_t anchor = ZXC_FILE_HEADER_SIZE;
+    for (uint64_t i = 0; i < num_blocks; i += ZXC_SEEK_GROUP)
+        p += zxc_seek_write_group(p, &anchor, comp_sizes + i,
+                                  zxc_seek_group_len(num_blocks, i / ZXC_SEEK_GROUP));
+
+    return (int64_t)(p - dst);
+}
+
+/** @brief Stores the low @p n bytes of @p v, little-endian. */
+static void zxc_store_le_n(uint8_t* dst, uint64_t v, const size_t n) {
+    for (size_t i = 0; i < n; i++, v >>= 8) dst[i] = (uint8_t)v;
+}
+
+/** @brief Loads @p n little-endian bytes. */
+static uint64_t zxc_load_le_n(const uint8_t* src, const size_t n) {
+    uint64_t v = 0;
+    for (size_t i = n; i > 0; i--) v = (v << 8) | src[i - 1];
+    return v;
+}
+
+/** @brief Encodes the @p l footer: digest, the two sizes, then L. */
+static void zxc_encode_footer(uint8_t* dst, const zxc_footer_layout_t* l, const uint64_t src_size,
+                              const uint64_t digest) {
+    if (l->skip) zxc_store_le64(dst, digest);
+    uint8_t* p = dst + l->skip;
+    zxc_store_le_n(p, src_size, l->nd);
+    p += l->nd;
+    zxc_store_le_n(p, l->compressed_size, l->nf);
+    p[l->nf] = (uint8_t)((l->nd - 1) | (l->nf - 1) << 4);
+}
+
+/**
+ * @brief Writes the file footer: the archive digest when @p checksum_enabled,
+ *        then the two sizes and their lengths byte.
+ */
+int zxc_write_file_footer(uint8_t* RESTRICT dst, const size_t dst_capacity, const uint64_t prefix,
+                          const uint64_t src_size, const uint64_t digest,
+                          const int checksum_enabled) {
+    const zxc_footer_layout_t l = zxc_footer_layout(prefix, src_size, checksum_enabled);
+    if (UNLIKELY(dst_capacity < l.len)) return ZXC_ERROR_DST_TOO_SMALL;
+    zxc_encode_footer(dst, &l, src_size, digest);
+    return (int)l.len;
+}
+
+/**
+ * @brief Checks a footer against the one the frame implies.
+ *
+ * Compares the bytes present, digest aside, with the footer it would write: one
+ * encoding per frame.
+ */
+int zxc_check_file_footer(const uint8_t* footer, const size_t avail, const zxc_footer_layout_t* l,
+                          const uint64_t src_size, uint64_t* digest) {
+    uint8_t want[ZXC_FOOTER_MAX_SIZE_WITH_DIGEST];
+    zxc_encode_footer(want, l, src_size, 0);
+    const size_t n = avail < l->len ? avail : l->len;
+    if (n > l->skip && memcmp(footer + l->skip, want + l->skip, n - l->skip) != 0)
+        return ZXC_ERROR_CORRUPT_DATA;
+    if (avail < l->len) return ZXC_ERROR_SRC_TOO_SMALL;
+    if (digest) *digest = l->skip ? zxc_le64(footer) : 0;
+    return ZXC_OK;
+}
+
+/**
+ * @brief Parses the two sizes back from the end of a frame.
+ *
+ * Bits 3 and 7 of L are reserved; a length longer than its value needs is
+ * refused.
+ */
+int zxc_parse_file_footer(const uint8_t* end, const size_t avail, uint64_t* src_size,
+                          uint64_t* compressed_size, size_t* sizes_len) {
+    if (UNLIKELY(avail < ZXC_FILE_FOOTER_MIN_SIZE)) return ZXC_ERROR_SRC_TOO_SMALL;
+    const uint8_t L = end[-1];
+    if (UNLIKELY(L & 0x88U)) return ZXC_ERROR_CORRUPT_DATA;
+    const size_t nd = (size_t)(L & 0x07U) + 1;
+    const size_t nf = (size_t)(L >> 4) + 1;
+    const size_t need = nd + nf + 1;
+    if (UNLIKELY(avail < need)) return ZXC_ERROR_SRC_TOO_SMALL;
+    const uint64_t d = zxc_load_le_n(end - need, nd);
+    const uint64_t f = zxc_load_le_n(end - 1 - nf, nf);
+    // Minimal lengths: d on exactly nd bytes; f too, and nf the fewest that hold
+    // the total, which one byte less would not (f counts its own bytes).
+    if (UNLIKELY(zxc_uint_bytes(d) != nd || zxc_uint_bytes(f) != nf ||
+                 (nf > 1 && zxc_uint_bytes(f - 1) < nf)))
+        return ZXC_ERROR_CORRUPT_DATA;
+    *src_size = d;
+    *compressed_size = f;
+    *sizes_len = need;
+    return ZXC_OK;
 }
 
 /**
@@ -649,7 +920,8 @@ static ZXC_ALWAYS_INLINE void zxc_read_gnr_header(const uint8_t* RESTRICT src,
 /**
  * @brief Size of the GLO section descriptors, implied by the encoding fields.
  *
- * 0, 4 or 8 bytes - see @ref zxc_write_glo_header_and_desc for what they hold.
+ * 0, 4 or 8 bytes (@ref ZXC_GLO_DESC_MAX_SIZE) - see @ref zxc_write_glo_header_and_desc
+ * for what they hold.
  */
 static ZXC_ALWAYS_INLINE size_t zxc_glo_desc_size(const uint8_t enc_lit, const uint8_t enc_tok) {
     return ((enc_lit != ZXC_SECTION_ENCODING_RAW) ? sizeof(uint32_t) : 0) +
@@ -764,8 +1036,8 @@ uint64_t zxc_compress_bound(const size_t input_size) {
            (n * (ZXC_BLOCK_HEADER_SIZE + ZXC_BLOCK_CHECKSUM_SIZE + ZXC_BLOCK_FORMAT_OVERHEAD)) +
            (uint64_t)input_size + ZXC_BLOCK_HEADER_SIZE + /* EOF block */
            ZXC_BLOCK_HEADER_SIZE +                        /* SEK block header (seekable) */
-           (n * ZXC_SEEK_ENTRY_SIZE) +                    /* SEK entries: 4 bytes per block */
-           ZXC_FILE_FOOTER_SIZE;
+           zxc_seek_table_bytes(n) +                      /* SEK groups (seekable) */
+           ZXC_FOOTER_MAX_SIZE_WITH_DIGEST;               /* optional digest + footer */
 }
 
 /**
