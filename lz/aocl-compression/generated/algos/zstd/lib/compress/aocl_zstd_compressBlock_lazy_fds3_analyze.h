@@ -1,0 +1,252 @@
+/*
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ * All rights reserved.
+ *
+ * This source code is licensed under both the BSD-style license (found in the
+ * LICENSE file in the root directory of this source tree) and the GPLv2 (found
+ * in the COPYING file in the root directory of this source tree).
+ * You may select, at your option, one of the above-listed licenses.
+ */
+
+/**
+  * Modifications Copyright (C) 2023-2025, Advanced Micro Devices. All rights reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions are met:
+  *
+  * 1. Redistributions of source code must retain the above copyright notice,
+  * this list of conditions and the following disclaimer.
+  * 2. Redistributions in binary form must reproduce the above copyright notice,
+  * this list of conditions and the following disclaimer in the documentation
+  * and/or other materials provided with the distribution.
+  * 3. Neither the name of the copyright holder nor the names of its
+  * contributors may be used to endorse or promote products derived from this
+  * software without specific prior written permission.
+  *
+  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+  * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+  * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+  * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+  * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+  * POSSIBILITY OF SUCH DAMAGE.
+  */
+
+ /* zstd_lazy_aocl : this module provides different aocl optimized
+  * variants for lazy compression */
+
+#ifdef AOCL_ZSTD_OPT
+#if AOCL_DECOMPRESS_FAST > 1
+/*
+* Derived from AOCL_ZSTD_compressBlock_lazy_generic for ZSTD_noDict case only. Also enforces :
+*   totalBits < (STREAM_ACCUMULATOR_MIN_64 - (LLFSELog + MLFSELog + OffFSELog)
+*   no Repeated_Offset2 and Repeated_Offset3
+*   no offsets go into extDict (no offset beyond prefix)
+*   offset >= WILDCOPY_VECLEN
+*/
+FORCE_INLINE_TEMPLATE size_t
+AOCL_ZSTD_compressBlock_lazy_fds3_base_with_trans(
+    ZSTD_MatchState_t* ms, SeqStore_t* seqStore,
+    U32 rep[ZSTD_REP_NUM],
+    const void* src, size_t srcSize,
+    const searchMethod_e searchMethod, const U32 depth)
+{
+    const BYTE* const istart = (const BYTE*)src;
+    const BYTE* ip = istart;
+    const BYTE* anchor = istart;
+    const BYTE* const iend = istart + srcSize;
+    const BYTE* const ilimit = (searchMethod == search_rowHash) ? iend - 8 - ZSTD_ROW_HASH_CACHE_SIZE : iend - 8;
+    const BYTE* const base = ms->window.base;
+    const U32 prefixLowestIndex = ms->window.dictLimit;
+    const BYTE* const prefixLowest = base + prefixLowestIndex;
+    const U32 mls = BOUNDED(4, ms->cParams.minMatch, 6);
+    const U32 rowLog = BOUNDED(4, ms->cParams.searchLog, 6);
+
+    U32 offset_1 = rep[0];
+    U32 offsetSaved1 = 0;
+
+    const U32 dictAndPrefixLength = (U32)(ip - prefixLowest);
+
+    DEBUGLOG(5, "AOCL_ZSTD_compressBlock_lazy_fds3_base_with_trans (searchFunc=%u)", (U32)searchMethod);
+    ip += (dictAndPrefixLength == 0);
+    
+    U32 const curr = (U32)(ip - base);
+    U32 const windowLow = ZSTD_getLowestPrefixIndex(ms, curr, ms->cParams.windowLog);
+    U32 const maxRep = curr - windowLow;
+    if (offset_1 > maxRep) offsetSaved1 = offset_1, offset_1 = 0;
+
+    /* Reset the lazy skipping state */
+    ms->lazySkipping = 0;
+
+    if (searchMethod == search_rowHash) {
+        ZSTD_row_fillHashCache(ms, base, rowLog, mls, ms->nextToUpdate, ilimit);
+    }
+
+#ifdef AOCL_COMPRESS_FAST
+    unsigned lazyLimit = seqStore->lazyLimit;
+#endif
+
+    /* Match Loop */
+#if defined(__GNUC__) && defined(__x86_64__)
+    /* I've measured random a 5% speed loss on levels 5 & 6 (greedy) when the
+     * code alignment is perturbed. To fix the instability align the loop on 32-bytes.
+     */
+    __asm__(".p2align 5");
+#endif
+    while (ip < ilimit) {
+        size_t matchLength = 0;
+        size_t offBase = REPCODE1_TO_OFFBASE;
+        const BYTE* start = ip + 1;
+        DEBUGLOG(7, "search baseline (depth 0)");
+
+        
+
+        /* first search (depth 0) */
+        {   size_t offbaseFound = 999999999;
+        size_t const ml2 = AOCL_ZSTD_searchMax(ms, ip, iend, &offbaseFound, mls, rowLog, searchMethod, ZSTD_noDict);
+        if (ml2 > matchLength)
+            matchLength = ml2, start = ip, offBase = offbaseFound;
+        }
+
+        if (matchLength < 4) {
+#ifdef AOCL_ZSTD_SEARCH_SKIP_OPT
+            size_t const step = ((size_t)(ip - anchor) >> aocl_kSearchStrengthLazy) + 1;   /* jump faster over incompressible sections */;
+#else
+            size_t const step = ((size_t)(ip - anchor) >> kSearchStrength) + 1;   /* jump faster over incompressible sections */;
+#endif
+            ip += step;
+            /* Enter the lazy skipping mode once we are skipping more than 8 bytes at a time.
+             * In this mode we stop inserting every position into our tables, and only insert
+             * positions that we search, which is one in step positions.
+             * The exact cutoff is flexible, I've just chosen a number that is reasonably high,
+             * so we minimize the compression ratio loss in "normal" scenarios. This mode gets
+             * triggered once we've gone 2KB without finding any matches.
+             */
+            ms->lazySkipping = step > kLazySkippingStep;
+            continue;
+        }
+
+        /* let's try to find a better solution */
+#ifdef AOCL_COMPRESS_FAST
+        if (matchLength <= lazyLimit && depth >= 1) /* restrict lazy eval to short matches only */
+#else
+        if (depth >= 1)
+#endif
+            while (ip < ilimit) {
+                DEBUGLOG(7, "search depth 1");
+                ip++;
+                
+                {   size_t ofbCandidate = 999999999;
+                size_t const ml2 = AOCL_ZSTD_searchMax(ms, ip, iend, &ofbCandidate, mls, rowLog, searchMethod, ZSTD_noDict);
+                int const gain2 = (int)(ml2 * 4 - ZSTD_highbit32((U32)ofbCandidate));   /* raw approx */
+                int const gain1 = (int)(matchLength * 4 - ZSTD_highbit32((U32)offBase) + 4);
+                if ((ml2 >= 4) && (gain2 > gain1)) {
+                    matchLength = ml2, offBase = ofbCandidate, start = ip;
+                    continue;   /* search a better one */
+                }   }
+
+                /* let's find an even better one */
+                if ((depth == 2) && (ip < ilimit)) {
+                    DEBUGLOG(7, "search depth 2");
+                    ip++;
+                    
+                    {   size_t ofbCandidate = 999999999;
+                    size_t const ml2 = AOCL_ZSTD_searchMax(ms, ip, iend, &ofbCandidate, mls, rowLog, searchMethod, ZSTD_noDict);
+                    int const gain2 = (int)(ml2 * 4 - ZSTD_highbit32((U32)ofbCandidate));   /* raw approx */
+                    int const gain1 = (int)(matchLength * 4 - ZSTD_highbit32((U32)offBase) + 7);
+                    if ((ml2 >= 4) && (gain2 > gain1)) {
+                        matchLength = ml2, offBase = ofbCandidate, start = ip;
+                        continue;
+                    }   }
+                }
+                break;  /* nothing found : store previous solution */
+            }
+        
+        if (OFFBASE_IS_OFFSET(offBase) && OFFBASE_TO_OFFSET(offBase) < WILDCOPY_VECLEN) 
+        {
+    /* If its a long overlapping match; do not skip it,
+     * instead mark state as FDS_NONE and continue to save the match */
+    U32 offset_offBase = OFFBASE_TO_OFFSET(offBase);
+    if (UNLIKELY(matchLength > AOCL_LONG_MATCH_LIMIT_LAZY && offset_offBase > 0 && offset_offBase < WILDCOPY_VECLEN))
+    {
+        seqStore->fds_config.state = FDS_NONE; // stop imposing constraints from next block
+        offset_1 = offset_offBase;
+        goto _storeSequence;
+    }
+    else
+            {
+#ifdef AOCL_ZSTD_SEARCH_SKIP_OPT
+            size_t const step = ((size_t)(ip - anchor) >> aocl_kSearchStrengthLazy) + 1;   /* jump faster over incompressible sections */;
+#else
+            size_t const step = ((size_t)(ip - anchor) >> kSearchStrength) + 1;   /* jump faster over incompressible sections */;
+#endif
+            ip += step;
+            ms->lazySkipping = step > kLazySkippingStep;
+            continue;
+            }
+        }
+
+        /* NOTE:
+         * Pay attention that `start[-value]` can lead to strange undefined behavior
+         * notably if `value` is unsigned, resulting in a large positive `-value`.
+         */
+         /* catch up */
+        U32 prev_offset_1 = offset_1;
+        if (OFFBASE_IS_OFFSET(offBase)) {
+            while (((start > anchor) & (start - OFFBASE_TO_OFFSET(offBase) > prefixLowest))
+                && (start[-1] == (start - OFFBASE_TO_OFFSET(offBase))[-1]))  /* only search for offset within prefix */
+            {
+                start--; matchLength++;
+            }
+            offset_1 = (U32)OFFBASE_TO_OFFSET(offBase);
+        }
+
+        {
+            U32 offset_t = OFFBASE_IS_OFFSET(offBase) ? (U32)OFFBASE_TO_OFFSET(offBase) : 1;
+            if (!is_totalbits_limited_seq_possible(start, anchor, matchLength, offset_t, MINMATCH)) {
+                offset_1 = prev_offset_1; //revert
+#ifdef AOCL_ZSTD_SEARCH_SKIP_OPT
+                size_t const step = ((size_t)(ip - anchor) >> aocl_kSearchStrengthLazy) + 1;   /* jump faster over incompressible sections */;
+#else
+                size_t const step = ((size_t)(ip - anchor) >> kSearchStrength) + 1;   /* jump faster over incompressible sections */;
+#endif
+                ip += step;
+                ms->lazySkipping = step > kLazySkippingStep;
+                continue;
+            }
+        }
+
+        /* store sequence */
+_storeSequence:
+    if (seqStore->fds_config.state == FDS_NONE)
+    {
+        ZSTD_storeSeq(seqStore, (size_t)(start-anchor), anchor, iend, (U32)offBase, matchLength);
+    }
+    else
+    {
+        AOCL_ZSTD_storeSequences(seqStore, start, anchor, iend, (U32)offBase, matchLength, MINMATCH);
+    }
+        anchor = ip = start + matchLength;
+
+        if (ms->lazySkipping) {
+            /* We've found a match, disable lazy skipping mode, and refill the hash cache. */
+            if (searchMethod == search_rowHash) {
+                ZSTD_row_fillHashCache(ms, base, rowLog, mls, ms->nextToUpdate, ilimit);
+            }
+            ms->lazySkipping = 0;
+        }
+    }
+
+    /* save reps for next block */
+    rep[0] = offset_1 ? offset_1 : offsetSaved1;
+    for (int i=1; i<ZSTD_REP_NUM; ++i) rep[i] = rep[0]; /* set to rep[0] as rest have not been maintained */
+
+    /* Return the last literals size */
+    return (size_t)(iend - anchor);
+}
+#endif /* AOCL_DECOMPRESS_FAST > 1 */
+#endif /* AOCL_ZSTD_OPT */

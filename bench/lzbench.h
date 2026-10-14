@@ -21,10 +21,17 @@
 
 #define PROGNAME "lzbench"
 #define PROGVERSION "2.4.1"
-#define PAD_SIZE (1024)
+#ifndef BENCH_REMOVE_AOCL
+    #define PAD_SIZE (16*1024)
+    // Covers AOCL LZMA/Snappy worst-case output bounds.
+    #define GET_COMPRESS_BOUND(insize) (insize + insize/6 + PAD_SIZE)
+#else
+    #define PAD_SIZE (1024)
+    // for brieflz and ucl_nrv2b with "-b64"
+    #define GET_COMPRESS_BOUND(insize) (insize + insize/8 + PAD_SIZE)
+#endif
 #define MIN_PAGE_SIZE 4096  // smallest page size we expect, if it's wrong the first algorithm might be a bit slower
 #define DEFAULT_LOOP_TIME (100*1000000)  // 1/10 of a second
-#define GET_COMPRESS_BOUND(insize) (insize + insize/8 + PAD_SIZE) // for brieflz and ucl_nrv2b with "-b64"
 #define LZBENCH_PRINT(level, fmt, ...) if (params->verbose >= level) printf(fmt, __VA_ARGS__)
 #define LZBENCH_STDERR(level, fmt, ...) if (params->verbose >= level) { fprintf(stderr, fmt, __VA_ARGS__); fflush(stderr); }
 
@@ -172,6 +179,15 @@ static const compressor_desc_t comp_desc[] =
     { "memcpy",     "memcpy",                  "copy",                        0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
     { "aceapex",    "aceapex 2.2.2",           "LZ77 + FSE/Huffman",          1,   3,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
     { "aceapex_cuda","aceapex_cuda 0.9",       "LZ77 + FSE/Huffman",          1,   2,    0,  NO_THREADING,  lzbench_aceapex_compress,    lzbench_aceapex_cuda_decompress, lzbench_aceapex_cuda_init, lzbench_aceapex_cuda_deinit },
+#ifndef BENCH_REMOVE_AOCL
+    { "aocl-lz4",   "aocl-lz4 5.3.2",          "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_aocl_lz4_compress,   lzbench_aocl_lz4_decompress,   lzbench_aocl_lz4_init,   lzbench_aocl_lz4_deinit },
+    { "aocl-lz4hc", "aocl-lz4hc 5.3.2",        "LZ77",                        1,  12,    0,  BENCH_POOL_MT, lzbench_aocl_lz4hc_compress, lzbench_aocl_lz4hc_decompress, lzbench_aocl_lz4hc_init, lzbench_aocl_lz4hc_deinit },
+    { "aocl-lzma",  "aocl-lzma 5.3.2",         "LZ77 + range",                0,   9,    0,  BENCH_POOL_MT, lzbench_aocl_lzma_compress,  lzbench_aocl_lzma_decompress,  lzbench_aocl_lzma_init,  lzbench_aocl_lzma_deinit },
+    { "aocl-bzip2", "aocl-bzip2 5.3.2",        "BWT + Huffman",               1,   9,    0,  BENCH_POOL_MT, lzbench_aocl_bzip2_compress, lzbench_aocl_bzip2_decompress, lzbench_aocl_bzip2_init, lzbench_aocl_bzip2_deinit },
+    { "aocl-snappy","aocl-snappy 5.3.2",       "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_aocl_snappy_compress,lzbench_aocl_snappy_decompress,lzbench_aocl_snappy_init,lzbench_aocl_snappy_deinit },
+    { "aocl-zlib",  "aocl-zlib 5.3.2",         "LZ77 + Huffman",              1,   9,    0,  BENCH_POOL_MT, lzbench_aocl_zlib_compress,  lzbench_aocl_zlib_decompress,  lzbench_aocl_zlib_init,  lzbench_aocl_zlib_deinit },
+    { "aocl-zstd",  "aocl-zstd 5.3.2",         "LZ77 + FSE/Huffman",          1,  22,    0,  BENCH_POOL_MT, lzbench_aocl_zstd_compress,  lzbench_aocl_zstd_decompress,  lzbench_aocl_zstd_init,  lzbench_aocl_zstd_deinit },
+#endif // BENCH_REMOVE_AOCL
     { "brieflz",    "brieflz 1.3.0",           "LZ77",                        1,   9,    0,  BENCH_POOL_MT, lzbench_brieflz_compress,    lzbench_brieflz_decompress,    lzbench_brieflz_init,    lzbench_brieflz_deinit },
     { "brotli",     "brotli 1.2.0",            "LZ77 + Huffman",              0,  11,    0,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
     { "brotli22",   "brotli 1.2.0 -d22",       "LZ77 + Huffman",              0,  11,   22,  BENCH_POOL_MT, lzbench_brotli_compress,     lzbench_brotli_decompress,     NULL,                    NULL },
@@ -392,6 +408,10 @@ static const alias_desc_t alias_desc[] =
               "lizard,18,19,26,27,28,29,39,46,47,48,49/lz4hc,10,11,12/" \
               "lzham,0,1,2,3,4/lzlib,1,2,3,4,5,6,7,8,9/lzma,5,6,7,8,9/wlz4hc,8,9,10,11,12/wzip,7,8,9,10,11,12,13/" \
               "xz,4,5,6,7,8,9/zstd,16,17,18,19,20,21,22" },
+#ifndef BENCH_REMOVE_AOCL
+    { "AOCL",     "Represents all AOCL-Compression (AMD optimized) compressors.",
+                  "memcpy/aocl-lz4/aocl-lz4hc,1,4,9,12/aocl-lzma,0,2,4,6,9/aocl-bzip2,1,5,9/aocl-snappy/aocl-zlib,1,6,9/aocl-zstd,1,2,5,8,11,15,18,22" },
+#endif // BENCH_REMOVE_AOCL
 #if !defined(BENCH_REMOVE_UCL)
     { "UCL",      "Refers to all UCL compressor variants.",
                   "ucl_nrv2b/ucl_nrv2d/ucl_nrv2e" },
