@@ -1,5 +1,6 @@
 v2.x.y (work-in-progress)
 - added AOCL-Compression 5.3.2 (AMD optimized lz4/lz4hc/lzma/bzip2/snappy/zlib/zstd, prefixed aocl-)
+- added go-brrr 1.3.0 (by @molecule-man)
 - added wlz4 1.1.0 (wlz4, wlz4fast, wlz4hc) and wzip 1.1.0 (by @icodywu)
 - updated aceapex to 2.2.2 (thanks to @yasha1971-coder); adds level 3, which the FASTEST alias now uses
 - updated kanzi to 2.6.0 (by @flanglet)

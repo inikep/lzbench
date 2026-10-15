@@ -62,6 +62,38 @@ int64_t lzbench_mbrotli_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 
 
+#ifndef BENCH_REMOVE_GOBRRR
+// work_mem stores a Go cgo.Handle.
+extern "C" {
+uintptr_t gobrrr_init(int level);
+void gobrrr_deinit(uintptr_t h);
+int64_t gobrrr_compress(uintptr_t h, uint8_t* src, size_t srcLen, uint8_t* dst, size_t dstCap);
+int64_t gobrrr_decompress(uintptr_t h, uint8_t* src, size_t srcLen, uint8_t* dst, size_t dstCap);
+}
+
+char* lzbench_gobrrr_init(size_t insize, size_t level, size_t)
+{
+    return (char*)gobrrr_init((int)level);
+}
+
+void lzbench_gobrrr_deinit(char* workmem)
+{
+    if (workmem) gobrrr_deinit((uintptr_t)workmem);
+}
+
+int64_t lzbench_gobrrr_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    return gobrrr_compress((uintptr_t)codec_options->work_mem, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
+}
+
+int64_t lzbench_gobrrr_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    return gobrrr_decompress((uintptr_t)codec_options->work_mem, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
+}
+#endif // BENCH_REMOVE_GOBRRR
+
+
+
 #ifndef BENCH_REMOVE_FASTLZMA2
 #include "lz+entropy/fast-lzma2/fast-lzma2.h"
 
