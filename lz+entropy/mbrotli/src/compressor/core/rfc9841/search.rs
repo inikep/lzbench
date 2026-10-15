@@ -30,6 +30,7 @@
 use alloc::vec::Vec;
 
 use fearless_simd::Simd;
+use fearless_simd_macros::simd;
 
 use super::context::SharedContextInner;
 use crate::shared::match_len::{common_prefix_len, common_prefix_len_simd};
@@ -68,10 +69,14 @@ impl SharedContextInner {
     /// `max_ring_buffer_distance` is the largest distance that still addresses
     /// the ring buffer, and `max_distance` the largest the distance alphabet
     /// can express.
+    ///
+    /// Enters `simd`'s feature context itself, so the vector prefix scan stays
+    /// inline whether or not the caller's feature context reaches this far.
     #[expect(
         clippy::too_many_arguments,
         reason = "mirrors LookupCompoundDictionaryMatch, whose parameters are all needed"
     )]
+    #[simd]
     pub(crate) fn find_match<S: Simd>(
         &self,
         simd: S,
@@ -84,38 +89,31 @@ impl SharedContextInner {
         max_distance: usize,
         out: &mut SearchResult,
     ) {
-        // Entered here so the vector prefix scan stays inline whether or not
-        // the caller's feature context reaches this far.
-        simd.vectorize(
-            #[inline(always)]
-            || {
-                let sources = self.dictionaries().prefix();
-                // `max_ring_buffer_distance + 1 + total_size - 1`, written the
-                // way the reference writes it: the distance of logical
-                // address zero.
-                let base_offset = max_ring_buffer_distance + self.total_size();
-                for attachment in 0..sources.segment_count() {
-                    let Some(index) = self.prepared_prefix(attachment) else {
-                        continue;
-                    };
-                    let source = sources.segment(attachment);
-                    let chunk_start = sources.segment_start(attachment) as usize;
-                    find_in_attachment(
-                        simd,
-                        index,
-                        source,
-                        data,
-                        ring_buffer_mask,
-                        distance_cache,
-                        cur_ix,
-                        max_length,
-                        base_offset - chunk_start,
-                        max_distance,
-                        out,
-                    );
-                }
-            },
-        );
+        let sources = self.dictionaries().prefix();
+        // `max_ring_buffer_distance + 1 + total_size - 1`, written the
+        // way the reference writes it: the distance of logical
+        // address zero.
+        let base_offset = max_ring_buffer_distance + self.total_size();
+        for attachment in 0..sources.segment_count() {
+            let Some(index) = self.prepared_prefix(attachment) else {
+                continue;
+            };
+            let source = sources.segment(attachment);
+            let chunk_start = sources.segment_start(attachment) as usize;
+            find_in_attachment(
+                simd,
+                index,
+                source,
+                data,
+                ring_buffer_mask,
+                distance_cache,
+                cur_ix,
+                max_length,
+                base_offset - chunk_start,
+                max_distance,
+                out,
+            );
+        }
     }
 
     /// Collects every attached-dictionary match longer than `min_length`.

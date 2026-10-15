@@ -153,22 +153,26 @@ impl From<EncodeError> for std::io::Error {
     /// tell the two apart without downcasting; everything else keeps the
     /// original error as its source.
     fn from(value: EncodeError) -> Self {
-        let kind = match value {
-            EncodeError::OutputTooSmall { .. } => std::io::ErrorKind::WriteZero,
-            EncodeError::AllocationFailed { .. } => std::io::ErrorKind::OutOfMemory,
-            EncodeError::UnsupportedStreamOffset { .. }
-            | EncodeError::StreamPositionOverflow { .. }
-            | EncodeError::DictionaryUnsupportedForQuality { .. } => {
-                std::io::ErrorKind::InvalidInput
-            }
-            EncodeError::AbandonedSession | EncodeError::InvalidState { .. } => {
-                std::io::ErrorKind::InvalidData
-            }
-            EncodeError::Bound(_) | EncodeError::InternalInvariant { .. } => {
-                std::io::ErrorKind::Other
-            }
-        };
-        Self::new(kind, value)
+        Self::new(value.io_kind(), value)
+    }
+}
+
+#[cfg(not(feature = "no_std"))]
+impl EncodeError {
+    /// The [`std::io::ErrorKind`] this failure carries through an adapter.
+    ///
+    /// Never `Interrupted` or `WouldBlock`: `std::io` retries those, and no
+    /// encoder failure goes away by being repeated.
+    pub(crate) const fn io_kind(&self) -> std::io::ErrorKind {
+        match self {
+            Self::OutputTooSmall { .. } => std::io::ErrorKind::WriteZero,
+            Self::AllocationFailed { .. } => std::io::ErrorKind::OutOfMemory,
+            Self::UnsupportedStreamOffset { .. }
+            | Self::StreamPositionOverflow { .. }
+            | Self::DictionaryUnsupportedForQuality { .. } => std::io::ErrorKind::InvalidInput,
+            Self::AbandonedSession | Self::InvalidState { .. } => std::io::ErrorKind::InvalidData,
+            Self::Bound(_) | Self::InternalInvariant { .. } => std::io::ErrorKind::Other,
+        }
     }
 }
 

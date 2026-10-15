@@ -178,7 +178,22 @@ fn test_item(
         return false;
     };
 
-    let matchlen = common_prefix_len(data, word, len);
+    // Most entries differ from the data within their first word: one XOR
+    // settles those, and only a longer agreement takes the general scan.
+    // Reading the word may run into the next dictionary word; the length is
+    // capped at `len` either way.
+    let first = data.first_chunk::<8>().zip(
+        BUILTIN_WORDS
+            .get(offset..)
+            .and_then(<[u8]>::first_chunk::<8>),
+    );
+    let matchlen = match first {
+        Some((left, right)) if u64::from_le_bytes(*left) != u64::from_le_bytes(*right) => {
+            let diff = u64::from_le_bytes(*left) ^ u64::from_le_bytes(*right);
+            ((diff.trailing_zeros() >> 3) as usize).min(len)
+        }
+        _ => common_prefix_len(data, word, len),
+    };
     if matchlen + CUTOFF_TRANSFORMS_COUNT <= len || matchlen == 0 {
         return false;
     }
@@ -224,17 +239,18 @@ pub(crate) fn search<const SHALLOW: bool>(
     if !stats.is_worth_probing() {
         return;
     }
-    let mut probed = *out;
     if SHALLOW {
         // Most shallow probes land on an empty bucket. Answering those here
         // spares the out-of-line call its prologue and the spill of the
         // caller's live registers; the count is what the probe would have
-        // added, so the give-up test sees the same statistics.
+        // added, so the give-up test sees the same statistics. The result is
+        // copied only past this test, so an empty bucket stores nothing.
         let key = hash14(data) << 1;
         if HASH_LENGTHS.get(key).is_none_or(|&len| len == 0) {
             stats.lookups += 1;
             return;
         }
+        let mut probed = *out;
         probe_shallow(
             stats,
             key,
@@ -244,7 +260,9 @@ pub(crate) fn search<const SHALLOW: bool>(
             max_distance,
             &mut probed,
         );
+        *out = probed;
     } else {
+        let mut probed = *out;
         probe_deep(
             stats,
             data,
@@ -253,8 +271,8 @@ pub(crate) fn search<const SHALLOW: bool>(
             max_distance,
             &mut probed,
         );
+        *out = probed;
     }
-    *out = probed;
 }
 
 /// Probes the shorter-word bucket `key`, which is known to hold a word.

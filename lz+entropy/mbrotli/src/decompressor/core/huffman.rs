@@ -690,14 +690,15 @@ impl Builder {
                     let Some(skip) = bits.read(2, input)? else {
                         return Ok(false);
                     };
-                    self.clear();
-                    self.small.fill(0);
+                    // Both shapes clear the symbol lists before filling them;
+                    // only the code-length code reads lengths it may not set.
                     self.index = skip as usize;
                     self.space = 32;
                     self.count = 0;
                     self.stage = if skip == 1 {
                         Stage::SimpleCount
                     } else {
+                        self.small.fill(0);
                         Stage::CodeLengths
                     };
                 }

@@ -229,7 +229,7 @@ endif
 
 HAVE_CARGO := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
 ifneq ($(HAVE_CARGO),1)
-    $(info Cargo not found – skipping Rust codecs (density, mbrotli, pulsar))
+    $(info Cargo not found – skipping Rust codecs (density, mbrotli, mzstd, pulsar))
 else
     CARGO_VERSION := $(shell cargo --version | awk '{print $$2}')
     # Only build Rust codecs if native build, not 32-bit, not Windows
@@ -291,7 +291,7 @@ CODEC_OBJS := $(foreach g,$(CODECS_ON) $(OBJ_GROUPS),$($(g)_OBJS))
 # Rust codecs
 #------------------------------------------------------------------------------
 #
-# The Rust codecs (density, mbrotli, pulsar) are built into one library,
+# The Rust codecs (density, mbrotli, mzstd, pulsar) are built into one library,
 # liblzbench_rust, from misc/rust-codecs, which has a cargo feature per codec:
 # two Rust staticlibs each carry their own copy of std and cannot be linked into
 # the same binary.

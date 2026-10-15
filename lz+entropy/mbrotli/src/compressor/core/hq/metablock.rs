@@ -268,7 +268,7 @@ impl MetaBlockBuilder {
     )]
     pub(crate) fn build(
         &mut self,
-        kernels: &dyn crate::compressor::core::dispatch::Kernels,
+        backend: crate::backend::Backend,
         data: &[u8],
         pos: usize,
         mask: usize,
@@ -290,7 +290,7 @@ impl MetaBlockBuilder {
         recompute_distance_prefixes(commands, &original, dist);
 
         self.splitter.split(
-            kernels,
+            backend,
             commands,
             data,
             pos,
@@ -341,9 +341,7 @@ impl MetaBlockBuilder {
         );
 
         // Literal contexts: cluster, then spread the result over every context
-        // when modelling is off.
-        mb.literal_context_map
-            .resize(mb.literal_split.num_types << LITERAL_CONTEXT_BITS, 0);
+        // when modelling is off. Clustering rebuilds the map from scratch.
         cluster_histograms(
             &self.literal_histograms,
             NUM_LITERAL_SYMBOLS,
@@ -531,7 +529,7 @@ mod tests {
         let mut mb = MetaBlockSplit::default();
         let mut dist = params.dist;
         builder.build(
-            &*crate::compressor::core::dispatch::select(fearless_simd::Level::fallback()),
+            crate::backend::Backend::SCALAR,
             data,
             0,
             usize::MAX,
@@ -653,7 +651,7 @@ mod tests {
         let mut mb = MetaBlockSplit::default();
         let mut dist = params.dist;
         builder.build(
-            &*crate::compressor::core::dispatch::select(fearless_simd::Level::fallback()),
+            crate::backend::Backend::SCALAR,
             data,
             0,
             usize::MAX,
@@ -805,7 +803,7 @@ mod tests {
         let mut warm = MetaBlockSplit::default();
         let mut warm_dist = params.dist;
         builder.build(
-            &*crate::compressor::core::dispatch::select(fearless_simd::Level::fallback()),
+            crate::backend::Backend::SCALAR,
             &other,
             0,
             usize::MAX,
@@ -822,7 +820,7 @@ mod tests {
         let mut mb = MetaBlockSplit::default();
         let mut dist = params.dist;
         builder.build(
-            &*crate::compressor::core::dispatch::select(fearless_simd::Level::fallback()),
+            crate::backend::Backend::SCALAR,
             &data,
             0,
             usize::MAX,

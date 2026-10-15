@@ -15,7 +15,7 @@ mod stream;
 pub(crate) use bits::Input;
 pub(crate) use session::{Delivery, OperationState};
 pub(crate) use stored::payload as stored_payload;
-pub(crate) use stream::{Output, Stop, Stream};
+pub(crate) use stream::{Output, Sink, Stop, Stream};
 
 #[cfg(test)]
 mod fixtures {

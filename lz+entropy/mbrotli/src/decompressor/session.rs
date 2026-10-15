@@ -1,9 +1,28 @@
+use core::mem::MaybeUninit;
+
+use borrowed_buf::BorrowedBuf;
+
 use super::{
     DecodeError, DecodeStreamConfig, Decompressor,
     core::{Delivery, OperationState},
 };
 use crate::Window;
 use crate::dictionary::{DecodeDictionary, DictionaryRef};
+use crate::shared::uninit::zero_extend;
+
+/// Most bytes a linear one-shot zeroes ahead of the decoder at once, in
+/// [`DecoderSession::finish_linear_uninit`] and in the `Vec` path of
+/// `Decompressor::decompress_into`. Small enough that the zeroed lines are
+/// still in L1 when the decoder overwrites them: on an i7-13700KF, steps of
+/// 16, 32 and 64 KiB decoded the harness corpora (exact-size uninitialized
+/// destinations) at 1.023, 1.019 and 1.074 times the time of
+/// `decompress_to_slice` (zeroing with `append_fill`); with the earlier
+/// zeroing copied from a static block, 8 and 128 KiB and whole meta-blocks
+/// ranked behind 32 KiB too. Highly compressible inputs, which decode faster
+/// than zeroing runs, gain the most; for the reused `decompress_into` the
+/// 32 KiB step instead of zeroing whole chunks took 0.43 rather than 0.65
+/// times the old time on them.
+pub(super) const ZERO_AHEAD_STEP: usize = 32 << 10;
 
 /// Whether more input may follow this call.
 ///
@@ -181,6 +200,56 @@ impl DecoderSession<'_, '_> {
         )
     }
 
+    /// Decodes available bytes into uninitialized memory.
+    ///
+    /// Behaves exactly as [`Self::process`]: the same bytes, the same
+    /// `consumed` and `produced` counts, the same statuses and errors, and
+    /// calls of the two methods may be mixed on one stream. Use it to decode
+    /// straight into spare capacity, such as
+    /// [`Vec::spare_capacity_mut`](alloc::vec::Vec::spare_capacity_mut),
+    /// without zeroing it first.
+    ///
+    /// Exactly `output[..produced]` is initialized when the call returns,
+    /// whether it succeeded or failed with a [`DecodeFailure`], and no byte
+    /// after it is written. Streaming delivery already copies decoded history
+    /// into `output`, so this costs nothing over [`Self::process`].
+    ///
+    /// # Errors
+    /// As [`Self::process`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mbrotli::{DecodeOperation, DecoderStatus, Decompressor};
+    /// let compressed = [0x0b, 0x02, 0x80, b'h', b'e', b'l', b'l', b'o', 0x03];
+    /// let mut decoder = Decompressor::new(Default::default())?;
+    /// let mut session = decoder.start(Default::default())?;
+    /// let mut decoded = Vec::with_capacity(2);
+    /// let mut remaining = compressed.as_slice();
+    /// loop {
+    ///     decoded.reserve(2);
+    ///     let spare = decoded.spare_capacity_mut();
+    ///     let progress = session.process_uninit(remaining, spare, DecodeOperation::Finish)?;
+    ///     remaining = &remaining[progress.consumed..];
+    ///     // SAFETY: `process_uninit` initialized the first `produced` spare bytes.
+    ///     unsafe { decoded.set_len(decoded.len() + progress.produced) };
+    ///     if progress.status == DecoderStatus::Finished {
+    ///         break;
+    ///     }
+    /// }
+    /// assert_eq!(decoded, b"hello");
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn process_uninit(
+        &mut self,
+        input: &[u8],
+        output: &mut [MaybeUninit<u8>],
+        operation: DecodeOperation,
+    ) -> Result<DecodeProgress, DecodeFailure> {
+        self.operation
+            .process_uninit(self.decoder, self.dictionary, input, output, operation)
+    }
+
     /// Delivers output for input already accepted, without declaring EOF.
     ///
     /// Shorthand for [`Self::process`] with empty input and
@@ -265,10 +334,13 @@ impl DecoderSession<'_, '_> {
         )
     }
 
-    /// One `Finish` call that decodes the operation's first member straight
+    /// A `Finish` call that decodes the operation's first member straight
     /// into `output`, which also serves as its history. Progress, statuses and
-    /// errors are those of [`Self::process`]; only the one-shot slice API uses
-    /// it, because the history of a paused member is not kept for a later call.
+    /// errors are those of [`Self::process`]. `output` must begin with
+    /// everything the operation produced so far: only one-shot APIs use it,
+    /// passing the whole slice once or, like `decompress_into`, the same
+    /// growing buffer on every call, because a paused member's history lives
+    /// in that buffer and not in the decoder.
     pub(super) fn finish_linear(
         &mut self,
         input: &[u8],
@@ -282,6 +354,57 @@ impl DecoderSession<'_, '_> {
             DecodeOperation::Finish,
             Delivery::Linear,
         )
+    }
+
+    /// [`Self::finish_linear`] for uninitialized `output`: the first member
+    /// still decodes straight into it and reads it back as history.
+    ///
+    /// Safe code may read only what it initialized, so `output` is zeroed in
+    /// front of the decoder, one meta-block at a time: whenever the decoder
+    /// pauses for space, the prefix grows by what the current meta-block has
+    /// left to produce, at most [`ZERO_AHEAD_STEP`] bytes, and the call
+    /// resumes. Each byte is thus zeroed once, shortly before it is decoded,
+    /// and on success nothing past the produced prefix is written.
+    pub(super) fn finish_linear_uninit(
+        &mut self,
+        input: &[u8],
+        output: &mut [MaybeUninit<u8>],
+    ) -> Result<DecodeProgress, DecodeFailure> {
+        let mut history = BorrowedBuf::<u8>::from(output);
+        let mut consumed = 0;
+        let mut produced = 0;
+        loop {
+            let progress = self
+                .operation
+                .process(
+                    self.decoder,
+                    self.dictionary,
+                    &input[consumed..],
+                    history.filled_mut(),
+                    DecodeOperation::Finish,
+                    Delivery::Linear,
+                )
+                .map_err(|failure| DecodeFailure {
+                    consumed: consumed + failure.consumed,
+                    produced: produced + failure.produced,
+                    ..failure
+                })?;
+            consumed += progress.consumed;
+            produced += progress.produced;
+            if progress.status != DecoderStatus::NeedsOutput || history.len() == history.capacity()
+            {
+                return Ok(DecodeProgress {
+                    consumed,
+                    produced,
+                    status: progress.status,
+                });
+            }
+            // At least one byte, so a pause outside a meta-block's payload
+            // still makes progress.
+            let end = produced.saturating_add(self.declared_remaining());
+            let grow = end.saturating_sub(history.len()).clamp(1, ZERO_AHEAD_STEP);
+            zero_extend(&mut history, grow);
+        }
     }
 
     pub(super) fn take_collected(&mut self) -> alloc::vec::Vec<u8> {
@@ -439,6 +562,59 @@ impl<D: AsRef<DecodeDictionary> + 'static> DecoderSessionOwned<D> {
             operation,
             Delivery::Slice,
         )
+    }
+
+    /// Decodes available bytes into uninitialized memory.
+    ///
+    /// Behaves exactly as [`Self::process`]: the same bytes, the same
+    /// `consumed` and `produced` counts, the same statuses and errors, and
+    /// calls of the two methods may be mixed on one stream. Use it to decode
+    /// straight into spare capacity, such as
+    /// [`Vec::spare_capacity_mut`](alloc::vec::Vec::spare_capacity_mut),
+    /// without zeroing it first.
+    ///
+    /// Exactly `output[..produced]` is initialized when the call returns,
+    /// whether it succeeded or failed with a [`DecodeFailure`], and no byte
+    /// after it is written. Streaming delivery already copies decoded history
+    /// into `output`, so this costs nothing over [`Self::process`].
+    ///
+    /// # Errors
+    /// As [`Self::process`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mbrotli::{DecodeOperation, DecoderStatus, Decompressor};
+    /// let compressed = [0x0b, 0x02, 0x80, b'h', b'e', b'l', b'l', b'o', 0x03];
+    /// let mut session = Decompressor::new(Default::default())?.into_session(Default::default())?;
+    /// let mut decoded = Vec::with_capacity(2);
+    /// let mut remaining = compressed.as_slice();
+    /// loop {
+    ///     decoded.reserve(2);
+    ///     let spare = decoded.spare_capacity_mut();
+    ///     let progress = session.process_uninit(remaining, spare, DecodeOperation::Finish)?;
+    ///     remaining = &remaining[progress.consumed..];
+    ///     // SAFETY: `process_uninit` initialized the first `produced` spare bytes.
+    ///     unsafe { decoded.set_len(decoded.len() + progress.produced) };
+    ///     if progress.status == DecoderStatus::Finished {
+    ///         break;
+    ///     }
+    /// }
+    /// assert_eq!(decoded, b"hello");
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn process_uninit(
+        &mut self,
+        input: &[u8],
+        output: &mut [MaybeUninit<u8>],
+        operation: DecodeOperation,
+    ) -> Result<DecodeProgress, DecodeFailure> {
+        let dictionary = self
+            .dictionary
+            .as_ref()
+            .map(|dictionary| DictionaryRef::from(dictionary.as_ref()));
+        self.operation
+            .process_uninit(&mut self.decoder, dictionary, input, output, operation)
     }
 
     /// Delivers output for input already accepted, without declaring EOF.

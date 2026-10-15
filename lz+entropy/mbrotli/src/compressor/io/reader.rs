@@ -39,10 +39,14 @@ pub struct EncoderReader<'c, 'd, R: Read> {
     session: EncoderSession<'c, 'd>,
     /// Where source bytes come from.
     source: R,
-    /// Source bytes read but not yet accepted by the encoder.
+    /// Read buffer; `input[head..end]` holds source bytes read but not yet
+    /// accepted by the encoder. Once sized it keeps its length, so a refill
+    /// reads over the previous chunk instead of zeroing it again.
     input: Vec<u8>,
     /// How much of [`EncoderReader::input`] the encoder has taken.
     head: usize,
+    /// End of the bytes the last read produced.
+    end: usize,
     /// Whether the source has reported end of file.
     eof: bool,
     /// Whether the compressed stream has been terminated and delivered.
@@ -56,7 +60,7 @@ impl<R: Read> std::fmt::Debug for EncoderReader<'_, '_, R> {
     /// bound, and the session is the compressor's business.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("EncoderReader")
-            .field("buffered", &(self.input.len() - self.head))
+            .field("buffered", &(self.end - self.head))
             .field("eof", &self.eof)
             .field("finished", &self.finished)
             .finish_non_exhaustive()
@@ -71,6 +75,7 @@ impl<'c, 'd, R: Read> EncoderReader<'c, 'd, R> {
             source,
             input: Vec::new(),
             head: 0,
+            end: 0,
             eof: false,
             finished: false,
         }
@@ -161,7 +166,11 @@ impl<'c, 'd, R: Read> EncoderReader<'c, 'd, R> {
     /// ```
     #[must_use]
     pub fn into_parts(self) -> EncoderReaderParts<R> {
-        let buffered_input = self.input.get(self.head..).unwrap_or_default().to_vec();
+        let buffered_input = self
+            .input
+            .get(self.head..self.end)
+            .unwrap_or_default()
+            .to_vec();
         EncoderReaderParts {
             inner: self.source,
             buffered_input,
@@ -170,28 +179,22 @@ impl<'c, 'd, R: Read> EncoderReader<'c, 'd, R> {
 
     /// Reads the next stretch of source bytes, retrying an interruption.
     fn fill(&mut self) -> Result<()> {
-        self.input.clear();
         self.head = 0;
+        self.end = 0;
+        // Only the first fill initialises the buffer; later reads overwrite it.
+        self.input.resize(FILL_CHUNK, 0);
         loop {
-            self.input.resize(FILL_CHUNK, 0);
-            let outcome = self.source.read(&mut self.input);
-            match outcome {
+            match self.source.read(&mut self.input) {
                 Ok(0) => {
-                    self.input.clear();
                     self.eof = true;
                     return Ok(());
                 }
                 Ok(count) => {
-                    self.input.truncate(count);
+                    self.end = count.min(self.input.len());
                     return Ok(());
                 }
-                Err(error) if error.kind() == ErrorKind::Interrupted => {
-                    self.input.clear();
-                }
-                Err(error) => {
-                    self.input.clear();
-                    return Err(error);
-                }
+                Err(error) if error.kind() == ErrorKind::Interrupted => {}
+                Err(error) => return Err(error),
             }
         }
     }
@@ -213,7 +216,7 @@ impl<R: Read> Read for EncoderReader<'_, '_, R> {
             return Ok(0);
         }
         loop {
-            if self.head == self.input.len() && !self.eof {
+            if self.head == self.end && !self.eof {
                 self.fill()?;
             }
             let operation = if self.eof {
@@ -222,15 +225,15 @@ impl<R: Read> Read for EncoderReader<'_, '_, R> {
                 Operation::Process
             };
             let progress = {
-                let pending = self.input.get(self.head..).unwrap_or_default();
+                let pending = self.input.get(self.head..self.end).unwrap_or_default();
                 self.session
                     .process(pending, buf, operation)
                     .map_err(Error::from)?
             };
             self.head += progress.consumed;
-            if self.head == self.input.len() {
-                self.input.clear();
+            if self.head == self.end {
                 self.head = 0;
+                self.end = 0;
             }
             if progress.status == EncoderStatus::Finished {
                 self.finished = true;

@@ -1,0 +1,34 @@
+# Trimmed for lzbench: dev-dependencies and benches were removed and
+# crate-type reduced to rlib.
+[package]
+name = "mzstd-ffi"
+version = "0.2.5"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+description = "C ABI for mzstd: one-shot Zstandard compression and decompression"
+repository = "https://github.com/M-Compressors/mzstd"
+homepage = "https://github.com/M-Compressors/mzstd"
+readme = "README.md"
+keywords = ["zstd", "zstandard", "compression", "ffi", "c"]
+categories = ["compression", "external-ffi-bindings"]
+include = ["src/**", "include/**", "README.md"]
+
+[lib]
+# lzbench links this through misc/rust-codecs, which produces the single
+# staticlib/cdylib, so only the rlib is built here.
+crate-type = ["rlib"]
+
+[dependencies.mzstd]
+path = ".."
+version = "0.2.5"
+default-features = false
+features = ["std", "compression", "decompression"]
+
+# Zeroes C destinations into initialized slices without `unsafe`.
+[dependencies.borrowed-buf]
+version = "0.1.1"
+default-features = false
+
+[dependencies.thiserror]
+version = "2"

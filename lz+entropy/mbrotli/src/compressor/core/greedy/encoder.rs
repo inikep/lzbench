@@ -10,15 +10,15 @@
 //! encoder was built, so nothing about the machine can reach a decision that
 //! shows up in the output.
 
-use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::compressor::core::dispatch::{self, GreedyInput, Kernels};
-use fearless_simd::Level;
+use crate::backend::Backend;
 
-use super::backward_references::ReferenceState;
+use super::backward_references::{ReferenceState, create_backward_references};
 use super::context_model::decide_over_literal_context_modeling;
-use super::hashers::{DistanceCache, MatchFinder, NUM_REMEMBERED_DISTANCES, Sweep};
+use super::hashers::{
+    DistanceCache, MatchFinder, NUM_REMEMBERED_DISTANCES, ParkedTables, Sweep, with_matcher,
+};
 use super::metablock::build_meta_block_greedy_into;
 use super::params::{GreedyParams, MAX_NUM_DELAYED_SYMBOLS};
 use crate::compressor::core::rfc9841::context::SharedContextInner;
@@ -26,8 +26,9 @@ use crate::compressor::{BrotliCompressError, BrotliResult, CompressParams};
 use crate::shared::bits::{BYTE_PADDING_SLACK, BitWriter, inject_byte_padding};
 use crate::shared::bitstream::{MetaBlockWriter, store_uncompressed_meta_block};
 use crate::shared::command::Command;
-use crate::shared::command::CommandExtension;
+use crate::shared::command::{CommandExtension, extend_last_command};
 use crate::shared::constants::{OUTPUT_RESERVE_CONST, OUTPUT_SLACK};
+use crate::shared::fixed::grow_zeroed;
 use crate::shared::format::ContextMode;
 use crate::shared::histogram::{HistogramLiteral, bits_entropy};
 use crate::shared::metablock::{MetaBlockSplit, optimize_histograms};
@@ -54,14 +55,23 @@ enum Cleanup {
     Wipe,
     /// The finder empties itself on every prepare; nothing to do.
     Nothing,
+    /// Already applied, before the window changed shape; `matcher_dirty`
+    /// holds the outcome.
+    Applied,
 }
 
 /// Streaming encoder for qualities three to five.
-pub(crate) struct GreedyEncoder {
-    kernels: Box<dyn Kernels>,
+///
+/// `INDEPENDENT` selects the fragment-only kernels of an independent worker,
+/// whose fragments must decode without the ones before them.
+pub(crate) struct GreedyEncoder<const INDEPENDENT: bool = false> {
+    /// The host-validated backend every block is dispatched to.
+    backend: Backend,
     params: GreedyParams,
     ringbuffer: RingBuffer,
     matcher: MatchFinder,
+    /// Storage of finders of other plans, for the next one of their kind.
+    parked: ParkedTables,
     is_prepared: bool,
     /// Whether the match finder holds entries from a stream already written.
     ///
@@ -90,23 +100,51 @@ pub(crate) struct GreedyEncoder {
     output_len: usize,
 }
 
-impl GreedyEncoder {
-    /// Installs fragment-only kernels when constructing an independent worker.
-    #[cfg(not(feature = "no_std"))]
-    pub(crate) fn select_fragment_kernels(&mut self, level: Level) {
-        self.kernels = dispatch::select_independent(level);
-    }
-
+impl<const INDEPENDENT: bool> GreedyEncoder<INDEPENDENT> {
     /// Resets the header and seeds only this segment's literal context/history.
     #[cfg(not(feature = "no_std"))]
     pub(crate) fn begin_fragment(&mut self, prefix: &[u8]) -> BrotliResult<()> {
         self.last_bytes = 0;
         self.last_bytes_bits = 0;
         self.references.dictionary = crate::shared::dictionary::DictionaryStats::DISABLED;
+        // The decoder's distance ring at a fragment's start is whatever the
+        // fragments before it left there. Distances that can never match keep
+        // short codes off each slot until this fragment's own copies fill it.
+        self.references.dist_cache[..NUM_REMEMBERED_DISTANCES].fill(-16);
+        self.saved_dist_cache = remembered(&self.references.dist_cache);
         // Two bytes cannot make a copy. Flush seeds the ring and prior-byte
         // context; the shared fragment writer owns the actual prefix output.
         self.flush_block(prefix, None)?;
         Ok(())
+    }
+
+    /// Makes `history` the bytes before the next input, as if this stream had
+    /// already written them out (`BrotliEncoderSetCustomDictionary` of brotli
+    /// 1.0): they fill the window and the match finder, so copies may reach
+    /// back into them, but nothing is emitted for them.
+    ///
+    /// Only the last `max_backward_limit` bytes are kept. Call it on a fresh
+    /// encoder, before [`Self::begin_fragment`]; the decoder must already hold
+    /// the same bytes right before the fragment, as it does for the preceding
+    /// segment of one stream.
+    #[cfg(not(feature = "no_std"))]
+    pub(crate) fn prepend_history(&mut self, history: &[u8]) {
+        debug_assert!(self.input_pos == 0);
+        let limit = self.params.max_backward_limit();
+        let history = &history[history.len().saturating_sub(limit)..];
+        let Some((&last, rest)) = history.split_last() else {
+            return;
+        };
+        self.copy_input_to_ring_buffer(history);
+        self.last_flush_pos = self.input_pos;
+        self.last_processed_pos = self.input_pos;
+        self.prev_byte = last;
+        if let Some(&second_last) = rest.last() {
+            self.prev_byte2 = second_last;
+        }
+        self.prepare_matcher(0, history.len(), false);
+        self.matcher
+            .prepend(self.ringbuffer.buffer(), self.ringbuffer.mask(), history);
     }
 
     /// Confirms the flush left no pending partial byte.
@@ -122,9 +160,30 @@ impl GreedyEncoder {
     /// Returns [`BrotliCompressError::UnsupportedQuality`] when the quality is
     /// outside the range this encoder implements.
     pub(crate) fn new(
-        level: Level,
+        backend: Backend,
         params: &CompressParams,
         size_hint: usize,
+    ) -> BrotliResult<Self> {
+        Self::expecting(backend, params, size_hint, size_hint)
+    }
+
+    /// Creates an encoder whose output follows `size_hint`, as [`Self::new`],
+    /// but whose storage is sized for `expected_input` bytes (zero if
+    /// unknown).
+    ///
+    /// The two differ for a stream of unknown length: the hint C infers when
+    /// it first encodes decides the match finder and context modelling, but
+    /// the stream may go on past it, so the matcher's layout and the window's
+    /// capacity must not take it as the total.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::new`].
+    pub(crate) fn expecting(
+        backend: Backend,
+        params: &CompressParams,
+        size_hint: usize,
+        expected_input: usize,
     ) -> BrotliResult<Self> {
         let resolved = GreedyParams::new(params, size_hint)?;
         let (last_bytes, last_bytes_bits) = resolved.window.header();
@@ -135,7 +194,14 @@ impl GreedyEncoder {
             (last_bytes, last_bytes_bits)
         };
         let mut ringbuffer = RingBuffer::new(resolved.rb_bits(), resolved.lgblock);
-        ringbuffer.expect_input(size_hint);
+        ringbuffer.expect_input(expected_input);
+        let mut matcher = MatchFinder::for_input(resolved.hasher, expected_input);
+        // A stream that knows its size takes its table now, before the window
+        // is allocated; one of unknown size takes it once the size is
+        // inferred, from `materialize`.
+        if size_hint != 0 {
+            matcher.materialize();
+        }
         let references = ReferenceState::default();
         #[cfg(feature = "experimental")]
         let references = {
@@ -146,10 +212,11 @@ impl GreedyEncoder {
             references
         };
         Ok(Self {
-            kernels: dispatch::select(level),
+            backend,
             params: resolved,
             ringbuffer,
-            matcher: MatchFinder::for_input(resolved.hasher, size_hint),
+            matcher,
+            parked: ParkedTables::default(),
             is_prepared: false,
             matcher_dirty: false,
             cleanup: Cleanup::Nothing,
@@ -188,24 +255,113 @@ impl GreedyEncoder {
     /// A workspace compares these against what a new call would resolve to:
     /// equal parameters mean an equally shaped encoder, so resetting this one
     /// gives the same stream a fresh one would.
-    /// Re-aims the encoder at the stream `fresh` describes.
+    /// Re-aims the encoder at the stream `fresh` describes, sizing storage
+    /// for `expected_input` bytes as [`Self::expecting`] does.
     ///
     /// Returns `false`, changing nothing, when `fresh` is another shape or
-    /// its size hint would have selected another match finder, in which
-    /// case the caller has to build a new encoder. Otherwise the size hint
-    /// is taken over — it decides literal context modelling and the
-    /// matcher's next layout — and the encoder is as good as one built for
-    /// `fresh`, once reset.
-    pub(crate) fn retarget(&mut self, fresh: GreedyParams) -> bool {
+    /// `expected_input` would have selected another match finder variant, in
+    /// which case the caller has to build a new encoder. Otherwise the size
+    /// hint is taken over — it decides literal context modelling — along
+    /// with the expected input the matcher's next layout is chosen for, and
+    /// the encoder is as good as one built for them, once reset.
+    pub(crate) fn retarget(&mut self, fresh: GreedyParams, expected_input: usize) -> bool {
         if !self.params.same_shape(&fresh) {
             return false;
         }
-        if !self.matcher.retarget(fresh.hasher, fresh.size_hint) {
+        if !self.matcher.retarget(fresh.hasher, expected_input) {
             return false;
         }
-        self.ringbuffer.expect_input(fresh.size_hint);
+        self.ringbuffer.expect_input(expected_input);
         self.params = fresh;
         true
+    }
+
+    /// Re-aims a finished encoder at `fresh` for a new stream, which
+    /// [`Self::reset`] must start next.
+    ///
+    /// Unlike [`Self::retarget`], the window may change: a pooled compressor
+    /// serving responses of different sizes declares a different window for
+    /// each, and rebuilding the match finder and the window for every one of
+    /// them costs more than a short stream's compression. The match finder is
+    /// kept when `fresh` resolves to the same plan, and the window keeps its
+    /// allocation under the new geometry.
+    pub(crate) fn retarget_for_new_stream(
+        &mut self,
+        fresh: GreedyParams,
+        expected_input: usize,
+    ) -> bool {
+        if self.params.same_shape(&fresh) && self.retarget(fresh, expected_input) {
+            return true;
+        }
+        if self.params.same_but_window(&fresh)
+            && self.matcher.retarget(fresh.hasher, expected_input)
+        {
+            // The cleanup replays the previous stream's sweep over the bytes
+            // it stored, so it has to run while the window still has their
+            // layout.
+            self.clean_matcher();
+            self.matcher.forget_sparse();
+        } else if self.params.same_but_window_and_plan(&fresh) {
+            // Another plan, or another variant of the same one: only the
+            // match finder changes. The old one's contents go with it, so its
+            // cleanup is moot; its large tables are parked for the next
+            // finder of their kind, which reuses them without zeroing.
+            let finder = MatchFinder::rebuilt(fresh.hasher, expected_input, &mut self.parked);
+            ::core::mem::replace(&mut self.matcher, finder).park(&mut self.parked);
+            if fresh.size_hint != 0 {
+                self.matcher.materialize();
+            }
+            self.cleanup = Cleanup::Nothing;
+            self.matcher_dirty = false;
+        } else {
+            return false;
+        }
+        self.ringbuffer.reshape(fresh.rb_bits(), fresh.lgblock);
+        self.ringbuffer.expect_input(expected_input);
+        self.params = fresh;
+        true
+    }
+
+    /// Drops the storage kept for finders of other plans, both the parked
+    /// tables and any the current finder has not taken up yet.
+    pub(crate) fn release_parked(&mut self) {
+        self.parked = ParkedTables::default();
+        self.matcher.release_recycled();
+    }
+
+    /// Leaves the match finder clean for the next stream, or marks it for a
+    /// wipe, according to how the previous stream prepared it.
+    ///
+    /// It runs before the window it read from is dropped or reshaped: the
+    /// sweep hashes the very bytes the previous stream stored, and they are
+    /// still where that stream left them. Running it twice is harmless; the
+    /// second call keeps the first one's outcome.
+    fn clean_matcher(&mut self) {
+        match ::core::mem::replace(&mut self.cleanup, Cleanup::Applied) {
+            Cleanup::Replay(input_size) => {
+                self.matcher
+                    .prepare(true, input_size, self.ringbuffer.buffer(), true);
+                self.matcher_dirty = false;
+            }
+            Cleanup::Wipe => self.matcher_dirty = true,
+            Cleanup::Nothing => self.matcher_dirty = false,
+            Cleanup::Applied => {}
+        }
+    }
+
+    /// Allocates the match finder's tables, for a stream whose size has just
+    /// been inferred and which has not yet encoded any input.
+    pub(crate) fn materialize(&mut self) {
+        self.matcher.materialize();
+    }
+
+    /// Takes over the bits `previous`, a stream that has encoded no input,
+    /// has already committed: the window header, which an empty flush writes
+    /// out and byte-aligns.
+    pub(crate) const fn adopt_stream_head(&mut self, previous: &Self) {
+        debug_assert!(previous.input_pos == 0);
+        self.last_bytes = previous.last_bytes;
+        self.last_bytes_bits = previous.last_bytes_bits;
     }
 
     /// Restores the encoder to the state its constructor left it in.
@@ -226,18 +382,8 @@ impl GreedyEncoder {
         } else {
             (last_bytes, last_bytes_bits)
         };
-        // Clean the match finder before the window it read from is dropped:
-        // the sweep hashes the very bytes the previous stream stored, and they
-        // are still where that stream left them.
-        match ::core::mem::replace(&mut self.cleanup, Cleanup::Nothing) {
-            Cleanup::Replay(input_size) => {
-                self.matcher
-                    .prepare(true, input_size, self.ringbuffer.buffer(), true);
-                self.matcher_dirty = false;
-            }
-            Cleanup::Wipe => self.matcher_dirty = true,
-            Cleanup::Nothing => self.matcher_dirty = false,
-        }
+        self.clean_matcher();
+        self.cleanup = Cleanup::Nothing;
         self.ringbuffer.reset();
         self.is_prepared = false;
         self.input_pos = 0;
@@ -354,8 +500,8 @@ impl GreedyEncoder {
     /// Returns the bytes this encoder keeps allocated between blocks.
     pub(crate) fn retained_bytes(&self) -> usize {
         self.ringbuffer.retained_bytes()
-            + size_of_val(&*self.kernels)
             + self.matcher.retained_bytes()
+            + self.parked.retained_bytes()
             + self.commands.capacity() * size_of::<Command>()
             + self.storage.capacity()
             + self.writer.retained_bytes()
@@ -391,9 +537,7 @@ impl GreedyEncoder {
         else {
             return Err(BrotliCompressError::BufferOverflow);
         };
-        if self.storage.len() < reserve {
-            self.storage = vec![0u8; reserve];
-        }
+        grow_zeroed(&mut self.storage, reserve);
         Ok(())
     }
 
@@ -422,10 +566,13 @@ impl GreedyEncoder {
 
     /// Runs the match scan over the unprocessed input.
     ///
-    /// The retained kernel passes its already-selected token into the scan.
+    /// The retained backend is dispatched once here; the scan below runs with
+    /// its concrete token, the matcher's concrete type and, as a type-level
+    /// choice, whether a prefix is attached: without one, every probe of it
+    /// folds away.
     fn create_references(&mut self, span: BlockSpan, attached: Option<&SharedContextInner>) {
         let Self {
-            kernels,
+            backend,
             params,
             ringbuffer,
             matcher,
@@ -437,14 +584,23 @@ impl GreedyEncoder {
             data: ringbuffer.buffer(),
             mask: ringbuffer.mask(),
         };
-        kernels.greedy(GreedyInput {
-            matcher,
-            params,
-            window,
-            span,
-            attached,
-            references,
-            commands,
+        fearless_simd::dispatch!(backend.0, simd => match attached {
+            None => with_matcher!(matcher, |finder| create_backward_references::<
+                _,
+                _,
+                false,
+                INDEPENDENT,
+            >(
+                simd, finder, params, window, span, None, references, commands
+            )),
+            Some(_) => with_matcher!(matcher, |finder| create_backward_references::<
+                _,
+                _,
+                true,
+                INDEPENDENT,
+            >(
+                simd, finder, params, window, span, attached, references, commands
+            )),
         });
     }
 
@@ -494,7 +650,7 @@ impl GreedyEncoder {
 
         if !self.commands.is_empty() && self.references.last_insert_len == 0 {
             let Self {
-                kernels,
+                backend,
                 params,
                 ringbuffer,
                 references,
@@ -503,7 +659,7 @@ impl GreedyEncoder {
                 ..
             } = self;
             if let Some(command) = commands.last_mut() {
-                kernels.extend(CommandExtension {
+                let extension = CommandExtension {
                     command,
                     lgwin: params.lgwin,
                     dist: &params.dist,
@@ -515,7 +671,8 @@ impl GreedyEncoder {
                     last_processed_pos: *last_processed_pos,
                     attached,
                     span: &mut span,
-                });
+                };
+                fearless_simd::dispatch!(backend.0, simd => extend_last_command(simd, extension));
             }
         }
 
@@ -824,12 +981,7 @@ mod tests {
 
     fn encoder(quality: QualityLevel, size_hint: usize) -> GreedyEncoder {
         let params = CompressParams::new(quality, WindowBits::DEFAULT);
-        GreedyEncoder::new(
-            Level::try_detect().unwrap_or_else(Level::baseline),
-            &params,
-            size_hint,
-        )
-        .expect("supported quality")
+        GreedyEncoder::new(Backend::default(), &params, size_hint).expect("supported quality")
     }
 
     /// Compresses `data` in blocks and returns the whole stream.
@@ -953,13 +1105,13 @@ mod tests {
         for quality in [QualityLevel::Q3, QualityLevel::Q4, QualityLevel::Q5] {
             let params = CompressParams::new(quality, WindowBits::DEFAULT);
             let mut streams = Vec::new();
-            for level in [
-                Level::try_detect().unwrap_or_else(Level::baseline),
-                Level::baseline(),
-                Level::fallback(),
+            for backend in [
+                Backend::default(),
+                Backend(fearless_simd::Level::baseline()),
+                Backend::SCALAR,
             ] {
-                let mut encoder =
-                    GreedyEncoder::new(level, &params, data.len()).expect("supported quality");
+                let mut encoder = GreedyEncoder::<false>::new(backend, &params, data.len())
+                    .expect("supported quality");
                 let limit = encoder.block_size_limit();
                 let mut out = Vec::new();
                 let mut offset = 0usize;

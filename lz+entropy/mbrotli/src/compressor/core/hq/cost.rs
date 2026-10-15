@@ -17,6 +17,7 @@
 //!   not an optimisation: remove it and the prices drift, and with them the
 //!   chosen commands.
 
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use super::literal_cost::{LiteralCostArena, estimate_bit_costs_for_literals};
@@ -25,6 +26,7 @@ use crate::shared::command::{Command, combine_length_codes, insert_length_code};
 use crate::shared::constants::{NUM_COMMAND_SYMBOLS, NUM_LITERAL_SYMBOLS};
 use crate::shared::distance::NUM_HISTOGRAM_DISTANCE_SYMBOLS;
 use crate::shared::fast_log::fast_log2;
+use crate::shared::fixed::fixed_table;
 
 /// Prior the literal-cost model uses for command symbols: `log2(11 + symbol)`.
 const COMMAND_PRIOR_OFFSET: usize = 11;
@@ -74,10 +76,10 @@ pub(crate) struct ZopfliCostModel {
     literal_costs: Vec<f32>,
     min_cost_cmd: f32,
     distance_histogram_size: usize,
-    histogram_literal: Vec<u32>,
-    histogram_cmd: Vec<u32>,
-    histogram_dist: Vec<u32>,
-    cost_literal: Vec<f32>,
+    histogram_literal: Box<[u32; NUM_LITERAL_SYMBOLS]>,
+    histogram_cmd: Box<[u32; NUM_COMMAND_SYMBOLS]>,
+    histogram_dist: Box<[u32; NUM_HISTOGRAM_DISTANCE_SYMBOLS]>,
+    cost_literal: Box<[f32; NUM_LITERAL_SYMBOLS]>,
     literal_arena: LiteralCostArena,
 }
 
@@ -95,25 +97,22 @@ impl ZopfliCostModel {
             literal_costs: Vec::new(),
             min_cost_cmd: 0.0,
             distance_histogram_size: alphabet_size,
-            histogram_literal: vec![0u32; NUM_LITERAL_SYMBOLS],
-            histogram_cmd: vec![0u32; NUM_COMMAND_SYMBOLS],
-            histogram_dist: vec![0u32; NUM_HISTOGRAM_DISTANCE_SYMBOLS],
-            cost_literal: vec![0f32; NUM_LITERAL_SYMBOLS],
+            histogram_literal: fixed_table(0),
+            histogram_cmd: fixed_table(0),
+            histogram_dist: fixed_table(0),
+            cost_literal: fixed_table(0.0),
             literal_arena: LiteralCostArena::default(),
         }
     }
 
     /// Returns the bytes this cost model keeps allocated.
     pub(crate) fn retained_bytes(&self) -> usize {
-        (self.cost_cmd.capacity()
-            + self.cost_dist.capacity()
-            + self.literal_costs.capacity()
-            + self.cost_literal.capacity())
+        (self.cost_cmd.capacity() + self.cost_dist.capacity() + self.literal_costs.capacity())
             * size_of::<f32>()
-            + (self.histogram_literal.capacity()
-                + self.histogram_cmd.capacity()
-                + self.histogram_dist.capacity())
-                * size_of::<u32>()
+            + size_of_val(&*self.cost_literal)
+            + size_of_val(&*self.histogram_literal)
+            + size_of_val(&*self.histogram_cmd)
+            + size_of_val(&*self.histogram_dist)
             + self.literal_arena.retained_bytes()
     }
 
@@ -204,16 +203,16 @@ impl ZopfliCostModel {
             {
                 *slot += 1;
             }
-            for offset in 0..inslength {
-                let literal = ringbuffer.get((pos + offset) & mask).copied().unwrap_or(0);
+            for offset in pos..pos + inslength {
+                let literal = ringbuffer.get(offset & mask).copied().unwrap_or(0);
                 self.histogram_literal[usize::from(literal)] += 1;
             }
             pos += inslength + copylength;
         }
 
-        set_cost(&self.histogram_literal, true, &mut self.cost_literal);
+        set_cost(&*self.histogram_literal, true, &mut *self.cost_literal);
         set_cost(
-            &self.histogram_cmd,
+            &*self.histogram_cmd,
             false,
             &mut self.cost_cmd[..NUM_COMMAND_SYMBOLS],
         );
@@ -230,12 +229,9 @@ impl ZopfliCostModel {
         self.prepare_command_costs(num_bytes);
 
         // Spread the per-symbol literal costs over the block, then accumulate.
-        for index in 0..num_bytes {
-            let literal = ringbuffer
-                .get((position + index) & mask)
-                .copied()
-                .unwrap_or(0);
-            self.literal_costs[index + 1] = self.cost_literal[usize::from(literal)];
+        for (index, slot) in (position..).zip(&mut self.literal_costs[1..=num_bytes]) {
+            let literal = ringbuffer.get(index & mask).copied().unwrap_or(0);
+            *slot = self.cost_literal[usize::from(literal)];
         }
         accumulate_literal_costs(&mut self.literal_costs, num_bytes);
     }
@@ -331,11 +327,14 @@ impl ZopfliCostModel {
 /// starts preferring literals it should not.
 fn accumulate_literal_costs(costs: &mut [f32], num_bytes: usize) {
     let mut literal_carry = 0f32;
+    let mut total = 0f32;
     costs[0] = 0.0;
-    for index in 0..num_bytes {
-        literal_carry += costs[index + 1];
-        costs[index + 1] = costs[index] + literal_carry;
-        literal_carry -= costs[index + 1] - costs[index];
+    for slot in &mut costs[1..=num_bytes] {
+        literal_carry += *slot;
+        let next = total + literal_carry;
+        literal_carry -= next - total;
+        *slot = next;
+        total = next;
     }
 }
 

@@ -22,6 +22,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use fearless_simd::Simd;
+use fearless_simd_macros::simd;
 
 use super::bits::{BitWriter, ByteBuffer};
 use super::commands::one_pass::pack_literals;
@@ -219,7 +220,10 @@ struct Pass1<'a> {
 }
 
 /// First pass: finds matches and records commands and literals.
+///
+/// The complete scan is specialized inside the selected SIMD feature context.
 #[cfg_attr(all(feature = "hotpath", not(feature = "no_std")), hotpath::measure)]
+#[simd]
 fn create_commands<
     S: Simd,
     const TABLE_BITS: usize,
@@ -232,186 +236,174 @@ fn create_commands<
     table: &mut [i32; ENTRIES],
     out: &mut Pass1<'_>,
 ) {
-    // Specialize the complete scan inside the selected SIMD feature context.
-    simd.vectorize(
-        #[inline(always)]
-        || {
-            let Block {
-                data,
-                input,
-                block_size,
-                input_size,
-            } = *block;
-            // The buffers are owned by locals for the duration of the scan:
-            // behind the caller's references their headers live in memory the
-            // compiler cannot tell apart from the table, so every push would
-            // reload the length and capacity after each table store.
-            let mut literal_buffer = core::mem::take(out.literals);
-            let mut command_buffer = core::mem::take(out.commands);
-            let (literals, commands) = (&mut literal_buffer, &mut command_buffer);
-            let mut ip = input;
-            let ip_end = input + block_size;
-            let mut next_emit = input;
-            let mut last_distance: i64 = -1;
+    let Block {
+        data,
+        input,
+        block_size,
+        input_size,
+    } = *block;
+    // The buffers are owned by locals for the duration of the scan:
+    // behind the caller's references their headers live in memory the
+    // compiler cannot tell apart from the table, so every push would
+    // reload the length and capacity after each table store.
+    let mut literal_buffer = core::mem::take(out.literals);
+    let mut command_buffer = core::mem::take(out.commands);
+    let (literals, commands) = (&mut literal_buffer, &mut command_buffer);
+    let mut ip = input;
+    let ip_end = input + block_size;
+    let mut next_emit = input;
+    let mut last_distance: i64 = -1;
 
-            'scan: {
-                if block_size < WINDOW_GAP {
-                    break 'scan;
-                }
-                let len_limit = (block_size - MIN_MATCH).min(input_size - WINDOW_GAP);
-                let ip_limit = input + len_limit;
+    'scan: {
+        if block_size < WINDOW_GAP {
+            break 'scan;
+        }
+        let len_limit = (block_size - MIN_MATCH).min(input_size - WINDOW_GAP);
+        let ip_limit = input + len_limit;
 
-                ip += 1;
+        ip += 1;
 
-                // The word at the next position is loaded once: it is hashed here and
+        // The word at the next position is loaded once: it is hashed here and
 
-                // compared against the candidates when the scan reaches it.
+        // compared against the candidates when the scan reaches it.
 
-                let mut next_word = load_u64_le(data, ip);
+        let mut next_word = load_u64_le(data, ip);
 
-                let mut next_hash = hash_bytes_at_offset::<TABLE_BITS, MIN_MATCH>(next_word, 0);
+        let mut next_hash = hash_bytes_at_offset::<TABLE_BITS, MIN_MATCH>(next_word, 0);
+        loop {
+            let mut skip = 32u32;
+            let mut next_ip = ip;
+            let mut candidate;
+
+            'found: {
                 loop {
-                    let mut skip = 32u32;
-                    let mut next_ip = ip;
-                    let mut candidate;
-
-                    'found: {
-                        loop {
-                            loop {
-                                let slot = next_hash;
-                                let ip_word = next_word;
-                                let stride = (skip >> 5) as usize;
-                                skip = skip.wrapping_add(1);
-                                ip = next_ip;
-                                next_ip = ip + stride;
-                                if next_ip > ip_limit {
-                                    break 'scan;
-                                }
-                                next_word = load_u64_le(data, next_ip);
-                                next_hash =
-                                    hash_bytes_at_offset::<TABLE_BITS, MIN_MATCH>(next_word, 0);
-
-                                // The reference subtracts the last distance without
-                                // a sign test and rejects a position at or past `ip`
-                                // after comparing; the two tests are pure, so
-                                // rejecting first reads nothing for the initial
-                                // distance of minus one.
-                                let repeated = (ip as i64 - last_distance) as usize;
-                                if repeated < ip
-                                    && words_match::<MIN_MATCH>(
-                                        ip_word,
-                                        load_u64_le(data, repeated),
-                                    )
-                                {
-                                    table[slot] = ip as i32;
-                                    candidate = repeated;
-                                    break;
-                                }
-
-                                candidate = table[slot] as usize;
-                                table[slot] = ip as i32;
-                                if words_match::<MIN_MATCH>(ip_word, load_u64_le(data, candidate)) {
-                                    break;
-                                }
-                            }
-                            if ip - candidate > MAX_BACKWARD_DISTANCE {
-                                continue;
-                            }
-                            break 'found;
-                        }
-                    }
-
-                    let base = ip;
-                    let matched = MIN_MATCH
-                        + match_len_at(
-                            simd,
-                            data,
-                            candidate + MIN_MATCH,
-                            current_window(data, ip + MIN_MATCH, (ip_end - ip) - MIN_MATCH),
-                        );
-                    let distance = (base - candidate) as i64;
-                    let insert = base - next_emit;
-                    ip += matched;
-
-                    emit_insert_len(insert, commands);
-                    if let Some(block) = data.get(next_emit..next_emit + insert) {
-                        literals.extend_from_slice(block);
-                    }
-                    if !INDEPENDENT && distance == last_distance {
-                        commands.push(64);
-                    } else {
-                        emit_distance(distance as usize, commands);
-                        last_distance = distance;
-                    }
-                    if INDEPENDENT {
-                        emit_copy_len(matched - 2, commands);
-                        emit_distance(distance as usize, commands);
-                    } else {
-                        emit_copy_len_last_distance(matched, commands);
-                    }
-
-                    next_emit = ip;
-                    if ip >= ip_limit {
-                        break 'scan;
-                    }
-                    candidate = {
-                        let current =
-                            update_hashes_after_copy::<TABLE_BITS, ENTRIES, MIN_MATCH, true>(
-                                data, table, ip,
-                            );
-                        let candidate = table[current] as usize;
-                        table[current] = ip as i32;
-                        candidate
-                    };
-
-                    while ip - candidate <= MAX_BACKWARD_DISTANCE
-                        && is_match::<MIN_MATCH>(data, ip, candidate)
-                    {
-                        let base = ip;
-                        let matched = MIN_MATCH
-                            + match_len_at(
-                                simd,
-                                data,
-                                candidate + MIN_MATCH,
-                                current_window(data, ip + MIN_MATCH, (ip_end - ip) - MIN_MATCH),
-                            );
-                        ip += matched;
-                        last_distance = (base - candidate) as i64;
-                        emit_copy_len(matched, commands);
-                        emit_distance(last_distance as usize, commands);
-
-                        next_emit = ip;
-                        if ip >= ip_limit {
+                    loop {
+                        let slot = next_hash;
+                        let ip_word = next_word;
+                        let stride = (skip >> 5) as usize;
+                        skip = skip.wrapping_add(1);
+                        ip = next_ip;
+                        next_ip = ip + stride;
+                        if next_ip > ip_limit {
                             break 'scan;
                         }
-                        let current =
-                            update_hashes_after_copy::<TABLE_BITS, ENTRIES, MIN_MATCH, false>(
-                                data, table, ip,
-                            );
-                        candidate = table[current] as usize;
-                        table[current] = ip as i32;
+                        next_word = load_u64_le(data, next_ip);
+                        next_hash = hash_bytes_at_offset::<TABLE_BITS, MIN_MATCH>(next_word, 0);
+
+                        // The reference subtracts the last distance without
+                        // a sign test and rejects a position at or past `ip`
+                        // after comparing; the two tests are pure, so
+                        // rejecting first reads nothing for the initial
+                        // distance of minus one.
+                        let repeated = (ip as i64 - last_distance) as usize;
+                        if repeated < ip
+                            && words_match::<MIN_MATCH>(ip_word, load_u64_le(data, repeated))
+                        {
+                            table[slot] = ip as i32;
+                            candidate = repeated;
+                            break;
+                        }
+
+                        candidate = table[slot] as usize;
+                        table[slot] = ip as i32;
+                        if words_match::<MIN_MATCH>(ip_word, load_u64_le(data, candidate)) {
+                            break;
+                        }
                     }
-
-                    ip += 1;
-
-                    next_word = load_u64_le(data, ip);
-
-                    next_hash = hash_bytes_at_offset::<TABLE_BITS, MIN_MATCH>(next_word, 0);
+                    if ip - candidate > MAX_BACKWARD_DISTANCE {
+                        continue;
+                    }
+                    break 'found;
                 }
             }
 
-            debug_assert!(next_emit <= ip_end);
-            if next_emit < ip_end {
-                let insert = ip_end - next_emit;
-                emit_insert_len(insert, commands);
-                if let Some(block) = data.get(next_emit..ip_end) {
-                    literals.extend_from_slice(block);
-                }
+            let base = ip;
+            let matched = MIN_MATCH
+                + match_len_at(
+                    simd,
+                    data,
+                    candidate + MIN_MATCH,
+                    current_window(data, ip + MIN_MATCH, (ip_end - ip) - MIN_MATCH),
+                );
+            let distance = (base - candidate) as i64;
+            let insert = base - next_emit;
+            ip += matched;
+
+            emit_insert_len(insert, commands);
+            if let Some(block) = data.get(next_emit..next_emit + insert) {
+                literals.extend_from_slice(block);
             }
-            *out.literals = literal_buffer;
-            *out.commands = command_buffer;
-        },
-    );
+            if !INDEPENDENT && distance == last_distance {
+                commands.push(64);
+            } else {
+                emit_distance(distance as usize, commands);
+                last_distance = distance;
+            }
+            if INDEPENDENT {
+                emit_copy_len(matched - 2, commands);
+                emit_distance(distance as usize, commands);
+            } else {
+                emit_copy_len_last_distance(matched, commands);
+            }
+
+            next_emit = ip;
+            if ip >= ip_limit {
+                break 'scan;
+            }
+            candidate = {
+                let current = update_hashes_after_copy::<TABLE_BITS, ENTRIES, MIN_MATCH, true>(
+                    data, table, ip,
+                );
+                let candidate = table[current] as usize;
+                table[current] = ip as i32;
+                candidate
+            };
+
+            while ip - candidate <= MAX_BACKWARD_DISTANCE
+                && is_match::<MIN_MATCH>(data, ip, candidate)
+            {
+                let base = ip;
+                let matched = MIN_MATCH
+                    + match_len_at(
+                        simd,
+                        data,
+                        candidate + MIN_MATCH,
+                        current_window(data, ip + MIN_MATCH, (ip_end - ip) - MIN_MATCH),
+                    );
+                ip += matched;
+                last_distance = (base - candidate) as i64;
+                emit_copy_len(matched, commands);
+                emit_distance(last_distance as usize, commands);
+
+                next_emit = ip;
+                if ip >= ip_limit {
+                    break 'scan;
+                }
+                let current = update_hashes_after_copy::<TABLE_BITS, ENTRIES, MIN_MATCH, false>(
+                    data, table, ip,
+                );
+                candidate = table[current] as usize;
+                table[current] = ip as i32;
+            }
+
+            ip += 1;
+
+            next_word = load_u64_le(data, ip);
+
+            next_hash = hash_bytes_at_offset::<TABLE_BITS, MIN_MATCH>(next_word, 0);
+        }
+    }
+
+    debug_assert!(next_emit <= ip_end);
+    if next_emit < ip_end {
+        let insert = ip_end - next_emit;
+        emit_insert_len(insert, commands);
+        if let Some(block) = data.get(next_emit..ip_end) {
+            literals.extend_from_slice(block);
+        }
+    }
+    *out.literals = literal_buffer;
+    *out.commands = command_buffer;
 }
 
 /// Builds the command and distance prefix codes and stores them.

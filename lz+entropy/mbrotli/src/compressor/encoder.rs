@@ -5,14 +5,15 @@ use alloc::vec::Vec;
 use super::config::{ConfigError, EncoderConfig, SizeOverflow};
 use super::core::bound::{append_reserve, bound};
 use super::core::driver::{
-    EncoderCache, compress_to_slice_attached, compress_to_vec_attached, quality_reads_a_prefix,
+    EncoderCache, compress_to_slice_attached, compress_to_uninit_attached,
+    compress_to_vec_attached, quality_reads_a_prefix,
 };
 use super::dictionary::PreparedDictionary;
 use super::error::EncodeError;
 use super::internal::{CompressParams, QualityLevel, WindowBits};
 use super::session::{EncoderSession, EncoderSessionOwned, StreamConfig};
+use ::core::mem::MaybeUninit;
 use ::core::ops::Range;
-use fearless_simd::Level;
 
 /// The configuration whose compressed-size bound is the loosest.
 ///
@@ -61,8 +62,8 @@ use crate::RetentionPolicy;
 /// ```
 #[derive(Debug)]
 pub struct Compressor {
-    /// The instruction set, resolved once.
-    level: Level,
+    /// The host-validated backend, resolved once.
+    backend: super::Backend,
     /// The validated configuration every operation runs under.
     config: EncoderConfig,
     /// What to keep between operations.
@@ -134,7 +135,7 @@ impl Compressor {
         CompressorBuilder {
             config,
             retention: RetentionPolicy::Aggressive,
-            level: None,
+            backend: None,
         }
     }
 
@@ -357,6 +358,56 @@ impl Compressor {
     #[inline]
     pub fn compress_to_slice(&mut self, src: &[u8], dst: &mut [u8]) -> Result<usize, EncodeError> {
         self.compress_attached_to_slice(None, src, dst)
+    }
+
+    /// Compresses `src` into uninitialized `dst` and returns the number of
+    /// bytes written.
+    ///
+    /// Produces exactly the bytes [`Compressor::compress_to_slice`] does, so
+    /// the same [`Compressor::max_compressed_size`] bound applies. Use it to
+    /// compress straight into spare capacity or a foreign buffer without
+    /// zeroing it first. On success exactly `dst[..written]` is initialized
+    /// and no byte after it is written.
+    ///
+    /// Safe code cannot read back memory it has not initialized, so qualities
+    /// 0 and 1 cannot run their in-place bit writer here and encode through
+    /// retained scratch instead, copying each block once, as qualities 2–11
+    /// always do.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EncodeError::OutputTooSmall`] when `dst` cannot hold the whole
+    /// stream; treat none of `dst` as initialized then. The compressor is left
+    /// ready for the next operation.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mbrotli::{Compressor, EncoderConfig, Quality};
+    ///
+    /// let mut encoder = Compressor::new(EncoderConfig::default().with_quality(Quality::Q1))?;
+    /// let payload = b"compressed into spare capacity";
+    /// let mut compressed = Vec::with_capacity(Compressor::max_compressed_size(payload.len())?);
+    ///
+    /// let written = encoder.compress_to_uninit(payload, compressed.spare_capacity_mut())?;
+    /// // SAFETY: `compress_to_uninit` initialized the first `written` spare bytes.
+    /// unsafe { compressed.set_len(written) };
+    ///
+    /// assert_eq!(compressed, encoder.compress(payload)?);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn compress_to_uninit(
+        &mut self,
+        src: &[u8],
+        dst: &mut [MaybeUninit<u8>],
+    ) -> Result<usize, EncodeError> {
+        self.ensure_available()?;
+        let params = self.config.lower(Some(src.len()));
+        let provided = dst.len();
+        let outcome =
+            compress_to_uninit_attached(&mut self.workspace, self.backend, &params, None, src, dst);
+        self.finish_operation();
+        outcome.map_err(|error| EncodeError::from_core(error, provided))
     }
 
     /// Compresses `src` against `dictionary` into a freshly allocated stream.
@@ -654,7 +705,15 @@ impl Compressor {
     pub fn trim(&mut self, policy: RetentionPolicy) {
         let release = match policy {
             RetentionPolicy::Aggressive | RetentionPolicy::CurrentConfig => false,
-            RetentionPolicy::Bounded { max_bytes } => self.retained_bytes() > max_bytes,
+            RetentionPolicy::Bounded { max_bytes } => {
+                // Storage kept for match finders of other plans goes first: it
+                // only speeds up a plan switch, and dropping it may keep the
+                // rest of the workspace within the bound.
+                if self.retained_bytes() > max_bytes {
+                    self.workspace.release_parked();
+                }
+                self.retained_bytes() > max_bytes
+            }
             RetentionPolicy::ReleaseAll => true,
         };
         if release {
@@ -716,7 +775,7 @@ impl Compressor {
     #[must_use]
     pub fn fork_empty(&self) -> Self {
         Self {
-            level: self.level,
+            backend: self.backend,
             config: self.config,
             retention: self.retention,
             workspace: EncoderCache::default(),
@@ -745,8 +804,14 @@ impl Compressor {
             .map_err(|_| EncodeError::AllocationFailed { requested: reserve })?;
 
         let attached = dictionary.map(PreparedDictionary::inner);
-        let outcome =
-            compress_to_vec_attached(&mut self.workspace, self.level, &params, attached, src, dst);
+        let outcome = compress_to_vec_attached(
+            &mut self.workspace,
+            self.backend,
+            &params,
+            attached,
+            src,
+            dst,
+        );
         self.finish_operation();
         match outcome {
             Ok(()) => Ok(start..dst.len()),
@@ -773,7 +838,7 @@ impl Compressor {
         let provided = dst.len();
         let outcome = compress_to_slice_attached(
             &mut self.workspace,
-            self.level,
+            self.backend,
             &params,
             attached,
             src,
@@ -801,7 +866,62 @@ impl Compressor {
             self.check_dictionary()?;
         }
 
-        let params = self.config.lower(Some(stream.input_size().hint()));
+        let params = self.stream_params(stream, stream.input_size().hint())?;
+        let limit = match self.workspace.acquire(self.backend, &params, 0) {
+            Ok(encoder) => encoder.block_size_limit(),
+            Err(error) => {
+                self.workspace.invalidate();
+                return Err(EncodeError::from_core(error, 0));
+            }
+        };
+
+        self.staging.clear();
+        self.pending.clear();
+        self.served = 0;
+        if self.staging.capacity() < limit {
+            self.staging
+                .try_reserve(limit)
+                .map_err(|_| EncodeError::AllocationFailed { requested: limit })?;
+        }
+        self.active = true;
+        Ok(limit)
+    }
+
+    /// Re-aims the active stream's encoder at the size hint C's
+    /// `UpdateSizeHint` infers for a stream of unknown length, with storage
+    /// sized for `expected_input` bytes (zero while the total is unknown).
+    ///
+    /// Runs before the stream first encodes any input.
+    ///
+    /// # Errors
+    ///
+    /// Returns what [`Self::begin`] would for the same stream, and
+    /// [`EncodeError::InternalInvariant`] when the session has no encoder.
+    pub(crate) fn resolve_size_hint(
+        &mut self,
+        stream: StreamConfig,
+        size_hint: usize,
+        expected_input: usize,
+    ) -> Result<(), EncodeError> {
+        let params = self.stream_params(stream, size_hint)?;
+        let backend = self.backend;
+        let Some(encoder) = self.workspace.encoder() else {
+            return Err(EncodeError::InternalInvariant {
+                detail: "a session outlived the encoder it was started with",
+            });
+        };
+        encoder
+            .retarget_size_hint(backend, &params, expected_input)
+            .map_err(|error| EncodeError::from_core(error, 0))
+    }
+
+    /// Lowers the configuration for `stream`, expecting `size_hint` bytes.
+    fn stream_params(
+        &self,
+        stream: StreamConfig,
+        size_hint: usize,
+    ) -> Result<super::internal::CompressParams, EncodeError> {
+        let params = self.config.lower(Some(size_hint));
         #[cfg(feature = "experimental")]
         let params = {
             let input_bytes = match stream.input_size() {
@@ -823,24 +943,9 @@ impl Compressor {
             params.stream_offset = stream.stream_offset().min((1u64 << bits) - 16) as usize;
             params
         };
-        let limit = match self.workspace.acquire(self.level, &params, 0) {
-            Ok(encoder) => encoder.block_size_limit(),
-            Err(error) => {
-                self.workspace.invalidate();
-                return Err(EncodeError::from_core(error, 0));
-            }
-        };
-
-        self.staging.clear();
-        self.pending.clear();
-        self.served = 0;
-        if self.staging.capacity() < limit {
-            self.staging
-                .try_reserve(limit)
-                .map_err(|_| EncodeError::AllocationFailed { requested: limit })?;
-        }
-        self.active = true;
-        Ok(limit)
+        #[cfg(not(feature = "experimental"))]
+        let _ = stream;
+        Ok(params)
     }
 
     /// Refuses to start anything while an abandoned session is unaccounted for.
@@ -901,7 +1006,7 @@ pub struct CompressorBuilder {
     /// What the compressor will keep between operations.
     retention: RetentionPolicy,
     /// The backend to pin, when the caller chose one.
-    level: Option<Level>,
+    backend: Option<super::Backend>,
 }
 
 impl CompressorBuilder {
@@ -947,7 +1052,7 @@ impl CompressorBuilder {
     /// ```
     #[must_use]
     pub const fn with_backend(mut self, backend: super::Backend) -> Self {
-        self.level = Some(backend.0);
+        self.backend = Some(backend);
         self
     }
 
@@ -972,7 +1077,7 @@ impl CompressorBuilder {
     pub fn build(self) -> Result<Compressor, ConfigError> {
         self.config.validate()?;
         Ok(Compressor {
-            level: self.level.unwrap_or_else(|| super::Backend::default().0),
+            backend: self.backend.unwrap_or_default(),
             config: self.config,
             retention: self.retention,
             workspace: EncoderCache::default(),
@@ -998,8 +1103,8 @@ mod tests {
     fn default_construction_uses_the_compile_time_backend() {
         let encoder = compressor(Quality::Q5);
         assert_eq!(
-            super::super::Backend(encoder.level),
-            super::super::Backend(Level::baseline())
+            encoder.backend,
+            super::super::Backend(fearless_simd::Level::baseline())
         );
     }
 

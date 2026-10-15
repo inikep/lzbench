@@ -57,6 +57,18 @@ impl<const N: usize> Histogram<N> {
         }
     }
 
+    /// Overwrites this histogram with the sum of `left` and `right`.
+    ///
+    /// The same counts, total and cached bit cost as cloning `left` and then
+    /// [`Histogram::add_histogram`]-ing `right`, in one pass instead of two.
+    pub(crate) fn set_sum(&mut self, left: &Self, right: &Self) {
+        for ((mine, &left), &right) in self.data.iter_mut().zip(&left.data).zip(&right.data) {
+            *mine = left + right;
+        }
+        self.total_count = left.total_count + right.total_count;
+        self.bit_cost = left.bit_cost;
+    }
+
     /// Counts every symbol of `values` (`HistogramAddVector`).
     pub(crate) fn add_vector<T: Copy + Into<usize>>(&mut self, values: &[T]) {
         self.total_count += values.len();
@@ -165,11 +177,14 @@ pub(crate) fn optimize_huffman_counts_for_rle(
     if length == 0 {
         return;
     }
+    // Cut to the trimmed length once: every index below is then bounded by
+    // the loop conditions, and the run fills are single range writes.
+    let counts = &mut counts[..length];
 
     {
         let mut nonzeros = 0usize;
         let mut smallest_nonzero = 1u32 << 30;
-        for &count in counts.iter().take(length) {
+        for &count in counts.iter() {
             if count != 0 {
                 nonzeros += 1;
                 smallest_nonzero = smallest_nonzero.min(count);
@@ -195,16 +210,15 @@ pub(crate) fn optimize_huffman_counts_for_rle(
     }
 
     // Mark the runs that already code well, so they are not broken up.
-    good_for_rle[..length].fill(0);
+    let good_for_rle = &mut good_for_rle[..length];
+    good_for_rle.fill(0);
     {
         let mut symbol = counts[0];
         let mut step = 0usize;
         for i in 0..=length {
             if i == length || counts[i] != symbol {
                 if (symbol == 0 && step >= 5) || (symbol != 0 && step >= 7) {
-                    for k in 0..step {
-                        good_for_rle[i - k - 1] = 1;
-                    }
+                    good_for_rle[i - step..i].fill(1);
                 }
                 step = 1;
                 if i != length {
@@ -239,9 +253,7 @@ pub(crate) fn optimize_huffman_counts_for_rle(
                     // A run of zeros must not be promoted to ones.
                     count = 0;
                 }
-                for k in 0..stride {
-                    counts[i - k - 1] = count as u32;
-                }
+                counts[i - stride..i].fill(count as u32);
             }
             stride = 0;
             sum = 0;
@@ -270,6 +282,8 @@ pub(crate) fn optimize_huffman_counts_for_rle(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec;
+    use alloc::vec::Vec;
 
     #[test]
     fn a_histogram_counts_and_clears() {
@@ -297,6 +311,27 @@ mod tests {
         assert_eq!(left.data[1], 2);
         assert_eq!(left.data[700], 1);
         assert_eq!(left.total_count, 3);
+    }
+
+    #[test]
+    fn a_set_sum_matches_cloning_then_adding() {
+        let mut left = HistogramCommand::default();
+        let mut right = HistogramCommand::default();
+        left.add(1);
+        left.add(3);
+        left.bit_cost = 12.5;
+        right.add(1);
+        right.add(700);
+        right.bit_cost = 3.0;
+        let mut expected = left.clone();
+        expected.add_histogram(&right);
+
+        let mut sum = HistogramCommand::default();
+        sum.add(5);
+        sum.set_sum(&left, &right);
+        assert_eq!(sum.data, expected.data);
+        assert_eq!(sum.total_count, 4);
+        assert_eq!(sum.bit_cost.to_bits(), expected.bit_cost.to_bits());
     }
 
     #[test]
@@ -407,5 +442,142 @@ mod tests {
         let mut scratch = [0u8; 256];
         optimize_huffman_counts_for_rle(256, &mut counts, &mut scratch);
         assert!(counts.iter().all(|&count| count == 0));
+    }
+
+    /// `BrotliOptimizeHuffmanCountsForRle` transcribed index by index, the
+    /// oracle for the sliced implementation.
+    fn reference_optimize(length: usize, counts: &mut [u32], good_for_rle: &mut [u8]) {
+        let nonzero_count = counts[..length].iter().filter(|&&count| count != 0).count();
+        if nonzero_count < 16 {
+            return;
+        }
+        let mut length = length;
+        while length != 0 && counts[length - 1] == 0 {
+            length -= 1;
+        }
+        if length == 0 {
+            return;
+        }
+        let nonzeros = counts[..length].iter().filter(|&&count| count != 0).count();
+        let smallest_nonzero = counts[..length]
+            .iter()
+            .filter(|&&count| count != 0)
+            .fold(1u32 << 30, |smallest, &count| smallest.min(count));
+        if nonzeros < 5 {
+            return;
+        }
+        if smallest_nonzero < 4 && length - nonzeros < 6 {
+            for i in 1..length - 1 {
+                if counts[i - 1] != 0 && counts[i] == 0 && counts[i + 1] != 0 {
+                    counts[i] = 1;
+                }
+            }
+        }
+        if nonzeros < 28 {
+            return;
+        }
+        for flag in &mut good_for_rle[..length] {
+            *flag = 0;
+        }
+        let mut symbol = counts[0];
+        let mut step = 0usize;
+        for i in 0..=length {
+            if i == length || counts[i] != symbol {
+                if (symbol == 0 && step >= 5) || (symbol != 0 && step >= 7) {
+                    for k in 0..step {
+                        good_for_rle[i - k - 1] = 1;
+                    }
+                }
+                step = 1;
+                if i != length {
+                    symbol = counts[i];
+                }
+            } else {
+                step += 1;
+            }
+        }
+        let mut stride = 0usize;
+        let mut limit =
+            256 * (counts[0] as usize + counts[1] as usize + counts[2] as usize) / 3 + 420;
+        let mut sum = 0usize;
+        for i in 0..=length {
+            let count_i = if i < length { counts[i] as usize } else { 0 };
+            if i == length
+                || good_for_rle[i] != 0
+                || (i != 0 && good_for_rle[i - 1] != 0)
+                || (256 * count_i)
+                    .wrapping_sub(limit)
+                    .wrapping_add(STREAK_LIMIT)
+                    >= 2 * STREAK_LIMIT
+            {
+                if stride >= 4 || (stride >= 3 && sum == 0) {
+                    let mut count = ((sum + stride / 2) / stride).max(1);
+                    if sum == 0 {
+                        count = 0;
+                    }
+                    for k in 0..stride {
+                        counts[i - k - 1] = count as u32;
+                    }
+                }
+                stride = 0;
+                sum = 0;
+                limit = if i + 2 < length {
+                    256 * (counts[i] as usize + counts[i + 1] as usize + counts[i + 2] as usize) / 3
+                        + 420
+                } else if i < length {
+                    256 * counts[i] as usize
+                } else {
+                    0
+                };
+            }
+            stride += 1;
+            if i != length {
+                sum += count_i;
+                if stride >= 4 {
+                    limit = (256 * sum + stride / 2) / stride;
+                }
+                if stride == 4 {
+                    limit += 120;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rle_optimization_matches_the_reference_on_random_histograms() {
+        // Histograms built from runs of zeros, repeats, small and large counts
+        // reach every branch: trailing-zero trimming, isolated-zero filling,
+        // marked runs, and strides collapsed to zero, one and an average.
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = move |bound: u32| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % u64::from(bound)) as u32
+        };
+        for case in 0..4000 {
+            let length = [64usize, 256, 704, 26, 40][case % 5];
+            let mut counts = Vec::with_capacity(length + 8);
+            while counts.len() < length + 8 {
+                let run = 1 + next(12) as usize;
+                let value = match next(6) {
+                    0 | 1 => 0,
+                    2 => 1 + next(3),
+                    3 => 50 + next(8),
+                    4 => next(2000),
+                    _ => next(70_000),
+                };
+                for _ in 0..run {
+                    counts.push(if next(5) == 0 { value + next(3) } else { value });
+                }
+            }
+            counts.truncate(length + 8);
+            let mut expected = counts.clone();
+            let mut scratch = vec![0xAAu8; length + 8];
+            let mut expected_scratch = scratch.clone();
+            reference_optimize(length, &mut expected, &mut expected_scratch);
+            optimize_huffman_counts_for_rle(length, &mut counts, &mut scratch);
+            assert_eq!(counts, expected, "case {case}, length {length}");
+        }
     }
 }

@@ -32,6 +32,17 @@ pub(crate) fn fast_log2(value: usize) -> f64 {
 #[cold]
 #[inline(never)]
 fn log2_beyond_table(value: usize) -> f64 {
+    log2(value)
+}
+
+/// The library logarithm `FastLog2` falls back to past its table.
+///
+/// Unlike [`fast_log2`], small values are computed too rather than read from
+/// the single-precision table, so the two agree only from 256 up. Callers that
+/// only ever take the logarithm of such values, or tabulate them, use this
+/// directly.
+#[inline]
+pub(crate) fn log2(value: usize) -> f64 {
     #[cfg(not(feature = "no_std"))]
     {
         (value as f64).log2()
@@ -52,6 +63,19 @@ mod tests {
         for value in [257, 1023, 65535, 1 << 24, usize::MAX] {
             let expected = (value as f64).log2();
             assert!(fast_log2(value).to_bits().abs_diff(expected.to_bits()) <= 1);
+        }
+    }
+
+    #[test]
+    fn log2_computes_every_value_and_agrees_with_fast_log2_past_the_table() {
+        assert_eq!(log2(1), 0.0);
+        assert_eq!(log2(2), 1.0);
+        assert_eq!(log2(1024), 10.0);
+        // Below the table's end the table is single precision; past it the
+        // two are the same function.
+        assert_ne!(log2(3).to_bits(), fast_log2(3).to_bits());
+        for value in [256, 257, 4000, 65535, 1 << 24] {
+            assert_eq!(log2(value).to_bits(), fast_log2(value).to_bits());
         }
     }
 

@@ -28,12 +28,13 @@ pub(crate) struct BlockSplit {
 }
 
 impl BlockSplit {
-    /// Sizes the type and length arrays for at most `max_num_blocks` blocks.
+    /// Empties the split and reserves room for `max_num_blocks` blocks, which
+    /// are then pushed in order.
     pub(crate) fn reserve(&mut self, max_num_blocks: usize) {
         self.types.clear();
         self.lengths.clear();
-        self.types.resize(max_num_blocks, 0);
-        self.lengths.resize(max_num_blocks, 0);
-        self.num_blocks = max_num_blocks;
+        self.types.reserve(max_num_blocks);
+        self.lengths.reserve(max_num_blocks);
+        self.num_blocks = 0;
     }
 }

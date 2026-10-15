@@ -310,9 +310,11 @@ pub(crate) struct CommandExtension<'a> {
     pub(crate) span: &'a mut super::ringbuffer::BlockSpan,
 }
 
-/// Extends a copy with the retained encoder's selected comparison kernel.
+/// Extends a copy with the retained encoder's selected comparison kernel,
+/// inside `simd`'s feature context.
 #[cfg_attr(all(feature = "hotpath", not(feature = "no_std")), hotpath::measure)]
 #[inline(always)]
+#[fearless_simd_macros::simd]
 pub(crate) fn extend_last_command<S: fearless_simd::Simd>(simd: S, input: CommandExtension<'_>) {
     let CommandExtension {
         command,
@@ -447,12 +449,10 @@ mod tests {
     #[test]
     fn extending_a_copy_matches_the_byte_scan_across_both_wrap_points() {
         use crate::compressor::Backend;
-        use crate::compressor::core::dispatch;
         use crate::shared::ringbuffer::{BlockSpan, Window};
 
         let dist = DistanceParams::default();
         for backend in Backend::available() {
-            let kernels = dispatch::select(backend.0);
             for position in [256, 257, 319, 383, 447, 510, 511] {
                 for distance in [1, 4, 17, 63, 128] {
                     for mismatch in [0, 1, 7, 15, 16, 31, 32, 63, 127, 255] {
@@ -468,7 +468,7 @@ mod tests {
                             position: position as u32,
                             bytes: 192,
                         };
-                        kernels.extend(CommandExtension {
+                        let extension = CommandExtension {
                             command: &mut command,
                             lgwin: 10,
                             dist: &dist,
@@ -480,7 +480,8 @@ mod tests {
                             last_processed_pos: position as u64,
                             attached: None,
                             span: &mut span,
-                        });
+                        };
+                        fearless_simd::dispatch!(backend.0, simd => extend_last_command(simd, extension));
                         assert_eq!(command.copy_len(), 4 + matched as u32, "{backend:?}");
                         assert_eq!(span.bytes, 192 - matched as u32);
                         assert_eq!(span.position, (position + matched) as u32);

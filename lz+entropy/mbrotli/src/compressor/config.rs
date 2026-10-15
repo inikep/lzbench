@@ -496,7 +496,7 @@ impl LiteralContextMode {
 /// assert_eq!(config.mode(), CompressionMode::Text);
 /// # Ok::<(), mbrotli::ConfigError>(())
 /// ```
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct EncoderConfig {
     quality: Quality,
     window: Window,
@@ -506,7 +506,42 @@ pub struct EncoderConfig {
     literal_context: LiteralContextMode,
 }
 
+impl Default for EncoderConfig {
+    /// Returns [`EncoderConfig::new`].
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EncoderConfig {
+    /// Returns the default configuration in a `const` context.
+    ///
+    /// Equal to [`EncoderConfig::default`]: quality 11, an ordinary 22-bit
+    /// window, automatic block size, generic mode, automatic distance
+    /// parameters and automatic literal context modelling.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mbrotli::{EncoderConfig, Quality};
+    ///
+    /// const FAST: EncoderConfig = EncoderConfig::new().with_quality(Quality::Q5);
+    ///
+    /// assert_eq!(EncoderConfig::new(), EncoderConfig::default());
+    /// assert_eq!(FAST.quality(), Quality::Q5);
+    /// ```
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            quality: Quality::Q11,
+            window: Window::DEFAULT,
+            block_size: BlockSize::Auto,
+            mode: CompressionMode::Generic,
+            distance: DistanceParams::Auto,
+            literal_context: LiteralContextMode::Auto,
+        }
+    }
+
     /// Sets the compression quality.
     ///
     /// # Examples
@@ -935,6 +970,12 @@ mod tests {
         assert_eq!(CompressionMode::Text.resolve(), CompressMode::Text);
         assert_eq!(CompressionMode::Font.resolve(), CompressMode::Font);
         assert_eq!(CompressionMode::default(), CompressionMode::Generic);
+    }
+
+    #[test]
+    fn the_const_constructor_equals_the_default() {
+        const CONFIG: EncoderConfig = EncoderConfig::new();
+        assert_eq!(CONFIG, EncoderConfig::default());
     }
 
     #[test]

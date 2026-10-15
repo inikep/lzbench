@@ -17,6 +17,7 @@ use alloc::vec::Vec;
 use core::mem;
 
 use fearless_simd::{Simd, SimdBase, SimdMask, u8x32};
+use fearless_simd_macros::simd;
 
 use crate::shared::constants::{HASH_MUL32, WINDOW_GAP};
 use crate::shared::dictionary::MAX_STATIC_DICTIONARY_MATCH_LEN;
@@ -456,6 +457,7 @@ impl BinaryTreeMatcher {
         clippy::too_many_arguments,
         reason = "mirrors FindAllMatches, whose parameters are all needed"
     )]
+    #[simd]
     pub(crate) fn find_all_matches<S: Simd>(
         &mut self,
         simd: S,
@@ -469,98 +471,90 @@ impl BinaryTreeMatcher {
         short_scan: usize,
         matches: &mut Vec<BackwardMatch>,
     ) -> usize {
-        simd.vectorize(
-            #[inline(always)]
-            || {
-                let start = matches.len();
-                let cur_ix_masked = cur_ix & ring_buffer_mask;
+        let start = matches.len();
+        let cur_ix_masked = cur_ix & ring_buffer_mask;
 
-                // A short backward scan first: nearby two-byte repeats are cheap to
-                // find and the tree, which only indexes four-byte prefixes, misses
-                // them entirely.
-                let mut best_len = scan_recent_positions(
-                    simd,
-                    data,
-                    ring_buffer_mask,
-                    cur_ix,
-                    max_length,
-                    max_backward,
-                    short_scan,
-                    matches,
-                );
+        // A short backward scan first: nearby two-byte repeats are cheap to
+        // find and the tree, which only indexes four-byte prefixes, misses
+        // them entirely.
+        let mut best_len = scan_recent_positions(
+            simd,
+            data,
+            ring_buffer_mask,
+            cur_ix,
+            max_length,
+            max_backward,
+            short_scan,
+            matches,
+        );
 
-                if best_len < max_length {
-                    self.store_and_find_matches(
-                        simd,
-                        data,
-                        cur_ix,
-                        ring_buffer_mask,
-                        max_length,
-                        max_backward,
-                        &mut best_len,
-                        matches,
-                        true,
-                    );
-                }
+        if best_len < max_length {
+            self.store_and_find_matches(
+                simd,
+                data,
+                cur_ix,
+                ring_buffer_mask,
+                max_length,
+                max_backward,
+                &mut best_len,
+                matches,
+                true,
+            );
+        }
 
-                // Static-dictionary words, which sit past every real distance.
-                if dictionary_distance > max_distance {
-                    return matches.len() - start;
+        // Static-dictionary words, which sit past every real distance.
+        if dictionary_distance > max_distance {
+            return matches.len() - start;
+        }
+        let min_len = best_len.saturating_add(1).max(4);
+        let mut found = [INVALID_MATCH; MAX_STATIC_DICTIONARY_MATCH_LEN + 1];
+        if all_matches::find_all(
+            simd,
+            data.get(cur_ix_masked..).unwrap_or_default(),
+            min_len,
+            max_length,
+            &mut found,
+        ) {
+            let max_len = max_length.min(MAX_STATIC_DICTIONARY_MATCH_LEN);
+            for length in min_len..=max_len {
+                let Some(&packed) = found.get(length) else {
+                    continue;
+                };
+                if packed >= INVALID_MATCH {
+                    continue;
                 }
-                let min_len = best_len.saturating_add(1).max(4);
-                let mut found = [INVALID_MATCH; MAX_STATIC_DICTIONARY_MATCH_LEN + 1];
-                if all_matches::find_all(
-                    data.get(cur_ix_masked..).unwrap_or_default(),
-                    min_len,
-                    max_length,
-                    &mut found,
-                ) {
-                    let max_len = max_length.min(MAX_STATIC_DICTIONARY_MATCH_LEN);
-                    for length in min_len..=max_len {
-                        let Some(&packed) = found.get(length) else {
-                            continue;
-                        };
-                        if packed >= INVALID_MATCH {
-                            continue;
-                        }
-                        let distance = dictionary_distance + (packed >> 5) as usize + 1;
-                        if distance <= max_distance {
-                            matches.push(BackwardMatch::dictionary(
-                                distance,
-                                length,
-                                (packed & 31) as usize,
-                            ));
-                        }
-                    }
+                let distance = dictionary_distance + (packed >> 5) as usize + 1;
+                if distance <= max_distance {
+                    matches.push(BackwardMatch::dictionary(
+                        distance,
+                        length,
+                        (packed & 31) as usize,
+                    ));
                 }
-                matches.len() - start
-            },
-        )
+            }
+        }
+        matches.len() - start
     }
 
     /// Re-roots the tree at `ix` without collecting matches (`Store`).
     ///
     /// Requires `ix + MAX_TREE_COMP_LENGTH` bytes of the current block to be
     /// available, which the callers guarantee through their store bounds.
+    #[simd]
     pub(crate) fn store<S: Simd>(&mut self, simd: S, data: &[u8], mask: usize, ix: usize) {
-        simd.vectorize(
-            #[inline(always)]
-            || {
-                let max_backward = self.window_mask - WINDOW_GAP + 1;
-                let mut best_len = 0usize;
-                let mut discard = Vec::new();
-                self.store_and_find_matches(
-                    simd,
-                    data,
-                    ix,
-                    mask,
-                    MAX_TREE_COMP_LENGTH,
-                    max_backward,
-                    &mut best_len,
-                    &mut discard,
-                    false,
-                );
-            },
+        let max_backward = self.window_mask - WINDOW_GAP + 1;
+        let mut best_len = 0usize;
+        let mut discard = Vec::new();
+        self.store_and_find_matches(
+            simd,
+            data,
+            ix,
+            mask,
+            MAX_TREE_COMP_LENGTH,
+            max_backward,
+            &mut best_len,
+            &mut discard,
+            false,
         );
     }
 
@@ -601,6 +595,7 @@ impl BinaryTreeMatcher {
     /// processed. The backward limit shrinks with the distance back to each
     /// position, so the traversal never reads window bytes the next block has
     /// already overwritten.
+    #[simd]
     pub(crate) fn stitch_to_previous_block<S: Simd>(
         &mut self,
         simd: S,

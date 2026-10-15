@@ -174,19 +174,44 @@ pub struct DecoderConfig {
 }
 
 impl Default for DecoderConfig {
+    /// Returns [`DecoderConfig::new`].
     fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl DecoderConfig {
+    /// Returns the default policy in a `const` context.
+    ///
+    /// Equal to [`DecoderConfig::default`]: extended windows up to 62 bits,
+    /// a single member and no numeric resource budgets.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mbrotli::{DecoderConfig, MemberMode};
+    ///
+    /// const MULTI: DecoderConfig = DecoderConfig::new().with_member_mode(MemberMode::Concatenated);
+    ///
+    /// assert_eq!(DecoderConfig::new(), DecoderConfig::default());
+    /// assert_eq!(MULTI.member_mode(), MemberMode::Concatenated);
+    /// ```
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             window: WindowLimit {
                 bits: 62,
                 large: true,
             },
             members: MemberMode::Single,
-            limits: DecodeLimits::default(),
+            limits: DecodeLimits {
+                input: None,
+                output: None,
+                workspace: None,
+            },
         }
     }
-}
 
-impl DecoderConfig {
     /// Sets the accepted window headers.
     pub const fn with_window_limit(mut self, value: WindowLimit) -> Self {
         self.window = value;

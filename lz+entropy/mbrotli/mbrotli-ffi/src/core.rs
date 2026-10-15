@@ -7,11 +7,13 @@
 //! [`FfiError`] onto the public status code.
 
 use crate::MbrotliResult;
+use borrowed_buf::BorrowedBuf;
 use mbrotli::{
     Compressor, ConfigError, DecodeConfigError, DecodeError, DecoderConfig, Decompressor,
     EncodeError, EncoderConfig, Quality, Window,
 };
 use std::ffi::c_int;
+use std::mem::MaybeUninit;
 use std::panic::{self, AssertUnwindSafe};
 use thiserror::Error;
 
@@ -189,8 +191,9 @@ impl Arguments {
     /// Beyond what [`Arguments::new`] checked, a non-empty `input` must be
     /// valid for reads of `input_len` bytes and a non-empty `output` valid for
     /// writes of `output_len` bytes, both for the lifetime `'a`, and nothing
-    /// else may access either buffer during that lifetime.
-    unsafe fn slices<'a>(&self) -> (&'a [u8], &'a mut [u8]) {
+    /// else may access either buffer during that lifetime. `output` need not
+    /// be initialized: it is only ever viewed as `MaybeUninit<u8>`.
+    unsafe fn slices<'a>(&self) -> (&'a [u8], &'a mut [MaybeUninit<u8>]) {
         let input: &'a [u8] = if self.input_len == 0 {
             &[]
         } else {
@@ -199,13 +202,20 @@ impl Arguments {
             // access (caller), and disjoint from the output (checked).
             unsafe { std::slice::from_raw_parts(self.input, self.input_len) }
         };
-        let output: &'a mut [u8] = if self.output_len == 0 {
+        let output: &'a mut [MaybeUninit<u8>] = if self.output_len == 0 {
             &mut []
         } else {
             // SAFETY: non-null (checked), at most `isize::MAX` bytes (checked),
             // writable for `output_len` bytes and not accessed elsewhere
             // (caller), and disjoint from the input and length slot (checked).
-            unsafe { std::slice::from_raw_parts_mut(self.output, self.output_len) }
+            // `MaybeUninit<u8>` has the layout of `u8` and admits any contents,
+            // so a C buffer that was never initialized is a valid slice of it.
+            unsafe {
+                std::slice::from_raw_parts_mut(
+                    self.output.cast::<MaybeUninit<u8>>(),
+                    self.output_len,
+                )
+            }
         };
         (input, output)
     }
@@ -226,7 +236,7 @@ pub(crate) unsafe fn call(
     input_len: usize,
     output: *mut u8,
     length: *mut usize,
-    codec: impl FnOnce(&[u8], &mut [u8]) -> Result<usize, FfiError>,
+    codec: impl FnOnce(&[u8], &mut [MaybeUninit<u8>]) -> Result<usize, FfiError>,
 ) -> MbrotliResult {
     let slot = match LengthSlot::new(length) {
         Ok(slot) => slot,
@@ -295,7 +305,7 @@ fn window(value: c_int) -> Result<Window, FfiError> {
 /// `dst` smaller than the bound or the encoder fails.
 pub(crate) fn compress(
     src: &[u8],
-    dst: &mut [u8],
+    dst: &mut [MaybeUninit<u8>],
     quality_value: c_int,
     lgwin: c_int,
 ) -> Result<usize, FfiError> {
@@ -305,8 +315,7 @@ pub(crate) fn compress(
     if src.is_empty() {
         return empty_stream(dst);
     }
-    let mut encoder = Compressor::new(config)?;
-    let outcome = encoder.compress_to_slice(src, dst);
+    let outcome = Compressor::new(config)?.compress_to_uninit(src, dst);
     let Some(bound) = bound(src.len()) else {
         return Ok(outcome?);
     };
@@ -327,11 +336,11 @@ const EMPTY_STREAM: u8 = 0x06;
 /// # Errors
 ///
 /// [`FfiError::Encode`] with `OutputTooSmall` when `dst` is empty.
-fn empty_stream(dst: &mut [u8]) -> Result<usize, FfiError> {
+fn empty_stream(dst: &mut [MaybeUninit<u8>]) -> Result<usize, FfiError> {
     let Some(first) = dst.first_mut() else {
         return Err(EncodeError::OutputTooSmall { provided: 0 }.into());
     };
-    *first = EMPTY_STREAM;
+    first.write(EMPTY_STREAM);
     Ok(1)
 }
 
@@ -348,14 +357,16 @@ const STORED_CHUNK: usize = 1 << 24;
 ///
 /// [`FfiError::Encode`] with `OutputTooSmall` when `dst` is shorter than the
 /// stream, which a `dst` of at least [`compress_bound`] bytes never is.
-fn stored_stream(src: &[u8], dst: &mut [u8]) -> Result<usize, FfiError> {
+fn stored_stream(src: &[u8], dst: &mut [MaybeUninit<u8>]) -> Result<usize, FfiError> {
     let provided = dst.len();
     let mut rest = &mut dst[..];
     let mut put = |bytes: &[u8]| {
         let (head, tail) = std::mem::take(&mut rest)
             .split_at_mut_checked(bytes.len())
             .ok_or(EncodeError::OutputTooSmall { provided })?;
-        head.copy_from_slice(bytes);
+        for (slot, &byte) in head.iter_mut().zip(bytes) {
+            slot.write(byte);
+        }
         rest = tail;
         Ok::<(), FfiError>(())
     };
@@ -397,10 +408,25 @@ const fn stored_header(len: usize) -> u32 {
 ///
 /// [`FfiError::Decode`] for corrupt, truncated or trailing input and for a
 /// `dst` too small to hold the result.
-pub(crate) fn decompress(src: &[u8], dst: &mut [u8]) -> Result<usize, FfiError> {
+pub(crate) fn decompress(src: &[u8], dst: &mut [MaybeUninit<u8>]) -> Result<usize, FfiError> {
     let mut decoder = Decompressor::new(DecoderConfig::default())?;
-    Ok(decoder.decompress_to_slice(src, dst)?)
+    if dst.len() <= LINEAR_SMALL {
+        let mut zeroed = BorrowedBuf::<u8>::from(dst);
+        return Ok(decoder.decompress_to_slice(src, zeroed.unfilled().ensure_init())?);
+    }
+    Ok(decoder.decompress_to_uninit(src, dst)?)
 }
+
+/// Destinations up to this many bytes are zeroed and decoded with
+/// `decompress_to_slice`.
+///
+/// `decompress_to_uninit` also decodes into the destination as history, but
+/// it zeroes it one meta-block ahead of the decoder, which takes a second
+/// decoding call per meta-block: 1 KiB of text decoded about 7% faster
+/// zeroed in full. Above this size it zeroes no more than the output, where
+/// zeroing a whole destination sized for it cost 14% (geometric mean over
+/// text, binary, repetitive and stored corpora; stored output doubled).
+const LINEAR_SMALL: usize = 1 << 10;
 
 /// Google's `BrotliEncoderMaxCompressedSize`: a stored stream's size for
 /// `input_len` bytes, or `None` when it does not fit in a `usize`.
@@ -426,6 +452,23 @@ pub(crate) const fn compress_bound(input_len: usize) -> usize {
 mod tests {
     use super::*;
     use std::error::Error as _;
+
+    /// A destination of `len` bytes that were never initialized.
+    fn uninit(len: usize) -> Vec<MaybeUninit<u8>> {
+        vec![MaybeUninit::uninit(); len]
+    }
+
+    /// Reads bytes the code under test reported as written.
+    ///
+    /// Callers pass only the prefix a successful call initialized, or bytes
+    /// the test itself initialized.
+    fn read(bytes: &[MaybeUninit<u8>]) -> Vec<u8> {
+        // SAFETY: see above; every byte passed in is initialized.
+        bytes
+            .iter()
+            .map(|byte| unsafe { byte.assume_init() })
+            .collect()
+    }
 
     #[test]
     fn region_accepts_null_only_when_empty() {
@@ -540,16 +583,72 @@ mod tests {
     #[test]
     fn compress_writes_a_stream_decompress_restores() {
         let payload = b"slice to slice, slice to slice, slice to slice".repeat(8);
-        let mut compressed = vec![0; compress_bound(payload.len())];
+        let mut compressed = uninit(compress_bound(payload.len()));
         let written = compress(&payload, &mut compressed, 9, 22).expect("compresses");
-        let mut restored = vec![0; payload.len()];
-        let read = decompress(&compressed[..written], &mut restored).expect("decompresses");
-        assert_eq!(&restored[..read], payload.as_slice());
+        let compressed = read(&compressed[..written]);
+        let mut restored = uninit(payload.len());
+        let len = decompress(&compressed, &mut restored).expect("decompresses");
+        assert_eq!(read(&restored[..len]), payload);
+    }
+
+    #[test]
+    fn compression_writes_the_same_stream_into_any_destination_size() {
+        let payload = b"slice to slice, slice to slice, slice to slice".repeat(20);
+        for quality in [0, 1, 5] {
+            let mut exact = uninit(compress_bound(payload.len()));
+            let tight = compress(&payload, &mut exact, quality, 22).expect("compresses");
+            let mut large = uninit(1 << 17);
+            let roomy = compress(&payload, &mut large, quality, 22).expect("compresses");
+            assert_eq!(read(&exact[..tight]), read(&large[..roomy]));
+        }
+    }
+
+    #[test]
+    fn small_and_large_destinations_restore_the_same_bytes() {
+        // A small destination is zeroed and decoded as an initialized slice,
+        // a larger one is decoded as uninitialized memory: varied text and
+        // long runs through compressed meta-blocks, noise through a stored
+        // stream no smaller than its output.
+        let varied: Vec<u8> = (0..20_000u32)
+            .flat_map(|index| (index * 7919 % 1000).to_string().into_bytes())
+            .collect();
+        let runs = b"a run of text repeated many times over; ".repeat(10_000);
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        let noise: Vec<u8> = (0..10_000)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state as u8
+            })
+            .collect();
+        for full in [&varied, &runs, &noise] {
+            for payload in [&full[..LINEAR_SMALL], &full[..LINEAR_SMALL + 1], &full[..]] {
+                let mut compressed = uninit(compress_bound(payload.len()));
+                let written = compress(payload, &mut compressed, 5, 22).expect("compresses");
+                let compressed = read(&compressed[..written]);
+
+                let mut restored = uninit(payload.len());
+                assert_eq!(
+                    decompress(&compressed, &mut restored).ok(),
+                    Some(payload.len())
+                );
+                assert_eq!(read(&restored), *payload);
+
+                let mut short = uninit(payload.len() - 1);
+                assert!(matches!(
+                    decompress(&compressed, &mut short),
+                    Err(FfiError::Decode(DecodeError::OutputTooSmall { written }))
+                        if written == payload.len() - 1
+                ));
+                assert_eq!(read(&short), payload[..payload.len() - 1]);
+            }
+        }
     }
 
     #[test]
     fn compress_refuses_bad_parameters_before_encoding() {
-        let mut output = [0; 16];
+        let mut output = uninit(16);
         assert!(matches!(
             compress(b"x", &mut output, 12, 22),
             Err(FfiError::Quality(12))
@@ -562,10 +661,10 @@ mod tests {
 
     #[test]
     fn empty_input_compresses_to_the_single_byte_google_writes() {
-        let mut output = [0xaa; 2];
+        let mut output = [MaybeUninit::new(0xaa); 2];
         assert_eq!(compress(b"", &mut output, 11, 10).ok(), Some(1));
-        assert_eq!(output, [EMPTY_STREAM, 0xaa]);
-        assert_eq!(decompress(&output[..1], &mut []).ok(), Some(0));
+        assert_eq!(read(&output), [EMPTY_STREAM, 0xaa]);
+        assert_eq!(decompress(&[EMPTY_STREAM], &mut []).ok(), Some(0));
         assert!(matches!(
             compress(b"", &mut [], 11, 22),
             Err(FfiError::Encode(EncodeError::OutputTooSmall {
@@ -607,27 +706,28 @@ mod tests {
     fn stored_streams_fit_the_bound_and_decompress() {
         for len in [1, 1 << 16, (1 << 16) + 1, (1 << 20) + 1, STORED_CHUNK + 1] {
             let src: Vec<u8> = (0..len).map(|index| (index * 31 % 251) as u8).collect();
-            let mut dst = vec![0; compress_bound(len)];
+            let mut dst = uninit(compress_bound(len));
             let written = stored_stream(&src, &mut dst).expect("the bound suffices");
             assert!(written <= dst.len());
-            assert_eq!(&dst[..2], &[0x21, 0x03]);
-            assert_eq!(dst[written - 1], 0x03);
-            let mut restored = vec![0; len];
-            assert_eq!(decompress(&dst[..written], &mut restored).ok(), Some(len));
-            assert_eq!(restored, src);
+            let stream = read(&dst[..written]);
+            assert_eq!(&stream[..2], &[0x21, 0x03]);
+            assert_eq!(stream[written - 1], 0x03);
+            let mut restored = uninit(len);
+            assert_eq!(decompress(&stream, &mut restored).ok(), Some(len));
+            assert_eq!(read(&restored), src);
         }
     }
 
     #[test]
     fn stored_stream_reports_a_short_destination() {
-        let mut dst = [0; 7];
+        let mut dst = uninit(7);
         assert!(matches!(
             stored_stream(b"four", &mut dst),
             Err(FfiError::Encode(EncodeError::OutputTooSmall {
                 provided: 7
             }))
         ));
-        assert_eq!(stored_stream(b"four", &mut [0; 10]).ok(), Some(10));
+        assert_eq!(stored_stream(b"four", &mut uninit(10)).ok(), Some(10));
     }
 
     #[test]
@@ -641,14 +741,14 @@ mod tests {
                 state.to_le_bytes()[0]
             })
             .collect();
-        let mut dst = vec![0; compress_bound(src.len())];
+        let mut dst = uninit(compress_bound(src.len()));
         let written = compress(&src, &mut dst, 0, 10).expect("the bound suffices");
-        let mut stored = vec![0; dst.len()];
+        let mut stored = uninit(dst.len());
         let stored_len = stored_stream(&src, &mut stored).expect("fits");
-        assert_eq!(&dst[..written], &stored[..stored_len]);
+        assert_eq!(read(&dst[..written]), read(&stored[..stored_len]));
 
         // Below the bound there is no fallback, as in Google's API.
-        let mut short = vec![0; compress_bound(src.len()) - 1];
+        let mut short = uninit(compress_bound(src.len()) - 1);
         assert!(matches!(
             compress(&src, &mut short, 0, 10),
             Err(FfiError::Encode(EncodeError::OutputTooSmall { .. }))

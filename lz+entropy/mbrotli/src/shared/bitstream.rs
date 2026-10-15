@@ -23,6 +23,7 @@ use super::huffman::{
     HuffmanNode, build_and_store_huffman_tree, build_and_store_huffman_tree_fast,
 };
 use super::metablock::{DISTANCE_CONTEXT_BITS, LITERAL_CONTEXT_BITS, MetaBlockSplit};
+use super::ringbuffer::contiguous;
 use super::tables::{
     STATIC_COMMAND_CODE_BITS, STATIC_COMMAND_CODE_DEPTH, STATIC_DISTANCE_CODE_BITS,
     STATIC_DISTANCE_CODE_DEPTH,
@@ -1080,6 +1081,10 @@ fn store_data_with_huffman_codes(
     dist_bits: &[u16],
     w: &mut BitWriter,
 ) {
+    // A literal is a byte, so a table of exactly one entry per byte value
+    // needs no bounds check.
+    let lit_depth = &lit_depth[..NUM_LITERAL_SYMBOLS];
+    let lit_bits = &lit_bits[..NUM_LITERAL_SYMBOLS];
     let mut pos = start_pos;
     for command in commands {
         let cmd_code = usize::from(command.cmd_prefix);
@@ -1089,11 +1094,19 @@ fn store_data_with_huffman_codes(
         );
         let (nbits, bits) = command.extra_bits();
         w.write(nbits, bits);
-        for _ in 0..command.insert_len {
-            let literal = usize::from(input.get(pos & mask).copied().unwrap_or(0));
-            w.write(u32::from(lit_depth[literal]), u64::from(lit_bits[literal]));
-            pos += 1;
+        let insert_len = command.insert_len as usize;
+        if let Some(literals) = contiguous(input, pos, mask, insert_len) {
+            for &literal in literals {
+                let literal = usize::from(literal);
+                w.write(u32::from(lit_depth[literal]), u64::from(lit_bits[literal]));
+            }
+        } else {
+            for offset in 0..insert_len {
+                let literal = usize::from(input.get((pos + offset) & mask).copied().unwrap_or(0));
+                w.write(u32::from(lit_depth[literal]), u64::from(lit_bits[literal]));
+            }
         }
+        pos += insert_len;
         pos += command.copy_len() as usize;
         if command.has_distance() {
             let dist_code = usize::from(command.distance_code());

@@ -452,6 +452,14 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
     #define lzbench_mbrotli_decompress NULL
 #endif
 
+#ifndef BENCH_REMOVE_MZSTD
+    int64_t lzbench_mzstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_mzstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_mzstd_compress NULL
+    #define lzbench_mzstd_decompress NULL
+#endif
+
 #ifndef BENCH_REMOVE_MEMLZ
     char* lzbench_memlz_init(size_t, size_t level, size_t);
     void lzbench_memlz_deinit(char* workmem);
