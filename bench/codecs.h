@@ -644,6 +644,15 @@ extern "C"
 #endif
 
 
+#ifndef BENCH_REMOVE_ZLIB_TURBO
+    int64_t lzbench_zlib_turbo_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_zlib_turbo_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_zlib_turbo_compress NULL
+    #define lzbench_zlib_turbo_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_ZLING
     int64_t lzbench_zling_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_zling_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
