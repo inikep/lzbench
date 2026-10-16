@@ -16,6 +16,7 @@ import "C"
 import (
 	"bytes"
 	"io"
+	"runtime"
 	"runtime/cgo"
 	"runtime/debug"
 	"unsafe"
@@ -51,19 +52,32 @@ func (f *fixedBuf) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// gobrrr_init returns a handle to the state, or 0 if level is not valid.
+// liveStates counts active codec states. lzbench calls init and deinit
+// from its main thread.
+var liveStates int
+
+// gobrrr_init returns a state handle, or 0 if initialization fails.
+//
+// lzbench creates one state per benchmark thread before the timed loops.
+// This function sets GOMAXPROCS to the current state count. Fewer Ps
+// reduce Go runtime memory use when lzbench uses fewer threads than CPUs.
 //
 //export gobrrr_init
 func gobrrr_init(level C.int) C.uintptr_t {
+	if level < 0 || level > 11 {
+		return 0
+	}
+	liveStates++
+	runtime.GOMAXPROCS(liveStates)
+
 	s := &state{level: int(level)}
 	if level < minWorkerLevel {
 		w, err := brrr.NewWriter(&s.dst, int(level))
 		if err != nil {
+			liveStates--
 			return 0
 		}
 		s.w = w
-	} else if level > 11 {
-		return 0
 	}
 	s.r = brrr.NewReader(&s.src)
 	return C.uintptr_t(cgo.NewHandle(s))
@@ -75,6 +89,7 @@ func gobrrr_init(level C.int) C.uintptr_t {
 //export gobrrr_deinit
 func gobrrr_deinit(h C.uintptr_t) {
 	cgo.Handle(h).Delete()
+	liveStates--
 	debug.FreeOSMemory()
 }
 
