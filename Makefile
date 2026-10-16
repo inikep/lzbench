@@ -392,10 +392,19 @@ CLEAN_FILES += $(BENCH_STAMP)
 # static libraries (skim) go last, after the objects that use them
 LZBENCH_OBJS = $(filter-out %.a,$(CODEC_OBJS)) $(BENCH_OBJS) $(filter %.a,$(CODEC_OBJS))
 
+# On a Windows host the objects reach the linker in a response file, as the
+# command line with all codecs is longer than Windows allows (32,767 characters)
+ifeq ($(HOST_WINDOWS),1)
+    LINK_INPUTS = $(file >lzbench.rsp,$(filter-out $(LINK_DEPS),$^))@lzbench.rsp
+else
+    LINK_INPUTS = $(filter-out $(LINK_DEPS),$^)
+endif
+CLEAN_FILES += lzbench.rsp
+
 # LINK_DEPS: libraries that are linked with -l (the Rust codecs), but still have
 # to be built first and trigger a relink when they change
 lzbench: $(LZBENCH_OBJS) $(LINK_DEPS)
-	$(CXX) $(filter-out $(LINK_DEPS),$^) -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
+	$(CXX) $(LINK_INPUTS) -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
 
