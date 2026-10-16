@@ -8,6 +8,7 @@
 //! length in every case, so the emitted bitstream never depends on the level.
 
 use fearless_simd::{Simd, SimdBase, SimdMask, u8x16, u8x32, u8x64};
+use fearless_simd_macros::simd;
 
 /// Bytes compared with scalar 64-bit loads before the SIMD loop is entered.
 ///
@@ -110,13 +111,46 @@ pub(crate) fn match_len_at_outlined<S: Simd>(
     match_len_tail(simd, left, cur)
 }
 
-/// [`match_len_windows`] behind a call, back inside `simd`'s feature context.
-#[inline(never)]
-fn match_len_tail<S: Simd>(simd: S, left: &[u8], right: &[u8]) -> usize {
-    simd.vectorize(
-        #[inline(always)]
-        move || match_len_windows(simd, left, right),
+/// [`match_len_at`] against the current window, which it cuts itself, all
+/// behind a call in `simd`'s feature context.
+///
+/// For the four-slot quick matchers (`H4`, `H54`). [`match_len_at_outlined`]
+/// keeps the first word inline, and with it the current window, which the
+/// compiler then cuts in front of the slot loop and keeps across all four
+/// slots at every position, although only the few candidates that pass the
+/// first-byte compare are measured. Behind the call, a position whose
+/// candidates all fail that compare pays for nothing but the compares
+/// (measured on `H4` text: 2.5% fewer instructions, up to 1% less time). The
+/// one- and two-slot matchers measured 1-4% slower this way and keep
+/// [`match_len_at_outlined`].
+///
+/// The wrapper inlines into the caller, which calls the level's
+/// feature-enabled entry directly; that entry is the call.
+#[simd]
+#[inline(always)]
+pub(crate) fn match_len_at_current<S: Simd>(
+    simd: S,
+    data: &[u8],
+    prev_ix: usize,
+    cur_ix_masked: usize,
+    max_length: usize,
+) -> usize {
+    match_len_at(
+        simd,
+        data,
+        prev_ix,
+        current_window(data, cur_ix_masked, max_length),
     )
+}
+
+/// [`match_len_windows`] behind a call, back inside `simd`'s feature context.
+///
+/// The wrapper inlines into the caller, which calls the level's
+/// feature-enabled entry directly; that entry is the call.
+#[simd]
+#[inline(always)]
+fn match_len_tail<S: Simd>(simd: S, left: &[u8], right: &[u8]) -> usize {
+    match_len_windows(simd, left, right)
 }
 
 /// Counts the leading bytes two windows of the same length share.
@@ -473,8 +507,20 @@ mod tests {
         ))
     }
 
+    /// Runs `match_len_at_current`, which cuts the current window itself, on
+    /// one level.
+    fn current_scan(
+        level: Level,
+        data: &[u8],
+        prev_ix: usize,
+        cur_ix: usize,
+        max_length: usize,
+    ) -> usize {
+        dispatch!(level, simd => match_len_at_current(simd, data, prev_ix, cur_ix, max_length))
+    }
+
     #[test]
-    fn the_outlined_scan_agrees_with_the_inlined_one_on_every_level() {
+    fn the_outlined_scans_agree_with_the_inlined_one_on_every_level() {
         // Runs of equal bytes of every length, so matches end inside the
         // first word, right after it, inside the vector scan and at the limit.
         let mut data = Vec::new();
@@ -495,6 +541,11 @@ mod tests {
                         assert_eq!(
                             inlined, outlined,
                             "prev {prev_ix} cur {cur_ix} max {max_length}"
+                        );
+                        assert_eq!(
+                            current_scan(level, &data, prev_ix, cur_ix, max_length),
+                            inlined,
+                            "current: prev {prev_ix} cur {cur_ix} max {max_length}"
                         );
                         if prev_ix + cur.len() <= data.len() {
                             let limit = cur.len();

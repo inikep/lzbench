@@ -41,7 +41,7 @@ impl<'e, 'i> Batch<'e, 'i> {
         let identity = input.identity();
         let plan = Arc::new(parent.plan(len, &config)?);
         let cancelled = Arc::new(AtomicBool::new(false));
-        let (sender, receiver) = mpsc::sync_channel(plan.tasks.max(1));
+        let (sender, receiver) = mpsc::channel();
         let mut tasks = Vec::new();
         tasks.try_reserve_exact(plan.tasks)?;
         let mut slots = Vec::new();
@@ -83,9 +83,11 @@ impl<'e, 'i> Batch<'e, 'i> {
             slots.push(Arc::clone(&slot));
             tasks.push(Task {
                 id: TaskId(id as u32),
-                range: segment..end,
-                input: input.clone(),
-                plan: Arc::clone(&plan),
+                job: super::task::Job::Planned {
+                    range: segment..end,
+                    input: input.clone(),
+                    plan: Arc::clone(&plan),
+                },
                 worker: None,
                 artifact: Some(artifact),
                 slot,
@@ -345,7 +347,7 @@ impl<'e, 'i> Batch<'e, 'i> {
             .ok_or(ParallelEncodeError::SizeOverflow)
     }
     fn assemble<W: Write>(&mut self, writer: &mut W, written: &mut u64) -> io::Result<()> {
-        let mut scratch = [0u8; 128 << 10];
+        let mut scratch = Vec::new();
         if self.plan.tasks == 0 {
             return artifact::write_counted(writer, &self.empty, written);
         }

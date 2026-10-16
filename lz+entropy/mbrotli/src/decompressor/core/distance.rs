@@ -230,12 +230,11 @@ impl DistanceLayout {
         memory: &mut Memory,
     ) -> Result<(), DecodeError> {
         let alphabet = self.alphabet();
-        if table.len() < alphabet {
-            memory.resize(table, alphabet)?;
-        }
-        for (symbol, entry) in table.iter_mut().enumerate().take(alphabet) {
-            *entry = self.entry(symbol);
-        }
+        // Every entry is written, so the table is refilled rather than
+        // zeroed first. Readers only index symbols below the alphabet.
+        table.clear();
+        memory.reserve(table, alphabet)?;
+        table.extend((0..alphabet).map(|symbol| self.entry(symbol)));
         Ok(())
     }
 }
@@ -389,16 +388,18 @@ mod tests {
                 }
             }
         }
-        // A smaller alphabet reuses the table without shrinking it.
+        // A smaller alphabet refills the same allocation without reallocating.
         let mut table = Vec::new();
+        let mut memory = Memory::default();
         DistanceLayout::from_header(63, true)
-            .fill_table(&mut table, &mut Memory::default())
+            .fill_table(&mut table, &mut memory)
             .unwrap();
-        let len = table.len();
-        DistanceLayout::default()
-            .fill_table(&mut table, &mut Memory::default())
-            .unwrap();
-        assert_eq!(table.len(), len);
+        let (allocation, capacity) = (table.as_ptr(), table.capacity());
+        let smaller = DistanceLayout::default();
+        smaller.fill_table(&mut table, &mut memory).unwrap();
+        assert_eq!((table.as_ptr(), table.capacity()), (allocation, capacity));
+        assert_eq!(table.len(), smaller.alphabet());
+        assert_eq!(table, standard_table());
     }
 
     #[test]

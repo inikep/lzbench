@@ -13,8 +13,11 @@
 
 use alloc::vec::Vec;
 
+use alloc::boxed::Box;
+
 use super::utf8::is_mostly_utf8;
-use crate::shared::fast_log::fast_log2;
+use crate::shared::fast_log::log2;
+use crate::shared::tables::LOG2_TABLE;
 
 /// Half-width of the sliding window used for UTF-8 text.
 const UTF8_WINDOW_HALF: usize = 495;
@@ -40,30 +43,89 @@ const BINARY_NUDGE: f64 = 0.029;
 /// Number of position classes the UTF-8 model keys its histograms on.
 const UTF8_POSITIONS: usize = 3;
 
+/// One past the largest count either model takes a logarithm of.
+///
+/// A window holds at most `2 * half` bytes, and every count the models look
+/// up — the window size or one symbol's share of it — is bounded by that. The
+/// binary window is the wider one, so it bounds both models.
+const LOG2_WINDOW_END: usize = 2 * BINARY_WINDOW_HALF + 1;
+
+/// Logarithms past [`LOG2_TABLE`], one per count in `256..LOG2_WINDOW_END`.
+const LOG2_TAIL_LEN: usize = LOG2_WINDOW_END - LOG2_TABLE.len();
+
+// The UTF-8 window must fit inside the bound the binary window sets.
+const _: () = assert!(UTF8_WINDOW_HALF <= BINARY_WINDOW_HALF);
+
 /// Scratch the estimator needs, allocated once per stream.
 ///
 /// Three histograms, because the UTF-8 model keys on position within a
 /// sequence; the binary model uses only the first. The block copy is used
 /// only when a block wraps the ring buffer, so the pricing loops always read
 /// through one contiguous slice.
+///
+/// The logarithm tail is built by the first block long enough to need it, so
+/// a stream of short blocks never pays for computing it.
 pub(crate) struct LiteralCostArena {
     histogram: Vec<u32>,
     block: Vec<u8>,
+    log2_tail: Option<Box<[f64; LOG2_TAIL_LEN]>>,
 }
 
 impl LiteralCostArena {
-    /// Counts the literal-model histogram and block-copy allocations.
+    /// Counts the histogram, block-copy and logarithm-tail allocations.
     pub(crate) fn retained_bytes(&self) -> usize {
-        self.histogram.capacity() * size_of::<u32>() + self.block.capacity()
+        self.histogram.capacity() * size_of::<u32>()
+            + self.block.capacity()
+            + self
+                .log2_tail
+                .as_ref()
+                .map_or(0, |_| LOG2_TAIL_LEN * size_of::<f64>())
     }
 }
 
 impl Default for LiteralCostArena {
-    /// Returns zeroed histograms and an empty block copy.
+    /// Returns zeroed histograms, an empty block copy and no logarithm tail.
     fn default() -> Self {
         Self {
             histogram: vec![0u32; UTF8_POSITIONS * 256],
             block: Vec::new(),
+            log2_tail: None,
+        }
+    }
+}
+
+/// Builds [`log2`] for every count in `256..LOG2_WINDOW_END`.
+///
+/// Collecting writes each value once, without zeroing the allocation first.
+/// The range has exactly the array's length, so the conversion cannot fail;
+/// if it did, the lookup would compute every count past the table instead.
+fn build_log2_tail() -> Option<Box<[f64; LOG2_TAIL_LEN]>> {
+    let tail: Box<[f64]> = (LOG2_TABLE.len()..LOG2_WINDOW_END).map(log2).collect();
+    tail.try_into().ok()
+}
+
+/// `FastLog2` for the counts a sliding window can hold.
+///
+/// The per-literal loops take two logarithms per byte, and the library call
+/// past [`LOG2_TABLE`] costs more than the rest of a position. Reading the
+/// precomputed tail instead gives the same `f64`, so nothing is rounded
+/// differently. Both lengths are part of the types, so the bound checks
+/// compare against constants; a count past the tail, or a block too short to
+/// have built it, falls back to computing the value with [`log2`].
+#[derive(Clone, Copy)]
+struct WindowLog2<'a> {
+    tail: Option<&'a [f64; LOG2_TAIL_LEN]>,
+}
+
+impl WindowLog2<'_> {
+    #[inline(always)]
+    fn get(self, count: usize) -> f64 {
+        match count.checked_sub(LOG2_TABLE.len()) {
+            None => LOG2_TABLE[count],
+            Some(index) => match self.tail.and_then(|tail| tail.get(index)) {
+                Some(&log) => log,
+                None => log2(count),
+            },
         }
     }
 }
@@ -89,31 +151,6 @@ pub(crate) fn contiguous_block<'a>(
     scratch.clear();
     scratch.extend((pos..end).map(|index| data.get(index & mask).copied().unwrap_or(0)));
     scratch
-}
-
-/// A one-entry cache in front of [`fast_log2`].
-///
-/// The sliding-window counts change rarely and by one, and the library
-/// logarithm they need past the table's end costs more than the rest of a
-/// position, so the last argument's value is kept. The cached value is the
-/// same function's result, so nothing is rounded differently.
-#[derive(Clone, Copy)]
-struct Log2Memo {
-    value: usize,
-    log: f64,
-}
-
-impl Log2Memo {
-    const EMPTY: Self = Self { value: 0, log: 0.0 };
-
-    #[inline(always)]
-    fn get(&mut self, value: usize) -> f64 {
-        if value != self.value {
-            self.value = value;
-            self.log = fast_log2(value);
-        }
-        self.log
-    }
 }
 
 /// Returns which byte of a UTF-8 sequence comes next (`UTF8Position`).
@@ -169,22 +206,34 @@ pub(crate) fn estimate_bit_costs_for_literals(
     arena: &mut LiteralCostArena,
     cost: &mut [f32],
 ) {
-    let LiteralCostArena { histogram, block } = arena;
+    let LiteralCostArena {
+        histogram,
+        block,
+        log2_tail,
+    } = arena;
     let block = contiguous_block(data, pos, mask, len, block);
     let Some(cost) = cost.get_mut(..len) else {
         return;
     };
+    // No count exceeds the block length, so a block shorter than the table
+    // never reads the tail.
+    if len >= LOG2_TABLE.len() && log2_tail.is_none() {
+        *log2_tail = build_log2_tail();
+    }
+    let logs = WindowLog2 {
+        tail: log2_tail.as_deref(),
+    };
     if is_mostly_utf8(block, 0, usize::MAX, len) {
-        estimate_utf8(block, histogram, cost);
+        estimate_utf8(block, histogram, logs, cost);
     } else {
-        estimate_binary(block, histogram, cost);
+        estimate_binary(block, histogram, logs, cost);
     }
 }
 
 /// The three-histogram model for text (`EstimateBitCostsForLiteralsUTF8`).
 ///
 /// `block` and `cost` are the same length.
-fn estimate_utf8(block: &[u8], histogram: &mut [u32], cost: &mut [f32]) {
+fn estimate_utf8(block: &[u8], histogram: &mut [u32], logs: WindowLog2<'_>, cost: &mut [f32]) {
     let len = block.len().min(cost.len());
     let block = &block[..len];
     let cost = &mut cost[..len];
@@ -195,8 +244,6 @@ fn estimate_utf8(block: &[u8], histogram: &mut [u32], cost: &mut [f32]) {
     let window_half = UTF8_WINDOW_HALF;
     let in_window = window_half.min(len);
     let mut in_window_utf8 = [0usize; UTF8_POSITIONS];
-    let mut window_log = [Log2Memo::EMPTY; UTF8_POSITIONS];
-    let mut histo_log = Log2Memo::EMPTY;
     histogram.fill(0);
     let at = |index: usize| usize::from(block[index]);
 
@@ -243,8 +290,7 @@ fn estimate_utf8(block: &[u8], histogram: &mut [u32], cost: &mut [f32]) {
             let last_c = if index < 2 { 0 } else { at(index - 2) };
             let utf8_pos = utf8_position(last_c, c, max_utf8);
             let histo = histogram[256 * utf8_pos + at(index)].max(1) as usize;
-            let mut lit_cost =
-                window_log[utf8_pos].get(in_window_utf8[utf8_pos]) - histo_log.get(histo);
+            let mut lit_cost = logs.get(in_window_utf8[utf8_pos]) - logs.get(histo);
             lit_cost += UTF8_NUDGE;
             if lit_cost < 1.0 {
                 lit_cost *= 0.5;
@@ -264,7 +310,7 @@ fn estimate_utf8(block: &[u8], histogram: &mut [u32], cost: &mut [f32]) {
 /// The single-histogram model for everything else.
 ///
 /// `block` and `cost` are the same length.
-fn estimate_binary(block: &[u8], histogram: &mut [u32], cost: &mut [f32]) {
+fn estimate_binary(block: &[u8], histogram: &mut [u32], logs: WindowLog2<'_>, cost: &mut [f32]) {
     let len = block.len().min(cost.len());
     let block = &block[..len];
     let cost = &mut cost[..len];
@@ -273,8 +319,6 @@ fn estimate_binary(block: &[u8], histogram: &mut [u32], cost: &mut [f32]) {
     };
     let window_half = BINARY_WINDOW_HALF;
     let mut in_window = window_half.min(len);
-    let mut window_log = Log2Memo::EMPTY;
-    let mut histo_log = Log2Memo::EMPTY;
     histogram.fill(0);
     let at = |index: usize| usize::from(block[index]);
 
@@ -292,7 +336,7 @@ fn estimate_binary(block: &[u8], histogram: &mut [u32], cost: &mut [f32]) {
             in_window += 1;
         }
         let histo = histogram[at(index)].max(1) as usize;
-        let mut lit_cost = window_log.get(in_window) - histo_log.get(histo);
+        let mut lit_cost = logs.get(in_window) - logs.get(histo);
         lit_cost += BINARY_NUDGE;
         if lit_cost < 1.0 {
             lit_cost *= 0.5;
@@ -305,6 +349,7 @@ fn estimate_binary(block: &[u8], histogram: &mut [u32], cost: &mut [f32]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::fast_log::fast_log2;
 
     /// Prices `data` from its start, returning one cost per byte.
     fn costs(data: &[u8]) -> Vec<f32> {
@@ -312,6 +357,98 @@ mod tests {
         let mut arena = LiteralCostArena::default();
         estimate_bit_costs_for_literals(0, data.len(), usize::MAX, data, &mut arena, &mut cost);
         cost
+    }
+
+    /// Prices `data` with both models, reading logarithms through `log2`.
+    fn both_models(data: &[u8], logs: WindowLog2<'_>) -> [Vec<f32>; 2] {
+        let mut histogram = vec![0u32; UTF8_POSITIONS * 256];
+        let mut utf8 = vec![0f32; data.len()];
+        let mut binary = vec![0f32; data.len()];
+        estimate_utf8(data, &mut histogram, logs, &mut utf8);
+        estimate_binary(data, &mut histogram, logs, &mut binary);
+        [utf8, binary]
+    }
+
+    #[test]
+    fn the_log2_tail_matches_fast_log2_for_every_count() {
+        let tail = build_log2_tail();
+        assert!(tail.is_some());
+        let logs = WindowLog2 {
+            tail: tail.as_deref(),
+        };
+        // Past the window's end the lookup computes the value instead.
+        for count in 0..LOG2_WINDOW_END + 16 {
+            assert_eq!(
+                logs.get(count).to_bits(),
+                fast_log2(count).to_bits(),
+                "count {count}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_missing_log2_tail_computes_the_logarithm() {
+        let logs = WindowLog2 { tail: None };
+        for count in [0, 1, 255, 256, 300, LOG2_WINDOW_END - 1, LOG2_WINDOW_END] {
+            assert_eq!(logs.get(count).to_bits(), fast_log2(count).to_bits());
+        }
+    }
+
+    #[test]
+    fn the_log2_tail_prices_like_the_computed_logarithm() {
+        // A run of one byte drives both counts to the window's full width, and
+        // the mixed blocks keep the per-symbol counts either side of 256.
+        let run = vec![0u8; 9000];
+        let text = "naïve café, the quick brown fox ".repeat(300).into_bytes();
+        let binary: Vec<u8> = (0..9000u32).map(|i| ((i * i) >> 5) as u8).collect();
+        let tail = build_log2_tail();
+        for data in [&run[..], &text, &binary, &binary[..256], &binary[..255]] {
+            let computed = both_models(data, WindowLog2 { tail: None });
+            let tabulated = both_models(
+                data,
+                WindowLog2 {
+                    tail: tail.as_deref(),
+                },
+            );
+            for (computed, tabulated) in computed.iter().zip(&tabulated) {
+                assert!(
+                    computed
+                        .iter()
+                        .zip(tabulated)
+                        .all(|(a, b)| a.to_bits() == b.to_bits()),
+                    "{} bytes",
+                    data.len()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn only_a_block_of_table_length_builds_the_log2_tail() {
+        let data = vec![b'a'; LOG2_TABLE.len()];
+        let mut arena = LiteralCostArena::default();
+        let empty = arena.retained_bytes();
+        let mut cost = vec![0f32; data.len()];
+
+        let short = data.len() - 1;
+        estimate_bit_costs_for_literals(0, short, usize::MAX, &data, &mut arena, &mut cost);
+        assert!(arena.log2_tail.is_none());
+        assert_eq!(arena.retained_bytes(), empty);
+
+        estimate_bit_costs_for_literals(0, data.len(), usize::MAX, &data, &mut arena, &mut cost);
+        assert!(arena.log2_tail.is_some());
+        assert_eq!(
+            arena.retained_bytes(),
+            empty + LOG2_TAIL_LEN * size_of::<f64>()
+        );
+
+        // A later short block keeps the tail, and its costs are unchanged.
+        let mut again = vec![0f32; short];
+        estimate_bit_costs_for_literals(0, short, usize::MAX, &data, &mut arena, &mut again);
+        let mut fresh = vec![0f32; short];
+        let mut arena = LiteralCostArena::default();
+        estimate_bit_costs_for_literals(0, short, usize::MAX, &data, &mut arena, &mut fresh);
+        assert_eq!(again, fresh);
     }
 
     #[test]

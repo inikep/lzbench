@@ -1,0 +1,68 @@
+# Trimmed for lzbench: dev-dependencies, benches, the workspace and the hotpath
+# feature were stubbed out (they reference files and crates that are not
+# vendored). The library sources in src/ are unmodified.
+[package]
+name = "mzstd"
+version = "0.2.5"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+description = "Zstandard (RFC 8878) compression and decompression in safe Rust; single-threaded encoding is byte-identical to zstd 1.5.7"
+repository = "https://github.com/M-Compressors/mzstd"
+homepage = "https://github.com/M-Compressors/mzstd"
+documentation = "https://docs.rs/mzstd"
+readme = "README.md"
+keywords = ["zstd", "zstandard", "compression", "encoder", "decoder"]
+categories = ["compression", "algorithms", "no-std"]
+
+[dependencies.thiserror]
+version = "2"
+optional = true
+default-features = false
+
+[dependencies.fearless_simd]
+version = "1"
+optional = true
+default-features = false
+
+# `#[simd]` enters a token's feature context with each argument passed
+# separately, where `Simd::vectorize` moves them into one closure struct.
+[dependencies.fearless_simd_macros]
+version = "0.1"
+optional = true
+
+# Safe cache prefetch hints for the match finders (`prefetch_read_data`).
+[dependencies.branches]
+version = "0.5"
+optional = true
+default-features = false
+features = ["prefetch"]
+
+# Safe bookkeeping for uninitialized session output: the encoder writes
+# into a zeroed-ahead prefix instead of a temporary buffer.
+[dependencies.borrowed-buf]
+version = "0.1.1"
+optional = true
+default-features = false
+
+[features]
+default = ["std", "compression", "decompression"]
+# Independently selectable public codecs and their private implementations.
+compression = [
+    "dep:borrowed-buf",
+    "dep:branches",
+    "dep:fearless_simd",
+    "dep:fearless_simd_macros",
+    "dep:thiserror",
+]
+decompression = ["dep:fearless_simd", "dep:fearless_simd_macros", "dep:thiserror"]
+# Standard library support: `std::io` adapters, `std::error::Error` and
+# runtime SIMD detection.
+std = ["branches?/std", "fearless_simd?/std", "thiserror?/std"]
+# Opt-in alloc-backed support; overrides std-only APIs and instrumentation.
+no_std = ["fearless_simd?/libm"]
+
+# Declared but inert in lzbench: upstream wires it to a profiler crate that is
+# not vendored here. Keeping the name avoids unexpected_cfgs warnings from the
+# unmodified sources.
+hotpath = []

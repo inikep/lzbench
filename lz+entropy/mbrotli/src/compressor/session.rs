@@ -29,16 +29,24 @@
 //! so arbitrary C chunk schedules are not a byte-identity oracle for those
 //! qualities.
 
+use core::mem::MaybeUninit;
+
 use super::dictionary::PreparedDictionary;
 use super::encoder::Compressor;
 use super::error::EncodeError;
 
 /// How much input a stream will carry, when that is known in advance.
 ///
-/// Qualities four and five choose a different match finder for inputs of a
-/// mebibyte or more, so telling the encoder how much is coming changes the
-/// bytes it emits. [`InputSize::Exact`] is what makes a streamed stream match
-/// the same bytes compressed in one shot.
+/// Qualities four to nine choose their match finder, and five to nine their
+/// literal context modelling, from how much input is expected, so the size
+/// changes the bytes the encoder emits. [`InputSize::Exact`] is what makes a
+/// streamed stream match the same bytes compressed in one shot.
+///
+/// With [`InputSize::Unknown`] the session infers the size the way the
+/// reference's streaming entry point does: when it first has to encode —
+/// a block fills, or a flush or finish is requested — it takes the bytes it
+/// has gathered plus that call's input, capped at a gibibyte. A body handed
+/// over in one call is therefore treated as if its length had been declared.
 ///
 /// `Exact(0)` declares a stream that is known to be empty, which is a different
 /// statement from `Unknown` even though the reference resolves the same match
@@ -62,10 +70,11 @@ pub enum InputSize {
 }
 
 impl InputSize {
-    /// Returns the size hint the encoders resolve their match finder from.
+    /// Returns the size hint a stream starts with.
     ///
-    /// An unknown size is zero, which is what the reference's streaming entry
-    /// point leaves `BROTLI_PARAM_SIZE_HINT` at.
+    /// An unknown size starts at zero, as the reference's
+    /// `BROTLI_PARAM_SIZE_HINT` does, until the session infers it before it
+    /// first encodes.
     pub(crate) const fn hint(self) -> usize {
         match self {
             Self::Unknown => 0,
@@ -390,6 +399,63 @@ impl<'c, 'd> EncoderSession<'c, 'd> {
         self.core.process(input, output, operation)
     }
 
+    /// Moves the stream forward by one step, writing into uninitialized memory.
+    ///
+    /// Behaves exactly as [`Self::process`]: the same bytes, the same
+    /// `consumed` and `produced` counts, the same statuses and errors, and
+    /// calls of the two methods may be mixed on one stream. Use it to encode
+    /// straight into spare capacity, such as
+    /// [`Vec::spare_capacity_mut`](alloc::vec::Vec::spare_capacity_mut),
+    /// without zeroing it first.
+    ///
+    /// On success exactly `output[..produced]` has been initialized, and no
+    /// byte after it is written. After an error, treat none of `output` as
+    /// initialized.
+    ///
+    /// Safe code cannot read back memory it has not initialized, so qualities
+    /// 0 and 1 cannot run their in-place bit writer here, which
+    /// [`Self::process`] uses when `output` has room for a whole fragment.
+    /// Every block is encoded into retained scratch and copied once instead,
+    /// as qualities 2–11 always are.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::process`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mbrotli::{Compressor, EncoderStatus, Operation};
+    ///
+    /// let mut encoder = Compressor::new(Default::default())?;
+    /// let mut session = encoder.start(Default::default())?;
+    /// let mut compressed = Vec::with_capacity(64);
+    /// let mut input = &b"encoded into spare capacity"[..];
+    /// loop {
+    ///     if compressed.len() == compressed.capacity() {
+    ///         compressed.reserve(64);
+    ///     }
+    ///     let progress =
+    ///         session.process_uninit(input, compressed.spare_capacity_mut(), Operation::Finish)?;
+    ///     input = &input[progress.consumed..];
+    ///     // SAFETY: `process_uninit` initialized the first `produced` spare bytes.
+    ///     unsafe { compressed.set_len(compressed.len() + progress.produced) };
+    ///     if progress.status == EncoderStatus::Finished {
+    ///         break;
+    ///     }
+    /// }
+    /// assert!(!compressed.is_empty());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn process_uninit(
+        &mut self,
+        input: &[u8],
+        output: &mut [MaybeUninit<u8>],
+        operation: Operation,
+    ) -> Result<Progress, EncodeError> {
+        self.core.process_uninit(input, output, operation)
+    }
+
     /// Makes everything accepted so far decodable, without taking input.
     ///
     /// Shorthand for [`Self::process`] with empty input and
@@ -589,6 +655,62 @@ impl<D: AsRef<PreparedDictionary> + 'static> EncoderSessionOwned<D> {
         self.core.process(input, output, operation)
     }
 
+    /// Moves the stream forward by one step, writing into uninitialized memory.
+    ///
+    /// Behaves exactly as [`Self::process`]: the same bytes, the same
+    /// `consumed` and `produced` counts, the same statuses and errors, and
+    /// calls of the two methods may be mixed on one stream. Use it to encode
+    /// straight into spare capacity, such as
+    /// [`Vec::spare_capacity_mut`](alloc::vec::Vec::spare_capacity_mut),
+    /// without zeroing it first.
+    ///
+    /// On success exactly `output[..produced]` has been initialized, and no
+    /// byte after it is written. After an error, treat none of `output` as
+    /// initialized.
+    ///
+    /// Safe code cannot read back memory it has not initialized, so qualities
+    /// 0 and 1 cannot run their in-place bit writer here, which
+    /// [`Self::process`] uses when `output` has room for a whole fragment.
+    /// Every block is encoded into retained scratch and copied once instead,
+    /// as qualities 2–11 always are.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::process`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mbrotli::{Compressor, EncoderStatus, Operation};
+    ///
+    /// let mut session = Compressor::new(Default::default())?.into_session(Default::default())?;
+    /// let mut compressed = Vec::with_capacity(64);
+    /// let mut input = &b"encoded into spare capacity"[..];
+    /// loop {
+    ///     if compressed.len() == compressed.capacity() {
+    ///         compressed.reserve(64);
+    ///     }
+    ///     let progress =
+    ///         session.process_uninit(input, compressed.spare_capacity_mut(), Operation::Finish)?;
+    ///     input = &input[progress.consumed..];
+    ///     // SAFETY: `process_uninit` initialized the first `produced` spare bytes.
+    ///     unsafe { compressed.set_len(compressed.len() + progress.produced) };
+    ///     if progress.status == EncoderStatus::Finished {
+    ///         break;
+    ///     }
+    /// }
+    /// assert!(!compressed.is_empty());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn process_uninit(
+        &mut self,
+        input: &[u8],
+        output: &mut [MaybeUninit<u8>],
+        operation: Operation,
+    ) -> Result<Progress, EncodeError> {
+        self.core.process_uninit(input, output, operation)
+    }
+
     /// Makes everything accepted so far decodable, without taking input.
     ///
     /// Shorthand for [`Self::process`] with empty input and
@@ -743,7 +865,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_unknown_size_hints_zero_the_way_the_reference_does() {
+    fn an_unknown_size_starts_from_a_zero_hint_the_way_the_reference_does() {
         assert_eq!(InputSize::Unknown.hint(), 0);
         assert_eq!(InputSize::Exact(0).hint(), 0);
         assert_eq!(InputSize::Exact(4096).hint(), 4096);

@@ -5,5 +5,7 @@
 pub use density_rs;
 #[cfg(feature = "mbrotli")]
 pub use mbrotli_ffi;
+#[cfg(feature = "mzstd")]
+pub use mzstd_ffi;
 #[cfg(feature = "pulsar")]
 pub use pulsar;

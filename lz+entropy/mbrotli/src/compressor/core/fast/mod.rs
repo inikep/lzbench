@@ -1,7 +1,8 @@
 //! Quality 0 and quality 1 encoders and their runtime SIMD dispatch.
 //!
-//! A [`FastEncoder`] retains a kernel selected once by `core::dispatch`.
-//! Block calls pass its concrete token down into the match scan. Nothing below
+//! A [`FastEncoder`] retains the backend selected once at construction and
+//! dispatches each block on it, passing the concrete token down into the
+//! match scan. Nothing below
 //! re-detects features, and every backend produces byte-identical output.
 //!
 //! The block loop reproduces `BrotliEncoderCompressStreamFast` from
@@ -21,10 +22,13 @@ pub(crate) mod q1;
 pub(crate) mod tables;
 pub(crate) mod workspace;
 
-pub(crate) use crate::shared::{bits, huffman, match_len};
+pub(crate) use crate::shared::fixed::grow_zeroed;
+use crate::shared::{bits, huffman, match_len};
 
-use super::dispatch::{self, Kernels};
-use fearless_simd::{Level, Simd};
+use fearless_simd::Simd;
+
+use crate::backend::Backend;
+use fearless_simd_macros::simd;
 
 use self::bits::{BYTE_PADDING_SLACK, BitWriter, ByteBuffer, inject_byte_padding};
 use self::constants::{OUTPUT_RESERVE_CONST, OUTPUT_SLACK, WINDOW_BITS_FAST};
@@ -155,8 +159,10 @@ impl FastCore {
 /// Compresses one fragment with a resolved SIMD token.
 ///
 /// This is the only place the fast path branches on the instruction set; the
-/// token is passed by value into every leaf that uses it.
+/// token is passed by value into every leaf that uses it, all inside the
+/// token's feature context.
 #[inline(always)]
+#[simd]
 pub(crate) fn encode_fragment<S: Simd, const INDEPENDENT: bool>(
     simd: S,
     core: &mut FastCore,
@@ -198,10 +204,12 @@ pub(crate) fn encode_fragment<S: Simd, const INDEPENDENT: bool>(
 /// One instance owns every buffer the encoder needs and reuses them across
 /// blocks, so after construction no allocation happens in the match scan or the
 /// command replay.
-pub(crate) struct FastEncoder {
-    kernels: Box<dyn Kernels>,
-    /// Whether `kernels` are the fragment-only ones of an independent worker.
-    independent: bool,
+///
+/// `INDEPENDENT` selects the fragment-only kernels of an independent worker,
+/// whose fragments must decode without the ones before them.
+pub(crate) struct FastEncoder<const INDEPENDENT: bool = false> {
+    /// The host-validated backend every block is dispatched to.
+    backend: Backend,
     core: FastCore,
     block_size_limit: usize,
     /// The stream header, kept so a reused encoder can start over from it.
@@ -213,14 +221,7 @@ pub(crate) struct FastEncoder {
     finished: bool,
 }
 
-impl FastEncoder {
-    /// Installs fragment-only kernels when constructing an independent worker.
-    #[cfg(any(test, not(feature = "no_std")))]
-    pub(crate) fn select_fragment_kernels(&mut self, level: Level) {
-        self.kernels = dispatch::select_independent(level);
-        self.independent = true;
-    }
-
+impl<const INDEPENDENT: bool> FastEncoder<INDEPENDENT> {
     /// Resets the header and seeds only this segment's literal context/history.
     #[cfg(not(feature = "no_std"))]
     pub(crate) fn begin_fragment(&mut self, prefix: &[u8]) -> BrotliResult<()> {
@@ -236,13 +237,13 @@ impl FastEncoder {
         self.last_bytes_bits == 0
     }
 
-    /// Creates an encoder for `params` running at SIMD `level`.
+    /// Creates an encoder for `params` running on `backend`.
     ///
     /// # Errors
     ///
     /// Returns [`BrotliCompressError::UnsupportedQuality`] when the quality is
     /// outside the range this encoder implements.
-    pub(crate) fn new(level: Level, params: &CompressParams) -> BrotliResult<Self> {
+    pub(crate) fn new(backend: Backend, params: &CompressParams) -> BrotliResult<Self> {
         let quality = FastQuality::try_from(params.quality())?;
         if params.lgwin().is_large() {
             // These qualities write distances through a static entropy model
@@ -259,8 +260,7 @@ impl FastEncoder {
         // bits, while still cutting the input at the requested window size.
         let (last_bytes, last_bytes_bits) = window.at_least(WINDOW_BITS_FAST).header();
         Ok(Self {
-            kernels: dispatch::select(level),
-            independent: false,
+            backend,
             core: FastCore::new(quality),
             block_size_limit: 1usize << lgwin,
             header: (last_bytes, last_bytes_bits),
@@ -277,23 +277,24 @@ impl FastEncoder {
         self.block_size_limit
     }
 
-    /// Returns whether `params` would build an encoder of exactly this shape.
+    /// Re-aims the encoder at `params` for a new stream, which [`Self::reset`]
+    /// must start next. Returns `false`, touching nothing, when `params` asks
+    /// for another quality or a large window.
     ///
-    /// A workspace uses this to decide whether resetting is equivalent to
-    /// rebuilding. Nothing is allocated: the three things that shape a fast
-    /// encoder — the quality, the fragment limit and the stream header — are
-    /// all recomputed from `params` directly.
-    pub(crate) fn matches(&self, params: &CompressParams) -> bool {
+    /// The window only decides the fragment limit and the stream header; the
+    /// table and the scratch buffer are sized per fragment anyway, so a pooled
+    /// encoder serving responses of different sizes keeps both.
+    pub(crate) fn retarget(&mut self, params: &CompressParams) -> bool {
         let Ok(quality) = FastQuality::try_from(params.quality()) else {
             return false;
         };
-        if params.lgwin().is_large() {
+        if params.lgwin().is_large() || self.core.quality() != quality {
             return false;
         }
         let window = ResolvedWindow::new(params);
-        self.core.quality() == quality
-            && self.block_size_limit == 1usize << window.encoder_bits()
-            && self.header == window.at_least(WINDOW_BITS_FAST).header()
+        self.block_size_limit = 1usize << window.encoder_bits();
+        self.header = window.at_least(WINDOW_BITS_FAST).header();
+        true
     }
 
     /// Restores the encoder to the state its constructor left it in.
@@ -312,31 +313,8 @@ impl FastEncoder {
     /// Returns the bytes this encoder keeps allocated between fragments.
     pub(crate) fn retained_bytes(&self) -> usize {
         self.core.retained_bytes()
-            + size_of_val(&*self.kernels)
             + self.table.capacity() * size_of::<i32>()
             + self.storage.capacity()
-    }
-
-    /// Returns the scratch capacity one fragment of `input_len` bytes needs.
-    ///
-    /// This is the reference's `2 * block_size + 503`, plus the headroom the
-    /// bit writer's whole-word stores reach past the last bit.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`BrotliCompressError::BufferOverflow`] when the arithmetic
-    /// does not fit in a `usize`.
-    pub(crate) const fn fragment_reserve(input_len: usize) -> BrotliResult<usize> {
-        let Some(doubled) = input_len.checked_mul(2) else {
-            return Err(BrotliCompressError::BufferOverflow);
-        };
-        let Some(reserve) = doubled.checked_add(OUTPUT_RESERVE_CONST) else {
-            return Err(BrotliCompressError::BufferOverflow);
-        };
-        match reserve.checked_add(OUTPUT_SLACK) {
-            Some(reserve) => Ok(reserve),
-            None => Err(BrotliCompressError::BufferOverflow),
-        }
     }
 
     /// Clears the hash table for a fragment of `input_len` bytes.
@@ -345,23 +323,16 @@ impl FastEncoder {
     /// kernel never reads one, and clearing it would be the whole cost of
     /// such a call.
     fn prepare_table(&mut self, input_len: usize, is_last: bool) -> usize {
-        if self
-            .core
-            .stores_verbatim(self.independent, input_len, is_last)
-        {
+        if self.core.stores_verbatim(INDEPENDENT, input_len, is_last) {
             return 0;
         }
         let entries = self.core.table_entries(input_len);
-        if self.table.len() < entries {
-            // A fresh zeroed allocation, rather than growing in place: the
-            // allocator hands out zero pages, while `resize` would memset a
-            // buffer the encoder is about to overwrite anyway. It also arrives
-            // already cleared.
-            self.table = vec![0i32; entries];
-        } else {
-            // Only the active range is cleared; unused capacity stays untouched.
-            self.table[..entries].fill(0);
-        }
+        // Only the active range is cleared; unused capacity stays untouched.
+        // The first table comes from the allocator's zeroing path, and a
+        // larger fragment later grows the same buffer.
+        let kept = entries.min(self.table.len());
+        self.table[..kept].fill(0);
+        grow_zeroed(&mut self.table, entries);
         entries
     }
 
@@ -379,7 +350,7 @@ impl FastEncoder {
         storage[1] = (self.last_bytes >> 8) as u8;
 
         let Self {
-            kernels,
+            backend,
             core,
             table,
             last_bytes_bits,
@@ -387,7 +358,9 @@ impl FastEncoder {
         } = self;
         let mut w = BitWriter::new(storage, *last_bytes_bits as usize);
         let table = &mut table[..entries];
-        kernels.fast(core, input, is_last, table, &mut w);
+        fearless_simd::dispatch!(backend.0, simd => {
+            encode_fragment::<_, INDEPENDENT>(simd, core, input, is_last, table, &mut w);
+        });
 
         if w.overflowed() {
             return Err(BrotliCompressError::BufferOverflow);
@@ -418,13 +391,10 @@ impl FastEncoder {
         output.extend_from_slice(&self.last_bytes.to_le_bytes());
         let entries = self.prepare_table(input.len(), is_last);
         let mut writer = BitWriter::append(output, position);
-        self.kernels.fast_append(
-            &mut self.core,
-            input,
-            is_last,
-            &mut self.table[..entries],
-            &mut writer,
-        );
+        let (core, table) = (&mut self.core, &mut self.table[..entries]);
+        fearless_simd::dispatch!(self.backend.0, simd => {
+            encode_fragment::<_, INDEPENDENT>(simd, core, input, is_last, table, &mut writer);
+        });
         let position = writer.position();
         let complete = position >> 3;
         self.last_bytes = u16::from(writer.byte(complete));
@@ -449,10 +419,8 @@ impl FastEncoder {
         debug_assert!(!self.finished);
         debug_assert!(input.len() <= self.block_size_limit);
 
-        let reserve = Self::fragment_reserve(input.len())?;
-        if self.storage.len() < reserve {
-            self.storage = vec![0u8; reserve];
-        }
+        let reserve = FastEncoder::fragment_reserve(input.len())?;
+        grow_zeroed(&mut self.storage, reserve);
         let entries = self.prepare_table(input.len(), is_last);
 
         let mut storage = core::mem::take(&mut self.storage);
@@ -483,10 +451,8 @@ impl FastEncoder {
         debug_assert!(!self.finished);
         debug_assert!(input.len() <= self.block_size_limit);
 
-        let reserve = Self::fragment_reserve(input.len())?;
-        if self.storage.len() < reserve {
-            self.storage = vec![0u8; reserve];
-        }
+        let reserve = FastEncoder::fragment_reserve(input.len())?;
+        grow_zeroed(&mut self.storage, reserve);
 
         let mut storage = core::mem::take(&mut self.storage);
         let outcome = self.run_flush(input, &mut storage);
@@ -543,11 +509,36 @@ impl FastEncoder {
         debug_assert!(!self.finished);
         debug_assert!(input.len() <= self.block_size_limit);
 
-        if dst.len() < Self::fragment_reserve(input.len())? {
+        if dst.len() < FastEncoder::fragment_reserve(input.len())? {
             return Err(BrotliCompressError::OutputTooSmall);
         }
         let entries = self.prepare_table(input.len(), is_last);
         self.run_fragment(input, is_last, entries, dst)
+    }
+}
+
+/// Sizing shared by both kinds of encoder.
+impl FastEncoder {
+    /// Returns the scratch capacity one fragment of `input_len` bytes needs.
+    ///
+    /// This is the reference's `2 * block_size + 503`, plus the headroom the
+    /// bit writer's whole-word stores reach past the last bit.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BrotliCompressError::BufferOverflow`] when the arithmetic
+    /// does not fit in a `usize`.
+    pub(crate) const fn fragment_reserve(input_len: usize) -> BrotliResult<usize> {
+        let Some(doubled) = input_len.checked_mul(2) else {
+            return Err(BrotliCompressError::BufferOverflow);
+        };
+        let Some(reserve) = doubled.checked_add(OUTPUT_RESERVE_CONST) else {
+            return Err(BrotliCompressError::BufferOverflow);
+        };
+        match reserve.checked_add(OUTPUT_SLACK) {
+            Some(reserve) => Ok(reserve),
+            None => Err(BrotliCompressError::BufferOverflow),
+        }
     }
 }
 
@@ -556,33 +547,38 @@ mod tests {
     use super::*;
     use crate::compressor::WindowBits;
 
-    #[test]
-    fn direct_appends_preserve_prefixes_and_partial_bytes_on_every_backend() {
+    /// Appends two blocks through both output paths of one encoder kind.
+    fn assert_direct_appends_match<const INDEPENDENT: bool>() {
         for backend in crate::compressor::Backend::available() {
             for quality in [QualityLevel::Q0, QualityLevel::Q1] {
-                for independent in [false, true] {
-                    let params =
-                        CompressParams::new(quality, WindowBits::standard(10).expect("window"));
-                    let mut fixed = FastEncoder::new(backend.0, &params).expect("encoder");
-                    let mut append = FastEncoder::new(backend.0, &params).expect("encoder");
-                    if independent {
-                        fixed.select_fragment_kernels(backend.0);
-                        append.select_fragment_kernels(backend.0);
-                    }
-                    let mut expected = b"existing prefix".to_vec();
-                    let mut actual = expected.clone();
-                    for (data, last) in [(&[b'a'; 1024][..], false), (&[b'b'; 17][..], true)] {
-                        let encoded = fixed.encode_block(data, last).expect("encode");
-                        expected.extend_from_slice(encoded);
-                        let written = append
-                            .encode_block_append(data, last, &mut actual)
-                            .expect("append");
-                        assert_eq!(written, encoded.len());
-                        assert_eq!(actual, expected, "{backend:?}, {quality:?}, {independent}");
-                    }
+                let params =
+                    CompressParams::new(quality, WindowBits::standard(10).expect("window"));
+                let mut fixed = FastEncoder::<INDEPENDENT>::new(backend, &params).expect("encoder");
+                let mut append =
+                    FastEncoder::<INDEPENDENT>::new(backend, &params).expect("encoder");
+                let mut expected = b"existing prefix".to_vec();
+                let mut actual = expected.clone();
+                for (data, last) in [(&[b'a'; 1024][..], false), (&[b'b'; 17][..], true)] {
+                    let encoded = fixed.encode_block(data, last).expect("encode");
+                    expected.extend_from_slice(encoded);
+                    let written = append
+                        .encode_block_append(data, last, &mut actual)
+                        .expect("append");
+                    assert_eq!(written, encoded.len());
+                    assert_eq!(actual, expected, "{backend:?}, {quality:?}, {INDEPENDENT}");
                 }
             }
         }
+    }
+
+    #[test]
+    fn direct_appends_preserve_prefixes_and_partial_bytes_on_every_backend() {
+        assert_direct_appends_match::<false>();
+    }
+
+    #[test]
+    fn independent_direct_appends_preserve_prefixes_and_partial_bytes_on_every_backend() {
+        assert_direct_appends_match::<true>();
     }
 
     #[test]
@@ -620,11 +616,11 @@ mod tests {
 
     #[test]
     fn block_size_limit_follows_the_requested_window() -> Result<(), BrotliCompressError> {
-        let level = Level::try_detect().unwrap_or_else(Level::baseline);
+        let backend = Backend::default();
         for lgwin in [10u8, 16, 18, 22, 24] {
             let lgwin_bits = WindowBits::standard(lgwin).unwrap_or(WindowBits::DEFAULT);
             let params = CompressParams::new(QualityLevel::Q0, lgwin_bits);
-            let encoder = FastEncoder::new(level, &params)?;
+            let encoder = FastEncoder::<false>::new(backend, &params)?;
             assert_eq!(
                 encoder.block_size_limit(),
                 1 << usize::from(lgwin_bits.bits())

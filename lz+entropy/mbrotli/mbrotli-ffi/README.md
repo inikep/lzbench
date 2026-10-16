@@ -51,3 +51,7 @@ above `PTRDIFF_MAX` and overlapping arguments return
 Rust panic is reported as `MBROTLI_ERROR` instead of unwinding into C.
 
 See [architecture/c-abi.md](../architecture/c-abi.md) for the design.
+
+## License
+
+MIT OR Apache-2.0

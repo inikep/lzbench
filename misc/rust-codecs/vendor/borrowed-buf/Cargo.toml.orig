@@ -1,0 +1,25 @@
+[package]
+name = "borrowed-buf"
+version = "0.1.1"
+authors = ["Mikhail Panfilov <mikhail@panfilov.tech>"]
+edition = "2024"
+rust-version = "1.89"
+license = "MIT"
+description = "A small, fast, no_std alternative to the nightly-only core::io::BorrowedBuf"
+repository = "https://github.com/M-Compressors/borrowed-buf"
+homepage = "https://github.com/M-Compressors/borrowed-buf"
+documentation = "https://docs.rs/borrowed-buf"
+readme = "README.md"
+keywords = ["buffer", "uninit", "maybeuninit", "io", "no_std"]
+categories = ["no-std", "no-std::no-alloc", "memory-management", "rust-patterns"]
+include = ["src/**/*.rs", "tests/**/*.rs", "README.md", "LICENSE"]
+
+[features]
+default = ["std"]
+# Implements `std::io::Write` for `BorrowedCursor` and provides `io::read_buf` helpers.
+std = []
+
+[dependencies]
+
+[package.metadata.docs.rs]
+all-features = true

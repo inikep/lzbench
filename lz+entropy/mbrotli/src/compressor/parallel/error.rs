@@ -34,6 +34,12 @@ pub enum ParallelEncodeError {
     /// A previously observed task failure; the typed cause remains in the chain.
     #[error("parallel batch failed: {0}")]
     BatchFailed(#[source] std::sync::Arc<ParallelEncodeError>),
+    /// A streaming session failed earlier; the typed cause remains in the chain.
+    #[error("parallel stream failed: {0}")]
+    StreamFailed(#[source] std::sync::Arc<ParallelEncodeError>),
+    /// Every task queue handle was dropped while the stream still had work.
+    #[error("parallel task queue was closed by its executors")]
+    TaskQueueClosed,
     /// Configuration validation failed.
     #[error("invalid parallel configuration: {0}")]
     Config(#[from] ParallelConfigError),
@@ -121,6 +127,61 @@ pub enum ParallelEncodeError {
     },
 }
 
+impl From<ParallelEncodeError> for io::Error {
+    /// Carries a parallel failure through a [`std::io`] adapter.
+    ///
+    /// The kind is that of the root cause, looked up through
+    /// [`ParallelEncodeError::StreamFailed`] and
+    /// [`ParallelEncodeError::BatchFailed`]; the error itself stays the
+    /// source, so the whole chain survives. Allocation failures and memory
+    /// limits become [`io::ErrorKind::OutOfMemory`], and invalid configuration
+    /// [`io::ErrorKind::InvalidInput`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mbrotli::compressor::parallel::ParallelEncodeError;
+    /// use std::io::ErrorKind;
+    ///
+    /// let error = std::io::Error::from(ParallelEncodeError::WorkerMemoryLimit);
+    /// assert_eq!(error.kind(), ErrorKind::OutOfMemory);
+    /// ```
+    fn from(value: ParallelEncodeError) -> Self {
+        Self::new(value.io_kind(), value)
+    }
+}
+impl ParallelEncodeError {
+    /// The [`io::ErrorKind`] this failure carries through an adapter.
+    ///
+    /// Never `Interrupted` or `WouldBlock`, even from an I/O cause: `std::io`
+    /// retries those, and a failed stream stays failed.
+    fn io_kind(&self) -> io::ErrorKind {
+        match self {
+            Self::BatchFailed(cause) | Self::StreamFailed(cause) => cause.io_kind(),
+            Self::Encode { source, .. } => source.io_kind(),
+            Self::Allocation(_) | Self::MemoryStagingLimit | Self::WorkerMemoryLimit => {
+                io::ErrorKind::OutOfMemory
+            }
+            Self::Config(_) | Self::SizeOverflow => io::ErrorKind::InvalidInput,
+            Self::SourceChanged => io::ErrorKind::InvalidData,
+            Self::SourceMetadata(source)
+            | Self::SourceRead { source, .. }
+            | Self::Staging { source, .. }
+            | Self::AssemblyIo { source, .. } => match source.kind() {
+                io::ErrorKind::Interrupted | io::ErrorKind::WouldBlock => io::ErrorKind::Other,
+                kind => kind,
+            },
+            Self::TaskQueueClosed
+            | Self::TaskAbandoned { .. }
+            | Self::TaskPanicked { .. }
+            | Self::Cancelled
+            | Self::TasksAlreadyTaken
+            | Self::NotReady
+            | Self::FragmentInvariant(_) => io::ErrorKind::Other,
+        }
+    }
+}
+
 /// A consuming writer finish failure, preserving ownership and exact progress.
 #[derive(Debug)]
 pub struct ParallelFinishError<W> {
@@ -139,5 +200,120 @@ impl<W> std::fmt::Display for ParallelFinishError<W> {
 impl<W: std::fmt::Debug> std::error::Error for ParallelFinishError<W> {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         Some(&self.error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{error::Error as _, sync::Arc};
+
+    fn kind(error: ParallelEncodeError) -> io::ErrorKind {
+        io::Error::from(error).kind()
+    }
+    fn io_cause(kind: io::ErrorKind) -> io::Error {
+        io::Error::new(kind, "cause")
+    }
+
+    #[test]
+    fn io_conversion_maps_every_variant_to_a_non_retryable_kind() {
+        let task = TaskId(1);
+        let segment = SegmentId(2);
+        let allocation = Vec::<u8>::new().try_reserve(usize::MAX).unwrap_err();
+        let cases = [
+            (
+                ParallelEncodeError::Allocation(allocation),
+                io::ErrorKind::OutOfMemory,
+            ),
+            (
+                ParallelEncodeError::MemoryStagingLimit,
+                io::ErrorKind::OutOfMemory,
+            ),
+            (
+                ParallelEncodeError::WorkerMemoryLimit,
+                io::ErrorKind::OutOfMemory,
+            ),
+            (
+                ParallelEncodeError::Config(ParallelConfigError::InvalidTaskCount { count: 0 }),
+                io::ErrorKind::InvalidInput,
+            ),
+            (
+                ParallelEncodeError::SizeOverflow,
+                io::ErrorKind::InvalidInput,
+            ),
+            (
+                ParallelEncodeError::SourceChanged,
+                io::ErrorKind::InvalidData,
+            ),
+            (
+                ParallelEncodeError::Encode {
+                    task,
+                    segment,
+                    source: EncodeError::AllocationFailed { requested: 8 },
+                },
+                io::ErrorKind::OutOfMemory,
+            ),
+            (
+                ParallelEncodeError::SourceMetadata(io_cause(io::ErrorKind::NotFound)),
+                io::ErrorKind::NotFound,
+            ),
+            (
+                ParallelEncodeError::SourceRead {
+                    task,
+                    segment,
+                    source: io_cause(io::ErrorKind::Interrupted),
+                },
+                io::ErrorKind::Other,
+            ),
+            (
+                ParallelEncodeError::Staging {
+                    task,
+                    source: io_cause(io::ErrorKind::WouldBlock),
+                },
+                io::ErrorKind::Other,
+            ),
+            (
+                ParallelEncodeError::AssemblyIo {
+                    bytes_written: 3,
+                    source: io_cause(io::ErrorKind::BrokenPipe),
+                },
+                io::ErrorKind::BrokenPipe,
+            ),
+            (ParallelEncodeError::TaskQueueClosed, io::ErrorKind::Other),
+            (
+                ParallelEncodeError::TaskAbandoned { task },
+                io::ErrorKind::Other,
+            ),
+            (
+                ParallelEncodeError::TaskPanicked { task },
+                io::ErrorKind::Other,
+            ),
+            (ParallelEncodeError::Cancelled, io::ErrorKind::Other),
+            (ParallelEncodeError::TasksAlreadyTaken, io::ErrorKind::Other),
+            (ParallelEncodeError::NotReady, io::ErrorKind::Other),
+            (
+                ParallelEncodeError::FragmentInvariant("detail"),
+                io::ErrorKind::Other,
+            ),
+        ];
+        for (error, expected) in cases {
+            let label = format!("{error:?}");
+            assert_eq!(kind(error), expected, "{label}");
+        }
+    }
+
+    #[test]
+    fn io_conversion_takes_the_kind_of_a_wrapped_cause_and_keeps_the_chain() {
+        let root = Arc::new(ParallelEncodeError::WorkerMemoryLimit);
+        let stream = ParallelEncodeError::StreamFailed(Arc::clone(&root));
+        let batch = ParallelEncodeError::BatchFailed(Arc::new(stream));
+        let error = io::Error::from(batch);
+        assert_eq!(error.kind(), io::ErrorKind::OutOfMemory);
+        let inner = error
+            .get_ref()
+            .and_then(|e| e.downcast_ref::<ParallelEncodeError>())
+            .unwrap();
+        assert!(matches!(inner, ParallelEncodeError::BatchFailed(_)));
+        assert!(inner.source().is_some());
     }
 }

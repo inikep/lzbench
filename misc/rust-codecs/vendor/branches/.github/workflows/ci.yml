@@ -1,0 +1,262 @@
+name: CI (Linux)
+
+on:
+  push:
+  pull_request:
+  schedule: [cron: "40 1 * * *"]
+
+jobs:
+  build_and_test:
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - stable
+          - nightly
+          # Pinned versions straddling the 1.95 cold_path stabilization:
+          # 1.94 -> const-fn fallback (not(rustc_ge_1_95_0)),
+          # 1.96 -> core::hint::cold_path re-export.
+          - 1.96.0
+          - 1.94.0
+
+    name: ${{ matrix.version }} - x86_64-unknown-linux-gnu
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@master
+
+      - name: Install ${{ matrix.version }}
+        run: |
+          rustup toolchain install ${{ matrix.version }} --profile minimal --component rustfmt
+          rustup default ${{ matrix.version }}
+
+      - name: Generate Cargo.lock
+        run: cargo generate-lockfile
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ matrix.version }}-x86_64-unknown-linux-gnu-cargo-registry-trimmed-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ matrix.version }}-x86_64-unknown-linux-gnu-cargo-index-trimmed-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run tests
+        timeout-minutes: 40
+        run: cargo test --all-features -- --nocapture
+
+      - name: Run tests no-std
+        timeout-minutes: 40
+        run: cargo test --no-default-features -- --nocapture
+
+      - name: Install cargo-cache
+        continue-on-error: true
+        run: |
+          cargo install cargo-cache --no-default-features --features ci-autoclean
+
+      - name: Clear the cargo caches
+        run: |
+          cargo-cache
+
+  build_cross:
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-unknown-linux-gnu
+          - armv7-unknown-linux-gnueabihf
+          - riscv64gc-unknown-linux-gnu
+          - powerpc-unknown-linux-gnu
+          - powerpc64-unknown-linux-gnu
+          - powerpc64le-unknown-linux-gnu
+          - s390x-unknown-linux-gnu
+
+    name: build - ${{ matrix.target }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@master
+
+      - name: Install stable
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+
+      - name: Generate Cargo.lock
+        run: cargo generate-lockfile
+
+      - name: Cache cargo registry
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/registry
+          key: ${{ matrix.target }}-cargo-registry-trimmed-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v3
+        with:
+          path: ~/.cargo/git
+          key: ${{ matrix.target }}-cargo-index-trimmed-${{ hashFiles('**/Cargo.lock') }}
+
+      # --cfg branches_check_asm compiles non-generic instantiations of the
+      # architecture-specific inline assembly into the library build; a plain
+      # cross `cargo build` would otherwise never monomorphize (and therefore
+      # never assemble) the generic prefetch functions.
+      - name: Build
+        env:
+          RUSTFLAGS: "--cfg branches_check_asm"
+        run: cargo build --target ${{ matrix.target }} --all-features
+
+      - name: Build no-std
+        env:
+          RUSTFLAGS: "--cfg branches_check_asm"
+        run: cargo build --target ${{ matrix.target }} --no-default-features
+
+      - name: Build with Zicbop prefetch instructions
+        if: matrix.target == 'riscv64gc-unknown-linux-gnu'
+        env:
+          RUSTFLAGS: "--cfg branches_check_asm -C target-feature=+zicbop"
+        run: cargo build --target ${{ matrix.target }} --all-features
+
+  # Inline assembly was stabilized per architecture: s390x in 1.84, PowerPC in
+  # 1.95. Build both sides of each boundary and assert the prefetch
+  # instructions are emitted exactly on the toolchains that support them --
+  # older compilers must still build the crate, with prefetch as a no-op.
+  # (The 1.59 x86_64 boundary is covered by the msrv job below.)
+  prefetch_asm_stabilization:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: s390x-unknown-linux-gnu
+            version: "1.83.0"
+            mnemonics: pfd
+            expect: absent
+          - target: s390x-unknown-linux-gnu
+            version: "1.84.0"
+            mnemonics: pfd
+            expect: present
+          - target: powerpc-unknown-linux-gnu
+            version: "1.94.0"
+            mnemonics: dcbt dcbtst
+            expect: absent
+          - target: powerpc-unknown-linux-gnu
+            version: "1.95.0"
+            mnemonics: dcbt dcbtst
+            expect: present
+          - target: powerpc64-unknown-linux-gnu
+            version: "1.94.0"
+            mnemonics: dcbt dcbtst
+            expect: absent
+          - target: powerpc64-unknown-linux-gnu
+            version: "1.95.0"
+            mnemonics: dcbt dcbtst
+            expect: present
+
+    name: asm ${{ matrix.expect }} - ${{ matrix.version }} - ${{ matrix.target }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@master
+
+      - name: Install ${{ matrix.version }}
+        run: |
+          rustup toolchain install ${{ matrix.version }} --profile minimal
+          rustup default ${{ matrix.version }}
+          rustup target add ${{ matrix.target }}
+
+      - name: Generate Cargo.lock
+        run: cargo generate-lockfile
+
+      # --emit asm keeps the assembly around so the instructions can be
+      # inspected; --cfg branches_check_asm forces the generic prefetch
+      # functions to be monomorphized for this target.
+      - name: Build
+        env:
+          RUSTFLAGS: "--cfg branches_check_asm --emit asm"
+        run: cargo build --target ${{ matrix.target }} --all-features
+
+      - name: Assert prefetch instructions are ${{ matrix.expect }}
+        run: |
+          set -eu
+          asm=$(ls target/${{ matrix.target }}/debug/deps/branches-*.s)
+          for mnemonic in ${{ matrix.mnemonics }}; do
+            if grep -qw "$mnemonic" $asm; then
+              found=present
+            else
+              found=absent
+            fi
+            echo "$mnemonic: $found (expected ${{ matrix.expect }})"
+            test "$found" = "${{ matrix.expect }}"
+          done
+
+  # MSRV floor plus both sides of the 1.59 inline-assembly stabilization on
+  # x86_64: 1.51 and 1.58 must build with prefetch as a no-op, 1.59 is the
+  # first release that emits it. Dev-only manifest sections are stripped
+  # first (criterion needs a modern toolchain, pre-1.70 cargo cannot reach
+  # the sparse index); with no other dependencies the build is fully offline.
+  msrv:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: "1.51.0"
+            expect: absent
+          - version: "1.58.0"
+            expect: absent
+          - version: "1.59.0"
+            expect: present
+
+    name: msrv ${{ matrix.version }} - asm ${{ matrix.expect }} - x86_64-unknown-linux-gnu
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@master
+
+      - name: Install ${{ matrix.version }}
+        run: |
+          rustup toolchain install ${{ matrix.version }} --profile minimal
+          rustup default ${{ matrix.version }}
+
+      - name: Strip dev-only manifest sections
+        run: |
+          python3 - <<'EOF'
+          import re
+          src = open('Cargo.toml').read()
+          src = re.sub(r'\n\[dev-dependencies\][^[]*', '\n', src)
+          src = re.sub(r'\n\[\[bench\]\][^[]*', '\n', src)
+          open('Cargo.toml', 'w').write(src)
+          EOF
+
+      # --cfg branches_check_asm monomorphizes the generic prefetch functions
+      # so --emit asm captures whatever instructions this toolchain emits.
+      - name: Build
+        env:
+          RUSTFLAGS: "--cfg branches_check_asm --emit asm"
+        run: cargo build --offline --all-features
+
+      - name: Build no-std
+        run: cargo build --offline --no-default-features
+
+      # 1.51-1.53 exercise the plain doc-string fallback, 1.54+ the
+      # `doc = include_str!("../README.md")` path.
+      - name: Build docs
+        run: cargo doc --offline --all-features
+
+      - name: Assert prefetch instructions are ${{ matrix.expect }}
+        run: |
+          set -eu
+          asm=$(ls target/debug/deps/branches-*.s)
+          for mnemonic in prefetcht0 prefetchw; do
+            if grep -qw "$mnemonic" $asm; then
+              found=present
+            else
+              found=absent
+            fi
+            echo "$mnemonic: $found (expected ${{ matrix.expect }})"
+            test "$found" = "${{ matrix.expect }}"
+          done

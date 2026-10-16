@@ -27,6 +27,7 @@
 use alloc::vec::Vec;
 
 use fearless_simd::Simd;
+use fearless_simd_macros::simd;
 
 use super::bits::{BitWriter, ByteBuffer};
 use super::commands::one_pass::{
@@ -313,7 +314,10 @@ fn emit_uncompressed_meta_block(
 }
 
 /// Compresses one fragment with a table width baked in.
+///
+/// The complete scan is specialized inside the selected SIMD feature context.
 #[cfg_attr(all(feature = "hotpath", not(feature = "no_std")), hotpath::measure)]
+#[simd]
 fn compress_fragment_impl<
     S: Simd,
     const TABLE_BITS: usize,
@@ -327,38 +331,300 @@ fn compress_fragment_impl<
     table: &mut [i32; ENTRIES],
     w: &mut BitWriter<'_, impl ByteBuffer + ?Sized>,
 ) {
-    // Specialize the complete scan inside the selected SIMD feature context.
-    simd.vectorize(
-        #[inline(always)]
-        || {
-            let OnePassArena {
-                lit_depth,
-                lit_bits,
-                cmd_depth,
-                cmd_bits,
-                cmd_histo,
-                cmd_code,
-                cmd_code_numbits,
-                tree,
-                histogram,
-                tmp_depth,
-                tmp_bits,
-            } = arena;
+    let OnePassArena {
+        lit_depth,
+        lit_bits,
+        cmd_depth,
+        cmd_bits,
+        cmd_histo,
+        cmd_code,
+        cmd_code_numbits,
+        tree,
+        histogram,
+        tmp_depth,
+        tmp_bits,
+    } = arena;
 
-            // "next_emit" is the first byte not covered by a previous copy.
-            let mut next_emit = 0usize;
-            let mut metablock_start = 0usize;
-            let mut input = 0usize;
-            let mut input_size = data.len();
-            let mut block_size = input_size.min(Q0_FIRST_BLOCK_SIZE);
-            let mut total_block_size = block_size;
-            let mut mlen_storage_ix = w.position() + 3;
+    // "next_emit" is the first byte not covered by a previous copy.
+    let mut next_emit = 0usize;
+    let mut metablock_start = 0usize;
+    let mut input = 0usize;
+    let mut input_size = data.len();
+    let mut block_size = input_size.min(Q0_FIRST_BLOCK_SIZE);
+    let mut total_block_size = block_size;
+    let mut mlen_storage_ix = w.position() + 3;
 
+    store_meta_block_header(block_size, false, w);
+    // No block splits, no contexts.
+    w.write(13, 0);
+
+    let mut literal_ratio = build_and_store_literal_prefix_code(
+        histogram,
+        tree,
+        &data[input..input + block_size],
+        lit_depth,
+        lit_bits,
+        w,
+    );
+
+    if INDEPENDENT {
+        // Explicit remainders of five/six-byte matches use copy lengths three
+        // and four. The serial starter tree omits their symbols (17 and 18).
+        cmd_histo.copy_from_slice(&CMD_HISTO_SEED);
+        cmd_histo[17..19].fill(1);
+        build_and_store_command_prefix_code(
+            cmd_histo, cmd_depth, cmd_bits, tmp_depth, tmp_bits, tree, w,
+        );
+    } else {
+        // Store the pre-compressed command and distance prefix codes.
+        let numbits = *cmd_code_numbits;
+        let mut i = 0usize;
+        while i + 7 < numbits {
+            w.write(8, u64::from(cmd_code[i >> 3]));
+            i += 8;
+        }
+        let tail = (numbits & 7) as u32;
+        let mask = (1u64 << tail) - 1;
+        w.write(tail, u64::from(cmd_code[numbits >> 3]) & mask);
+    }
+
+    'emit_commands: loop {
+        // Gather fresh statistics for the prefix code of the next block.
+        cmd_histo.copy_from_slice(&CMD_HISTO_SEED);
+        if INDEPENDENT {
+            cmd_histo[17..19].fill(1);
+        }
+
+        let mut ip = input;
+        let mut last_distance: i64 = -1;
+        let ip_end = input + block_size;
+        let mut restart_meta_block = false;
+
+        'scan: {
+            if block_size < WINDOW_GAP {
+                break 'scan;
+            }
+            // The last block keeps a sixteen byte margin so every distance stays
+            // below the window size; other blocks only need the copy margin.
+            let len_limit = (block_size - Q0_MIN_MATCH).min(input_size - WINDOW_GAP);
+            let ip_limit = input + len_limit;
+
+            ip += 1;
+            // The word at the next position is loaded once: it is
+            // hashed here and compared against the candidates when
+            // the scan reaches it.
+            let mut next_word = load_u64_le(data, ip);
+            let mut next_hash = hash_bytes_at_offset::<TABLE_BITS>(next_word, 0);
+            loop {
+                // Heuristic match skipping: after 32 unproductive bytes look at
+                // every other byte, after 32 more at every third, and so on. A
+                // found match resets the stride.
+                let mut skip = 32u32;
+                let mut next_ip = ip;
+                let mut candidate;
+
+                'found: {
+                    loop {
+                        loop {
+                            let slot = next_hash;
+                            let ip_word = next_word;
+                            let stride = (skip >> 5) as usize;
+                            skip = skip.wrapping_add(1);
+                            ip = next_ip;
+                            next_ip = ip + stride;
+                            if next_ip > ip_limit {
+                                break 'scan;
+                            }
+                            next_word = load_u64_le(data, next_ip);
+                            next_hash = hash_bytes_at_offset::<TABLE_BITS>(next_word, 0);
+
+                            // The reference subtracts the last distance
+                            // without a sign test and rejects a position at
+                            // or past `ip` after comparing; the two tests
+                            // are pure, so rejecting first reads nothing
+                            // for the initial distance of minus one.
+                            let repeated = (ip as i64 - last_distance) as usize;
+                            if repeated < ip && words_match(ip_word, load_u64_le(data, repeated)) {
+                                table[slot] = ip as i32;
+                                candidate = repeated;
+                                break;
+                            }
+
+                            candidate = table[slot] as usize;
+                            table[slot] = ip as i32;
+                            if words_match(ip_word, load_u64_le(data, candidate)) {
+                                break;
+                            }
+                        }
+                        // Checked outside the hot loop to keep it tight.
+                        if ip - candidate > MAX_BACKWARD_DISTANCE {
+                            continue;
+                        }
+                        break 'found;
+                    }
+                }
+
+                // A five byte match at "ip"; the bytes in [next_emit, ip) still
+                // have to be emitted as literals.
+                let base = ip;
+                let matched = Q0_MIN_MATCH
+                    + match_len_at(
+                        simd,
+                        data,
+                        candidate + Q0_MIN_MATCH,
+                        current_window(data, ip + Q0_MIN_MATCH, (ip_end - ip) - Q0_MIN_MATCH),
+                    );
+                let distance = (base - candidate) as i64;
+                let insert = base - next_emit;
+                ip += matched;
+
+                if insert < SHORT_INSERT_LIMIT {
+                    emit_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
+                } else if should_use_uncompressed_mode(
+                    metablock_start,
+                    next_emit,
+                    insert,
+                    literal_ratio,
+                ) {
+                    emit_uncompressed_meta_block(
+                        data,
+                        metablock_start,
+                        base,
+                        mlen_storage_ix - 3,
+                        w,
+                    );
+                    input_size -= base - input;
+                    input = base;
+                    next_emit = input;
+                    restart_meta_block = true;
+                    break 'scan;
+                } else {
+                    emit_long_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
+                }
+                emit_literals(data, next_emit, insert, lit_depth, lit_bits, w);
+
+                if !INDEPENDENT && distance == last_distance {
+                    w.write(u32::from(cmd_depth[64]), u64::from(cmd_bits[64]));
+                    cmd_histo[64] += 1;
+                } else {
+                    emit_distance(distance as usize, cmd_depth, cmd_bits, cmd_histo, w);
+                    last_distance = distance;
+                }
+                if INDEPENDENT {
+                    // The insert command already copied two bytes. Encode the
+                    // remaining copy explicitly, including its distance.
+                    emit_copy_len(matched - 2, cmd_depth, cmd_bits, cmd_histo, w);
+                    emit_distance(distance as usize, cmd_depth, cmd_bits, cmd_histo, w);
+                } else {
+                    emit_copy_len_last_distance(matched, cmd_depth, cmd_bits, cmd_histo, w);
+                }
+
+                next_emit = ip;
+                if ip >= ip_limit {
+                    break 'scan;
+                }
+                // Hash a few positions inside the copy before moving on; this
+                // costs little and improves the ratio noticeably.
+                {
+                    let word = load_u64_le(data, ip - 3);
+                    let current = hash_bytes_at_offset::<TABLE_BITS>(word, 3);
+                    table[hash_bytes_at_offset::<TABLE_BITS>(word, 0)] = (ip - 3) as i32;
+                    table[hash_bytes_at_offset::<TABLE_BITS>(word, 1)] = (ip - 2) as i32;
+                    table[hash_bytes_at_offset::<TABLE_BITS>(word, 2)] = (ip - 1) as i32;
+                    candidate = table[current] as usize;
+                    table[current] = ip as i32;
+                }
+
+                while is_match(data, ip, candidate) {
+                    // Another five byte match, with no literals in between.
+                    let base = ip;
+                    let matched = Q0_MIN_MATCH
+                        + match_len_at(
+                            simd,
+                            data,
+                            candidate + Q0_MIN_MATCH,
+                            current_window(data, ip + Q0_MIN_MATCH, (ip_end - ip) - Q0_MIN_MATCH),
+                        );
+                    if ip - candidate > MAX_BACKWARD_DISTANCE {
+                        break;
+                    }
+                    ip += matched;
+                    last_distance = (base - candidate) as i64;
+                    emit_copy_len(matched, cmd_depth, cmd_bits, cmd_histo, w);
+                    emit_distance(last_distance as usize, cmd_depth, cmd_bits, cmd_histo, w);
+
+                    next_emit = ip;
+                    if ip >= ip_limit {
+                        break 'scan;
+                    }
+                    let word = load_u64_le(data, ip - 3);
+                    let current = hash_bytes_at_offset::<TABLE_BITS>(word, 3);
+                    table[hash_bytes_at_offset::<TABLE_BITS>(word, 0)] = (ip - 3) as i32;
+                    table[hash_bytes_at_offset::<TABLE_BITS>(word, 1)] = (ip - 2) as i32;
+                    table[hash_bytes_at_offset::<TABLE_BITS>(word, 2)] = (ip - 1) as i32;
+                    candidate = table[current] as usize;
+                    table[current] = ip as i32;
+                }
+
+                ip += 1;
+                next_word = load_u64_le(data, ip);
+                next_hash = hash_bytes_at_offset::<TABLE_BITS>(next_word, 0);
+            }
+        }
+
+        if !restart_meta_block {
+            debug_assert!(next_emit <= ip_end);
+            input += block_size;
+            input_size -= block_size;
+            block_size = input_size.min(Q0_MERGE_BLOCK_SIZE);
+
+            // Continue this meta-block instead of closing it with a last
+            // insert-only command, when that looks cheaper.
+            if input_size > 0
+                && total_block_size + block_size <= Q0_MAX_MERGED_BLOCK_SIZE
+                && should_merge_block(histogram, &data[input..input + block_size], lit_depth)
+            {
+                total_block_size += block_size;
+                // Both the old and the new size use five nibbles.
+                w.update(20, (total_block_size - 1) as u32, mlen_storage_ix);
+                continue 'emit_commands;
+            }
+
+            if next_emit < ip_end {
+                let insert = ip_end - next_emit;
+                if insert < SHORT_INSERT_LIMIT {
+                    emit_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
+                    emit_literals(data, next_emit, insert, lit_depth, lit_bits, w);
+                } else if should_use_uncompressed_mode(
+                    metablock_start,
+                    next_emit,
+                    insert,
+                    literal_ratio,
+                ) {
+                    emit_uncompressed_meta_block(
+                        data,
+                        metablock_start,
+                        ip_end,
+                        mlen_storage_ix - 3,
+                        w,
+                    );
+                } else {
+                    emit_long_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
+                    emit_literals(data, next_emit, insert, lit_depth, lit_bits, w);
+                }
+            }
+            next_emit = ip_end;
+        }
+
+        // Open a new meta-block when input is left.
+        if input_size > 0 {
+            metablock_start = input;
+            block_size = input_size.min(Q0_FIRST_BLOCK_SIZE);
+            total_block_size = block_size;
+            mlen_storage_ix = w.position() + 3;
             store_meta_block_header(block_size, false, w);
-            // No block splits, no contexts.
             w.write(13, 0);
-
-            let mut literal_ratio = build_and_store_literal_prefix_code(
+            literal_ratio = build_and_store_literal_prefix_code(
                 histogram,
                 tree,
                 &data[input..input + block_size],
@@ -366,319 +632,31 @@ fn compress_fragment_impl<
                 lit_bits,
                 w,
             );
+            build_and_store_command_prefix_code(
+                cmd_histo, cmd_depth, cmd_bits, tmp_depth, tmp_bits, tree, w,
+            );
+            continue 'emit_commands;
+        }
 
-            if INDEPENDENT {
-                // Explicit remainders of five/six-byte matches use copy lengths three
-                // and four. The serial starter tree omits their symbols (17 and 18).
-                cmd_histo.copy_from_slice(&CMD_HISTO_SEED);
-                cmd_histo[17..19].fill(1);
-                build_and_store_command_prefix_code(
-                    cmd_histo, cmd_depth, cmd_bits, tmp_depth, tmp_bits, tree, w,
-                );
-            } else {
-                // Store the pre-compressed command and distance prefix codes.
-                let numbits = *cmd_code_numbits;
-                let mut i = 0usize;
-                while i + 7 < numbits {
-                    w.write(8, u64::from(cmd_code[i >> 3]));
-                    i += 8;
-                }
-                let tail = (numbits & 7) as u32;
-                let mask = (1u64 << tail) - 1;
-                w.write(tail, u64::from(cmd_code[numbits >> 3]) & mask);
-            }
+        break 'emit_commands;
+    }
 
-            'emit_commands: loop {
-                // Gather fresh statistics for the prefix code of the next block.
-                cmd_histo.copy_from_slice(&CMD_HISTO_SEED);
-                if INDEPENDENT {
-                    cmd_histo[17..19].fill(1);
-                }
-
-                let mut ip = input;
-                let mut last_distance: i64 = -1;
-                let ip_end = input + block_size;
-                let mut restart_meta_block = false;
-
-                'scan: {
-                    if block_size < WINDOW_GAP {
-                        break 'scan;
-                    }
-                    // The last block keeps a sixteen byte margin so every distance stays
-                    // below the window size; other blocks only need the copy margin.
-                    let len_limit = (block_size - Q0_MIN_MATCH).min(input_size - WINDOW_GAP);
-                    let ip_limit = input + len_limit;
-
-                    ip += 1;
-                    // The word at the next position is loaded once: it is
-                    // hashed here and compared against the candidates when
-                    // the scan reaches it.
-                    let mut next_word = load_u64_le(data, ip);
-                    let mut next_hash = hash_bytes_at_offset::<TABLE_BITS>(next_word, 0);
-                    loop {
-                        // Heuristic match skipping: after 32 unproductive bytes look at
-                        // every other byte, after 32 more at every third, and so on. A
-                        // found match resets the stride.
-                        let mut skip = 32u32;
-                        let mut next_ip = ip;
-                        let mut candidate;
-
-                        'found: {
-                            loop {
-                                loop {
-                                    let slot = next_hash;
-                                    let ip_word = next_word;
-                                    let stride = (skip >> 5) as usize;
-                                    skip = skip.wrapping_add(1);
-                                    ip = next_ip;
-                                    next_ip = ip + stride;
-                                    if next_ip > ip_limit {
-                                        break 'scan;
-                                    }
-                                    next_word = load_u64_le(data, next_ip);
-                                    next_hash = hash_bytes_at_offset::<TABLE_BITS>(next_word, 0);
-
-                                    // The reference subtracts the last distance
-                                    // without a sign test and rejects a position at
-                                    // or past `ip` after comparing; the two tests
-                                    // are pure, so rejecting first reads nothing
-                                    // for the initial distance of minus one.
-                                    let repeated = (ip as i64 - last_distance) as usize;
-                                    if repeated < ip
-                                        && words_match(ip_word, load_u64_le(data, repeated))
-                                    {
-                                        table[slot] = ip as i32;
-                                        candidate = repeated;
-                                        break;
-                                    }
-
-                                    candidate = table[slot] as usize;
-                                    table[slot] = ip as i32;
-                                    if words_match(ip_word, load_u64_le(data, candidate)) {
-                                        break;
-                                    }
-                                }
-                                // Checked outside the hot loop to keep it tight.
-                                if ip - candidate > MAX_BACKWARD_DISTANCE {
-                                    continue;
-                                }
-                                break 'found;
-                            }
-                        }
-
-                        // A five byte match at "ip"; the bytes in [next_emit, ip) still
-                        // have to be emitted as literals.
-                        let base = ip;
-                        let matched = Q0_MIN_MATCH
-                            + match_len_at(
-                                simd,
-                                data,
-                                candidate + Q0_MIN_MATCH,
-                                current_window(
-                                    data,
-                                    ip + Q0_MIN_MATCH,
-                                    (ip_end - ip) - Q0_MIN_MATCH,
-                                ),
-                            );
-                        let distance = (base - candidate) as i64;
-                        let insert = base - next_emit;
-                        ip += matched;
-
-                        if insert < SHORT_INSERT_LIMIT {
-                            emit_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
-                        } else if should_use_uncompressed_mode(
-                            metablock_start,
-                            next_emit,
-                            insert,
-                            literal_ratio,
-                        ) {
-                            emit_uncompressed_meta_block(
-                                data,
-                                metablock_start,
-                                base,
-                                mlen_storage_ix - 3,
-                                w,
-                            );
-                            input_size -= base - input;
-                            input = base;
-                            next_emit = input;
-                            restart_meta_block = true;
-                            break 'scan;
-                        } else {
-                            emit_long_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
-                        }
-                        emit_literals(data, next_emit, insert, lit_depth, lit_bits, w);
-
-                        if !INDEPENDENT && distance == last_distance {
-                            w.write(u32::from(cmd_depth[64]), u64::from(cmd_bits[64]));
-                            cmd_histo[64] += 1;
-                        } else {
-                            emit_distance(distance as usize, cmd_depth, cmd_bits, cmd_histo, w);
-                            last_distance = distance;
-                        }
-                        if INDEPENDENT {
-                            // The insert command already copied two bytes. Encode the
-                            // remaining copy explicitly, including its distance.
-                            emit_copy_len(matched - 2, cmd_depth, cmd_bits, cmd_histo, w);
-                            emit_distance(distance as usize, cmd_depth, cmd_bits, cmd_histo, w);
-                        } else {
-                            emit_copy_len_last_distance(matched, cmd_depth, cmd_bits, cmd_histo, w);
-                        }
-
-                        next_emit = ip;
-                        if ip >= ip_limit {
-                            break 'scan;
-                        }
-                        // Hash a few positions inside the copy before moving on; this
-                        // costs little and improves the ratio noticeably.
-                        {
-                            let word = load_u64_le(data, ip - 3);
-                            let current = hash_bytes_at_offset::<TABLE_BITS>(word, 3);
-                            table[hash_bytes_at_offset::<TABLE_BITS>(word, 0)] = (ip - 3) as i32;
-                            table[hash_bytes_at_offset::<TABLE_BITS>(word, 1)] = (ip - 2) as i32;
-                            table[hash_bytes_at_offset::<TABLE_BITS>(word, 2)] = (ip - 1) as i32;
-                            candidate = table[current] as usize;
-                            table[current] = ip as i32;
-                        }
-
-                        while is_match(data, ip, candidate) {
-                            // Another five byte match, with no literals in between.
-                            let base = ip;
-                            let matched = Q0_MIN_MATCH
-                                + match_len_at(
-                                    simd,
-                                    data,
-                                    candidate + Q0_MIN_MATCH,
-                                    current_window(
-                                        data,
-                                        ip + Q0_MIN_MATCH,
-                                        (ip_end - ip) - Q0_MIN_MATCH,
-                                    ),
-                                );
-                            if ip - candidate > MAX_BACKWARD_DISTANCE {
-                                break;
-                            }
-                            ip += matched;
-                            last_distance = (base - candidate) as i64;
-                            emit_copy_len(matched, cmd_depth, cmd_bits, cmd_histo, w);
-                            emit_distance(
-                                last_distance as usize,
-                                cmd_depth,
-                                cmd_bits,
-                                cmd_histo,
-                                w,
-                            );
-
-                            next_emit = ip;
-                            if ip >= ip_limit {
-                                break 'scan;
-                            }
-                            let word = load_u64_le(data, ip - 3);
-                            let current = hash_bytes_at_offset::<TABLE_BITS>(word, 3);
-                            table[hash_bytes_at_offset::<TABLE_BITS>(word, 0)] = (ip - 3) as i32;
-                            table[hash_bytes_at_offset::<TABLE_BITS>(word, 1)] = (ip - 2) as i32;
-                            table[hash_bytes_at_offset::<TABLE_BITS>(word, 2)] = (ip - 1) as i32;
-                            candidate = table[current] as usize;
-                            table[current] = ip as i32;
-                        }
-
-                        ip += 1;
-                        next_word = load_u64_le(data, ip);
-                        next_hash = hash_bytes_at_offset::<TABLE_BITS>(next_word, 0);
-                    }
-                }
-
-                if !restart_meta_block {
-                    debug_assert!(next_emit <= ip_end);
-                    input += block_size;
-                    input_size -= block_size;
-                    block_size = input_size.min(Q0_MERGE_BLOCK_SIZE);
-
-                    // Continue this meta-block instead of closing it with a last
-                    // insert-only command, when that looks cheaper.
-                    if input_size > 0
-                        && total_block_size + block_size <= Q0_MAX_MERGED_BLOCK_SIZE
-                        && should_merge_block(
-                            histogram,
-                            &data[input..input + block_size],
-                            lit_depth,
-                        )
-                    {
-                        total_block_size += block_size;
-                        // Both the old and the new size use five nibbles.
-                        w.update(20, (total_block_size - 1) as u32, mlen_storage_ix);
-                        continue 'emit_commands;
-                    }
-
-                    if next_emit < ip_end {
-                        let insert = ip_end - next_emit;
-                        if insert < SHORT_INSERT_LIMIT {
-                            emit_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
-                            emit_literals(data, next_emit, insert, lit_depth, lit_bits, w);
-                        } else if should_use_uncompressed_mode(
-                            metablock_start,
-                            next_emit,
-                            insert,
-                            literal_ratio,
-                        ) {
-                            emit_uncompressed_meta_block(
-                                data,
-                                metablock_start,
-                                ip_end,
-                                mlen_storage_ix - 3,
-                                w,
-                            );
-                        } else {
-                            emit_long_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
-                            emit_literals(data, next_emit, insert, lit_depth, lit_bits, w);
-                        }
-                    }
-                    next_emit = ip_end;
-                }
-
-                // Open a new meta-block when input is left.
-                if input_size > 0 {
-                    metablock_start = input;
-                    block_size = input_size.min(Q0_FIRST_BLOCK_SIZE);
-                    total_block_size = block_size;
-                    mlen_storage_ix = w.position() + 3;
-                    store_meta_block_header(block_size, false, w);
-                    w.write(13, 0);
-                    literal_ratio = build_and_store_literal_prefix_code(
-                        histogram,
-                        tree,
-                        &data[input..input + block_size],
-                        lit_depth,
-                        lit_bits,
-                        w,
-                    );
-                    build_and_store_command_prefix_code(
-                        cmd_histo, cmd_depth, cmd_bits, tmp_depth, tmp_bits, tree, w,
-                    );
-                    continue 'emit_commands;
-                }
-
-                break 'emit_commands;
-            }
-
-            if !is_last {
-                // Hand the statistics of this fragment to the next one.
-                cmd_code[0] = 0;
-                *cmd_code_numbits = 0;
-                let mut code_writer = BitWriter::new(cmd_code, 0);
-                build_and_store_command_prefix_code(
-                    cmd_histo,
-                    cmd_depth,
-                    cmd_bits,
-                    tmp_depth,
-                    tmp_bits,
-                    tree,
-                    &mut code_writer,
-                );
-                *cmd_code_numbits = code_writer.position();
-            }
-        },
-    );
+    if !is_last {
+        // Hand the statistics of this fragment to the next one.
+        cmd_code[0] = 0;
+        *cmd_code_numbits = 0;
+        let mut code_writer = BitWriter::new(cmd_code, 0);
+        build_and_store_command_prefix_code(
+            cmd_histo,
+            cmd_depth,
+            cmd_bits,
+            tmp_depth,
+            tmp_bits,
+            tree,
+            &mut code_writer,
+        );
+        *cmd_code_numbits = code_writer.position();
+    }
 }
 
 /// Compresses `data` as one or more meta-blocks at quality 0.

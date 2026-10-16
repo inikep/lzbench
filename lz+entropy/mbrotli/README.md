@@ -9,8 +9,8 @@ parallel compression when a workload benefits from it.
 
 [![Crates.io](https://img.shields.io/crates/v/mbrotli.svg)][crate]
 [![docs.rs](https://docs.rs/mbrotli/badge.svg)][api]
-[![Tests](https://github.com/Mnwa/mbrotli/actions/workflows/ci.yml/badge.svg?branch=master)][ci]
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)][license]
+[![Tests](https://github.com/M-Compressors/mbrotli/actions/workflows/ci.yml/badge.svg?branch=master)][ci]
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#License)
 
 [Quick start](#quick-start) · [Benchmarks](#performance) · [`Read` / `Write`](#read-and-write-streaming) · [API guide][guide] · [Compatibility](#compatibility) · [Changelog][changelog]
 
@@ -29,6 +29,34 @@ parallel compression when a workload benefits from it.
 
 ## Performance
 
+### lzbench (independent)
+
+[lzbench](https://github.com/inikep/lzbench) is a long-running open-source
+in-memory benchmark: every codec is built from source into one binary with the
+same compiler and flags and runs on the same data and machine. Its maintainer ran
+these results, not us: lzbench 2.4 (gcc 15.2), the 211 MB
+[Silesia corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia), one
+thread of an AMD EPYC 9555P with turbo disabled. [Full table][lzbench-results].
+
+mbrotli 0.5.2 against Google Brotli 1.2.0; bold marks the faster result. Ratio is
+the compressed size as a percentage of the input and matches for both.
+
+| Level | Compress mbrotli | Compress brotli | Decompress mbrotli | Decompress brotli | Ratio, % |
+| ----: | ---------------: | --------------: | -----------------: | ----------------: | -------: |
+| -11   |   **0.67 MB/s**  |       0.56 MB/s |           371 MB/s |      **383 MB/s** | 23.78 |
+| -8    |   **14.4 MB/s**  |       12.6 MB/s |           419 MB/s |      **443 MB/s** | 26.96 |
+| -5    |       50.0 MB/s  |   **53.3 MB/s** |           388 MB/s |      **419 MB/s** | 28.10 |
+| -2    |        127 MB/s  |    **139 MB/s** |           349 MB/s |      **378 MB/s** | 32.12 |
+| -0    |        341 MB/s  |        341 MB/s |           291 MB/s |      **322 MB/s** | 37.01 |
+
+**Summary:** the same compressed size as Google Brotli (+0.005% at -11),
+**14–20% faster** compression at -8 and -11, within 9% at lower levels, and
+decompression 3–10% behind C. Our own
+[local lzbench rerun](docs/benchmarks/README.md#local-lzbench-rerun-ours-not-independent)
+measures the current tree on a different machine and compiler.
+
+### Our benchmarks
+
 Compression performance is generally close to or faster than Google C Brotli,
 depending on the workload and quality setting.
 
@@ -37,7 +65,7 @@ depending on the workload and quality setting.
 
 ![Compression speed and output size relative to Google C Brotli across qualities 0–11][bench-chart]
 
-**Recorded 2026-09-26 · Intel Core i7-13700KF · WSL2 · window 22 · cold serial APIs.**
+**Recorded 2026-10-09 · Intel Core i7-13700KF · WSL2 · window 22 · cold serial APIs.**
 Each value is the median of per-dataset ratios across eight equally weighted datasets,
 including empty and tiny inputs. A speed ratio above **1×** is faster than C; a size
 ratio below **1×** is smaller. These are compression results; the separate decoder comparison follows below.
@@ -54,14 +82,14 @@ Results apply to the [recorded revision and machine][bench-qualities].
 
 ![Decompression speed relative to Google C Brotli by source quality][decoder-bench-chart]
 
-**Recorded 2026-09-26 · Intel Core i7-13700KF · WSL2 · window 22 · cold serial APIs.**
+**Recorded 2026-10-09 · Intel Core i7-13700KF · WSL2 · window 22 · cold serial APIs.**
 Google C, mbrotli, Rust brotli and Burli decode identical C-generated streams at
 source qualities **0–11**. SIMD Brotli shares Rust brotli's decoder and is omitted;
 Burli decodes every source quality. All **384 cases** restore the original bytes.
 
 Across the eight equally weighted inputs, the median speed / Burli is
-**1.001×**, and the median speed / Google
-C ranges from **3.0× to 3.7×** by source quality. Empty and tiny inputs retain
+**0.999×**, and the median speed / Google
+C ranges from **3.1× to 3.8×** by source quality. Empty and tiny inputs retain
 the same weight as larger datasets. The chart shows per-quality medians of
 C-time/decoder-time ratios; above **1×** is faster than C. Throughput in the
 quality pages counts restored bytes. Construction, allocation, decode and disposal
@@ -79,7 +107,7 @@ Requires **Rust 1.89 or later**. Add it to your project:
 
 ```toml
 [dependencies]
-mbrotli = "0.5.2"
+mbrotli = "0.5.15"
 ```
 
 ```rust
@@ -102,8 +130,10 @@ Set the quality explicitly for your workload. `EncoderConfig::default()` uses
 ## Choose your API
 
 Compression and decompression expose the same core I/O shapes. Pick the shape that
-matches how your application already moves bytes; parallel compression is a separate
-execution strategy, not another streaming API.
+matches how your application already moves bytes. `ParallelCompressor` is a separate
+execution strategy for compression: it splits the input into independent segments and
+hands them to your executor as tasks, either for a whole input at once or for input
+that arrives in chunks. It requires `std`.
 
 | I/O shape | Compression | Decompression |
 | --- | --- | --- |
@@ -113,6 +143,12 @@ execution strategy, not another streaming API.
 | Pull output through `std::io::Read` | `Compressor::reader` | `Decompressor::reader` |
 | Push input through `std::io::Write` | `Compressor::writer` | `Decompressor::writer` |
 | Drive input/output incrementally | `start` → `EncoderSession` | `start` → `DecoderSession` |
+| Same, with the session owning the codec | `into_session` → `EncoderSessionOwned` | `into_session` → `DecoderSessionOwned` |
+| Split one known input across your threads | `ParallelCompressor::prepare_slice` / `prepare_source` → `ScopedParallelBatch` | — |
+| Stream chunked input across your threads | `ParallelCompressor::start` → `ParallelEncoderSession` + `ParallelTaskQueue` | — |
+| Same, with the session owning the compressor | `ParallelCompressor::into_session` → `ParallelEncoderSessionOwned` | — |
+| Pull parallel output through `std::io::Read` | `ParallelCompressor::reader` → `ParallelEncoderReader` + `ParallelTaskQueue` | — |
+| Push input through `std::io::Write` across your threads | `ParallelCompressor::writer` → `ParallelEncoderWriter` + `ParallelTaskQueue` | — |
 
 ### Reuse memory between payloads
 
@@ -284,6 +320,12 @@ it can differ in bytes and size from serial compression. The example stages comp
 segments in memory; see the [parallel guide][parallel] for budgets, disk staging,
 file input, and other executors.
 
+When input arrives in chunks, `ParallelCompressor::start(window)` returns a
+`ParallelEncoderSession` and a `ParallelTaskQueue`: every full segment becomes a task
+your executors take from the queue, and `process` delivers finished segments in input
+order while later ones still encode. Without a flush, its output is byte-identical to
+`prepare_slice` over the same bytes.
+
 ## Native decompression
 
 `Decompressor` provides reusable Vec/slice APIs, incremental sessions, and synchronous
@@ -372,7 +414,7 @@ features to select one codec or use `no_std` with `alloc`. For an alloc-backed d
 
 ```toml
 [dependencies]
-mbrotli = { version = "0.5.2", default-features = false, features = ["no_std", "decompression"] }
+mbrotli = { version = "0.5.15", default-features = false, features = ["no_std", "decompression"] }
 ```
 
 Add `"compression"` for both codecs, or use `"std"` instead of `"no_std"` for standard
@@ -440,11 +482,11 @@ The [development guide][development] covers local checks, coverage, and fuzzing.
 
 ## License
 
-[MIT][license]. The encoder builds on the work of the [Google Brotli project][google-brotli].
+[MIT](LICENSE-MIT) or [APACHE 2.0](LICENSE-APACHE) at your option. The encoder builds on the work of the [Google Brotli project][google-brotli].
 
 [crate]: https://crates.io/crates/mbrotli
 [api]: https://docs.rs/mbrotli
-[ci]: https://github.com/Mnwa/mbrotli/actions/workflows/ci.yml
+[ci]: https://github.com/M-Compressors/mbrotli/actions/workflows/ci.yml
 [license]: ./LICENSE
 [changelog]: ./CHANGELOG.md
 [guide]: ./docs/README.md
@@ -466,3 +508,4 @@ The [development guide][development] covers local checks, coverage, and fuzzing.
 [decoder-bench-csv]: ./docs/benchmarks/decoder-comparison.csv
 [decoder-bench-chart]: ./docs/benchmarks/decoders/charts/overview.svg
 [decoder-bench-report]: ./docs/benchmarks/decoder-comparison.md
+[lzbench-results]: https://github.com/inikep/lzbench/blob/2706ba16721e947a9240c70d080b8efa3f752da0/doc/lzbench24_sorted.md

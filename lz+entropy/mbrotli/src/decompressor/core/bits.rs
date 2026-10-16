@@ -142,6 +142,24 @@ impl Bits {
         true
     }
 
+    /// [`Self::refill_from`] with the unread input as a shrinking slice: a
+    /// hot loop then tests one length per refill instead of an index and a
+    /// length.
+    #[inline(always)]
+    pub(super) fn refill_rest(&mut self, rest: &mut &[u8]) -> bool {
+        let Some(chunk) = rest.first_chunk::<8>() else {
+            return self.count > MAX_PEEK;
+        };
+        debug_assert!(self.count < 64);
+        self.value |= u64::from_le_bytes(*chunk) << self.count;
+        let bytes = (63 - self.count) >> 3;
+        self.count += bytes * 8;
+        // At most seven bytes are accepted, so the bound is never reached;
+        // stating it lets the eight-byte check above cover the advance.
+        *rest = &rest[(bytes as usize).min(8)..];
+        true
+    }
+
     /// Clears the bits above `count`, which a whole-word refill leaves
     /// holding input bytes it did not accept, before the reservoir outlives
     /// the call whose input they came from.
@@ -266,6 +284,35 @@ mod tests {
         assert_eq!(bits.count(), 48);
         assert_eq!(bits.value(), mask(48));
     }
+    #[test]
+    fn slice_cursor_refill_accepts_the_bytes_an_index_refill_does() {
+        let bytes: alloc::vec::Vec<u8> = (1..=20).collect();
+        for start in 0..bytes.len() {
+            for drop in [0, 5, 13, 56] {
+                let mut by_index = Bits::default();
+                let mut consumed = start;
+                let mut by_slice = Bits::default();
+                let mut rest = &bytes[start..];
+                // Several refills per start, so later ones begin with a
+                // partly drained reservoir and a shorter remainder.
+                for _ in 0..3 {
+                    assert_eq!(
+                        by_slice.refill_rest(&mut rest),
+                        by_index.refill_from(&bytes, &mut consumed)
+                    );
+                    assert_eq!(rest.len(), bytes.len() - consumed);
+                    assert_eq!(
+                        (by_slice.count(), by_slice.value()),
+                        (by_index.count(), by_index.value())
+                    );
+                    let used = drop.min(by_index.count());
+                    by_index.drop(used);
+                    by_slice.drop(used);
+                }
+            }
+        }
+    }
+
     #[test]
     fn unmasked_refill_agrees_with_byte_loads_and_settles_to_accepted_bits() {
         let bytes: alloc::vec::Vec<u8> = (1..=16).collect();

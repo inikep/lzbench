@@ -29,18 +29,23 @@ pub struct FramingConfig {
     pub max_chunks: u64,
 }
 
+impl FramingConfig {
+    /// The default policy, usable in `const` contexts.
+    const DEFAULT: Self = Self {
+        container: true,
+        central_directory: true,
+        repeat_metadata: false,
+        chunk_bytes: 65536,
+        max_metadata_bytes: 1 << 20,
+        max_buffer_bytes: 8 << 20,
+        max_resources: 10000,
+        max_chunks: 1000000,
+    };
+}
+
 impl Default for FramingConfig {
     fn default() -> Self {
-        Self {
-            container: true,
-            central_directory: true,
-            repeat_metadata: false,
-            chunk_bytes: 65536,
-            max_metadata_bytes: 1 << 20,
-            max_buffer_bytes: 8 << 20,
-            max_resources: 10000,
-            max_chunks: 1000000,
-        }
+        Self::DEFAULT
     }
 }
 
@@ -96,12 +101,40 @@ pub struct MetadataOptions<'a> {
 /// assert_eq!(config.encoder_config().quality(), Quality::Q5);
 /// assert_eq!(config.framing_config().chunk_bytes, 4096);
 /// ```
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct FramedEncodeConfig {
     encoder: EncoderConfig,
     framing: FramingConfig,
 }
+impl Default for FramedEncodeConfig {
+    /// Returns [`FramedEncodeConfig::new`].
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl FramedEncodeConfig {
+    /// Returns the default configuration in a `const` context.
+    ///
+    /// Equal to [`FramedEncodeConfig::default`]: [`EncoderConfig::new`] and
+    /// the default [`FramingConfig`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mbrotli::{EncoderConfig, Quality, framing::*};
+    /// const FAST: FramedEncodeConfig =
+    ///     FramedEncodeConfig::new().with_encoder_config(EncoderConfig::new().with_quality(Quality::Q5));
+    /// assert_eq!(FramedEncodeConfig::new(), FramedEncodeConfig::default());
+    /// assert_eq!(FAST.encoder_config().quality(), Quality::Q5);
+    /// assert_eq!(*FAST.framing_config(), FramingConfig::default());
+    /// ```
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            encoder: EncoderConfig::new(),
+            framing: FramingConfig::DEFAULT,
+        }
+    }
     /// Raw resource and metadata compression settings.
     pub const fn encoder_config(&self) -> &EncoderConfig {
         &self.encoder

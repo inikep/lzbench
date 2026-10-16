@@ -24,6 +24,8 @@ use super::{
     MAX_STATIC_DICTIONARY_MATCH_LEN, common_prefix_len,
 };
 use crate::shared::constants::HASH_MUL32;
+use fearless_simd::{Select, Simd, SimdBase, SimdMask, u8x32};
+use fearless_simd_macros::simd;
 
 /// Value marking "no word of this length matched" (`kInvalidMatch`).
 pub(crate) const INVALID_MATCH: u32 = 0x0FFF_FFFF;
@@ -99,11 +101,54 @@ fn bucket_head(data: &[u8]) -> Option<usize> {
     (offset != 0).then_some(offset)
 }
 
+/// Returns where word `idx` among those of length `len` starts.
+#[inline]
+fn word_offset(len: usize, idx: usize) -> Option<usize> {
+    Some(*BUILTIN_OFFSETS_BY_LENGTH.get(len)? as usize + len * idx)
+}
+
 /// Returns the bytes of word `idx` among those of length `len`.
 #[inline]
 fn word(len: usize, idx: usize) -> Option<&'static [u8]> {
-    let offset = *BUILTIN_OFFSETS_BY_LENGTH.get(len)? as usize + len * idx;
+    let offset = word_offset(len, idx)?;
     BUILTIN_WORDS.get(offset..offset.checked_add(len)?)
+}
+
+/// How a word's letters are cased before it is compared.
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum Case {
+    Identity,
+    UppercaseFirst,
+    UppercaseAll,
+}
+
+/// Compares the 32 dictionary bytes from `offset` with the first 32 of
+/// `data` after casing them, returning one bit per agreeing byte.
+///
+/// Every word is at most [`MAX_STATIC_DICTIONARY_MATCH_LEN`] bytes, so the
+/// agreeing prefix of a whole word is the mask's trailing ones. `None` when
+/// either side holds fewer than 32 bytes — the last words of the dictionary,
+/// or the end of the input — which the scalar comparison then handles.
+#[inline(always)]
+fn agreeing_lanes<S: Simd>(simd: S, offset: usize, data: &[u8], case: Case) -> Option<u32> {
+    let word = BUILTIN_WORDS.get(offset..)?.first_chunk::<32>()?;
+    let data = data.first_chunk::<32>()?;
+    let mut word = u8x32::load_array_ref(simd, word);
+    if case != Case::Identity {
+        // ASCII lowercase letters gain the uppercase bit; the lookup table
+        // pairs the case transforms only with words this is exact for.
+        let lowercase =
+            word.simd_ge(u8x32::splat(simd, b'a')) & word.simd_le(u8x32::splat(simd, b'z'));
+        let flip = if case == Case::UppercaseAll {
+            u8x32::splat(simd, 32)
+        } else {
+            let mut first = [0u8; 32];
+            first[0] = 32;
+            u8x32::load_array(simd, first)
+        };
+        word ^= lowercase.select(flip, u8x32::splat(simd, 0));
+    }
+    Some(word.simd_eq(u8x32::load_array_ref(simd, data)).to_bitmask() as u32)
 }
 
 /// Returns how many words of length `len` the dictionary holds.
@@ -131,28 +176,48 @@ fn add_match(distance: usize, len: usize, len_code: usize, matches: &mut [u32]) 
 /// Returns how many leading bytes of word `(len, id)` agree with `data`.
 ///
 /// Mirrors `DictMatchLength`.
-#[inline]
-fn dict_match_length(data: &[u8], id: usize, len: usize, maxlen: usize) -> usize {
-    match word(len, id) {
-        Some(word) => common_prefix_len(word, data, len.min(maxlen)),
-        None => 0,
+#[inline(always)]
+fn dict_match_length<S: Simd>(simd: S, data: &[u8], id: usize, len: usize, maxlen: usize) -> usize {
+    let Some(word) = word(len, id) else {
+        return 0;
+    };
+    let limit = len.min(maxlen);
+    if let Some(lanes) =
+        word_offset(len, id).and_then(|offset| agreeing_lanes(simd, offset, data, Case::Identity))
+    {
+        return (lanes.trailing_ones() as usize).min(limit);
     }
+    common_prefix_len(word, data, limit)
 }
 
 /// Returns whether the transformed word `w` matches the start of `data`.
 ///
 /// Mirrors `IsMatch`. The lookup table only ever carries ASCII-uppercasable
 /// words for the two case transforms, so uppercasing is the plain bit flip.
-fn is_match(w: DictWord, data: &[u8], max_length: usize) -> bool {
+#[inline(always)]
+fn is_match<S: Simd>(simd: S, w: DictWord, data: &[u8], max_length: usize) -> bool {
     if w.len > max_length {
         return false;
     }
     let Some(dict) = word(w.len, w.idx) else {
         return false;
     };
-    match w.transform {
-        0 => common_prefix_len(dict, data, w.len) == w.len,
-        TRANSFORM_UPPERCASE_FIRST => {
+    let case = match w.transform {
+        0 => Case::Identity,
+        TRANSFORM_UPPERCASE_FIRST => Case::UppercaseFirst,
+        _ => Case::UppercaseAll,
+    };
+    if let Some(lanes) =
+        word_offset(w.len, w.idx).and_then(|offset| agreeing_lanes(simd, offset, data, case))
+    {
+        // The first-letter transform also needs that letter to be lowercase:
+        // anything else is left as it is and cannot match its own case flip.
+        return lanes.trailing_ones() as usize >= w.len
+            && (case != Case::UppercaseFirst || dict.first().is_some_and(u8::is_ascii_lowercase));
+    }
+    match case {
+        Case::Identity => common_prefix_len(dict, data, w.len) == w.len,
+        Case::UppercaseFirst => {
             let (Some(&first), Some(&target)) = (dict.first(), data.first()) else {
                 return false;
             };
@@ -160,7 +225,7 @@ fn is_match(w: DictWord, data: &[u8], max_length: usize) -> bool {
                 && (first ^ 32) == target
                 && common_prefix_len(&dict[1..], &data[1..], w.len - 1) == w.len - 1
         }
-        _ => dict.iter().zip(data).take(w.len).all(|(&left, &right)| {
+        Case::UppercaseAll => dict.iter().zip(data).take(w.len).all(|(&left, &right)| {
             if left.is_ascii_lowercase() {
                 (left ^ 32) == right
             } else {
@@ -179,24 +244,28 @@ fn is_match(w: DictWord, data: &[u8], max_length: usize) -> bool {
 /// dictionaries are not reachable through this crate's public API, so the
 /// second-dictionary merge of `BrotliFindAllStaticDictionaryMatches` has no
 /// counterpart here.
-pub(crate) fn find_all(
+#[simd]
+pub(crate) fn find_all<S: Simd>(
+    simd: S,
     data: &[u8],
     min_length: usize,
     max_length: usize,
     matches: &mut [u32; MAX_STATIC_DICTIONARY_MATCH_LEN + 1],
 ) -> bool {
     let mut found = false;
-    found |= plain_and_uppercase(data, min_length, max_length, matches);
-    found |= space_or_dot_prefix(data, max_length, matches);
-    found |= two_byte_prefix(data, max_length, matches);
-    found |= long_prefix(data, max_length, matches);
+    found |= plain_and_uppercase(simd, data, min_length, max_length, matches);
+    found |= space_or_dot_prefix(simd, data, max_length, matches);
+    found |= two_byte_prefix(simd, data, max_length, matches);
+    found |= long_prefix(simd, data, max_length, matches);
     found
 }
 
 /// Words matching at the start of `data`, with their suffix transforms.
 ///
 /// Covers the identity, omit-last and uppercase families.
-fn plain_and_uppercase(
+#[inline(always)]
+fn plain_and_uppercase<S: Simd>(
+    simd: S,
     data: &[u8],
     min_length: usize,
     max_length: usize,
@@ -215,7 +284,7 @@ fn plain_and_uppercase(
         let end = w.last;
 
         if w.transform == 0 {
-            let matchlen = dict_match_length(data, id, l, max_length);
+            let matchlen = dict_match_length(simd, data, id, l, max_length);
 
             // "" + IDENTITY + ""
             if matchlen == l {
@@ -260,7 +329,7 @@ fn plain_and_uppercase(
         } else {
             // UPPERCASE_FIRST or UPPERCASE_ALL.
             let is_all_caps = w.transform != TRANSFORM_UPPERCASE_FIRST;
-            if !is_match(w, data, max_length) {
+            if !is_match(simd, w, data, max_length) {
                 if end {
                     return found;
                 }
@@ -552,7 +621,13 @@ fn uppercase_suffix(
 }
 
 /// Words matching after a leading `" "` or `"."`.
-fn space_or_dot_prefix(data: &[u8], max_length: usize, matches: &mut [u32]) -> bool {
+#[inline(always)]
+fn space_or_dot_prefix<S: Simd>(
+    simd: S,
+    data: &[u8],
+    max_length: usize,
+    matches: &mut [u32],
+) -> bool {
     if max_length < 5 {
         return false;
     }
@@ -575,7 +650,7 @@ fn space_or_dot_prefix(data: &[u8], max_length: usize, matches: &mut [u32]) -> b
         let end = w.last;
 
         if w.transform == 0 {
-            if !is_match(w, tail, max_length - 1) {
+            if !is_match(simd, w, tail, max_length - 1) {
                 if end {
                     return found;
                 }
@@ -617,7 +692,7 @@ fn space_or_dot_prefix(data: &[u8], max_length: usize, matches: &mut [u32]) -> b
             }
         } else if is_space {
             let is_all_caps = w.transform != TRANSFORM_UPPERCASE_FIRST;
-            if !is_match(w, tail, max_length - 1) {
+            if !is_match(simd, w, tail, max_length - 1) {
                 if end {
                     return found;
                 }
@@ -673,7 +748,8 @@ fn space_or_dot_prefix(data: &[u8], max_length: usize, matches: &mut [u32]) -> b
 }
 
 /// Words matching after a leading `"e "`, `"s "`, `", "` or `"\xC2\xA0"`.
-fn two_byte_prefix(data: &[u8], max_length: usize, matches: &mut [u32]) -> bool {
+#[inline(always)]
+fn two_byte_prefix<S: Simd>(simd: S, data: &[u8], max_length: usize, matches: &mut [u32]) -> bool {
     if max_length < 6 {
         return false;
     }
@@ -695,7 +771,7 @@ fn two_byte_prefix(data: &[u8], max_length: usize, matches: &mut [u32]) -> bool 
         let n = words_of_length(l);
         let end = w.last;
 
-        if w.transform == 0 && is_match(w, tail, max_length - 2) {
+        if w.transform == 0 && is_match(simd, w, tail, max_length - 2) {
             if at(0) == 0xC2 {
                 add_match(w.idx + 102 * n, l + 2, l, matches);
                 found = true;
@@ -717,7 +793,8 @@ fn two_byte_prefix(data: &[u8], max_length: usize, matches: &mut [u32]) -> bool 
 }
 
 /// Words matching after a leading `" the "` or `".com/"`.
-fn long_prefix(data: &[u8], max_length: usize, matches: &mut [u32]) -> bool {
+#[inline(always)]
+fn long_prefix<S: Simd>(simd: S, data: &[u8], max_length: usize, matches: &mut [u32]) -> bool {
     if max_length < 9 {
         return false;
     }
@@ -740,7 +817,7 @@ fn long_prefix(data: &[u8], max_length: usize, matches: &mut [u32]) -> bool {
         let id = w.idx;
         let end = w.last;
 
-        if w.transform == 0 && is_match(w, tail, max_length - 5) {
+        if w.transform == 0 && is_match(simd, w, tail, max_length - 5) {
             add_match(id + if the { 41 } else { 72 } * n, l + 5, l, matches);
             found = true;
             if l + 5 < max_length && the {
@@ -775,12 +852,41 @@ fn long_prefix(data: &[u8], max_length: usize, matches: &mut [u32]) -> bool {
 mod tests {
     use super::*;
     use alloc::vec::Vec;
+    use fearless_simd::{Level, dispatch};
+
+    /// Runs the search on the host's SIMD level and on the scalar fallback,
+    /// over `data` and over `data` followed by bytes past `max_length` — the
+    /// vector comparison engages only with 32 readable bytes — and returns
+    /// the table once every run has agreed on it.
+    fn search(
+        data: &[u8],
+        min_length: usize,
+        max_length: usize,
+    ) -> [u32; MAX_STATIC_DICTIONARY_MATCH_LEN + 1] {
+        let mut padded = data[..max_length.min(data.len())].to_vec();
+        while padded.len() < max_length + 40 {
+            padded.extend_from_slice(b" ing the .com/ of ");
+        }
+        let mut tables = Vec::new();
+        for level in [
+            Level::try_detect().unwrap_or_else(Level::baseline),
+            Level::fallback(),
+        ] {
+            for input in [data, &padded[..]] {
+                let mut matches = [INVALID_MATCH; MAX_STATIC_DICTIONARY_MATCH_LEN + 1];
+                dispatch!(level, simd => find_all(simd, input, min_length, max_length, &mut matches));
+                tables.push(matches);
+            }
+        }
+        for table in &tables[1..] {
+            assert_eq!(*table, tables[0], "data {:?}", &data[..data.len().min(24)]);
+        }
+        tables[0]
+    }
 
     /// Runs the search over `data`, returning the per-length match table.
     fn find(data: &[u8]) -> [u32; MAX_STATIC_DICTIONARY_MATCH_LEN + 1] {
-        let mut matches = [INVALID_MATCH; MAX_STATIC_DICTIONARY_MATCH_LEN + 1];
-        find_all(data, 4, data.len(), &mut matches);
-        matches
+        search(data, 4, data.len())
     }
 
     /// Runs the C search over `data`, returning its per-length match table.
@@ -807,8 +913,7 @@ mod tests {
     fn assert_matches_c(name: &str, data: &[u8]) {
         for min_length in [4usize, 5, 8, 12, 20] {
             let expected = c_find(data, min_length);
-            let mut actual = [INVALID_MATCH; MAX_STATIC_DICTIONARY_MATCH_LEN + 1];
-            find_all(data, min_length, data.len(), &mut actual);
+            let actual = search(data, min_length, data.len());
             assert_eq!(
                 actual,
                 expected,
@@ -1038,8 +1143,7 @@ mod tests {
     fn an_omit_last_transform_shortens_a_longer_word() {
         // "download" with its last byte omitted is a seven-byte match, which
         // only the OMIT_LAST_1 transform can produce.
-        let mut table = [INVALID_MATCH; MAX_STATIC_DICTIONARY_MATCH_LEN + 1];
-        find_all(b"downloa!!!!!!!!", 4, 15, &mut table);
+        let table = search(b"downloa!!!!!!!!", 4, 15);
         assert!(
             table[7] < INVALID_MATCH,
             "omit-last-1 was missed: {:?}",
@@ -1089,9 +1193,10 @@ mod tests {
         // Each prefixed family has its own minimum length; below all of them
         // only the plain search runs, and it cannot match four bytes of one.
         let mut matches = [INVALID_MATCH; MAX_STATIC_DICTIONARY_MATCH_LEN + 1];
-        assert!(!space_or_dot_prefix(b" the", 4, &mut matches));
-        assert!(!two_byte_prefix(b"e the", 5, &mut matches));
-        assert!(!long_prefix(b" the tim", 8, &mut matches));
+        let simd = fearless_simd::Fallback::new();
+        assert!(!space_or_dot_prefix(simd, b" the", 4, &mut matches));
+        assert!(!two_byte_prefix(simd, b"e the", 5, &mut matches));
+        assert!(!long_prefix(simd, b" the tim", 8, &mut matches));
     }
 
     #[test]

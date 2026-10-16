@@ -64,25 +64,37 @@ fn parse_as_utf8(input: &[u8]) -> (usize, u32) {
     (1, NOT_UTF8 | u32::from(byte(0)))
 }
 
-/// Returns whether at least three quarters of `length` bytes parse as UTF-8.
+/// Returns whether more than three quarters of `length` bytes parse as UTF-8.
 ///
 /// Mirrors `BrotliIsMostlyUTF8`. `pos` and `mask` address the ring buffer, so
 /// the run may wrap; a run that does not is scanned in place, and one that
 /// does hands the sequence decoder a contiguous copy of what it needs.
+///
+/// The scan stops as soon as the answer is settled: once enough bytes have
+/// parsed, or once too few remain for the rest to make up the difference.
 pub(crate) fn is_mostly_utf8(data: &[u8], pos: usize, mask: usize, length: usize) -> bool {
+    let needed = utf8_bytes_needed(length);
     let end = pos + length;
-    let size_utf8 = match data.get(pos..end) {
-        Some(run) if end.saturating_sub(1) <= mask || length == 0 => utf8_bytes_in(run),
-        _ => utf8_bytes_wrapping(data, pos, mask, length),
-    };
-    size_utf8 as f64 > MIN_UTF8_RATIO * length as f64
+    match data.get(pos..end) {
+        Some(run) if end.saturating_sub(1) <= mask || length == 0 => reaches_in(run, needed),
+        _ => reaches_wrapping(data, pos, mask, length, needed),
+    }
 }
 
-/// Counts the bytes of `run` that belong to valid sequences.
+/// The fewest valid-sequence bytes that pass the reference's
+/// `size_utf8 > kMinUTF8Ratio * length`.
+///
+/// `0.75 * length` is exact in an `f64` for every addressable length, so the
+/// count passes exactly when it reaches the next integer above the product.
+fn utf8_bytes_needed(length: usize) -> usize {
+    (MIN_UTF8_RATIO * length as f64) as usize + 1
+}
+
+/// Returns whether at least `needed` bytes of `run` belong to valid sequences.
 ///
 /// Eight bytes that are all ASCII other than NUL each parse as a one-byte
 /// sequence, so such a word is counted whole without decoding it.
-fn utf8_bytes_in(run: &[u8]) -> usize {
+fn reaches_in(run: &[u8], needed: usize) -> bool {
     const HIGH_BITS: u64 = 0x8080_8080_8080_8080;
     const LOW_BITS: u64 = 0x0101_0101_0101_0101;
     let mut size_utf8 = 0usize;
@@ -94,6 +106,9 @@ fn utf8_bytes_in(run: &[u8]) -> usize {
             if word & HIGH_BITS == 0 && has_zero == 0 {
                 size_utf8 += 8;
                 index += 8;
+                if size_utf8 >= needed {
+                    return true;
+                }
                 continue;
             }
         }
@@ -101,13 +116,19 @@ fn utf8_bytes_in(run: &[u8]) -> usize {
         index += bytes_read;
         if symbol < NOT_UTF8 {
             size_utf8 += bytes_read;
+            if size_utf8 >= needed {
+                return true;
+            }
+        } else if size_utf8 + (run.len() - index) < needed {
+            // Even if every remaining byte parsed, the run would fall short.
+            return false;
         }
     }
-    size_utf8
+    size_utf8 >= needed
 }
 
-/// Counts the valid-sequence bytes of a run that wraps the ring buffer.
-fn utf8_bytes_wrapping(data: &[u8], pos: usize, mask: usize, length: usize) -> usize {
+/// [`reaches_in`] for a run that wraps the ring buffer.
+fn reaches_wrapping(data: &[u8], pos: usize, mask: usize, length: usize, needed: usize) -> bool {
     let mut size_utf8 = 0usize;
     let mut index = 0usize;
     // Four bytes is the widest sequence, so a small window is enough to hand
@@ -126,9 +147,14 @@ fn utf8_bytes_wrapping(data: &[u8], pos: usize, mask: usize, length: usize) -> u
         index += bytes_read;
         if symbol < NOT_UTF8 {
             size_utf8 += bytes_read;
+            if size_utf8 >= needed {
+                return true;
+            }
+        } else if size_utf8 + (length - index) < needed {
+            return false;
         }
     }
-    size_utf8
+    size_utf8 >= needed
 }
 
 #[cfg(test)]
@@ -237,5 +263,82 @@ mod tests {
             is_mostly_utf8(&ring, start, mask, text.len()),
             mostly_utf8(text)
         );
+    }
+
+    /// The reference's full count, without stopping early.
+    fn reference_answer(data: &[u8]) -> bool {
+        let mut size_utf8 = 0usize;
+        let mut index = 0usize;
+        while index < data.len() {
+            let (bytes_read, symbol) = parse_as_utf8(&data[index..]);
+            index += bytes_read;
+            if symbol < NOT_UTF8 {
+                size_utf8 += bytes_read;
+            }
+        }
+        size_utf8 as f64 > MIN_UTF8_RATIO * data.len() as f64
+    }
+
+    #[test]
+    fn the_needed_count_is_the_first_integer_past_three_quarters() {
+        assert_eq!(utf8_bytes_needed(0), 1);
+        assert_eq!(utf8_bytes_needed(4), 4);
+        assert_eq!(utf8_bytes_needed(5), 4);
+        assert_eq!(utf8_bytes_needed(8), 7);
+        for length in 0..10_000usize {
+            let needed = utf8_bytes_needed(length);
+            assert!(needed as f64 > MIN_UTF8_RATIO * length as f64);
+            assert!((needed - 1) as f64 <= MIN_UTF8_RATIO * length as f64);
+        }
+    }
+
+    #[test]
+    fn stopping_early_gives_the_full_counts_answer() {
+        let mut rng = 0x5851_F42D_4C95_7F2Du64;
+        let mut next = move || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng
+        };
+        let pieces: [&[u8]; 6] = [
+            b"text ",
+            b"\xC3\xA9",
+            b"\xE2\x82\xAC",
+            b"\xF0\x9F\x98\x80",
+            b"\xFF",
+            b"\0",
+        ];
+        for round in 0..3000 {
+            // The share of invalid pieces sweeps through the ratio boundary.
+            let invalid_share = round % 11;
+            let mut data = Vec::new();
+            let target = (next() % 96) as usize;
+            while data.len() < target {
+                let piece = if (next() % 10) < invalid_share as u64 {
+                    pieces[4 + (next() % 2) as usize]
+                } else {
+                    pieces[(next() % 4) as usize]
+                };
+                data.extend_from_slice(piece);
+            }
+            data.truncate(target);
+            assert_eq!(
+                mostly_utf8(&data),
+                reference_answer(&data),
+                "round {round}: {data:?}"
+            );
+            let mut ring = vec![0u8; 128];
+            let mask = ring.len() - 1;
+            let start = (next() % 128) as usize;
+            for (offset, &byte) in data.iter().enumerate() {
+                ring[(start + offset) & mask] = byte;
+            }
+            assert_eq!(
+                is_mostly_utf8(&ring, start, mask, data.len()),
+                reference_answer(&data),
+                "round {round}, start {start}"
+            );
+        }
     }
 }
