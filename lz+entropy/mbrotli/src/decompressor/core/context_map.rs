@@ -77,12 +77,16 @@ impl ContextMap {
                     };
                     self.trees = n + 1;
                     self.index = 0;
-                    memory.resize(&mut self.values, size)?;
-                    self.values.fill(0);
+                    self.values.clear();
                     if n == 0 {
+                        // One tree: every context maps to it.
+                        memory.resize(&mut self.values, size)?;
                         self.stage = Stage::Complete;
                         return Ok(true);
                     }
+                    // Entries and zero runs append every value in order, so
+                    // the map needs capacity, not a zero fill.
+                    memory.reserve(&mut self.values, size)?;
                     self.stage = Stage::RunPrefix;
                 }
                 Stage::RunPrefix => {
@@ -130,7 +134,7 @@ impl ContextMap {
                     if value >= self.trees {
                         return Err(InvalidDataKind::ContextMap.into());
                     }
-                    self.values[self.index] = value as u8;
+                    self.values.push(value as u8);
                     self.index += 1;
                 }
                 Stage::Repeat { width } => {
@@ -141,7 +145,7 @@ impl ContextMap {
                     if end > size {
                         return Err(InvalidDataKind::ContextMap.into());
                     }
-                    self.values[self.index..end].fill(0);
+                    self.values.resize(end, 0);
                     self.index = end;
                     self.stage = Stage::Entries;
                 }

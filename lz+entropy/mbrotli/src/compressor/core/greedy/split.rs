@@ -112,6 +112,33 @@ impl<const N: usize> BlockSplitter<N> {
         }
     }
 
+    /// Counts every byte of `symbols`, closing blocks as they fill.
+    ///
+    /// The same counts and the same block boundaries as one
+    /// [`add_symbol`](Self::add_symbol) per byte: a block is never full
+    /// between symbols, so the run is cut where the current block fills, and
+    /// only there is the histogram looked up again.
+    pub(crate) fn add_bytes(&mut self, mut symbols: &[u8]) {
+        while !symbols.is_empty() {
+            // At least one symbol per pass, should the invariant ever break.
+            let room = self
+                .target_block_size
+                .saturating_sub(self.block_size)
+                .max(1);
+            let (now, rest) = symbols.split_at(room.min(symbols.len()));
+            if let Some(histogram) = self.histograms.get_mut(self.curr_histogram_ix) {
+                for &symbol in now {
+                    histogram.add(usize::from(symbol));
+                }
+            }
+            self.block_size += now.len();
+            if self.block_size == self.target_block_size {
+                self.finish_block(false);
+            }
+            symbols = rest;
+        }
+    }
+
     /// Adds the block being gathered into the histogram at `target`.
     fn merge_current_into(&mut self, target: usize) {
         let current = self.curr_histogram_ix;
@@ -145,8 +172,8 @@ impl<const N: usize> BlockSplitter<N> {
     pub(crate) fn finish_block(&mut self, is_final: bool) {
         self.block_size = self.block_size.max(self.min_block_size);
         if self.num_blocks == 0 {
-            self.split.lengths[0] = self.block_size as u32;
-            self.split.types[0] = 0;
+            self.split.lengths.push(self.block_size as u32);
+            self.split.types.push(0);
             self.last_entropy[0] = bits_entropy(&self.histograms[0].data[..self.alphabet_size]);
             self.last_entropy[1] = self.last_entropy[0];
             self.num_blocks += 1;
@@ -175,8 +202,8 @@ impl<const N: usize> BlockSplitter<N> {
             {
                 // The block looks nothing like either neighbour: give it a
                 // type of its own.
-                self.split.lengths[self.num_blocks] = self.block_size as u32;
-                self.split.types[self.num_blocks] = self.split.num_types as u8;
+                self.split.lengths.push(self.block_size as u32);
+                self.split.types.push(self.split.num_types as u8);
                 self.last_histogram_ix[1] = self.last_histogram_ix[0];
                 // The reference narrows this to a byte, which only matters at
                 // the very last usable type.
@@ -191,8 +218,8 @@ impl<const N: usize> BlockSplitter<N> {
                 self.target_block_size = self.min_block_size;
             } else if diff[1] < diff[0] - SECOND_LAST_ADVANTAGE {
                 // It looks like the block before last: reuse that type.
-                self.split.lengths[self.num_blocks] = self.block_size as u32;
-                self.split.types[self.num_blocks] = self.split.types[self.num_blocks - 2];
+                self.split.lengths.push(self.block_size as u32);
+                self.split.types.push(self.split.types[self.num_blocks - 2]);
                 self.last_histogram_ix.swap(0, 1);
                 self.merge_current_into(self.last_histogram_ix[0]);
                 self.last_entropy[1] = self.last_entropy[0];
@@ -371,8 +398,8 @@ impl ContextBlockSplitter {
         let contexts = self.num_contexts;
         self.block_size = self.block_size.max(self.min_block_size);
         if self.num_blocks == 0 {
-            self.split.lengths[0] = self.block_size as u32;
-            self.split.types[0] = 0;
+            self.split.lengths.push(self.block_size as u32);
+            self.split.types.push(0);
             for index in 0..contexts {
                 self.last_entropy[index] =
                     bits_entropy(&self.histograms[index].data[..self.alphabet_size]);
@@ -406,8 +433,8 @@ impl ContextBlockSplitter {
                 && diff[0] > self.split_threshold
                 && diff[1] > self.split_threshold
             {
-                self.split.lengths[self.num_blocks] = self.block_size as u32;
-                self.split.types[self.num_blocks] = self.split.num_types as u8;
+                self.split.lengths.push(self.block_size as u32);
+                self.split.types.push(self.split.num_types as u8);
                 self.last_histogram_ix[1] = self.last_histogram_ix[0];
                 self.last_histogram_ix[0] = self.split.num_types * contexts;
                 for (index, &entropy) in entropy.iter().enumerate().take(contexts) {
@@ -421,8 +448,8 @@ impl ContextBlockSplitter {
                 self.merge_last_count = 0;
                 self.target_block_size = self.min_block_size;
             } else if diff[1] < diff[0] - SECOND_LAST_ADVANTAGE {
-                self.split.lengths[self.num_blocks] = self.block_size as u32;
-                self.split.types[self.num_blocks] = self.split.types[self.num_blocks - 2];
+                self.split.lengths.push(self.block_size as u32);
+                self.split.types.push(self.split.types[self.num_blocks - 2]);
                 self.last_histogram_ix.swap(0, 1);
                 for index in 0..contexts {
                     self.merge_current_into(self.last_histogram_ix[0] + index, index);
@@ -481,6 +508,46 @@ mod tests {
         }
         splitter.finish_block(true);
         splitter
+    }
+
+    #[test]
+    fn adding_runs_of_bytes_matches_adding_them_one_at_a_time() {
+        // Stretches of different character, so blocks open, merge and reuse
+        // types, cut into runs of every length from empty to several blocks.
+        let mut symbols = Vec::new();
+        for round in 0..30u32 {
+            let span = 300 + 97 * (round as usize % 7);
+            symbols.extend((0..span).map(|i| match round % 3 {
+                0 => (i % 5) as u8,
+                1 => (i * 31 % 251) as u8,
+                _ => 200,
+            }));
+        }
+        let expected = split_literals(&symbols);
+        for run in [1usize, 2, 7, 511, 512, 513, 1500, symbols.len()] {
+            let mut splitter =
+                BlockSplitter::<NUM_LITERAL_SYMBOLS>::new(256, 512, 400.0, symbols.len());
+            splitter.add_bytes(&[]);
+            for chunk in symbols.chunks(run) {
+                splitter.add_bytes(chunk);
+            }
+            splitter.finish_block(true);
+            assert_eq!(
+                splitter.split.num_types, expected.split.num_types,
+                "run {run}"
+            );
+            assert_eq!(
+                splitter.split.num_blocks, expected.split.num_blocks,
+                "run {run}"
+            );
+            assert_eq!(splitter.split.types, expected.split.types, "run {run}");
+            assert_eq!(splitter.split.lengths, expected.split.lengths, "run {run}");
+            assert_eq!(splitter.histograms.len(), expected.histograms.len());
+            for (actual, expected) in splitter.histograms.iter().zip(&expected.histograms) {
+                assert_eq!(actual.data, expected.data, "run {run}");
+                assert_eq!(actual.total_count, expected.total_count, "run {run}");
+            }
+        }
     }
 
     #[test]
@@ -578,11 +645,14 @@ mod tests {
     }
 
     #[test]
-    fn a_fresh_split_reserves_room_for_every_block() {
+    fn reserving_empties_the_split_and_keeps_room_for_every_block() {
         let mut split = BlockSplit::default();
+        split.types.push(1);
+        split.lengths.push(9);
+        split.num_blocks = 1;
         split.reserve(5);
-        assert_eq!(split.num_blocks, 5);
-        assert_eq!(split.types.len(), 5);
-        assert_eq!(split.lengths.len(), 5);
+        assert_eq!(split.num_blocks, 0);
+        assert!(split.types.is_empty() && split.lengths.is_empty());
+        assert!(split.types.capacity() >= 5 && split.lengths.capacity() >= 5);
     }
 }

@@ -5,7 +5,9 @@
 //! a borrowed `DictionaryRef` in `DecoderSession`, and over an owned
 //! `Decompressor` and dictionary in `DecoderSessionOwned`.
 
-use super::{Input, Output, Stop};
+use core::mem::MaybeUninit;
+
+use super::{Input, Output, Sink, Stop};
 use crate::Window;
 use crate::decompressor::session::{DecodeFailure, DecodeOperation, DecodeProgress, DecoderStatus};
 use crate::decompressor::{DecodeError, DecodeStreamConfig, Decompressor, MemberMode, OutputSize};
@@ -33,7 +35,11 @@ pub(crate) enum Delivery {
     Slice,
     /// Decode into the ring up to this capacity; the owned Vec takes it.
     Collect(usize),
-    /// Decode the first member straight into the caller's slice.
+    /// Decode the first member straight into the caller's slice, which also
+    /// serves as its history. The slice starts with everything the operation
+    /// produced so far, so a call continues at `total_out`: every call of an
+    /// operation must pass `Linear` with the same bytes in front, which lets
+    /// a caller grow the slice between calls without losing history.
     Linear,
 }
 
@@ -92,6 +98,40 @@ impl OperationState {
         operation: DecodeOperation,
         delivery: Delivery,
     ) -> Result<DecodeProgress, DecodeFailure> {
+        self.run(decoder, dictionary, input, output, operation, delivery)
+    }
+
+    /// Runs one call of the streaming contract into uninitialized memory.
+    ///
+    /// Always delivers as [`Delivery::Slice`]: `output` cannot serve as
+    /// history, so every byte is copied out of the ring.
+    pub(crate) fn process_uninit(
+        &mut self,
+        decoder: &mut Decompressor,
+        dictionary: Option<DictionaryRef<'_>>,
+        input: &[u8],
+        output: &mut [MaybeUninit<u8>],
+        operation: DecodeOperation,
+    ) -> Result<DecodeProgress, DecodeFailure> {
+        self.run(
+            decoder,
+            dictionary,
+            input,
+            output,
+            operation,
+            Delivery::Slice,
+        )
+    }
+
+    fn run<'a, O: Sink<'a>>(
+        &mut self,
+        decoder: &mut Decompressor,
+        dictionary: Option<DictionaryRef<'_>>,
+        input: &[u8],
+        output: O,
+        operation: DecodeOperation,
+        delivery: Delivery,
+    ) -> Result<DecodeProgress, DecodeFailure> {
         let invalid = |error| DecodeFailure {
             error,
             consumed: 0,
@@ -120,6 +160,18 @@ impl OperationState {
             self.final_end = end;
             self.finishing = true;
         }
+        // A linear slice holds the operation's earlier output in front of
+        // the space this call may write.
+        let start = match delivery {
+            Delivery::Linear => usize::try_from(self.total_out)
+                .ok()
+                .filter(|&start| start <= output.len()),
+            Delivery::Slice | Delivery::Collect(_) => Some(0),
+        };
+        let Some(start) = start else {
+            self.failed = true;
+            return Err(invalid(DecodeError::InternalInvariant));
+        };
         let config = decoder.config;
         let limits = config.limits();
         let mut input = Input::new(input, self.total_in, limits.max_input_bytes());
@@ -128,12 +180,12 @@ impl OperationState {
                 Delivery::Collect(capacity) => Some(capacity),
                 Delivery::Slice | Delivery::Linear => None,
             },
-            // Only a call that starts the operation begins its first member
-            // at `output[0]`; the member boundary below turns it off.
-            linear: delivery == Delivery::Linear && self.total_in == 0 && self.total_out == 0,
+            // The first member begins at `output[0]` and stays linear across
+            // calls until the member boundary below turns it off.
+            linear: delivery == Delivery::Linear && self.members == 0 && !self.boundary,
             bytes: output,
-            produced: 0,
-            total_before: self.total_out,
+            produced: start,
+            total_before: self.total_out - start as u64,
             limit: limits.max_output_bytes(),
             exact: self.stream.output_size(),
         };
@@ -143,7 +195,7 @@ impl OperationState {
                     || (self.finishing && input.consumed == input.bytes.len())
                 {
                     if let OutputSize::Exact(expected) = self.stream.output_size() {
-                        let actual = self.total_out + output.produced as u64;
+                        let actual = output.total_before + output.produced as u64;
                         if actual != expected {
                             return Err(DecodeError::OutputSizeMismatch { expected, actual });
                         }
@@ -180,12 +232,13 @@ impl OperationState {
                 }
             }
         })();
+        let produced = output.produced - start;
         self.total_in += input.consumed as u64;
-        self.total_out += output.produced as u64;
+        self.total_out += produced as u64;
         match result {
             Ok(status) => Ok(DecodeProgress {
                 consumed: input.consumed,
-                produced: output.produced,
+                produced,
                 status,
             }),
             Err(error) => {
@@ -193,7 +246,7 @@ impl OperationState {
                 Err(DecodeFailure {
                     error,
                     consumed: input.consumed,
-                    produced: output.produced,
+                    produced,
                 })
             }
         }
@@ -233,5 +286,98 @@ impl OperationState {
     /// Most recently accepted window header.
     pub(crate) const fn window(&self) -> Option<Window> {
         self.window
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::decompressor::DecoderConfig;
+
+    /// `hello` as one stored meta-block.
+    const HELLO: [u8; 9] = [0x0b, 0x02, 0x80, b'h', b'e', b'l', b'l', b'o', 0x03];
+
+    fn started(decoder: &mut Decompressor) -> OperationState {
+        OperationState::start(decoder, DecodeStreamConfig::default()).expect("starts")
+    }
+
+    #[test]
+    fn a_linear_call_resumes_after_the_bytes_already_produced() {
+        let mut decoder = Decompressor::new(DecoderConfig::default()).expect("a decoder");
+        let mut operation = started(&mut decoder);
+        let mut output = [0; 5];
+        let first = operation
+            .process(
+                &mut decoder,
+                None,
+                &HELLO,
+                &mut output[..2],
+                DecodeOperation::Finish,
+                Delivery::Linear,
+            )
+            .expect("decodes");
+        assert_eq!(first.produced, 2);
+        assert_eq!(first.status, DecoderStatus::NeedsOutput);
+
+        let second = operation
+            .process(
+                &mut decoder,
+                None,
+                &HELLO[first.consumed..],
+                &mut output,
+                DecodeOperation::Finish,
+                Delivery::Linear,
+            )
+            .expect("decodes");
+        assert_eq!(second.produced, 3);
+        assert_eq!(second.status, DecoderStatus::Finished);
+        assert_eq!(&output, b"hello");
+        assert_eq!(operation.total_out(), 5);
+    }
+
+    #[test]
+    fn a_linear_slice_shorter_than_the_output_so_far_fails_the_operation() {
+        let mut decoder = Decompressor::new(DecoderConfig::default()).expect("a decoder");
+        let mut operation = started(&mut decoder);
+        let mut output = [0; 5];
+        let first = operation
+            .process(
+                &mut decoder,
+                None,
+                &HELLO,
+                &mut output[..2],
+                DecodeOperation::Finish,
+                Delivery::Linear,
+            )
+            .expect("decodes");
+
+        let failure = operation
+            .process(
+                &mut decoder,
+                None,
+                &HELLO[first.consumed..],
+                &mut output[..1],
+                DecodeOperation::Finish,
+                Delivery::Linear,
+            )
+            .expect_err("the slice lost history");
+        assert!(matches!(failure.error, DecodeError::InternalInvariant));
+        assert_eq!((failure.consumed, failure.produced), (0, 0));
+        let again = operation.process(
+            &mut decoder,
+            None,
+            &HELLO[first.consumed..],
+            &mut output,
+            DecodeOperation::Finish,
+            Delivery::Linear,
+        );
+        assert!(matches!(
+            again,
+            Err(DecodeFailure {
+                error: DecodeError::InvalidState,
+                ..
+            })
+        ));
+        operation.release(&mut decoder);
     }
 }

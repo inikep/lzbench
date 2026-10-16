@@ -1,0 +1,39 @@
+[package]
+name = "branches"
+version = "0.5.1"
+edition = "2018"
+rust-version = "1.51"
+authors = ["Khashayar Fereidani"]
+description = "Branch hinting prediction and control functions for stable Rust including likely, unlikely, assume and abort, plus read and write cpu prefetch functions to help algorithm optimization"
+repository = "https://github.com/fereidani/branches"
+documentation = "https://docs.rs/branches"
+keywords = ["branch", "likely", "unlikely", "no_std", "optimization"]
+categories = ["no-std"]
+license = "MIT"
+readme = "README.md"
+
+[features]
+default = ["std", "prefetch"]
+std = []
+prefetch = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+    'cfg(branches_stable)',
+    'cfg(branches_nightly)',
+    'cfg(branches_cold_weights)',
+    'cfg(rustc_ge_1_54_0)',
+    'cfg(rustc_ge_1_57_0)',
+    'cfg(rustc_ge_1_59_0)',
+    'cfg(rustc_ge_1_81_0)',
+    'cfg(rustc_ge_1_84_0)',
+    'cfg(rustc_ge_1_95_0)',
+    'cfg(branches_check_asm)',
+] }
+
+[dev-dependencies]
+criterion = "0.8"
+
+[[bench]]
+name = "bench"
+harness = false

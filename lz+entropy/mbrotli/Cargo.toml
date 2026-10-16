@@ -1,15 +1,15 @@
 # Trimmed for lzbench: dev-dependencies, benches, examples, the workspace and
-# the experimental/hotpath features were stubbed out (they reference files that
-# are not vendored). The library sources in src/ are unmodified.
+# the experimental/hotpath features were stubbed out (they reference files and
+# crates that are not vendored). The library sources in src/ are unmodified.
 [package]
 name = "mbrotli"
-version = "0.5.2"
+version = "0.5.15"
 edition = "2024"
 rust-version = "1.89"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 description = "Fast Brotli (RFC 7932 and RFC 9841) compression and decompression in safe Rust; encoding is byte-identical to Google's reference encoder"
-repository = "https://github.com/Mnwa/mbrotli"
-homepage = "https://github.com/Mnwa/mbrotli"
+repository = "https://github.com/M-Compressors/mbrotli"
+homepage = "https://github.com/M-Compressors/mbrotli"
 documentation = "https://docs.rs/mbrotli"
 readme = "README.md"
 keywords = ["brotli", "compression", "encoder", "simd"]
@@ -20,8 +20,21 @@ version = "1"
 optional = true
 default-features = false
 
+# `#[simd]` enters a token's feature context with each argument passed
+# separately, where `Simd::vectorize` moves them into one closure struct.
+[dependencies.fearless_simd_macros]
+version = "0.1"
+optional = true
+
 [dependencies.thiserror]
 version = "2"
+optional = true
+default-features = false
+
+# Safe bookkeeping for the decoder's uninitialized one-shot destination: its
+# filled prefix is readable history without `unsafe` in this crate.
+[dependencies.borrowed-buf]
+version = "0.1.1"
 optional = true
 default-features = false
 
@@ -32,8 +45,8 @@ optional = true
 [features]
 default = ["std", "compression", "decompression"]
 # Independently selectable public codecs and their private implementations.
-compression = ["dep:fearless_simd", "dep:thiserror"]
-decompression = ["dep:fearless_simd", "dep:thiserror"]
+compression = ["dep:fearless_simd", "dep:fearless_simd_macros", "dep:thiserror"]
+decompression = ["dep:fearless_simd", "dep:thiserror", "dep:borrowed-buf"]
 # Dependency runtime detection for ordinary builds.
 std = ["fearless_simd?/std", "thiserror?/std"]
 # Opt-in alloc-backed support; overrides std-only APIs and instrumentation.

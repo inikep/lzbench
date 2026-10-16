@@ -2,13 +2,13 @@
 # crate-type reduced to rlib.
 [package]
 name = "mbrotli-ffi"
-version = "0.1.0"
+version = "0.2.3"
 edition = "2024"
 rust-version = "1.89"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 description = "C ABI for mbrotli: one-shot Brotli compression and decompression"
-repository = "https://github.com/Mnwa/mbrotli"
-homepage = "https://github.com/Mnwa/mbrotli"
+repository = "https://github.com/M-Compressors/mbrotli"
+homepage = "https://github.com/M-Compressors/mbrotli"
 readme = "README.md"
 keywords = ["brotli", "compression", "ffi", "c"]
 categories = ["compression", "external-ffi-bindings"]
@@ -21,9 +21,14 @@ crate-type = ["rlib"]
 
 [dependencies.mbrotli]
 path = ".."
-version = "0.5.2"
+version = "0.5.15"
 default-features = false
 features = ["std", "compression", "decompression"]
+
+# Zeroes small C destinations into initialized slices without `unsafe`.
+[dependencies.borrowed-buf]
+version = "0.1.1"
+default-features = false
 
 [dependencies.thiserror]
 version = "2"

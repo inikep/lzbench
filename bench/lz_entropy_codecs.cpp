@@ -94,6 +94,24 @@ int64_t lzbench_gobrrr_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 
+#ifndef BENCH_REMOVE_MZSTD
+#include "mzstd/mzstd-ffi/include/mzstd.h"
+
+int64_t lzbench_mzstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    size_t actual_osize = outsize;
+    return mzstd_compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize, codec_options->level) == MZSTD_OK ? actual_osize : 0;
+}
+int64_t lzbench_mzstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    size_t actual_osize = outsize;
+    return mzstd_decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize) == MZSTD_OK ? actual_osize : 0;
+}
+
+#endif // BENCH_REMOVE_MZSTD
+
+
+
 #ifndef BENCH_REMOVE_FASTLZMA2
 #include "lz+entropy/fast-lzma2/fast-lzma2.h"
 

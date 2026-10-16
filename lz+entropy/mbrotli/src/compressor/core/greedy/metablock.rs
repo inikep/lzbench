@@ -13,7 +13,8 @@ use super::split::{BlockSplitter, ContextBlockSplitter};
 use crate::shared::command::Command;
 use crate::shared::constants::{NUM_COMMAND_SYMBOLS, NUM_LITERAL_SYMBOLS};
 use crate::shared::distance::NUM_HISTOGRAM_DISTANCE_SYMBOLS;
-use crate::shared::metablock::{LITERAL_CONTEXT_BITS, MetaBlockSplit};
+use crate::shared::metablock::MetaBlockSplit;
+use crate::shared::ringbuffer::contiguous;
 
 /// Smallest literal block, and the threshold a new literal type has to beat.
 const LITERAL_MIN_BLOCK: usize = 512;
@@ -43,19 +44,10 @@ fn map_static_contexts(num_contexts: usize, static_map: &[u32; 64], mb: &mut Met
     mb.literal_context_map.clear();
     // One entry per raw context of every block type.
     mb.literal_context_map
-        .resize(num_types << LITERAL_CONTEXT_BITS, 0);
-    for (block_type, slots) in mb
-        .literal_context_map
-        .as_chunks_mut::<{ 1usize << LITERAL_CONTEXT_BITS }>()
-        .0
-        .iter_mut()
-        .enumerate()
-    {
-        let offset = (block_type * num_contexts) as u32;
-        for (slot, &context) in slots.iter_mut().zip(static_map.iter()) {
-            *slot = offset + context;
-        }
-    }
+        .extend((0..num_types).flat_map(|block_type| {
+            let offset = (block_type * num_contexts) as u32;
+            static_map.iter().map(move |&context| offset + context)
+        }));
 }
 
 /// Splits a meta-block into blocks and gathers their histograms.
@@ -151,24 +143,38 @@ pub(crate) fn build_meta_block_greedy_into(
     let mut prev_byte2 = prev_byte2;
     for command in commands {
         cmd_blocks.add_symbol(usize::from(command.cmd_prefix));
-        for _ in 0..command.insert_len {
-            let literal = ringbuffer.get(pos & mask).copied().unwrap_or(0);
-            match (&mut plain_literals, &mut context_literals, static_map) {
-                (Some(splitter), _, _) => splitter.add_symbol(usize::from(literal)),
-                (_, Some(splitter), Some(map)) => {
+        let insert_len = command.insert_len as usize;
+        if let Some(splitter) = &mut plain_literals {
+            // Without contexts the previous bytes are never read, and a run
+            // of literals that does not wrap the ring is one slice.
+            if let Some(literals) = contiguous(ringbuffer, pos, mask, insert_len) {
+                splitter.add_bytes(literals);
+            } else {
+                for offset in 0..insert_len {
+                    let literal = ringbuffer.get((pos + offset) & mask).copied().unwrap_or(0);
+                    splitter.add_symbol(usize::from(literal));
+                }
+            }
+            pos += insert_len;
+        } else {
+            for _ in 0..insert_len {
+                let literal = ringbuffer.get(pos & mask).copied().unwrap_or(0);
+                if let (Some(splitter), Some(map)) = (&mut context_literals, static_map) {
                     let raw = context(prev_byte, prev_byte2);
                     splitter.add_symbol(usize::from(literal), map[raw] as usize);
                 }
-                _ => {}
+                prev_byte2 = prev_byte;
+                prev_byte = literal;
+                pos += 1;
             }
-            prev_byte2 = prev_byte;
-            prev_byte = literal;
-            pos += 1;
         }
         pos += command.copy_len() as usize;
         if command.copy_len() != 0 {
-            prev_byte2 = ringbuffer.get((pos - 2) & mask).copied().unwrap_or(0);
-            prev_byte = ringbuffer.get((pos - 1) & mask).copied().unwrap_or(0);
+            // Only the literal contexts read the previous bytes.
+            if context_literals.is_some() {
+                prev_byte2 = ringbuffer.get((pos - 2) & mask).copied().unwrap_or(0);
+                prev_byte = ringbuffer.get((pos - 1) & mask).copied().unwrap_or(0);
+            }
             if command.cmd_prefix >= 128 {
                 dist_blocks.add_symbol(usize::from(command.distance_code()));
             }
@@ -204,7 +210,7 @@ mod tests {
     use super::*;
     use crate::shared::distance::DistanceParams;
     use crate::shared::format::STATIC_CONTEXT_MAP_SIMPLE_UTF8;
-    use crate::shared::metablock::optimize_histograms;
+    use crate::shared::metablock::{LITERAL_CONTEXT_BITS, optimize_histograms};
     use alloc::vec::Vec;
 
     /// Builds commands that just insert `data` with no copies.
@@ -233,6 +239,52 @@ mod tests {
         assert_eq!(counted, data.len());
         assert!(mb.literal_context_map.is_empty());
         assert_eq!(mb.command_histograms.len(), mb.command_split.num_types);
+    }
+
+    #[test]
+    fn literal_runs_that_wrap_the_ring_are_counted_like_contiguous_ones() {
+        // A ring of 1 KiB holding the last kibibyte of a stream whose bytes
+        // repeat every kibibyte reads the same bytes at every position as the
+        // flat stream, but runs of 700 literals keep crossing its end.
+        let ring_bits = 10;
+        let ring: Vec<u8> = (0..1usize << ring_bits)
+            .map(|i| (i * 7 % 251) as u8)
+            .collect();
+        let flat: Vec<u8> = (0..6000).map(|i| ring[i % ring.len()]).collect();
+        let mut commands = Vec::new();
+        let mut remaining = flat.len();
+        while remaining > 0 {
+            let take = remaining.min(700);
+            commands.push(Command::insert_only(take));
+            remaining -= take;
+        }
+        let from_flat =
+            build_meta_block_greedy(&flat, 0, usize::MAX, 0, 0, ContextModel::SINGLE, &commands);
+        let from_ring = build_meta_block_greedy(
+            &ring,
+            0,
+            ring.len() - 1,
+            0,
+            0,
+            ContextModel::SINGLE,
+            &commands,
+        );
+        assert_eq!(
+            from_ring.literal_split.lengths,
+            from_flat.literal_split.lengths
+        );
+        assert_eq!(from_ring.literal_split.types, from_flat.literal_split.types);
+        assert_eq!(
+            from_ring.literal_histograms.len(),
+            from_flat.literal_histograms.len()
+        );
+        for (ring, flat) in from_ring
+            .literal_histograms
+            .iter()
+            .zip(&from_flat.literal_histograms)
+        {
+            assert_eq!(ring.data, flat.data);
+        }
     }
 
     #[test]

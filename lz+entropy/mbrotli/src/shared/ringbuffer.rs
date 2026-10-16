@@ -31,6 +31,24 @@ pub(crate) struct Window<'a> {
     pub(crate) mask: usize,
 }
 
+/// Returns the `len` bytes at `position` as one slice when they do not wrap
+/// the ring, and `None` when the caller has to read them one masked index at
+/// a time.
+///
+/// The buffer extends past the mask with a tail copy and a margin, so a run
+/// crossing the mask could often be sliced, but it would read those rather
+/// than the wrapped bytes: the bound is the mask, not the buffer's length. An
+/// all-ones mask marks a flat buffer, which cannot wrap.
+#[inline(always)]
+pub(crate) fn contiguous(data: &[u8], position: usize, mask: usize, len: usize) -> Option<&[u8]> {
+    let start = position & mask;
+    let end = start.checked_add(len)?;
+    if end > mask.saturating_add(1) {
+        return None;
+    }
+    data.get(start..end)
+}
+
 /// The stretch of input one call processes.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub(crate) struct BlockSpan {
@@ -127,6 +145,24 @@ impl RingBuffer {
         self.cur_size = 0;
         self.tail_start = 0;
         self.pos = 0;
+    }
+
+    /// Re-aims the window at another geometry for a new stream, keeping its
+    /// allocation.
+    ///
+    /// The result is the window [`Self::new`] would build, except that the
+    /// storage kept from earlier streams is reused. That is safe for the same
+    /// reason [`Self::reset`] is: no stream reads bytes it has not written,
+    /// and `write` and `clear_margin` re-establish the head, the tail mirror,
+    /// the sentinel and the margin wherever the new geometry puts them.
+    pub(crate) fn reshape(&mut self, rb_bits: usize, lgblock: usize) {
+        let size = 1usize << rb_bits;
+        let tail_size = 1usize << lgblock;
+        self.size = size;
+        self.mask = size - 1;
+        self.tail_size = tail_size;
+        self.total_size = size + tail_size;
+        self.reset();
     }
 
     /// Grows the backing storage to `buflen` bytes (`RingBufferInitBuffer`).
@@ -319,6 +355,21 @@ pub(crate) const fn wrap_position(position: u64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_run_is_one_slice_only_while_it_stays_inside_the_mask() {
+        let data: Vec<u8> = (0..24u8).collect();
+        assert_eq!(contiguous(&data, 3, 15, 4), Some(&data[3..7]));
+        // Up to the mask exactly, from a later lap.
+        assert_eq!(contiguous(&data, 16 + 12, 15, 4), Some(&data[12..16]));
+        assert_eq!(contiguous(&data, 12, 15, 0), Some(&data[12..12]));
+        // Crossing the mask would read the tail, not the wrapped bytes.
+        assert_eq!(contiguous(&data, 13, 15, 4), None);
+        // A flat buffer cannot wrap, but it still ends.
+        assert_eq!(contiguous(&data, 20, usize::MAX, 4), Some(&data[20..24]));
+        assert_eq!(contiguous(&data, 21, usize::MAX, 4), None);
+        assert_eq!(contiguous(&data, usize::MAX, usize::MAX, 2), None);
+    }
 
     /// Builds a window the way `ComputeRbBits` would for `lgwin` and `lgblock`.
     fn ring(lgwin: usize, lgblock: usize) -> RingBuffer {

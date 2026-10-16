@@ -7,7 +7,8 @@
 name = "lzbench-rust"
 version = "0.0.0"
 edition = "2024"
-# Density's minimum; mbrotli needs 1.89 and is only enabled on such toolchains.
+# Density's minimum; mbrotli and mzstd need 1.89 and are only enabled on such
+# toolchains.
 # Also makes the resolver lock dependencies compatible with it.
 rust-version = "1.85"
 publish = false
@@ -19,15 +20,18 @@ path = "lib.rs"
 [dependencies]
 density-rs = { path = "../density/src", optional = true }
 mbrotli-ffi = { path = "../../lz+entropy/mbrotli/mbrotli-ffi", optional = true }
+mzstd-ffi = { path = "../../lz+entropy/mzstd/mzstd-ffi", optional = true }
 pulsar = { path = "../../bwt/pulsar", optional = true }
 
 [features]
 density = ["dep:density-rs"]
 mbrotli = ["dep:mbrotli-ffi"]
+mzstd = ["dep:mzstd-ffi"]
 pulsar = ["dep:pulsar"]
 
 # Carried over from density's own manifest, which is ignored now that it is a
-# dependency. mbrotli-ffi and pulsar catch panics at the C boundary, so keep unwinding.
+# dependency. mbrotli-ffi, mzstd-ffi and pulsar catch panics at the C boundary,
+# so keep unwinding.
 [profile.release]
 opt-level = 3
 debug = false

@@ -10,23 +10,25 @@
 //! all of it was resolved before the encoder was built, so nothing about the
 //! machine can reach a decision that shows up in the output.
 
-use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::compressor::core::dispatch::{self, HqInput, Kernels};
-use fearless_simd::Level;
+use crate::backend::Backend;
 
 use super::h10::BinaryTreeMatcher;
 use super::metablock::MetaBlockBuilder;
-use super::params::HqParams;
-use super::zopfli::{ZopfliState, ZopfliWorkspace};
+use super::params::{HqParams, HqQuality};
+use super::zopfli::{
+    ZopfliState, ZopfliWorkspace, create_hq_zopfli_backward_references,
+    create_zopfli_backward_references,
+};
 use crate::compressor::core::rfc9841::context::SharedContextInner;
 use crate::compressor::{BrotliCompressError, BrotliResult, CompressParams};
 use crate::shared::bits::{BYTE_PADDING_SLACK, BitWriter, inject_byte_padding};
 use crate::shared::bitstream::{MetaBlockWriter, store_uncompressed_meta_block};
-use crate::shared::command::{Command, CommandExtension};
+use crate::shared::command::{Command, CommandExtension, extend_last_command};
 use crate::shared::constants::{OUTPUT_RESERVE_CONST, OUTPUT_SLACK};
 use crate::shared::distance::DistanceParams;
+use crate::shared::fixed::grow_zeroed;
 use crate::shared::format::ContextMode;
 use crate::shared::histogram::{HistogramLiteral, bits_entropy};
 use crate::shared::metablock::{MetaBlockSplit, optimize_histograms};
@@ -42,8 +44,12 @@ const MIN_ENTROPY: f64 = 7.92;
 const LITERAL_FRACTION: f64 = 0.99;
 
 /// Streaming encoder for qualities ten and eleven.
-pub(crate) struct HqEncoder {
-    kernels: Box<dyn Kernels>,
+///
+/// `INDEPENDENT` selects the fragment-only kernels of an independent worker,
+/// whose fragments must decode without the ones before them.
+pub(crate) struct HqEncoder<const INDEPENDENT: bool = false> {
+    /// The host-validated backend every block is dispatched to.
+    backend: Backend,
     params: HqParams,
     ringbuffer: RingBuffer,
     matcher: BinaryTreeMatcher,
@@ -68,13 +74,7 @@ pub(crate) struct HqEncoder {
     output_len: usize,
 }
 
-impl HqEncoder {
-    /// Installs fragment-only kernels when constructing an independent worker.
-    #[cfg(not(feature = "no_std"))]
-    pub(crate) fn select_fragment_kernels(&mut self, level: Level) {
-        self.kernels = dispatch::select_independent(level);
-    }
-
+impl<const INDEPENDENT: bool> HqEncoder<INDEPENDENT> {
     /// Resets the header and seeds only this segment's literal context/history.
     #[cfg(not(feature = "no_std"))]
     pub(crate) fn begin_fragment(&mut self, prefix: &[u8]) -> BrotliResult<()> {
@@ -101,7 +101,7 @@ impl HqEncoder {
     ///
     /// Returns [`BrotliCompressError::UnsupportedQuality`] when the quality is
     /// outside the range this encoder implements.
-    pub(crate) fn new(level: Level, params: &CompressParams) -> BrotliResult<Self> {
+    pub(crate) fn new(backend: Backend, params: &CompressParams) -> BrotliResult<Self> {
         let resolved = HqParams::new(params)?;
         let (last_bytes, last_bytes_bits) = resolved.window.header();
         #[cfg(feature = "experimental")]
@@ -120,7 +120,7 @@ impl HqEncoder {
             references
         };
         Ok(Self {
-            kernels: dispatch::select(level),
+            backend,
             params: resolved,
             ringbuffer: RingBuffer::new(resolved.rb_bits(), resolved.lgblock),
             matcher: BinaryTreeMatcher::new(resolved.lgwin),
@@ -293,7 +293,6 @@ impl HqEncoder {
     /// Returns the bytes this encoder keeps allocated between blocks.
     pub(crate) fn retained_bytes(&self) -> usize {
         self.ringbuffer.retained_bytes()
-            + size_of_val(&*self.kernels)
             + self.matcher.retained_bytes()
             + self.workspace.retained_bytes()
             + self.commands.capacity() * size_of::<Command>()
@@ -330,9 +329,7 @@ impl HqEncoder {
         else {
             return Err(BrotliCompressError::BufferOverflow);
         };
-        if self.storage.len() < reserve {
-            self.storage = vec![0u8; reserve];
-        }
+        grow_zeroed(&mut self.storage, reserve);
         Ok(())
     }
 
@@ -357,10 +354,12 @@ impl HqEncoder {
 
     /// Runs the Zopfli search over the unprocessed input.
     ///
-    /// The retained kernel passes its already-selected token into the search.
+    /// The retained backend is dispatched once here. As in the greedy scan, an
+    /// attached prefix is a type-level choice: without one, every `gap`
+    /// offset and prefix probe folds away.
     fn create_references(&mut self, span: BlockSpan, attached: Option<&SharedContextInner>) {
         let Self {
-            kernels,
+            backend,
             params,
             ringbuffer,
             matcher,
@@ -371,15 +370,31 @@ impl HqEncoder {
         } = self;
         let data = ringbuffer.buffer();
         let mask = ringbuffer.mask();
-        kernels.hq(HqInput {
-            matcher,
-            params,
-            window: Window { data, mask },
-            span,
-            attached,
-            references,
-            workspace,
-            commands,
+        let (bytes, position) = (span.bytes as usize, span.position as usize);
+        macro_rules! search {
+            ($search:ident, $simd:ident, $prefix:literal) => {
+                $search::<_, $prefix, INDEPENDENT>(
+                    $simd, bytes, position, data, mask, params, attached, matcher, workspace,
+                    references, commands,
+                )
+            };
+        }
+        fearless_simd::dispatch!(backend.0, simd => match (
+            params.quality,
+            attached.is_some()
+        ) {
+            (HqQuality::Q10, false) => {
+                search!(create_zopfli_backward_references, simd, false);
+            }
+            (HqQuality::Q10, true) => {
+                search!(create_zopfli_backward_references, simd, true);
+            }
+            (HqQuality::Q11, false) => {
+                search!(create_hq_zopfli_backward_references, simd, false);
+            }
+            (HqQuality::Q11, true) => {
+                search!(create_hq_zopfli_backward_references, simd, true);
+            }
         });
     }
 
@@ -444,7 +459,7 @@ impl HqEncoder {
         // this one; growing that command is cheaper than starting a new one.
         if !self.commands.is_empty() && self.references.last_insert_len == 0 {
             let Self {
-                kernels,
+                backend,
                 params,
                 ringbuffer,
                 references,
@@ -453,7 +468,7 @@ impl HqEncoder {
                 ..
             } = self;
             if let Some(command) = commands.last_mut() {
-                kernels.extend(CommandExtension {
+                let extension = CommandExtension {
                     command,
                     lgwin: params.lgwin,
                     dist: &params.dist,
@@ -465,7 +480,8 @@ impl HqEncoder {
                     last_processed_pos: *last_processed_pos,
                     attached,
                     span: &mut span,
-                });
+                };
+                fearless_simd::dispatch!(backend.0, simd => extend_last_command(simd, extension));
             }
         }
 
@@ -557,7 +573,7 @@ impl HqEncoder {
     /// the input rather than the window.
     fn prepare_matcher(&mut self, position: usize, input_size: usize, is_last: bool) {
         let Self {
-            kernels,
+            backend,
             ringbuffer,
             matcher,
             is_prepared,
@@ -569,7 +585,9 @@ impl HqEncoder {
             matcher.prepare(position == 0 && is_last, input_size);
             *is_prepared = true;
         }
-        kernels.stitch(matcher, input_size, position, Window { data, mask });
+        fearless_simd::dispatch!(backend.0, simd => {
+            matcher.stitch_to_previous_block(simd, input_size, position, data, mask);
+        });
     }
 
     /// Writes one meta-block, returning the bit position after it.
@@ -645,7 +663,7 @@ impl HqEncoder {
         let mb = &mut self.metablock;
         mb.clear();
         builder.build(
-            &*self.kernels,
+            self.backend,
             data,
             wrapped_last_flush_pos,
             mask,
@@ -738,23 +756,18 @@ mod tests {
     /// Builds an encoder for one quality.
     fn encoder(quality: QualityLevel) -> HqEncoder {
         let params = CompressParams::new(quality, WindowBits::DEFAULT);
-        HqEncoder::new(Level::try_detect().unwrap_or_else(Level::baseline), &params)
-            .expect("supported quality")
+        HqEncoder::new(Backend::default(), &params).expect("supported quality")
     }
 
     /// Compresses `data` in blocks and returns the whole stream.
     fn compress(quality: QualityLevel, data: &[u8]) -> Vec<u8> {
-        compress_with(
-            Level::try_detect().unwrap_or_else(Level::baseline),
-            quality,
-            data,
-        )
+        compress_with(Backend::default(), quality, data)
     }
 
     /// As [`compress`], on a chosen SIMD backend.
-    fn compress_with(level: Level, quality: QualityLevel, data: &[u8]) -> Vec<u8> {
+    fn compress_with(backend: Backend, quality: QualityLevel, data: &[u8]) -> Vec<u8> {
         let params = CompressParams::new(quality, WindowBits::DEFAULT);
-        let mut encoder = HqEncoder::new(level, &params).expect("supported quality");
+        let mut encoder = HqEncoder::<false>::new(backend, &params).expect("supported quality");
         let limit = encoder.block_size_limit();
         let mut out = Vec::new();
         let mut offset = 0usize;
@@ -848,12 +861,12 @@ mod tests {
         let data: Vec<u8> = (0..120_000u32).map(|i| (i * 7 % 253) as u8).collect();
         for quality in [QualityLevel::Q10, QualityLevel::Q11] {
             let mut streams = Vec::new();
-            for level in [
-                Level::try_detect().unwrap_or_else(Level::baseline),
-                Level::baseline(),
-                Level::fallback(),
+            for backend in [
+                Backend::default(),
+                Backend(fearless_simd::Level::baseline()),
+                Backend::SCALAR,
             ] {
-                streams.push(compress_with(level, quality, &data));
+                streams.push(compress_with(backend, quality, &data));
             }
             assert!(
                 streams.windows(2).all(|pair| pair[0] == pair[1]),
@@ -940,6 +953,21 @@ mod tests {
                     actual.len(),
                     expected.len()
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn a_copy_continued_into_the_next_input_block_matches_the_c_encoder() {
+        // A period no window position breaks: the copy that reaches the end of
+        // each 256 KiB input block runs on into the next one, where the
+        // encoder extends it before searching.
+        let data: Vec<u8> = (0..600_000u32).map(|i| (i * 7 % 253) as u8).collect();
+        for quality in [QualityLevel::Q10, QualityLevel::Q11] {
+            for backend in Backend::available() {
+                let expected = c_compress(usize::from(quality) as i32, 22, &data);
+                let actual = compress_with(backend, quality, &data);
+                assert_eq!(actual, expected, "quality {quality:?}, backend {backend}");
             }
         }
     }

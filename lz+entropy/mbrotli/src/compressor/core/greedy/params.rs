@@ -394,6 +394,36 @@ impl GreedyParams {
         } == *other
     }
 
+    /// Returns whether `other` differs from these parameters only in the
+    /// window, the block size, the size hint and the match-finder plan.
+    ///
+    /// An encoder can take such parameters by replacing only its match
+    /// finder; everything else it keeps is independent of the plan.
+    pub(crate) fn same_but_window_and_plan(&self, other: &Self) -> bool {
+        Self {
+            hasher: other.hasher,
+            ..*self
+        }
+        .same_but_window(other)
+    }
+
+    /// Returns whether `other` differs from these parameters only in the
+    /// window, the block size and the size hint.
+    ///
+    /// Those decide the ring buffer's geometry and nothing else an encoder
+    /// keeps between streams: the match finder follows the resolved plan,
+    /// which is compared, and every other window-derived value is read from
+    /// the parameters while encoding.
+    pub(crate) fn same_but_window(&self, other: &Self) -> bool {
+        Self {
+            size_hint: other.size_hint,
+            window: other.window,
+            lgwin: other.lgwin,
+            lgblock: other.lgblock,
+            ..*self
+        } == *other
+    }
+
     /// Returns the number of bytes one `process` call may consume.
     pub(crate) const fn input_block_size(&self) -> usize {
         1usize << self.lgblock

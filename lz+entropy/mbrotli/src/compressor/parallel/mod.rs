@@ -26,6 +26,8 @@
 mod config;
 mod core;
 mod error;
+mod io;
+mod session;
 mod source;
 
 use crate::compressor::{Backend, EncoderConfig};
@@ -34,6 +36,11 @@ pub use config::{
     SegmentSize, SourceConsistency, Staging, TaskCount,
 };
 pub use error::{ParallelConfigError, ParallelEncodeError, ParallelFinishError};
+pub use io::{ParallelEncoderReader, ParallelEncoderWriter};
+pub use session::{
+    ParallelEncoderSession, ParallelEncoderSessionOwned, ParallelEncoderStatus, ParallelProgress,
+    ParallelTaskQueue, ParallelTasks,
+};
 pub use source::{ArcBytesSource, FileSource, RandomAccessSource, SeekSource, SourceIdentity};
 use std::{io::Write, ops::Range, sync::Arc, time::Duration};
 
@@ -142,7 +149,8 @@ pub enum BatchPoll {
 /// Result of a non-consuming timed wait.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum WaitStatus {
-    /// All tasks completed successfully.
+    /// What was awaited is available: every batch task completed
+    /// successfully, or a stream collected a completion or has none queued.
     Ready,
     /// Deadline elapsed; tasks remain live and are not cancelled.
     TimedOut,
@@ -359,7 +367,8 @@ impl ScopedParallelTask<'_> {
     }
     /// Fixed segments assigned to this task, in input order.
     pub fn segment_range(&self) -> Range<SegmentId> {
-        SegmentId(self.inner.range.start)..SegmentId(self.inner.range.end)
+        let segments = self.inner.job.segments();
+        SegmentId(segments.start)..SegmentId(segments.end)
     }
     /// Runs synchronously on the calling thread and publishes exactly one result.
     pub fn run(self) {

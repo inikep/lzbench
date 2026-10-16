@@ -39,6 +39,8 @@ typedef enum {
  * The output is byte-identical to BrotliEncoderCompress(quality, lgwin,
  * BROTLI_MODE_GENERIC, ...), including its fallback to an uncompressed stream
  * when compression would exceed mbrotli_compress_bound(input_len).
+ *
+ * Bytes of output past the ones reported are never written.
  */
 mbrotli_result mbrotli_compress(
     const uint8_t *input,
@@ -57,6 +59,11 @@ mbrotli_result mbrotli_compress(
  * output holds as much of the data as fits; decoding stops there, so a stream
  * corrupt only past that point is reported this way too, and MBROTLI_ERROR
  * with a larger buffer. Bytes after the stream are an error.
+ *
+ * output serves as the decoder's history, so no separate window is copied
+ * out of. Bytes of output past the ones reported may be overwritten only when
+ * its capacity is at most 1 KiB, which is zeroed first; larger capacities are
+ * written only up to the result.
  */
 mbrotli_result mbrotli_decompress(
     const uint8_t *input,

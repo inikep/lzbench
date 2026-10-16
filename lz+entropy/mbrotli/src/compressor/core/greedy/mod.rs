@@ -11,4 +11,5 @@ pub(crate) mod encoder;
 pub(crate) mod hashers;
 pub(crate) mod metablock;
 pub(crate) mod params;
+pub(crate) mod probe;
 pub(crate) mod split;

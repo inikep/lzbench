@@ -16,10 +16,10 @@
 use alloc::vec::Vec;
 
 use fearless_simd::{Select, Simd, SimdBase, SimdMask, f64x8};
+use fearless_simd_macros::simd;
 
 use super::cluster::{HistogramPair, combine_batch, move_cost};
 use super::params::HqParams;
-use crate::compressor::core::dispatch::Kernels;
 use crate::shared::bit_cost::population_cost;
 use crate::shared::block_split::{BlockSplit, MAX_NUMBER_OF_BLOCK_TYPES};
 use crate::shared::command::Command;
@@ -140,10 +140,10 @@ pub(crate) struct SplitArena<const N: usize> {
     new_id: Vec<u16>,
     histogram_symbols: Vec<u32>,
     block_lengths: Vec<u32>,
-    sizes: Vec<u32>,
-    new_clusters: Vec<u32>,
-    symbols: Vec<u32>,
-    remap: Vec<u32>,
+    sizes: [u32; HISTOGRAMS_PER_BATCH],
+    new_clusters: [u32; HISTOGRAMS_PER_BATCH],
+    symbols: [u32; HISTOGRAMS_PER_BATCH],
+    remap: [u32; HISTOGRAMS_PER_BATCH],
     all_histograms: Vec<Histogram<N>>,
     cluster_size: Vec<u32>,
     batch: Vec<Histogram<N>>,
@@ -163,10 +163,6 @@ impl<const N: usize> SplitArena<N> {
             + (self.new_id.capacity()) * size_of::<u16>()
             + (self.histogram_symbols.capacity()
                 + self.block_lengths.capacity()
-                + self.sizes.capacity()
-                + self.new_clusters.capacity()
-                + self.symbols.capacity()
-                + self.remap.capacity()
                 + self.cluster_size.capacity()
                 + self.clusters.capacity()
                 + self.new_index.capacity())
@@ -188,10 +184,10 @@ impl<const N: usize> Default for SplitArena<N> {
             new_id: Vec::new(),
             histogram_symbols: Vec::new(),
             block_lengths: Vec::new(),
-            sizes: Vec::new(),
-            new_clusters: Vec::new(),
-            symbols: Vec::new(),
-            remap: Vec::new(),
+            sizes: [0; HISTOGRAMS_PER_BATCH],
+            new_clusters: [0; HISTOGRAMS_PER_BATCH],
+            symbols: [0; HISTOGRAMS_PER_BATCH],
+            remap: [0; HISTOGRAMS_PER_BATCH],
             all_histograms: Vec::new(),
             cluster_size: Vec::new(),
             batch: Vec::new(),
@@ -255,9 +251,7 @@ fn refine_entropy_codes<const N: usize>(
             stride
         };
         tmp.add_vector(&data[pos..pos + sample]);
-        let target = &mut histograms[iter % num_histograms];
-        let source = tmp.clone();
-        target.add_histogram(&source);
+        histograms[iter % num_histograms].add_histogram(tmp);
     }
 }
 
@@ -315,91 +309,86 @@ fn assign_blocks_scalar(input: BlockCosts<'_>) {
 
 /// Assigns histogram ids with the already-selected encoder token. Each lane
 /// retains f64 addition/subtraction order; equal minima choose the first id.
+#[simd]
 pub(crate) fn assign_blocks<S: Simd>(simd: S, input: BlockCosts<'_>) {
     if simd.level().is_fallback() {
         assign_blocks_scalar(input);
         return;
     }
-    simd.vectorize(
-        #[inline(always)]
-        || {
-            let BlockCosts {
-                data,
-                block_switch_bitcost,
-                insert_cost,
-                cost,
-                switch_signal,
-                block_id,
-            } = input;
-            let num_histograms = cost.len();
-            let bitmap_len = num_histograms.div_ceil(8);
-            let vector_end = num_histograms / 8 * 8;
-            for (byte_ix, &symbol) in data.iter().enumerate() {
-                let row = &insert_cost[usize::from(symbol) * num_histograms..][..num_histograms];
-                let mut minima = f64x8::splat(simd, 1e99);
-                // Histogram ids are below 256, so f64 lanes hold them exactly
-                // and the tie-break below stays on native `min` instructions;
-                // `u64` lanes have no vector minimum before AVX-512.
-                let mut ids = f64x8::splat(simd, NO_HISTOGRAM);
-                let mut chunk_ids = f64x8::load_array(simd, [0., 1., 2., 3., 4., 5., 6., 7.]);
-                for (values, prices) in cost[..vector_end]
-                    .as_chunks_mut::<8>()
-                    .0
-                    .iter_mut()
-                    .zip(row[..vector_end].as_chunks::<8>().0)
-                {
-                    let updated =
-                        f64x8::load_array_ref(simd, values) + f64x8::load_array_ref(simd, prices);
-                    updated.store_array(values);
-                    let improved = updated.simd_lt(minima);
-                    minima = improved.select(updated, minima);
-                    ids = improved.select(chunk_ids, ids);
-                    chunk_ids += 8.0;
-                }
-                // Each lane kept its first strict minimum; across lanes the
-                // smallest id among the equal minima wins, as in the scalar
-                // scan. Costs are never NaN, so both minima are exact.
-                let mut min_cost = minima.reduce_min();
-                let mut best_id = minima
-                    .simd_eq(f64x8::splat(simd, min_cost))
-                    .select(ids, f64x8::splat(simd, NO_HISTOGRAM))
-                    .reduce_min() as u64;
-                for k in vector_end..num_histograms {
-                    cost[k] += row[k];
-                    if cost[k] < min_cost {
-                        min_cost = cost[k];
-                        best_id = k as u64;
-                    }
-                }
-                block_id[byte_ix] = best_id as u8;
-                let mut switch_cost = block_switch_bitcost;
-                if byte_ix < PROLOGUE_LENGTH {
-                    switch_cost *= PROLOGUE_BASE + PROLOGUE_MULTIPLIER * byte_ix as f64;
-                }
-                let minimum = f64x8::splat(simd, min_cost);
-                let limit = f64x8::splat(simd, switch_cost);
-                let signal = &mut switch_signal[byte_ix * bitmap_len..][..bitmap_len];
-                for (values, signal) in cost[..vector_end]
-                    .as_chunks_mut::<8>()
-                    .0
-                    .iter_mut()
-                    .zip(signal.iter_mut())
-                {
-                    let delta = f64x8::load_array_ref(simd, values) - minimum;
-                    let switches = delta.simd_ge(limit);
-                    switches.select(limit, delta).store_array(values);
-                    *signal |= switches.to_bitmask() as u8;
-                }
-                for k in vector_end..num_histograms {
-                    cost[k] -= min_cost;
-                    if cost[k] >= switch_cost {
-                        cost[k] = switch_cost;
-                        signal[k >> 3] |= 1 << (k & 7);
-                    }
-                }
+    let BlockCosts {
+        data,
+        block_switch_bitcost,
+        insert_cost,
+        cost,
+        switch_signal,
+        block_id,
+    } = input;
+    let num_histograms = cost.len();
+    let bitmap_len = num_histograms.div_ceil(8);
+    let vector_end = num_histograms / 8 * 8;
+    for (byte_ix, &symbol) in data.iter().enumerate() {
+        let row = &insert_cost[usize::from(symbol) * num_histograms..][..num_histograms];
+        let mut minima = f64x8::splat(simd, 1e99);
+        // Histogram ids are below 256, so f64 lanes hold them exactly
+        // and the tie-break below stays on native `min` instructions;
+        // `u64` lanes have no vector minimum before AVX-512.
+        let mut ids = f64x8::splat(simd, NO_HISTOGRAM);
+        let mut chunk_ids = f64x8::load_array(simd, [0., 1., 2., 3., 4., 5., 6., 7.]);
+        for (values, prices) in cost[..vector_end]
+            .as_chunks_mut::<8>()
+            .0
+            .iter_mut()
+            .zip(row[..vector_end].as_chunks::<8>().0)
+        {
+            let updated = f64x8::load_array_ref(simd, values) + f64x8::load_array_ref(simd, prices);
+            updated.store_array(values);
+            let improved = updated.simd_lt(minima);
+            minima = improved.select(updated, minima);
+            ids = improved.select(chunk_ids, ids);
+            chunk_ids += 8.0;
+        }
+        // Each lane kept its first strict minimum; across lanes the
+        // smallest id among the equal minima wins, as in the scalar
+        // scan. Costs are never NaN, so both minima are exact.
+        let mut min_cost = minima.reduce_min();
+        let mut best_id = minima
+            .simd_eq(f64x8::splat(simd, min_cost))
+            .select(ids, f64x8::splat(simd, NO_HISTOGRAM))
+            .reduce_min() as u64;
+        for k in vector_end..num_histograms {
+            cost[k] += row[k];
+            if cost[k] < min_cost {
+                min_cost = cost[k];
+                best_id = k as u64;
             }
-        },
-    );
+        }
+        block_id[byte_ix] = best_id as u8;
+        let mut switch_cost = block_switch_bitcost;
+        if byte_ix < PROLOGUE_LENGTH {
+            switch_cost *= PROLOGUE_BASE + PROLOGUE_MULTIPLIER * byte_ix as f64;
+        }
+        let minimum = f64x8::splat(simd, min_cost);
+        let limit = f64x8::splat(simd, switch_cost);
+        let signal = &mut switch_signal[byte_ix * bitmap_len..][..bitmap_len];
+        for (values, signal) in cost[..vector_end]
+            .as_chunks_mut::<8>()
+            .0
+            .iter_mut()
+            .zip(signal.iter_mut())
+        {
+            let delta = f64x8::load_array_ref(simd, values) - minimum;
+            let switches = delta.simd_ge(limit);
+            switches.select(limit, delta).store_array(values);
+            *signal |= switches.to_bitmask() as u8;
+        }
+        for k in vector_end..num_histograms {
+            cost[k] -= min_cost;
+            if cost[k] >= switch_cost {
+                cost[k] = switch_cost;
+                signal[k >> 3] |= 1 << (k & 7);
+            }
+        }
+    }
 }
 
 /// Assigns each symbol the entropy code that codes it most cheaply.
@@ -414,7 +403,7 @@ pub(crate) fn assign_blocks<S: Simd>(simd: S, input: BlockCosts<'_>) {
 )]
 #[cfg_attr(all(feature = "hotpath", not(feature = "no_std")), hotpath::measure)]
 fn find_blocks<const N: usize>(
-    kernels: &dyn Kernels,
+    backend: crate::backend::Backend,
     data: &[u16],
     block_switch_bitcost: f64,
     num_histograms: usize,
@@ -441,28 +430,35 @@ fn find_blocks<const N: usize>(
 
     // Cost of each symbol under each code: `log2(total) - log2(count)`, with an
     // unseen symbol priced two bits above the total.
-    insert_cost[..alphabet_size * lanes].fill(0.0);
-    for index in 0..num_histograms {
-        insert_cost[index] = fast_log2(histograms[index].total_count);
+    debug_assert!(num_histograms <= MAX_LITERAL_HISTOGRAMS);
+    let histograms = &histograms[..num_histograms];
+    let mut totals = [0f64; MAX_LITERAL_HISTOGRAMS];
+    for (total, histogram) in totals.iter_mut().zip(histograms) {
+        *total = fast_log2(histogram.total_count);
     }
-    for symbol in (0..alphabet_size).rev() {
-        // Reversed, so the first row can serve as scratch for the totals.
-        for j in 0..num_histograms {
-            insert_cost[symbol * lanes + j] = insert_cost[j] - bit_cost(histograms[j].data[symbol]);
+    for (symbol, row) in insert_cost[..alphabet_size * lanes]
+        .chunks_exact_mut(lanes)
+        .enumerate()
+    {
+        let (row, padding) = row.split_at_mut(num_histograms);
+        for ((slot, &total), histogram) in row.iter_mut().zip(&totals).zip(histograms) {
+            *slot = total - bit_cost(histogram.data[symbol]);
         }
+        padding.fill(0.0);
     }
 
     cost[..num_histograms].fill(0.0);
     cost[num_histograms..lanes].fill(f64::NAN);
     switch_signal[..length * bitmap_len].fill(0);
-    kernels.assign_blocks(BlockCosts {
+    let costs = BlockCosts {
         data,
         block_switch_bitcost,
         insert_cost,
         cost: &mut cost[..lanes],
         switch_signal,
         block_id,
-    });
+    };
+    fearless_simd::dispatch!(backend.0, simd => assign_blocks(simd, costs));
 
     {
         // Trace back, switching where the forward pass marked it.
@@ -514,8 +510,8 @@ fn build_block_histograms<const N: usize>(
     for histogram in histograms.iter_mut().take(num_histograms) {
         histogram.clear();
     }
-    for (index, &symbol) in data.iter().enumerate() {
-        histograms[usize::from(block_ids[index])].add(usize::from(symbol));
+    for (&symbol, &id) in data.iter().zip(block_ids) {
+        histograms[usize::from(id)].add(usize::from(symbol));
     }
 }
 
@@ -535,32 +531,27 @@ fn cluster_blocks<const N: usize>(
     let length = data.len();
     arena.histogram_symbols.clear();
     arena.histogram_symbols.resize(num_blocks, 0);
-    arena.block_lengths.clear();
+    // Every block length is written from the runs of ids below.
     arena.block_lengths.resize(num_blocks, 0);
-    arena.sizes.clear();
-    arena.sizes.resize(HISTOGRAMS_PER_BATCH, 0);
-    arena.new_clusters.clear();
-    arena.new_clusters.resize(HISTOGRAMS_PER_BATCH, 0);
-    arena.symbols.clear();
-    arena.symbols.resize(HISTOGRAMS_PER_BATCH, 0);
-    arena.remap.clear();
-    arena.remap.resize(HISTOGRAMS_PER_BATCH, 0);
+    arena.sizes.fill(0);
+    arena.new_clusters.fill(0);
+    arena.symbols.fill(0);
+    arena.remap.fill(0);
     arena.all_histograms.clear();
     arena.cluster_size.clear();
-    arena.batch.clear();
+    // Every batch slot in use is cleared before it is filled, so a kept slot
+    // needs no reset here: only growth creates histograms.
     arena
         .batch
         .resize(num_blocks.min(HISTOGRAMS_PER_BATCH), Histogram::default());
 
+    // Turn the run of ids into a list of block lengths.
+    for (block_length, run) in arena
+        .block_lengths
+        .iter_mut()
+        .zip(block_ids[..length].chunk_by(|left, right| left == right))
     {
-        // Turn the run of ids into a list of block lengths.
-        let mut block_idx = 0usize;
-        for index in 0..length {
-            arena.block_lengths[block_idx] += 1;
-            if index + 1 == length || block_ids[index] != block_ids[index + 1] {
-                block_idx += 1;
-            }
-        }
+        *block_length = run.len() as u32;
     }
 
     let expected_num_clusters = CLUSTERS_PER_BATCH * num_blocks.div_ceil(HISTOGRAMS_PER_BATCH);
@@ -575,10 +566,8 @@ fn cluster_blocks<const N: usize>(
         for j in 0..num_to_combine {
             let block_length = arena.block_lengths[index + j] as usize;
             arena.batch[j].clear();
-            for _ in 0..block_length {
-                arena.batch[j].add(usize::from(data[pos]));
-                pos += 1;
-            }
+            arena.batch[j].add_vector(&data[pos..pos + block_length]);
+            pos += block_length;
             arena.batch[j].bit_cost = population_cost(&arena.batch[j], alphabet_size);
             arena.new_clusters[j] = j as u32;
             arena.symbols[j] = j as u32;
@@ -637,11 +626,10 @@ fn cluster_blocks<const N: usize>(
     {
         let mut next_index = 0u32;
         for index in 0..num_blocks {
+            let block_length = arena.block_lengths[index] as usize;
             arena.assign.clear();
-            for _ in 0..arena.block_lengths[index] {
-                arena.assign.add(usize::from(data[pos]));
-                pos += 1;
-            }
+            arena.assign.add_vector(&data[pos..pos + block_length]);
+            pos += block_length;
             // Among equally good histograms the reference prefers the one the
             // previous block used, which makes the block-type stream cheap.
             let mut best_out = if index == 0 {
@@ -703,7 +691,7 @@ fn cluster_blocks<const N: usize>(
     reason = "mirrors SplitByteVector, whose parameters are all needed"
 )]
 fn split_byte_vector<const N: usize>(
-    kernels: &dyn Kernels,
+    backend: crate::backend::Backend,
     data: &[u16],
     alphabet_size: usize,
     symbols_per_histogram: usize,
@@ -749,24 +737,22 @@ fn split_byte_vector<const N: usize>(
         &mut arena.tmp,
     );
 
+    // `find_blocks` writes every id, cost, insertion cost and switch bit it
+    // reads, and `remap_block_ids` every new id, so a buffer kept from an
+    // earlier block needs sizing, not clearing.
     let bitmaplen = num_histograms.div_ceil(8);
-    arena.block_ids.clear();
     arena.block_ids.resize(length, 0);
-    arena.insert_cost.clear();
     arena
         .insert_cost
         .resize(alphabet_size * padded_histograms(num_histograms), 0.0);
-    arena.cost.clear();
     arena.cost.resize(padded_histograms(num_histograms), 0.0);
-    arena.switch_signal.clear();
     arena.switch_signal.resize(length * bitmaplen, 0);
-    arena.new_id.clear();
     arena.new_id.resize(num_histograms, 0);
 
     let mut num_blocks = 0usize;
     for _ in 0..iterations {
         num_blocks = find_blocks(
-            kernels,
+            backend,
             data,
             block_switch_cost,
             num_histograms,
@@ -822,7 +808,7 @@ impl BlockSplitter {
     )]
     pub(crate) fn split(
         &mut self,
-        kernels: &dyn Kernels,
+        backend: crate::backend::Backend,
         commands: &[Command],
         data: &[u8],
         pos: usize,
@@ -846,7 +832,7 @@ impl BlockSplitter {
             from_pos = (from_pos + insert_len + command.copy_len() as usize) & mask;
         }
         split_byte_vector(
-            kernels,
+            backend,
             &self.literals,
             NUM_LITERAL_SYMBOLS,
             SYMBOLS_PER_LITERAL_HISTOGRAM,
@@ -863,7 +849,7 @@ impl BlockSplitter {
         self.commands
             .extend(commands.iter().map(|command| command.cmd_prefix));
         split_byte_vector(
-            kernels,
+            backend,
             &self.commands,
             NUM_COMMAND_SYMBOLS,
             SYMBOLS_PER_COMMAND_HISTOGRAM,
@@ -884,7 +870,7 @@ impl BlockSplitter {
                 .map(Command::distance_code),
         );
         split_byte_vector(
-            kernels,
+            backend,
             &self.distances,
             NUM_HISTOGRAM_DISTANCE_SYMBOLS,
             SYMBOLS_PER_DISTANCE_HISTOGRAM,
@@ -901,6 +887,11 @@ impl BlockSplitter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Runs the forward pass on `level`, as `find_blocks` dispatches it.
+    fn assign_on(backend: crate::backend::Backend, costs: BlockCosts<'_>) {
+        fearless_simd::dispatch!(backend.0, simd => assign_blocks(simd, costs));
+    }
     use crate::compressor::{CompressParams, QualityLevel, WindowBits};
     use alloc::boxed::Box;
 
@@ -936,7 +927,8 @@ mod tests {
                         let mut cost = initial.clone();
                         let mut signal = vec![0; expected_signal.len()];
                         let mut ids = vec![0; length];
-                        crate::compressor::core::dispatch::select(backend.0).assign_blocks(
+                        assign_on(
+                            backend,
                             BlockCosts {
                                 data: &data,
                                 block_switch_bitcost: 13.5,
@@ -993,14 +985,17 @@ mod tests {
                 cost[..count].fill(0.0);
                 let mut signal = vec![0; expected_signal.len()];
                 let mut ids = vec![0; length];
-                crate::compressor::core::dispatch::select(backend.0).assign_blocks(BlockCosts {
-                    data: &data,
-                    block_switch_bitcost: 13.5,
-                    insert_cost: &padded_prices,
-                    cost: &mut cost,
-                    switch_signal: &mut signal,
-                    block_id: &mut ids,
-                });
+                assign_on(
+                    backend,
+                    BlockCosts {
+                        data: &data,
+                        block_switch_bitcost: 13.5,
+                        insert_cost: &padded_prices,
+                        cost: &mut cost,
+                        switch_signal: &mut signal,
+                        block_id: &mut ids,
+                    },
+                );
                 assert_eq!(
                     cost[..count]
                         .iter()
@@ -1040,14 +1035,17 @@ mod tests {
             cost[11] = 1.0;
             let mut signal = vec![0; 2];
             let mut ids = vec![0; 1];
-            crate::compressor::core::dispatch::select(backend.0).assign_blocks(BlockCosts {
-                data: &[0],
-                block_switch_bitcost: 100.0,
-                insert_cost: &[0.0; 16],
-                cost: &mut cost,
-                switch_signal: &mut signal,
-                block_id: &mut ids,
-            });
+            assign_on(
+                backend,
+                BlockCosts {
+                    data: &[0],
+                    block_switch_bitcost: 100.0,
+                    insert_cost: &[0.0; 16],
+                    cost: &mut cost,
+                    switch_signal: &mut signal,
+                    block_id: &mut ids,
+                },
+            );
             assert_eq!(ids, [5], "backend={backend}");
             assert_eq!(cost[5], 0.0);
             assert_eq!(cost[11], 0.0);
@@ -1065,7 +1063,7 @@ mod tests {
         let mut arena = SplitArena::<NUM_LITERAL_SYMBOLS>::default();
         let mut split = BlockSplit::default();
         split_byte_vector(
-            &*crate::compressor::core::dispatch::select(fearless_simd::Level::fallback()),
+            crate::backend::Backend::SCALAR,
             data,
             NUM_LITERAL_SYMBOLS,
             SYMBOLS_PER_LITERAL_HISTOGRAM,
@@ -1176,7 +1174,7 @@ mod tests {
             crate::compressor::core::hq::params::HqQuality::Q11
         };
         splitter.split(
-            &*crate::compressor::core::dispatch::select(fearless_simd::Level::fallback()),
+            crate::backend::Backend::SCALAR,
             commands,
             data,
             0,
@@ -1343,7 +1341,7 @@ mod tests {
         let mut command = BlockSplit::default();
         let mut distance = BlockSplit::default();
         splitter.split(
-            &*crate::compressor::core::dispatch::select(fearless_simd::Level::fallback()),
+            crate::backend::Backend::SCALAR,
             &commands,
             &data,
             0,
@@ -1446,7 +1444,7 @@ mod tests {
         let mut fresh = BlockSplitter::default();
         let (mut l1, mut c1, mut d1) = Default::default();
         fresh.split(
-            &*crate::compressor::core::dispatch::select(fearless_simd::Level::fallback()),
+            crate::backend::Backend::SCALAR,
             &commands,
             &data,
             0,
@@ -1460,7 +1458,7 @@ mod tests {
         let mut reused = BlockSplitter::default();
         let (mut l0, mut c0, mut d0) = Default::default();
         reused.split(
-            &*crate::compressor::core::dispatch::select(fearless_simd::Level::fallback()),
+            crate::backend::Backend::SCALAR,
             &other,
             &data,
             0,
@@ -1472,7 +1470,7 @@ mod tests {
         );
         let (mut l2, mut c2, mut d2) = Default::default();
         reused.split(
-            &*crate::compressor::core::dispatch::select(fearless_simd::Level::fallback()),
+            crate::backend::Backend::SCALAR,
             &commands,
             &data,
             0,

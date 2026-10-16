@@ -14,6 +14,7 @@
 use alloc::vec::Vec;
 
 use fearless_simd::Simd;
+use fearless_simd_macros::simd;
 
 use super::hashers::{
     DistanceCache, MatchQuery, MatchRun, Matcher, RunVisitor, prepare_distance_cache,
@@ -236,6 +237,7 @@ struct Cursor {
     reason = "mirrors CreateBackwardReferences, whose parameters are all needed"
 )]
 #[cfg_attr(all(feature = "hotpath", not(feature = "no_std")), hotpath::measure)]
+#[simd]
 pub(crate) fn create_backward_references<
     S: Simd,
     M: Matcher,
@@ -336,8 +338,8 @@ impl<S: Simd, const ENABLE_PREFIX: bool, const INDEPENDENT: bool> RunVisitor
 
     /// Runs the loop and returns where it stopped.
     ///
-    /// The loop body is split in two: the search at every position stays
-    /// here, and everything a found match entails — the delayed search, the
+    /// The loop body is split in two: the search at every position runs in
+    /// [`search_positions`], and everything a found match entails — the delayed search, the
     /// command, the stores — moves to [`commit_match`]. The split keeps the
     /// loop's state in locals that cross the boundary by value; whether the
     /// commit path is then inlined is left to the compiler, because forcing
@@ -345,7 +347,7 @@ impl<S: Simd, const ENABLE_PREFIX: bool, const INDEPENDENT: bool> RunVisitor
     /// text and 4–5% on the deeper matchers once that state stopped living
     /// in memory.
     #[inline(always)]
-    fn visit<R: MatchRun>(self, mut run: R) -> Cursor {
+    fn visit<R: MatchRun>(self, run: R) -> Cursor {
         let Self {
             simd,
             mut block,
@@ -365,87 +367,100 @@ impl<S: Simd, const ENABLE_PREFIX: bool, const INDEPENDENT: bool> RunVisitor
         // One bound for both exits: the end of the searchable input and
         // the checkpoint, so resuming costs the loop nothing.
         let loop_end = pos_end.saturating_sub(R::HASH_TYPE_LENGTH).min(yield_at);
-        let block = block;
         // Enter the selected feature context after specializing the matcher.
         // This keeps vector operations inline without merging every matcher
         // into one large feature-enabled function at the outer dispatch
-        // boundary. The closure moves its captures: the feature context is a
-        // separate function, and a capture by reference would be a pointer
-        // it dereferences at every use, where a moved value is a local it
-        // keeps in a register.
-        simd.vectorize(
-            #[inline(always)]
-            move || {
-                // The loop's state lives in locals whose addresses never
-                // escape, so the compiler keeps them in registers: the commit
-                // path takes the run and the cursor by value and hands them
-                // back. The block is copied for the same reason; the commit
-                // path borrows the original.
-                let hot = block;
-                let Cursor {
-                    mut position,
-                    mut insert_length,
-                    mut apply_random_heuristics,
-                } = cursor;
-                while position < loop_end {
-                    let max_length = pos_end - position;
-                    let mut sr = SearchResult::empty();
-                    hot.search::<S, R, ENABLE_PREFIX>(
-                        simd, &mut run, state, position, max_length, &mut sr,
-                    );
+        // boundary.
+        search_positions::<S, R, ENABLE_PREFIX, INDEPENDENT>(
+            simd, run, block, loop_end, cursor, state, commands,
+        )
+    }
+}
 
-                    if sr.is_match() {
-                        let committed;
-                        (run, committed) = commit_match::<S, R, ENABLE_PREFIX, INDEPENDENT>(
-                            simd,
-                            run,
-                            &block,
-                            Cursor {
-                                position,
-                                insert_length,
-                                apply_random_heuristics,
-                            },
-                            state,
-                            commands,
-                            sr,
-                            max_length,
-                        );
-                        position = committed.position;
-                        insert_length = committed.insert_length;
-                        apply_random_heuristics = committed.apply_random_heuristics;
-                        continue;
-                    }
+/// The per-position loop of [`SearchLoop::visit`], run inside `simd`'s
+/// feature context.
+///
+/// `#[simd]` hands every argument to the feature-enabled function by value:
+/// the block and the cursor arrive as locals the compiler keeps in
+/// registers, where a reference would be a pointer it dereferences at
+/// every use.
+#[inline(always)]
+#[simd]
+fn search_positions<S: Simd, R: MatchRun, const ENABLE_PREFIX: bool, const INDEPENDENT: bool>(
+    simd: S,
+    mut run: R,
+    block: Block<'_>,
+    loop_end: usize,
+    cursor: Cursor,
+    state: &mut ReferenceState,
+    commands: &mut Vec<Command>,
+) -> Cursor {
+    let pos_end = block.pos_end;
+    // The loop's state lives in locals whose addresses never
+    // escape, so the compiler keeps them in registers: the commit
+    // path takes the run and the cursor by value and hands them
+    // back. The block is copied for the same reason; the commit
+    // path borrows the original.
+    let hot = block;
+    let Cursor {
+        mut position,
+        mut insert_length,
+        mut apply_random_heuristics,
+    } = cursor;
+    while position < loop_end {
+        let max_length = pos_end - position;
+        let mut sr = SearchResult::empty();
+        hot.search::<S, R, ENABLE_PREFIX>(simd, &mut run, state, position, max_length, &mut sr);
 
-                    insert_length += 1;
-                    position += 1;
-                    if position <= apply_random_heuristics {
-                        continue;
-                    }
-                    // Nothing has matched for a long time. Storing every
-                    // position of incompressible data costs time and floods
-                    // the table, so the scan strides forward and only stores
-                    // part of what it skips.
-                    let (stride, margin_floor) =
-                        if position > apply_random_heuristics + 4 * hot.heuristics_window {
-                            (4usize, 4usize)
-                        } else {
-                            (2usize, 2usize)
-                        };
-                    let margin = (R::STORE_LOOKAHEAD - 1).max(margin_floor);
-                    let pos_jump = (position + 4 * stride).min(pos_end.saturating_sub(margin));
-                    while position < pos_jump {
-                        run.store(hot.ringbuffer, hot.mask, position);
-                        insert_length += stride;
-                        position += stride;
-                    }
-                }
+        if sr.is_match() {
+            let committed;
+            (run, committed) = commit_match::<S, R, ENABLE_PREFIX, INDEPENDENT>(
+                simd,
+                run,
+                &block,
                 Cursor {
                     position,
                     insert_length,
                     apply_random_heuristics,
-                }
-            },
-        )
+                },
+                state,
+                commands,
+                sr,
+                max_length,
+            );
+            position = committed.position;
+            insert_length = committed.insert_length;
+            apply_random_heuristics = committed.apply_random_heuristics;
+            continue;
+        }
+
+        insert_length += 1;
+        position += 1;
+        if position <= apply_random_heuristics {
+            continue;
+        }
+        // Nothing has matched for a long time. Storing every
+        // position of incompressible data costs time and floods
+        // the table, so the scan strides forward and only stores
+        // part of what it skips.
+        let (stride, margin_floor) =
+            if position > apply_random_heuristics + 4 * hot.heuristics_window {
+                (4usize, 4usize)
+            } else {
+                (2usize, 2usize)
+            };
+        let margin = (R::STORE_LOOKAHEAD - 1).max(margin_floor);
+        let pos_jump = (position + 4 * stride).min(pos_end.saturating_sub(margin));
+        while position < pos_jump {
+            run.store(hot.ringbuffer, hot.mask, position);
+            insert_length += stride;
+            position += stride;
+        }
+    }
+    Cursor {
+        position,
+        insert_length,
+        apply_random_heuristics,
     }
 }
 
@@ -460,6 +475,7 @@ impl<S: Simd, const ENABLE_PREFIX: bool, const INDEPENDENT: bool> RunVisitor
     reason = "the second half of CreateBackwardReferences' loop body"
 )]
 #[inline]
+#[simd]
 fn commit_match<S: Simd, R: MatchRun, const ENABLE_PREFIX: bool, const INDEPENDENT: bool>(
     simd: S,
     mut matcher: R,
@@ -470,91 +486,83 @@ fn commit_match<S: Simd, R: MatchRun, const ENABLE_PREFIX: bool, const INDEPENDE
     mut sr: SearchResult,
     mut max_length: usize,
 ) -> (R, Cursor) {
-    simd.vectorize(
-        #[inline(always)]
-        move || {
-            let pos_end = block.pos_end;
-            // A match is available; look one byte ahead for a better one, up
-            // to four times in a row.
-            let mut delayed = 0usize;
-            max_length -= 1;
-            loop {
-                let mut sr2 = SearchResult {
-                    // Below quality five the delayed search starts from the
-                    // length it already has, which lets the matcher reject
-                    // most candidates without measuring them. Quality five
-                    // gives that shortcut up and searches everything again.
-                    len: if block.extensive {
-                        0
-                    } else {
-                        (sr.len - 1).min(max_length)
-                    },
-                    distance: 0,
-                    score: MIN_SCORE,
-                    len_code_delta: 0,
-                };
-                block.search::<S, R, ENABLE_PREFIX>(
-                    simd,
-                    &mut matcher,
-                    state,
-                    cursor.position + 1,
-                    max_length,
-                    &mut sr2,
-                );
-                if sr2.score >= sr.score + COST_DIFF_LAZY {
-                    // Emit one more literal and start the match a byte later.
-                    cursor.position += 1;
-                    cursor.insert_length += 1;
-                    sr = sr2;
-                    delayed += 1;
-                    if delayed < MAX_DELAYED_IN_A_ROW
-                        && cursor.position + R::HASH_TYPE_LENGTH < pos_end
-                    {
-                        max_length -= 1;
-                        continue;
-                    }
-                }
-                break;
-            }
-
-            let position = cursor.position;
-            cursor.apply_random_heuristics = position + 2 * sr.len + block.heuristics_window;
-            let dictionary_start = (position + block.position_offset).min(block.max_backward_limit);
-            let distance_code = if INDEPENDENT {
-                sr.distance + NUM_DISTANCE_SHORT_CODES as usize - 1
+    let pos_end = block.pos_end;
+    // A match is available; look one byte ahead for a better one, up
+    // to four times in a row.
+    let mut delayed = 0usize;
+    max_length -= 1;
+    loop {
+        let mut sr2 = SearchResult {
+            // Below quality five the delayed search starts from the
+            // length it already has, which lets the matcher reject
+            // most candidates without measuring them. Quality five
+            // gives that shortcut up and searches everything again.
+            len: if block.extensive {
+                0
             } else {
-                compute_distance_code(sr.distance, dictionary_start + block.gap, &state.dist_cache)
-            };
-            if sr.distance <= dictionary_start + block.gap && distance_code > 0 {
-                state.dist_cache[3] = state.dist_cache[2];
-                state.dist_cache[2] = state.dist_cache[1];
-                state.dist_cache[1] = state.dist_cache[0];
-                state.dist_cache[0] = sr.distance as i32;
-                prepare_distance_cache(&mut state.dist_cache, block.last_distances);
+                (sr.len - 1).min(max_length)
+            },
+            distance: 0,
+            score: MIN_SCORE,
+            len_code_delta: 0,
+        };
+        block.search::<S, R, ENABLE_PREFIX>(
+            simd,
+            &mut matcher,
+            state,
+            cursor.position + 1,
+            max_length,
+            &mut sr2,
+        );
+        if sr2.score >= sr.score + COST_DIFF_LAZY {
+            // Emit one more literal and start the match a byte later.
+            cursor.position += 1;
+            cursor.insert_length += 1;
+            sr = sr2;
+            delayed += 1;
+            if delayed < MAX_DELAYED_IN_A_ROW && cursor.position + R::HASH_TYPE_LENGTH < pos_end {
+                max_length -= 1;
+                continue;
             }
-            commands.push(Command::new(
-                &block.params.dist,
-                cursor.insert_length,
-                sr.len,
-                sr.len_code_delta,
-                distance_code,
-            ));
-            state.num_literals += cursor.insert_length;
-            cursor.insert_length = 0;
+        }
+        break;
+    }
 
-            // Store the positions the match covered, skipping the ones a
-            // run-length repeat would only poison the table with.
-            let mut range_start = position + 2;
-            let range_end = (position + sr.len).min(block.store_end);
-            if sr.distance < (sr.len >> 2) {
-                range_start =
-                    range_end.min(range_start.max(position + sr.len - (sr.distance << 2)));
-            }
-            matcher.store_range(block.ringbuffer, block.mask, range_start, range_end);
-            cursor.position += sr.len;
-            (matcher, cursor)
-        },
-    )
+    let position = cursor.position;
+    cursor.apply_random_heuristics = position + 2 * sr.len + block.heuristics_window;
+    let dictionary_start = (position + block.position_offset).min(block.max_backward_limit);
+    // An independent fragment starts with unmatchable distances in the cache
+    // (see `GreedyEncoder::begin_fragment`), so short codes only ever refer
+    // to slots its own copies filled.
+    let distance_code =
+        compute_distance_code(sr.distance, dictionary_start + block.gap, &state.dist_cache);
+    if sr.distance <= dictionary_start + block.gap && distance_code > 0 {
+        state.dist_cache[3] = state.dist_cache[2];
+        state.dist_cache[2] = state.dist_cache[1];
+        state.dist_cache[1] = state.dist_cache[0];
+        state.dist_cache[0] = sr.distance as i32;
+        prepare_distance_cache(&mut state.dist_cache, block.last_distances);
+    }
+    commands.push(Command::new(
+        &block.params.dist,
+        cursor.insert_length,
+        sr.len,
+        sr.len_code_delta,
+        distance_code,
+    ));
+    state.num_literals += cursor.insert_length;
+    cursor.insert_length = 0;
+
+    // Store the positions the match covered, skipping the ones a
+    // run-length repeat would only poison the table with.
+    let mut range_start = position + 2;
+    let range_end = (position + sr.len).min(block.store_end);
+    if sr.distance < (sr.len >> 2) {
+        range_start = range_end.min(range_start.max(position + sr.len - (sr.distance << 2)));
+    }
+    matcher.store_range(block.ringbuffer, block.mask, range_start, range_end);
+    cursor.position += sr.len;
+    (matcher, cursor)
 }
 
 #[cfg(test)]
@@ -775,6 +783,10 @@ mod tests {
             self.inner.store(data, mask, ix);
         }
 
+        fn store_range(&mut self, data: &[u8], mask: usize, start: usize, end: usize) {
+            self.inner.store_range(data, mask, start, end);
+        }
+
         fn find_longest_match<S: Simd>(
             &mut self,
             simd: S,
@@ -869,6 +881,7 @@ mod tests {
         };
         yielding.prepare(true, data.len(), &data, true);
         yielding.store(&data, usize::MAX, 0);
+        yielding.store_range(&data, usize::MAX, 1, 4);
         let cache = INITIAL_DISTANCE_CACHE;
         let query = MatchQuery {
             #[cfg(feature = "experimental")]

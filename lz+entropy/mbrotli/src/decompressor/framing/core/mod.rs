@@ -874,7 +874,7 @@ impl Engine {
                 limits.max_input_bytes,
             );
             let mut target = Output {
-                bytes: destination,
+                bytes: &mut *destination,
                 collect: None,
                 linear: false,
                 produced: 0,

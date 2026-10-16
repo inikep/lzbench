@@ -1,4 +1,4 @@
-//! Single-owner private spools and exact-capacity memory artifacts.
+//! Single-owner private spools and bounded memory artifacts.
 use super::spool::Spool;
 use super::*;
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -48,13 +48,37 @@ impl Artifact {
             .ok_or_else(|| io::Error::other("fragment exceeded staging bound"))?;
         match &mut self.storage {
             Storage::Memory(v) => {
-                v.try_reserve_exact(bytes.len()).map_err(io::Error::other)?;
+                // Doubling, capped by the staging bound the plan accounted
+                // for: an exact reservation per segment reallocated on every
+                // append. A first append is exact, so a single segment
+                // carries no spare capacity into `into_segment`.
+                if v.capacity() - v.len() < bytes.len() {
+                    let bound = usize::try_from(self.bound).unwrap_or(usize::MAX);
+                    let needed = v.len().saturating_add(bytes.len());
+                    let target = v.len().saturating_mul(2).min(bound).max(needed);
+                    v.try_reserve_exact(target - v.len())
+                        .map_err(io::Error::other)?;
+                }
                 v.extend_from_slice(bytes);
             }
             Storage::File(f) => f.file.write_all(bytes)?,
         }
         self.len = len;
         Ok(())
+    }
+    /// Returns the payload of a memory artifact holding exactly one segment.
+    pub(in crate::compressor::parallel) fn into_segment(self) -> Option<Vec<u8>> {
+        match (self.storage, self.descriptors.as_slice()) {
+            (Storage::Memory(bytes), [descriptor])
+                if descriptor.offset == 0
+                    && descriptor.len != 0
+                    && descriptor.len == self.len
+                    && bytes.len() as u64 == self.len =>
+            {
+                Some(bytes)
+            }
+            _ => None,
+        }
     }
     pub(in crate::compressor::parallel) fn validate_len(&self) -> io::Result<bool> {
         let actual = match &self.storage {
@@ -67,11 +91,16 @@ impl Artifact {
         &mut self,
         writer: &mut W,
         written: &mut u64,
-        scratch: &mut [u8],
+        scratch: &mut Vec<u8>,
     ) -> io::Result<()> {
         match &mut self.storage {
             Storage::Memory(v) => write_counted(writer, v, written),
             Storage::File(f) => {
+                // Only spooled artifacts need a bounce buffer; memory staging
+                // never pays for zeroing one.
+                if scratch.is_empty() {
+                    scratch.resize(SPOOL_CHUNK, 0);
+                }
                 f.file.seek(SeekFrom::Start(0))?;
                 let mut remaining = self.len;
                 while remaining != 0 {
@@ -85,6 +114,9 @@ impl Artifact {
         }
     }
 }
+/// Bytes read from a spooled artifact per copy step.
+const SPOOL_CHUNK: usize = 128 << 10;
+
 pub(in crate::compressor::parallel) fn write_counted<W: Write>(
     writer: &mut W,
     mut bytes: &[u8],
@@ -127,5 +159,55 @@ mod tests {
         assert_eq!(artifact.len, 2);
         let mut count = u64::MAX;
         assert!(write_counted(&mut Vec::new(), b"a", &mut count).is_err());
+    }
+
+    fn memory(bytes: &[u8], segments: usize) -> Artifact {
+        let staging = Staging::Memory(MemoryStaging::from(usize::MAX));
+        let mut artifact = Artifact::new(&staging, segments, 1 << 20).unwrap();
+        for segment in 0..segments {
+            let offset = artifact.len;
+            artifact.append(bytes).unwrap();
+            artifact.descriptors.push(Descriptor {
+                segment: segment as u64,
+                source: 0..1,
+                offset,
+                len: bytes.len() as u64,
+            });
+        }
+        artifact
+    }
+
+    #[test]
+    fn memory_staging_doubles_within_its_bound() {
+        let staging = Staging::Memory(MemoryStaging::from(usize::MAX));
+        let mut artifact = Artifact::new(&staging, 10, 1000).unwrap();
+        let mut capacities = Vec::new();
+        for segment in 0..10u8 {
+            artifact.append(&[segment; 100]).unwrap();
+            let Storage::Memory(v) = &artifact.storage else {
+                panic!("memory storage")
+            };
+            assert!(v.capacity() <= 1000);
+            if capacities.last() != Some(&v.capacity()) {
+                capacities.push(v.capacity());
+            }
+        }
+        // The first append is exact; later growth doubles until the bound.
+        assert_eq!(capacities, [100, 200, 400, 800, 1000]);
+        let Storage::Memory(v) = &artifact.storage else {
+            panic!("memory storage")
+        };
+        assert!(v.chunks(100).enumerate().all(|(i, c)| c == [i as u8; 100]));
+        assert!(artifact.append(b"x").is_err());
+    }
+
+    #[test]
+    fn only_a_single_nonempty_memory_segment_is_extracted() {
+        assert_eq!(memory(b"part", 1).into_segment().unwrap(), b"part");
+        assert!(memory(b"part", 2).into_segment().is_none());
+        assert!(memory(b"", 1).into_segment().is_none());
+        let mut grown = memory(b"part", 1);
+        grown.len += 1;
+        assert!(grown.into_segment().is_none());
     }
 }

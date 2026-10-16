@@ -34,6 +34,9 @@ pub enum RetentionPolicy {
     /// rather than when the next operation replaces it.
     CurrentConfig,
     /// Keep buffers while they fit inside a ceiling, and release them when not.
+    ///
+    /// Storage kept only to speed up switching between match finders is
+    /// released first; the rest goes only if that is not enough.
     Bounded {
         /// The most the compressor may retain, in bytes.
         max_bytes: usize,

@@ -23,8 +23,10 @@ use crate::{
     shared::format::{
         CONTEXT_LUT_SIGNED, CONTEXT_LUT_UTF8, COPY_BASE, COPY_EXTRA, INS_BASE, INS_EXTRA,
     },
+    shared::uninit::copy_to_uninit,
 };
 use alloc::vec::Vec;
+use core::mem::MaybeUninit;
 use fearless_simd::{Simd, SimdBase, dispatch, u8x16, u8x32};
 
 /// Smallest ring allocation; growth doubles up to the window size.
@@ -115,13 +117,121 @@ enum Pause {
     Output,
 }
 
-pub(crate) struct Output<'a> {
-    pub(crate) bytes: &'a mut [u8],
+/// The caller's destination for one call: an initialized or an
+/// uninitialized slice.
+///
+/// The decoder is generic over it rather than matching on a variant, so the
+/// initialized instantiation compiles to plain slice writes. A variant
+/// match inlined into the command loop cost 4-9% of decoded instructions:
+/// the loop shares one function with every stage, and the extra arms changed
+/// its register allocation.
+///
+/// An uninitialized slice is write-only: safe code cannot read it back, so it
+/// never serves as linear history, and delivery copies out of the ring.
+pub(crate) trait Sink<'a> {
+    /// Whether the sink can be a linear member's history. The decoder
+    /// instantiates the linear state machine only for sinks that can.
+    const LINEAR: bool;
+
+    /// Capacity in bytes.
+    fn len(&self) -> usize;
+
+    /// Writes one byte; `index` is below [`Sink::len`].
+    fn put(&mut self, index: usize, byte: u8);
+
+    /// Writes `source` at `start`; the range lies within [`Sink::len`].
+    fn copy(&mut self, start: usize, source: &[u8]);
+
+    /// The initialized slice a linear member decodes into and reads back.
+    /// Linear delivery is only ever chosen for an initialized sink; an
+    /// uninitialized one yields no history.
+    fn history(&self) -> &[u8];
+
+    /// Takes the linear slice out for bulk work, leaving an empty one behind
+    /// until [`Sink::restore_history`] puts it back.
+    fn take_history(&mut self) -> &'a mut [u8];
+
+    /// Puts back the slice [`Sink::take_history`] took.
+    fn restore_history(&mut self, bytes: &'a mut [u8]);
+}
+
+impl<'a> Sink<'a> for &'a mut [u8] {
+    const LINEAR: bool = true;
+
+    #[inline]
+    fn len(&self) -> usize {
+        <[u8]>::len(self)
+    }
+
+    #[inline]
+    fn put(&mut self, index: usize, byte: u8) {
+        self[index] = byte;
+    }
+
+    #[inline]
+    fn copy(&mut self, start: usize, source: &[u8]) {
+        self[start..start + source.len()].copy_from_slice(source);
+    }
+
+    #[inline]
+    fn history(&self) -> &[u8] {
+        self
+    }
+
+    #[inline]
+    fn take_history(&mut self) -> &'a mut [u8] {
+        core::mem::take(self)
+    }
+
+    #[inline]
+    fn restore_history(&mut self, bytes: &'a mut [u8]) {
+        *self = bytes;
+    }
+}
+
+impl<'a> Sink<'a> for &'a mut [MaybeUninit<u8>] {
+    const LINEAR: bool = false;
+
+    #[inline]
+    fn len(&self) -> usize {
+        <[MaybeUninit<u8>]>::len(self)
+    }
+
+    #[inline]
+    fn put(&mut self, index: usize, byte: u8) {
+        self[index].write(byte);
+    }
+
+    #[inline]
+    fn copy(&mut self, start: usize, source: &[u8]) {
+        copy_to_uninit(&mut self[start..start + source.len()], source);
+    }
+
+    #[inline]
+    fn history(&self) -> &[u8] {
+        &[]
+    }
+
+    #[inline]
+    fn take_history(&mut self) -> &'a mut [u8] {
+        &mut []
+    }
+
+    #[inline]
+    fn restore_history(&mut self, bytes: &'a mut [u8]) {
+        debug_assert!(bytes.is_empty(), "an uninitialized sink lent no history");
+    }
+}
+
+pub(crate) struct Output<O> {
+    pub(crate) bytes: O,
     /// Collect a member in history, stopping before any ring byte is overwritten.
     pub(crate) collect: Option<usize>,
     /// The member began at `bytes[0]` in this call and `bytes` is its
     /// history: the ring is neither written nor read, and delivering history
     /// only advances `produced`. Set only for a whole member in one call.
+    /// [`Stream::run`] reads it once per call to pick the linear or the ring
+    /// instantiation of the state machine; nothing below it tests the flag.
     pub(crate) linear: bool,
     pub(crate) produced: usize,
     pub(crate) total_before: u64,
@@ -129,10 +239,11 @@ pub(crate) struct Output<'a> {
     pub(crate) exact: OutputSize,
 }
 
-impl Output<'_> {
-    /// Whether delivery copies history bytes into `bytes`.
-    const fn delivers(&self) -> bool {
-        self.collect.is_none() && !self.linear
+impl<'a, O: Sink<'a>> Output<O> {
+    /// Whether delivery copies history bytes into `bytes`; a linear member
+    /// already decoded them there.
+    const fn delivers<const LINEAR: bool>(&self) -> bool {
+        self.collect.is_none() && !LINEAR
     }
 
     /// Length of the linear history visible to bulk work starting at
@@ -253,13 +364,19 @@ const fn history_mask(len: usize) -> u64 {
 
 /// Delivers ring bytes decoded since `flushed`. The pending region never
 /// crosses the ring end: writers flush whenever a write reaches it.
-fn flush_ring(ring: &[u8], position: u64, flushed: &mut u64, output: &mut Output<'_>) {
+fn flush_ring<'a, O: Sink<'a>, const LINEAR: bool>(
+    ring: &[u8],
+    position: u64,
+    flushed: &mut u64,
+    output: &mut Output<O>,
+) {
     let pending = (position - *flushed) as usize;
     if pending != 0 {
-        if output.delivers() {
+        if output.delivers::<LINEAR>() {
             let start = (*flushed & history_mask(ring.len())) as usize;
-            output.bytes[output.produced..output.produced + pending]
-                .copy_from_slice(&ring[start..start + pending]);
+            output
+                .bytes
+                .copy(output.produced, &ring[start..start + pending]);
         }
         output.produced += pending;
         *flushed = position;
@@ -324,14 +441,14 @@ fn copy32<S: Simd>(simd: S, ring: &mut [u8], src: usize, dst: usize) -> bool {
 /// Copies `length` bytes from `distance` back, in ring pieces that neither
 /// wrap nor need per-byte handling. The ring already holds `position + length`.
 #[inline(always)]
-fn copy_ring<S: Simd>(
+fn copy_ring<'a, S: Simd, O: Sink<'a>, const LINEAR: bool>(
     simd: S,
     ring: &mut [u8],
     position: &mut u64,
     distance: u64,
     mut length: usize,
     flushed: &mut u64,
-    output: &mut Output<'_>,
+    output: &mut Output<O>,
 ) {
     let size = ring.len();
     let mask = history_mask(size);
@@ -347,7 +464,7 @@ fn copy_ring<S: Simd>(
         *position += piece as u64;
         length -= piece;
         if dst + piece == size {
-            flush_ring(ring, *position, flushed, output);
+            flush_ring::<O, LINEAR>(ring, *position, flushed, output);
         }
     }
 }
@@ -356,11 +473,15 @@ fn copy_ring<S: Simd>(
 /// which is why the emptiness check comes first: a transformed dictionary word
 /// can decode to no bytes at all, and as a member's first command it reaches
 /// this with nothing written and the ring still unallocated.
-fn write_ring(
+///
+/// Inlined for the same reason as [`copy_ring`]: with a linear and a ring
+/// instantiation of the command loop, LLVM otherwise outlines the ring one.
+#[inline(always)]
+fn write_ring<'a, O: Sink<'a>, const LINEAR: bool>(
     ring: &mut [u8],
     position: &mut u64,
     mut bytes: &[u8],
-    mut flushed: Option<(&mut u64, &mut Output<'_>)>,
+    mut flushed: Option<(&mut u64, &mut Output<O>)>,
 ) {
     if bytes.is_empty() {
         return;
@@ -376,7 +497,7 @@ fn write_ring(
         if dst + piece == size
             && let Some((flushed, output)) = flushed.as_mut()
         {
-            flush_ring(ring, *position, flushed, output);
+            flush_ring::<O, LINEAR>(ring, *position, flushed, output);
         }
     }
 }
@@ -447,8 +568,11 @@ fn previous_bytes(ring: &[u8], position: u64) -> (u8, u8) {
 
 /// The bytes history positions index this call: the caller's slice for a
 /// linear member, the ring otherwise.
-fn history<'b>(ring: &'b [u8], output: &'b Output<'_>) -> &'b [u8] {
-    if output.linear { output.bytes } else { ring }
+fn history<'b, 'a, O: Sink<'a>, const LINEAR: bool>(
+    ring: &'b [u8],
+    output: &'b Output<O>,
+) -> &'b [u8] {
+    if LINEAR { output.bytes.history() } else { ring }
 }
 
 #[cold]
@@ -604,7 +728,7 @@ impl Stream {
             self.position = end;
         } else {
             self.ensure_ring(end)?;
-            write_ring(&mut self.ring, &mut self.position, bytes, None);
+            write_ring::<&mut [u8], false>(&mut self.ring, &mut self.position, bytes, None);
         }
         Ok(())
     }
@@ -632,19 +756,23 @@ impl Stream {
         self.ring.len() as u64 - 1
     }
 
-    fn emit(&mut self, byte: u8, output: &mut Output<'_>) -> Result<(), DecodeError> {
+    fn emit<'a, O: Sink<'a>, const LINEAR: bool>(
+        &mut self,
+        byte: u8,
+        output: &mut Output<O>,
+    ) -> Result<(), DecodeError> {
         let next = self
             .position
             .checked_add(1)
             .ok_or(DecodeError::SizeOverflow)?;
-        if !output.linear {
+        if !LINEAR {
             self.ensure_ring(next)?;
             let index = (self.position & self.ring_mask()) as usize;
             self.ring[index] = byte;
         }
         self.position = next;
         if output.collect.is_none() {
-            output.bytes[output.produced] = byte;
+            output.bytes.put(output.produced, byte);
         }
         output.produced += 1;
         self.remaining -= 1;
@@ -664,15 +792,23 @@ impl Stream {
     }
 
     #[cfg_attr(all(feature = "hotpath", not(feature = "no_std")), hotpath::measure)]
-    pub(crate) fn run(
+    pub(crate) fn run<'a, O: Sink<'a>>(
         &mut self,
         backend: crate::Backend,
         input: &mut Input<'_>,
-        output: &mut Output<'_>,
+        output: &mut Output<O>,
         config: DecoderConfig,
         dictionary: Option<DictionaryRef<'_>>,
     ) -> Result<Stop, DecodeError> {
-        let result = self.run_stages(backend, input, output, config, dictionary);
+        // Linear delivery is fixed for the whole call, so it is a type-level
+        // choice: the ring instantiation keeps no linear arms and the linear
+        // one no ring growth or wrapping. A sink that cannot be linear history
+        // never instantiates the linear machine.
+        let result = if O::LINEAR && output.linear {
+            self.run_stages::<O, true>(backend, input, output, config, dictionary)
+        } else {
+            self.run_stages::<O, false>(backend, input, output, config, dictionary)
+        };
         // The fast path may pull whole speculative bytes into the reservoir.
         // Return read-ahead at output pauses too: a long pending copy can end
         // the member on a later call without accepting more input. Keeping its
@@ -703,11 +839,11 @@ impl Stream {
     /// the command loop never detects features or dispatches a copy.
     #[cfg_attr(all(feature = "hotpath", not(feature = "no_std")), hotpath::measure)]
     #[inline(always)]
-    fn fast<S: Simd>(
+    fn fast<'a, S: Simd, O: Sink<'a>, const LINEAR: bool>(
         &mut self,
         simd: S,
         input: &mut Input<'_>,
-        output: &mut Output<'_>,
+        output: &mut Output<O>,
         out_end: usize,
         dictionary: Option<DictionaryRef<'_>>,
     ) -> Result<(), DecodeError> {
@@ -757,8 +893,13 @@ impl Stream {
         let mut remaining = *saved_remaining;
         let mut flushed = position;
         // The input cursor and the recent-distance cache live in locals too.
-        let fast_input = &input.bytes[..input.fast_end()];
-        let mut consumed = input.consumed;
+        // The cursor is the unread acceptable input, which shrinks from the
+        // front as refills accept bytes; its length gives the index back on
+        // leaving.
+        let fast_input = input.bytes[..input.fast_end()]
+            .get(input.consumed..)
+            .unwrap_or_default();
+        let mut rest = fast_input;
         let mut cache = *saved_cache;
         // Command state the resumable stages read; written back on a pause.
         let mut literals = 0u64;
@@ -771,24 +912,28 @@ impl Stream {
         let mut space = out_end - output.produced;
         // A linear member decodes straight into the caller's slice, which is
         // taken out of `output` until the loop leaves; it never grows, since
-        // `space` keeps every write below its bounded length.
-        let linear = output.linear;
+        // `space` keeps every write below its bounded length, and never
+        // wraps, so its positions are its indices and need no mask.
         let history_end = output.history_end(position, remaining, out_end);
-        let linear_bytes: &mut [u8] = if linear {
-            core::mem::take(&mut output.bytes)
+        let linear_bytes: &mut [u8] = if LINEAR {
+            output.bytes.take_history()
         } else {
             &mut []
         };
-        let mut ring: &mut [u8] = if linear {
+        let mut ring: &mut [u8] = if LINEAR {
             &mut linear_bytes[..history_end]
         } else {
             storage.as_mut_slice()
         };
         let mut ring_len = ring.len();
-        let mut mask = history_mask(ring_len);
+        let mut mask = if LINEAR {
+            u64::MAX
+        } else {
+            history_mask(ring_len)
+        };
         // Positions below this need no growth: the ring length, or unbounded
         // once the ring has reached the window and wraps instead.
-        let mut ring_limit = if linear || ring_len as u64 >= window_size {
+        let mut ring_limit = if LINEAR || ring_len as u64 >= window_size {
             u64::MAX
         } else {
             ring_len as u64
@@ -809,15 +954,15 @@ impl Stream {
         let mut contexts: &[u8; 64] = &[0; 64];
         let mut trivial = false;
         let mut trivial_table = literal_tables.table(0);
-        // Per-block-type distance context map slice.
-        let mut distance_contexts = [0u8; 4];
+        // Per-block-type distance codes, one per distance context.
+        let mut distance_trees = [distance_tables.table(0); 4];
         macro_rules! leave {
             () => {{
-                flush_ring(ring, position, &mut flushed, output);
-                if linear {
-                    output.bytes = linear_bytes;
+                flush_ring::<O, LINEAR>(ring, position, &mut flushed, output);
+                if LINEAR {
+                    output.bytes.restore_history(linear_bytes);
                 }
-                input.consumed = consumed;
+                input.consumed += fast_input.len() - rest.len();
                 *saved_bits = bits;
                 *saved_position = position;
                 *saved_remaining = remaining;
@@ -847,17 +992,20 @@ impl Stream {
                 }
             };
         }
-        // Grows the ring for output up to `end`, and while at it for every
-        // byte this call could still produce, so growth happens once per call
-        // rather than once per doubling. The pending bytes keep their indices
+        // Grows the ring for every byte this call could still produce, so
+        // growth happens once per call rather than once per doubling. That
+        // covers `end` whenever the write fits in `space`: copies and
+        // dictionary words larger than `space` pause before reaching here, and
+        // an insert longer than `space` writes only what fits. Growing to the
+        // whole of such an insert would reserve history for output this call
+        // cannot hold, and fail a workspace limit that linear delivery into
+        // the same slice never meets. The pending bytes keep their indices
         // because a ring only grows before it has wrapped.
         macro_rules! reach {
             ($end:expr) => {{
                 let end: u64 = $end;
-                if end > ring_limit {
-                    let bound = position
-                        .saturating_add(remaining.min(space as u64))
-                        .max(end);
+                if !LINEAR && end > ring_limit {
+                    let bound = position.saturating_add(remaining.min(space as u64));
                     // A failed growth leaves the storage, and so the pending
                     // bytes, untouched; the slice is re-borrowed either way.
                     let grown = grow_ring(memory, storage, window_size, bound);
@@ -884,7 +1032,7 @@ impl Stream {
                 implicit = *saved_implicit;
                 (literals, copy.saturating_sub(2).min(3) as u8)
             } else {
-                if remaining == 0 || !bits.refill_from(fast_input, &mut consumed) {
+                if remaining == 0 || !bits.refill_rest(&mut rest) {
                     pause!(Stage::Command);
                 }
                 if command_block.remaining == 0 {
@@ -896,7 +1044,7 @@ impl Stream {
                         command_type = command_block.current;
                         command_table = command_tables.table(command_type);
                     }
-                    if !bits.refill_from(fast_input, &mut consumed) {
+                    if !bits.refill_rest(&mut rest) {
                         pause!(Stage::Command);
                     }
                 }
@@ -910,7 +1058,7 @@ impl Stream {
                 }
                 implicit = command.implicit;
                 literals = insert;
-                if bits.count() < 24 && !bits.refill_from(fast_input, &mut consumed) {
+                if bits.count() < 24 && !bits.refill_rest(&mut rest) {
                     pause!(Stage::CopyExtra(usize::from(command.copy_code)));
                 }
                 copy = u64::from(command.copy_base) + bits.take(u32::from(command.copy_extra));
@@ -925,7 +1073,7 @@ impl Stream {
                     }
                     if literal_block.remaining == 0 {
                         if !literal_block.switch_ready()
-                            || (bits.count() < 54 && !bits.refill_from(fast_input, &mut consumed))
+                            || (bits.count() < 54 && !bits.refill_rest(&mut rest))
                         {
                             break Pause::Input;
                         }
@@ -957,7 +1105,7 @@ impl Stream {
                         // reservoir check across a batch; short input and the
                         // final one or two literals use the scalar loop below.
                         for slots in ring[index..index + run].as_chunks_mut::<3>().0 {
-                            if bits.count() < 45 && !bits.refill_from(fast_input, &mut consumed) {
+                            if bits.count() < 45 && !bits.refill_rest(&mut rest) {
                                 break;
                             }
                             slots[0] = trivial_table.decode_fast(&mut bits) as u8;
@@ -966,7 +1114,7 @@ impl Stream {
                             done += 3;
                         }
                         for slot in ring[index + done..index + run].iter_mut() {
-                            if bits.count() < 15 && !bits.refill_from(fast_input, &mut consumed) {
+                            if bits.count() < 15 && !bits.refill_rest(&mut rest) {
                                 break;
                             }
                             *slot = trivial_table.decode_fast(&mut bits) as u8;
@@ -975,7 +1123,7 @@ impl Stream {
                     } else {
                         let (mut p1, mut p2) = previous_bytes(ring, position);
                         for slot in ring[index..index + run].iter_mut() {
-                            if bits.count() < 15 && !bits.refill_from(fast_input, &mut consumed) {
+                            if bits.count() < 15 && !bits.refill_rest(&mut rest) {
                                 break;
                             }
                             let context =
@@ -993,8 +1141,9 @@ impl Stream {
                     remaining -= done as u64;
                     space -= done;
                     literal_block.remaining -= done as u64;
-                    if index + done == ring_len {
-                        flush_ring(ring, position, &mut flushed, output);
+                    // Linear history is delivered when the loop leaves.
+                    if !LINEAR && index + done == ring_len {
+                        flush_ring::<O, LINEAR>(ring, position, &mut flushed, output);
                     }
                     if done < run {
                         break Pause::Input;
@@ -1012,7 +1161,7 @@ impl Stream {
                 // Re-pushed below, which keeps the cache unchanged.
                 cache.pop()
             } else {
-                if bits.count() < distance_need && !bits.refill_from(fast_input, &mut consumed) {
+                if bits.count() < distance_need && !bits.refill_rest(&mut rest) {
                     pause!(Stage::Distance);
                 }
                 if distance_block.remaining == 0 {
@@ -1020,19 +1169,20 @@ impl Stream {
                         pause!(Stage::Distance);
                     }
                     distance_block.switch_fast(&mut bits);
-                    if !bits.refill_from(fast_input, &mut consumed) {
+                    if !bits.refill_rest(&mut rest) {
                         pause!(Stage::Distance);
                     }
                 }
                 if distance_block.current != distance_type {
                     distance_type = distance_block.current;
-                    distance_contexts = distance_map[distance_type * 4..]
+                    let contexts = distance_map[distance_type * 4..]
                         .first_chunk::<4>()
                         .copied()
                         .unwrap_or([0; 4]);
+                    distance_trees = contexts.map(|tree| distance_tables.table(usize::from(tree)));
                 }
-                let tree = usize::from(distance_contexts[usize::from(distance_context) & 3]);
-                let symbol = distance_tables.table(tree).decode_fast(&mut bits);
+                let symbol =
+                    distance_trees[usize::from(distance_context) & 3].decode_fast(&mut bits);
                 distance_block.remaining -= 1;
                 distance_code = symbol;
                 if symbol == 0 {
@@ -1044,13 +1194,11 @@ impl Stream {
                     let entry = distance_table[symbol];
                     let width = entry.width as u32;
                     let extra = if width > 32 {
-                        if consumed + 16 > fast_input.len()
-                            || !bits.refill_from(fast_input, &mut consumed)
-                        {
+                        if rest.len() < 16 || !bits.refill_rest(&mut rest) {
                             pause!(Stage::DistanceExtra(symbol));
                         }
                         let low = bits.take(32);
-                        if !bits.refill_from(fast_input, &mut consumed) {
+                        if !bits.refill_rest(&mut rest) {
                             check!(Err(DecodeError::InternalInvariant));
                         }
                         low | (bits.take(width - 32) << 32)
@@ -1093,7 +1241,7 @@ impl Stream {
                     pause!(Stage::Dictionary);
                 }
                 reach!(position + length as u64);
-                write_ring(
+                write_ring::<O, LINEAR>(
                     ring,
                     &mut position,
                     &scratch[..length],
@@ -1102,23 +1250,26 @@ impl Stream {
                 remaining -= length as u64;
                 space -= length;
             } else {
-                if copy > remaining {
-                    check!(Err(InvalidDataKind::MetaBlock.into()));
-                }
-                // An implicit distance re-enters the slot it was popped from;
-                // an explicit one takes a new slot, both as one write. This
-                // precedes the output check because `Stage::Copy` resumes the
-                // copy without touching the cache.
-                cache.push(distance);
-                if copy > space as u64 {
+                // One test covers both limits; the rare failure then tells
+                // corrupt input from a full output.
+                if copy > remaining.min(space as u64) {
+                    if copy > remaining {
+                        check!(Err(InvalidDataKind::MetaBlock.into()));
+                    }
+                    // `Stage::Copy` resumes the copy without touching the
+                    // cache, so the distance enters it before the pause.
+                    cache.push(distance);
                     pause!(Stage::Copy);
                 }
+                // An implicit distance re-enters the slot it was popped from;
+                // an explicit one takes a new slot, both as one write.
+                cache.push(distance);
                 // A unit-distance run that must grow the ring is a fill: grow
                 // with the repeated byte in one pass instead of zeroing the new
                 // region and overwriting it. Runs that fit, or that wrap past
                 // the window, take the general copy below.
                 let end = position + copy;
-                if distance == 1 && end > ring_limit && end <= window_size {
+                if !LINEAR && distance == 1 && end > ring_limit && end <= window_size {
                     let byte = ring[((position - 1) & mask) as usize];
                     // Bind the result and re-borrow before `check!`, whose
                     // failure path flushes through `ring`.
@@ -1135,7 +1286,7 @@ impl Stream {
                     remaining -= copy;
                     space -= copy as usize;
                     if position == ring_len as u64 {
-                        flush_ring(ring, position, &mut flushed, output);
+                        flush_ring::<O, LINEAR>(ring, position, &mut flushed, output);
                     }
                     continue;
                 }
@@ -1143,24 +1294,34 @@ impl Stream {
                 let len = copy as usize;
                 let dst = (position & mask) as usize;
                 let src = ((position - distance) & mask) as usize;
-                if dst.max(src) + len <= ring_len {
-                    if distance >= copy {
-                        if len <= 16 {
-                            if !copy16(simd, ring, src, dst) {
-                                ring.copy_within(src..src + len, dst);
-                            }
-                        } else if len > 32 || !copy32(simd, ring, src, dst) {
-                            ring.copy_within(src..src + len, dst);
-                        }
+                // A short copy whose whole sixteen- or thirty-two-byte
+                // windows fit needs no other bounds check: its own window
+                // checks imply that neither side wraps.
+                let short = distance >= copy
+                    && if len <= 16 {
+                        copy16(simd, ring, src, dst)
+                    } else {
+                        len <= 32 && copy32(simd, ring, src, dst)
+                    };
+                if short || dst.max(src) + len <= ring_len {
+                    if short {
+                        // Copied above.
+                    } else if distance >= copy {
+                        ring.copy_within(src..src + len, dst);
                     } else {
                         copy_overlapping(ring, dst, src, len, distance as usize);
                     }
                     position += copy;
-                    if dst + len == ring_len {
-                        flush_ring(ring, position, &mut flushed, output);
+                    if !LINEAR && dst + len == ring_len {
+                        flush_ring::<O, LINEAR>(ring, position, &mut flushed, output);
                     }
+                } else if LINEAR {
+                    // Linear history holds the whole meta-block within the
+                    // call's output space and never wraps, so every copy
+                    // that fits `space` also fits it unsplit.
+                    check!(Err(DecodeError::InternalInvariant));
                 } else {
-                    copy_ring(
+                    copy_ring::<S, O, LINEAR>(
                         simd,
                         ring,
                         &mut position,
@@ -1176,11 +1337,11 @@ impl Stream {
         }
     }
 
-    fn run_stages(
+    fn run_stages<'a, O: Sink<'a>, const LINEAR: bool>(
         &mut self,
         backend: crate::Backend,
         input: &mut Input<'_>,
-        output: &mut Output<'_>,
+        output: &mut Output<O>,
         config: DecoderConfig,
         dictionary: Option<DictionaryRef<'_>>,
     ) -> Result<Stop, DecodeError> {
@@ -1289,7 +1450,7 @@ impl Stream {
                     }
                     if self.bits.count() >= 8 {
                         let byte = self.bits.take(8) as u8;
-                        self.emit(byte, output)?;
+                        self.emit::<O, LINEAR>(byte, output)?;
                         continue;
                     }
                     let count = self
@@ -1299,20 +1460,19 @@ impl Stream {
                         as usize;
                     if count == 0 {
                         let byte = read!(8) as u8;
-                        self.emit(byte, output)?;
+                        self.emit::<O, LINEAR>(byte, output)?;
                         continue;
                     }
                     // As for metadata, the copied bytes bypass the reservoir.
                     self.bits.settle();
                     let bytes = &input.bytes[input.consumed..input.consumed + count];
-                    if output.linear {
+                    if LINEAR {
                         self.position += count as u64;
                     } else {
                         self.write_raw(bytes)?;
                     }
                     if output.collect.is_none() {
-                        output.bytes[output.produced..output.produced + count]
-                            .copy_from_slice(bytes);
+                        output.bytes.copy(output.produced, bytes);
                     }
                     input.consumed += count;
                     output.produced += count;
@@ -1424,7 +1584,7 @@ impl Stream {
                         self.stage = Stage::EndBlock;
                         continue;
                     }
-                    dispatch!(backend.0, simd => self.fast(simd, input, output, out_end, dictionary))?;
+                    dispatch!(backend.0, simd => self.fast::<_, O, LINEAR>(simd, input, output, out_end, dictionary))?;
                     if !matches!(self.stage, Stage::Command) {
                         continue;
                     }
@@ -1477,7 +1637,7 @@ impl Stream {
                     // decoded one symbol at a time below. Entering the bulk
                     // loop is worth it only if it can refill at all.
                     if input.consumed + 8 <= fast_end {
-                        dispatch!(backend.0, simd => self.fast(simd, input, output, out_end, dictionary))?;
+                        dispatch!(backend.0, simd => self.fast::<_, O, LINEAR>(simd, input, output, out_end, dictionary))?;
                         if !matches!(self.stage, Stage::Literals) || self.literals == 0 {
                             continue;
                         }
@@ -1492,7 +1652,11 @@ impl Stream {
                     if input.consumed + 8 <= fast_end {
                         // The bulk loop stopped at a boundary it does not
                         // cross; one byte here lets it resume after it.
-                        let context = context(tables, history(&self.ring, output), self.position);
+                        let context = context(
+                            tables,
+                            history::<O, LINEAR>(&self.ring, output),
+                            self.position,
+                        );
                         let tree = usize::from(
                             tables.maps[0].values[tables.blocks[0].current * 64 + context],
                         );
@@ -1502,7 +1666,7 @@ impl Stream {
                             return Ok(Stop::Input);
                         };
                         tables.blocks[0].advance();
-                        self.emit(byte as u8, output)?;
+                        self.emit::<O, LINEAR>(byte as u8, output)?;
                         self.literals -= 1;
                         continue;
                     }
@@ -1528,7 +1692,8 @@ impl Stream {
                         if done == run {
                             break Ok(true);
                         }
-                        let (p1, p2) = previous_bytes(history(&self.ring, output), self.position);
+                        let (p1, p2) =
+                            previous_bytes(history::<O, LINEAR>(&self.ring, output), self.position);
                         let context =
                             usize::from(lut[usize::from(p1)] | lut[256 + usize::from(p2)]);
                         let byte = match trees
@@ -1542,7 +1707,7 @@ impl Stream {
                         let Some(next) = self.position.checked_add(1) else {
                             break Err(DecodeError::SizeOverflow);
                         };
-                        if !output.linear {
+                        if !LINEAR {
                             if next > self.ring.len() as u64
                                 && let Err(error) = grow_ring(
                                     &mut self.memory,
@@ -1558,7 +1723,7 @@ impl Stream {
                         }
                         self.position = next;
                         if output.collect.is_none() {
-                            output.bytes[output.produced] = byte;
+                            output.bytes.put(output.produced, byte);
                         }
                         output.produced += 1;
                         done += 1;
@@ -1623,14 +1788,17 @@ impl Stream {
                             let crossing = self.copy.saturating_sub(prefix_len - offset);
                             let length = usize::try_from(crossing.min(available))
                                 .map_err(|_| DecodeError::SizeOverflow)?;
-                            self.memory.resize(&mut self.prefix_history, length)?;
+                            self.prefix_history.clear();
+                            self.memory.reserve(&mut self.prefix_history, length)?;
                             if length != 0 {
-                                let history = history(&self.ring, output);
+                                let history = history::<O, LINEAR>(&self.ring, output);
                                 let mask = history_mask(history.len());
                                 let start = self.position - available;
-                                for (i, byte) in self.prefix_history.iter_mut().enumerate() {
-                                    *byte = history[((start + i as u64) & mask) as usize];
-                                }
+                                self.prefix_history.extend(
+                                    (start..)
+                                        .take(length)
+                                        .map(|position| history[(position & mask) as usize]),
+                                );
                             }
                         }
                         if self.distance_code != 0 {
@@ -1642,7 +1810,11 @@ impl Stream {
                         };
                     } else if self.distance > available {
                         let tables = tables!();
-                        let context = context(tables, history(&self.ring, output), self.position);
+                        let context = context(
+                            tables,
+                            history::<O, LINEAR>(&self.ring, output),
+                            self.position,
+                        );
                         tables.scratch_len = dictionary::resolve(
                             dictionary,
                             self.distance - available - prefix_len - 1,
@@ -1688,11 +1860,11 @@ impl Stream {
                         .checked_add(n)
                         .ok_or(DecodeError::SizeOverflow)?;
                     let mut flushed = self.position;
-                    if output.linear {
+                    if LINEAR {
                         let history_end =
                             output.history_end(self.position, self.remaining, out_end);
-                        let bytes = core::mem::take(&mut output.bytes);
-                        dispatch!(backend.0, simd => copy_ring(
+                        let bytes = output.bytes.take_history();
+                        dispatch!(backend.0, simd => copy_ring::<_, O, LINEAR>(
                             simd,
                             &mut bytes[..history_end],
                             &mut self.position,
@@ -1701,10 +1873,10 @@ impl Stream {
                             &mut flushed,
                             output,
                         ));
-                        output.bytes = bytes;
+                        output.bytes.restore_history(bytes);
                     } else if !self.repeat_growing(end)? {
                         self.ensure_ring(end)?;
-                        dispatch!(backend.0, simd => copy_ring(
+                        dispatch!(backend.0, simd => copy_ring::<_, O, LINEAR>(
                             simd,
                             &mut self.ring,
                             &mut self.position,
@@ -1714,7 +1886,7 @@ impl Stream {
                             output,
                         ));
                     }
-                    flush_ring(&self.ring, self.position, &mut flushed, output);
+                    flush_ring::<O, LINEAR>(&self.ring, self.position, &mut flushed, output);
                     self.copy -= n;
                     self.remaining -= n;
                     if self.copy != 0 {
@@ -1755,20 +1927,20 @@ impl Stream {
                         .checked_add(n as u64)
                         .ok_or(DecodeError::SizeOverflow)?;
                     let mut flushed = self.position;
-                    if output.linear {
+                    if LINEAR {
                         let start = output.produced;
-                        output.bytes[start..start + n].copy_from_slice(&run[..n]);
+                        output.bytes.copy(start, &run[..n]);
                         self.position = end;
                     } else {
                         self.ensure_ring(end)?;
-                        write_ring(
+                        write_ring::<O, LINEAR>(
                             &mut self.ring,
                             &mut self.position,
                             &run[..n],
                             Some((&mut flushed, &mut *output)),
                         );
                     }
-                    flush_ring(&self.ring, self.position, &mut flushed, output);
+                    flush_ring::<O, LINEAR>(&self.ring, self.position, &mut flushed, output);
                     self.copy -= n as u64;
                     self.remaining -= n as u64;
                     self.stage = Stage::Prefix {
@@ -1791,7 +1963,7 @@ impl Stream {
                     if !output.ready()? {
                         return Ok(Stop::Output);
                     }
-                    self.emit(self.prefix_history[offset], output)?;
+                    self.emit::<O, LINEAR>(self.prefix_history[offset], output)?;
                     self.copy -= 1;
                     self.stage = Stage::PrefixHistory {
                         offset: offset + 1,
@@ -1809,7 +1981,7 @@ impl Stream {
                     }
                     let byte = tables.scratch[tables.scratch_pos];
                     tables.scratch_pos += 1;
-                    self.emit(byte, output)?;
+                    self.emit::<O, LINEAR>(byte, output)?;
                 }
                 Stage::EndBlock => {
                     self.stage = if self.last { Stage::End } else { Stage::Meta };
@@ -1827,6 +1999,105 @@ impl Stream {
 mod tests {
     use super::*;
     use crate::dictionary::{DecodeDictionary, DecodeDictionaryLimits, DictionaryAttachment};
+
+    #[test]
+    fn an_initialized_sink_writes_lends_and_takes_back_its_history() {
+        let mut bytes = [0u8; 6];
+        let mut sink: &mut [u8] = &mut bytes;
+        assert_eq!(Sink::len(&sink), 6);
+        sink.put(0, b'a');
+        sink.copy(1, b"bcd");
+        assert_eq!(sink.history(), b"abcd\0\0");
+
+        let lent = sink.take_history();
+        assert!(Sink::history(&sink).is_empty());
+        lent[5] = b'z';
+        sink.restore_history(lent);
+        assert_eq!(sink.history(), b"abcd\0z");
+    }
+
+    #[test]
+    fn an_uninitialized_sink_writes_but_never_lends_history() {
+        let mut bytes = [MaybeUninit::new(0xAA); 6];
+        let mut sink: &mut [MaybeUninit<u8>] = &mut bytes;
+        assert_eq!(Sink::len(&sink), 6);
+        sink.put(0, b'a');
+        sink.copy(1, b"bcd");
+        assert!(sink.history().is_empty());
+
+        let lent = sink.take_history();
+        assert!(lent.is_empty());
+        sink.restore_history(lent);
+        assert_eq!(Sink::len(&sink), 6);
+
+        // SAFETY: every element was initialized by the array literal and the writes.
+        let written = bytes.map(|slot| unsafe { slot.assume_init() });
+        assert_eq!(&written, b"abcd\xAA\xAA");
+    }
+
+    /// Decodes alice29 in one call asking for linear delivery into `bytes`.
+    fn decode_linear_request<'a, O: Sink<'a>>(stream: &mut Stream, bytes: O) -> usize {
+        let encoded = include_bytes!(
+            "../../../brotli-ffi/vendor/brotli/tests/testdata/alice29.txt.compressed"
+        );
+        let config = DecoderConfig::default();
+        stream.reset(config);
+        let mut input = Input::new(encoded, 0, None);
+        let mut output = Output {
+            collect: None,
+            linear: true,
+            bytes,
+            produced: 0,
+            total_before: 0,
+            limit: None,
+            exact: OutputSize::Unknown,
+        };
+        let stop = stream
+            .run(
+                crate::Backend::SCALAR,
+                &mut input,
+                &mut output,
+                config,
+                None,
+            )
+            .unwrap();
+        assert_eq!(stop, Stop::Member);
+        assert_eq!(input.consumed, encoded.len());
+        output.produced
+    }
+
+    #[test]
+    fn a_linear_request_decodes_into_an_initialized_sink_without_a_ring() {
+        const { assert!(<&mut [u8] as Sink>::LINEAR) };
+        let expected =
+            include_bytes!("../../../brotli-ffi/vendor/brotli/tests/testdata/alice29.txt");
+        let mut bytes = alloc::vec![0; expected.len()];
+        let mut stream = Stream::default();
+        let produced = decode_linear_request(&mut stream, &mut bytes[..]);
+        assert_eq!(produced, expected.len());
+        assert_eq!(bytes, expected);
+        // The slice was the history: the linear state machine never grows the ring.
+        assert!(stream.ring.is_empty());
+    }
+
+    #[test]
+    fn a_linear_request_decodes_through_the_ring_for_an_uninitialized_sink() {
+        const { assert!(!<&mut [MaybeUninit<u8>] as Sink>::LINEAR) };
+        let expected =
+            include_bytes!("../../../brotli-ffi/vendor/brotli/tests/testdata/alice29.txt");
+        let mut bytes = alloc::vec![MaybeUninit::new(0); expected.len()];
+        let mut stream = Stream::default();
+        let produced = decode_linear_request(&mut stream, &mut bytes[..]);
+        assert_eq!(produced, expected.len());
+        // SAFETY: every element was initialized by the `vec!` fill value.
+        let written: Vec<u8> = bytes
+            .iter()
+            .map(|slot| unsafe { slot.assume_init() })
+            .collect();
+        assert_eq!(written, expected);
+        // A write-only sink cannot be history, so the ring state machine ran.
+        assert!(!stream.ring.is_empty());
+    }
 
     #[test]
     fn raw_growth_initializes_only_padding_and_preserves_wrapped_history() {
@@ -1917,7 +2188,7 @@ mod tests {
                 let mut output = Output {
                     collect: None,
                     linear: false,
-                    bytes: &mut bytes,
+                    bytes: &mut bytes[..],
                     produced: 0,
                     total_before: decoded.len() as u64,
                     limit: None,
@@ -1977,7 +2248,7 @@ mod tests {
                     let mut output = Output {
                         collect: None,
                         linear: false,
-                        bytes: &mut sink,
+                        bytes: &mut sink[..],
                         produced: 0,
                         total_before: 0,
                         limit: None,
@@ -1985,7 +2256,7 @@ mod tests {
                     };
                     let mut fast_position = position;
                     let mut flushed = position;
-                    dispatch!(backend.0, simd => copy_ring(
+                    dispatch!(backend.0, simd => copy_ring::<_, _, false>(
                         simd,
                         &mut ring,
                         &mut fast_position,
@@ -1994,7 +2265,7 @@ mod tests {
                         &mut flushed,
                         &mut output,
                     ));
-                    flush_ring(&ring, fast_position, &mut flushed, &mut output);
+                    flush_ring::<_, false>(&ring, fast_position, &mut flushed, &mut output);
                     assert_eq!(fast_position, reference_position);
                     assert_eq!(output.produced, length);
                     // Only the copied bytes and the 16 unreachable slots ahead may differ.

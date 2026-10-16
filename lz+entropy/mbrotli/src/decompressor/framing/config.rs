@@ -47,22 +47,24 @@ pub struct FramedDecodeLimits {
 }
 impl Default for FramedDecodeLimits {
     fn default() -> Self {
-        Self {
-            max_input_bytes: None,
-            max_output_bytes: None,
-            max_decoded_bytes: None,
-            max_resource_bytes: None,
-            max_workspace_bytes: Some(64 << 20),
-            max_framing_bytes: Some(8 << 20),
-            max_dictionary_bytes: Some(32 << 20),
-            max_metadata_bytes: Some(1 << 20),
-            max_metadata_fields: Some(65536),
-            max_resources: Some(10000),
-            max_chunks: Some(1000000),
-        }
+        Self::DEFAULT
     }
 }
 impl FramedDecodeLimits {
+    /// The default ceilings, usable in `const` contexts.
+    const DEFAULT: Self = Self {
+        max_input_bytes: None,
+        max_output_bytes: None,
+        max_decoded_bytes: None,
+        max_resource_bytes: None,
+        max_workspace_bytes: Some(64 << 20),
+        max_framing_bytes: Some(8 << 20),
+        max_dictionary_bytes: Some(32 << 20),
+        max_metadata_bytes: Some(1 << 20),
+        max_metadata_fields: Some(65536),
+        max_resources: Some(10000),
+        max_chunks: Some(1000000),
+    };
     /// Sets the ceiling for accepted wire bytes.
     ///
     /// # Examples
@@ -370,16 +372,36 @@ pub struct FramedDecodeConfig {
     internal_dictionaries: InternalDictionaryPolicy,
 }
 impl Default for FramedDecodeConfig {
+    /// Returns [`FramedDecodeConfig::new`].
     fn default() -> Self {
-        Self {
-            input_mode: InputMode::default(),
-            window_limit: DecoderConfig::default().window_limit(),
-            limits: FramedDecodeLimits::default(),
-            internal_dictionaries: InternalDictionaryPolicy::default(),
-        }
+        Self::new()
     }
 }
 impl FramedDecodeConfig {
+    /// Returns the default policy in a `const` context.
+    ///
+    /// Equal to [`FramedDecodeConfig::default`]: framed input only, the
+    /// window limit of [`DecoderConfig::new`], the default
+    /// [`FramedDecodeLimits`] and retained internal dictionaries.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mbrotli::framing::*;
+    /// const AUTO: FramedDecodeConfig = FramedDecodeConfig::new().with_input_mode(InputMode::Auto);
+    /// assert_eq!(FramedDecodeConfig::new(), FramedDecodeConfig::default());
+    /// assert_eq!(AUTO.input_mode(), InputMode::Auto);
+    /// assert_eq!(AUTO.limits(), FramedDecodeLimits::default());
+    /// ```
+    #[must_use]
+    pub const fn new() -> Self {
+        Self {
+            input_mode: InputMode::FramedOnly,
+            window_limit: DecoderConfig::new().window_limit(),
+            limits: FramedDecodeLimits::DEFAULT,
+            internal_dictionaries: InternalDictionaryPolicy::Retain,
+        }
+    }
     /// Sets the input mode policy.
     ///
     /// # Examples

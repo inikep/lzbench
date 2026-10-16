@@ -110,6 +110,8 @@ pub enum MbrotliResult {
 /// fit in an output of at least that bound — the input is stored in
 /// uncompressed meta-blocks instead.
 ///
+/// Bytes of `output` past the ones reported are never written.
+///
 /// # Errors
 ///
 /// - [`MbrotliResult::InvalidParameter`] for a null or misaligned
@@ -127,7 +129,8 @@ pub enum MbrotliResult {
 /// - When `input_len` is not zero, `input` must be null or valid for reads of
 ///   `input_len` bytes.
 /// - When `*output_len` is not zero, `output` must be null or valid for
-///   writes of `*output_len` bytes.
+///   writes of `*output_len` bytes. It need not be initialized: the call only
+///   writes to it, and on success exactly the reported bytes are initialized.
 /// - No other thread may write to `input`, or access `output` or
 ///   `output_len`, during the call.
 ///
@@ -174,6 +177,11 @@ pub unsafe extern "C" fn mbrotli_compress(
 /// null or misaligned `output_len`, which is left untouched. Brotli does not
 /// record the decompressed size, so the caller must know or bound it.
 ///
+/// `output` serves as the decoder's history, so no separate window is copied
+/// out of. Bytes of `output` past the ones reported may be overwritten only
+/// when its capacity is at most 1 KiB, which is zeroed first; larger
+/// capacities are written only up to the result.
+///
 /// Streams with an RFC 9841 large window are accepted as well as ordinary
 /// RFC 7932 ones.
 ///
@@ -194,7 +202,8 @@ pub unsafe extern "C" fn mbrotli_compress(
 ///
 /// As [`mbrotli_compress`]: `output_len` must be null or point to a readable
 /// and writable `size_t`, a non-null `input` must be readable for `input_len`
-/// bytes, a non-null `output` writable for `*output_len` bytes, and no other
+/// bytes, a non-null `output` writable for `*output_len` bytes (it need not be
+/// initialized), and no other
 /// thread may write to `input` or access `output` or `output_len` during the
 /// call.
 ///

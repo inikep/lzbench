@@ -142,8 +142,7 @@ fn compare_and_push_to_queue<const N: usize>(
         } else {
             pairs[0].cost_diff.max(0.0)
         };
-        *tmp = out[idx1 as usize].clone();
-        tmp.add_histogram(&out[idx2 as usize]);
+        tmp.set_sum(&out[idx1 as usize], &out[idx2 as usize]);
         let cost_combo = population_cost(tmp, data_size);
         if cost_combo < threshold - p.cost_diff {
             p.cost_combo = cost_combo;
@@ -222,8 +221,9 @@ fn histogram_combine<const N: usize>(
         let best_idx2 = pairs[0].idx2;
         let cost_combo = pairs[0].cost_combo;
 
-        let absorbed = out[best_idx2 as usize].clone();
-        out[best_idx1 as usize].add_histogram(&absorbed);
+        // Pairs are ordered, so the absorbed histogram lies past the survivor.
+        let (survivors, absorbed) = out.split_at_mut(best_idx2 as usize);
+        survivors[best_idx1 as usize].add_histogram(&absorbed[0]);
         out[best_idx1 as usize].bit_cost = cost_combo;
         cluster_size[best_idx1 as usize] += cluster_size[best_idx2 as usize];
         for symbol in symbols.iter_mut().take(symbols_size) {
@@ -292,8 +292,7 @@ fn bit_cost_distance<const N: usize>(
     if histogram.total_count == 0 {
         return 0.0;
     }
-    *tmp = histogram.clone();
-    tmp.add_histogram(candidate);
+    tmp.set_sum(histogram, candidate);
     population_cost(tmp, data_size) - candidate.bit_cost
 }
 
@@ -332,9 +331,8 @@ fn histogram_remap<const N: usize>(
     for &cluster in &clusters[..num_clusters] {
         out[cluster as usize].clear();
     }
-    for index in 0..input.len() {
-        let source = input[index].clone();
-        out[symbols[index] as usize].add_histogram(&source);
+    for (source, &symbol) in input.iter().zip(&*symbols) {
+        out[symbol as usize].add_histogram(source);
     }
 }
 
@@ -362,14 +360,14 @@ fn histogram_reindex<const N: usize>(
         }
     }
 
+    // Indices were assigned in first-appearance order, so the histograms are
+    // appended in index order.
     reindexed.clear();
-    reindexed.resize(next_index as usize, Histogram::default());
-    let mut written = 0u32;
+    reindexed.reserve(next_index as usize);
     for slot in symbols.iter_mut().take(length) {
         let symbol = *slot as usize;
-        if new_index[symbol] == written {
-            reindexed[written as usize] = out[symbol].clone();
-            written += 1;
+        if new_index[symbol] as usize == reindexed.len() {
+            reindexed.push(out[symbol].clone());
         }
         *slot = new_index[symbol];
     }
@@ -404,12 +402,11 @@ pub(crate) fn cluster_histograms<const N: usize>(
     out.clear();
     out.reserve(in_size);
     symbols.clear();
-    symbols.resize(in_size, 0);
-    for (index, histogram) in input.iter().enumerate() {
+    symbols.extend(0..in_size as u32);
+    for histogram in input {
         let mut copy = histogram.clone();
         copy.bit_cost = population_cost(histogram, data_size);
         out.push(copy);
-        symbols[index] = index as u32;
     }
 
     let mut num_clusters = 0usize;

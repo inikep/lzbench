@@ -181,7 +181,7 @@ jobs:
         ARTIFACT_SLUG: gcc-14-i686
 
       # The only native static build: the cross builds below are static too,
-      # but they skip the cargo (density, mbrotli, pulsar) and zig (skim)
+      # but they skip the cargo (density, mbrotli, mzstd, pulsar) and zig (skim)
       # codecs, so without this job nothing links the Rust staticlib into a
       # -static binary. Two Rust staticlibs each carry their own copy of std
       # and fail to link together ("multiple definition of
@@ -193,7 +193,7 @@ jobs:
         SELECTED_CXX: g++-14
         PACKAGES: 'g++-14'
         MORE_OPTIONS: 'BUILD_STATIC=1'
-        REQUIRE_CODECS: 'density gobrrr mbrotli pulsar skim'
+        REQUIRE_CODECS: 'density gobrrr mbrotli mzstd pulsar skim'
         ARTIFACT_SLUG: gcc-14-x86_64-static
 
       gcc-13 [Ubuntu 24.04 Noble]:
