@@ -24,7 +24,7 @@ endif
 
 # The stamp tracks the C compiler and Go settings across make runs.
 ifneq ($(DONT_BUILD_GOBRRR),1)
-    GOBRRR_CONFIG := cc=$(CC) $(shell go env GOVERSION GOARCH GOAMD64 GOARM64 GOFLAGS CGO_CFLAGS CGO_LDFLAGS)
+    GOBRRR_CONFIG := cc=$(CC) $(shell GOAMD64='$(GOAMD64)' GOARM64='$(GOARM64)' GOFLAGS='$(GOFLAGS)' CGO_CFLAGS='$(CGO_CFLAGS)' CGO_LDFLAGS='$(CGO_LDFLAGS)' go env GOVERSION GOARCH GOAMD64 GOARM64 GOFLAGS CGO_CFLAGS CGO_LDFLAGS)
     ifneq ($(shell cat $(GOBRRR_STAMP) 2>/dev/null),$(strip $(GOBRRR_CONFIG)))
         $(shell mkdir -p $(dir $(GOBRRR_STAMP)) && echo '$(strip $(GOBRRR_CONFIG))' > $(GOBRRR_STAMP))
     endif
