@@ -193,7 +193,7 @@ jobs:
         SELECTED_CXX: g++-14
         PACKAGES: 'g++-14'
         MORE_OPTIONS: 'BUILD_STATIC=1'
-        REQUIRE_CODECS: 'density mbrotli mzstd pulsar skim'
+        REQUIRE_CODECS: 'density gobrrr mbrotli mzstd pulsar skim'
         ARTIFACT_SLUG: gcc-14-x86_64-static
 
       gcc-13 [Ubuntu 24.04 Noble]:
@@ -358,10 +358,18 @@ jobs:
     displayName: '*** Install Zig (for skim; Linux native builds only)'
     condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'), eq(variables['QEMU_INTERPRETER'], ''), not(contains(variables['MORE_OPTIONS'], '32-bit')))
 
+  # Pin Go for native Linux go-brrr builds and round-trip tests.
+  - task: GoTool@0
+    inputs:
+      version: '1.27.1'
+    displayName: '*** Install Go (for gobrrr; Linux native builds only)'
+    condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'), eq(variables['QEMU_INTERPRETER'], ''), not(contains(variables['MORE_OPTIONS'], '32-bit')))
+
   - script: |
       echo SELECTED_CC=$SELECTED_CC SELECTED_CXX=$SELECTED_CXX REAL_COMPILER_VER=$REAL_COMPILER_VER imageName=$(imageName) OS_NAME=$OS_NAME
       df -Th
       command -v zig && zig version || echo "zig not installed - skim disabled"
+      command -v go && go version || echo "go not installed - gobrrr disabled"
 
       make -j2 CC="ccache $SELECTED_CC" CXX="ccache $SELECTED_CXX" $MORE_OPTIONS || exit 1
       ccache --show-stats

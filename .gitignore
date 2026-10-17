@@ -9,6 +9,10 @@ misc/rust-codecs/target/
 misc/density/src/target/
 misc/density/src/Cargo.lock
 
+# go-brrr build outputs
+lz+entropy/gobrrr/libgobrrr.h
+lz+entropy/gobrrr/libgobrrr.config
+
 # Archives
 *.zip
 
