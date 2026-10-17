@@ -23,6 +23,9 @@ misc/density/src/Cargo.lock
 bench/codecs.stamp
 bench/git-commit.stamp
 
+# The objects of the link on a Windows host (Makefile)
+lzbench.rsp
+
 # Libraries
 *.lib
 *.a
