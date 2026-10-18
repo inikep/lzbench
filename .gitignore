@@ -27,6 +27,9 @@ lz+entropy/gobrrr/libgobrrr.config
 bench/codecs.stamp
 bench/git-commit.stamp
 
+# The objects of the link (Makefile)
+lzbench.objs
+
 # Libraries
 *.lib
 *.a
