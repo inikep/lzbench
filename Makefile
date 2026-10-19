@@ -73,6 +73,8 @@ endif
 THREAD_MODEL := $(shell $(CXX) -v 2>&1 | grep '^Thread model:' | awk '{print $$3}')
 $(info Detected thread model: $(THREAD_MODEL))
 
+LINK = $(CXX)
+
 ifneq (,$(filter Windows%,$(OS)))
     THREAD_MODEL := $(or $(THREAD_MODEL),win32)
     BUILD_STATIC ?= 1
@@ -409,7 +411,7 @@ CLEAN_FILES += lzbench.objs
 # to be built first and trigger a relink when they change
 lzbench: $(LZBENCH_OBJS) $(LINK_DEPS)
 	$(WRITE_LINK_OBJS)
-	$(CXX) @lzbench.objs -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
+	$(LINK) -o $@ @lzbench.objs $(LDFLAGS) $(LDFLAGS_LIBDL)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
 
