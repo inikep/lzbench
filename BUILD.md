@@ -8,6 +8,10 @@ Requirements
 To compile, you need a C and C++ compiler that is GNUC-compatible, such as GCC, LLVM/Clang, or ICC.
 It is recommended to use GCC 7.1+ or Clang 6.0+. You can find GCC at http://gcc.gnu.org.
 
+The link command with all codecs is longer than Windows allows (32,767 characters), so the objects go to the
+linker in a file, `lzbench.objs` (`@lzbench.objs`). GNU make 4.0 or later (e.g. `mingw32-make` on Windows) writes
+it with `$(file)`; GNU make 3.81 (MSYS, macOS) has no `$(file)`, and its `sh` writes it with `printf`.
+
 
 Testing
 ------------

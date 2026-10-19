@@ -392,10 +392,24 @@ CLEAN_FILES += $(BENCH_STAMP)
 # static libraries (skim) go last, after the objects that use them
 LZBENCH_OBJS = $(filter-out %.a,$(CODEC_OBJS)) $(BENCH_OBJS) $(filter %.a,$(CODEC_OBJS))
 
+# The objects reach the linker in a file, lzbench.objs (@lzbench.objs), as the
+# command line with all codecs is longer than Windows allows (32,767 characters).
+# GNU make 4.0 and later write it with $(file): a native Windows make passes a
+# printf command to the shell with the same limit. Make 3.81 (MSYS, macOS) has no
+# $(file), so its shell writes it with printf; MSYS's make passes long commands
+# to its sh.
+ifeq ($(filter 3.%,$(MAKE_VERSION)),)
+    WRITE_LINK_OBJS = $(file >lzbench.objs,$(filter-out $(LINK_DEPS),$^))
+else
+    WRITE_LINK_OBJS = @printf '%s\n' $(filter-out $(LINK_DEPS),$^) > lzbench.objs
+endif
+CLEAN_FILES += lzbench.objs
+
 # LINK_DEPS: libraries that are linked with -l (the Rust codecs), but still have
 # to be built first and trigger a relink when they change
 lzbench: $(LZBENCH_OBJS) $(LINK_DEPS)
-	$(CXX) $(filter-out $(LINK_DEPS),$^) -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
+	$(WRITE_LINK_OBJS)
+	$(CXX) @lzbench.objs -o $@ $(LDFLAGS) $(LDFLAGS_LIBDL)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
 
 
