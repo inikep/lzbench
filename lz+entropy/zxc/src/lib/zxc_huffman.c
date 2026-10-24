@@ -8,10 +8,10 @@
 
 /**
  * @file zxc_huffman.c
- * @brief Canonical, length-limited Huffman codec in the PivCo layout (GLO
+ * @brief Canonical, length-limited Huffman codec in the PivCo layout (SPL
  *        entropy sections, wire values enc 2/3).
  *
- * Covers the whole entropy pipeline for GLO literal sections (level >= 6)
+ * Covers the whole entropy pipeline for SPL literal sections (level >= 6)
  * and level-7 token sections:
  *  - boundary package-merge -> optimal length-limited code lengths
  *    (<= ZXC_HUF_MAX_CODE_LEN_DENSITY at level 6, <= _ULTRA at level 7);
@@ -1961,7 +1961,7 @@ static void zxc_pivco_unpack_flat(uint8_t* RESTRICT out, const size_t n, const i
             uint16_t w1;
             ZXC_MEMCPY(&w0, bits + off, 4);
             ZXC_MEMCPY(&w1, bits + off + 4, 2); /* exactly 6 bytes read */
-            const __m128i raw = _mm_insert_epi16(_mm_cvtsi32_si128((int)w0), w1, 2);
+            const __m128i raw = _mm_insert_epi16(_mm_cvtsi32_si128((int)w0), (int16_t)w1, 2);
             const __m128i cA =
                 _mm_srli_epi16(_mm_mullo_epi16(_mm_shuffle_epi8(raw, shufA), vmul), 13);
             const __m128i cB =
@@ -1981,8 +1981,8 @@ static void zxc_pivco_unpack_flat(uint8_t* RESTRICT out, const size_t n, const i
             const size_t off = (i * 5) >> 3;
             uint16_t w1;
             ZXC_MEMCPY(&w1, bits + off + 8, 2); /* 10 source bytes */
-            const __m128i raw =
-                _mm_insert_epi16(_mm_loadl_epi64((const __m128i*)(const void*)(bits + off)), w1, 4);
+            const __m128i raw = _mm_insert_epi16(
+                _mm_loadl_epi64((const __m128i*)(const void*)(bits + off)), (int16_t)w1, 4);
             const __m128i cA =
                 _mm_srli_epi16(_mm_mullo_epi16(_mm_shuffle_epi8(raw, shufA), vmul), 11);
             const __m128i cB =

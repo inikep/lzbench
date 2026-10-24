@@ -38,8 +38,10 @@
  *
  * @par Creating a seekable archive
  * @code
- * zxc_compress_opts_t opts = { .level = 3, .seekable = 1 };
- * int64_t csize = zxc_compress(src, src_size, dst, dst_cap, &opts);
+ * zxc_cctx* cctx = zxc_create_cctx();
+ * zxc_cctx_set_param(cctx, ZXC_C_SEEKABLE, 1);
+ * int64_t csize = zxc_compress_cctx(cctx, src, src_size, dst, dst_cap);
+ * zxc_free_cctx(cctx);
  * @endcode
  *
  * @par Random-access decompression (buffer-backed)

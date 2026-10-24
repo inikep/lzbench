@@ -507,8 +507,17 @@ static int zxc_seek_use_dict(const zxc_seekable* s, zxc_cctx_t* ctx, const zxc_s
     return ZXC_OK;
 }
 
+// A block decodes into a capacity of its own, never the caller's: running out
+// of it is corruption.
+static int zxc_seek_decode_error(const int res) {
+    return (res == ZXC_ERROR_DST_TOO_SMALL || res == ZXC_ERROR_OVERFLOW) ? ZXC_ERROR_CORRUPT_DATA
+                                                                         : res;
+}
+
 /**
- * @brief Reads a compressed block into @p buf from the memory buffer or reader.
+ * @brief Fetches a compressed block from the memory buffer or reader.
+ *
+ * A memory archive is not copied: @p *blk points into it.
  *
  * @p off and @p csz come from @ref zxc_seek_load_spans. What @p off points at must parse
  * as a block header, checksum included, and agree with @p csz. An entry pointing into a
@@ -519,21 +528,30 @@ static int zxc_seek_use_dict(const zxc_seekable* s, zxc_cctx_t* ctx, const zxc_s
  * @param[in]  off      Byte offset of the block in the archive.
  * @param[in]  csz      On-disk size of the block, at least a header.
  * @param[in]  has_cs   Its frame carries block checksums.
- * @param[out] buf      Destination buffer.
+ * @param[out] buf      Scratch for a reader; unused (may be NULL) on a memory archive.
  * @param[in]  buf_cap  Capacity of @p buf in bytes.
+ * @param[out] blk      The block, in the archive or in @p buf.
  * @return @p csz, or a negative @ref zxc_error_t (@ref ZXC_ERROR_DST_TOO_SMALL,
  *         @ref ZXC_ERROR_SRC_TOO_SMALL, @ref ZXC_ERROR_IO, @ref ZXC_ERROR_BAD_HEADER,
  *         @ref ZXC_ERROR_CORRUPT_DATA).
  */
 static int zxc_seek_read_block(const zxc_seekable* s, const uint64_t off, const uint32_t csz,
-                               const int has_cs, uint8_t* buf, const size_t buf_cap) {
-    if (UNLIKELY(csz > buf_cap)) return ZXC_ERROR_DST_TOO_SMALL;
-    const zxc_seek_source_t src = zxc_seek_source_of(s);
-    const int rc = zxc_seek_source_read(&src, buf, csz, off);
-    if (UNLIKELY(rc != ZXC_OK)) return rc;
+                               const int has_cs, uint8_t* buf, const size_t buf_cap,
+                               const uint8_t** blk) {
+    if (s->src) {
+        if (UNLIKELY(off > s->src_size || (uint64_t)csz > s->src_size - off))
+            return ZXC_ERROR_SRC_TOO_SMALL;
+        *blk = s->src + off;
+    } else {
+        if (UNLIKELY(csz > buf_cap)) return ZXC_ERROR_DST_TOO_SMALL;
+        const zxc_seek_source_t src = zxc_seek_source_of(s);
+        const int rc = zxc_seek_source_read(&src, buf, csz, off);
+        if (UNLIKELY(rc != ZXC_OK)) return rc;
+        *blk = buf;
+    }
 
     zxc_block_header_t bh;
-    const int hdr_res = zxc_read_block_header(buf, csz, &bh);
+    const int hdr_res = zxc_read_block_header(*blk, csz, &bh);
     if (UNLIKELY(hdr_res != ZXC_OK)) return hdr_res;
     const uint64_t on_disk =
         (uint64_t)ZXC_BLOCK_HEADER_SIZE + bh.comp_size + (has_cs ? ZXC_BLOCK_CHECKSUM_SIZE : 0U);
@@ -590,18 +608,19 @@ int64_t zxc_seekable_decompress_range(zxc_seekable* s, void* dst, const size_t d
         const int span_res = zxc_seek_load_spans(s, f, local, n, starts, sizes, raw);
         if (UNLIKELY(span_res < 0)) return span_res;
 
-        // Block scratch kept on the handle, sized to the slice's largest block, not entry_max.
-        uint64_t need = 0;
-        for (uint32_t k = 0; k < n; k++)
-            if (sizes[k] > need) need = sizes[k];
-        need += ZXC_PAD_SIZE;
-        if (s->read_buf_cap < need) {
-            uint8_t* const nb = (uint8_t*)ZXC_REALLOC(s->read_buf, (size_t)need);
-            if (UNLIKELY(!nb)) return ZXC_ERROR_MEMORY;  // LCOV_EXCL_LINE
-            s->read_buf = nb;
-            s->read_buf_cap = (size_t)need;
+        // A reader's block scratch, sized to the slice's largest block, not entry_max.
+        if (!s->src) {
+            uint64_t need = 0;
+            for (uint32_t k = 0; k < n; k++)
+                if (sizes[k] > need) need = sizes[k];
+            need += ZXC_PAD_SIZE;
+            if (s->read_buf_cap < need) {
+                uint8_t* const nb = (uint8_t*)ZXC_REALLOC(s->read_buf, (size_t)need);
+                if (UNLIKELY(!nb)) return ZXC_ERROR_MEMORY;  // LCOV_EXCL_LINE
+                s->read_buf = nb;
+                s->read_buf_cap = (size_t)need;
+            }
         }
-        uint8_t* const read_buf = s->read_buf;
 
         // The frame's geometry and dictionary: the context is sized for the largest.
         const int dict_res = zxc_seek_use_dict(s, &s->dctx, &s->dctx_dict, f);
@@ -612,30 +631,34 @@ int64_t zxc_seekable_decompress_range(zxc_seekable* s, void* dst, const size_t d
 
         for (uint32_t k = 0; k < n; k++, bi++) {
             const uint64_t lb = local + k;  // position in the frame: the checksum seed
+            const uint8_t* blk = NULL;
             const int read_res = zxc_seek_read_block(s, starts[k], sizes[k], f->has_checksums,
-                                                     read_buf, s->read_buf_cap);
+                                                     s->read_buf, s->read_buf_cap, &blk);
             if (UNLIKELY(read_res < 0)) return read_res;
 
-            // Decompress the block: when a dictionary is active, decode into the
-            // cctx-owned dict_buffer (which has dict content prepended) so that
-            // match copies referencing dictionary bytes resolve naturally.
-            uint8_t* dec_dst =
-                s->dctx.dict_buffer ? s->dctx.dict_buffer + s->dctx.dict_size : s->dctx.work_buf;
-            const int dec_res = zxc_decompress_chunk_wrapper(&s->dctx, read_buf, (size_t)read_res,
-                                                             dec_dst, work_sz, lb);
-            if (UNLIKELY(dec_res < 0)) return dec_res;
-            if (UNLIKELY((uint32_t)dec_res !=
-                         zxc_seek_decomp_size(f->block_size, f->total_decomp, lb)))
-                return ZXC_ERROR_CORRUPT_DATA;
-
-            // Calculate which portion of this block's decompressed data we need
+            // The wanted part of the block
+            const uint32_t dec_sz = zxc_seek_decomp_size(f->block_size, f->total_decomp, lb);
             const uint64_t blk_decomp_start = f->decomp_base + lb * f->block_size;
             const size_t skip =
                 (offset > blk_decomp_start) ? (size_t)(offset - blk_decomp_start) : 0;
-            const size_t avail = (size_t)dec_res - skip;
+            const size_t avail = (size_t)dec_sz - skip;
             const size_t copy = (avail < remaining) ? avail : remaining;
 
-            ZXC_MEMCPY(out, dec_dst + skip, copy);
+            // A whole block decodes in place if the fast decoder's margin stays in
+            // the range (the next blocks overwrite it); otherwise aside, behind the
+            // dict prefix if any, then copied.
+            const int direct =
+                !s->dctx.dict_size && skip == 0 && remaining - copy >= ZXC_DECOMPRESS_TAIL_PAD;
+            uint8_t* const aside =
+                s->dctx.dict_buffer ? s->dctx.dict_buffer + s->dctx.dict_size : s->dctx.work_buf;
+            uint8_t* const dec_dst = direct ? out : aside;
+            const size_t dec_cap = direct ? (size_t)dec_sz + ZXC_DECOMPRESS_TAIL_PAD : work_sz;
+            const int dec_res =
+                zxc_decompress_chunk_wrapper(&s->dctx, blk, (size_t)read_res, dec_dst, dec_cap, lb);
+            if (UNLIKELY(dec_res < 0)) return zxc_seek_decode_error(dec_res);
+            if (UNLIKELY((uint32_t)dec_res != dec_sz)) return ZXC_ERROR_CORRUPT_DATA;
+
+            if (!direct) ZXC_MEMCPY(out, aside + skip, copy);
             out += copy;
             remaining -= copy;
         }
@@ -652,9 +675,8 @@ int64_t zxc_seekable_decompress_range(zxc_seekable* s, void* dst, const size_t d
 /**
  * @brief Per-block job descriptor for multi-threaded decompression.
  *
- * Each worker thread receives a pointer to one of these, performs the read +
- * decompress + memcpy sequence, and writes the result code into @c result.
- * The main thread inspects @c result after join.
+ * Run by the worker that claims it (@ref zxc_seek_mt_job); the main thread
+ * reads @c result after join.
  */
 typedef struct {
     uint64_t block_idx;  /* position in its frame: the checksum seed */
@@ -674,11 +696,10 @@ typedef struct {
  * @struct zxc_seek_mt_shared_t
  * @brief State shared by every worker of one multi-threaded range read.
  *
- * Worker @c k owns the job subset {k, k+stride, k+2*stride, ...} and reuses one
- * decompression context, one dictionary copy and one read buffer across all of
- * them. Stripes are pairwise disjoint, so workers touch distinct jobs and
- * distinct output ranges and need no synchronisation beyond claiming their
- * index at start-up and the final join.
+ * Workers claim batches of consecutive jobs, about @ref ZXC_MT_BATCH_BYTES of
+ * output as in the FILE* engine, so the faster cores take more, and reuse one
+ * context, dictionary copy and read buffer. Jobs are disjoint: no
+ * synchronisation beyond the claim and the join.
  *
  * Lives on the caller's stack: the caller's output pointer therefore never
  * reaches heap memory (jobs carry offsets into it), and there is no per-thread
@@ -686,109 +707,111 @@ typedef struct {
  */
 typedef struct {
     const zxc_seekable* s;   /* handle being read (read-only) */
-    zxc_seek_mt_job_t* jobs; /* job array; each worker touches only its stripe */
+    zxc_seek_mt_job_t* jobs; /* job array; each worker touches only the jobs it claimed */
     uint8_t* dst_base;       /* start of the caller's output buffer */
-    uint32_t num_jobs;       /* job count (stripe iteration bound) */
-    uint32_t stride;         /* worker count attempted; stripes partition by it */
-    uint32_t next;           /* next stripe index to hand out, under lock */
-    pthread_mutex_t lock;    /* guards next */
+    uint32_t num_jobs;       /* job count */
+    uint32_t batch;          /* jobs per claim, the last one may be shorter */
+    uint32_t max_csz;        /* largest on-disk block: sizes a reader's scratch */
+    uint32_t next;           /* first job of the next batch, under lock */
+    int failed;              /* a job failed: no further claims, under lock */
+    pthread_mutex_t lock;    /* guards next and failed */
 } zxc_seek_mt_shared_t;
 
 /**
- * @brief Marks every job of stripe @p first with @p code (setup-failure path).
+ * @brief Reads one job's block, decodes it and copies the requested part out.
  *
- * @param[in,out] sh    Shared state.
- * @param[in]     first Stripe index.
- * @param[in]     code  Negative @ref zxc_error_t value.
+ * Decodes into the worker's buffer, not in place: a batch's last block would
+ * reach another worker's output, and in place measured slower once memory
+ * bandwidth binds (-20 % at 8 threads, M3).
+ *
+ * @param[in]     sh       Shared state.
+ * @param[in,out] job      The claimed job; its @c result is set.
+ * @param[in,out] dctx     The worker's context.
+ * @param[in,out] held     The dictionary @p dctx holds.
+ * @param[out]    read_buf A reader's block scratch, NULL on a memory archive.
+ * @param[in]     read_cap Capacity of @p read_buf.
+ * @return ZXC_OK, or a negative @ref zxc_error_t.
  */
-static void zxc_seek_mt_fail_stripe(const zxc_seek_mt_shared_t* sh, const uint32_t first,
-                                    const int code) {
-    for (uint32_t i = first; i < sh->num_jobs; i += sh->stride) sh->jobs[i].result = code;
+static int zxc_seek_mt_job(const zxc_seek_mt_shared_t* sh, zxc_seek_mt_job_t* job, zxc_cctx_t* dctx,
+                           const zxc_seek_dict_t** held, uint8_t* read_buf, const size_t read_cap) {
+    const zxc_seekable* const s = sh->s;
+
+    const uint8_t* blk = NULL;
+    const int read_res =
+        zxc_seek_read_block(s, job->off, job->csz, job->has_cs, read_buf, read_cap, &blk);
+    if (UNLIKELY(read_res < 0)) return job->result = read_res;
+
+    const int dict_res = zxc_seek_use_dict(s, dctx, held, job->frame);
+    if (UNLIKELY(dict_res != ZXC_OK)) return job->result = dict_res;
+    dctx->chunk_size = job->block_size;
+    dctx->checksum_enabled = job->has_cs && s->verify_checksums;
+
+    // Behind the dict prefix, if any, for back-references into it.
+    uint8_t* const dec_dst =
+        dctx->dict_buffer ? dctx->dict_buffer + dctx->dict_size : dctx->work_buf;
+    const int dec_res = zxc_decompress_chunk_wrapper(
+        dctx, blk, (size_t)read_res, dec_dst, (size_t)job->block_size + ZXC_DECOMPRESS_TAIL_PAD,
+        job->block_idx);
+    if (UNLIKELY(dec_res < 0)) return job->result = zxc_seek_decode_error(dec_res);
+    if (UNLIKELY((uint32_t)dec_res != job->decomp_sz)) return job->result = ZXC_ERROR_CORRUPT_DATA;
+
+    ZXC_MEMCPY(sh->dst_base + job->dst_off, dec_dst + job->skip, job->copy_len);
+    return job->result = ZXC_OK;
 }
 
 /**
  * @brief Worker thread entry point for multi-threaded seekable decompression.
  *
- * Sets up its context, dictionary copy and read buffer once, then for each
- * block of its stripe: read (thread-safe pread), decompress, copy the
- * requested sub-range into the caller's output.  The dict prefix survives
- * across blocks because the decoder never writes below its dst.
+ * Sets up its context, dictionary copy and read buffer once, then claims
+ * batches in order (@ref zxc_seek_mt_job). The dict prefix survives across
+ * blocks: the decoder never writes below its dst.
  *
- * Each job's outcome goes into its @c result (read by the main thread after
- * join); on error the worker abandons the rest of its stripe.
+ * A failed job stops every worker's claims; the unclaimed jobs come after it
+ * and stay negative. A worker that cannot set up leaves the jobs to the others.
  *
  * @param[in,out] arg  Pointer to the read's `zxc_seek_mt_shared_t`.
  * @return Always NULL (result codes are reported via the jobs).
  */
 static void* zxc_seek_mt_worker(void* arg) {
     zxc_seek_mt_shared_t* const sh = (zxc_seek_mt_shared_t*)arg;
-    zxc_seek_mt_job_t* const jobs = sh->jobs;
     const zxc_seekable* const s = sh->s;
-
-    // Claim a stripe: the main thread hands every worker the same argument.
-    pthread_mutex_lock(&sh->lock);
-    const uint32_t first = sh->next++;
-    pthread_mutex_unlock(&sh->lock);
 
     // Thread-local decompression context (mode=0 for decompress-only)
     zxc_cctx_t dctx;
     if (UNLIKELY(zxc_cctx_init(&dctx, (size_t)s->max_block_size, 0, 0, 0, s->max_dict_size) !=
-                 ZXC_OK)) {
-        // LCOV_EXCL_START
-        zxc_seek_mt_fail_stripe(sh, first, ZXC_ERROR_MEMORY);
-        return NULL;
-        // LCOV_EXCL_STOP
-    }
+                 ZXC_OK))
+        return NULL;  // LCOV_EXCL_LINE
     const zxc_seek_dict_t* held = NULL;
 
-    // Read buffer sized for the largest compressed block of the stripe.
-    size_t max_csz = 0;
-    for (uint32_t i = first; i < sh->num_jobs; i += sh->stride) {
-        if (jobs[i].csz > max_csz) max_csz = jobs[i].csz;
+    // Block scratch, for a reader only.
+    const size_t read_cap = (size_t)sh->max_csz + ZXC_PAD_SIZE;
+    uint8_t* read_buf = NULL;
+    if (!s->src) {
+        read_buf = (uint8_t*)ZXC_MALLOC(read_cap);
+        if (UNLIKELY(!read_buf)) {
+            // LCOV_EXCL_START
+            zxc_cctx_free(&dctx);
+            return NULL;
+            // LCOV_EXCL_STOP
+        }
     }
-    uint8_t* const read_buf = (uint8_t*)ZXC_MALLOC(max_csz + ZXC_PAD_SIZE);
-    if (UNLIKELY(!read_buf)) {
-        // LCOV_EXCL_START
-        zxc_cctx_free(&dctx);
-        zxc_seek_mt_fail_stripe(sh, first, ZXC_ERROR_MEMORY);
-        return NULL;
-        // LCOV_EXCL_STOP
+
+    int rc = ZXC_OK;
+    while (rc == ZXC_OK) {
+        pthread_mutex_lock(&sh->lock);
+        const uint32_t first = sh->failed ? sh->num_jobs : sh->next;
+        const uint32_t last = sh->num_jobs - first > sh->batch ? first + sh->batch : sh->num_jobs;
+        sh->next = last;
+        pthread_mutex_unlock(&sh->lock);
+        if (first == last) break;
+
+        for (uint32_t i = first; i < last && rc == ZXC_OK; i++)
+            rc = zxc_seek_mt_job(sh, &sh->jobs[i], &dctx, &held, read_buf, read_cap);
     }
-
-    for (uint32_t i = first; i < sh->num_jobs; i += sh->stride) {
-        zxc_seek_mt_job_t* const job = &jobs[i];
-
-        const int read_res = zxc_seek_read_block(s, job->off, job->csz, job->has_cs, read_buf,
-                                                 max_csz + ZXC_PAD_SIZE);
-        if (UNLIKELY(read_res < 0)) {
-            job->result = read_res;
-            break;
-        }
-
-        const int dict_res = zxc_seek_use_dict(s, &dctx, &held, job->frame);
-        if (UNLIKELY(dict_res != ZXC_OK)) {
-            job->result = dict_res;
-            break;
-        }
-        uint8_t* dec_dst = dctx.dict_buffer ? dctx.dict_buffer + dctx.dict_size : dctx.work_buf;
-        dctx.chunk_size = job->block_size;
-        dctx.checksum_enabled = job->has_cs && s->verify_checksums;
-        const int dec_res = zxc_decompress_chunk_wrapper(
-            &dctx, read_buf, (size_t)read_res, dec_dst,
-            (size_t)job->block_size + ZXC_DECOMPRESS_TAIL_PAD, job->block_idx);
-
-        if (UNLIKELY(dec_res < 0)) {
-            job->result = dec_res;
-            break;
-        }
-        if (UNLIKELY((uint32_t)dec_res != job->decomp_sz)) {
-            job->result = ZXC_ERROR_CORRUPT_DATA;
-            break;
-        }
-
-        // Copy the requested portion directly into the caller's output buffer
-        ZXC_MEMCPY(sh->dst_base + job->dst_off, dec_dst + job->skip, job->copy_len);
-        job->result = 0;
+    if (UNLIKELY(rc != ZXC_OK)) {
+        pthread_mutex_lock(&sh->lock);
+        sh->failed = 1;
+        pthread_mutex_unlock(&sh->lock);
     }
 
     ZXC_FREE(read_buf);
@@ -800,9 +823,10 @@ static void* zxc_seek_mt_worker(void* arg) {
  * @brief Multi-threaded variant of @ref zxc_seekable_decompress_range.
  *
  * Public API; full contract in @c zxc_seekable.h. Plans one job per covered
- * block (each with its own thread-local context and read buffer) and runs them
- * fork-join in waves of up to @p n_threads. Falls back to the single-threaded
- * path for trivial spans. @p n_threads == 0 auto-detects the core count.
+ * block and runs them fork-join on up to @p n_threads workers, each with its
+ * own context, claiming batches of consecutive blocks. Falls back to the
+ * single-threaded path for trivial spans. @p n_threads == 0 auto-detects the
+ * core count.
  */
 int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_t dst_capacity,
                                          const uint64_t offset, const size_t len, int n_threads) {
@@ -826,9 +850,17 @@ int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_
     }
     const uint32_t num_jobs = (uint32_t)jobs_64;
 
-    // Cap threads to number of blocks and max limit
-    if ((uint32_t)n_threads > num_jobs) n_threads = (int)num_jobs;
+    // About ZXC_MT_BATCH_BYTES of output per batch, less if that would idle
+    // threads; no more threads than batches (two or more: batch <= ceil(jobs/2)).
     if (n_threads > ZXC_MAX_THREADS) n_threads = ZXC_MAX_THREADS;
+    const uint32_t share = (num_jobs - 1) / (uint32_t)n_threads + 1;
+    uint32_t batch = s->max_block_size < ZXC_MT_BATCH_BYTES
+                         ? (uint32_t)(ZXC_MT_BATCH_BYTES / s->max_block_size)
+                         : 1;
+    if (batch > share) batch = share;
+    if (UNLIKELY(batch == 0)) batch = 1;
+    const uint32_t num_batches = num_jobs / batch + (num_jobs % batch != 0);
+    if ((uint32_t)n_threads > num_batches) n_threads = (int)num_batches;
 
     zxc_seek_mt_job_t* const jobs =
         (zxc_seek_mt_job_t*)ZXC_CALLOC(num_jobs, sizeof(zxc_seek_mt_job_t));
@@ -847,6 +879,7 @@ int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_
     const zxc_seek_frame_t* f = zxc_seek_frame_of_block(s, blk_start);
     size_t out_off = 0;
     size_t remaining = len;
+    uint32_t max_csz = 0;
     int plan_res = ZXC_OK;
     for (uint32_t i = 0; i < num_jobs && plan_res == ZXC_OK;) {
         const uint64_t bi = blk_start + i;
@@ -877,9 +910,9 @@ int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_
             jobs[i].dst_off = out_off;
             jobs[i].skip = skip;
             jobs[i].copy_len = copy;
-            // Negative until a worker completes it: a stripe whose thread failed to
-            // start is then reported without anyone having to know which one.
+            // Negative until done: a job nobody took reports itself.
             jobs[i].result = ZXC_ERROR_MEMORY;
+            if (sizes[i] > max_csz) max_csz = sizes[i];
 
             out_off += copy;
             remaining -= copy;
@@ -906,14 +939,15 @@ int64_t zxc_seekable_decompress_range_mt(zxc_seekable* s, void* dst, const size_
     sh.jobs = jobs;
     sh.dst_base = (uint8_t*)dst;
     sh.num_jobs = num_jobs;
-    sh.stride = (uint32_t)n_threads;
+    sh.batch = batch;
+    sh.max_csz = max_csz;
     sh.next = 0;
+    sh.failed = 0;
     pthread_mutex_init(&sh.lock, NULL);
 
     int launched = 0;
     for (int t = 0; t < n_threads; t++) {
-        // A failed start leaves one stripe unclaimed; its jobs keep their
-        // negative result and the read reports it after the join.
+        // A failed start leaves its jobs to the others; with none, all stay negative.
         if (UNLIKELY(pthread_create(&threads[launched], NULL, zxc_seek_mt_worker, &sh) != 0))
             continue;  // LCOV_EXCL_LINE
         launched++;
@@ -979,7 +1013,7 @@ int zxc_seekable_set_dict(zxc_seekable* s, const void* dict, const size_t dict_s
                           const void* dict_huf) {
     if (UNLIKELY(!s || !dict || dict_size == 0)) return ZXC_ERROR_NULL_INPUT;
     if (UNLIKELY(dict_size > ZXC_DICT_SIZE_MAX)) return ZXC_ERROR_DICT_TOO_LARGE;
-    const uint32_t id = zxc_dict_id(dict, dict_size, (const uint8_t*)dict_huf);
+    const uint32_t id = zxc_dict_compute_id(dict, dict_size, (const uint8_t*)dict_huf);
     int used = 0;
     int any = 0;
     for (size_t i = 0; i < s->num_frames && !used; i++) {
