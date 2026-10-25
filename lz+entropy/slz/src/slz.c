@@ -171,7 +171,7 @@ union ref {
 	uint64_t by64;
 };
 
-#if defined(USE_64BIT_QUEUE) && defined(UNALIGNED_LE_OK)
+#if defined(__SIZEOF_LONG__) && (__SIZEOF_LONG__ - 0 > 4) && defined(UNALIGNED_LE_OK)
 
 /* enqueue code x of <xbits> bits (LSB aligned, at most 24) and copy complete
  * 32-bit words into output buffer. X must not contain non-zero bits above
@@ -1259,6 +1259,7 @@ int slz_rfc1950_finish(struct slz_stream *strm, unsigned char *buf)
 	return strm->outbuf - buf;
 }
 
+#ifndef PRECOMPUTE_TABLES
 /* Returns code for lengths 1 to 32768. The bit size for the next value can be
  * found this way :
  *
@@ -1306,6 +1307,7 @@ static inline uint32_t dist_to_code(uint32_t l)
 
 	return code;
 }
+#endif
 
 /* not thread-safe, must be called exactly once */
 static inline void __slz_prepare_dist_table()

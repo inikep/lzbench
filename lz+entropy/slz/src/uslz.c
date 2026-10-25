@@ -107,8 +107,20 @@ static int gen_huffman_table(unsigned int symbols,
 	for (i = 1; i < 16; i++)
 		total_count += length_count[i];
 
-	if (total_count == 0)
-		return allow_no_symbols;
+	if (total_count == 0) {
+		if (!allow_no_symbols)
+			return 0;
+		/* No symbol at all: the table is deliberately left empty by the
+		 * caller, but its storage may alias the persistent header-detection
+		 * buffer (see hdr_detect in struct uslz_stream). Make the two root
+		 * entries terminal with an out-of-range symbol so that any code
+		 * decoded against this table is rejected instead of making gethuff()
+		 * walk stale/aliased memory.
+		 */
+		table[0] = 0x7fff;
+		table[1] = 0x7fff;
+		return 1;
+	}
 	else if (total_count == 1) {
 		for (i = 0; i < symbols; i++) {
 			if (lengths[i] != 0) {
@@ -405,7 +417,7 @@ static inline uint8_t rbit5(uint8_t v)
  * the current checksum batch.
  */
 #define SET_OUT_LIM() do {                                          \
-		unsigned long __room = out_max - 1 - dec_bsize;      \
+		unsigned long __room = out_max - dec_bsize;          \
 		                                                    \
 		out_lim = out_end;                                  \
 		if ((unsigned long)(out_end - crc_ptr) > CRC_BLOCK)  \
@@ -432,6 +444,55 @@ static inline uint8_t rbit5(uint8_t v)
 #define R_UNCOMP 2
 
 #define CASE_STATE(s)  case USLZ_ST_##s: goto state_##s
+
+/* Called when uslz_decode_block() reported a full output. If it was waiting
+ * for a symbol and that symbol is an end of block, the EOB is consumed, the
+ * state is set so that uslz_decode_block() finishes the block when called
+ * again, and non-zero is returned. Otherwise nothing
+ * changes and zero is returned. The EOB emits nothing and must still be
+ * consumed, as well as the trailer that may follow, or a caller whose buffer
+ * is exactly the size of the output would never see the end of the stream.
+ * It is deliberately not done in uslz_decode_block(), where even an out of
+ * line call in the checkpoint costs 2 to 5% on this hot loop by disturbing
+ * its register allocation, and it is kept out of line and holds all the
+ * tests so as to add as little code as possible to uslz_decode().
+ */
+static __attribute__((noinline))
+int uslz_eob_follows(struct uslz_stream *state)
+{
+	const unsigned char *in_ptr = state->in_ptr;
+	unsigned long bit_accum = state->bit_accum;
+	unsigned char num_bits = state->num_bits;
+	unsigned int hi = state->huff_index;
+	unsigned int sym;
+	int ret;
+
+	if (state->dec_bsize < state->out_max || state->state != USLZ_ST_READ_SYMBOL)
+		return 0;
+
+	if (state->block_type != 2)
+		ret = gethuff_fixed(&in_ptr, state->in_top, &num_bits, &bit_accum, &sym);
+	else
+		ret = gethuff(&hi, &in_ptr, state->in_top, &num_bits, &bit_accum, &sym, state->literal_table);
+
+	if (!ret || sym != 256)
+		return 0;
+
+	state->in_ptr = in_ptr;
+	state->bit_accum = bit_accum;
+	state->num_bits = num_bits;
+	state->huff_index = 0;
+	state->symbol = 256;
+
+	/* uslz_decode_block() must now finish the block. Rather than adding a
+	 * state for this, which costs ~1% by moving the hot loop around, we
+	 * resume as a stored block with nothing left to copy, which goes
+	 * straight to the end of the block.
+	 */
+	state->nread = state->len;
+	state->state = USLZ_ST_UNCOMPRESSED_DATA;
+	return 1;
+}
 
 /* main decoding function for inflate API, takes <state> stream as parameter
  * and decode as much data as possible from input data (as long as output
@@ -527,6 +588,7 @@ static enum uslz_decode_ret uslz_decode_block(struct uslz_stream *state)
 	 */
 	if (state->block_type == 0) {
 		num_bits = 0;  /* Skip remaining bits in the previous byte. */
+		bit_accum = 0;
 		state->state = USLZ_ST_UNCOMPRESSED_LEN;
 
  state_UNCOMPRESSED_LEN:
@@ -824,13 +886,21 @@ static enum uslz_decode_ret uslz_decode_block(struct uslz_stream *state)
 				 * ring, which is only valid history once the
 				 * ring has wrapped at least once. This test
 				 * replaces the former distance_avail counter:
-				 * a distance never exceeds 32K and the ring is
-				 * at least that large, so "have we produced at
-				 * least <distance> bytes" is exactly "has the
-				 * ring wrapped, or is the distance within the
-				 * current position".
+				 * "have we produced at least <distance> bytes"
+				 * is exactly "has the ring wrapped, or is the
+				 * distance within the current position", as
+				 * long as the distance doesn't exceed the ring.
+				 * It can only do so with a ring smaller than
+				 * 32K, where such a match would start before
+				 * <out_base>. Testing it here only costs in
+				 * this rarely taken branch. Note the likely()
+				 * test below that proves to improve the perf
+				 * while an unlikely degrades them. This is
+				 * likely due to the short exit path compared
+				 * to the heavier memmove() that's better kept
+				 * away from the rest of the hot path.
 				 */
-				if (!wrapped) {
+				if (__builtin_expect(!wrapped || state->distance > out_max, 1)) {
 					err_code = USLZ_DECODE_E_DISTANCE;
 					goto error_return;
 				}
@@ -913,7 +983,7 @@ static enum uslz_decode_ret uslz_decode_block(struct uslz_stream *state)
 	/* no more room in the decoded block, ask for a drain. The state to
 	 * resume from was set by whoever jumped here.
 	 */
-	if (dec_bsize + 1 >= out_max)
+	if (dec_bsize >= out_max)
 		goto out_of_space;
 
 	SET_OUT_LIM();
@@ -1434,6 +1504,8 @@ enum uslz_decode_ret uslz_decode(struct uslz_stream *state,
 			 * will be detected by tinflate_block().
 			 */
 			unsigned char bytes[2];
+			const unsigned char *save_ptr = state->in_ptr;
+			const unsigned char *save_top = state->in_top;
 			int it = 0;
 
 			if (state->hdr_detect.buf_len > 2)
@@ -1452,9 +1524,15 @@ enum uslz_decode_ret uslz_decode(struct uslz_stream *state,
 			state->in_top = bytes + state->hdr_detect.buf_len;
 			res = uslz_decode_block(state);
 
-			/* restore original state */
-			state->in_ptr   = (const unsigned char *)compressed_data;
-			state->in_top   = state->in_ptr + compressed_size;
+			/* Restore where the real input had got to, which is
+			 * *not* the start of the caller's buffer: the loop
+			 * that filled hdr_detect.buf above consumed from it,
+			 * and those bytes have just been replayed from <bytes>.
+			 * Rewinding to <compressed_data> would hand them to the
+			 * decoder a second time.
+			 */
+			state->in_ptr   = save_ptr;
+			state->in_top   = save_top;
 
 			goto next_block;
 		}// else raw format without pending bytes
@@ -1483,6 +1561,10 @@ enum uslz_decode_ret uslz_decode(struct uslz_stream *state,
 			case USLZ_DECODE_SUCCESS:
 				break;
 			case USLZ_DECODE_OUT_OF_SPACE:
+				/* a full output may only be waiting for an EOB */
+				if (__builtin_expect(uslz_eob_follows(state), 0))
+					continue;
+				goto drain;
 			case USLZ_DECODE_OUT_OF_DATA:
 				goto drain;
 			default:
@@ -1533,10 +1615,11 @@ enum uslz_decode_ret uslz_decode(struct uslz_stream *state,
  * It will be used by slz_inflate as a rotating buffer to decode the stream
  * and allow the caller to read decoded data. As such it is exclusively managed
  * by slz_inflate and must not be modified by the caller, only read from during
- * the whole decoding process. Minimum size should be 32K, because zlib algo
- * specifies that up to 32K bytes distance can be used, thus the inflate API
- * should always be able to go 32K bytes in the past at any time with such a
- * buffer.
+ * the whole decoding process. The size should be at least 32K, because deflate
+ * permits references up to 32K bytes in the past, which a smaller buffer
+ * cannot hold once it has wrapped: such references are then rejected with
+ * USLZ_DECODE_E_DISTANCE, even in a valid stream. A smaller buffer is thus
+ * only suited to a stream whose whole output fits in it.
  *
  * Returns 1 on success and 0 on failure.
  */
@@ -1545,7 +1628,7 @@ int uslz_init(struct uslz_stream *state,
 {
 	struct uslz_stream zero = { 0 };
 
-	if (state == NULL || output_size < 32768 || output_buffer == NULL)
+	if (state == NULL || output_size < 1 || output_buffer == NULL)
 		return 0;
 
 	/* zero out <state> */
@@ -1584,6 +1667,9 @@ int uslz_init_fmt(struct uslz_stream *state, unsigned char *output_buffer,
 		return 0;
 
 	switch (format) {
+	case SLZ_FMT_NONE:
+		/* nothing to do */
+		break;
 	case SLZ_FMT_DEFLATE:
 		/* nothing to detect nor to skip, the first bits are already
 		 * the first block header.

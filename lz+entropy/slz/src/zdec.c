@@ -139,6 +139,7 @@ int main(int argc, char **argv)
 	}
 
 	while (loops--) {
+		int complete = 0;
 		int done = 0;
 
 		if (lseek(fd, 0, SEEK_SET) == (off_t)-1 && loops) {
@@ -168,11 +169,18 @@ int main(int argc, char **argv)
 
 			rret = read(fd, inbuf, in_size);
 			if (rret <= 0) {
-				if (rret < 0)
+				if (rret < 0) {
 					perror("read");
-				else
+					exit(1);
+				}
+				if (!complete) {
 					fprintf(stderr, "truncated stream\n");
-				exit(1);
+					exit(1);
+				}
+				/* a complete stream followed by end of file:
+				 * there simply was no other member.
+				 */
+				break;
 			}
 			input = inbuf;
  redo:
@@ -199,11 +207,16 @@ int main(int argc, char **argv)
 				rret -= consumed;
 
 				/* A gzip stream may be a series of members, so
-				 * keep feeding while there is input left rather
-				 * than stopping on the first success.
+				 * keep feeding rather than stopping on the
+				 * first success. Only end of file tells us
+				 * there is no other member; stopping here on
+				 * an exhausted buffer would silently ignore
+				 * every remaining member whenever one ends on
+				 * a read boundary.
 				 */
-				if (decode_ret == USLZ_DECODE_SUCCESS && !rret)
-					done = 1;
+				complete = (decode_ret == USLZ_DECODE_SUCCESS);
+				if (complete && !rret)
+					continue;
 				else if (decode_ret != USLZ_DECODE_OUT_OF_DATA)
 					goto redo;
 				break;
