@@ -725,7 +725,7 @@ int64_t lzbench_zlib_ng_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 
 
-#if !defined(BENCH_REMOVE_SLZ) && !defined(BENCH_REMOVE_ZLIB)
+#if !defined(BENCH_REMOVE_SLZ)
 extern "C"
 {
     #include "slz/src/slz.h"
@@ -760,35 +760,28 @@ int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
     return outlen;
 }
 
-/* uses zlib to perform the decompression */
 int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    z_stream stream;
+    struct uslz_stream state;
+    long decoded_len, consumed;
+    unsigned char *decoded;
+    int format;
     int err;
 
-    stream.zalloc    = NULL;
-    stream.zfree     = NULL;
+    format = (codec_options->additional_param == 0) ? SLZ_FMT_ZLIB :
+             (codec_options->additional_param == 1) ? SLZ_FMT_GZIP :
+             SLZ_FMT_DEFLATE;
 
-    stream.next_in   = (unsigned char *)inbuf;
-    stream.avail_in  = insize;
-    stream.next_out  = (unsigned char *)outbuf;
-    stream.avail_out = outsize;
+    decoded = (unsigned char *)outbuf;
+    err = uslz_init_fmt(&state, decoded, outsize, format);
+    if (!err)
+        return 0;
 
-    outsize = 0;
+    err = uslz_decode(&state, (unsigned char *)inbuf, insize, &decoded, &decoded_len, &consumed, NULL);
+    if (err != USLZ_DECODE_SUCCESS)
+	    return 0;
 
-    if (codec_options->additional_param == 0)      // zlib
-        err = inflateInit2(&stream, 15);
-    else if (codec_options->additional_param == 1) // gzip
-        err = inflateInit2(&stream, 15 + 16);
-    else                  // deflate
-        err = inflateInit2(&stream, -15);
-
-    if (err == Z_OK) {
-        if (inflate(&stream, Z_FINISH) == Z_STREAM_END)
-            outsize = stream.total_out;
-        inflateEnd(&stream);
-    }
-    return outsize;
+    return decoded_len;
 }
 #endif
 
