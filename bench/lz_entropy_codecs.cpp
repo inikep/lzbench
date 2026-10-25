@@ -735,19 +735,18 @@ int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
 {
     struct slz_stream strm;
     size_t outlen = 0;
-    size_t window = 8192 << ((codec_options->level & 3) * 2);
     size_t len;
     size_t blk;
 
     if (codec_options->additional_param == 0)
-        slz_init(&strm, !!codec_options->level, SLZ_FMT_ZLIB);
+        slz_init(&strm, codec_options->level, SLZ_FMT_ZLIB);
     else if (codec_options->additional_param == 1)
-        slz_init(&strm, !!codec_options->level, SLZ_FMT_GZIP);
+        slz_init(&strm, codec_options->level, SLZ_FMT_GZIP);
     else
-        slz_init(&strm, !!codec_options->level, SLZ_FMT_DEFLATE);
+        slz_init(&strm, codec_options->level, SLZ_FMT_DEFLATE);
 
     do {
-        blk = std::min(insize, window);
+        blk = std::min(insize, (size_t)4096 << 10);
 
         len = slz_encode(&strm, outbuf, inbuf, blk, insize > blk);
         outlen += len;

@@ -22,6 +22,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
+#include <sys/time.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -66,9 +67,14 @@ int main(int argc, char **argv)
 	unsigned char *obuf, *inbuf;
 	const char *file = NULL;
 	struct uslz_stream state;
+	struct timeval tv_beg, tv_end;
+	unsigned long long timed_out = 0;
+	unsigned long long decoded_total = 0;
+	unsigned long long tot_in = 0;
+	int timed_round;        /* index of the pass the measurement starts on */
+	int round = 0;          /* index of the pass being run */
 	long ring_size = MIN_RING;
 	long in_size = 8192;
-	long decoded_total;
 	int test_only = 0;
 	int verbose = 0;
 	int format = -1;       /* -1 = detect */
@@ -138,16 +144,27 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 
+	/* When looping, the first pass is not measured: it is the one that
+	 * faults the input in and warms the caches, and counting it would
+	 * report the cost of the I/O rather than that of the compression.
+	 * A single pass is measured as-is, there is nothing else to report.
+	 */
+	timed_round = (loops > 1);
+	gettimeofday(&tv_beg, NULL); /* in case no pass runs at all, eg -l 0 */
+
 	while (loops--) {
 		int complete = 0;
 		int done = 0;
+
+		if (round == timed_round) {
+			timed_out = decoded_total;
+			gettimeofday(&tv_beg, NULL);
+		}
 
 		if (lseek(fd, 0, SEEK_SET) == (off_t)-1 && loops) {
 			fprintf(stderr, "input is not seekable, cannot loop\n");
 			exit(1);
 		}
-
-		decoded_total = 0;
 
 		if (format < 0)
 			ret = uslz_init(&state, obuf, ring_size);
@@ -191,6 +208,7 @@ int main(int argc, char **argv)
 			case USLZ_DECODE_OUT_OF_SPACE:
 			case USLZ_DECODE_OUT_OF_DATA:
 				decoded_total += decoded_len;
+				tot_in += consumed;
 
 				while (!test_only && decoded_len) {
 					long wret = write(1, decoded, decoded_len);
@@ -225,9 +243,22 @@ int main(int argc, char **argv)
 				exit(1);
 			}
 		}
+		round++;
+	}
+	gettimeofday(&tv_end, NULL);
 
-		if (verbose)
-			fprintf(stderr, "totout=%ld\n", decoded_total);
+	if (verbose) {
+		/* <timed_out> holds the input already compressed when the clock
+		 * was started, so the difference is what the measured passes
+		 * went through. MB/s are decimal megabytes per second.
+		 */
+		double sec = (tv_end.tv_sec  - tv_beg.tv_sec) +
+		             (tv_end.tv_usec - tv_beg.tv_usec) / 1000000.0;
+		unsigned long long done = decoded_total - timed_out;
+
+		fprintf(stderr, "totin=%llu totout=%llu ratio=%.2f%% time=%.3fs %.1fMB/s\n",
+		        tot_in, decoded_total, decoded_total * 100.0 / tot_in,
+		        sec, sec > 0.0 ? done / sec / 1000000.0 : 0.0);
 	}
 	return 0;
 }

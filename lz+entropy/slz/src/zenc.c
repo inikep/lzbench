@@ -34,6 +34,7 @@
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/time.h>
 #include <sys/user.h>
 #include <fcntl.h>
 #include "slz.h"
@@ -69,9 +70,8 @@ __attribute__((noreturn)) void usage(const char *name, int code)
 	    "\n"
 	    "The following arguments are supported :\n"
 	    "  -0         disable compression, only uses output format\n"
-	    "  -1         compress faster\n"
-	    "  -2         compress better\n"
-	    "  -3 .. -9   compress even better [default]\n"
+	    "  -1..15     compression level (1=fastest, 15=best); default=2 (balanced)\n"
+	    "  -k <size>  block size in kB (default: 4096)\n"
 	    "  -b <size>  only use <size> bytes from the input file\n"
 	    "  -B         use buffered mode instead of mmap (uses less memory)\n"
 	    "  -c         send output to stdout [default]\n"
@@ -104,14 +104,18 @@ int main(int argc, char **argv)
 	off_t ofs;
 	size_t outblen;
 	size_t outbsize;
-	size_t block_size;
+	size_t block_size = 4194304;
 	size_t mapsize = 0;
 	unsigned long long totin = 0;
 	unsigned long long totout = 0;
 	int buffer_mode = 0;
 	int loops = 1;
+	int round = 0;          /* index of the pass being run */
+	int timed_round;        /* index of the pass the measurement starts on */
+	struct timeval tv_beg, tv_end;
+	unsigned long long timed_in = 0;
 	int console = 1;
-	int level   = 3;
+	int level   = 2;
 	int verbose = 0;
 	int test    = 0;
 	int format  = SLZ_FMT_GZIP;
@@ -127,12 +131,22 @@ int main(int argc, char **argv)
 			break;
 
 		if (argv[0][0] == '-' && argv[0][1] >= '0' && argv[0][1] <= '9')
-			level = argv[0][1] - '0';
+			level = atoi(argv[0] + 1);
 
 		else if (strcmp(argv[0], "-b") == 0) {
 			if (argc < 2)
 				usage(name, 1);
 			toread = strtoll(argv[1], NULL, 0);
+			argv++;
+			argc--;
+		}
+
+		else if (strcmp(argv[0], "-k") == 0) {
+			if (argc < 2)
+				usage(name, 1);
+			block_size = strtoll(argv[1], NULL, 0) * 1024;
+			if (block_size < 1024)
+				block_size = 1024; // 1 kB min
 			argv++;
 			argc--;
 		}
@@ -195,12 +209,6 @@ int main(int argc, char **argv)
 
 	slz_make_crc_table();
 	slz_prepare_dist_table();
-
-	block_size = 32768;
-	if (level > 1)
-		block_size *= 4; // 128 kB
-	if (level > 2)
-		block_size *= 8; // 1 MB
 
 	outbsize = 2 * block_size; // allows to pack more than one full output at each round
 	outbuf = calloc(1, outbsize + 4096);
@@ -296,8 +304,21 @@ int main(int argc, char **argv)
 		}
 	}
 
+	/* When looping, the first pass is not measured: it is the one that
+	 * faults the input in and warms the caches, and counting it would
+	 * report the cost of the I/O rather than that of the compression.
+	 * A single pass is measured as-is, there is nothing else to report.
+	 */
+	timed_round = (loops > 1);
+	gettimeofday(&tv_beg, NULL); /* in case no pass runs at all, eg -l 0 */
+
 	while (loops--) {
-		slz_init(&strm, !!level, format);
+		if (round == timed_round) {
+			timed_in = totin;
+			gettimeofday(&tv_beg, NULL);
+		}
+
+		slz_init(&strm, level, format);
 
 		outblen = ofs = 0;
 		do {
@@ -369,10 +390,24 @@ int main(int argc, char **argv)
 			/* this is a seeked file, let's rewind it now */
 			lseek(fd, 0, SEEK_SET);
 		}
+		round++;
 	}
-	if (verbose)
-		fprintf(stderr, "totin=%llu totout=%llu ratio=%.2f%% crc32=%08x\n",
-		        totin, totout, totout * 100.0 / totin, strm.crc32);
+	gettimeofday(&tv_end, NULL);
+
+	if (verbose) {
+		/* <timed_in> holds the input already compressed when the clock
+		 * was started, so the difference is what the measured passes
+		 * went through. MB/s are decimal megabytes per second.
+		 */
+		double sec = (tv_end.tv_sec  - tv_beg.tv_sec) +
+		             (tv_end.tv_usec - tv_beg.tv_usec) / 1000000.0;
+		unsigned long long done = totin - timed_in;
+
+		fprintf(stderr, "totin=%llu totout=%llu ratio=%.2f%% crc32=%08x time=%.3fs %.1fMB/s saving %.1fMB/s\n",
+		        totin, totout, totout * 100.0 / totin, strm.crc32,
+		        sec, sec > 0.0 ? done / sec / 1000000.0 : 0.0,
+		        (sec > 0.0 ? done / sec / 1000000.0 : 0.0) * (1.0 - (double)totout / totin));
+	}
 
 	return error;
 }
