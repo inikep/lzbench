@@ -46,6 +46,7 @@ v2.x.y (work-in-progress)
 - fix: the openzl integer profiles (le-u16 to le-i64) failed with "Stream parameter invalid" on
        inputs whose size is not a multiple of the element width (#339); the 1-7 trailing bytes
        are now stored uncompressed after the OpenZL frame
+- fix: in slz, gzip and zlib were mistakenly swapped since the beginning.
 
 v2.4 (Sep 27, 2026)
 - added GPUCompact 1.1 (by @UDPSendToFailed)

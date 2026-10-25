@@ -740,9 +740,9 @@ int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
     size_t blk;
 
     if (codec_options->additional_param == 0)
-        slz_init(&strm, !!codec_options->level, SLZ_FMT_GZIP);
-    else if (codec_options->additional_param == 1)
         slz_init(&strm, !!codec_options->level, SLZ_FMT_ZLIB);
+    else if (codec_options->additional_param == 1)
+        slz_init(&strm, !!codec_options->level, SLZ_FMT_GZIP);
     else
         slz_init(&strm, !!codec_options->level, SLZ_FMT_DEFLATE);
 
@@ -776,10 +776,10 @@ int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
 
     outsize = 0;
 
-    if (codec_options->additional_param == 0)      // gzip
-        err = inflateInit2(&stream, 15 + 16);
-    else if (codec_options->additional_param == 1) // zlip
+    if (codec_options->additional_param == 0)      // zlib
         err = inflateInit2(&stream, 15);
+    else if (codec_options->additional_param == 1) // gzip
+        err = inflateInit2(&stream, 15 + 16);
     else                  // deflate
         err = inflateInit2(&stream, -15);
 
