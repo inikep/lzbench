@@ -8,6 +8,7 @@ v2.x.y (work-in-progress)
 - updated kanzi to 2.6.0 (by @flanglet)
 - updated lzav to 5.19 (thanks to @avaneev)
 - updated mbrotli to 0.5.15 (by @Mnwa)
+- updated slz to 1.4-dev3 (by @wtarreau)
 - updated zxc to 0.15.0 (thanks to @hellobertrand)
 - improvement: the Makefile describes each codec in its own mk/<codec>.mk (objects, flags,
                platform checks) instead of spreading it over the 1,400-line Makefile;
@@ -36,6 +37,8 @@ v2.x.y (work-in-progress)
                the Pareto frontier) published to GitHub Pages, and lzbench_json.py to make its data
                from lzbench's -o1 or -o4 output; README.md shows a chart made by lzbench_svg.py
                that links to it
+- improvement: slz now uses its own decompressor, no longer zlib's
+- improvement: the FAST and FASTEST aliases use slz_deflate instead of slz_gzip; LZ+ENTROPY has both
 - fix: "make ENABLE_CUDA=1" failed to parse with GNU make 3.81, the version on macOS
 - fix: the C++ sources of csc, gipfeli, lzham and yappy were compiled with USER_CFLAGS instead of
        USER_CXXFLAGS
@@ -46,6 +49,7 @@ v2.x.y (work-in-progress)
 - fix: the openzl integer profiles (le-u16 to le-i64) failed with "Stream parameter invalid" on
        inputs whose size is not a multiple of the element width (#339); the 1-7 trailing bytes
        are now stored uncompressed after the OpenZL frame
+- fix: slz_gzip measured the zlib format and slz_zlib the gzip format, since slz was added
 
 v2.4 (Sep 27, 2026)
 - added GPUCompact 1.1 (by @UDPSendToFailed)

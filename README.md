@@ -99,7 +99,7 @@ sources, the Notes column says so.
 | [pulsar 2.5.0](https://github.com/ceedot-rock/pulsar-best) | 2026-09-02 | GPL-3; Rust 1.85+, skipped for 32-bit, cross-compiled and Windows builds. Patched in lzbench: `src/lib.rs` has a framed C ABI whose encoder does not re-decode candidates to verify them; `src/bin` not vendored |
 | [quicklz 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/) | 2011-10-07 | |
 | [skim 0.1.0](https://github.com/vantorrewannes/skim) | 2026-06-07 | Linux x86-64 and macOS only — requires the [Zig](https://ziglang.org) compiler |
-| [slz 1.3.1](http://www.libslz.org/) | 2026-07-28 | Compressor only; decompresses via zlib |
+| [slz 1.4-dev3](http://www.libslz.org/) | 2026-10-25 | Emits a gzip/deflate-compatible stream |
 | [snappy 1.3.1](https://github.com/google/snappy) | 2026-09-18 | |
 | [tamp 2.3.0](https://github.com/BrianPugh/tamp) | 2026-07-09 | |
 | [tornado 0.6a](https://encode.su/threads/231-FreeArc-compression-suite-%284x4-Tornado-REP-Delta-Dict-%29) | 2014-03-08 | Disabled on RISC-V unless the build machine does misaligned access at full speed (asked via the hwprobe syscall); such a build is then not portable to a slower RISC-V machine |
