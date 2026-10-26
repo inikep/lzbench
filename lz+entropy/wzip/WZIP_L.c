@@ -3237,6 +3237,86 @@ static int Low_Byte64(Uint64 m)
 /* x + y bytewise, without carries between the bytes */
 static Uint64 Add_Bytes8(const Uint64 x, const Uint64 y) { return ((x & SWAR_LO7) + (y & SWAR_LO7)) ^ ((x ^ y) & SWAR_HI); }
 
+#if defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#  include <emmintrin.h>
+#  define FLT_SIMD 1
+/* b[i] += b[i - s] for s in {1, 2, 4, 8}, over [i, to) in steps of sixteen bytes; i >= 16; returns where it stopped */
+static int Flt_Delta16(Uint8* const b, int i, const int to, const int s)
+{
+	__m128i prev = _mm_loadu_si128((const __m128i*)(b + i - 16));    /* restored: its last s bytes carry on */
+	for (; i + 16 <= to; i += 16) {
+		__m128i v = _mm_loadu_si128((const __m128i*)(b + i)), c;
+		switch (s) {                                   /* a prefix sum of stride s within the 16 bytes, then the carry */
+		case 1:
+			v = _mm_add_epi8(v, _mm_slli_si128(v, 1));
+			v = _mm_add_epi8(v, _mm_slli_si128(v, 2));
+			v = _mm_add_epi8(v, _mm_slli_si128(v, 4));
+			v = _mm_add_epi8(v, _mm_slli_si128(v, 8));
+			c = _mm_srli_si128(prev, 15);
+			c = _mm_unpacklo_epi8(c, c);
+			c = _mm_shuffle_epi32(_mm_unpacklo_epi16(c, c), 0);
+			break;
+		case 2:
+			v = _mm_add_epi8(v, _mm_slli_si128(v, 2));
+			v = _mm_add_epi8(v, _mm_slli_si128(v, 4));
+			v = _mm_add_epi8(v, _mm_slli_si128(v, 8));
+			c = _mm_shufflehi_epi16(prev, 0xFF);
+			c = _mm_shuffle_epi32(c, 0xFF);
+			break;
+		case 4:
+			v = _mm_add_epi8(v, _mm_slli_si128(v, 4));
+			v = _mm_add_epi8(v, _mm_slli_si128(v, 8));
+			c = _mm_shuffle_epi32(prev, 0xFF);
+			break;
+		default:                                       /* 8 */
+			v = _mm_add_epi8(v, _mm_slli_si128(v, 8));
+			c = _mm_unpackhi_epi64(prev, prev);
+			break;
+		}
+		prev = _mm_add_epi8(v, c);
+		_mm_storeu_si128((__m128i*)(b + i), prev);
+	}
+	return i;
+}
+#elif defined(__aarch64__)
+#  define FLT_SIMD 1
+static int Flt_Delta16(Uint8* const b, int i, const int to, const int s)
+{
+	const uint8x16_t z = vdupq_n_u8(0);
+	uint8x16_t prev = vld1q_u8(b + i - 16);
+	for (; i + 16 <= to; i += 16) {
+		uint8x16_t v = vld1q_u8(b + i), c;
+		switch (s) {
+		case 1:
+			v = vaddq_u8(v, vextq_u8(z, v, 15));
+			v = vaddq_u8(v, vextq_u8(z, v, 14));
+			v = vaddq_u8(v, vextq_u8(z, v, 12));
+			v = vaddq_u8(v, vextq_u8(z, v, 8));
+			c = vdupq_laneq_u8(prev, 15);
+			break;
+		case 2:
+			v = vaddq_u8(v, vextq_u8(z, v, 14));
+			v = vaddq_u8(v, vextq_u8(z, v, 12));
+			v = vaddq_u8(v, vextq_u8(z, v, 8));
+			c = vreinterpretq_u8_u16(vdupq_laneq_u16(vreinterpretq_u16_u8(prev), 7));
+			break;
+		case 4:
+			v = vaddq_u8(v, vextq_u8(z, v, 12));
+			v = vaddq_u8(v, vextq_u8(z, v, 8));
+			c = vreinterpretq_u8_u32(vdupq_laneq_u32(vreinterpretq_u32_u8(prev), 3));
+			break;
+		default:
+			v = vaddq_u8(v, vextq_u8(z, v, 8));
+			c = vreinterpretq_u8_u64(vdupq_laneq_u64(vreinterpretq_u64_u8(prev), 1));
+			break;
+		}
+		prev = vaddq_u8(v, c);
+		vst1q_u8(b + i, prev);
+	}
+	return i;
+}
+#endif
+
 /* undoes the filter of region [from, to) of the decoded input b, whose regions before it are restored */
 static void Flt_Decode(Uint8* const b, const int from, const int to, const int id, const int stride)
 {
@@ -3259,6 +3339,10 @@ static void Flt_Decode(Uint8* const b, const int from, const int to, const int i
 	else if (id >= FLT_Delta) {                            /* b[i] += b[i - s], going up */
 		const int s = stride;
 		int i = max(from, s);
+#ifdef FLT_SIMD
+		if ((s == 1 || s == 2 || s == 4 || s == 8) && i >= 16)   /* sixteen bytes a step */
+			i = Flt_Delta16(b, i, to, s);
+#endif
 		if (s >= 8)                                        /* 8 bytes at a time, from bytes before them */
 			for (; i + 8 <= to; i += 8) MemWrite8(b + i, Add_Bytes8(MemRead8(b + i), MemRead8(b + i - s)));
 		else if (s == 4) {                                 /* 4 at a time, from the 4 just restored */
@@ -4061,12 +4145,22 @@ ForceInlineTemplate void Execute_Sequence(Uint8** destRef, Uint8** litRef, const
 			destPtr += lastLit;                                                                                    \
 			lzLitBufPtr += lastLit;                                                                                \
 		}                                                                                                          \
-		*farCount += nFar; }
+		*farCount += nFar;                                                                                         \
+		offsetLast[0] = oc[0]; offsetLast[1] = oc[1]; offsetLast[2] = oc[2]; offsetLast[3] = oc[3]; }
 
 /* Decodes one block of sequences; returns the decoded size so far, or -1 if the block is corrupt. The literal run and
    match length are checked against the output, the literal run against the literals (LIT_CLAIM), and the offset
    against the bytes decoded and the dictionary, for every sequence. The input needs no check here, as the caller
    guarantees that the block's longest possible read stays inside it. */
+/* The sequence decoders' bit reader: the container is kept shifted so that its next bit is the top one, and
+   nUsedBits counts the bits used since the last reload (as BITStream_Read_Flush expects). */
+#define PSB_LOOK(bs, rem)       ((Uint32)((bs).container >> (rem)))
+#define PSB_SKIP(bs, n)         { (bs).container <<= (n); (bs).nUsedBits += (n); }
+#define PSB_READ(bs, n, sym)    { sym = (Uint32)((bs).container >> (BIT_CONTAINER_BITS - (n))); PSB_SKIP(bs, n) }
+#define PSB_HUF(bs, rem, table, sym)  { const Uint32 r_ = PSB_LOOK(bs, rem); sym = (table)[r_].lit; PSB_SKIP(bs, (table)[r_].nbits) }
+#define PSB_FLUSH(bs)           { (bs).streamPtr += (bs).nUsedBits >> 3; (bs).nUsedBits &= 7;                        \
+                                  (bs).container = MemReadBE8((bs).streamPtr) << (bs).nUsedBits; }
+
 ForceInlineTemplate int Decompress_WLZ_Sequence_Body(WZL_Sched* const S_, Uint8** wzipSeqStart, Lit_Reader* const lits, Uint8* dest, int decPos, Uint8* const destEnd, Uint8* const dictEnd, const int dictSize, WLZ_HufWt_Set* hufWtSet, Uint32 offsetLast[OffCasheSize],
 	const Seq_DecTables* const T, Uint32* const farCount, const int pipelined,
 	const int fineGroups, const int slotJoint)    /* compile-time constants in each instance: offset grouping, joint symbol */
@@ -4077,6 +4171,8 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Body(WZL_Sched* const S_, Uint8*
 	Uint8* decEnd = destPtr;                         /* the output's end once the sequences decoded so far are executed */
 	Uint32 rLit[SEQ_Lookahead], rLen[SEQ_Lookahead], rOff[SEQ_Lookahead], rHead = 0, rCount = 0;   /* the pipeline's ring */
 	Uint32 nFar = 0, lastLit = 0;
+	Uint32 oc[OffCasheSize];                         /* the offset cache, local: the copies' stores cannot reach it */
+	oc[0] = offsetLast[0]; oc[1] = offsetLast[1]; oc[2] = offsetLast[2]; oc[3] = offsetLast[3];
 	int ended = 0;
 	/* a dictionary in a buffer of its own is copied from through Copy_Dict_Match; one just before the output (a prefix
 	   of the same buffer) is copied from as earlier output */
@@ -4133,29 +4229,29 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Body(WZL_Sched* const S_, Uint8*
 
 		Uint32 litClass, slotSel;
 		if (slotJoint) {                                 /* joint symbol: cache slot (or new), literal-run class, length */
-			const Joint_DemapX1 js = jointDemapX1[(Uint32)((bitStream.container << bitStream.nUsedBits) >> remMaxMchLenHufWt)];
-			bitStream.nUsedBits += js.nbits;
+			const Joint_DemapX1 js = jointDemapX1[PSB_LOOK(bitStream, remMaxMchLenHufWt)];
+			PSB_SKIP(bitStream, js.nbits);
 			mchLenHufIdx = js.mlSym;
 			litClass = js.litClass;
 			slotSel = js.slotSel;
 		}
 		else {                                           /* joint symbol: literal-run class and length */
-			BITStream_Read_ExtHufX1(bitStream, remMaxMchLenHufWt, mchLenHufDemapX1, mchLenHufIdx);
+			PSB_HUF(bitStream, remMaxMchLenHufWt, mchLenHufDemapX1, mchLenHufIdx);
 			litClass = mchLenHufIdx >= 2 * N_HufMchLen ? 2 : mchLenHufIdx >= N_HufMchLen;
 			mchLenHufIdx -= litClass * N_HufMchLen;
 			slotSel = OffCasheSize;
 		}
 		{   /* the literal-run symbol is looked up for every sequence but consumed for class 2 only: no branch */
-			const Huffman_DemapX1 lr = litRunHufDemapX1[(Uint32)((bitStream.container << bitStream.nUsedBits) >> remMaxLitRunHufWt)];
+			const Huffman_DemapX1 lr = litRunHufDemapX1[PSB_LOOK(bitStream, remMaxLitRunHufWt)];
 			const Uint32 isRun = litClass >> 1;
-			bitStream.nUsedBits += lr.nbits & (0u - isRun);
+			PSB_SKIP(bitStream, lr.nbits & (0u - isRun));
 			litRun = isRun ? lr.lit : litClass;
 		}
 		if (unlikely(litRun >= LitRunDirect)) { /* Read extra number of bytes */
 			extHufRes = extHuf[litRun - LitRunDirect];
-			BITStream_Read(bitStream, extHufRes.lsBits, lsValue);
+			PSB_READ(bitStream, extHufRes.lsBits, lsValue);
 			litRun = extHufRes.msValue << extHufRes.lsBits ^ lsValue;
-			BITStream_Read_Flush(bitStream);
+			PSB_FLUSH(bitStream);
 		}
 		LIT_CLAIM(return -1);
 
@@ -4174,45 +4270,47 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Body(WZL_Sched* const S_, Uint8*
 		if (!slotJoint || slotSel == OffCasheSize) {     /* the offset symbol: a new offset, a run count, or (classic) a cache slot */
 			const Uint32 offGroup = fineGroups ? min(5u, mchLenHufIdx) + (mchLenHufIdx >= 7) + (mchLenHufIdx >= 13) : min(lastOffGroup, mchLenHufIdx);
 			const Huffman_DemapX1* const offTable = mchOff_HufDemapX1 + (offGroup << CapHufMchOffBits);
-			BITStream_Read_ExtHufX1(bitStream, (sizeof(bitStream.container) * 8 - CapHufMchOffBits), offTable, n);
+			PSB_HUF(bitStream, (sizeof(bitStream.container) * 8 - CapHufMchOffBits), offTable, n);
 			if (slotJoint) n = n < OffCasheSize ? OffCasheSize : n;    /* only new offsets here: corrupt input harmless */
 		}
 		else n = slotSel;
 		if (likely(n >= OffCasheSize)) {
 			i = (n >> 1) - 1;
-			if (unlikely(bitStream.nUsedBits + i > BIT_CONTAINER_BITS)) BITStream_Read_Flush(bitStream);   /* far, after 12-bit joint codes */
-			BITStream_Read(bitStream, i, lsValue);
+			if (unlikely(bitStream.nUsedBits + i > BIT_CONTAINER_BITS)) PSB_FLUSH(bitStream);   /* far, after 12-bit joint codes */
+			PSB_READ(bitStream, i, lsValue);
 			//matchOffset = (ExtHufMchOff[n].msValue << lsBits ^ lsValue) - (OffCasheSize - 1);
 			matchOffset = ((2 ^ (n & 1)) << i ^ lsValue) - (OffCasheSize - 1);
 			if (unlikely(mchLenHufIdx == RunSym)) {         /* a run: its count came in the offset field */
 				matchLen = matchOffset;
 				matchOffset = 1;
-				BITStream_Read_Flush(bitStream);
+				PSB_FLUSH(bitStream);
 				goto _check;
 			}
-			offsetLast[3] = offsetLast[2];                       /* explicit shifts: a memmove() here becomes a library call */
-			offsetLast[2] = offsetLast[1];
-			offsetLast[1] = offsetLast[0];
-			offsetLast[0] = matchOffset;
+			oc[3] = oc[2];                       /* explicit shifts: a memmove() here becomes a library call */
+			oc[2] = oc[1];
+			oc[1] = oc[0];
+			oc[0] = matchOffset;
 		}
 		else {                                           /* a hit moves to the front of the cache */
-			matchOffset = offsetLast[n];
-			if (n) {
-				offsetLast[3] = n >= 3 ? offsetLast[2] : offsetLast[3];
-				offsetLast[2] = n >= 2 ? offsetLast[1] : offsetLast[2];
-				offsetLast[1] = offsetLast[0];
-				offsetLast[0] = matchOffset;
+			matchOffset = oc[n];
+			{   /* entries 0 to n - 1 move back one, with masks: no branch */
+				const Uint32 m1 = 0u - (Uint32)(n >= 1), m2 = 0u - (Uint32)(n >= 2), m3 = 0u - (Uint32)(n >= 3);
+				const Uint32 c0 = oc[0], c1 = oc[1], c2 = oc[2], c3 = oc[3];
+				oc[3] = (c2 & m3) | (c3 & ~m3);
+				oc[2] = (c1 & m2) | (c2 & ~m2);
+				oc[1] = (c0 & m1) | (c1 & ~m1);
+				oc[0] = matchOffset;
 			}
 		}
 
 		matchLen = mchLenHufIdx + MinMatchLen;
 		if (unlikely(matchLen >= LitRunDirect)) {
 			extHufRes = extHuf[matchLen - LitRunDirect];
-			BITStream_Read_Flush(bitStream);
-			BITStream_Read(bitStream, extHufRes.lsBits, lsValue);
+			PSB_FLUSH(bitStream);
+			PSB_READ(bitStream, extHufRes.lsBits, lsValue);
 			matchLen = extHufRes.msValue << extHufRes.lsBits ^ lsValue;
 		}
-		BITStream_Read_Flush(bitStream);
+		PSB_FLUSH(bitStream);
 
 	_check:
 		if (unlikely(matchOffset - 1 >= (Uint32)(decEnd - dest) + (Uint32)dictSize)) return -1;   /* corrupt: before the history */
@@ -4240,9 +4338,10 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Body(WZL_Sched* const S_, Uint8*
 	return (int)(destPtr - dest);
 }
 
-#define SEQ_BODY_CALL(body, fine)   (hufWtSet->slotJoint                                                                                                    \
-    ? body(S_, wzipSeqStart, lits, dest, decPos, destEnd, dictEnd, dictSize, hufWtSet, offsetLast, T, farCount, pipelined, fine, 1)             \
-    : body(S_, wzipSeqStart, lits, dest, decPos, destEnd, dictEnd, dictSize, hufWtSet, offsetLast, T, farCount, pipelined, fine, 0))
+#define SEQ_BODY_CALL_D(body, fine, dsz)   (hufWtSet->slotJoint                                                                                                    \
+    ? body(S_, wzipSeqStart, lits, dest, decPos, destEnd, dictEnd, dsz, hufWtSet, offsetLast, T, farCount, pipelined, fine, 1)             \
+    : body(S_, wzipSeqStart, lits, dest, decPos, destEnd, dictEnd, dsz, hufWtSet, offsetLast, T, farCount, pipelined, fine, 0))
+#define SEQ_BODY_CALL(body, fine)   (dictSize ? SEQ_BODY_CALL_D(body, fine, dictSize) : SEQ_BODY_CALL_D(body, fine, 0))
 
 #define SEQ_DEC_PARAMS  WZL_Sched* const S_, Uint8** wzipSeqStart, Lit_Reader* const lits, Uint8* dest, int decPos, Uint8* const destEnd, Uint8* const dictEnd, const int dictSize,  \
     WLZ_HufWt_Set* hufWtSet, Uint32 offsetLast[OffCasheSize], const Seq_DecTables* const T, Uint32* const farCount, const int pipelined
@@ -4409,6 +4508,8 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Trusted_Body(WZL_Sched* const S_
 	Uint8* decEnd = destPtr;                         /* the output's end once the sequences decoded so far are executed */
 	Uint32 rLit[SEQ_Lookahead], rLen[SEQ_Lookahead], rOff[SEQ_Lookahead], rHead = 0, rCount = 0;   /* the pipeline's ring */
 	Uint32 nFar = 0, lastLit = 0;
+	Uint32 oc[OffCasheSize];                         /* the offset cache, local: the copies' stores cannot reach it */
+	oc[0] = offsetLast[0]; oc[1] = offsetLast[1]; oc[2] = offsetLast[2]; oc[3] = offsetLast[3];
 	int ended = 0;
 	/* a dictionary in a buffer of its own is copied from through Copy_Dict_Match; one just before the output (a prefix
 	   of the same buffer) is copied from as earlier output */
@@ -4463,29 +4564,29 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Trusted_Body(WZL_Sched* const S_
 
 		Uint32 litClass, slotSel;
 		if (slotJoint) {                                 /* joint symbol: cache slot (or new), literal-run class, length */
-			const Joint_DemapX1 js = jointDemapX1[(Uint32)((bitStream.container << bitStream.nUsedBits) >> remMaxMchLenHufWt)];
-			bitStream.nUsedBits += js.nbits;
+			const Joint_DemapX1 js = jointDemapX1[PSB_LOOK(bitStream, remMaxMchLenHufWt)];
+			PSB_SKIP(bitStream, js.nbits);
 			mchLenHufIdx = js.mlSym;
 			litClass = js.litClass;
 			slotSel = js.slotSel;
 		}
 		else {                                           /* joint symbol: literal-run class and length */
-			BITStream_Read_ExtHufX1(bitStream, remMaxMchLenHufWt, mchLenHufDemapX1, mchLenHufIdx);
+			PSB_HUF(bitStream, remMaxMchLenHufWt, mchLenHufDemapX1, mchLenHufIdx);
 			litClass = mchLenHufIdx >= 2 * N_HufMchLen ? 2 : mchLenHufIdx >= N_HufMchLen;
 			mchLenHufIdx -= litClass * N_HufMchLen;
 			slotSel = OffCasheSize;
 		}
 		{   /* the literal-run symbol is looked up for every sequence but consumed for class 2 only: no branch */
-			const Huffman_DemapX1 lr = litRunHufDemapX1[(Uint32)((bitStream.container << bitStream.nUsedBits) >> remMaxLitRunHufWt)];
+			const Huffman_DemapX1 lr = litRunHufDemapX1[PSB_LOOK(bitStream, remMaxLitRunHufWt)];
 			const Uint32 isRun = litClass >> 1;
-			bitStream.nUsedBits += lr.nbits & (0u - isRun);
+			PSB_SKIP(bitStream, lr.nbits & (0u - isRun));
 			litRun = isRun ? lr.lit : litClass;
 		}
 		if (unlikely(litRun >= LitRunDirect)) { /* Read extra number of bytes */
 			extHufRes = extHuf[litRun - LitRunDirect];
-			BITStream_Read(bitStream, extHufRes.lsBits, lsValue);
+			PSB_READ(bitStream, extHufRes.lsBits, lsValue);
 			litRun = extHufRes.msValue << extHufRes.lsBits ^ lsValue;
-			BITStream_Read_Flush(bitStream);
+			PSB_FLUSH(bitStream);
 		}
 		if (lazy) LIT_CLAIM(return -1);
 
@@ -4503,46 +4604,48 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Trusted_Body(WZL_Sched* const S_
 		if (!slotJoint || slotSel == OffCasheSize) {     /* the offset symbol: a new offset, a run count, or (classic) a cache slot */
 			const Uint32 offGroup = fineGroups ? min(5u, mchLenHufIdx) + (mchLenHufIdx >= 7) + (mchLenHufIdx >= 13) : min(lastOffGroup, mchLenHufIdx);
 			const Huffman_DemapX1* const offTable = mchOff_HufDemapX1 + (offGroup << CapHufMchOffBits);
-			BITStream_Read_ExtHufX1(bitStream, (sizeof(bitStream.container) * 8 - CapHufMchOffBits), offTable, n);
+			PSB_HUF(bitStream, (sizeof(bitStream.container) * 8 - CapHufMchOffBits), offTable, n);
 			if (slotJoint) n = n < OffCasheSize ? OffCasheSize : n;    /* only new offsets here: corrupt input harmless */
 		}
 		else n = slotSel;
 		if (likely(n >= OffCasheSize)) {
 			i = (n >> 1) - 1;
-			if (unlikely(bitStream.nUsedBits + i > BIT_CONTAINER_BITS)) BITStream_Read_Flush(bitStream);   /* far, after 12-bit joint codes */
-			BITStream_Read(bitStream, i, lsValue);
+			if (unlikely(bitStream.nUsedBits + i > BIT_CONTAINER_BITS)) PSB_FLUSH(bitStream);   /* far, after 12-bit joint codes */
+			PSB_READ(bitStream, i, lsValue);
 			//matchOffset = (ExtHufMchOff[n].msValue << lsBits ^ lsValue) - (OffCasheSize - 1);
 			matchOffset = ((2 ^ (n & 1)) << i ^ lsValue) - (OffCasheSize - 1);
 			if (unlikely(mchLenHufIdx == RunSym)) {         /* a run: its count came in the offset field */
 				matchLen = matchOffset;
 				matchOffset = 1;
-				BITStream_Read_Flush(bitStream);
+				PSB_FLUSH(bitStream);
 				if (matchLen > (Uint32)(destEnd - decEnd)) break;         /* corrupt: the size check fails */
 				goto _execute;
 			}
-			offsetLast[3] = offsetLast[2];                       /* explicit shifts: a memmove() here becomes a library call */
-			offsetLast[2] = offsetLast[1];
-			offsetLast[1] = offsetLast[0];
-			offsetLast[0] = matchOffset;
+			oc[3] = oc[2];                       /* explicit shifts: a memmove() here becomes a library call */
+			oc[2] = oc[1];
+			oc[1] = oc[0];
+			oc[0] = matchOffset;
 		}
 		else {                                           /* a hit moves to the front of the cache */
-			matchOffset = offsetLast[n];
-			if (n) {
-				offsetLast[3] = n >= 3 ? offsetLast[2] : offsetLast[3];
-				offsetLast[2] = n >= 2 ? offsetLast[1] : offsetLast[2];
-				offsetLast[1] = offsetLast[0];
-				offsetLast[0] = matchOffset;
+			matchOffset = oc[n];
+			{   /* entries 0 to n - 1 move back one, with masks: no branch */
+				const Uint32 m1 = 0u - (Uint32)(n >= 1), m2 = 0u - (Uint32)(n >= 2), m3 = 0u - (Uint32)(n >= 3);
+				const Uint32 c0 = oc[0], c1 = oc[1], c2 = oc[2], c3 = oc[3];
+				oc[3] = (c2 & m3) | (c3 & ~m3);
+				oc[2] = (c1 & m2) | (c2 & ~m2);
+				oc[1] = (c0 & m1) | (c1 & ~m1);
+				oc[0] = matchOffset;
 			}
 		}
 
 		matchLen = mchLenHufIdx + MinMatchLen;
 		if (unlikely(matchLen >= LitRunDirect)) {
 			extHufRes = extHuf[matchLen - LitRunDirect];
-			BITStream_Read_Flush(bitStream);
-			BITStream_Read(bitStream, extHufRes.lsBits, lsValue);
+			PSB_FLUSH(bitStream);
+			PSB_READ(bitStream, extHufRes.lsBits, lsValue);
 			matchLen = extHufRes.msValue << extHufRes.lsBits ^ lsValue;
 		}
-		BITStream_Read_Flush(bitStream);
+		PSB_FLUSH(bitStream);
 
 	_execute:
 		nFar += matchOffset >= FAR_Offset;
@@ -4567,9 +4670,11 @@ ForceInlineTemplate int Decompress_WLZ_Sequence_Trusted_Body(WZL_Sched* const S_
 }
 
 
-#define SEQ_TRUSTED_CALL(body, fine, lazy)   (hufWtSet->slotJoint                                                                                      \
-    ? body(S_, wzipSeqStart, lits, dest, decPos, destEnd, dictEnd, dictSize, hufWtSet, offsetLast, T, farCount, pipelined, fine, 1, lazy)          \
-    : body(S_, wzipSeqStart, lits, dest, decPos, destEnd, dictEnd, dictSize, hufWtSet, offsetLast, T, farCount, pipelined, fine, 0, lazy))
+#define SEQ_TRUSTED_CALL_D(body, fine, lazy, dsz)   (hufWtSet->slotJoint                                                                                      \
+    ? body(S_, wzipSeqStart, lits, dest, decPos, destEnd, dictEnd, dsz, hufWtSet, offsetLast, T, farCount, pipelined, fine, 1, lazy)          \
+    : body(S_, wzipSeqStart, lits, dest, decPos, destEnd, dictEnd, dsz, hufWtSet, offsetLast, T, farCount, pipelined, fine, 0, lazy))
+/* an instance without a dictionary, the common case, where its checks fold away */
+#define SEQ_TRUSTED_CALL(body, fine, lazy)   (dictSize ? SEQ_TRUSTED_CALL_D(body, fine, lazy, dictSize) : SEQ_TRUSTED_CALL_D(body, fine, lazy, 0))
 #define SEQ_TRUSTED_CALLS(body)  (lits->lazy                                                                                                         \
     ? (OffGroupsFine ? SEQ_TRUSTED_CALL(body, 1, 1) : SEQ_TRUSTED_CALL(body, 0, 1))                                                              \
     : (OffGroupsFine ? SEQ_TRUSTED_CALL(body, 1, 0) : SEQ_TRUSTED_CALL(body, 0, 0)))
