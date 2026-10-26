@@ -35,24 +35,60 @@ typedef struct {
     01000000 - invalid code
  */
 
+/* zlib-turbo: the 64-bit fast loop of inffast.c, with root tables of 10 bits
+   for literal/length codes and 8 for distance codes, is on by default on
+   64-bit targets and on 32-bit x86, where it is measured faster. Elsewhere,
+   for example on 32-bit ARM, inflate uses zlib's own loop and root tables of
+   9 and 6 bits. Define Z_INFLATE_FAST64 as 0 to use zlib's decoder, or as 1
+   to use the fast loop; it needs a 64-bit integer type. */
+#ifndef Z_INFLATE_FAST64
+#  if defined(__x86_64__) || defined(__aarch64__) || defined(_M_X64) ||       defined(_M_ARM64) || defined(_WIN64) || defined(__LP64__) ||       defined(_LP64) || defined(__i386__) || defined(_M_IX86)
+#    define Z_INFLATE_FAST64 1
+#  else
+#    define Z_INFLATE_FAST64 0
+#  endif
+#endif
+#if Z_INFLATE_FAST64 && !defined(Z_U8)
+#  undef Z_INFLATE_FAST64
+#  define Z_INFLATE_FAST64 0
+#endif
+#if Z_INFLATE_FAST64
+#  define ROOT_LENS 10
+#  define ROOT_DISTS 8
+#else
+#  define ROOT_LENS 9
+#  define ROOT_DISTS 6
+#endif
+
 /* Maximum size of the dynamic table.  The maximum number of code structures is
    1732, which is the sum of 1332 for literal/length codes and 400 for distance
-   codes.  These values were found by exhaustive searches using the program
+   codes, with root tables of 10 and 8 bits (1444 = 852 + 592 with 9 and 6).
+   These values were found by exhaustive searches using the program
    examples/enough.c found in the zlib distribution.  The arguments to that
    program are the number of symbols, the initial root table size, and the
    maximum bit length of a code.  "enough 286 10 15" for literal/length codes
    returns 1332, and "enough 30 8 15" for distance codes returns 400. The
-   initial root table size (10 or 8) is found in the fifth argument of the
-   inflate_table() calls in inflate.c and infback.c.  If the root table size is
-   changed, then these maximum sizes would be need to be recalculated and
-   updated. */
-#ifndef PKZIP_BUG_WORKAROUND
-#  define ENOUGH_LENS 1332
-#  define ENOUGH_DISTS 400
+   initial root table size (ROOT_LENS or ROOT_DISTS) is found in the fifth
+   argument of the inflate_table() calls in inflate.c and infback.c.  If the
+   root table size is changed, then these maximum sizes would be need to be
+   recalculated and updated. PKZIP_BUG_WORKAROUND permits 288 literal/length
+   codes and 32 distance codes, which need two more entries each. */
+#if Z_INFLATE_FAST64
+#  ifndef PKZIP_BUG_WORKAROUND
+#    define ENOUGH_LENS 1332
+#    define ENOUGH_DISTS 400
+#  else
+#    define ENOUGH_LENS 1334
+#    define ENOUGH_DISTS 402
+#  endif
 #else
-/* That workaround permits 288 literal/length codes and 32 distance codes. */
-#  define ENOUGH_LENS 1334
-#  define ENOUGH_DISTS 402
+#  ifndef PKZIP_BUG_WORKAROUND
+#    define ENOUGH_LENS 852
+#    define ENOUGH_DISTS 592
+#  else
+#    define ENOUGH_LENS 854
+#    define ENOUGH_DISTS 594
+#  endif
 #endif
 #define ENOUGH (ENOUGH_LENS+ENOUGH_DISTS)
 

@@ -328,6 +328,10 @@ local void tr_static_init(void) {
      * overwrite length_code[255] to use the best encoding:
      */
     _length_code[length - 1] = (uch)code;
+    /* zlib-turbo: code 285 stands for length 258 alone, so its base is 255:
+     * then the extra-bits value lc - base_length[code] is 0 for every code
+     * without extra bits, which compress_block() relies on. */
+    base_length[code] = length - 1;
 
     /* Initialize the mapping dist (0..32K) -> dist code (0..29) */
     dist = 0;
@@ -506,25 +510,41 @@ void ZLIB_INTERNAL _tr_init(deflate_state *s) {
  * when the heap property is re-established (each father smaller than its
  * two sons).
  */
+/* zlib-turbo: the same moves, with the heap and its length in locals (a
+ * store into s->heap could otherwise change s->heap_len for the compiler) and
+ * smaller(tree, n, m, depth) as one comparison: key(n) <= key(m), where key(n)
+ * is tree[n].Freq * 256 + depth[n].
+ */
+#define heap_key(tree, n, depth) (((unsigned)(tree)[n].Freq << 8) | (depth)[n])
+
 local void pqdownheap(deflate_state *s, ct_data *tree, int k) {
-    int v = s->heap[k];
+    int *heap = s->heap;
+    uch *depth = s->depth;
+    int len = s->heap_len;
+    int v = heap[k];
+    unsigned kv = heap_key(tree, v, depth);
     int j = k << 1;  /* left son of k */
-    while (j <= s->heap_len) {
+    while (j <= len) {
+        unsigned kj = heap_key(tree, heap[j], depth);
+
         /* Set j to the smallest of the two sons: */
-        if (j < s->heap_len &&
-            smaller(tree, s->heap[j + 1], s->heap[j], s->depth)) {
-            j++;
+        if (j < len) {
+            unsigned kr = heap_key(tree, heap[j + 1], depth);
+            if (kr <= kj) {
+                j++;
+                kj = kr;
+            }
         }
         /* Exit if v is smaller than both sons */
-        if (smaller(tree, v, s->heap[j], s->depth)) break;
+        if (kv <= kj) break;
 
         /* Exchange v with the smallest son */
-        s->heap[k] = s->heap[j];  k = j;
+        heap[k] = heap[j];  k = j;
 
         /* And continue down the tree, setting j to the left son of k */
         j <<= 1;
     }
-    s->heap[k] = v;
+    heap[k] = v;
 }
 
 /* ===========================================================================
@@ -913,7 +933,8 @@ local void put64le(uchf *p, Z_U8 b) {
 /* Add the n low bits of v to the 64-bit bit buffer bb holding bv bits. */
 #ifdef ZLIB_DEBUG
 #  define put_bits64(v, n) { \
-    Assert((n) > 0 && (n) <= 15, "invalid length"); \
+    Assert((n) >= 0 && (n) <= 15, "invalid length"); \
+    Assert((n) > 0 || (v) == 0, "bits in a zero length"); \
     s->bits_sent += (ulg)(n); \
     bb |= (Z_U8)(v) << bv; \
     bv += (n); }
@@ -968,21 +989,20 @@ local void compress_block(deflate_state *s, const ct_data *ltree,
             code = _length_code[lc];
             put_bits64(ltree[code + LITERALS + 1].Code,
                        ltree[code + LITERALS + 1].Len);  /* length code */
+            /* The extra bits, with no branch: a code without extra bits
+             * stands for one length or distance, so the value is then 0
+             * (see base_length[] for length 258). */
             extra = extra_lbits[code];
-            if (extra != 0) {
-                lc -= base_length[code];
-                put_bits64(lc, extra);       /* the extra length bits */
-            }
+            lc -= base_length[code];
+            put_bits64(lc, extra);           /* the extra length bits */
             dist--; /* dist is now the match distance - 1 */
             code = d_code(dist);
             Assert (code < D_CODES, "bad d_code");
 
             put_bits64(dtree[code].Code, dtree[code].Len);  /* distance */
             extra = extra_dbits[code];
-            if (extra != 0) {
-                dist -= (unsigned)base_dist[code];
-                put_bits64(dist, extra);     /* the extra distance bits */
-            }
+            dist -= (unsigned)base_dist[code];
+            put_bits64(dist, extra);         /* the extra distance bits */
         } /* literal or match pair ? */
         flush_bits64();
 

@@ -300,7 +300,7 @@ static const compressor_desc_t comp_desc[] =
     { "yappy",      "yappy 2014-03-22",        "LZ77",                        1,  12,    0,   NO_THREADING, lzbench_yappy_compress,      lzbench_yappy_decompress,      lzbench_yappy_init,      NULL },
     { "zlib",       "zlib 1.3.2",              "LZ77 + Huffman",              1,   9,    0,  BENCH_POOL_MT, lzbench_zlib_compress,       lzbench_zlib_decompress,       NULL,                    NULL },
     { "zlib-ng",    "zlib-ng 2.3.3",           "LZ77 + Huffman",              1,   9,    0,  BENCH_POOL_MT, lzbench_zlib_ng_compress,    lzbench_zlib_ng_decompress,    NULL,                    NULL },
-    { "zlib-turbo", "zlib-turbo 1.0.1",        "LZ77 + Huffman",              1,  12,    0, FULL_THREADING, lzbench_zlib_turbo_compress, lzbench_zlib_turbo_decompress, NULL,                    NULL },
+    { "zlib-turbo", "zlib-turbo 1.1.0",        "LZ77 + Huffman",              1,  12,    0, FULL_THREADING, lzbench_zlib_turbo_compress, lzbench_zlib_turbo_decompress, NULL,                    NULL },
     { "zling",      "zling 2018-10-12",        "ROLZ + Huffman",              0,   4,    0,  BENCH_POOL_MT, lzbench_zling_compress,      lzbench_zling_decompress,      NULL,                    NULL },
     { "zpaq",       "zpaq 7.15",               "LZ77, BWT or CM",             1,   5,    0,  BENCH_POOL_MT, lzbench_zpaq_compress,       lzbench_zpaq_decompress,       NULL,                    NULL },
     { "zstd",       "zstd 1.5.7",              "LZ77 + FSE/Huffman",          1,  22,    0, FULL_THREADING, lzbench_zstd_compress,       lzbench_zstd_decompress,       lzbench_zstd_init,       lzbench_zstd_deinit },

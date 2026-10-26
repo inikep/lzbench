@@ -17,8 +17,8 @@ extern "C" {
 #endif
 
 #define ZLIB_TURBO 1
-#define ZLIB_TURBO_VERSION "1.0.1"
-#define ZLIB_TURBO_VERNUM 0x1010   /* 0xMmp0: major, minor, patch, as ZLIB_VERNUM */
+#define ZLIB_TURBO_VERSION "1.1.0"
+#define ZLIB_TURBO_VERNUM 0x1100   /* 0xMmp0: major, minor, patch, as ZLIB_VERNUM */
 
 ZEXTERN const char * ZEXPORT zlibTurboVersion(void);
 /*
