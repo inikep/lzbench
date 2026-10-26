@@ -363,7 +363,7 @@ static const alias_desc_t alias_desc[] =
     { "FAST", "Refers to compressors capable of achieving compression speeds exceeding 100 MB/s (default alias).",
               "memcpy/brieflz,1,3/brotli,0,2/density/fastlz/gobrrr,0,2/kanzi,1,2/libdeflate,1,3/lizard,10,11,12,20,22,30,32,40,42/lz4/" \
               "lz4fast,3,9,17/lz4hc,1/lzav,1/lzf/lzjb/lzo1,1/lzo1a/lzo1b,1,3,6,9,99/lzo1c,1,3,6,9,99/lzo1f,1/lzo1x,1,11,12,15/lzo1y,1/" \
-              "lzsse4fast/mbrotli,0,2/memlz/misa77,-1,0/misa77_safe,-1,0/quicklz,1,2/skim/slz_gzip/snappy/yalz77,1/zlib-ng,1/" \
+              "lzsse4fast/mbrotli,0,2/memlz/misa77,-1,0/misa77_safe,-1,0/quicklz,1,2/skim/slz_deflate/snappy/yalz77,1/zlib-ng,1/" \
               "zstd,1,2,3,4,5/zstd_fast,-5,-3,-1/zxc,1,3" },
     // CI uses LZ + LZ+ENTROPY + SYMMETRIC for single-threaded testing
     // LZ: LZ codecs, or levels of them, without an entropy coder
@@ -377,7 +377,7 @@ static const alias_desc_t alias_desc[] =
     { "LZ+ENTROPY", "Represents LZ-based compressors with an entropy coder (Huffman, FSE/ANS or range coding).",
               "memcpy/aceapex,1,2/brotli,0,2,5,8,11/fastlzma2,1,3,5,8,10/gobrrr,0,2,5,8,11/kanzi,2,3,4/libdeflate,1,3,6,9,12/" \
               "lizard,30,32,35,39,40,42,45,49/lzfse/lzham,0,1/lzlib,0,3,6,9/lzma,0,2,4,6,9/mbrotli,0,2,5,8,11/" \
-              "mzstd_fast,-5,-3,-1/mzstd,1,2,5,8,11,15,18,22/slz_gzip/tornado,6,11,16/wzip,0,1,3,5,9,11,13/xz,1,3,5,7,9/" \
+              "mzstd_fast,-5,-3,-1/mzstd,1,2,5,8,11,15,18,22/slz_deflate/slz_gzip/tornado,6,11,16/wzip,0,1,3,5,9,11,13/xz,1,3,5,7,9/" \
               "zlib,1,6,9/zlib-ng,1,6,9/zlib-turbo,1,6,9,12/zling,0,2,4/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22/zxc,1,3,6" },
     { "SYMMETRIC", "Includes compressors with similar compression and decompression speeds.",
               "memcpy/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,1,5,9/density,1,2,3/kanzi,5,6,7,8,9/lbzip2,1,5,9/ppmd8,1,4,9/pulsar/skim/zpaq,5" },
@@ -390,7 +390,7 @@ static const alias_desc_t alias_desc[] =
               "lzo1,1/lzo1a,1/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/lzo1z/lzo2a/lzsse2,1/lzsse4fast/lzsse4,1/lzsse8,1/lzvn/memlz/" \
               "misa77,0/misa77_safe,0/quicklz,1/snappy/tamp,8/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/wlz4fast,99/wlz4hc,0/yalz77,1/zpaq,1/" \
 /* LZ+ENTROPY */ "aceapex,3/brotli,0/fastlzma2,1/gobrrr,0/libdeflate,1/lzfse/lzham,0/lzlib,0/lzma,0/mbrotli,0/mzstd_fast,-5/mzstd,1/" \
-              "slz_gzip,1/wzip,0/xz,0/zlib,1/zlib-ng,1/zlib-turbo,1/zling,0/zstd_fast,-5/zstd,1/zxc,1/" \
+              "slz_deflate,1/wzip,0/xz,0/zlib,1/zlib-ng,1/zlib-turbo,1/zling,0/zstd_fast,-5/zstd,1/zxc,1/" \
   /* SYMMETR */ "bsc1/bzip2,1/bzip3,1/density,1/lbzip2,1/ppmd8,1/skim" },
     { "SLOW", "Lists very slow compressors.",
               "memcpy/glza" },

@@ -38,6 +38,7 @@ v2.x.y (work-in-progress)
                from lzbench's -o1 or -o4 output; README.md shows a chart made by lzbench_svg.py
                that links to it
 - improvement: slz now uses its own decompressor, no longer zlib's
+- improvement: the FAST and FASTEST aliases use slz_deflate instead of slz_gzip; LZ+ENTROPY has both
 - fix: "make ENABLE_CUDA=1" failed to parse with GNU make 3.81, the version on macOS
 - fix: the C++ sources of csc, gipfeli, lzham and yappy were compiled with USER_CFLAGS instead of
        USER_CXXFLAGS
