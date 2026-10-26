@@ -117,7 +117,7 @@ const uch ZLIB_INTERNAL _length_code[MAX_MATCH-MIN_MATCH+1]= {
 
 local const int base_length[LENGTH_CODES] = {
 0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 56,
-64, 80, 96, 112, 128, 160, 192, 224, 0
+64, 80, 96, 112, 128, 160, 192, 224, 255
 };
 
 local const int base_dist[D_CODES] = {

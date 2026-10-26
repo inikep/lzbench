@@ -883,11 +883,12 @@ int ZEXPORT inflate(z_streamp strm, int flush) {
             }
 
             /* build code tables -- note: do not change the lenbits or distbits
-               values here (10 and 8) without reading the comments in inftrees.h
-               concerning the ENOUGH constants, which depend on those values */
+               values here (ROOT_LENS and ROOT_DISTS) without reading the
+               comments in inftrees.h concerning the ENOUGH constants, which
+               depend on those values */
             state->next = state->codes;
             state->lencode = (const code FAR *)(state->next);
-            state->lenbits = 10;
+            state->lenbits = ROOT_LENS;
             ret = inflate_table(LENS, state->lens, state->nlen, &(state->next),
                                 &(state->lenbits), state->work);
             if (ret) {
@@ -896,7 +897,7 @@ int ZEXPORT inflate(z_streamp strm, int flush) {
                 break;
             }
             state->distcode = (const code FAR *)(state->next);
-            state->distbits = 8;
+            state->distbits = ROOT_DISTS;
             ret = inflate_table(DISTS, state->lens + state->nlen, state->ndist,
                             &(state->next), &(state->distbits), state->work);
             if (ret) {
