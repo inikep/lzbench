@@ -6,7 +6,7 @@ v2.x.y (work-in-progress)
 - added zlib-turbo 1.0.1 (by @icodywu)
 - updated aceapex to 2.2.2 (thanks to @yasha1971-coder); adds level 3, which the FASTEST alias now uses
 - updated kanzi to 2.6.0 (by @flanglet)
-- updated lzav to 5.19 (thanks to @avaneev)
+- updated lzav to 5.20 (thanks to @avaneev)
 - updated mbrotli to 0.5.15 (by @Mnwa)
 - updated slz to 1.4-dev3 (by @wtarreau)
 - updated zxc to 0.15.0 (thanks to @hellobertrand)

@@ -1,7 +1,7 @@
 /**
  * @file lzav.h
  *
- * @version 5.19
+ * @version 5.20
  *
  * @brief Self-contained header file for the "LZAV" in-memory data compression
  * and decompression algorithms.
@@ -43,7 +43,7 @@
 #define LZAV_INCLUDED
 
 #define LZAV_API_VER 0x207 ///< API version; unrelated to the code version.
-#define LZAV_VER_STR "5.19" ///< LZAV source code version string.
+#define LZAV_VER_STR "5.20" ///< LZAV source code version string.
 
 /**
  * @def LZAV_FMT_MIN
@@ -1809,8 +1809,6 @@ LZAV_NO_INLINE int lzav_compress_hi( const void* const src, void* const dst,
 		uint32_t* LZAV_RESTRICT hp = (uint32_t*) ( ht +
 			lzav_hash( iw1, ip[ 4 ], 8, hmask ));
 
-		LZAV_PREFETCH( hp );
-
 		const uint32_t ipo = (uint32_t) ( ip - (const uint8_t*) src );
 
 		// Find source data in hash-table tuples at up to 8 previous
@@ -1867,10 +1865,12 @@ LZAV_NO_INLINE int lzav_compress_hi( const void* const src, void* const dst,
 			lzav_ht_insert8( hp, iw1, ipo );
 		}
 
+		const uint8_t* const ip1 = ip + 1;
+
 		if(( rc < mref + ( d > ( 1 << 18 )) + ( d > ( 1 << 22 ))) |
 			( d < LZAV_OFS_MIN ))
 		{
-			ip++;
+			ip = ip1;
 			continue;
 		}
 
@@ -1880,7 +1880,6 @@ LZAV_NO_INLINE int lzav_compress_hi( const void* const src, void* const dst,
 		LZAV_PREFETCH( ip - 2 );
 
 		const uint8_t* wp = ip - d;
-		const uint8_t* const ip1 = ip + 1;
 		size_t lc = (size_t) ( ip - ipa );
 
 		if LZAV_UNLIKELY( lc != 0 && ip[ -1 ] == wp[ -1 ])
