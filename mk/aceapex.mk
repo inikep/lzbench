@@ -2,6 +2,7 @@
 CODECS += ACEAPEX
 ACEAPEX_OBJS  := lz+entropy/aceapex/aceapex_lzbench.o
 ACEAPEX_FLAGS := -I$(SRC)lz+entropy/aceapex -I$(SRC)bench -I$(SRC)lz+entropy/zstd/lib
+ACEAPEX_NEEDS := ZSTD
 
 # Optional CUDA decoder for the aceapex format (make ENABLE_CUDA=1). It is not
 # switched off by DONT_BUILD_ACEAPEX.
