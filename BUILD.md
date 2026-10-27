@@ -88,6 +88,15 @@ of problems, particular compressor can be excluded from build by setting
 
 	make DONT_BUILD_GLZA=1
 
+To build only some compressors, name them in `BUILD_ONLY`, for example:
+
+	make BUILD_ONLY="ZSTD LZ4"
+
+The names are those of the `CODECS +=` lines in `mk/*.mk`. A compressor that
+calls another one (aceapex calls zstd, openzl calls zstd and lz4) is linked with
+its objects, but only the compressors named are benchmarked. A compressor that
+is disabled by default or on the platform (as AOCL, see below) stays disabled.
+
 
 AOCL-Compression is disabled by default. Enable its `aocl-` codecs with:
 
