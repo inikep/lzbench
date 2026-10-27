@@ -137,3 +137,4 @@ OPENZL_OBJS := $(addprefix lz+entropy/openzl/src/openzl/, \
 # assembled from huf_decompress_amd64.S
 OPENZL_OBJS  += lz+entropy/openzl/src/openzl/fse/decompress/huf_decompress_amd64.o
 OPENZL_FLAGS := -I$(SRC)lz+entropy/zstd/lib -I$(SRC)lz/lz4/lib -I$(SRC)lz+entropy/openzl/include -I$(SRC)lz+entropy/openzl/src
+OPENZL_NEEDS := ZSTD LZ4

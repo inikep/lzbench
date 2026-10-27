@@ -257,9 +257,12 @@ cargo_at_least = $(shell printf "%s\n$(1)\n" "$(CARGO_VERSION)" | sort -V | head
 #   NAME_OBJS  := objects to compile and link into lzbench
 #   NAME_FLAGS := extra compiler flags for NAME_OBJS (optional)
 #   NAME_OPT   := O2 to build NAME_OBJS with -O2 instead of -O3 (optional)
+#   NAME_NEEDS := codecs whose objects NAME calls (optional): they are built
+#                 and linked with NAME even when left out themselves
 #
-# "make DONT_BUILD_NAME=1" leaves NAME_OBJS out and defines BENCH_REMOVE_NAME,
-# which removes the codec from bench/*.cpp. A mk file may also:
+# "make DONT_BUILD_NAME=1" leaves NAME_OBJS out (unless an enabled codec needs
+# them) and defines BENCH_REMOVE_NAME, which removes the codec from bench/*.cpp.
+# A mk file may also:
 #   - disable its codec on some platforms with "DONT_BUILD_NAME ?= 1",
 #   - add to DEFINES, LDFLAGS, LINK_DEPS, CLEAN_FILES or CLEAN_DIRS,
 #   - for a Rust codec, add its cargo feature to RUST_FEATURES and its sources
@@ -280,13 +283,15 @@ include $(sort $(wildcard $(SOURCE_PATH)mk/*.mk))
 CODECS_OFF := $(foreach c,$(CODECS),$(if $(filter 1,$(DONT_BUILD_$(c))),$(c)))
 CODECS_ON  := $(filter-out $(CODECS_OFF),$(CODECS))
 DEFINES    += $(addprefix -DBENCH_REMOVE_,$(CODECS_OFF))
+# the enabled codecs and the codecs they need, whose objects are linked
+CODECS_LINKED := $(sort $(CODECS_ON) $(foreach c,$(CODECS_ON),$($(c)_NEEDS)))
 
 # Give each group's objects its compiler flags and optimization level.
-$(foreach g,$(CODECS_ON) $(OBJ_GROUPS),$(if $($(g)_OBJS), \
+$(foreach g,$(CODECS_LINKED) $(OBJ_GROUPS),$(if $($(g)_OBJS), \
     $(eval $$($(g)_OBJS): CODEC_FLAGS = $$($(g)_FLAGS)) \
     $(if $($(g)_OPT),$(eval $$($(g)_OBJS): OPT_LEVEL = $($(g)_OPT)))))
 
-CODEC_OBJS := $(foreach g,$(CODECS_ON) $(OBJ_GROUPS),$($(g)_OBJS))
+CODEC_OBJS := $(foreach g,$(CODECS_LINKED) $(OBJ_GROUPS),$($(g)_OBJS))
 
 
 #------------------------------------------------------------------------------

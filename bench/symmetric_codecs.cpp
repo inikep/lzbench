@@ -10,6 +10,7 @@
  */
 
 #include "codecs.h"
+#include <stdio.h> // fprintf
 
 
 #ifndef BENCH_REMOVE_BSC
