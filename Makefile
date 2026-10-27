@@ -20,6 +20,8 @@
 #
 # To leave a codec out (the names are the ones used in mk/*.mk):
 #	make DONT_BUILD_LZHAM=1
+# or to build only some codecs:
+#	make BUILD_ONLY="ZSTD LZ4"
 #
 # CUDA codecs (nvcomp, bsc_cuda, aceapex_cuda, gpucompact):
 #	make ENABLE_CUDA=1 [CUDA_BASE=/usr/local/cuda]
@@ -278,7 +280,20 @@ MKDIR = mkdir -p
 # the mk files define rules too, so name the default target explicitly
 .DEFAULT_GOAL := lzbench
 
+# "make BUILD_ONLY='ZSTD LZ4'" leaves out every other codec, as DONT_BUILD_NAME=1
+# does, so it is set before the mk files, which test DONT_BUILD_NAME, are read.
+# The codecs it names keep their defaults: one that is off on this platform (or
+# by default, as AOCL) stays off.
+ifneq ($(strip $(BUILD_ONLY)),)
+    ALL_CODECS := $(shell sed -n 's/^[[:space:]]*CODECS[[:space:]]*+=[[:space:]]*//p' $(SOURCE_PATH)mk/*.mk)
+    $(foreach c,$(filter-out $(BUILD_ONLY),$(ALL_CODECS)),$(eval DONT_BUILD_$(c) ?= 1))
+endif
+
 include $(sort $(wildcard $(SOURCE_PATH)mk/*.mk))
+
+ifneq ($(filter-out $(CODECS),$(BUILD_ONLY)),)
+    $(error BUILD_ONLY names unknown codecs: $(filter-out $(CODECS),$(BUILD_ONLY)) (the codecs are $(sort $(CODECS))))
+endif
 
 CODECS_OFF := $(foreach c,$(CODECS),$(if $(filter 1,$(DONT_BUILD_$(c))),$(c)))
 CODECS_ON  := $(filter-out $(CODECS_OFF),$(CODECS))
