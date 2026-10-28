@@ -798,6 +798,7 @@ void lzbench_aocl_zstd_deinit(char* workmem);
 #ifndef BENCH_REMOVE_ACEAPEX
     char* lzbench_aceapex_init(size_t insize, size_t level, size_t threads);
     void lzbench_aceapex_deinit(char* workmem);
+    char* lzbench_aceapex_fast_init(size_t insize, size_t level, size_t threads);
     int64_t lzbench_aceapex_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_aceapex_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
 #ifdef BENCH_HAS_CUDA
@@ -811,6 +812,7 @@ void lzbench_aocl_zstd_deinit(char* workmem);
 #endif
 #else
     #define lzbench_aceapex_init NULL
+    #define lzbench_aceapex_fast_init NULL
     #define lzbench_aceapex_deinit NULL
     #define lzbench_aceapex_compress NULL
     #define lzbench_aceapex_decompress NULL
