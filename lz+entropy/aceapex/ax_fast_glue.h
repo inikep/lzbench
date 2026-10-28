@@ -78,7 +78,7 @@ static int64_t ax_fast_region(const axf_arc_t& a, uint8_t* dst, size_t cap, uint
 }
 
 // ---- batch of ranges: sorted by offset, split among threads; each thread decodes a block once for its consecutive users
-struct AxFastRg { const axf_arc_t* a; aceapex_range_t* rg; const size_t* order; size_t n; int T; std::atomic<int> next; std::atomic<int64_t> okn; };
+struct AxFastRg { const axf_arc_t* a; aceapex_range_t* rg; const size_t* order; size_t n; int T; std::atomic<int> next; std::atomic<size_t> okn; };   // size_t, not int64_t: no 64-bit atomics on 32-bit ARMv5 (lzbench #355, armel link failed)
 static void* ax_fast_rg_worker(void* arg) {
     AxFastRg* j = (AxFastRg*)arg; const axf_arc_t& a = *j->a;
     std::vector<uint8_t> blk((size_t)a.bs); int64_t okn = 0;
@@ -99,7 +99,7 @@ static void* ax_fast_rg_worker(void* arg) {
             r->written = st ? st : (int64_t)r->length; if (!st) okn++;
         }
     }
-    j->okn.fetch_add(okn);
+    j->okn.fetch_add((size_t)okn);
     return nullptr;
 }
 static int64_t ax_fast_ranges(const uint8_t* p, size_t ssz, aceapex_range_t* rg, size_t count, int threads) {

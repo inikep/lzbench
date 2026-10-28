@@ -217,7 +217,7 @@ __attribute__((target("avx2,popcnt"))) static int axr_decode_avx2(const uint8_t*
             const __m256i fr = _mm256_add_epi32(_mm256_and_si256(_mm256_srli_epi32(t, 8), MF), ONE);
             __m256i nx = _mm256_add_epi32(_mm256_mullo_epi32(fr, _mm256_srli_epi32(X[v], AXR_PBITS)), _mm256_srli_epi32(t, 20));
             const __m256i sy = _mm256_shuffle_epi8(_mm256_and_si256(t, MB), PK);       /* bytes 0..3 of each 128-bit half */
-            const uint32_t lo = (uint32_t)_mm256_cvtsi256_si32(sy), hi = (uint32_t)_mm256_extract_epi32(sy, 4);
+            const uint32_t lo = (uint32_t)_mm_cvtsi128_si32(_mm256_castsi256_si128(sy)), hi = (uint32_t)_mm256_extract_epi32(sy, 4);
             memcpy(o + 8 * v, &lo, 4); memcpy(o + 8 * v + 4, &hi, 4);
             const __m256i need = _mm256_cmpeq_epi32(_mm256_srli_epi32(nx, 16), Z);   /* x < 2^16 */
             const int m = _mm256_movemask_ps(_mm256_castsi256_ps(need));
