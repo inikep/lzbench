@@ -2016,20 +2016,43 @@ static int do_compress(const char* in_path, const char* out_path, int threads, i
  
 // `aceapex d --in f.aet --out -` (or -c): the streaming decoder (aceapex_decompress_stream) into stdout, XXH3 checked
 #include <fcntl.h>
-static int64_t ax_cli_pread(void* c, uint64_t off, void* b, size_t n) { return pread(*(int*)c, b, n, (off_t)off); }
+// Positional read for the CLI's streaming paths. POSIX pread; on Windows (MinGW has no pread) ReadFile with an
+// OVERLAPPED offset on the descriptor's handle, which reads at the offset without moving a shared file pointer
+// (lzbench #355: the MinGW jobs failed on pread). Files are opened with O_BINARY there (no CRLF translation).
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <io.h>
+static int64_t ax_pread(int fd, void* buf, size_t n, uint64_t off) {
+    HANDLE h = (HANDLE)_get_osfhandle(fd); if (h == INVALID_HANDLE_VALUE) return -1;
+    if (n > 0x7fffffffu) n = 0x7fffffffu;
+    OVERLAPPED o; memset(&o, 0, sizeof o); o.Offset = (DWORD)off; o.OffsetHigh = (DWORD)(off >> 32);
+    DWORD got = 0;
+    if (!ReadFile(h, buf, (DWORD)n, &got, &o)) return GetLastError() == ERROR_HANDLE_EOF ? 0 : -1;
+    return (int64_t)got;
+}
+#else
+static inline int64_t ax_pread(int fd, void* buf, size_t n, uint64_t off) { return (int64_t)pread(fd, buf, n, (off_t)off); }
+#endif
+static int64_t ax_cli_pread(void* c, uint64_t off, void* b, size_t n) { return ax_pread(*(int*)c, b, n, off); }
 static int ax_cli_write(void* c, const void* b, size_t n) { const uint8_t* p = (const uint8_t*)b;
     while (n) { const ssize_t w = write(*(int*)c, p, n); if (w <= 0) return 1; p += w; n -= (size_t)w; } return 0; }
 static int do_decompress(const char* in_path, const char* out_path, int threads);
 static int do_decompress_stream(const char* in_path, int threads) {
-    int fd = open(in_path, O_RDONLY); if (fd < 0) { fprintf(stderr, "Cannot open: %s\n", in_path); return 1; }
+    int fd = open(in_path, O_RDONLY | O_BINARY); if (fd < 0) { fprintf(stderr, "Cannot open: %s\n", in_path); return 1; }
 #ifdef ACEAPEX_ENV_TUNING
-    { char m[8] = {0}; if (pread(fd, m, 8, 0) == 8 && !memcmp(m, "AXLINE01", 8)) { close(fd); return ax_cli_lm_decompress(in_path, "-", threads); } }
+    { char m[8] = {0}; if (ax_pread(fd, m, 8, 0) == 8 && !memcmp(m, "AXLINE01", 8)) { close(fd); return ax_cli_lm_decompress(in_path, "-", threads); } }
 #endif
     {   // a literal stream without the chunked layout (text in the default profile; DNA archives above ~4 GiB of
         // literals written before 2.3) is not streamed: the whole-file decoder writes to stdout
         AetHeader h; uint64_t w = 0;
-        if (pread(fd, &h, sizeof h, 0) == (ssize_t)sizeof h && !memcmp(h.magic, "ACEPX2\0\0", 8) && h.version == 2 && h.num_blocks && h.zlit_sz >= 8 &&
-            pread(fd, &w, 8, (off_t)(sizeof h + (uint64_t)h.num_blocks * sizeof(BlockOffsets))) == 8 && !(((w >> 62) & 1) && ((w >> 61) & 1))) {
+        if (ax_pread(fd, &h, sizeof h, 0) == (ssize_t)sizeof h && !memcmp(h.magic, "ACEPX2\0\0", 8) && h.version == 2 && h.num_blocks && h.zlit_sz >= 8 &&
+            ax_pread(fd, &w, 8, sizeof h + (uint64_t)h.num_blocks * sizeof(BlockOffsets)) == 8 && !(((w >> 62) & 1) && ((w >> 61) & 1))) {
             close(fd); fprintf(stderr, "  literal stream not chunked: whole-file decode to stdout (memory = archive + output)\n");
             return do_decompress(in_path, "/dev/stdout", threads); } }
     int out = 1; const double t0 = now_sec();
@@ -2332,11 +2355,11 @@ static void ax_fai_feed(AxFaiBuild& B, const uint8_t* p, size_t n) {
         B.v.back().len++; B.line++; }
 }
 static int ax_fai_build(const char* arc, std::vector<AxFai>& out) {
-    AxFaiBuild B; int fd = open(arc, O_RDONLY); if (fd < 0) return 1;
+    AxFaiBuild B; int fd = open(arc, O_RDONLY | O_BINARY); if (fd < 0) return 1;
     struct Ctx { AxFaiBuild* B; } cx{&B};
     const int64_t n = aceapex_decompress_stream(ax_cli_pread, &fd, [](void* c, const void* b, size_t m) -> int { ax_fai_feed(*((Ctx*)c)->B, (const uint8_t*)b, m); return 0; }, &cx, 0, ACEAPEX_STREAM_VERIFY);
     if (n < 0) {                                              // not streamable (AXLINE01, pre-2.1 literals): whole decode
-        struct stat st; fstat(fd, &st); std::vector<uint8_t> z((size_t)st.st_size); if (pread(fd, z.data(), z.size(), 0) != (ssize_t)z.size()) { close(fd); return 1; }
+        struct stat st; fstat(fd, &st); std::vector<uint8_t> z((size_t)st.st_size); if (ax_pread(fd, z.data(), z.size(), 0) != (ssize_t)z.size()) { close(fd); return 1; }
         AetHeader h; memcpy(&h, z.data(), sizeof h); uint64_t orig = h.orig_size; if (!memcmp(z.data(), "AXLINE01", 8)) memcpy(&orig, z.data() + 8, 8);
         std::vector<uint8_t> o(orig + 64); if (aceapex_decompress_mt(z.data(), z.size(), o.data(), o.size(), 0) != (int64_t)orig) { close(fd); return 1; }
         B = AxFaiBuild(); ax_fai_feed(B, o.data(), orig); }
