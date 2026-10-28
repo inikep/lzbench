@@ -37,3 +37,8 @@ int64_t lzbench_aceapex_decompress(char* inbuf, size_t insize,
     int64_t r = aceapex_decompress_mt(inbuf, insize, outbuf, outsize, thr);
     return r >= 0 ? r : -1;
 }
+
+// aceapex_fast: the FAST profile (aceapex 2.4.0, header version 3), levels 1..8 = aceapex_compress levels 11..18
+char* lzbench_aceapex_fast_init(size_t insize, size_t level, size_t threads) {
+    return lzbench_aceapex_init(insize, level + 10, threads);
+}

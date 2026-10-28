@@ -85,6 +85,9 @@ static inline int axo_dna_decode(const uint8_t* s, size_t sz, uint8_t* dst, size
     if ((uint64_t)AXO_HDR + h[0] + h[1] + h[2] + h[3] != sz) return -1;
     if (nexc == 0 ? (ngap || h[2] || h[3]) : (ngap < nexc || !h[2] || !h[3])) return -1;
     if (ncse == 0 || nexc > raw) return -1;
+    /* a run length or a gap is one LEB128 of <= 5 bytes, runs <= raw + 1: larger counts are corrupt (T-H4 copy 918,
+       02.10: ncse 2 986 345 694 for raw 65 536 sent a 3 GB malloc on the CPU and a 93 M-trip warp loop on the GPU) */
+    if ((uint64_t)ncse > 5 * (uint64_t)raw + 5 || (uint64_t)ngap > 5 * (uint64_t)nexc) return -1;
     const size_t np = (raw + 3) / 4;
     uint8_t* buf = (uint8_t*)malloc(np + (size_t)ncse + ngap + nexc + 1);
     if (!buf) return -1;
