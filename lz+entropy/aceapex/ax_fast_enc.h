@@ -4,7 +4,7 @@
 // extension stream, one literal run; no entropy stage. The level sets the minimum match length and the parse:
 //
 //   level  min_match  parse                         (silesia, ace-core, research/fastblk/d1-lzbench-2026-10-26.md)
-//     1       16      greedy + lazy, chain depth 64   61.3 %, the fastest decode
+//     1       16      sparse probe (HW-ENC2)         61.2 %, the fastest decode; ~480 MB/s on one core (ace-core)
 //     2       12      greedy + lazy                   54.1 %
 //     3        8      greedy + lazy                   45.0 %
 //     4        5      greedy + lazy                   40.7 %
@@ -13,6 +13,9 @@
 //     7        8      optimal parse                   41.8 %
 //     8        5      optimal parse                   39.2 %
 //
+// Level 1 uses enc_sparse (below): probes every 3 bytes, table positions every 2nd (coprime strides), backward extension;
+// results/hwenc2-2026-10-28-8201fb2.log: silesia 61.21 % at 482 MB/s against the greedy + lazy parse's 61.35 % at 25.8 MB/s,
+// decode 11138 against 11011 MB/s. Levels 2-4 keep the greedy + lazy parse.
 // A larger minimum match means fewer tokens per MiB and a faster decode at a lower ratio. The optimal parse prices a
 // parse as literal bytes + 4 bytes per token + LAMBDA per token (the decode cost of a token in bytes) and so trades
 // size for fewer tokens; it is a different point on the same axis, not a better encoder of the same stream.
@@ -46,7 +49,8 @@ static inline size_t enc_bound(size_t n, uint32_t mm) {
     return AXF_BHDR + AXF_PAD + n + n / 32 + 16;
 }
 
-struct Enc { std::vector<uint32_t> head, chain; std::vector<uint32_t> bl, bd; std::vector<double> price; std::vector<uint32_t> from, mlen, mdist; };
+struct Enc { std::vector<uint32_t> head, chain; std::vector<uint32_t> bl, bd; std::vector<double> price; std::vector<uint32_t> from, mlen, mdist;
+             std::vector<uint32_t> stab, stok; std::vector<uint8_t> slit, sext; std::vector<uint8_t> out; };
 
 static inline uint32_t rd32(const uint8_t* p) { uint32_t v; memcpy(&v, p, 4); return v; }
 static inline uint64_t rd64(const uint8_t* p) { uint64_t v; memcpy(&v, p, 8); return v; }
@@ -57,6 +61,13 @@ static inline uint32_t ctz64(uint64_t x) {
     return (uint32_t)__builtin_ctzll(x);
 #else
     uint32_t n = 0; while (!(x & 1)) { x >>= 1; n++; } return n;
+#endif
+}
+static inline uint32_t clz64(uint64_t x) {
+#if defined(__GNUC__)
+    return (uint32_t)__builtin_clzll(x);
+#else
+    uint32_t n = 0; while (!(x >> 63)) { x <<= 1; n++; } return n;
 #endif
 }
 // length of the match between in+a and in+b, at least 4 (the hash matched), at most lim
@@ -120,6 +131,79 @@ static size_t enc_greedy(const uint8_t* in, uint32_t n, uint8_t* out, const Para
     return o.write(out, n - anchor);
 }
 
+
+// sparse parse (level 1, min match 16; HW-ENC2, research in research/fastblk/enc2.cpp): an 8-byte hash key, one slot per
+// hash. Positions == 0 mod SB enter the table, probes land every SA bytes (SA, SB coprime), so a match spanning enough probes
+// is found at some probe; it is then extended backward to its true start. A candidate closer than AXF_MIN_DIST is lifted to
+// the first legal multiple of its distance (same bytes on a run of that period) and verified. Matches of 8..15 bytes at the
+// probe that reach the minimum after the backward extension are taken. A match of 65..128 bytes goes out as tokens of at
+// most 64 bytes (same distance), which the decoder runs on its branch-free path. Inside a match every 8th table position
+// and the one 2 bytes before its end are inserted. Misses step SA + (bytes since the last match >> 8). Output in place: tokens,
+// extensions and literals into per-worker arrays (literals by 32-byte copies while 32 bytes of input remain).
+static size_t enc_sparse(const uint8_t* in, uint32_t n, uint8_t* out, const Params& P, Enc& e) {
+    enum : uint32_t { HB = 17, SA = 3, SB = 2, INS = 8, SKIP = 8, SPLIT = 128 };   // SPLIT: DEC2/DEC4, results/zen5-2026-10-28.log
+    const uint32_t mm = P.mm;
+    e.stab.assign(1u << HB, 0u); if (e.stok.size() < n / 8 + 16) e.stok.resize(n / 8 + 16);
+    if (e.slit.size() < (size_t)n + 64) e.slit.resize((size_t)n + 64); if (e.sext.size() < n / 16 + 64) e.sext.resize(n / 16 + 64);
+    uint32_t* T = e.stab.data(); uint32_t* TK = e.stok.data(); uint8_t* E = e.sext.data(); uint8_t* L = e.slit.data();
+    uint32_t nt = 0, ne = 0; size_t nl = 0;
+    auto H = [](const uint8_t* p) { return (uint32_t)((rd64(p) * 0x9E3779B185EBCA87ull) >> (64 - HB)); };
+    auto leb = [&](uint32_t r) { while (r >= 255) { E[ne++] = 255; r -= 255; } E[ne++] = (uint8_t)r; };
+    uint32_t pos = 0, anchor = 0, ip = 0;
+    if (n >= 80) {
+        const uint32_t last = n - 16;
+        while (pos < last) {
+            for (; ip < pos; ip += SB) T[H(in + ip)] = ip + 1;
+            const uint32_t c1 = T[H(in + pos)];
+            uint32_t len = 0, d = 0;
+            if (c1) {
+                uint32_t c = c1 - 1; const uint64_t k = rd64(in + pos);
+                if (rd64(in + c) == k) {
+                    d = pos - c;
+                    if (d < AXF_MIN_DIST) { d *= (AXF_MIN_DIST + d - 1) / d; if (d <= pos && rd64(in + pos - d) == k) c = pos - d; else d = 0; }
+                    if (d) {
+                        const uint32_t lim = n - pos; uint32_t l = 8;
+                        for (;;) { if (l + 8 > lim) { while (l < lim && in[c + l] == in[pos + l]) l++; break; }
+                                   const uint64_t x = rd64(in + c + l) ^ rd64(in + pos + l); if (x) { l += ctz64(x) >> 3; break; } l += 8; }
+                        len = l;
+                    }
+                }
+            }
+            if (!len) { pos += SA + ((pos - anchor) >> SKIP); continue; }
+            const uint32_t probe = pos;
+            {   // backward extension inside [anchor, pos), 8 bytes per step
+                uint32_t room = pos - anchor; if (room > pos - d) room = pos - d;
+                while (room >= 8) { const uint64_t x = rd64(in + pos - 8) ^ rd64(in + pos - 8 - d);
+                    if (x) { const uint32_t k = clz64(x) >> 3; pos -= k; len += k; room = 0; break; } pos -= 8; len += 8; room -= 8; }
+                while (room && in[pos - 1] == in[pos - 1 - d]) { pos--; len++; room--; }
+            }
+            if (len < mm) { pos = probe + SA; continue; }
+            const uint32_t ll = pos - anchor;
+            if (pos + 32 <= n) { for (uint32_t i = 0; i < ll; i += 32) memcpy(L + nl + i, in + anchor + i, 32); } else cpyn(L + nl, in + anchor, ll);
+            nl += ll;
+            uint32_t llf = ll; if (ll >= LL_EXT) { llf = LL_EXT; leb(ll - LL_EXT); }
+            {   // a match up to SPLIT bytes goes out as pieces of <= AXF_COPY (each >= mm, same distance, no literals): the decoder
+                // runs them on its branch-free path instead of the escape; longer matches keep one escaped token
+                uint32_t rest = len, first = 1;
+                if (rest > AXF_COPY && rest <= SPLIT)
+                    while (rest > AXF_COPY) { const uint32_t piece = rest - AXF_COPY < mm ? rest - mm : AXF_COPY;
+                        TK[nt++] = (first ? llf : 0u) | (piece - mm) << 6 | (d - AXF_MIN_DIST) << 12; first = 0; rest -= piece; }
+                uint32_t mlf; if (rest <= AXF_COPY) mlf = rest - mm; else { mlf = ML_EXT; leb(rest - AXF_COPY - 1); }
+                TK[nt++] = (first ? llf : 0u) | mlf << 6 | (d - AXF_MIN_DIST) << 12;
+            }
+            const uint32_t end = pos + len;
+            if (ip < end) { for (; ip + 8 < end && ip < last; ip += SB * INS) T[H(in + ip)] = ip + 1; ip = end + ((SB - end % SB) % SB); }
+            if (end - 2 < last) T[H(in + end - 2)] = end - 2 + 1;
+            pos = end; anchor = end;
+        }
+    }
+    cpyn(L + nl, in + anchor, n - anchor); nl += n - anchor;
+    uint8_t* p = out; wr32(p, nt); wr32(p + 4, ne); wr32(p + 8, n - anchor); p += AXF_BHDR;
+    cpyn(p, TK, (size_t)nt * 4); p += (size_t)nt * 4; cpyn(p, E, ne); p += ne; cpyn(p, L, nl); p += nl;
+    memset(p, 0, AXF_PAD); p += AXF_PAD;
+    return (size_t)(p - out);
+}
+
 // optimal parse: the longest match at every position (depth DEPTH_OPT), then a forward DP over the block
 static size_t enc_optimal(const uint8_t* in, uint32_t n, uint8_t* out, const Params& P, Enc& e, Out& o) {
     const uint32_t HB = 16, HN = 1u << HB, mm = P.mm; e.head.assign(HN, 0xffffffffu); e.chain.assign(n + 1, 0xffffffffu);
@@ -171,6 +255,7 @@ static size_t enc_optimal(const uint8_t* in, uint32_t n, uint8_t* out, const Par
 
 // one block -> out (at least enc_bound(n, P.mm) bytes); returns the block's size, pad included
 static size_t enc_block(const uint8_t* in, uint32_t n, uint8_t* out, const Params& P, Enc& e) {
+    if (!P.optimal && P.mm == 16) return enc_sparse(in, n, out, P, e);
     Out o; o.lit.reserve(n); o.tok.reserve(n / 8 + 1);
     return P.optimal ? enc_optimal(in, n, out, P, e, o) : enc_greedy(in, n, out, P, e, o);
 }
@@ -184,10 +269,10 @@ static void* enc_worker(void* arg) {
     for (;;) {
         const uint32_t b = j->next.fetch_add(1); if (b >= j->nb) break;
         const size_t off = (size_t)b * j->bs; const uint32_t k = (uint32_t)std::min<size_t>(j->bs, j->n - off);
-        std::vector<uint8_t>& o = (*j->blocks)[b];
-        o.resize(enc_bound(k, j->P.mm));
-        const size_t c = enc_block(j->src + off, k, o.data(), j->P, e);
-        o.resize(c); o.shrink_to_fit();
+        // encode into the worker's scratch (allocated once, never zeroed), keep only the block's bytes
+        const size_t cap = enc_bound(k, j->P.mm); if (e.out.size() < cap) e.out.resize(cap);
+        const size_t c = enc_block(j->src + off, k, e.out.data(), j->P, e);
+        (*j->blocks)[b].assign(e.out.data(), e.out.data() + c);
     }
     return nullptr;
 }

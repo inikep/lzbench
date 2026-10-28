@@ -1898,7 +1898,7 @@ static int ax_cli_fast_compress(const char* in_path, const char* out_path, const
     FILE* fout = ax_cli_open_out(out_path); if (!fout) { fprintf(stderr, "Cannot write: %s\n", out_path); return 1; }
     fwrite(arc.data(), 1, (size_t)total, fout); if (ax_cli_close_out(fout, out_path)) return 1;
     uint64_t hv; memcpy(&hv, arc.data() + 28, 8);
-    fprintf(stderr, "  Profile:    fast level %d (min match %u, %s parse), %zu blocks of %u\n", ax_fast_level(level), P.mm, P.optimal ? "optimal" : "greedy/lazy", blocks.size(), bs);
+    fprintf(stderr, "  Profile:    fast level %d (min match %u, %s parse), %zu blocks of %u\n", ax_fast_level(level), P.mm, P.optimal ? "optimal" : P.mm == 16 ? "sparse-probe" : "greedy/lazy", blocks.size(), bs);
     fprintf(stderr, "  Original:   %14zu bytes\n  Compressed: %14lld bytes\n  Ratio:  %.5fx\n", src_size, (long long)total, (double)src_size / (double)total);
     fprintf(stderr, "  Encode: %.2f MB/s  (%.3fs, %d threads)\n  XXH3:   %016llx\n", src_size / t_enc / 1e6, t_enc, threads, (unsigned long long)hv);
     return 0;
@@ -2242,7 +2242,7 @@ static int do_test(const char* in_path, int threads, int level=2) {
         }
         std::sort(ts.begin(), ts.end()); const double t_dec = ts.empty() ? 1 : ts[ts.size() / 2];
         fprintf(stderr,"\n  ====================================================\n  ACEAPEX FAST PROFILE TEST REPORT\n  ====================================================\n");
-        fprintf(stderr,"  Profile:    fast level %d (min match %u, %s parse), %zu blocks of %u\n", ax_fast_level(level), P.mm, P.optimal ? "optimal" : "greedy/lazy", blocks.size(), bs);
+        fprintf(stderr,"  Profile:    fast level %d (min match %u, %s parse), %zu blocks of %u\n", ax_fast_level(level), P.mm, P.optimal ? "optimal" : P.mm == 16 ? "sparse-probe" : "greedy/lazy", blocks.size(), bs);
         fprintf(stderr,"  Original:   %14zu bytes\n  Compressed: %14lld bytes\n  Ratio:  %.5fx   BPB: %.4f\n", src_size, (long long)total, (double)src_size / (double)total, total * 8.0 / src_size);
         fprintf(stderr,"  Encode: %.2f MB/s  (%.3fs)\n  Decode: %.2f MB/s  (%.4fs median of %d, min %.4fs, %d threads)\n", src_size / t_enc / 1e6, t_enc, src_size / t_dec / 1e6, t_dec, reps, ts.empty() ? 0.0 : ts[0], ax_decode_budget(threads, src_size));
         fprintf(stderr,"  Status: %s\n  ====================================================\n", ok ? "✅ BIT-PERFECT" : "❌ MISMATCH");
