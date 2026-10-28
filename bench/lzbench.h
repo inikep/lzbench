@@ -177,8 +177,8 @@ static const compressor_desc_t comp_desc[] =
      //                                                                      last_level,       mt_mode,
      // name,       name_version,    algorithm,                     first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func,             max_input_size
     { "memcpy",     "memcpy",                  "copy",                        0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
-    { "aceapex",    "aceapex 2.4.1",           "LZ77 + FSE/Huffman",          1,   3,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
-    { "aceapex_fast","aceapex 2.4.1 fast",      "LZ77",                        1,   8,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_fast_init, lzbench_aceapex_deinit },
+    { "aceapex",    "aceapex 2.4.2",           "LZ77 + FSE/Huffman",          1,   3,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
+    { "aceapex_fast","aceapex 2.4.2 fast",      "LZ77",                        1,   8,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_fast_init, lzbench_aceapex_deinit },
     { "aceapex_cuda","aceapex_cuda 0.9",       "LZ77 + FSE/Huffman",          1,   2,    0,  NO_THREADING,  lzbench_aceapex_compress,    lzbench_aceapex_cuda_decompress, lzbench_aceapex_cuda_init, lzbench_aceapex_cuda_deinit },
 #ifndef BENCH_REMOVE_AOCL
     { "aocl-lz4",   "aocl-lz4 5.3.2",          "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_aocl_lz4_compress,   lzbench_aocl_lz4_decompress,   lzbench_aocl_lz4_init,   lzbench_aocl_lz4_deinit },

@@ -8,8 +8,8 @@ extern "C" {
 
 #define ACEAPEX_VERSION_MAJOR 2
 #define ACEAPEX_VERSION_MINOR 4
-#define ACEAPEX_VERSION_PATCH 1
-#define ACEAPEX_VERSION_STRING "2.4.1"
+#define ACEAPEX_VERSION_PATCH 2
+#define ACEAPEX_VERSION_STRING "2.4.2"
 
 /* One-shot compression */
 int64_t aceapex_compress(
