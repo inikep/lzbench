@@ -41,24 +41,23 @@ int64_t lzbench_brotli_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 
-#ifndef BENCH_REMOVE_MBROTLI
-#include "mbrotli/mbrotli-ffi/include/mbrotli.h"
+#ifndef BENCH_REMOVE_FASTLZMA2
+#include "lz+entropy/fast-lzma2/fast-lzma2.h"
 
-int64_t lzbench_mbrotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+int64_t lzbench_fastlzma2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    int windowLog = codec_options->additional_param;
-    if (!windowLog) windowLog = 22; // sliding window size. Range is 10 to 24.
-
-    size_t actual_osize = outsize;
-    return mbrotli_compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize, codec_options->level, windowLog) == MBROTLI_OK ? actual_osize : 0;
-}
-int64_t lzbench_mbrotli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    size_t actual_osize = outsize;
-    return mbrotli_decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize) == MBROTLI_OK ? actual_osize : 0;
+    size_t ret = FL2_compressMt(outbuf, outsize, inbuf, insize, codec_options->level, codec_options->threads);
+    if (FL2_isError(ret)) return 0;
+    return ret;
 }
 
-#endif // BENCH_REMOVE_MBROTLI
+int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    size_t ret = FL2_decompressMt(outbuf, outsize, inbuf, insize, codec_options->threads);
+    if (FL2_isError(ret)) return 0;
+    return ret;
+}
+#endif // BENCH_REMOVE_FASTLZMA2
 
 
 
@@ -91,26 +90,6 @@ int64_t lzbench_gobrrr_decompress(char *inbuf, size_t insize, char *outbuf, size
     return gobrrr_decompress((uintptr_t)codec_options->work_mem, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
 }
 #endif // BENCH_REMOVE_GOBRRR
-
-
-
-#ifndef BENCH_REMOVE_FASTLZMA2
-#include "lz+entropy/fast-lzma2/fast-lzma2.h"
-
-int64_t lzbench_fastlzma2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    size_t ret = FL2_compressMt(outbuf, outsize, inbuf, insize, codec_options->level, codec_options->threads);
-    if (FL2_isError(ret)) return 0;
-    return ret;
-}
-
-int64_t lzbench_fastlzma2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    size_t ret = FL2_decompressMt(outbuf, outsize, inbuf, insize, codec_options->threads);
-    if (FL2_isError(ret)) return 0;
-    return ret;
-}
-#endif // BENCH_REMOVE_FASTLZMA2
 
 
 
@@ -254,25 +233,6 @@ int64_t lzbench_libdeflate_decompress(char *inbuf, size_t insize, char *outbuf, 
 
 
 
-#ifndef BENCH_REMOVE_WZIP
-#include "lz+entropy/wzip/WZIP.h"
-
-int64_t lzbench_wzip_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    int cap = outsize > 0x7FFFFFFF ? 0x7FFFFFFF : (int)outsize;
-    return wzip_compress_mt(inbuf, (int)insize, outbuf, &cap, codec_options->level, codec_options->threads);
-}
-
-int64_t lzbench_wzip_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    int cap = (int)outsize;
-    return wzip_decompress(inbuf, (int)insize, outbuf, &cap);
-}
-
-#endif // BENCH_REMOVE_WZIP
-
-
-
 #ifndef BENCH_REMOVE_LIZARD
 #include "lz+entropy/lizard/lizard_compress.h"
 #include "lz+entropy/lizard/lizard_decompress.h"
@@ -321,7 +281,7 @@ int64_t lzbench_lzfse_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 
 
-#ifndef BENCH_REMOVE_LZVN
+#ifndef BENCH_REMOVE_LZFSE
 extern "C"
 {
     #include "lz+entropy/lzfse/lzvn.h"
@@ -347,7 +307,7 @@ int64_t lzbench_lzvn_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     return lzvn_decode_buffer_scratch((uint8_t*)outbuf, outsize, (uint8_t*)inbuf, insize, codec_options->work_mem);
 }
 
-#endif // BENCH_REMOVE_LZVN
+#endif // BENCH_REMOVE_LZFSE
 
 
 
@@ -634,6 +594,27 @@ int64_t lzbench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
 
 
+#ifndef BENCH_REMOVE_MBROTLI
+#include "mbrotli/mbrotli-ffi/include/mbrotli.h"
+
+int64_t lzbench_mbrotli_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    int windowLog = codec_options->additional_param;
+    if (!windowLog) windowLog = 22; // sliding window size. Range is 10 to 24.
+
+    size_t actual_osize = outsize;
+    return mbrotli_compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize, codec_options->level, windowLog) == MBROTLI_OK ? actual_osize : 0;
+}
+int64_t lzbench_mbrotli_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    size_t actual_osize = outsize;
+    return mbrotli_decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize) == MBROTLI_OK ? actual_osize : 0;
+}
+
+#endif // BENCH_REMOVE_MBROTLI
+
+
+
 #ifndef BENCH_REMOVE_MZSTD
 #include "mzstd/mzstd-ffi/include/mzstd.h"
 
@@ -867,79 +848,6 @@ int64_t lzbench_openzl_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 
-#ifndef BENCH_REMOVE_TORNADO
-#include "tornado/tor_test.h"
-
-int64_t lzbench_tornado_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    return tor_compress(codec_options->level, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
-}
-
-int64_t lzbench_tornado_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    return tor_decompress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
-}
-
-#endif // BENCH_REMOVE_TORNADO
-
-
-
-#ifndef BENCH_REMOVE_ZLIB
-#include "zlib/zlib.h"
-
-int64_t lzbench_zlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    uLongf zcomplen = outsize;
-    int err = compress2((uint8_t*)outbuf, &zcomplen, (uint8_t*)inbuf, insize, codec_options->level);
-    if (err != Z_OK)
-        return 0;
-    return zcomplen;
-}
-
-int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    uLongf zdecomplen = outsize;
-    int err = uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize);
-    if (err != Z_OK)
-        return 0;
-    return zdecomplen;
-}
-
-#endif // BENCH_REMOVE_ZLIB
-
-
-
-#ifndef BENCH_REMOVE_ZLIB_NG
-
-#undef z_const
-#undef Z_NULL
-
-#define in_func zlibng_in_func
-#include "lz+entropy/zlib-ng/zlib-ng.h"
-#undef in_func
-
-int64_t lzbench_zlib_ng_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    size_t zcomplen = outsize;
-    int err = zng_compress2((uint8_t*)outbuf, &zcomplen, (uint8_t*)inbuf, insize, codec_options->level);
-    if (err != Z_OK)
-        return 0;
-    return zcomplen;
-}
-
-int64_t lzbench_zlib_ng_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    size_t zdecomplen = outsize;
-    int err = zng_uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize);
-    if (err != Z_OK)
-        return 0;
-    return zdecomplen;
-}
-
-#endif // BENCH_REMOVE_ZLIB_NG
-
-
-
 #ifndef BENCH_REMOVE_SLZ
 extern "C"
 {
@@ -998,6 +906,42 @@ int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
     return decoded_len;
 }
 #endif // BENCH_REMOVE_SLZ
+
+
+
+#ifndef BENCH_REMOVE_TORNADO
+#include "tornado/tor_test.h"
+
+int64_t lzbench_tornado_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    return tor_compress(codec_options->level, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
+}
+
+int64_t lzbench_tornado_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    return tor_decompress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
+}
+
+#endif // BENCH_REMOVE_TORNADO
+
+
+
+#ifndef BENCH_REMOVE_WZIP
+#include "lz+entropy/wzip/WZIP.h"
+
+int64_t lzbench_wzip_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    int cap = outsize > 0x7FFFFFFF ? 0x7FFFFFFF : (int)outsize;
+    return wzip_compress_mt(inbuf, (int)insize, outbuf, &cap, codec_options->level, codec_options->threads);
+}
+
+int64_t lzbench_wzip_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    int cap = (int)outsize;
+    return wzip_decompress(inbuf, (int)insize, outbuf, &cap);
+}
+
+#endif // BENCH_REMOVE_WZIP
 
 
 
@@ -1087,6 +1031,62 @@ int64_t lzbench_xz_decompress(char *inbuf, size_t insize, char *outbuf, size_t o
 }
 
 #endif // BENCH_REMOVE_XZ
+
+
+
+#ifndef BENCH_REMOVE_ZLIB
+#include "zlib/zlib.h"
+
+int64_t lzbench_zlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    uLongf zcomplen = outsize;
+    int err = compress2((uint8_t*)outbuf, &zcomplen, (uint8_t*)inbuf, insize, codec_options->level);
+    if (err != Z_OK)
+        return 0;
+    return zcomplen;
+}
+
+int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    uLongf zdecomplen = outsize;
+    int err = uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize);
+    if (err != Z_OK)
+        return 0;
+    return zdecomplen;
+}
+
+#endif // BENCH_REMOVE_ZLIB
+
+
+
+#ifndef BENCH_REMOVE_ZLIB_NG
+
+#undef z_const
+#undef Z_NULL
+
+#define in_func zlibng_in_func
+#include "lz+entropy/zlib-ng/zlib-ng.h"
+#undef in_func
+
+int64_t lzbench_zlib_ng_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    size_t zcomplen = outsize;
+    int err = zng_compress2((uint8_t*)outbuf, &zcomplen, (uint8_t*)inbuf, insize, codec_options->level);
+    if (err != Z_OK)
+        return 0;
+    return zcomplen;
+}
+
+int64_t lzbench_zlib_ng_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    size_t zdecomplen = outsize;
+    int err = zng_uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize);
+    if (err != Z_OK)
+        return 0;
+    return zdecomplen;
+}
+
+#endif // BENCH_REMOVE_ZLIB_NG
 
 
 

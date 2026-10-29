@@ -163,6 +163,7 @@ void lzbench_aocl_zstd_deinit(char* workmem);
     #define lzbench_brotli_decompress NULL
 #endif
 
+
 #ifndef BENCH_REMOVE_BSC
     char* lzbench_bsc_init(size_t insize, size_t level, size_t);
     int64_t lzbench_bsc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
@@ -232,25 +233,6 @@ void lzbench_aocl_zstd_deinit(char* workmem);
     #define lzbench_density_decompress NULL
 #endif
 
-#ifndef BENCH_REMOVE_PULSAR
-    int64_t lzbench_pulsar_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-    int64_t lzbench_pulsar_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-#else
-    #define lzbench_pulsar_compress NULL
-    #define lzbench_pulsar_decompress NULL
-#endif
-
-#ifndef BENCH_REMOVE_SKIM
-    char* lzbench_skim_init(size_t insize, size_t level, size_t);
-    void lzbench_skim_deinit(char* workmem);
-    int64_t lzbench_skim_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-    int64_t lzbench_skim_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-#else
-    #define lzbench_skim_init NULL
-    #define lzbench_skim_deinit NULL
-    #define lzbench_skim_compress NULL
-    #define lzbench_skim_decompress NULL
-#endif // BENCH_REMOVE_SKIM
 
 #ifndef BENCH_REMOVE_FASTLZ
     int64_t lzbench_fastlz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
@@ -288,6 +270,19 @@ void lzbench_aocl_zstd_deinit(char* workmem);
 #endif
 
 
+#ifndef BENCH_REMOVE_GOBRRR
+    char* lzbench_gobrrr_init(size_t insize, size_t level, size_t);
+    void lzbench_gobrrr_deinit(char* workmem);
+    int64_t lzbench_gobrrr_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_gobrrr_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_gobrrr_init NULL
+    #define lzbench_gobrrr_deinit NULL
+    #define lzbench_gobrrr_compress NULL
+    #define lzbench_gobrrr_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_GPUCOMPACT
 #ifdef BENCH_HAS_CUDA
     char* lzbench_gpucompact_init(size_t insize, size_t level, size_t threads);
@@ -306,21 +301,6 @@ void lzbench_aocl_zstd_deinit(char* workmem);
     #define lzbench_gpucompact_compress NULL
     #define lzbench_gpucompact_decompress NULL
 #endif // BENCH_REMOVE_GPUCOMPACT
-
-#endif // LZBENCH_COMPRESSORS_H
-
-
-#ifndef BENCH_REMOVE_GOBRRR
-    char* lzbench_gobrrr_init(size_t insize, size_t level, size_t);
-    void lzbench_gobrrr_deinit(char* workmem);
-    int64_t lzbench_gobrrr_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-    int64_t lzbench_gobrrr_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-#else
-    #define lzbench_gobrrr_init NULL
-    #define lzbench_gobrrr_deinit NULL
-    #define lzbench_gobrrr_compress NULL
-    #define lzbench_gobrrr_decompress NULL
-#endif
 
 
 #ifndef BENCH_REMOVE_KANZI
@@ -643,6 +623,15 @@ void lzbench_aocl_zstd_deinit(char* workmem);
 #endif // BENCH_REMOVE_PPMD
 
 
+#ifndef BENCH_REMOVE_PULSAR
+    int64_t lzbench_pulsar_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_pulsar_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_pulsar_compress NULL
+    #define lzbench_pulsar_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_QUICKLZ
     int64_t lzbench_quicklz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_quicklz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
@@ -650,6 +639,19 @@ void lzbench_aocl_zstd_deinit(char* workmem);
     #define lzbench_quicklz_compress NULL
     #define lzbench_quicklz_decompress NULL
 #endif
+
+
+#ifndef BENCH_REMOVE_SKIM
+    char* lzbench_skim_init(size_t insize, size_t level, size_t);
+    void lzbench_skim_deinit(char* workmem);
+    int64_t lzbench_skim_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_skim_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_skim_init NULL
+    #define lzbench_skim_deinit NULL
+    #define lzbench_skim_compress NULL
+    #define lzbench_skim_decompress NULL
+#endif // BENCH_REMOVE_SKIM
 
 
 #ifndef BENCH_REMOVE_SLZ
@@ -667,6 +669,19 @@ void lzbench_aocl_zstd_deinit(char* workmem);
 #else
     #define lzbench_snappy_compress NULL
     #define lzbench_snappy_decompress NULL
+#endif
+
+
+#ifndef BENCH_REMOVE_TAMP
+    char* lzbench_tamp_init(size_t, size_t level, size_t);
+    void lzbench_tamp_deinit(char* workmem);
+    int64_t lzbench_tamp_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_tamp_init NULL
+    #define lzbench_tamp_deinit NULL
+    #define lzbench_tamp_compress NULL
+    #define lzbench_tamp_decompress NULL
 #endif
 
 
@@ -829,19 +844,6 @@ extern "C"
 #endif
 
 
-#ifndef BENCH_REMOVE_TAMP
-    char* lzbench_tamp_init(size_t, size_t level, size_t);
-    void lzbench_tamp_deinit(char* workmem);
-    int64_t lzbench_tamp_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-    int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
-#else
-    #define lzbench_tamp_init NULL
-    #define lzbench_tamp_deinit NULL
-    #define lzbench_tamp_compress NULL
-    #define lzbench_tamp_decompress NULL
-#endif
-
-
 #ifndef BENCH_REMOVE_ZXC
 char *lzbench_zxc_init(size_t insize, size_t level, size_t);
 void lzbench_zxc_deinit(char *workmem);
@@ -856,3 +858,4 @@ int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
 #define lzbench_zxc_decompress NULL
 #endif
 
+#endif // LZBENCH_COMPRESSORS_H

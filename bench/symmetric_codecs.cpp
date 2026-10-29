@@ -132,7 +132,7 @@ int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, si
 
 #endif // BENCH_HAS_CUDA
 
-#endif // BENCH_HAS_BSC
+#endif // BENCH_REMOVE_BSC
 
 
 
