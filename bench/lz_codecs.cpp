@@ -25,66 +25,6 @@ int64_t lzbench_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize,
 
 
 
-#ifndef BENCH_REMOVE_MEMLZ
-#define MEMLZ_IMPLEMENTATION
-#include "lz/memlz/memlz.h"
-
-char* lzbench_memlz_init(size_t insize, size_t level, size_t)
-{
-    return (char*)malloc(sizeof(memlz_state));
-}
-
-void lzbench_memlz_deinit(char* workmem)
-{
-    free(workmem);
-}
-
-int64_t lzbench_memlz_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
-{
-    if (!codec_options->work_mem)
-        return 0;
-
-    memlz_reset((memlz_state*)codec_options->work_mem);
-    return memlz_stream_compress(outbuf, inbuf, insize, (memlz_state*)codec_options->work_mem);
-}
-
-int64_t lzbench_memlz_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
-{
-    memlz_reset((memlz_state*)codec_options->work_mem);
-    return (int64_t)memlz_stream_decompress(outbuf, inbuf, (memlz_state*)codec_options->work_mem);
-}
-
-#endif // BENCH_REMOVE_MEMLZ
-
-
-
-#ifndef BENCH_REMOVE_MISA77
-#include "misa77/misa77.h"
-
-int64_t lzbench_misa77_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
-{
-    // Levels run -1..4 and are monotone in ratio and (inversely) in compression speed:
-    // -1 and 0 = fast compression, 1 = fastest decompression (the library default),
-    // 2 = better ratio, 3 = optimal parse, 4 = "heavy" format (best ratio, slowest compression).
-    return (int64_t)misa77::compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize, misa77::config((int8_t)codec_options->level));
-}
-
-// The decompressor detects the format (light for levels -1..3, heavy for level 4) from the
-// stream itself. misa77_safe stops at level 3 because the heavy format has no safe decoder
-// yet (misa77::decompress with dconfig(true) rejects heavy streams by returning 0).
-int64_t lzbench_misa77_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
-{
-    return (int64_t)misa77::decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
-}
-
-int64_t lzbench_misa77_safe_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
-{
-    return (int64_t)misa77::decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize, misa77::dconfig(true));
-}
-#endif // BENCH_REMOVE_MISA77
-
-
-
 #ifndef BENCH_REMOVE_BRIEFLZ
 #include "lz/brieflz/brieflz.h"
 
@@ -150,7 +90,7 @@ int64_t lzbench_fastlz_decompress(char *inbuf, size_t insize, char *outbuf, size
     return fastlz_decompress(inbuf, insize, outbuf, outsize);
 }
 
-#endif
+#endif // BENCH_REMOVE_FASTLZ
 
 
 
@@ -178,60 +118,7 @@ int64_t lzbench_lz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
     return LZ4_decompress_safe(inbuf, outbuf, insize, outsize);
 }
 
-#endif
-
-
-
-#ifndef BENCH_REMOVE_WLZ4
-#include "lz/wlz4/WLZ4.h"
-
-typedef struct { WLZ_State_Str* lazy; WLZhc_State_Str* hc; } wlz4_states;
-
-char* lzbench_wlz4_init(size_t insize, size_t level, size_t)
-{
-    wlz4_states* s = (wlz4_states*)calloc(1, sizeof(wlz4_states));
-    if (!s) return NULL;
-    s->lazy = WLZ_New_State();
-    s->hc = WLZhc_New_State();
-    return (char*)s;
-}
-
-void lzbench_wlz4_deinit(char* workmem)
-{
-    wlz4_states* s = (wlz4_states*)workmem;
-    if (!s) return;
-    if (s->lazy) WLZ_Free_State(s->lazy);
-    if (s->hc) WLZhc_Free_State(s->hc);
-    free(s);
-}
-
-int64_t lzbench_wlz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    wlz4_states* s = (wlz4_states*)codec_options->work_mem;
-    if (!s || !s->lazy) return 0;
-    return WLZ_Compress(s->lazy, inbuf, outbuf, (unsigned)insize, (unsigned)outsize);
-}
-
-int64_t lzbench_wlz4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    wlz4_states* s = (wlz4_states*)codec_options->work_mem;
-    if (!s || !s->lazy) return 0;
-    return WLZ_Compress_Fast(s->lazy, inbuf, outbuf, (unsigned)insize, (unsigned)outsize, codec_options->level);
-}
-
-int64_t lzbench_wlz4hc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    wlz4_states* s = (wlz4_states*)codec_options->work_mem;
-    if (!s || !s->hc) return 0;
-    return WLZhc_Compress(s->hc, inbuf, outbuf, (unsigned)insize, (unsigned)outsize, codec_options->level);
-}
-
-int64_t lzbench_wlz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    return WLZ_Decompress(inbuf, outbuf, (unsigned)insize, (unsigned)outsize);
-}
-
-#endif
+#endif // BENCH_REMOVE_LZ4
 
 
 
@@ -250,7 +137,7 @@ int64_t lzbench_lzav_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     return lzav_decompress(inbuf, outbuf, insize, outsize);
 }
 
-#endif
+#endif // BENCH_REMOVE_LZAV
 
 
 
@@ -272,7 +159,7 @@ int64_t lzbench_lzf_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
     return lzf_decompress(inbuf, insize, outbuf, outsize);
 }
 
-#endif
+#endif // BENCH_REMOVE_LZF
 
 
 
@@ -294,7 +181,7 @@ int64_t lzbench_lzg_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
     return LZG_Decode((const unsigned char*)inbuf, insize, (unsigned char*)outbuf, outsize);
 }
 
-#endif
+#endif // BENCH_REMOVE_LZG
 
 
 
@@ -311,7 +198,7 @@ int64_t lzbench_lzjb_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     return lzjb_decompress2010((uint8_t*)inbuf, (uint8_t*)outbuf, insize, outsize, 0);
 }
 
-#endif
+#endif // BENCH_REMOVE_LZJB
 
 
 
@@ -603,7 +490,7 @@ int64_t lzbench_lzo2a_decompress(char *inbuf, size_t insize, char *outbuf, size_
     return decomplen;
 }
 
-#endif
+#endif // BENCH_REMOVE_LZO
 
 
 
@@ -721,7 +608,67 @@ int64_t lzbench_lzsse8fast_compress(char *inbuf, size_t insize, char *outbuf, si
     return LZSSE8_CompressFast((LZSSE8_FastParseState*) codec_options->work_mem, inbuf, insize, outbuf, outsize);
 }
 
-#endif
+#endif // BENCH_REMOVE_LZSSE
+
+
+
+#ifndef BENCH_REMOVE_MEMLZ
+#define MEMLZ_IMPLEMENTATION
+#include "lz/memlz/memlz.h"
+
+char* lzbench_memlz_init(size_t insize, size_t level, size_t)
+{
+    return (char*)malloc(sizeof(memlz_state));
+}
+
+void lzbench_memlz_deinit(char* workmem)
+{
+    free(workmem);
+}
+
+int64_t lzbench_memlz_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    if (!codec_options->work_mem)
+        return 0;
+
+    memlz_reset((memlz_state*)codec_options->work_mem);
+    return memlz_stream_compress(outbuf, inbuf, insize, (memlz_state*)codec_options->work_mem);
+}
+
+int64_t lzbench_memlz_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    memlz_reset((memlz_state*)codec_options->work_mem);
+    return (int64_t)memlz_stream_decompress(outbuf, inbuf, (memlz_state*)codec_options->work_mem);
+}
+
+#endif // BENCH_REMOVE_MEMLZ
+
+
+
+#ifndef BENCH_REMOVE_MISA77
+#include "misa77/misa77.h"
+
+int64_t lzbench_misa77_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    // Levels run -1..4 and are monotone in ratio and (inversely) in compression speed:
+    // -1 and 0 = fast compression, 1 = fastest decompression (the library default),
+    // 2 = better ratio, 3 = optimal parse, 4 = "heavy" format (best ratio, slowest compression).
+    return (int64_t)misa77::compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize, misa77::config((int8_t)codec_options->level));
+}
+
+// The decompressor detects the format (light for levels -1..3, heavy for level 4) from the
+// stream itself. misa77_safe stops at level 3 because the heavy format has no safe decoder
+// yet (misa77::decompress with dconfig(true) rejects heavy streams by returning 0).
+int64_t lzbench_misa77_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    return (int64_t)misa77::decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
+}
+
+int64_t lzbench_misa77_safe_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    return (int64_t)misa77::decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize, misa77::dconfig(true));
+}
+#endif // BENCH_REMOVE_MISA77
 
 
 
@@ -767,7 +714,7 @@ int64_t lzbench_quicklz_decompress(char *inbuf, size_t insize, char *outbuf, siz
     return res;
 }
 
-#endif
+#endif // BENCH_REMOVE_QUICKLZ
 
 
 
@@ -786,7 +733,7 @@ int64_t lzbench_snappy_decompress(char *inbuf, size_t insize, char *outbuf, size
     return outsize;
 }
 
-#endif
+#endif // BENCH_REMOVE_SNAPPY
 
 
 
@@ -852,7 +799,7 @@ int64_t lzbench_tamp_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
     return decompressed_size;
 }
-#endif
+#endif // BENCH_REMOVE_TAMP
 
 
 
@@ -914,8 +861,60 @@ int64_t lzbench_ucl_nrv2e_decompress(char *inbuf, size_t insize, char *outbuf, s
     return decomplen;
 }
 
-#endif
+#endif // BENCH_REMOVE_UCL
 
+
+
+#ifndef BENCH_REMOVE_WLZ4
+#include "lz/wlz4/WLZ4.h"
+
+typedef struct { WLZ_State_Str* lazy; WLZhc_State_Str* hc; } wlz4_states;
+
+char* lzbench_wlz4_init(size_t insize, size_t level, size_t)
+{
+    wlz4_states* s = (wlz4_states*)calloc(1, sizeof(wlz4_states));
+    if (!s) return NULL;
+    s->lazy = WLZ_New_State();
+    s->hc = WLZhc_New_State();
+    return (char*)s;
+}
+
+void lzbench_wlz4_deinit(char* workmem)
+{
+    wlz4_states* s = (wlz4_states*)workmem;
+    if (!s) return;
+    if (s->lazy) WLZ_Free_State(s->lazy);
+    if (s->hc) WLZhc_Free_State(s->hc);
+    free(s);
+}
+
+int64_t lzbench_wlz4_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    wlz4_states* s = (wlz4_states*)codec_options->work_mem;
+    if (!s || !s->lazy) return 0;
+    return WLZ_Compress(s->lazy, inbuf, outbuf, (unsigned)insize, (unsigned)outsize);
+}
+
+int64_t lzbench_wlz4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    wlz4_states* s = (wlz4_states*)codec_options->work_mem;
+    if (!s || !s->lazy) return 0;
+    return WLZ_Compress_Fast(s->lazy, inbuf, outbuf, (unsigned)insize, (unsigned)outsize, codec_options->level);
+}
+
+int64_t lzbench_wlz4hc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    wlz4_states* s = (wlz4_states*)codec_options->work_mem;
+    if (!s || !s->hc) return 0;
+    return WLZhc_Compress(s->hc, inbuf, outbuf, (unsigned)insize, (unsigned)outsize, codec_options->level);
+}
+
+int64_t lzbench_wlz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    return WLZ_Decompress(inbuf, outbuf, (unsigned)insize, (unsigned)outsize);
+}
+
+#endif // BENCH_REMOVE_WLZ4
 
 
 
@@ -942,7 +941,7 @@ int64_t lzbench_yalz77_decompress(char *inbuf, size_t insize, char *outbuf, size
     return decompressed.size();
 }
 
-#endif
+#endif // BENCH_REMOVE_YALZ77
 
 
 

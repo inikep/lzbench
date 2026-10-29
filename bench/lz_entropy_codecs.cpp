@@ -94,24 +94,6 @@ int64_t lzbench_gobrrr_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 
-#ifndef BENCH_REMOVE_MZSTD
-#include "mzstd/mzstd-ffi/include/mzstd.h"
-
-int64_t lzbench_mzstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    size_t actual_osize = outsize;
-    return mzstd_compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize, codec_options->level) == MZSTD_OK ? actual_osize : 0;
-}
-int64_t lzbench_mzstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    size_t actual_osize = outsize;
-    return mzstd_decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize) == MZSTD_OK ? actual_osize : 0;
-}
-
-#endif // BENCH_REMOVE_MZSTD
-
-
-
 #ifndef BENCH_REMOVE_FASTLZMA2
 #include "lz+entropy/fast-lzma2/fast-lzma2.h"
 
@@ -268,7 +250,7 @@ int64_t lzbench_libdeflate_decompress(char *inbuf, size_t insize, char *outbuf, 
     libdeflate_free_decompressor(decompressor);
     return res;
 }
-#endif
+#endif // BENCH_REMOVE_LIBDEFLATE
 
 
 
@@ -287,7 +269,7 @@ int64_t lzbench_wzip_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     return wzip_decompress(inbuf, (int)insize, outbuf, &cap);
 }
 
-#endif
+#endif // BENCH_REMOVE_WZIP
 
 
 
@@ -305,7 +287,7 @@ int64_t lzbench_lizard_decompress(char *inbuf, size_t insize, char *outbuf, size
     return Lizard_decompress_safe(inbuf, outbuf, insize, outsize);
 }
 
-#endif
+#endif // BENCH_REMOVE_LIZARD
 
 
 
@@ -335,11 +317,11 @@ int64_t lzbench_lzfse_decompress(char *inbuf, size_t insize, char *outbuf, size_
     return lzfse_decode_buffer((uint8_t*)outbuf, outsize, (uint8_t*)inbuf, insize, codec_options->work_mem);
 }
 
-#endif
+#endif // BENCH_REMOVE_LZFSE
 
 
 
-#ifndef BENCH_REMOVE_LZFSE
+#ifndef BENCH_REMOVE_LZVN
 extern "C"
 {
     #include "lz+entropy/lzfse/lzvn.h"
@@ -365,7 +347,7 @@ int64_t lzbench_lzvn_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     return lzvn_decode_buffer_scratch((uint8_t*)outbuf, outsize, (uint8_t*)inbuf, insize, codec_options->work_mem);
 }
 
-#endif
+#endif // BENCH_REMOVE_LZVN
 
 
 
@@ -410,7 +392,7 @@ int64_t lzbench_lzham_decompress(char *inbuf, size_t insize, char *outbuf, size_
     return outsize;
 }
 
-#endif
+#endif // BENCH_REMOVE_LZHAM
 
 
 
@@ -521,7 +503,7 @@ int64_t lzbench_lzlib_decompress(char *inbuf, size_t insize, char *outbuf, size_
   return new_pos;
 }
 
-#endif
+#endif // BENCH_REMOVE_LZLIB
 
 
 
@@ -648,307 +630,25 @@ int64_t lzbench_lzma_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     return (int64_t)(outsize - outStream.size);
 }
 
-#endif
+#endif // BENCH_REMOVE_LZMA
 
 
 
-#ifndef BENCH_REMOVE_TORNADO
-#include "tornado/tor_test.h"
+#ifndef BENCH_REMOVE_MZSTD
+#include "mzstd/mzstd-ffi/include/mzstd.h"
 
-int64_t lzbench_tornado_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+int64_t lzbench_mzstd_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
 {
-    return tor_compress(codec_options->level, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
+    size_t actual_osize = outsize;
+    return mzstd_compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize, codec_options->level) == MZSTD_OK ? actual_osize : 0;
+}
+int64_t lzbench_mzstd_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    size_t actual_osize = outsize;
+    return mzstd_decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, &actual_osize) == MZSTD_OK ? actual_osize : 0;
 }
 
-int64_t lzbench_tornado_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    return tor_decompress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
-}
-
-#endif
-
-
-
-#ifndef BENCH_REMOVE_ZLIB
-#include "zlib/zlib.h"
-
-int64_t lzbench_zlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    uLongf zcomplen = outsize;
-    int err = compress2((uint8_t*)outbuf, &zcomplen, (uint8_t*)inbuf, insize, codec_options->level);
-    if (err != Z_OK)
-        return 0;
-    return zcomplen;
-}
-
-int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    uLongf zdecomplen = outsize;
-    int err = uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize);
-    if (err != Z_OK)
-        return 0;
-    return zdecomplen;
-}
-
-#endif
-
-
-
-#ifndef BENCH_REMOVE_ZLIB_NG
-
-#undef z_const
-#undef Z_NULL
-
-#define in_func zlibng_in_func
-#include "lz+entropy/zlib-ng/zlib-ng.h"
-#undef in_func
-
-int64_t lzbench_zlib_ng_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    size_t zcomplen = outsize;
-    int err = zng_compress2((uint8_t*)outbuf, &zcomplen, (uint8_t*)inbuf, insize, codec_options->level);
-    if (err != Z_OK)
-        return 0;
-    return zcomplen;
-}
-
-int64_t lzbench_zlib_ng_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    size_t zdecomplen = outsize;
-    int err = zng_uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize);
-    if (err != Z_OK)
-        return 0;
-    return zdecomplen;
-}
-
-#endif
-
-
-
-#if !defined(BENCH_REMOVE_SLZ)
-extern "C"
-{
-    #include "slz/src/slz.h"
-}
-
-int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    struct slz_stream strm;
-    size_t outlen = 0;
-    size_t len;
-    size_t blk;
-
-    if (codec_options->additional_param == 0)
-        slz_init(&strm, codec_options->level, SLZ_FMT_ZLIB);
-    else if (codec_options->additional_param == 1)
-        slz_init(&strm, codec_options->level, SLZ_FMT_GZIP);
-    else
-        slz_init(&strm, codec_options->level, SLZ_FMT_DEFLATE);
-
-    do {
-        blk = std::min(insize, (size_t)4096 << 10);
-
-        len = slz_encode(&strm, outbuf, inbuf, blk, insize > blk);
-        outlen += len;
-        outbuf += len;
-        inbuf += blk;
-        insize -= blk;
-    } while (insize > 0);
-
-    outlen += slz_finish(&strm, outbuf);
-    return outlen;
-}
-
-int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    struct uslz_stream state;
-    long decoded_len, consumed;
-    unsigned char *decoded;
-    int format;
-    int err;
-
-    format = (codec_options->additional_param == 0) ? SLZ_FMT_ZLIB :
-             (codec_options->additional_param == 1) ? SLZ_FMT_GZIP :
-             SLZ_FMT_DEFLATE;
-
-    decoded = (unsigned char *)outbuf;
-    err = uslz_init_fmt(&state, decoded, outsize, format);
-    if (!err)
-        return 0;
-
-    err = uslz_decode(&state, (unsigned char *)inbuf, insize, &decoded, &decoded_len, &consumed, NULL);
-    if (err != USLZ_DECODE_SUCCESS)
-	    return 0;
-
-    return decoded_len;
-}
-#endif
-
-
-
-#ifndef BENCH_REMOVE_XZ
-#include "lz+entropy/xz/src/liblzma/api/lzma.h"
-
-int64_t lzbench_xz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    lzma_stream strm = LZMA_STREAM_INIT;
-    lzma_ret ret;
-
-    // Prepare multithreaded compression settings
-    lzma_mt mt_options = {0};
-
-    // Compression level: default to 6 if codec_options->level is unset
-    mt_options.preset = (codec_options && codec_options->level >= 0 && codec_options->level <= 9)
-                          ? (uint32_t)codec_options->level
-                          : LZMA_PRESET_DEFAULT;
-
-    // Check type (CRC64 is default and common)
-    mt_options.check = LZMA_CHECK_NONE;
-    //mt_options.check = LZMA_CHECK_CRC32;
-
-    // Number of threads
-    mt_options.threads = codec_options->threads;
-    mt_options.block_size = 0;
-
-    // lzma_stream_encoder_mt supports .xz format with multithreading
-    ret = lzma_stream_encoder_mt(&strm, &mt_options);
-    if (ret != LZMA_OK) {
-        return -1;
-    }
-
-    strm.next_in = (const uint8_t *)inbuf;
-    strm.avail_in = insize;
-    strm.next_out = (uint8_t *)outbuf;
-    strm.avail_out = outsize;
-
-    // Compress in one shot
-    ret = lzma_code(&strm, LZMA_FINISH);
-    if (ret != LZMA_STREAM_END) {
-        lzma_end(&strm);
-        return -2;
-    }
-
-    size_t compressed_size = strm.total_out;
-
-    lzma_end(&strm);
-    return (int64_t)compressed_size;
-}
-
-int64_t lzbench_xz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    lzma_stream strm = LZMA_STREAM_INIT;
-    lzma_ret ret;
-
-    // Configure multithreaded decoder options
-    lzma_mt mt_options = {0};
-    mt_options.threads = codec_options->threads;
-
-    // Use unlimited memory for decoder
-    mt_options.memlimit_stop = UINT64_MAX;
-    mt_options.flags = LZMA_CONCATENATED | LZMA_IGNORE_CHECK;
-
-    // Use multithreaded decoder (available in XZ Utils 5.4.0+)
-    ret = lzma_stream_decoder_mt(&strm, &mt_options);
-    if (ret != LZMA_OK) {
-        lzma_end(&strm);
-        return -1;
-    }
-
-    strm.next_in = (const uint8_t *)inbuf;
-    strm.avail_in = insize;
-    strm.next_out = (uint8_t *)outbuf;
-    strm.avail_out = outsize;
-
-    // Perform decompression
-    ret = lzma_code(&strm, LZMA_FINISH);
-    if (ret != LZMA_STREAM_END) {
-        lzma_end(&strm);
-        return -2;
-    }
-
-    size_t decompressed_size = strm.total_out;
-    lzma_end(&strm);
-    return (int64_t)decompressed_size;
-}
-
-#endif // BENCH_REMOVE_XZ
-
-
-
-#ifndef BENCH_REMOVE_ZLING
-#include "lz+entropy/libzling/libzling.h"
-
-namespace baidu {
-namespace zling {
-
-struct MemInputter: public baidu::zling::Inputter {
-    MemInputter(uint8_t* buffer, size_t buflen) :
-        m_buffer(buffer),
-        m_buflen(buflen),
-        m_total_read(0) {}
-
-    size_t GetData(unsigned char* buf, size_t len) {
-        if (len > m_buflen - m_total_read)
-            len = m_buflen - m_total_read;
-
-        memcpy(buf, m_buffer + m_total_read, len);
-        m_total_read += len;
-        return len;
-    }
-    bool   IsEnd() { return m_total_read >= m_buflen; }
-    bool   IsErr() { return false; }
-    size_t GetInputSize() { return m_total_read; }
-
-private:
-    uint8_t* m_buffer;
-    size_t m_buflen, m_total_read;
-};
-
-struct MemOutputter : public baidu::zling::Outputter {
-    MemOutputter(uint8_t* buffer, size_t buflen) :
-        m_buffer(buffer),
-        m_buflen(buflen),
-        m_total_write(0) {}
-
-    size_t PutData(unsigned char* buf, size_t len) {
-        if (len > m_buflen - m_total_write)
-            len = m_buflen - m_total_write;
-
-        memcpy(m_buffer + m_total_write, buf, len);
-        m_total_write += len;
-        return len;
-    }
-    bool   IsErr() { return m_total_write > m_buflen; }
-    size_t GetOutputSize() { return m_total_write; }
-
-private:
-    FILE*  m_fp;
-    uint8_t* m_buffer;
-    size_t m_buflen, m_total_write;
-};
-
-}  // namespace zling
-}  // namespace baidu
-
-int64_t lzbench_zling_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    baidu::zling::MemInputter  inputter((uint8_t*)inbuf, insize);
-    baidu::zling::MemOutputter outputter((uint8_t*)outbuf, outsize);
-    baidu::zling::Encode(&inputter, &outputter, NULL, codec_options->level);
-
-    return outputter.GetOutputSize();
-}
-
-int64_t lzbench_zling_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    baidu::zling::MemInputter  inputter((uint8_t*)inbuf, insize);
-    baidu::zling::MemOutputter outputter((uint8_t*)outbuf, outsize);
-    baidu::zling::Decode(&inputter, &outputter);
-
-    return outputter.GetOutputSize();
-}
-
-#endif
+#endif // BENCH_REMOVE_MZSTD
 
 
 
@@ -1167,6 +867,306 @@ int64_t lzbench_openzl_decompress(char *inbuf, size_t insize, char *outbuf, size
 
 
 
+#ifndef BENCH_REMOVE_TORNADO
+#include "tornado/tor_test.h"
+
+int64_t lzbench_tornado_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    return tor_compress(codec_options->level, (uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
+}
+
+int64_t lzbench_tornado_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    return tor_decompress((uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
+}
+
+#endif // BENCH_REMOVE_TORNADO
+
+
+
+#ifndef BENCH_REMOVE_ZLIB
+#include "zlib/zlib.h"
+
+int64_t lzbench_zlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    uLongf zcomplen = outsize;
+    int err = compress2((uint8_t*)outbuf, &zcomplen, (uint8_t*)inbuf, insize, codec_options->level);
+    if (err != Z_OK)
+        return 0;
+    return zcomplen;
+}
+
+int64_t lzbench_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    uLongf zdecomplen = outsize;
+    int err = uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize);
+    if (err != Z_OK)
+        return 0;
+    return zdecomplen;
+}
+
+#endif // BENCH_REMOVE_ZLIB
+
+
+
+#ifndef BENCH_REMOVE_ZLIB_NG
+
+#undef z_const
+#undef Z_NULL
+
+#define in_func zlibng_in_func
+#include "lz+entropy/zlib-ng/zlib-ng.h"
+#undef in_func
+
+int64_t lzbench_zlib_ng_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    size_t zcomplen = outsize;
+    int err = zng_compress2((uint8_t*)outbuf, &zcomplen, (uint8_t*)inbuf, insize, codec_options->level);
+    if (err != Z_OK)
+        return 0;
+    return zcomplen;
+}
+
+int64_t lzbench_zlib_ng_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    size_t zdecomplen = outsize;
+    int err = zng_uncompress((uint8_t*)outbuf, &zdecomplen, (uint8_t*)inbuf, insize);
+    if (err != Z_OK)
+        return 0;
+    return zdecomplen;
+}
+
+#endif // BENCH_REMOVE_ZLIB_NG
+
+
+
+#ifndef BENCH_REMOVE_SLZ
+extern "C"
+{
+    #include "slz/src/slz.h"
+}
+
+int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    struct slz_stream strm;
+    size_t outlen = 0;
+    size_t len;
+    size_t blk;
+
+    if (codec_options->additional_param == 0)
+        slz_init(&strm, codec_options->level, SLZ_FMT_ZLIB);
+    else if (codec_options->additional_param == 1)
+        slz_init(&strm, codec_options->level, SLZ_FMT_GZIP);
+    else
+        slz_init(&strm, codec_options->level, SLZ_FMT_DEFLATE);
+
+    do {
+        blk = std::min(insize, (size_t)4096 << 10);
+
+        len = slz_encode(&strm, outbuf, inbuf, blk, insize > blk);
+        outlen += len;
+        outbuf += len;
+        inbuf += blk;
+        insize -= blk;
+    } while (insize > 0);
+
+    outlen += slz_finish(&strm, outbuf);
+    return outlen;
+}
+
+int64_t lzbench_slz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    struct uslz_stream state;
+    long decoded_len, consumed;
+    unsigned char *decoded;
+    int format;
+    int err;
+
+    format = (codec_options->additional_param == 0) ? SLZ_FMT_ZLIB :
+             (codec_options->additional_param == 1) ? SLZ_FMT_GZIP :
+             SLZ_FMT_DEFLATE;
+
+    decoded = (unsigned char *)outbuf;
+    err = uslz_init_fmt(&state, decoded, outsize, format);
+    if (!err)
+        return 0;
+
+    err = uslz_decode(&state, (unsigned char *)inbuf, insize, &decoded, &decoded_len, &consumed, NULL);
+    if (err != USLZ_DECODE_SUCCESS)
+	    return 0;
+
+    return decoded_len;
+}
+#endif // BENCH_REMOVE_SLZ
+
+
+
+#ifndef BENCH_REMOVE_XZ
+#include "lz+entropy/xz/src/liblzma/api/lzma.h"
+
+int64_t lzbench_xz_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    lzma_stream strm = LZMA_STREAM_INIT;
+    lzma_ret ret;
+
+    // Prepare multithreaded compression settings
+    lzma_mt mt_options = {0};
+
+    // Compression level: default to 6 if codec_options->level is unset
+    mt_options.preset = (codec_options && codec_options->level >= 0 && codec_options->level <= 9)
+                          ? (uint32_t)codec_options->level
+                          : LZMA_PRESET_DEFAULT;
+
+    // Check type (CRC64 is default and common)
+    mt_options.check = LZMA_CHECK_NONE;
+    //mt_options.check = LZMA_CHECK_CRC32;
+
+    // Number of threads
+    mt_options.threads = codec_options->threads;
+    mt_options.block_size = 0;
+
+    // lzma_stream_encoder_mt supports .xz format with multithreading
+    ret = lzma_stream_encoder_mt(&strm, &mt_options);
+    if (ret != LZMA_OK) {
+        return -1;
+    }
+
+    strm.next_in = (const uint8_t *)inbuf;
+    strm.avail_in = insize;
+    strm.next_out = (uint8_t *)outbuf;
+    strm.avail_out = outsize;
+
+    // Compress in one shot
+    ret = lzma_code(&strm, LZMA_FINISH);
+    if (ret != LZMA_STREAM_END) {
+        lzma_end(&strm);
+        return -2;
+    }
+
+    size_t compressed_size = strm.total_out;
+
+    lzma_end(&strm);
+    return (int64_t)compressed_size;
+}
+
+int64_t lzbench_xz_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    lzma_stream strm = LZMA_STREAM_INIT;
+    lzma_ret ret;
+
+    // Configure multithreaded decoder options
+    lzma_mt mt_options = {0};
+    mt_options.threads = codec_options->threads;
+
+    // Use unlimited memory for decoder
+    mt_options.memlimit_stop = UINT64_MAX;
+    mt_options.flags = LZMA_CONCATENATED | LZMA_IGNORE_CHECK;
+
+    // Use multithreaded decoder (available in XZ Utils 5.4.0+)
+    ret = lzma_stream_decoder_mt(&strm, &mt_options);
+    if (ret != LZMA_OK) {
+        lzma_end(&strm);
+        return -1;
+    }
+
+    strm.next_in = (const uint8_t *)inbuf;
+    strm.avail_in = insize;
+    strm.next_out = (uint8_t *)outbuf;
+    strm.avail_out = outsize;
+
+    // Perform decompression
+    ret = lzma_code(&strm, LZMA_FINISH);
+    if (ret != LZMA_STREAM_END) {
+        lzma_end(&strm);
+        return -2;
+    }
+
+    size_t decompressed_size = strm.total_out;
+    lzma_end(&strm);
+    return (int64_t)decompressed_size;
+}
+
+#endif // BENCH_REMOVE_XZ
+
+
+
+#ifndef BENCH_REMOVE_ZLING
+#include "lz+entropy/libzling/libzling.h"
+
+namespace baidu {
+namespace zling {
+
+struct MemInputter: public baidu::zling::Inputter {
+    MemInputter(uint8_t* buffer, size_t buflen) :
+        m_buffer(buffer),
+        m_buflen(buflen),
+        m_total_read(0) {}
+
+    size_t GetData(unsigned char* buf, size_t len) {
+        if (len > m_buflen - m_total_read)
+            len = m_buflen - m_total_read;
+
+        memcpy(buf, m_buffer + m_total_read, len);
+        m_total_read += len;
+        return len;
+    }
+    bool   IsEnd() { return m_total_read >= m_buflen; }
+    bool   IsErr() { return false; }
+    size_t GetInputSize() { return m_total_read; }
+
+private:
+    uint8_t* m_buffer;
+    size_t m_buflen, m_total_read;
+};
+
+struct MemOutputter : public baidu::zling::Outputter {
+    MemOutputter(uint8_t* buffer, size_t buflen) :
+        m_buffer(buffer),
+        m_buflen(buflen),
+        m_total_write(0) {}
+
+    size_t PutData(unsigned char* buf, size_t len) {
+        if (len > m_buflen - m_total_write)
+            len = m_buflen - m_total_write;
+
+        memcpy(m_buffer + m_total_write, buf, len);
+        m_total_write += len;
+        return len;
+    }
+    bool   IsErr() { return m_total_write > m_buflen; }
+    size_t GetOutputSize() { return m_total_write; }
+
+private:
+    FILE*  m_fp;
+    uint8_t* m_buffer;
+    size_t m_buflen, m_total_write;
+};
+
+}  // namespace zling
+}  // namespace baidu
+
+int64_t lzbench_zling_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    baidu::zling::MemInputter  inputter((uint8_t*)inbuf, insize);
+    baidu::zling::MemOutputter outputter((uint8_t*)outbuf, outsize);
+    baidu::zling::Encode(&inputter, &outputter, NULL, codec_options->level);
+
+    return outputter.GetOutputSize();
+}
+
+int64_t lzbench_zling_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    baidu::zling::MemInputter  inputter((uint8_t*)inbuf, insize);
+    baidu::zling::MemOutputter outputter((uint8_t*)outbuf, outsize);
+    baidu::zling::Decode(&inputter, &outputter);
+
+    return outputter.GetOutputSize();
+}
+
+#endif // BENCH_REMOVE_ZLING
+
+
+
 #ifndef BENCH_REMOVE_ZSTD
 #define ZSTD_STATIC_LINKING_ONLY
 #include "zstd/lib/zstd.h"
@@ -1268,7 +1268,7 @@ int64_t lzbench_zstd_LDM_compress(char *inbuf, size_t insize, char *outbuf, size
     ZSTD_CCtx_setParameter(zstd_params->cctx, ZSTD_c_enableLongDistanceMatching, 1);
     return lzbench_zstd_compress(inbuf, insize, outbuf, outsize, codec_options);
 }
-#endif
+#endif // BENCH_REMOVE_ZSTD
 
 
 
@@ -1335,4 +1335,4 @@ int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
                                        outbuf, outsize, NULL);
     return (res > 0) ? res : 0;
 }
-#endif
+#endif // BENCH_REMOVE_ZXC
