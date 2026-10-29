@@ -1,7 +1,15 @@
 #include "aceapex.h"
 #include "ax_align.h"
 #include "ax_env.h"      // ax_getenv: tuning knobs only with ACEAPEX_ENV_TUNING (lzbench #336)
+#if defined(__SSSE3__)
+#include <tmmintrin.h>
+#endif
+#if defined(__SSE2__)
+#include <emmintrin.h>
+#endif
 #include <stdint.h>
+#include <string>
+#include <memory>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -25,6 +33,7 @@
 #include <atomic>
 #include <thread>
 #include <vector>
+#include <unordered_map>
 #include <algorithm>
 #include <zstd.h>
 #define XXH_STATIC_LINKING_ONLY
@@ -111,7 +120,18 @@ struct ThreadHashTable {
     int       noflat;      // no offset flattening (l1)
     uint32_t  minl;        // shortest match taken (l1: 32; 0 = any)
     uint32_t  skip;        // literal-run skip shift (l1: 4; 0 = off)
+    int       h16;         // AX_HASH12 (tuning builds): head table keyed by 12 bytes, not 4 (DNA: a 4-byte key holds 256
+                           // values, its latest position is rarely the copy; results/reality-2026-10-02.log T1, AX_REFSEG)
 };
+// head-table slot of position p: 4 bytes (default) or, AX_HASH12 in tuning builds, 12 bytes (the callers stay 12
+// bytes before the block end: pos + 12 < bend)
+static inline uint32_t ax_hslot(const ThreadHashTable* ht, const uint8_t* p) {
+#ifdef ACEAPEX_ENV_TUNING
+    if (ht->h16) { const uint64_t a = AX_read64(p); const uint32_t b = AX_read32(p + 8);
+        return (uint32_t)(((a * 0x9E3779B97F4A7C15ull) ^ ((uint64_t)b * 0xC2B2AE3D27D4EB4Full)) >> 42) & ht->hash_mask; }
+#endif
+    return ((AX_read32(p)*0x9E3779B1u)>>10)&ht->hash_mask;
+}
  
 struct BlockOffsets {
     uint64_t lit_off, off_off, len_off, cmd_off;
@@ -151,6 +171,14 @@ static inline uint32_t ax_ext(const uint8_t* a, const uint8_t* b, uint32_t l, ui
     return l;
 }
 struct Match { uint32_t len, off; int rep; };
+// AX_MAXDIST (experiment, builds with ACEAPEX_ENV_TUNING only): matches farther back than this many bytes are not taken
+// (density against match reach; default MAX_DIST - every match lies inside its block anyway, see find_matches)
+static inline uint32_t ax_max_dist() {
+    static const uint32_t v = [] { const char* e = ax_getenv("AX_MAXDIST"); const unsigned long long x = e ? strtoull(e, 0, 10) : 0;
+        return (x > 0 && x < MAX_DIST) ? (uint32_t)x : (uint32_t)MAX_DIST; }();
+    return v;
+}
+// bstart here is the window's low end: the block start, or (AX_REFSEG, tuning builds) the start of the reference prefix
 static inline int find_matches(const uint8_t* src, size_t pos, size_t bstart, size_t bend,
                                 ThreadHashTable* ht, uint32_t* rep, Match* out, int maxout) {
     int max_attempts = ht->max_attempts;
@@ -162,14 +190,14 @@ static inline int find_matches(const uint8_t* src, size_t pos, size_t bstart, si
         uint32_t l=ax_ext(src+pos,src+pos-d,4,maxl);
         if (l>=6) out[n++]={l,d,i};
     }
-    uint32_t h=((AX_read32(src+pos)*0x9E3779B1u)>>10)&ht->hash_mask;
+    uint32_t h=ax_hslot(ht,src+pos);
     uint32_t rp=(uint32_t)(pos-bstart);
     uint32_t hr=(ht->epoch[h]==ht->cur_epoch)?ht->pos[h]:AX_NOPOS;
     ht->pos[h]=rp; ht->epoch[h]=ht->cur_epoch;
     if (hr!=AX_NOPOS && !ht->l1) ht->chain[rp & ht->chain_mask]=hr;
     int64_t cur=(hr==AX_NOPOS)?-1:(int64_t)bstart+hr; int attempts=max_attempts;
     while(cur>=(int64_t)bstart && attempts-->0 && n<maxout) {
-        uint32_t dist=(uint32_t)(pos-cur); if(dist>=MAX_DIST) break;
+        uint32_t dist=(uint32_t)(pos-cur); if(dist>=ax_max_dist()) break;
         bool is_rep=false; for(int r=0;r<4;r++) if(dist==rep[r]){is_rep=true;break;}
         if(!is_rep){
             uint32_t mlen=min_match_len(dist);
@@ -188,9 +216,12 @@ static inline int find_matches(const uint8_t* src, size_t pos, size_t bstart, si
     }
     return n;
 }
+// wlo < bstart (AX_REFSEG, tuning builds): the bytes [wlo, bstart) are a history the block may copy from (a reference
+// segment put before it): entered into the head table first, matches may reach back to wlo. Default wlo = bstart.
 static void compress_block(const uint8_t* src, size_t src_size,
                             size_t bstart, size_t bend,
-                            ThreadHashTable* ht, BlockResult* res) {
+                            ThreadHashTable* ht, BlockResult* res, size_t wlo = (size_t)-1) {
+    if (wlo > bstart) wlo = bstart;
     size_t bsz = bend - bstart;
     size_t cap = bsz * 2 + 1024;
     res->lit_buf = (uint8_t*)malloc(cap);
@@ -209,6 +240,8 @@ static void compress_block(const uint8_t* src, size_t src_size,
     }
     if (!ht->l1) { size_t n = bsz < (size_t)ht->chain_mask + 1 ? bsz : (size_t)ht->chain_mask + 1;
       memset(ht->chain, 0xFF, n * sizeof(uint32_t)); }        // no stale links from earlier blocks
+    for (size_t p = wlo; p + 16 <= bstart; p++) {             // AX_REFSEG: the prefix into the head table (l1: no chain)
+        const uint32_t hh = ax_hslot(ht, src + p); ht->pos[hh] = (uint32_t)(p - wlo); ht->epoch[hh] = ht->cur_epoch; }
  
     size_t lit_i=0, off_i=0, len_i=0, cmd_i=0, pos=bstart;
     uint32_t rep[4]={1,2,4,8}, lit_run=0, miss=0;
@@ -217,7 +250,10 @@ static void compress_block(const uint8_t* src, size_t src_size,
 
     // ULTRA: Chain flattening origin table
     // origin[local_pos] = original literal source position (local)
-    static thread_local uint32_t origin[1048576];
+    // heap, on the thread's first encode: as a thread_local array (4 MiB of TLS) every thread of a process linking the
+    // library paid 4 MiB of RSS at creation, including decode-only threads (16 stream threads: +64 MiB, found 02.10)
+    static thread_local std::unique_ptr<uint32_t[]> origin_p; if (!origin_p) origin_p.reset(new uint32_t[1048576]);
+    uint32_t* const origin = origin_p.get();
     size_t flat_pos = 0; // track which positions are initialized
     auto init_origin = [&](size_t from, size_t to) {
         for (size_t i = from; i < to && i < 1048576; i++) origin[i] = (uint32_t)i;
@@ -241,14 +277,14 @@ static void compress_block(const uint8_t* src, size_t src_size,
  
     while (pos + 12 < bend && !ov) {
         uint32_t c_len=0, c_off=0; int c_rep=-1;
-        Match matches[36]; int nm=find_matches(src,pos,bstart,bend,ht,rep,matches,36);
+        Match matches[36]; int nm=find_matches(src,pos,wlo,bend,ht,rep,matches,36);
         for(int mi=0;mi<nm;mi++) if(matches[mi].len>c_len){c_len=matches[mi].len;c_off=matches[mi].off;c_rep=matches[mi].rep;}
         if (c_len >= 6 && c_len < 64 && pos+13 < bend) {
-            uint32_t h1=((AX_read32(src+pos+1)*0x9E3779B1u)>>10)&ht->hash_mask;
-            int64_t mp1=(ht->epoch[h1]==ht->cur_epoch)?(int64_t)bstart+ht->pos[h1]:-1;
-            if (mp1>=0 && (size_t)mp1>=bstart && (size_t)mp1<pos+1) {
+            uint32_t h1=ax_hslot(ht,src+pos+1);
+            int64_t mp1=(ht->epoch[h1]==ht->cur_epoch)?(int64_t)wlo+ht->pos[h1]:-1;
+            if (mp1>=0 && (size_t)mp1>=wlo && (size_t)mp1<pos+1) {
                 uint32_t dist1=(uint32_t)(pos+1-mp1);
-                if (dist1<MAX_DIST && dist1!=rep[0]) {
+                if (dist1<ax_max_dist() && dist1!=rep[0]) {
                     uint32_t mlen1=min_match_len(dist1);
                     uint32_t maxl1=(uint32_t)(bend-pos-1);
                     if (pos+9<=bend && AX_read64(src+pos+1)==AX_read64(src+mp1)) {
@@ -266,11 +302,11 @@ static void compress_block(const uint8_t* src, size_t src_size,
             }
             // Lazy check pos+2
             if (c_len >= 6 && c_len < 64 && pos+14 < bend) {
-                uint32_t h2=((AX_read32(src+pos+2)*0x9E3779B1u)>>10)&ht->hash_mask;
-                int64_t mp2=(ht->epoch[h2]==ht->cur_epoch)?(int64_t)bstart+ht->pos[h2]:-1;
-                if (mp2>=0 && (size_t)mp2>=bstart && (size_t)mp2<pos+2) {
+                uint32_t h2=ax_hslot(ht,src+pos+2);
+                int64_t mp2=(ht->epoch[h2]==ht->cur_epoch)?(int64_t)wlo+ht->pos[h2]:-1;
+                if (mp2>=0 && (size_t)mp2>=wlo && (size_t)mp2<pos+2) {
                     uint32_t dist2=(uint32_t)(pos+2-mp2);
-                    if (dist2<MAX_DIST && dist2!=rep[0]) {
+                    if (dist2<ax_max_dist() && dist2!=rep[0]) {
                         uint32_t maxl2=(uint32_t)(bend-pos-2);
                         if (pos+10<=bend && AX_read64(src+pos+2)==AX_read64(src+mp2)) {
                             uint32_t l2=8;
@@ -329,10 +365,10 @@ static void compress_block(const uint8_t* src, size_t src_size,
             // Insert intermediate positions for short matches only
             if (c_len < 32) {
               uint32_t step=1+(c_len>>3);
-              for(size_t ii=1;ii<c_len&&pos+ii+4<bend;ii+=step){
-                uint32_t hh=((AX_read32(src+pos+ii)*0x9E3779B1u)>>10)&ht->hash_mask;
-                if (!ht->l1) ht->chain[(uint32_t)(pos+ii-bstart)&ht->chain_mask]=(ht->epoch[hh]==ht->cur_epoch)?ht->pos[hh]:AX_NOPOS;
-                ht->pos[hh]=(uint32_t)(pos+ii-bstart); ht->epoch[hh]=ht->cur_epoch;
+              for(size_t ii=1;ii<c_len&&pos+ii+(ht->h16?12:4)<bend;ii+=step){
+                uint32_t hh=ax_hslot(ht,src+pos+ii);
+                if (!ht->l1) ht->chain[(uint32_t)(pos+ii-wlo)&ht->chain_mask]=(ht->epoch[hh]==ht->cur_epoch)?ht->pos[hh]:AX_NOPOS;
+                ht->pos[hh]=(uint32_t)(pos+ii-wlo); ht->epoch[hh]=ht->cur_epoch;
               }
             }
             pos+=c_len; continue;
@@ -340,8 +376,8 @@ static void compress_block(const uint8_t* src, size_t src_size,
         if (lit_i>=lit_cap) { ov=1; break; }
         res->lit_buf[lit_i++]=src[pos++]; lit_run++; miss++;
         if (miss>=1 && pos+12<bend) {
-            uint32_t hh=((AX_read32(src+pos)*0x9E3779B1u)>>10)&ht->hash_mask;
-            if(hh<=ht->hash_mask) { ht->pos[hh]=(uint32_t)(pos-bstart); ht->epoch[hh]=ht->cur_epoch; }
+            uint32_t hh=ax_hslot(ht,src+pos);
+            if(hh<=ht->hash_mask) { ht->pos[hh]=(uint32_t)(pos-wlo); ht->epoch[hh]=ht->cur_epoch; }
             if (lit_i>=lit_cap) { ov=1; break; }
             res->lit_buf[lit_i++]=src[pos++]; lit_run++;
             // l1: skip faster through literal runs (LZ4-style): 1 + miss>>l1_skip extra bytes
@@ -361,6 +397,13 @@ static void compress_block(const uint8_t* src, size_t src_size,
     res->len_size=len_i; res->cmd_size=cmd_i; res->overflow=ov;
 }
  
+#ifdef ACEAPEX_ENV_TUNING
+// AX_REFSEG prototype (scripts/refseg.cpp, tuning builds only; not a format): the tool supplies a block's reference
+// prefix (bytes of another assembly, or their reverse complement); the block is parsed after it with matches allowed
+// into it. Null (the default and every library call) = blocks alone, as always.
+typedef size_t (*AxRefFn)(void* ctx, size_t block, const uint8_t** prefix);
+static AxRefFn g_ax_ref_fn = nullptr; static void* g_ax_ref_ctx = nullptr;
+#endif
 static void* worker_func(void* arg) {
     WorkerArgs* wa=(WorkerArgs*)arg;
     PoolState*  ps=wa->pool;
@@ -369,6 +412,12 @@ static void* worker_func(void* arg) {
         if (bid>=ps->num_blocks) break;
         size_t bstart=bid*g_block_size, bend=bstart+g_block_size;
         if (bend>ps->src_size) bend=ps->src_size;
+#ifdef ACEAPEX_ENV_TUNING
+        if (g_ax_ref_fn) { const uint8_t* pre = nullptr; const size_t pl = g_ax_ref_fn(g_ax_ref_ctx, bid, &pre);
+            if (pl) { static thread_local std::vector<uint8_t> V; const size_t n = bend - bstart; V.resize(pl + n + 64);
+                memcpy(V.data(), pre, pl); memcpy(V.data() + pl, ps->src + bstart, n); memset(V.data() + pl + n, 0, 64);
+                compress_block(V.data(), pl + n, pl, pl + n, wa->htab, &ps->results[bid], 0); continue; } }
+#endif
         compress_block(ps->src,ps->src_size,bstart,bend,wa->htab,&ps->results[bid]);
     }
     return nullptr;
@@ -484,25 +533,82 @@ static inline void ax_wild_copy(uint8_t* d, const uint8_t* s, uint32_t len) {
     uint8_t* e = d + len;
     do { ax_copy16(d, s); d += 16; s += 16; } while (d < e);
 }
+static inline void ax_wild_copy32(uint8_t* d, const uint8_t* s, uint32_t len) {   // needs 32 bytes of slack, s <= d - 32 or s disjoint
+    uint8_t* e = d + len;
+    do { memcpy(d, s, 32); d += 32; s += 32; } while (d < e);
+}
+// Close matches without a byte loop: dist 1 is a run of one byte (16-byte stores of that byte); dist 2..15 builds
+// the 16-byte pattern with one pshufb (lane i takes byte i mod dist of the source) and stores it every P bytes,
+// P = the largest multiple of dist <= 16, so each store continues the period; dist >= 16 never overlaps a
+// 16-byte step. Same bytes as the byte loop; 16 bytes of slack as the wild copies. Without SSSE3: period expansion.
+#if defined(__SSSE3__)
+alignas(16) static const uint8_t ax_pat_mask[16][16] = {
+    {0},{0},{0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1},{0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0},{0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3},
+    {0,1,2,3,4,0,1,2,3,4,0,1,2,3,4,0},{0,1,2,3,4,5,0,1,2,3,4,5,0,1,2,3},{0,1,2,3,4,5,6,0,1,2,3,4,5,6,0,1},
+    {0,1,2,3,4,5,6,7,0,1,2,3,4,5,6,7},{0,1,2,3,4,5,6,7,8,0,1,2,3,4,5,6},{0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5},
+    {0,1,2,3,4,5,6,7,8,9,10,0,1,2,3,4},{0,1,2,3,4,5,6,7,8,9,10,11,0,1,2,3},{0,1,2,3,4,5,6,7,8,9,10,11,12,0,1,2},
+    {0,1,2,3,4,5,6,7,8,9,10,11,12,13,0,1},{0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,0}};
+#endif
 static inline void ax_match_fast(uint8_t* d, uint32_t dist, uint32_t len) {
+    if (dist >= 32) { ax_wild_copy32(d, d - dist, len); return; }
     if (dist >= 16) { ax_wild_copy(d, d - dist, len); return; }
+    uint8_t* e = d + len;
+#if defined(__SSSE3__)
+    __m128i v;
+    uint32_t P;
+    if (dist == 1) { v = _mm_set1_epi8((char)d[-1]); P = 16; }
+    else { v = _mm_shuffle_epi8(_mm_loadu_si128((const __m128i*)(d - dist)), _mm_load_si128((const __m128i*)ax_pat_mask[dist])); P = 16 - 16 % dist; }
+    do { _mm_storeu_si128((__m128i*)d, v); d += P; } while (d < e);
+#else
     uint32_t P = dist * ((16 + dist - 1) / dist);          // smallest multiple of dist >= 16
     uint32_t head = P < len ? P : len;
     const uint8_t* s = d - dist;
     for (uint32_t i = 0; i < head; i++) d[i] = s[i];
     if (len > head) ax_wild_copy(d + head, d + head - P, len - head);
+#endif
 }
 
+// Three zones per block. Fast: while the block and the literal slice both have room for the longest literal
+// run (128) plus 16 bytes of slack, literal runs are copied with 16-byte steps without any size check and matches
+// check only their own length. Checked: the wild copies where the slack allows, exact copies otherwise. The checks
+// and their order are those of the checked zone, so a corrupt block stops at the same token with the same bytes.
+// out0 > 0 (AX_REFSEG prototype only): dst[0, out0) already holds the block's reference prefix, the block is written
+// after it and its matches may reach into it; the bounds checks stay (dist <= out, out + l <= dst_size).
 static void decompress_streams(
     uint8_t* dst, size_t dst_size,
     const uint8_t* lit, size_t lit_sz,
     const uint8_t* off, size_t off_sz,
     const uint8_t* len, size_t len_sz,
-    const uint8_t* cmd, size_t cmd_sz)
+    const uint8_t* cmd, size_t cmd_sz, size_t out0 = 0)
 {
-    size_t lp=0, op=0, np=0, cp=0, out=0;
+    size_t lp=0, op=0, np=0, cp=0, out=out0;
     uint32_t rep[4]={1,2,4,8};
-    const size_t SL = 16;                                    // slack for wild copies
+    const size_t SL = 32;                                    // slack for wild copies
+    const size_t FZ = 128 + SL;                              // fast zone: room for any literal run + slack
+    while (cp<cmd_sz && out+FZ<=dst_size && lp+FZ<=lit_sz) {
+        uint8_t c=cmd[cp++];
+        if (c<0x80) {
+            uint32_t l=c+1;
+            ax_wild_copy32(dst+out,lit+lp,l);
+            out+=l; lp+=l;
+            continue;
+        }
+        if (c==0xFF) { rep[0]=1;rep[1]=2;rep[2]=4;rep[3]=8; continue; }
+        uint32_t l, dist;
+        if ((c&0xC0)==0x80) {
+            uint32_t ri=(c>>4)&3, lv=c&0x0F;
+            if (lv==0x0F) lv+=read_varint(len,np,len_sz);
+            l=lv+6; dist=rep[ri];
+            if (ri>0) { for(int i=ri;i>0;i--) rep[i]=rep[i-1]; rep[0]=dist; }
+        } else {
+            uint32_t lv=(c==0xFE)?read_varint(len,np,len_sz):(uint32_t)(c&0x3F);
+            l=lv+6; dist=read_varint(off,op,off_sz);
+            rep[3]=rep[2];rep[2]=rep[1];rep[1]=rep[0];rep[0]=dist;
+        }
+        if (!dist||dist>out||out+l>dst_size) return;
+        if (out+l+SL<=dst_size) ax_match_fast(dst+out,dist,l); else copy_match(dst,out,dist,l);
+        out+=l;
+    }
     while (out<dst_size && cp<cmd_sz) {
         uint8_t c=cmd[cp++];
         if (c==0xFF) { rep[0]=1;rep[1]=2;rep[2]=4;rep[3]=8; continue; }
@@ -632,7 +738,7 @@ static void decompress_parallel(
     const uint8_t* cmd, size_t cmd_sz)
 {
     // Build ops list first
-    static thread_local DecOp ops_buf[131072];
+    static thread_local std::unique_ptr<DecOp[]> ops_p; if (!ops_p) ops_p.reset(new DecOp[131072]); DecOp* const ops_buf = ops_p.get();   // heap, not TLS (see origin)
     size_t ops_cnt = 0;
     size_t lp=0, op=0, np=0, cp=0, out=0;
     uint32_t rep[4]={1,2,4,8};
@@ -674,8 +780,8 @@ static void decompress_parallel(
 
     // Step 2: Parallel matches where src+len <= ready_end (Bernstein safe)
     // Split into parallel and sequential
-    static thread_local size_t par_idx[131072];
-    static thread_local size_t seq_idx[131072];
+    static thread_local std::unique_ptr<size_t[]> par_p, seq_p; if (!par_p) { par_p.reset(new size_t[131072]); seq_p.reset(new size_t[131072]); }
+    size_t* const par_idx = par_p.get(); size_t* const seq_idx = seq_p.get();
     size_t par_cnt=0, seq_cnt=0;
     for (size_t i = 0; i < ops_cnt; i++) {
         if (!ops_buf[i].is_lit) {
@@ -829,10 +935,100 @@ struct DecArgs {
     uint8_t* dst; size_t dst_size;
     size_t bid_start; size_t bid_end;
     size_t block_size;
+    bool nt;                                     // AX_NT for this decode
 };
  
+// Physical cores (Linux: distinct core_cpus_list in sysfs; elsewhere the hardware threads), read once.
+static int ax_phys_cores() {
+    static const int n = [] {
+        int hw = (int)std::thread::hardware_concurrency(); if (hw < 1) hw = 8;
+#ifdef __linux__
+        std::vector<std::string> seen;
+        for (int c = 0; c < 4096; c++) {
+            char p[96]; snprintf(p, sizeof p, "/sys/devices/system/cpu/cpu%d/topology/core_cpus_list", c);
+            FILE* f = fopen(p, "r"); if (!f) { if (c >= hw) break; continue; }
+            char b[64] = {0}; if (fgets(b, sizeof b, f)) { std::string s(b); if (std::find(seen.begin(), seen.end(), s) == seen.end()) seen.push_back(s); }
+            fclose(f);
+        }
+        if (!seen.empty() && (int)seen.size() <= hw) return (int)seen.size();
+#endif
+        return hw; }();
+    return n;
+}
+// Default decode budget (threads <= 0): the physical cores; outputs of 1 GiB and more on every hardware thread.
+// ace-core (8 cores / 16 threads): chr1 8 vs 16 threads 0.028 vs 0.034 s, silesia 0.038 vs 0.042, T2T 0.238 vs 0.209.
+static int ax_decode_budget(int threads, uint64_t out_bytes) {
+    if (threads > 0) return threads;
+    if (out_bytes >= ((uint64_t)1 << 30)) { const int hw = (int)std::thread::hardware_concurrency(); return hw > 0 ? hw : 8; }
+    return ax_phys_cores();
+}
+
+// AX_NT (non-temporal output, default 1): a block is decoded into a per-thread buffer that stays in L1/L2 (its matches
+// read it there) and then streamed to the output with non-temporal stores: no read-for-ownership of the output lines and
+// no eviction of the literal tiles. Applied to blocks whose literal share is >= AX_NT_LIT (default 0.9), outputs of at
+// least AX_NT_MIN bytes (default 64 MiB) and budgets of at least AX_NT_THREADS (default 4). sfence once a thread is
+// done, before its blocks are published (thread join). Measured on ace-core (8 threads, with AX_LIT_TILE): T2T open
+// 0.241 -> 0.228 s, chr1 -2 %, silesia.open -1.5 %; on 1 thread it cost up to 2.5 % (a core not bound by memory).
+struct AxNt { bool on; double lit; size_t min; int threads; };
+static const AxNt& ax_nt() {
+    static const AxNt v = [] { AxNt r; const char* e = ax_getenv("AX_NT"); r.on = e ? atoi(e) != 0 : true;
+        e = ax_getenv("AX_NT_LIT"); r.lit = e ? atof(e) : 0.9; e = ax_getenv("AX_NT_MIN"); r.min = e ? strtoull(e, 0, 10) : ((size_t)64 << 20);
+        e = ax_getenv("AX_NT_THREADS"); r.threads = e ? atoi(e) : 4; return r; }();
+    return v;
+}
+static inline void ax_nt_copy(uint8_t* d, const uint8_t* s, size_t n) {
+#if defined(__SSE2__)
+    size_t h = (16 - ((uintptr_t)d & 15)) & 15; if (h > n) h = n;
+    memcpy(d, s, h); d += h; s += h; n -= h;
+    for (; n >= 64; n -= 64, d += 64, s += 64) {
+        const __m128i a = _mm_loadu_si128((const __m128i*)s), b = _mm_loadu_si128((const __m128i*)(s + 16)),
+                      c = _mm_loadu_si128((const __m128i*)(s + 32)), e = _mm_loadu_si128((const __m128i*)(s + 48));
+        _mm_stream_si128((__m128i*)d, a); _mm_stream_si128((__m128i*)(d + 16), b); _mm_stream_si128((__m128i*)(d + 32), c); _mm_stream_si128((__m128i*)(d + 48), e); }
+    memcpy(d, s, n);
+#else
+    memcpy(d, s, n);
+#endif
+}
+static inline void ax_nt_fence() {
+#if defined(__SSE2__)
+    _mm_sfence();
+#endif
+}
+// whether a decode with this budget and output size streams its literal blocks (AX_NT)
+static inline bool ax_nt_for(int budget, size_t dst_size) { const AxNt& nt = ax_nt(); return nt.on && budget >= nt.threads && dst_size >= nt.min; }
+// one block into dst (bstart, bsize): directly, or through the thread's buffer with a non-temporal copy (ntok: AX_NT)
+#ifdef ACEAPEX_ENV_TUNING
+// AX_LINEMODEL (src/ax_linemodel.h, tuning builds): a decoded block goes to this sink instead of dst + bstart (the sink
+// puts the line ends back while the block is in cache); null = as always
+typedef void (*AxOutSink)(void* ctx, size_t bstart, const uint8_t* p, size_t n);
+static AxOutSink g_ax_out_sink = nullptr; static void* g_ax_out_ctx = nullptr;
+#endif
+static inline void ax_block_out(uint8_t* dst, size_t bstart, size_t bsize, const BlockOffsets& bo, const uint8_t* lit,
+                                const uint8_t* off, const uint8_t* len, const uint8_t* cmd, std::vector<uint8_t>& nbuf, bool ntok) {
+#ifdef ACEAPEX_ENV_TUNING
+    if (g_ax_out_sink) { if (nbuf.size() < bsize + 64) nbuf.resize(bsize + 64);
+        decompress_streams(nbuf.data(), bsize, lit, bo.lit_sz, off + bo.off_off, bo.off_sz, len + bo.len_off, bo.len_sz, cmd + bo.cmd_off, bo.cmd_sz);
+        g_ax_out_sink(g_ax_out_ctx, bstart, nbuf.data(), bsize); return; }
+#endif
+    if (ntok && (double)bo.lit_sz >= ax_nt().lit * (double)bsize) {
+        if (nbuf.size() < bsize + 64) nbuf.resize(bsize + 64);
+        decompress_streams(nbuf.data(), bsize, lit, bo.lit_sz, off + bo.off_off, bo.off_sz, len + bo.len_off, bo.len_sz, cmd + bo.cmd_off, bo.cmd_sz);
+        ax_nt_copy(dst + bstart, nbuf.data(), bsize);
+    } else
+        decompress_streams(dst + bstart, bsize, lit, bo.lit_sz, off + bo.off_off, bo.off_sz, len + bo.len_off, bo.len_sz, cmd + bo.cmd_off, bo.cmd_sz);
+}
+
 static void* dec_worker(void* arg) {
     DecArgs* a = (DecArgs*)arg;
+    std::vector<uint8_t> nbuf;
+    if (a->nt) {
+        for (size_t b = a->bid_start; b < a->bid_end; b++) {
+            const BlockOffsets& bo = a->boffs[b]; const size_t bstart = b * a->block_size;
+            const size_t bsize = a->dst_size > bstart ? std::min<size_t>((size_t)a->block_size, a->dst_size - bstart) : 0;
+            if (bsize) ax_block_out(a->dst, bstart, bsize, bo, a->lit + bo.lit_off, a->off, a->len, a->cmd, nbuf, true);
+        }
+        ax_nt_fence(); return nullptr;
+    }
     for (size_t b = a->bid_start; b < a->bid_end; b++) {
         const BlockOffsets& bo = a->boffs[b];
         size_t bstart = b * a->block_size;
@@ -923,6 +1119,7 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
         { const char* e=ax_getenv("AX_MINL"); htabs[i]->minl = !l1 ? 0 : e ? (uint32_t)atoi(e) : 32; }
         { const char* e=ax_getenv("AX_SKIP"); htabs[i]->skip = !l1 ? 0 : e ? (uint32_t)atoi(e) : 4; }
         { const char* e=ax_getenv("AX_ATT"); if(e) htabs[i]->max_attempts=atoi(e); }
+        { const char* e=ax_getenv("AX_HASH12"); htabs[i]->h16 = e ? atoi(e) : 0; }
     }
     BlockResult* results=(BlockResult*)calloc(num_blocks,sizeof(BlockResult));
     if(!results){return false;}
@@ -994,7 +1191,7 @@ static void parallel_decode(
     for(size_t t=0;t<nt;t++) {
         size_t bstart = t * blocks_per_thread;
         size_t bend   = std::min<size_t>(bstart + blocks_per_thread, num_blocks);
-        dargs[t]={lit,off,len,cmd,boffs,dst,dst_size,bstart,bend,block_size};
+        dargs[t]={lit,off,len,cmd,boffs,dst,dst_size,bstart,bend,block_size,ax_nt_for(nthreads,dst_size)};
     }
     if (nt == 1) { dec_worker(&dargs[0]); return; }   // threads=1: nothing is spawned
     std::vector<pthread_t> dpts(nt);
@@ -1131,6 +1328,9 @@ static void ax_entropy_split(size_t zlit, size_t ztok, int budget, int& lit_t, i
     double f = (zlit + ztok) ? (double)ztok / (double)(zlit + ztok) : 0.5;
     tok_t = (int)(budget * f + 0.5); if (tok_t < 1) tok_t = 1; if (tok_t > budget - 1) tok_t = budget - 1;
     lit_t = budget - tok_t;
+    // token streams under half a thread's share (DNA: < 1 % of the bytes) finish long before the literals: they get
+    // one thread on top of the budget instead of taking one from the literals (2 threads decoded the literals on 1)
+    if (budget * f < 0.5) { lit_t = budget; tok_t = 1; }
 }
 
 // Parallel entropy encode — 4 streams simultaneously
@@ -1191,7 +1391,9 @@ static uint8_t* dna_compress(const uint8_t* s, size_t n, size_t& out_sz){
     return buf;
 }
 
-static void dna_decompress(const uint8_t* src, size_t src_sz, uint8_t* dst, size_t n){
+// Aligned to 64 B: its unpack loops are sensitive to where the function lands; an unrelated 300-byte change elsewhere in
+// this file moved it and cost +17 % on the default chr1 decode, 1 thread (perf gate, 03.10); aligned, 0.137 s either way.
+__attribute__((aligned(64))) static void dna_decompress(const uint8_t* src, size_t src_sz, uint8_t* dst, size_t n){
     // framing checked before any read: 20-byte header, sub-frames inside the chunk, nexc <= n
     if(src_sz<20){ g_dec_err=1; return; }
     uint32_t h[5]; memcpy(h,src,20);
@@ -1302,7 +1504,10 @@ static uint8_t* lit_compress(const uint8_t* src, size_t sz, size_t& out_sz) {
     const size_t CH = LIT_CHUNK;
     if (CH == 0) return lit_compress_legacy(src, sz, out_sz);
     const int NW = (int)((sz + CH - 1) / CH);
-    if (NW < 1 || NW > 65535) return lit_compress_legacy(src, sz, out_sz);
+    // no cap on the chunk count below 2^30 (64 TiB of literals): until 2.3 the encoder fell back to the legacy layout
+    // above 65535 chunks (~4 GiB of literals: no DNA transform, no streaming); every decoder derives the count from the
+    // stream size (results/litcap-2026-10-02.log: archives above the old cap read by the 2.2.2 decoders)
+    if (NW < 1 || NW > (1 << 30)) return lit_compress_legacy(src, sz, out_sz);
     size_t csz = CH;
     struct ZW{const uint8_t*in;size_t isz;uint8_t*out;size_t osz;size_t cap;};
     std::vector<ZW> zws(NW);
@@ -1364,53 +1569,105 @@ static long long lit_table_check(const uint8_t* src, size_t src_sz, bool chunked
     else csz=(size_t)((orig_sz+3)/4);
     const uint64_t NW = chunked ? (csz ? (orig_sz+csz-1)/csz : 0) : 4;
     if(NW > (src_sz-hdr)/8) return -1;
-    uint64_t rest = src_sz-hdr-8*NW;
-    for(uint64_t t=0;t<NW;t++){ uint64_t z; memcpy(&z,src+hdr+8*t,8); if(z>rest) return -1; rest-=z; }
+    const uint64_t rest = src_sz-hdr-8*NW;
+    // Every prefix of the chunk sizes must fit in `rest` <=> their sum does (no wrap): sizes checked <= rest and summed
+    // in runs of 4096 (4096 * 2^48 < 2^64), the run total added to a checked running sum. A region call walks this table
+    // every time (T2T: 12 800 literal chunks); the old one-by-one subtraction was a serial chain, ~1/5 of a region read.
+    if(rest >= (uint64_t(1)<<48)){                                                      // huge streams: the serial check
+        uint64_t r=rest; for(uint64_t t=0;t<NW;t++){ uint64_t z; memcpy(&z,src+hdr+8*t,8); if(z>r) return -1; r-=z; }
+        return (long long)NW; }
+    uint64_t sum=0;
+    for(uint64_t t0=0;t0<NW;t0+=4096){ const uint64_t t1=std::min<uint64_t>(NW,t0+4096); uint64_t mx=0, s=0;
+        for(uint64_t t=t0;t<t1;t++){ uint64_t z; memcpy(&z,src+hdr+8*t,8); mx=z>mx?z:mx; s+=z; }
+        if(mx>rest || s>rest-sum) return -1; sum+=s; }
     return (long long)NW;
 }
+// Decode-side buffers of 64 MiB and more: 2 MiB aligned and marked for transparent huge pages (AX_HUGE, default 1),
+// so first touch costs one fault per 2 MiB instead of per 4 KiB (T2T: ~1.3 M faults and ~30 % system time per decode
+// before). Freed with free(); elsewhere (no Linux, AX_HUGE=0) plain malloc.
+static uint8_t* ax_big_malloc(size_t n) {
+#if defined(__linux__) && defined(MADV_HUGEPAGE)
+    static const bool huge = [] { const char* e = ax_getenv("AX_HUGE"); return e ? atoi(e) != 0 : true; }();
+    if (huge && n >= ((size_t)64 << 20)) {
+        const size_t H = (size_t)2 << 20, r = (n + H - 1) & ~(H - 1);
+        void* p = aligned_alloc(H, r);
+        if (p) { madvise(p, r, MADV_HUGEPAGE); return (uint8_t*)p; }
+    }
+#endif
+    return (uint8_t*)malloc(n ? n : 1);
+}
+
+// Fault a big buffer in on `threads` threads, each touching its own 2 MiB pages, before the decode writes it: with
+// huge pages the first writer of a page zeroes all 2 MiB while the other chunks of that page wait; spread over the
+// threads the zeroing runs in parallel and the decode itself takes no fault (AX_PREFAULT, default 1)
+static void ax_prefault(uint8_t* p, size_t n, int threads) {
+    static const bool on = [] { const char* e = ax_getenv("AX_PREFAULT"); return e ? atoi(e) != 0 : true; }();
+    // measured on ace-core (8 cores / 16 threads): T2T (3.1 GB) prefault helps at 16 lanes (0.729 -> 0.609 s) and costs
+    // at 2-8 (8: 0.568 -> 0.625 s); chr1 (235 MB) at 16 it costs (0.058 -> 0.069 s): only for >= 1 GiB and when the
+    // lanes run on SMT siblings (more lanes than half the hardware threads)
+    const int hw = (int)std::thread::hardware_concurrency();
+    if (!on || threads < 2 || threads <= hw / 2 || n < ((size_t)1 << 30)) return;
+    const size_t H = (size_t)2 << 20, pages = (n + H - 1) / H;
+    struct A { uint8_t* p; size_t n, pages, t, T; };
+    auto fn = [](void* v) -> void* { A* a = (A*)v; for (size_t k = a->t; k < a->pages; k += a->T) { volatile uint8_t* q = a->p + k * ((size_t)2 << 20); *q = 0; } return nullptr; };
+    std::vector<A> args((size_t)threads); std::vector<pthread_t> th((size_t)threads - 1);
+    for (int t = 0; t < threads; t++) args[(size_t)t] = {p, n, pages, (size_t)t, (size_t)threads};
+    for (int t = 1; t < threads; t++) ax_thread(&th[(size_t)t - 1], fn, &args[(size_t)t]);
+    fn(&args[0]);
+    for (int t = 1; t < threads; t++) pthread_join(th[(size_t)t - 1], nullptr);
+}
+
+// One chunk of the literal stream (FSE layout, spec 3.2): where its bytes go (offset in the stream), how many, the
+// compressed body and whether it is tagged. ax_lit_chunks parses the table; ax_lit_chunk_decode decodes one chunk
+// into out (the decoders of lit_decompress, also used by the tiled decode of aceapex_decompress_mt, AX_LIT_TILE).
+struct AxLitChunk { size_t off, raw; const uint8_t* in; size_t isz; bool tg; };
+// 1: chunk list in v (csz = chunk size); 0: no FSE layout (legacy stream, lit_decompress decodes it whole); -1: corrupt
+static int ax_lit_chunks(const uint8_t* src, size_t src_sz, size_t& orig_sz, size_t& csz, std::vector<AxLitChunk>& v) {
+    v.clear(); csz=0;
+    if (!src || src_sz < 8) { orig_sz = 0; return 1; }
+    uint64_t h; memcpy(&h, src, 8);
+    const bool chunked=(h & (uint64_t(1)<<61))!=0, tagged=(h & (uint64_t(1)<<60))!=0;
+    if((h>>63) || (tagged && !chunked)){ orig_sz=0; return -1; }
+    orig_sz=h & ~((uint64_t(1)<<62)|(uint64_t(1)<<61)|(uint64_t(1)<<60));
+    if(!(h & (uint64_t(1)<<62))) return 0;
+    const long long nwc=lit_table_check(src,src_sz,chunked,orig_sz,csz);
+    if(nwc<0 || nwc>INT32_MAX){ orig_sz=0; return -1; }
+    const int NW=(int)nwc;
+    const AxU64s zsz{src+(chunked?16:8)};
+    const uint8_t* p=src+(chunked?16:8)+(size_t)NW*8;
+    v.resize((size_t)NW);
+    for(int t=0;t<NW;t++){
+        size_t off=(size_t)t*csz; if(off>orig_sz) off=orig_sz;
+        size_t raw=(off+csz<=orig_sz)?csz:(orig_sz-off);
+        v[(size_t)t]={off,raw,p,(size_t)zsz[t],tagged}; p+=(size_t)zsz[t]; }
+    return 1;
+}
+static bool ax_lit_chunk_decode(const AxLitChunk& d, uint8_t* out) {
+    if(!d.isz) return !d.raw;                                      // a chunk with bytes needs a body
+    if(!d.tg) return zdec_ok(out,d.raw,d.in,d.isz);
+    if(d.in[0]==1){ dna_decompress(d.in+1,d.isz-1,out,d.raw); return true; }
+    if(d.in[0]==2) return axo_dna_decode(d.in+1,d.isz-1,out,d.raw)==0;
+    if(d.in[0]==3) return axo_piece_decode(d.in+1,d.isz-1,out,d.raw)==0;
+    return zdec_ok(out,d.raw,d.in+1,d.isz-1);
+}
+
 static uint8_t* lit_decompress(const uint8_t* src, size_t src_sz, size_t& orig_sz, int lanes_req = 0) {
     // An empty or truncated literal stream must not be read as an 8-byte header.
     // Tiny inputs give zlit_sz==0; the out-of-bounds read corrupted heap metadata
     // and surfaced as a double-free thousands of calls later. (lzbench issue #2.)
     if (!src || src_sz < 8) { orig_sz = 0; return (uint8_t*)malloc(1); }
-    uint64_t h; memcpy(&h, src, 8);   // alignment-safe (no AX_read64 in this tree)
-    const int NW_LEGACY=4;
-    const bool chunked=(h & (uint64_t(1)<<61))!=0;
-    const bool tagged=(h & (uint64_t(1)<<60))!=0;
-    // spec 3.2: bit 63 is reserved, bit 60 needs 61; such a word is an error, not a size
-    if((h>>63) || (tagged && !chunked)){ orig_sz=0; g_dec_err=1; return nullptr; }
-    orig_sz=h & ~((uint64_t(1)<<62)|(uint64_t(1)<<61)|(uint64_t(1)<<60));
-    size_t csz=0; long long nwc=-1;
-    if(h & (uint64_t(1)<<62)){ nwc=lit_table_check(src,src_sz,chunked,orig_sz,csz);
-        if(nwc<0 || nwc>INT32_MAX){ orig_sz=0; g_dec_err=1; return nullptr; } }
-    uint8_t* out=(uint8_t*)malloc(orig_sz?orig_sz:1);
+    size_t csz=0; std::vector<AxLitChunk> ch;
+    const int k=ax_lit_chunks(src,src_sz,orig_sz,csz,ch);
+    if(k<0){ g_dec_err=1; return nullptr; }
+    uint8_t* out=ax_big_malloc(orig_sz);
     if(!out) return nullptr;
-    if(!(h & (uint64_t(1)<<62))){fse_chunked_decomp(src,orig_sz,out);return out;}
-    // Размер чанка читается ИЗ ФАЙЛА: архив не должен зависеть от окружения читателя.
-    (void)NW_LEGACY;
-    const int NW = (int)nwc;
-    const AxU64s zsz{src+(chunked?16:8)};
-    const uint8_t* p0=src+(chunked?16:8)+(size_t)NW*8;
-    struct DW{uint8_t*out;size_t raw;const uint8_t*in;size_t isz;bool tg;};
-    std::vector<DW> dws(NW); const uint8_t* p=p0;
-    for(int t=0;t<NW;t++){
-        // Same underflow guard as in lit_compress (decoder side).
-        size_t off=(size_t)t*csz; if(off>orig_sz) off=orig_sz;
-        // Правило совпадает с кодером: кусок равен csz, кроме последнего.
-        // Прежняя формула с (t<NW-1) была под legacy и на чанках расходилась.
-        size_t raw=(off+csz<=orig_sz)?csz:(orig_sz-off);
-        dws[t]={out+off,raw,p,(size_t)zsz[t],tagged}; p+=(size_t)zsz[t];}
-    struct Pool{ DW* w; int n; std::atomic<int> next; };
-    Pool pool{dws.data(),NW,{0}};
+    if(k==0){ fse_chunked_decomp(src,orig_sz,out); return out; }
+    struct Pool{ const AxLitChunk* w; uint8_t* out; int n; std::atomic<int> next; };
+    Pool pool{ch.data(),out,(int)ch.size(),{0}};
     auto dfn=[](void*a)->void*{
         Pool* p=(Pool*)a;
         for(;;){ int i=p->next.fetch_add(1); if(i>=p->n) break;
-            DW& d=p->w[i]; if(!d.isz){ if(d.raw) g_dec_err=1; continue; }   // a chunk with bytes needs a body
-            if(!d.tg){ if(!zdec_ok(d.out,d.raw,d.in,d.isz)) g_dec_err=1; continue; }
-            if(d.in[0]==1) dna_decompress(d.in+1,d.isz-1,d.out,d.raw);
-            else if(d.in[0]==2){ if(axo_dna_decode(d.in+1,d.isz-1,d.out,d.raw)) g_dec_err=1; }
-            else if(d.in[0]==3){ if(axo_piece_decode(d.in+1,d.isz-1,d.out,d.raw)) g_dec_err=1; }
-            else if(!zdec_ok(d.out,d.raw,d.in+1,d.isz-1)) g_dec_err=1; }
+            if(!ax_lit_chunk_decode(p->w[i],p->out+p->w[i].off)) g_dec_err=1; }
         return nullptr;};
     // LANES был жёстко 8; на машинах с бо́льшим числом ядер половина простаивала.
     // Чанки независимы как кадры zstd, пул динамический — берём по числу ядер.
@@ -1418,8 +1675,9 @@ static uint8_t* lit_decompress(const uint8_t* src, size_t src_sz, size_t& orig_s
     if(lanes_req>0) hw=lanes_req;
     const char* le=ax_getenv("LIT_LANES_DEC"); if(le) hw=atoi(le);
     if(hw<1) hw=1;
-    const int LANES=std::min(hw,NW);
+    const int LANES=std::min(hw,(int)ch.size());
     if(LANES<=1){ dfn(&pool); return out; }          // lanes=1: decode inline, spawn nothing
+    ax_prefault(out,orig_sz,LANES);
     std::vector<pthread_t> pts(LANES-1);
     for(int t=0;t<LANES-1;t++) ax_thread(&pts[t],dfn,&pool);
     dfn(&pool);
@@ -1485,8 +1743,13 @@ static uint8_t* lit_range(const uint8_t* src, size_t src_sz, size_t& orig_sz,
     // было самой дорогой операцией профиля (memset_avx512, 9.75%).
     uint8_t* out=(uint8_t*)malloc(win_hi>win_lo?win_hi-win_lo:1);
     if(!out) return nullptr;
-    for(int t=0;t<NW;t++){
+    // Only the chunks of [from,to) are visited: the body of the first one starts at the sum of the sizes before it
+    // (a straight sum, vectorised; the table was checked above, so it stays inside the stream).
+    const int t_lo=(int)std::min<size_t>((size_t)NW,from/csz);
+    { uint64_t s=0; for(int t=0;t<t_lo;t++) s+=zsz[t]; p+=s; }
+    for(int t=t_lo;t<NW;t++){
         size_t off=(size_t)t*csz; if(off>orig_sz) off=orig_sz;
+        if(off>=to) break;
         // Правило то же, что в кодере и в lit_decompress: кусок равен csz,
         // кроме последнего. Старая формула с (t<NW-1) на чанках расходилась.
         size_t raw=(off+csz<=orig_sz)?csz:(orig_sz-off);
@@ -1519,8 +1782,11 @@ static void entropy_encode(
         EA*e=(EA*)a;
         const bool rans=ax_tok_rans();
         // rANS profile: 64 KiB chunks unless FSE_CHUNK says otherwise (4 KiB chunks
-        // carry a 32-lane state block and a table each: +5-6 % on chr1 tokens)
-        const size_t CHUNK=(rans && !ax_getenv("FSE_CHUNK")) ? (size_t)65536 : fse_chunk_size();
+        // carry a 32-lane state block and a table each: +5-6 % on chr1 tokens). The open profile: 16 KiB
+        // (02.10, the user's decision): a region decodes 3 token chunks, one rANS chunk is sequential (32 lanes,
+        // one warp on the GPU) - 16 KiB chunks cut the region path 4x for +452 B on T2T
+        // (results/th3-phases-2026-10-02.log); archives with 64 KiB chunks decode as before (the size is in the stream)
+        const size_t CHUNK=ax_getenv("FSE_CHUNK") ? fse_chunk_size() : ax_profile_open() ? (size_t)16384 : rans ? (size_t)65536 : fse_chunk_size();
         size_t nc=(e->isz+CHUNK-1)/CHUNK;
         size_t hdrsz=8+nc*8;
         size_t cap=hdrsz+e->isz+nc*(64+axr_bound(0));
@@ -1561,7 +1827,86 @@ static void entropy_encode(
         return nullptr; },&ep);
 }
  
+#ifdef ACEAPEX_ENV_TUNING
+// AX_LINEMODEL (experiment, src/ax_linemodel.h): the CLI goes through the library calls, which write / read AXLINE01
+static std::vector<uint8_t> ax_cli_slurp(const char* p, bool& ok) { std::vector<uint8_t> v; ok = false; FILE* f = fopen(p, "rb"); if (!f) return v;
+    fseek(f, 0, SEEK_END); v.resize((size_t)ftell(f)); fseek(f, 0, SEEK_SET); ok = fread(v.data(), 1, v.size(), f) == v.size(); fclose(f); return v; }
+static int ax_cli_lm_compress(const char* in, const char* out, int threads, int level) {
+    bool ok; std::vector<uint8_t> s = ax_cli_slurp(in, ok); if (!ok) { fprintf(stderr, "Cannot read: %s\n", in); return 1; }
+    std::vector<uint8_t> z(aceapex_compress_bound(s.size()) + 4096); const double t0 = now_sec();
+    const int64_t n = aceapex_compress(s.data(), s.size(), z.data(), z.size(), level, threads);
+    if (n <= 0) { fprintf(stderr, "compress failed (%lld)\n", (long long)n); return 1; }
+    FILE* f = fopen(out, "wb"); if (!f || fwrite(z.data(), 1, (size_t)n, f) != (size_t)n) { fprintf(stderr, "Cannot write: %s\n", out); return 1; } fclose(f);
+    fprintf(stderr, "  AX_LINEMODEL: %zu -> %lld bytes (ratio %.4f) in %.2f s\n", s.size(), (long long)n, (double)s.size() / n, now_sec() - t0); return 0; }
+static int ax_cli_lm_decompress(const char* in, const char* out, int threads) {
+    bool ok; std::vector<uint8_t> z = ax_cli_slurp(in, ok); if (!ok || z.size() < 16) { fprintf(stderr, "Cannot read: %s\n", in); return 1; }
+    uint64_t orig; memcpy(&orig, z.data() + 8, 8); std::vector<uint8_t> o(orig + 64); const double t0 = now_sec();
+    const int64_t n = aceapex_decompress_mt(z.data(), z.size(), o.data(), o.size(), threads);
+    if (n != (int64_t)orig) { fprintf(stderr, "decode failed (%lld)\n", (long long)n); return 1; }
+    uint64_t want; memcpy(&want, z.data() + 16, 8); const bool h = XXH3_64bits(o.data(), orig) == want;
+    FILE* f = strcmp(out, "-") ? fopen(out, "wb") : stdout; if (!f || fwrite(o.data(), 1, orig, f) != orig) { fprintf(stderr, "Cannot write: %s\n", out); return 1; } if (f != stdout) fclose(f);
+    fprintf(stderr, "  AX_LINEMODEL: %llu bytes in %.2f s, hash %s\n", (unsigned long long)orig, now_sec() - t0, h ? "OK" : "MISMATCH"); return h ? 0 : 1; }
+#endif
+// `--in -` or `--in /dev/stdin` from a pipe: the whole of stdin goes to an anonymous in-memory file (memfd; a
+// tmpfile elsewhere) and its /proc/self/fd path replaces the input, so compress and decompress take their usual
+// path (mmap, pread, seek). An empty pipe or a read error is an error (rc 1), never an empty archive. A regular file
+// redirected to stdin is read in place.
+#ifndef _WIN32
+static char g_stdin_path[64];
+static int ax_cli_stdin(const char*& in) {
+    if (strcmp(in, "-") && strcmp(in, "/dev/stdin")) return 0;
+    struct stat st;
+    if (fstat(0, &st) == 0 && S_ISREG(st.st_mode)) { in = "/dev/stdin"; return 0; }
+#ifdef __linux__
+    int fd = memfd_create("aceapex-stdin", 0);
+#else
+    FILE* tf = tmpfile(); int fd = tf ? dup(fileno(tf)) : -1; if (tf) fclose(tf);
+#endif
+    if (fd < 0) { fprintf(stderr, "Cannot buffer stdin: %s\n", strerror(errno)); return 1; }
+    std::vector<uint8_t> b(1 << 20); uint64_t total = 0;
+    for (;;) {
+        const ssize_t r = read(0, b.data(), b.size());
+        if (r < 0) { if (errno == EINTR) continue; fprintf(stderr, "Cannot read stdin: %s\n", strerror(errno)); close(fd); return 1; }
+        if (r == 0) break;
+        for (ssize_t o = 0; o < r; ) { const ssize_t w = write(fd, b.data() + o, (size_t)(r - o));
+            if (w <= 0) { fprintf(stderr, "Cannot buffer stdin: %s\n", strerror(errno)); close(fd); return 1; } o += w; }
+        total += (uint64_t)r;
+    }
+    if (total == 0) { fprintf(stderr, "Empty input on stdin: nothing to read (no archive written)\n"); close(fd); return 1; }
+    snprintf(g_stdin_path, sizeof g_stdin_path, "/proc/self/fd/%d", fd);
+#ifndef __linux__
+    snprintf(g_stdin_path, sizeof g_stdin_path, "/dev/fd/%d", fd);
+#endif
+    in = g_stdin_path; return 0;
+}
+#endif
+// `--out -`: the archive goes to stdout
+static FILE* ax_cli_open_out(const char* out_path) { return strcmp(out_path, "-") ? fopen(out_path, "wb") : stdout; }
+static int ax_cli_close_out(FILE* f, const char* out_path) {
+    const bool bad = ferror(f) != 0; const int c = f == stdout ? fflush(f) : fclose(f);
+    if (bad || c) { fprintf(stderr, "Cannot write: %s\n", out_path); return 1; } return 0; }
+#include "ax_fast_glue.h"   // FAST profile (header version 3): levels 11..18, ax_fast_* (2.4.0)
+// the fast profile in the CLI: src -> archive file; level 11..18
+static int ax_cli_fast_compress(const char* in_path, const char* out_path, const uint8_t* src, size_t src_size, int threads, int level) {
+    const double t0 = now_sec();
+    std::vector<std::vector<uint8_t>> blocks; axf::Params P; uint32_t bs;
+    if (!ax_fast_encode(src, src_size, ax_fast_level(level), threads, blocks, P, bs)) { fprintf(stderr, "bad level %d\n", level); return 1; }
+    const double t_enc = now_sec() - t0;
+    std::vector<uint8_t> arc(axf::archive_size(blocks));
+    const int64_t total = ax_fast_assemble(blocks, P, bs, src, src_size, arc.data(), arc.size());
+    if (total < 0) { fprintf(stderr, "assemble failed\n"); return 1; }
+    FILE* fout = ax_cli_open_out(out_path); if (!fout) { fprintf(stderr, "Cannot write: %s\n", out_path); return 1; }
+    fwrite(arc.data(), 1, (size_t)total, fout); if (ax_cli_close_out(fout, out_path)) return 1;
+    uint64_t hv; memcpy(&hv, arc.data() + 28, 8);
+    fprintf(stderr, "  Profile:    fast level %d (min match %u, %s parse), %zu blocks of %u\n", ax_fast_level(level), P.mm, P.optimal ? "optimal" : P.mm == 16 ? "sparse-probe" : "greedy/lazy", blocks.size(), bs);
+    fprintf(stderr, "  Original:   %14zu bytes\n  Compressed: %14lld bytes\n  Ratio:  %.5fx\n", src_size, (long long)total, (double)src_size / (double)total);
+    fprintf(stderr, "  Encode: %.2f MB/s  (%.3fs, %d threads)\n  XXH3:   %016llx\n", src_size / t_enc / 1e6, t_enc, threads, (unsigned long long)hv);
+    return 0;
+}
 static int do_compress(const char* in_path, const char* out_path, int threads, int level=2) {
+#ifdef ACEAPEX_ENV_TUNING
+    if (ax_getenv("AX_LINEMODEL") && atoi(ax_getenv("AX_LINEMODEL"))) return ax_cli_lm_compress(in_path, out_path, threads, level);
+#endif
     double t_fread=now_sec();
 #ifdef _WIN32
     FILE* fin_w=fopen(in_path,"rb");
@@ -1578,8 +1923,8 @@ static int do_compress(const char* in_path, const char* out_path, int threads, i
     size_t src_size=(size_t)fin_st.st_size;
     if (src_size == 0) {                               // empty input -> empty archive (one header)
         close(fin_fd); AetHeader eh; ax_empty_header(eh);
-        FILE* fo=fopen(out_path,"wb"); if(!fo){ fprintf(stderr,"Cannot write: %s\n",out_path); return 1; }
-        fwrite(&eh,sizeof(eh),1,fo); fclose(fo);
+        FILE* fo=ax_cli_open_out(out_path); if(!fo){ fprintf(stderr,"Cannot write: %s\n",out_path); return 1; }
+        fwrite(&eh,sizeof(eh),1,fo); if (ax_cli_close_out(fo,out_path)) return 1;
         fprintf(stderr,"[*] Compress: %s (0 bytes) -> empty archive, %zu bytes\n",in_path,sizeof(eh)); return 0; }
     uint8_t* src=(uint8_t*)mmap(nullptr,src_size,PROT_READ,MAP_SHARED|MAP_POPULATE,fin_fd,0);
     close(fin_fd);
@@ -1589,8 +1934,17 @@ static int do_compress(const char* in_path, const char* out_path, int threads, i
     t_fread=now_sec()-t_fread;
 
     fprintf(stderr,"[*] Compress: %s (%.2f MB) threads=%d\n",in_path,src_size/1e6,threads);
+    if (ax_fast_level(level)) {
+        const int rc = ax_cli_fast_compress(in_path, out_path, src, src_size, threads, level);
+#ifdef _WIN32
+        free((void*)src);
+#else
+        if (src_is_mmap) munmap((void*)src, src_size); else free((void*)src);
+#endif
+        return rc;
+    }
     double t_total_c=now_sec();
- 
+
     std::vector<BlockOffsets> boffs;
     uint8_t *raw_lit,*raw_off,*raw_len,*raw_cmd;
     size_t total_lit,total_off,total_len,total_cmd,num_blocks;
@@ -1628,12 +1982,13 @@ static int do_compress(const char* in_path, const char* out_path, int threads, i
     hdr.zlit_sz=zlit_sz; hdr.zoff_sz=zoff_sz;
     hdr.zlen_sz=zlen_sz; hdr.zcmd_sz=zcmd_sz;
  
-    FILE* fout=fopen(out_path,"wb");
+    FILE* fout=ax_cli_open_out(out_path);
+    if (!fout) { fprintf(stderr,"Cannot write: %s\n",out_path); return 1; }
     fwrite(&hdr,sizeof(hdr),1,fout);
     fwrite(boffs.data(),sizeof(BlockOffsets),num_blocks,fout);
     fwrite(zlit,1,zlit_sz,fout); fwrite(zoff,1,zoff_sz,fout);
     fwrite(zlen,1,zlen_sz,fout); fwrite(zcmd,1,zcmd_sz,fout);
-    fclose(fout);
+    if (ax_cli_close_out(fout,out_path)) return 1;
     fprintf(stderr,"  Original:   %14zu bytes\n",src_size);
     fprintf(stderr,"  Compressed: %14zu bytes\n",total_z);
     fprintf(stderr,"  Ratio:  %.5fx\n",(double)src_size/total_z);
@@ -1659,6 +2014,54 @@ static int do_compress(const char* in_path, const char* out_path, int threads, i
     return 0;
 }
  
+// `aceapex d --in f.aet --out -` (or -c): the streaming decoder (aceapex_decompress_stream) into stdout, XXH3 checked
+#include <fcntl.h>
+// Positional read for the CLI's streaming paths. POSIX pread; on Windows (MinGW has no pread) ReadFile with an
+// OVERLAPPED offset on the descriptor's handle, which reads at the offset without moving a shared file pointer
+// (lzbench #355: the MinGW jobs failed on pread). Files are opened with O_BINARY there (no CRLF translation).
+#ifndef O_BINARY
+#define O_BINARY 0
+#endif
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <io.h>
+static int64_t ax_pread(int fd, void* buf, size_t n, uint64_t off) {
+    HANDLE h = (HANDLE)_get_osfhandle(fd); if (h == INVALID_HANDLE_VALUE) return -1;
+    if (n > 0x7fffffffu) n = 0x7fffffffu;
+    OVERLAPPED o; memset(&o, 0, sizeof o); o.Offset = (DWORD)off; o.OffsetHigh = (DWORD)(off >> 32);
+    DWORD got = 0;
+    if (!ReadFile(h, buf, (DWORD)n, &got, &o)) return GetLastError() == ERROR_HANDLE_EOF ? 0 : -1;
+    return (int64_t)got;
+}
+#else
+static inline int64_t ax_pread(int fd, void* buf, size_t n, uint64_t off) { return (int64_t)pread(fd, buf, n, (off_t)off); }
+#endif
+static int64_t ax_cli_pread(void* c, uint64_t off, void* b, size_t n) { return ax_pread(*(int*)c, b, n, off); }
+static int ax_cli_write(void* c, const void* b, size_t n) { const uint8_t* p = (const uint8_t*)b;
+    while (n) { const ssize_t w = write(*(int*)c, p, n); if (w <= 0) return 1; p += w; n -= (size_t)w; } return 0; }
+static int do_decompress(const char* in_path, const char* out_path, int threads);
+static int do_decompress_stream(const char* in_path, int threads) {
+    int fd = open(in_path, O_RDONLY | O_BINARY); if (fd < 0) { fprintf(stderr, "Cannot open: %s\n", in_path); return 1; }
+#ifdef ACEAPEX_ENV_TUNING
+    { char m[8] = {0}; if (ax_pread(fd, m, 8, 0) == 8 && !memcmp(m, "AXLINE01", 8)) { close(fd); return ax_cli_lm_decompress(in_path, "-", threads); } }
+#endif
+    {   // a literal stream without the chunked layout (text in the default profile; DNA archives above ~4 GiB of
+        // literals written before 2.3) is not streamed: the whole-file decoder writes to stdout
+        AetHeader h; uint64_t w = 0;
+        if (ax_pread(fd, &h, sizeof h, 0) == (ssize_t)sizeof h && !memcmp(h.magic, "ACEPX2\0\0", 8) && h.version == 2 && h.num_blocks && h.zlit_sz >= 8 &&
+            ax_pread(fd, &w, 8, sizeof h + (uint64_t)h.num_blocks * sizeof(BlockOffsets)) == 8 && !(((w >> 62) & 1) && ((w >> 61) & 1))) {
+            close(fd); fprintf(stderr, "  literal stream not chunked: whole-file decode to stdout (memory = archive + output)\n");
+            return do_decompress(in_path, "/dev/stdout", threads); } }
+    int out = 1; const double t0 = now_sec();
+    const int64_t n = aceapex_decompress_stream(ax_cli_pread, &fd, ax_cli_write, &out, threads, ACEAPEX_STREAM_VERIFY);
+    close(fd);
+    if (n < 0) { fprintf(stderr, "Stream decode failed (%lld): %s\n", (long long)n, n == ACEAPEX_ERR_DATA ? "corrupt archive, hash mismatch or a literal layout the stream decoder does not take (use --out <file>)" : "write error"); return 1; }
+    fprintf(stderr, "  Stream: %lld bytes to stdout in %.3f s (%.2f GB/s), hash OK\n", (long long)n, now_sec() - t0, (double)n / (now_sec() - t0) / 1e9);
+    return 0;
+}
 static int do_decompress(const char* in_path, const char* out_path, int threads=8) {
     g_dec_err=0;
     double t_wall=now_sec();
@@ -1666,16 +2069,37 @@ static int do_decompress(const char* in_path, const char* out_path, int threads=
     if (!fin) { fprintf(stderr,"Cannot open: %s\n",in_path); return 1; }
     AetHeader hdr;
     fread(&hdr,sizeof(hdr),1,fin);
+#ifdef ACEAPEX_ENV_TUNING
+    if (!memcmp(hdr.magic, "AXLINE01", 8)) { fclose(fin); return ax_cli_lm_decompress(in_path, out_path, threads); }
+#endif
     if (memcmp(hdr.magic,"ACEPX2\0\0",8)!=0) { fprintf(stderr,"Bad magic\n"); return 1; }
     // Версия писалась с первого дня и не проверялась ни разу. Архив, созданный
     // более новым кодером, старый декодер читал как валидный и выдавал мусор:
     // при интерпретации новых битов orig_size получалось 3.4 эксабайта.
+    if (hdr.version == AXF_VERSION) {                 // FAST profile (2.4.0): the whole file in memory, blocks on the pool
+        fprintf(stderr,"[*] Decompress: %s -> %s (fast profile)\n",in_path,out_path);
+        fseek(fin, 0, SEEK_END); const long fsz = ftell(fin); fseek(fin, 0, SEEK_SET);
+        if (fsz < 68) { fprintf(stderr,"Cannot read: %s\n",in_path); fclose(fin); return 1; }
+        const size_t ssz = (size_t)fsz; uint8_t* arc = (uint8_t*)malloc(ssz);
+        if (!arc || fread(arc, 1, ssz, fin) != ssz) { fprintf(stderr,"Cannot read: %s\n",in_path); free(arc); fclose(fin); return 1; }
+        fclose(fin);
+        axf_arc_t a; if (axf_open(arc, ssz, &a) != 0) { fprintf(stderr,"Corrupt archive (header or block table)\n"); free(arc); return 1; }
+        uint8_t* dst = ax_big_malloc((size_t)a.orig); if (!dst) { free(arc); return 1; }
+        const int T = ax_decode_budget(threads, a.orig);
+        const double t0 = now_sec(); const bool ok_dec = ax_fast_decode_blocks(a, 0, a.nb, dst, T); const double dec_time = now_sec() - t0;
+        uint64_t dv = OUR_CHECKSUM(dst, (size_t)a.orig), hv3; memcpy(&hv3, hdr.xxhash, 8); const bool ok = ok_dec && dv == hv3;
+        FILE* fout = fopen(out_path, "wb"); if (fout) { fwrite(dst, 1, (size_t)a.orig, fout); fclose(fout); }
+        fprintf(stderr,"  Profile: fast (min match %u), %u blocks of %u, %d threads\n  Decode: %.2f MB/s  (%.3fs, algorithmic)\n  Decode wall: %.2f MB/s  (%.3fs, wall clock)\n",
+                a.mm, a.nb, a.bs, T, a.orig / dec_time / 1e6, dec_time, a.orig / (now_sec() - t_wall) / 1e6, now_sec() - t_wall);
+        if (!ok_dec) fprintf(stderr,"  Status: ❌ DECODE ERROR (corrupt block)\n"); else if (!ok) fprintf(stderr,"  Status: ❌ HASH MISMATCH\n");
+        free(dst); free(arc); return ok ? 0 : 1;
+    }
     if (hdr.version != 2) {
-        fprintf(stderr,"Unsupported format version %u (this build reads 2)\n", hdr.version);
+        fprintf(stderr,"Unsupported format version %u (this build reads 2 and 3)\n", hdr.version);
         return 1;
     }
     fprintf(stderr,"[*] Decompress: %s -> %s\n",in_path,out_path);
- 
+
     { // archive-level sanity before we trust any offset from the file
       fseek(fin,0,SEEK_END); long fsz=ftell(fin); fseek(fin,sizeof(hdr),SEEK_SET);
       if (fsz < 0 || !ax_header_ok(hdr,(uint64_t)fsz)) {
@@ -1800,7 +2224,31 @@ static int do_test(const char* in_path, int threads, int level=2) {
     fread(src,1,src_size,fin); fclose(fin);
     fprintf(stderr,"[*] Test: %s (%.2f MB) threads=%d\n",in_path,src_size/1e6,threads);
     double t_total_t=now_sec();
- 
+    if (ax_fast_level(level)) {                       // fast profile: encode to memory, decode, compare
+        std::vector<std::vector<uint8_t>> blocks; axf::Params P; uint32_t bs;
+        if (!ax_fast_encode(src, src_size, ax_fast_level(level), threads, blocks, P, bs)) { free(src); return 1; }
+        std::vector<uint8_t> arc(axf::archive_size(blocks));
+        const int64_t total = ax_fast_assemble(blocks, P, bs, src, src_size, arc.data(), arc.size());
+        const double t_enc = now_sec() - t_total_t;
+        std::vector<uint8_t> dst(src_size ? src_size : 1);
+        // decode timed over AX_REPS runs (default 7; tuning builds), the median reported; every run compared
+        int reps = 7; { const char* e = ax_getenv("AX_REPS"); if (e && atoi(e) > 0) reps = atoi(e); }
+        std::vector<double> ts; bool ok = total > 0;
+        for (int i = 0; i < reps && ok; i++) {
+            memset(dst.data(), 0, dst.size()); const double t0 = now_sec();
+            const int64_t r = ax_fast_decompress(arc.data(), (size_t)total, dst.data(), dst.size(), threads);
+            ts.push_back(now_sec() - t0);
+            ok = r == (int64_t)src_size && memcmp(dst.data(), src, src_size) == 0;
+        }
+        std::sort(ts.begin(), ts.end()); const double t_dec = ts.empty() ? 1 : ts[ts.size() / 2];
+        fprintf(stderr,"\n  ====================================================\n  ACEAPEX FAST PROFILE TEST REPORT\n  ====================================================\n");
+        fprintf(stderr,"  Profile:    fast level %d (min match %u, %s parse), %zu blocks of %u\n", ax_fast_level(level), P.mm, P.optimal ? "optimal" : P.mm == 16 ? "sparse-probe" : "greedy/lazy", blocks.size(), bs);
+        fprintf(stderr,"  Original:   %14zu bytes\n  Compressed: %14lld bytes\n  Ratio:  %.5fx   BPB: %.4f\n", src_size, (long long)total, (double)src_size / (double)total, total * 8.0 / src_size);
+        fprintf(stderr,"  Encode: %.2f MB/s  (%.3fs)\n  Decode: %.2f MB/s  (%.4fs median of %d, min %.4fs, %d threads)\n", src_size / t_enc / 1e6, t_enc, src_size / t_dec / 1e6, t_dec, reps, ts.empty() ? 0.0 : ts[0], ax_decode_budget(threads, src_size));
+        fprintf(stderr,"  Status: %s\n  ====================================================\n", ok ? "✅ BIT-PERFECT" : "❌ MISMATCH");
+        free(src); return ok ? 0 : 1;
+    }
+
     std::vector<BlockOffsets> boffs;
     uint8_t *raw_lit,*raw_off,*raw_len,*raw_cmd;
     size_t total_lit,total_off,total_len,total_cmd,num_blocks;
@@ -1886,28 +2334,129 @@ static int do_region_cli(const char* in_path,const char* out_path,uint64_t off,u
     return 0;
 }
 #endif
+// `aceapex faidx <archive.aet> [-n W] [-r regions.txt] [region ...]` - regions by name and 1-based coordinates
+// (name, name:start, name:start-end; commas allowed), printed as samtools faidx prints them: ">region" as given, then
+// the bases at W (60) per line; an end past the record is cut (stderr note), a start past it gives the header alone,
+// an unknown name or start > end gives the header and exit status 1. The FASTA index of the original sits next to the
+// archive as <archive>.fai (samtools' format: name, length, offset, line bases, line width); without regions, or when
+// it is missing, it is built by one streaming decode. The bytes come from aceapex_decompress_region on the mapped archive.
+#include <sys/mman.h>
+struct AxFai { std::string name; uint64_t len, off, lb, lw; };
+struct AxFaiBuild { std::vector<AxFai> v; uint64_t pos = 0; int state = 0; std::string hdr; uint64_t line = 0; bool bad = false; uint64_t last = 0, nlines = 0; };
+static void ax_fai_feed(AxFaiBuild& B, const uint8_t* p, size_t n) {
+    for (size_t i = 0; i < n; i++, B.pos++) { const uint8_t c = p[i];
+        if (B.state == 1) { if (c == '\n') { B.state = 2; AxFai f; f.name = B.hdr.substr(0, B.hdr.find_first_of(" \t")); f.len = 0; f.off = B.pos + 1; f.lb = 0; f.lw = 0; B.v.push_back(f); B.line = 0; B.nlines = 0; } else B.hdr += (char)c; continue; }
+        if (c == '>' && B.line == 0) { if (!B.v.empty() && B.nlines > 1 && B.last > B.v.back().lb) B.bad = true; B.state = 1; B.hdr.clear(); continue; }
+        if (B.v.empty()) continue;
+        if (c == '\n') { AxFai& f = B.v.back(); if (!f.lb && B.line) { f.lb = B.line; f.lw = B.line + 1; }
+            else if (B.line && f.lb && B.last != f.lb && B.nlines > 0) B.bad = true;   // a short line before the last one
+            if (B.line) { B.last = B.line; B.nlines++; } B.line = 0; continue; }
+        if (c == '\r') { B.bad = true; continue; }
+        B.v.back().len++; B.line++; }
+}
+static int ax_fai_build(const char* arc, std::vector<AxFai>& out) {
+    AxFaiBuild B; int fd = open(arc, O_RDONLY | O_BINARY); if (fd < 0) return 1;
+    struct Ctx { AxFaiBuild* B; } cx{&B};
+    const int64_t n = aceapex_decompress_stream(ax_cli_pread, &fd, [](void* c, const void* b, size_t m) -> int { ax_fai_feed(*((Ctx*)c)->B, (const uint8_t*)b, m); return 0; }, &cx, 0, ACEAPEX_STREAM_VERIFY);
+    if (n < 0) {                                              // not streamable (AXLINE01, pre-2.1 literals): whole decode
+        struct stat st; fstat(fd, &st); std::vector<uint8_t> z((size_t)st.st_size); if (ax_pread(fd, z.data(), z.size(), 0) != (ssize_t)z.size()) { close(fd); return 1; }
+        AetHeader h; memcpy(&h, z.data(), sizeof h); uint64_t orig = h.orig_size; if (!memcmp(z.data(), "AXLINE01", 8)) memcpy(&orig, z.data() + 8, 8);
+        std::vector<uint8_t> o(orig + 64); if (aceapex_decompress_mt(z.data(), z.size(), o.data(), o.size(), 0) != (int64_t)orig) { close(fd); return 1; }
+        B = AxFaiBuild(); ax_fai_feed(B, o.data(), orig); }
+    close(fd);
+    if (B.bad) { fprintf(stderr, "[faidx] lines of different lengths inside a record (or CR): no index, as samtools\n"); return 1; }
+    out = B.v; std::string fp = std::string(arc) + ".fai"; FILE* f = fopen(fp.c_str(), "w"); if (!f) return 1;
+    for (auto& x : out) fprintf(f, "%s\t%llu\t%llu\t%llu\t%llu\n", x.name.c_str(), (unsigned long long)x.len, (unsigned long long)x.off, (unsigned long long)x.lb, (unsigned long long)x.lw);
+    fclose(f); return 0;
+}
+static int do_faidx(int argc, char** argv) {
+    if (argc < 3) { fprintf(stderr, "usage: %s faidx <archive.aet> [-n width] [-r regions.txt] [region ...]\n", argv[0]); return 1; }
+    const char* arc = argv[2]; int W = 60; std::vector<std::string> regs; bool build_only = true;
+    for (int i = 3; i < argc; i++) { if (!strcmp(argv[i], "-n") && i + 1 < argc) W = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "-r") && i + 1 < argc) { FILE* f = fopen(argv[++i], "r"); if (!f) { fprintf(stderr, "Cannot open: %s\n", argv[i]); return 1; }
+            char ln[4096]; while (fgets(ln, sizeof ln, f)) { std::string r(ln); while (!r.empty() && (r.back() == '\n' || r.back() == '\r')) r.pop_back(); if (!r.empty()) regs.push_back(r); } fclose(f); build_only = false; }
+        else { regs.push_back(argv[i]); build_only = false; } }
+    if (W <= 0) W = 60;
+    std::vector<AxFai> fai; std::string fp = std::string(arc) + ".fai";
+    if (FILE* f = build_only ? nullptr : fopen(fp.c_str(), "r")) { char nm[4096]; unsigned long long a, b, c, d;
+        while (fscanf(f, "%4095s %llu %llu %llu %llu", nm, &a, &b, &c, &d) == 5) fai.push_back({nm, a, b, c, d}); fclose(f); }
+    else if (ax_fai_build(arc, fai)) { fprintf(stderr, "[faidx] cannot index %s\n", arc); return 1; }
+    if (build_only) return 0;
+    int fd = open(arc, O_RDONLY); if (fd < 0) { fprintf(stderr, "Cannot open: %s\n", arc); return 1; }
+    struct stat st; fstat(fd, &st); const size_t zn = (size_t)st.st_size;
+    const uint8_t* z = (const uint8_t*)mmap(nullptr, zn, PROT_READ, MAP_PRIVATE, fd, 0); if (z == MAP_FAILED) { close(fd); return 1; }
+    std::unordered_map<std::string, size_t> by; for (size_t i = 0; i < fai.size(); i++) by.emplace(fai[i].name, i);
+    std::string out; std::vector<uint8_t> buf; int rc = 0;
+    for (const std::string& r : regs) {
+        out += '>'; out += r; out += '\n';
+        std::string nm = r; uint64_t s = 1, e = UINT64_MAX; bool range = false;
+        const size_t col = r.rfind(':');
+        if (col != std::string::npos && !by.count(r)) { std::string q; for (char c : r.substr(col + 1)) if (c != ',') q += c;
+            const size_t dash = q.find('-'); char* end = nullptr;
+            if (!q.empty() && isdigit((unsigned char)q[0])) { s = strtoull(q.c_str(), &end, 10); if (dash != std::string::npos && dash + 1 < q.size()) e = strtoull(q.c_str() + dash + 1, nullptr, 10); nm = r.substr(0, col); range = true; } }
+        auto it = by.find(nm); if (it == by.end()) { fprintf(stderr, "[faidx] Failed to fetch sequence in %s\n", r.c_str()); rc = 1; continue; }
+        const AxFai& f = fai[it->second]; if (s == 0) s = 1;
+        if (range && e < s) { fprintf(stderr, "[faidx] Failed to fetch sequence in %s\n", r.c_str()); rc = 1; continue; }
+        if (e > f.len) { if (range && e != UINT64_MAX) fprintf(stderr, "[faidx] Truncated sequence: %s\n", r.c_str()); e = f.len; }
+        if (s > e) { if (range) fprintf(stderr, "[faidx] Zero length sequence: %s\n", r.c_str()); continue; }
+        auto bo = [&](uint64_t x) { return f.off + x / f.lb * f.lw + x % f.lb; };       // 0-based base -> byte
+        const uint64_t lo = bo(s - 1), hi = bo(e - 1) + 1; buf.resize(hi - lo + 64);
+        const int64_t got = aceapex_decompress_region(z, zn, buf.data(), buf.size(), lo, hi - lo);
+        if (got != (int64_t)(hi - lo)) { fprintf(stderr, "[faidx] region decode failed (%lld) for %s\n", (long long)got, r.c_str()); rc = 1; continue; }
+        // bases without line ends, then cut at W: runs copied whole (a char at a time was ~1/16 of a region read)
+        uint64_t nb = 0; const uint8_t* q = buf.data(); const uint8_t* const qe = q + (hi - lo);
+        while (q < qe) { const uint8_t* nl = (const uint8_t*)memchr(q, '\n', (size_t)(qe - q)); const uint8_t* le = nl ? nl : qe;
+            if (memchr(q, '\r', (size_t)(le - q))) { for (const uint8_t* x = q; x < le; x++) if (*x != '\r') buf[nb++] = *x; }   // CR dropped as before
+            else { memmove(buf.data() + nb, q, (size_t)(le - q)); nb += (uint64_t)(le - q); }
+            q = nl ? nl + 1 : qe; }
+        const size_t o0 = out.size(); out.resize(o0 + nb + nb / (uint64_t)W + 1); char* w = &out[o0];
+        for (uint64_t i = 0; i < nb; i += (uint64_t)W) { const size_t k = (size_t)std::min<uint64_t>((uint64_t)W, nb - i); memcpy(w, buf.data() + i, k); w += k; *w++ = '\n'; }
+        out.resize((size_t)(w - out.data()));
+        if (out.size() > ((size_t)8 << 20)) { fwrite(out.data(), 1, out.size(), stdout); out.clear(); }
+    }
+    fwrite(out.data(), 1, out.size(), stdout); munmap((void*)z, zn); close(fd);
+    return rc;
+}
+
+#ifndef ACEAPEX_BUILD_ID
+#define ACEAPEX_BUILD_ID ACEAPEX_VERSION_STRING "-dev"   /* scripts/package_linux.sh passes the release id */
+#endif
 int main(int argc, char** argv) {
+    if (argc >= 2 && !strcmp(argv[1], "faidx")) return do_faidx(argc, argv);
+    if (argc >= 2 && (!strcmp(argv[1], "--version") || !strcmp(argv[1], "version"))) {
+        printf("aceapex %s (format ACEPX2, libzstd %s)\n", ACEAPEX_BUILD_ID, ZSTD_versionString()); return 0; }
     if (argc < 2) {
         fprintf(stderr,"ACEAPEX v3 FSE — Global FSE + Parallel decode\n\n"
-            "Usage:\n  %s c --in <f> --out <f.aet> [--threads N]\n"
-            "  %s d --in <f.aet> --out <f>\n  %s t --in <f> [--threads N]\n"
-            "  %s r --in <f.aet> --out <f> --region OFFSET LENGTH   (bytes of the original)\n",
-            argv[0],argv[0],argv[0],argv[0]);
+            "Usage:\n  %s c --in <f> --out <f.aet> [--threads N]   (--in -: stdin, --out -: stdout)\n"
+            "  %s d --in <f.aet> --out <f>      (--in -: stdin; --out - or -c: streaming decode to stdout)\n  %s t --in <f> [--threads N]\n"
+            "  %s r --in <f.aet> --out <f> --region OFFSET LENGTH   (bytes of the original)\n"
+            "  %s faidx <f.aet> [-n W] [-r regions.txt] [chr:start-end ...]   (as samtools faidx; index <f.aet>.fai)\n",
+            argv[0],argv[0],argv[0],argv[0],argv[0]);
         return 1;
     }
-    const char* cmd=argv[1]; const char* in=nullptr; const char* out=nullptr; int thr=8; int level=2;
+    const char* cmd=argv[1]; const char* in=nullptr; const char* out=nullptr; int thr=8; int level=0; bool fast=false;
     uint64_t reg_off=0,reg_len=0;
     for(int i=2;i<argc;i++) {
         if (!strcmp(argv[i],"--in")&&i+1<argc) in=argv[++i];
         else if (!strcmp(argv[i],"--out")&&i+1<argc) out=argv[++i];
+        else if (!strcmp(argv[i],"-c")) out="-";
         else if (!strcmp(argv[i],"--threads")&&i+1<argc) thr=atoi(argv[++i]);
         else if (!strcmp(argv[i],"--level")&&i+1<argc) level=atoi(argv[++i]);
         else if (!strcmp(argv[i],"--fast")) level=1;
+        else if (!strcmp(argv[i],"--profile")&&i+1<argc) { const char* p=argv[++i]; if (!strcmp(p,"fast")) fast=true; else if (strcmp(p,"default")) { fprintf(stderr,"unknown profile %s (default, fast)\n",p); return 1; } }
         else if (!strcmp(argv[i],"--region")&&i+2<argc) { reg_off=strtoull(argv[++i],nullptr,10); reg_len=strtoull(argv[++i],nullptr,10); }
     }
+    // --profile fast (or AX_PROFILE=fast in tuning builds) with --level 1..8 = the fast profile's levels (library levels
+    // 11..18, which --level also takes directly); the default profile keeps its levels 1..3, default 2
+    { const char* e = ax_getenv("AX_PROFILE"); if (e && !strcmp(e,"fast")) fast=true; }
+    if (fast && level >= 0 && level <= 8) level = 10 + (level ? level : 1);
+    if (level == 0) level = 2;
     if (!in) { fprintf(stderr,"--in required\n"); return 1; }
+#ifndef _WIN32
+    if ((!strcmp(cmd,"c") || !strcmp(cmd,"d")) && ax_cli_stdin(in)) return 1;
+#endif
     if (!strcmp(cmd,"c")) { if (!out) { fprintf(stderr,"--out required\n"); return 1; } return do_compress(in,out,thr,level); }
-    if (!strcmp(cmd,"d")) { if (!out) { fprintf(stderr,"--out required\n"); return 1; } return do_decompress(in,out,thr); }
+    if (!strcmp(cmd,"d")) { if (!out) { fprintf(stderr,"--out required (or - for stdout)\n"); return 1; } return strcmp(out,"-") ? do_decompress(in,out,thr) : do_decompress_stream(in,thr); }
     if (!strcmp(cmd,"t")) return do_test(in,thr,level);
     if (!strcmp(cmd,"r")) {
         if (!out) { fprintf(stderr,"--out required\n"); return 1; }

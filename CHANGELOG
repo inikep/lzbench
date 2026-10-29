@@ -4,7 +4,7 @@ v2.x.y (work-in-progress)
 - added mzstd 0.2.5 (mzstd, mzstd_fast; Zstandard in safe Rust, by @Mnwa)
 - added wlz4 1.3.0 (wlz4, wlz4fast, wlz4hc) and wzip 1.3.0 (by @icodywu)
 - added zlib-turbo 1.1.0 (by @icodywu)
-- updated aceapex to 2.2.2 (thanks to @yasha1971-coder); adds level 3, which the FASTEST alias now uses
+- updated aceapex to 2.5.0 (thanks to @yasha1971-coder); adds aceapex_fast (levels 1-8): the FAST profile, LZ77 without an entropy stage
 - updated kanzi to 2.6.0 (by @flanglet)
 - updated lzav to 5.20 (thanks to @avaneev)
 - updated mbrotli to 0.5.15 (by @Mnwa)
