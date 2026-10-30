@@ -53,7 +53,8 @@ When adding a new codec, please follow these steps:
   - `misc`: everything else, e.g. context mixing, PPM, or libraries with several algorithms
 - Add a new codec to `README.md` with a proper link to the upstream repository.
 - Add a new entry in `CHANGELOG`
-- Add declarations of compression and decompression functions in `bench/codecs.h`, e.g.:
+- Add declarations of compression and decompression functions in `bench/codecs.h`.
+  Keep the blocks sorted alphabetically by their `BENCH_REMOVE_` macro, e.g.:
 
 ```
 #ifndef BENCH_REMOVE_XXXX
@@ -65,15 +66,17 @@ int64_t lzbench_xxxx_decompress(char* inbuf, size_t insize, char* outbuf, size_t
 #endif // BENCH_REMOVE_XXXX
 ```
 
-- Add definitions of compression and decompression functions in `bench/lz_codecs.cpp` (codecs in `lz`), `bench/lz_entropy_codecs.cpp` (`lz+entropy`), `bench/symmetric_codecs.cpp` (BWT, PPM-based), or `bench/misc_codecs.cpp`, e.g.:
+- Add definitions of compression and decompression functions in `bench/lz_codecs.cpp` (codecs in `lz`), `bench/lz_entropy_codecs.cpp` (`lz+entropy`), `bench/symmetric_codecs.cpp` (BWT, PPM-based), or `bench/misc_codecs.cpp`.
+  Keep the blocks sorted alphabetically by their `BENCH_REMOVE_` macro, e.g.:
 
 ```
 #ifndef BENCH_REMOVE_XXXX
 #include "XXXX/YYYY.h"
 int64_t lzbench_xxxx_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t *codec_options) { }
 int64_t lzbench_xxxx_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t *codec_options) { }
-#endif
+#endif // BENCH_REMOVE_XXXX
 ```
+
 - If a codec supports multi-threading, it should use a number of threads provided with `codec_options->threads`.
 
 - Add the codec to `comp_desc` in `bench/lzbench.h` with its name, version, algorithm, levels and

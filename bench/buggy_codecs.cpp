@@ -145,7 +145,7 @@ int64_t lzbench_gipfeli_decompress(char *inbuf, size_t insize, char *outbuf, siz
     return res;
 }
 
-#endif
+#endif // BENCH_REMOVE_GIPFELI
 
 
 
@@ -168,7 +168,7 @@ int64_t lzbench_lzmat_decompress(char *inbuf, size_t insize, char *outbuf, size_
     return decomplen;
 }
 
-#endif
+#endif // BENCH_REMOVE_LZMAT
 
 
 
@@ -228,7 +228,7 @@ int64_t lzbench_lzrw_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     return decomplen;
 }
 
-#endif
+#endif // BENCH_REMOVE_LZRW
 
 
 
@@ -266,7 +266,7 @@ int64_t lzbench_wflz_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     return outsize;
 }
 
-#endif
+#endif // BENCH_REMOVE_WFLZ
 
 
 
@@ -295,4 +295,4 @@ int64_t lzbench_yappy_decompress(char *inbuf, size_t insize, char *outbuf, size_
     return YappyUnCompress((uint8_t*)inbuf, (uint8_t*)inbuf+insize, (uint8_t*)outbuf) - (uint8_t*)outbuf;
 }
 
-#endif
+#endif // BENCH_REMOVE_YAPPY

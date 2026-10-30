@@ -13,6 +13,35 @@
 #include <stdio.h> // FILE
 
 
+#ifdef BENCH_HAS_CUDA
+#include <cuda_runtime.h>
+
+char* lzbench_cuda_init(size_t insize, size_t, size_t)
+{
+    char* workmem = NULL;
+    // Report failure (no CUDA device, out of device memory) so that lzbench skips
+    // the codec. Without this the cudaMemcpy calls below silently do nothing and
+    // the codec is reported as a decompression ERROR.
+    if (cudaMalloc(& workmem, insize) != cudaSuccess) return NULL;
+    return workmem;
+}
+
+void lzbench_cuda_deinit(char* workmem)
+{
+    cudaFree(workmem);
+}
+
+int64_t lzbench_cuda_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    cudaMemcpy(codec_options->work_mem, inbuf, insize, cudaMemcpyHostToDevice);
+    cudaMemcpy(outbuf, codec_options->work_mem, insize, cudaMemcpyDeviceToHost);
+    return insize;
+}
+
+#endif // BENCH_HAS_CUDA
+
+
+
 #ifndef BENCH_REMOVE_GLZA
 #include "misc/glza/GLZAcomp.h"
 #include "misc/glza/GLZAdecode.h"
@@ -29,7 +58,7 @@ int64_t lzbench_glza_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     return outsize;
 }
 
-#endif
+#endif // BENCH_REMOVE_GLZA
 
 
 
@@ -85,31 +114,4 @@ int64_t lzbench_skim_decompress(char *inbuf, size_t insize, char *outbuf, size_t
 
     return skim_decoder_exact_output_length((const uint8_t*)inbuf, insize);
 }
-#endif 
-
-#ifdef BENCH_HAS_CUDA
-#include <cuda_runtime.h>
-
-char* lzbench_cuda_init(size_t insize, size_t, size_t)
-{
-    char* workmem = NULL;
-    // Report failure (no CUDA device, out of device memory) so that lzbench skips
-    // the codec. Without this the cudaMemcpy calls below silently do nothing and
-    // the codec is reported as a decompression ERROR.
-    if (cudaMalloc(& workmem, insize) != cudaSuccess) return NULL;
-    return workmem;
-}
-
-void lzbench_cuda_deinit(char* workmem)
-{
-    cudaFree(workmem);
-}
-
-int64_t lzbench_cuda_memcpy(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    cudaMemcpy(codec_options->work_mem, inbuf, insize, cudaMemcpyHostToDevice);
-    cudaMemcpy(outbuf, codec_options->work_mem, insize, cudaMemcpyDeviceToHost);
-    return insize;
-}
-
-#endif    // BENCH_HAS_CUDA
+#endif // BENCH_REMOVE_SKIM

@@ -132,7 +132,7 @@ int64_t lzbench_bsc_cuda_decompress(char *inbuf, size_t insize, char *outbuf, si
 
 #endif // BENCH_HAS_CUDA
 
-#endif // BENCH_HAS_BSC
+#endif // BENCH_REMOVE_BSC
 
 
 
@@ -153,23 +153,6 @@ int64_t lzbench_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_
 
 #endif // BENCH_REMOVE_BZIP2
 
-
-#ifndef BENCH_REMOVE_LBZIP2
-#include "bwt/lbzip2/lbzip2_lzbench.h"
-
-int64_t lzbench_lbzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-   size_t res = lbzip2_buf_compress(inbuf, insize, outbuf, outsize, codec_options->level);
-   return res ? (int64_t)res : -1;
-}
-
-int64_t lzbench_lbzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-   size_t res = lbzip2_buf_decompress(inbuf, insize, outbuf, outsize);
-   return res ? (int64_t)res : -1;
-}
-
-#endif // BENCH_REMOVE_LBZIP2
 
 
 #ifndef BENCH_REMOVE_BZIP3
@@ -193,6 +176,80 @@ int64_t lzbench_bzip3_decompress(char *inbuf, size_t insize, char *outbuf, size_
 }
 
 #endif // BENCH_REMOVE_BZIP3
+
+
+
+#ifndef BENCH_REMOVE_DENSITY
+extern "C"
+{
+    #include "misc/density/density.h"
+}
+
+char* lzbench_density_init(size_t insize, size_t level, size_t)
+{
+    switch ( level )
+    {
+        case 2:
+            return (char*) malloc(cheetah_safe_encode_buffer_size(insize));
+        case 3:
+            return (char*) malloc(lion_safe_encode_buffer_size(insize));
+        default:
+            return (char*) malloc(chameleon_safe_encode_buffer_size(insize));
+    }
+}
+
+void lzbench_density_deinit(char* workmem)
+{
+    free(workmem);
+}
+
+int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    switch ( codec_options->level )
+    {
+        case 2:
+            return cheetah_encode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+        case 3:
+            return lion_encode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+        default:
+            return chameleon_encode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+    }
+}
+
+int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    switch ( codec_options->level )
+    {
+        case 2:
+            return cheetah_decode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+        case 3:
+            return lion_decode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+        default:
+            return chameleon_decode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+    }
+}
+
+#endif // BENCH_REMOVE_DENSITY
+
+
+
+#ifndef BENCH_REMOVE_LBZIP2
+#include "bwt/lbzip2/lbzip2_lzbench.h"
+
+int64_t lzbench_lbzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+   size_t res = lbzip2_buf_compress(inbuf, insize, outbuf, outsize, codec_options->level);
+   return res ? (int64_t)res : -1;
+}
+
+int64_t lzbench_lbzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+   size_t res = lbzip2_buf_decompress(inbuf, insize, outbuf, outsize);
+   return res ? (int64_t)res : -1;
+}
+
+#endif // BENCH_REMOVE_LBZIP2
+
 
 
 #ifndef BENCH_REMOVE_PPMD
@@ -319,6 +376,27 @@ int64_t lzbench_ppmd_decompress(char* inbuf, size_t insize, char* outbuf, size_t
 #endif // BENCH_REMOVE_PPMD
 
 
+#ifndef BENCH_REMOVE_PULSAR
+#include "bwt/pulsar/pulsar.h"
+
+int64_t lzbench_pulsar_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    (void)codec_options;
+    intptr_t n = pulsar_compress((const uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+    return (int64_t)n;
+}
+
+int64_t lzbench_pulsar_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    (void)codec_options;
+    intptr_t n = pulsar_decompress((const uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
+    return (int64_t)n;
+}
+
+#endif // BENCH_REMOVE_PULSAR
+
+
+
 #ifndef BENCH_REMOVE_ZPAQ
 #include "misc/zpaq/libzpaq.h"
 
@@ -375,77 +453,3 @@ int64_t lzbench_zpaq_decompress(char *inbuf, size_t insize, char *outbuf, size_t
     return (int64_t)out.written();
 }
 #endif // BENCH_REMOVE_ZPAQ
-
-
-
-#ifndef BENCH_REMOVE_DENSITY
-extern "C"
-{
-    #include "misc/density/density.h"
-}
-
-char* lzbench_density_init(size_t insize, size_t level, size_t)
-{
-    switch ( level )
-    {
-        case 2:
-            return (char*) malloc(cheetah_safe_encode_buffer_size(insize));
-        case 3:
-            return (char*) malloc(lion_safe_encode_buffer_size(insize));
-        default:
-            return (char*) malloc(chameleon_safe_encode_buffer_size(insize));
-    }
-}
-
-void lzbench_density_deinit(char* workmem)
-{
-    free(workmem);
-}
-
-int64_t lzbench_density_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    switch ( codec_options->level )
-    {
-        case 2:
-            return cheetah_encode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
-        case 3:
-            return lion_encode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
-        default:
-            return chameleon_encode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
-    }
-}
-
-int64_t lzbench_density_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    switch ( codec_options->level )
-    {
-        case 2:
-            return cheetah_decode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
-        case 3:
-            return lion_decode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
-        default:
-            return chameleon_decode((uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
-    }
-}
-
-#endif // BENCH_REMOVE_DENSITY
-
-
-#ifndef BENCH_REMOVE_PULSAR
-#include "bwt/pulsar/pulsar.h"
-
-int64_t lzbench_pulsar_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    (void)codec_options;
-    intptr_t n = pulsar_compress((const uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
-    return (int64_t)n;
-}
-
-int64_t lzbench_pulsar_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
-{
-    (void)codec_options;
-    intptr_t n = pulsar_decompress((const uint8_t *)inbuf, insize, (uint8_t *)outbuf, outsize);
-    return (int64_t)n;
-}
-
-#endif // BENCH_REMOVE_PULSAR
