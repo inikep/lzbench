@@ -362,7 +362,7 @@ static const alias_desc_t alias_desc[] =
     // FAST: every level that compressed silesia.tar at 100 MB/s or more on one thread of an AMD EPYC 9555P
     // (3.20 GHz, lzbench 2.4, doc/results); tornado -1 is left out as it fails on incompressible data
     { "FAST", "Refers to compressors capable of achieving compression speeds exceeding 100 MB/s (default alias).",
-              "memcpy/brieflz,1,3/brotli,0,2/density/fastlz/gobrrr,0,2/kanzi,1,2/libdeflate,1,3/lizard,10,11,12,20,22,30,32,40,42/lz4/" \
+              "memcpy/aceapex_fast,1/brieflz,1,3/brotli,0,2/density/fastlz/gobrrr,0,2/kanzi,1,2/libdeflate,1,3/lizard,10,11,12,20,22,30,32,40,42/lz4/" \
               "lz4fast,3,9,17/lz4hc,1/lzav,1/lzf/lzjb/lzo1,1/lzo1a/lzo1b,1,3,6,9,99/lzo1c,1,3,6,9,99/lzo1f,1/lzo1x,1,11,12,15/lzo1y,1/" \
               "lzsse4fast/mbrotli,0,2/memlz/misa77,-1,0/misa77_safe,-1,0/quicklz,1,2/skim/slz_deflate/snappy/yalz77,1/zlib-ng,1/" \
               "zstd,1,2,3,4,5/zstd_fast,-5,-3,-1/zxc,1,3" },
