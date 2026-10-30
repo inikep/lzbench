@@ -143,7 +143,8 @@ static size_t enc_greedy(const uint8_t* in, uint32_t n, uint8_t* out, const Para
 static size_t enc_sparse(const uint8_t* in, uint32_t n, uint8_t* out, const Params& P, Enc& e) {
     enum : uint32_t { HB = 17, SA = 3, SB = 2, INS = 8, SKIP = 8, SPLIT = 128 };   // SPLIT: DEC2/DEC4, results/zen5-2026-10-28.log
     const uint32_t mm = P.mm;
-    e.stab.assign(1u << HB, 0u); if (e.stok.size() < n / 8 + 16) e.stok.resize(n / 8 + 16);
+    e.stab.assign((1u << HB) + 1, 0u);   // + 1: a slot that takes the inserts with nowhere to go
+    if (e.stok.size() < n / 8 + 16) e.stok.resize(n / 8 + 16);
     if (e.slit.size() < (size_t)n + 64) e.slit.resize((size_t)n + 64); if (e.sext.size() < n / 16 + 64) e.sext.resize(n / 16 + 64);
     uint32_t* T = e.stab.data(); uint32_t* TK = e.stok.data(); uint8_t* E = e.sext.data(); uint8_t* L = e.slit.data();
     uint32_t nt = 0, ne = 0; size_t nl = 0;
@@ -153,12 +154,19 @@ static size_t enc_sparse(const uint8_t* in, uint32_t n, uint8_t* out, const Para
     if (n >= 80) {
         const uint32_t last = n - 16;
         while (pos < last) {
-            for (; ip < pos; ip += SB) T[H(in + ip)] = ip + 1;
-            const uint32_t c1 = T[H(in + pos)];
+            {   // table positions behind the probe: 0, 1 or 2 per step of SA = 3, written without a branch (a position at or
+                // past the probe goes to the spare slot DUMMY); a longer gap (skip in a literal run) takes the loop
+                const uint32_t a = ip, b = ip + SB, DUMMY = 1u << HB;
+                T[a < pos ? H(in + a) : DUMMY] = a; T[b < pos ? H(in + b) : DUMMY] = b;
+                ip += a < pos ? (b < pos ? 2 * SB : SB) : 0;
+                for (; ip < pos; ip += SB) T[H(in + ip)] = ip;
+            }
+            // every slot holds a position (0 until written): no empty test, the key compare decides
+            uint32_t c = T[H(in + pos)];
             uint32_t len = 0, d = 0;
-            if (c1) {
-                uint32_t c = c1 - 1; const uint64_t k = rd64(in + pos);
-                if (rd64(in + c) == k) {
+            {
+                const uint64_t k = rd64(in + pos);
+                if (((rd64(in + c) ^ k) | ((rd64(in + c + 8) ^ rd64(in + pos + 8)) & 0xffffull)) == 0 && c < pos) {
                     d = pos - c;
                     if (d < AXF_MIN_DIST) { d *= (AXF_MIN_DIST + d - 1) / d; if (d <= pos && rd64(in + pos - d) == k) c = pos - d; else d = 0; }
                     if (d) {
@@ -175,9 +183,12 @@ static size_t enc_sparse(const uint8_t* in, uint32_t n, uint8_t* out, const Para
                 uint32_t room = pos - anchor; if (room > pos - d) room = pos - d;
                 while (room >= 8) { const uint64_t x = rd64(in + pos - 8) ^ rd64(in + pos - 8 - d);
                     if (x) { const uint32_t k = clz64(x) >> 3; pos -= k; len += k; room = 0; break; } pos -= 8; len += 8; room -= 8; }
-                while (room && in[pos - 1] == in[pos - 1 - d]) { pos--; len++; room--; }
+                if (room && pos >= d + 8) {   // the last < 8 bytes in one compare, clamped to the room
+                    const uint64_t x = rd64(in + pos - 8) ^ rd64(in + pos - 8 - d); uint32_t k = x ? clz64(x) >> 3 : 8; if (k > room) k = room;
+                    pos -= k; len += k;
+                } else while (room && in[pos - 1] == in[pos - 1 - d]) { pos--; len++; room--; }
             }
-            if (len < mm) { pos = probe + SA; continue; }
+            if (len < mm) { pos = probe + SA + ((probe - anchor) >> SKIP); continue; }
             const uint32_t ll = pos - anchor;
             if (pos + 32 <= n) { for (uint32_t i = 0; i < ll; i += 32) memcpy(L + nl + i, in + anchor + i, 32); } else cpyn(L + nl, in + anchor, ll);
             nl += ll;
@@ -192,8 +203,8 @@ static size_t enc_sparse(const uint8_t* in, uint32_t n, uint8_t* out, const Para
                 TK[nt++] = (first ? llf : 0u) | mlf << 6 | (d - AXF_MIN_DIST) << 12;
             }
             const uint32_t end = pos + len;
-            if (ip < end) { for (; ip + 8 < end && ip < last; ip += SB * INS) T[H(in + ip)] = ip + 1; ip = end + ((SB - end % SB) % SB); }
-            if (end - 2 < last) T[H(in + end - 2)] = end - 2 + 1;
+            if (ip < end) { for (; ip + 8 < end && ip < last; ip += SB * INS) T[H(in + ip)] = ip; ip = end + ((SB - end % SB) % SB); }
+            if (end - 2 < last) T[H(in + end - 2)] = end - 2;
             pos = end; anchor = end;
         }
     }

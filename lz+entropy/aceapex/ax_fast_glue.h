@@ -33,6 +33,29 @@ static int64_t ax_fast_assemble(const std::vector<std::vector<uint8_t>>& blocks,
     axf::write_body(dst + 68, blocks);
     return (int64_t)total;
 }
+// one thread (lzbench, TurboBench, a caller's own pool): blocks are encoded straight into dst after the header and the
+// table - no per-block vectors, no assembly copy. Same bytes as ax_fast_encode + ax_fast_assemble. Returns the archive size,
+// -1 (ACEAPEX_ERR_BUFFER) when cap is short, -2 for a bad level.
+static int64_t ax_fast_compress_1t(const uint8_t* src, size_t n, int flevel, uint8_t* dst, size_t cap) {
+    axf::Params P; if (!axf::level_params(flevel, P)) return -2;
+    uint32_t bs = AXF_BLOCK_MAX;
+    { const char* e = ax_getenv("ACEAPEX_BS"); if (e) { const unsigned long v = strtoul(e, 0, 10); if (v >= 4096 && v <= AXF_BLOCK_MAX) bs = (uint32_t)v; } }
+    const uint64_t nb64 = ((uint64_t)n + bs - 1) / bs; if (nb64 > 0xffffffffu) return -2;
+    const uint32_t nb = (uint32_t)nb64; const size_t head = 68 + 8 * ((size_t)nb + 1);
+    if (cap < head) return -1;
+    axf::Enc e; uint64_t off = 0; uint8_t* p = dst + head;
+    for (uint32_t b = 0; b < nb; b++) {
+        memcpy(dst + 68 + 8 * (size_t)b, &off, 8);
+        const size_t o = (size_t)b * bs; const uint32_t k = (uint32_t)std::min<size_t>(bs, n - o);
+        const size_t room = cap - head - (size_t)off, need = axf::enc_bound(k, P.mm); size_t c;
+        if (room >= need) c = axf::enc_block(src + o, k, p, P, e);
+        else { if (e.out.size() < need) e.out.resize(need); c = axf::enc_block(src + o, k, e.out.data(), P, e); if (c > room) return -1; memcpy(p, e.out.data(), c); }
+        p += c; off += c;
+    }
+    memcpy(dst + 68 + 8 * (size_t)nb, &off, 8);
+    axf::write_header(dst, n, bs, nb, OUR_CHECKSUM(src, n), P.mm, off);
+    return (int64_t)(head + off);
+}
 // worst case for aceapex_compress_bound: header + table + every block at its bound (axf::enc_bound)
 static inline size_t ax_fast_bound(size_t n) {
     const size_t nb = (n + AXF_BLOCK_MAX - 1) / AXF_BLOCK_MAX;
