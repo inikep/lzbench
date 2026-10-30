@@ -35,6 +35,8 @@ int64_t aceapex_compress(
     if (axlm::wanted()) return axlm::compress((const uint8_t*)src, src_size, (uint8_t*)dst, dst_capacity, level, threads);
 #endif
     if (ax_fast_level(level)) {                        // levels 11..18: the fast profile (header version 3)
+        if (threads == 1) { const int64_t r = ax_fast_compress_1t((const uint8_t*)src, src_size, ax_fast_level(level), (uint8_t*)dst, dst_capacity);
+                            return r == -2 ? ACEAPEX_ERR_DATA : r < 0 ? ACEAPEX_ERR_BUFFER : r; }
         std::vector<std::vector<uint8_t>> blocks; axf::Params P; uint32_t bs;
         if (!ax_fast_encode((const uint8_t*)src, src_size, ax_fast_level(level), threads, blocks, P, bs)) return ACEAPEX_ERR_DATA;
         const int64_t r = ax_fast_assemble(blocks, P, bs, (const uint8_t*)src, src_size, (uint8_t*)dst, dst_capacity);
