@@ -116,7 +116,7 @@ translation units.
 
 The tables below present ballpark performance numbers for the LZAV algorithm.
 
-While LZ4 compresses faster, LZAV provides 16% greater storage space savings.
+While LZ4 compresses faster, LZAV provides 17% greater storage space savings.
 This is a significant benefit in database and filesystem use cases, since
 LZAV's compression is only about 30% slower than LZ4's. In practice, slower
 compression is not a limiting factor because writes of compressed data are
@@ -132,7 +132,7 @@ Depending on the data being compressed, LZAV can achieve compression speeds
 of 800 MB/s and decompression speeds of 5,000 MB/s. Incompressible data is
 decompressed at a rate of 10,000 MB/s, which is close to the speed of
 `memcpy()`. For datasets such as [enwik9](https://mattmahoney.net/dc/textdata.html),
-LZAV provides 22% greater storage space savings than LZ4.
+LZAV provides 24% greater storage space savings than LZ4.
 
 The geometric mean speeds of the LZAV algorithm across a variety of datasets
 are 550 &plusmn; 150 MB/s for compression and 3,800 &plusmn; 1,300 MB/s for
@@ -157,33 +157,33 @@ The benchmarks below use the Silesia compression corpus.
 
 | Compressor       | Compression | Decompression | Ratio % |
 |------------------|------------:|--------------:|:-------:|
-| **LZAV 5.20**    | 627 MB/s    | 3,830 MB/s    | 39.91   |
+| **LZAV 7.0**     | 638 MB/s    | 3,830 MB/s    | 39.23   |
 | LZ4 1.9.4        | 700 MB/s    | 4,570 MB/s    | 47.60   |
 | Snappy 1.1.10    | 495 MB/s    | 3,230 MB/s    | 48.22   |
 | LZF 3.6          | 395 MB/s    | 800 MB/s      | 48.15   |
-| **LZAV 5.20 HI** | 146 MB/s    | 3,760 MB/s    | 34.85   |
+| **LZAV 7.0 HI**  | 157 MB/s    | 3,770 MB/s    | 34.55   |
 | LZ4HC 1.9.4 -9   | 40 MB/s     | 4,360 MB/s    | 36.75   |
 
 ### LLVM clang 19.1.7 x86-64, AlmaLinux 9.6, Xeon E-2386G (Rocket Lake), 5.1 GHz
 
 | Compressor       | Compression | Decompression | Ratio % |
 |------------------|------------:|--------------:|:-------:|
-| **LZAV 5.20**    | 656 MB/s    | 3,550 MB/s    | 39.91   |
+| **LZAV 7.0**     | 660 MB/s    | 3,660 MB/s    | 39.23   |
 | LZ4 1.9.4        | 848 MB/s    | 4,980 MB/s    | 47.60   |
 | Snappy 1.1.10    | 690 MB/s    | 3,360 MB/s    | 48.22   |
 | LZF 3.6          | 455 MB/s    | 1,000 MB/s    | 48.15   |
-| **LZAV 5.20 HI** | 130 MB/s    | 3,360 MB/s    | 34.85   |
+| **LZAV 7.0 HI**  | 139 MB/s    | 3,400 MB/s    | 34.55   |
 | LZ4HC 1.9.4 -9   | 43 MB/s     | 4,920 MB/s    | 36.75   |
 
 ### LLVM clang-cl 18.1.8 x86-64, Windows 10, Ryzen 3700X (Zen 2), 4.2 GHz
 
 | Compressor       | Compression | Decompression | Ratio % |
 |------------------|------------:|--------------:|:-------:|
-| **LZAV 5.20**    | 565 MB/s    | 3,270 MB/s    | 39.91   |
+| **LZAV 7.0**     | 600 MB/s    | 3,270 MB/s    | 39.23   |
 | LZ4 1.9.4        | 675 MB/s    | 4,560 MB/s    | 47.60   |
 | Snappy 1.1.10    | 415 MB/s    | 2,440 MB/s    | 48.22   |
 | LZF 3.6          | 310 MB/s    | 700 MB/s      | 48.15   |
-| **LZAV 5.20 HI** | 125 MB/s    | 3,100 MB/s    | 34.85   |
+| **LZAV 7.0 HI**  | 129 MB/s    | 3,090 MB/s    | 34.55   |
 | LZ4HC 1.9.4 -9   | 36 MB/s     | 4,430 MB/s    | 36.75   |
 
 Note: The popular Zstd compressor is not included here because it is not
@@ -203,23 +203,23 @@ This section presents compression ratio comparisons for various popular
 datasets. Note that each file within these datasets was compressed
 individually, which is reflected in the overall ratio.
 
-| Dataset               | Size (MiB) | LZAV 5.20 | LZ4 1.9.4 | Snappy 1.1.10 | LZF 3.6 | Source |
+| Dataset               | Size (MiB) | LZAV 7.0  | LZ4 1.9.4 | Snappy 1.1.10 | LZF 3.6 | Source |
 |-----------------------|-----------:|:---------:|:---------:|:-------------:|:-------:|--------|
-| 4SICS 151020 PCAP     | 24.5       | 20.46     | 21.82     | 24.95         | 25.34   | [www.netresec.com](https://www.netresec.com/?page=PCAP4SICS) |
-| 4SICS 151022 PCAP     | 200.0      | 36.44     | 37.35     | 40.24         | 41.37   | [www.netresec.com](https://www.netresec.com/?page=PCAP4SICS) |
-| Calgary Large         | 3.1        | 43.74     | 51.97     | 51.76         | 49.07   | [data-compression.info](https://www.data-compression.info/Corpora/CalgaryCorpus/) |
-| Canterbury            | 2.7        | 37.65     | 43.73     | 45.42         | 42.49   | [corpus.canterbury.ac.nz](https://corpus.canterbury.ac.nz/) |
-| Canterbury Large      | 10.6       | 37.40     | 51.97     | 48.37         | 54.28   | [corpus.canterbury.ac.nz](https://corpus.canterbury.ac.nz/) |
-| Canterbury Artificial | 0.3        | 33.36     | 33.74     | 36.48         | 34.66   | [corpus.canterbury.ac.nz](https://corpus.canterbury.ac.nz/) |
-| employees_10KB.json   | 0.01       | 22.64     | 24.68     | 23.92         | 23.52   | [sample.json-format.com](https://sample.json-format.com/) |
-| employees_100KB.json  | 0.1        | 15.96     | 17.71     | 19.02         | 21.88   | [sample.json-format.com](https://sample.json-format.com/) |
-| employees_50MB.json   | 51.5       | 10.86     | 16.42     | 18.57         | 21.44   | [sample.json-format.com](https://sample.json-format.com/) |
-| enwik8                | 95.4       | 44.44     | 57.26     | 56.56         | 53.95   | [www.mattmahoney.net](https://www.mattmahoney.net/dc/textdata.html) |
-| enwik9                | 954.7      | 39.32     | 50.92     | 50.79         | 49.30   | [www.mattmahoney.net](https://www.mattmahoney.net/dc/textdata.html) |
-| Manzini               | 855.3      | 26.70     | 37.30     | 38.57         | 39.04   | [people.unipmn.it/manzini](https://people.unipmn.it/manzini/boosting/index.html) |
-| chr22.dna (Manzini)   | 33.0       | 37.76     | 52.82     | 44.53         | 55.86   | [people.unipmn.it/manzini](https://people.unipmn.it/manzini/boosting/index.html) |
-| w3c2 HTML (Manzini)   | 99.4       | 11.33     | 22.20     | 25.35         | 27.20   | [people.unipmn.it/manzini](https://people.unipmn.it/manzini/boosting/index.html) |
-| Silesia               | 202.1      | 39.91     | 47.60     | 48.17         | 48.15   | [github.com/MiloszKrajewski](https://github.com/MiloszKrajewski/SilesiaCorpus) |
+| 4SICS 151020 PCAP     | 24.5       | 20.23     | 21.82     | 24.95         | 25.34   | [www.netresec.com](https://www.netresec.com/?page=PCAP4SICS) |
+| 4SICS 151022 PCAP     | 200.0      | 36.01     | 37.35     | 40.24         | 41.37   | [www.netresec.com](https://www.netresec.com/?page=PCAP4SICS) |
+| Calgary Large         | 3.1        | 42.79     | 51.97     | 51.76         | 49.07   | [data-compression.info](https://www.data-compression.info/Corpora/CalgaryCorpus/) |
+| Canterbury            | 2.7        | 37.46     | 43.73     | 45.42         | 42.49   | [corpus.canterbury.ac.nz](https://corpus.canterbury.ac.nz/) |
+| Canterbury Large      | 10.6       | 36.18     | 51.97     | 48.37         | 54.28   | [corpus.canterbury.ac.nz](https://corpus.canterbury.ac.nz/) |
+| Canterbury Artificial | 0.3        | 33.38     | 33.74     | 36.48         | 34.66   | [corpus.canterbury.ac.nz](https://corpus.canterbury.ac.nz/) |
+| employees_10KB.json   | 0.01       | 22.15     | 24.68     | 23.92         | 23.52   | [sample.json-format.com](https://sample.json-format.com/) |
+| employees_100KB.json  | 0.1        | 15.80     | 17.71     | 19.02         | 21.88   | [sample.json-format.com](https://sample.json-format.com/) |
+| employees_50MB.json   | 51.5       | 10.62     | 16.42     | 18.57         | 21.44   | [sample.json-format.com](https://sample.json-format.com/) |
+| enwik8                | 95.4       | 43.38     | 57.26     | 56.56         | 53.95   | [www.mattmahoney.net](https://www.mattmahoney.net/dc/textdata.html) |
+| enwik9                | 954.7      | 38.43     | 50.92     | 50.79         | 49.30   | [www.mattmahoney.net](https://www.mattmahoney.net/dc/textdata.html) |
+| Manzini               | 855.3      | 25.89     | 37.30     | 38.57         | 39.04   | [people.unipmn.it/manzini](https://people.unipmn.it/manzini/boosting/index.html) |
+| chr22.dna (Manzini)   | 33.0       | 36.09     | 52.82     | 44.53         | 55.86   | [people.unipmn.it/manzini](https://people.unipmn.it/manzini/boosting/index.html) |
+| w3c2 HTML (Manzini)   | 99.4       | 10.95     | 22.20     | 25.35         | 27.20   | [people.unipmn.it/manzini](https://people.unipmn.it/manzini/boosting/index.html) |
+| Silesia               | 202.1      | 39.23     | 47.60     | 48.17         | 48.15   | [github.com/MiloszKrajewski](https://github.com/MiloszKrajewski/SilesiaCorpus) |
 
 ## Notes
 
@@ -231,7 +231,7 @@ independently of LZAV.
 2. From a technical point of view, LZAV's peak decompression speed is
 implicitly limited by its stream format, which is more complex than LZ4's.
 LZAV decompression requires extensive branching. Another limiting factor is
-a rather large dynamic LZ77 window (2 MiB to 512 MiB), which is not
+a rather large dynamic LZ77 window (4 MiB to 1 GiB), which is not
 CPU-cache-friendly. However, without these features, it would not be possible
 to achieve competitive compression ratios while maintaining high compression
 speeds.
