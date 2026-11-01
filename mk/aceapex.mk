@@ -1,5 +1,11 @@
 # aceapex
 CODECS += ACEAPEX
+
+# aceapex assumes a little-endian CPU: its round trip fails on s390x
+ifeq ($(TARGET_BIG_ENDIAN),1)
+    DONT_BUILD_ACEAPEX ?= 1
+endif
+
 ACEAPEX_OBJS  := lz+entropy/aceapex/aceapex_lzbench.o
 ACEAPEX_FLAGS := -I$(SRC)lz+entropy/aceapex -I$(SRC)bench -I$(SRC)lz+entropy/zstd/lib
 ACEAPEX_NEEDS := ZSTD

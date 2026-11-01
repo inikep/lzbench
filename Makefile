@@ -60,6 +60,8 @@ CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*versi
 HOST_ARCH      := $(shell uname -m)
 TARGET_MACHINE := $(shell $(CXX) -dumpmachine)
 TARGET_ARCH    := $(firstword $(subst -, ,$(TARGET_MACHINE)))
+# 1 for a big-endian target (e.g. s390x); __BYTE_ORDER__ expands to 4321 there
+TARGET_BIG_ENDIAN := $(if $(filter 4321,$(shell echo __BYTE_ORDER__ | $(CC) -E -P -x c - 2>/dev/null)),1)
 # 1 for a Windows target (e.g. x86_64-w64-mingw32), also when cross-compiling
 TARGET_WINDOWS := $(if $(filter mingw% cygwin% windows%,$(subst -, ,$(TARGET_MACHINE))),1)
 HOST_WINDOWS   := $(if $(filter Windows%,$(OS)),1)

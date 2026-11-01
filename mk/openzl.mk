@@ -1,6 +1,12 @@
 # openzl
 CODECS += OPENZL
 
+# OpenZL aborts on big-endian CPUs ("support for big endian not implemented
+# yet")
+ifeq ($(TARGET_BIG_ENDIAN),1)
+    DONT_BUILD_OPENZL ?= 1
+endif
+
 # OpenZL requires a 64-bit platform (src/openzl/shared/portability.h emits an
 # #error on 32-bit). Probe the pointer size with the active CODE_FLAGS so this
 # also catches -m32 (BUILD_ARCH=32-bit) builds, not just native 32-bit targets.
