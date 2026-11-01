@@ -258,6 +258,17 @@ jobs:
         QEMU_INTERPRETER: 'qemu-ppc64le-static -L /usr/powerpc64le-linux-gnu'
         ARTIFACT_SLUG: powerpc64le-linux-gnu-gcc
 
+      # The only big-endian target. The Makefile leaves out the codecs that
+      # assume a little-endian CPU (aceapex, bsc, lzfse/lzvn, memlz, openzl).
+      gcc IBM Z 64-bit Big-endian (s390x) [Ubuntu 24.04 Noble]:
+        imageName: 'ubuntu-24.04'
+        SELECTED_CC: s390x-linux-gnu-gcc
+        SELECTED_CXX: s390x-linux-gnu-g++
+        PACKAGES: 'qemu-user-static gcc-s390x-linux-gnu g++-s390x-linux-gnu'
+        MORE_OPTIONS: 'BUILD_STATIC=1'
+        QEMU_INTERPRETER: 'qemu-s390x-static -L /usr/s390x-linux-gnu'
+        ARTIFACT_SLUG: s390x-linux-gnu-gcc
+
 
   steps:
   - script: |
