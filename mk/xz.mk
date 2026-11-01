@@ -17,3 +17,7 @@ XZ_FLAGS := $(addprefix -I$(SRC),lz+entropy/xz/src lz+entropy/xz/src/common lz+e
                 lz+entropy/xz/src/liblzma/lzma lz+entropy/xz/src/liblzma/lz lz+entropy/xz/src/liblzma/check \
                 lz+entropy/xz/src/liblzma/rangecoder) \
             -DHAVE_CHECK_CRC32 -DMYTHREAD_POSIX -DHAVE_CONFIG_H
+# configure defines WORDS_BIGENDIAN in config.h; the hand-written one does not
+ifeq ($(TARGET_BIG_ENDIAN),1)
+    XZ_FLAGS += -DWORDS_BIGENDIAN
+endif
