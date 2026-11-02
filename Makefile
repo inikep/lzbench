@@ -131,8 +131,11 @@ ifeq ($(BUILD_TYPE),debug)
     OPT_FLAGS_O2 = $(OPT_FLAGS) -O0 -g
     OPT_FLAGS_O3 = $(OPT_FLAGS) -O0 -g
 else
-    OPT_FLAGS_O2 = $(OPT_FLAGS) -O2 -DNDEBUG
-    OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
+    # Some distributions (e.g. Ubuntu) build gcc to define _FORTIFY_SOURCE at -O1
+    # and above, which adds run-time checks to memcpy() and friends and skews
+    # the results; MOREFLAGS="-D_FORTIFY_SOURCE=3" turns them back on
+    OPT_FLAGS_O2 = $(OPT_FLAGS) -O2 -DNDEBUG -U_FORTIFY_SOURCE
+    OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG -U_FORTIFY_SOURCE
 endif
 
 # Everything is built with -O3, except the objects of codecs that set
