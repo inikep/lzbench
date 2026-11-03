@@ -640,6 +640,58 @@ fn pair_rounds_fixed(
     ]
 }
 
+/// [`pair_rounds_fixed`] one stream at a time, for AVX-512 feature
+/// contexts: each stream makes its round's lookups, then refills behind a
+/// branch.
+///
+/// Given AVX-512, the compiler packs the lockstep loop's four containers
+/// into one vector and their lookups and refills into gathers, which runs
+/// the streams as a single dependency chain. The refill's branch ends a
+/// basic block after every stream, so each chain stays scalar, and the
+/// processor still overlaps the four of them. The rounds, their bounds and
+/// the decoded symbols are those of [`pair_rounds_fixed`].
+#[inline(always)]
+fn pair_rounds_serial(
+    pairs: &[PairRow; PAIR_SIZE],
+    src: &[u8],
+    out: &mut [u8; FIXED_OUT],
+    segments: [usize; 5],
+    sentinels: &mut [Sentinel; 4],
+) -> [usize; 4] {
+    let starts = [segments[0], segments[1], segments[2], segments[3]];
+    let mut ops = starts;
+    let mut s = *sentinels;
+    'rounds: loop {
+        let mut rounds = affordable_rounds(&s, &[0; 5]);
+        for (op, end) in ops.iter().zip(&segments[1..]) {
+            rounds = rounds
+                .min((end - op).saturating_sub(PAIR_WINDOW - PAIR_ROUND_BYTES) / PAIR_ROUND_BYTES);
+        }
+        if rounds == 0 {
+            break;
+        }
+        for _ in 0..rounds {
+            for (sentinel, op) in s.iter_mut().zip(&mut ops) {
+                let mut o = *op & OUT_MASK;
+                for _ in 0..PAIR_LOOKUPS {
+                    pair_lookup(pairs, sentinel, out, &mut o);
+                }
+                *op = o;
+                if !sentinel.reload(src) {
+                    break 'rounds;
+                }
+            }
+        }
+    }
+    *sentinels = s;
+    [
+        ops[0] - starts[0],
+        ops[1] - starts[1],
+        ops[2] - starts[2],
+        ops[3] - starts[3],
+    ]
+}
+
 /// Slots for weights `0..=12` in a counting sort.
 const WEIGHT_SLOTS: usize = 16;
 
@@ -884,7 +936,7 @@ impl HuffmanTable {
         size: usize,
         four_streams: bool,
     ) -> Result<(), InvalidDataKind> {
-        decode_with(self, src, buffer, size, four_streams)
+        decode_with(self, src, buffer, size, four_streams, serial(simd))
     }
 
     /// Decodes literals as [`Self::decode_streams`] with a table that may
@@ -899,7 +951,7 @@ impl HuffmanTable {
         size: usize,
         four_streams: bool,
     ) -> Result<(), InvalidDataKind> {
-        decode_with(self, src, buffer, size, four_streams)
+        decode_with(self, src, buffer, size, four_streams, serial(simd))
     }
 
     /// Builds the pair rows ahead of time, for a table that is then shared.
@@ -954,7 +1006,22 @@ impl TableAccess for &HuffmanTable {
     }
 }
 
-/// Decodes `out.len()` literals from one stream or four streams.
+/// Whether `simd`'s features include AVX-512, with which the pair loop
+/// decodes the streams one at a time ([`pair_rounds_serial`]). Constant for
+/// each backend, so the test folds away.
+#[inline(always)]
+fn serial<S: fearless_simd::Simd>(simd: S) -> bool {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    return simd.level().as_avx512().is_some();
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    {
+        let _ = simd;
+        false
+    }
+}
+
+/// Decodes `out.len()` literals from one stream or four streams; `serial`
+/// as for [`decode_four`].
 #[inline(always)]
 fn decode_with<T: TableAccess>(
     table: T,
@@ -962,6 +1029,7 @@ fn decode_with<T: TableAccess>(
     buffer: &mut [u8],
     size: usize,
     four_streams: bool,
+    serial: bool,
 ) -> Result<(), InvalidDataKind> {
     let out = buffer
         .get_mut(..size)
@@ -970,11 +1038,12 @@ fn decode_with<T: TableAccess>(
         return table.table().decode_stream(src, out);
     }
     let pairs = prefers_pairs(size, src.len());
-    decode_four(table, src, buffer, size, pairs)
+    decode_four(table, src, buffer, size, pairs, serial)
 }
 
 /// Decodes four streams after their jump table, with the pair rows in the
-/// fast loops when `pairs` is set.
+/// fast loops when `pairs` is set; `serial` decodes a fixed-size buffer's
+/// pairs one stream at a time.
 #[inline(always)]
 fn decode_four<T: TableAccess>(
     mut table: T,
@@ -982,6 +1051,7 @@ fn decode_four<T: TableAccess>(
     buffer: &mut [u8],
     size: usize,
     pairs: bool,
+    serial: bool,
 ) -> Result<(), InvalidDataKind> {
     let invalid = InvalidDataKind::HuffmanStream;
     let out_len = size;
@@ -1027,7 +1097,11 @@ fn decode_four<T: TableAccess>(
             segments,
         };
         done = if let (Some(pairs), Some(fixed)) = (pairs, fixed) {
-            pair_rounds_fixed(pairs, streams, fixed, segments, &mut sentinels)
+            if serial {
+                pair_rounds_serial(pairs, streams, fixed, segments, &mut sentinels)
+            } else {
+                pair_rounds_fixed(pairs, streams, fixed, segments, &mut sentinels)
+            }
         } else if let Some(pairs) = pairs {
             four.out = &mut buffer[..out_len];
             pair_rounds(pairs, &mut four, &mut sentinels)
@@ -1330,15 +1404,19 @@ mod tests {
             for len in [6, 7, 64, 333, 4_000, 20_000] {
                 let symbols = message(&table, len, len as u64);
                 let src = encode_four(&table, &symbols);
-                for pairs in [false, true] {
+                for (pairs, serial) in [(false, false), (true, false), (true, true)] {
                     let mut out = alloc::vec![0xee; len];
-                    decode_four(&mut table, &src, &mut out, len, pairs).expect("valid");
+                    decode_four(&mut table, &src, &mut out, len, pairs, serial).expect("valid");
                     assert_eq!(out, symbols, "log {} len {len} pairs {pairs}", table.log);
                     // A buffer of the fixed size decodes alike and keeps the
-                    // bytes after the literals.
+                    // bytes after the literals, in lockstep or serially.
                     let mut fixed = alloc::vec![0xee; FIXED_OUT + 3];
-                    decode_four(&mut table, &src, &mut fixed, len, pairs).expect("valid");
-                    assert_eq!(fixed[..len], symbols, "fixed len {len} pairs {pairs}");
+                    decode_four(&mut table, &src, &mut fixed, len, pairs, serial).expect("valid");
+                    assert_eq!(
+                        fixed[..len],
+                        symbols,
+                        "fixed len {len} pairs {pairs} serial {serial}"
+                    );
                     assert!(fixed[len..].iter().all(|&byte| byte == 0xee));
                 }
                 // A shared table decodes alike, with or without pair rows.
@@ -1391,20 +1469,50 @@ mod tests {
     }
 
     #[test]
+    fn four_streams_decode_alike_on_every_backend() {
+        for backend in crate::Backend::available() {
+            let serial = fearless_simd::dispatch!(backend.0, simd => serial(simd));
+            // AVX-512 decodes serially; other levels may too, where the
+            // build's baseline already has AVX-512.
+            assert!(serial || backend.name() != "avx512");
+            for mut table in [example_table(), twelve_bit_table(), flat_table()] {
+                for len in [6, 333, 20_000] {
+                    let symbols = message(&table, len, len as u64);
+                    let src = encode_four(&table, &symbols);
+                    let mut fixed = alloc::vec![0xee; FIXED_OUT + 3];
+                    fearless_simd::dispatch!(backend.0, simd => table.decode_streams(
+                        simd, &src, &mut fixed, len, true,
+                    ))
+                    .expect("valid");
+                    assert_eq!(fixed[..len], symbols, "{backend} log {}", table.log);
+                    assert!(fixed[len..].iter().all(|&byte| byte == 0xee));
+                    table.build_shared();
+                    let mut shared = alloc::vec![0xee; FIXED_OUT];
+                    fearless_simd::dispatch!(backend.0, simd => table.decode_streams_shared(
+                        simd, &src, &mut shared, len, true,
+                    ))
+                    .expect("valid");
+                    assert_eq!(shared[..len], symbols, "{backend} shared");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn fast_paths_reject_streams_with_bits_left_or_missing() {
         let mut table = flat_table();
         let symbols = message(&table, 20_000, 3);
         let src = encode_four(&table, &symbols);
-        for pairs in [false, true] {
+        for (pairs, serial) in [(false, false), (true, false), (true, true)] {
             // One symbol fewer leaves bits in every stream, one more reads
             // past the start of the last one.
             for len in [symbols.len() - 1, symbols.len() + 1] {
                 for room in [len, FIXED_OUT] {
                     let mut out = alloc::vec![0; room];
                     assert_eq!(
-                        decode_four(&mut table, &src, &mut out, len, pairs),
+                        decode_four(&mut table, &src, &mut out, len, pairs, serial),
                         Err(InvalidDataKind::HuffmanStream),
-                        "pairs {pairs} len {len} room {room}"
+                        "pairs {pairs} serial {serial} len {len} room {room}"
                     );
                 }
             }

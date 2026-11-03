@@ -25,6 +25,9 @@ Zstandard (RFC 8878) compression and decompression in safe Rust.
   with the input before them the way zstd's multithreaded mode primes a job.
 - **No `unsafe`, no dependencies on zstd.** It runs with `no_std` + `alloc`,
   and there is a C ABI, one-shot and streaming, in `mzstd-ffi`.
+- **Sans-I/O sessions.** `Encoder` and `Decoder` sessions work only with the buffers you
+  pass in and never perform I/O themselves, so you can drive them from blocking code,
+  async runtimes, or your own event loop.
 
 ## Performance
 
@@ -75,12 +78,21 @@ capacity from the frame header.
 
 </details>
 
+### External benchmarks
+
+- [lzbench](https://github.com/inikep/lzbench)
+- [TurboBench](https://github.com/powturbo/TurboBench)
+
+## Usage
+
+### Install
+
 ```toml
 [dependencies]
 mzstd = "0.2"
 ```
 
-## Usage
+### Examples
 
 ```rust
 use mzstd::{Compressor, Decompressor, EncoderConfig, Level};

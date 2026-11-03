@@ -2,7 +2,7 @@
 # crate-type reduced to rlib.
 [package]
 name = "mzstd-ffi"
-version = "0.2.9"
+version = "0.2.10"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
@@ -21,7 +21,7 @@ crate-type = ["rlib"]
 
 [dependencies.mzstd]
 path = ".."
-version = "0.2.9"
+version = "0.2.10"
 default-features = false
 features = ["std", "compression", "decompression"]
 

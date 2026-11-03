@@ -259,6 +259,26 @@ impl Sentinel {
     pub(crate) fn reload_within(&mut self, src: &[u8], limit: usize) -> bool {
         let consumed = self.bits.trailing_zeros();
         let pos = (self.pos - (consumed >> 3) as usize).min(limit);
+        self.refill_at(src, pos, consumed)
+    }
+
+    /// Moves back by the consumed whole bytes and refills, testing with a
+    /// branch that the word lies inside `src`. Returns `false`, leaving the
+    /// sentinel as it was, when it does not.
+    ///
+    /// Unlike [`Self::reload_within`]'s clamp, the branch is one the
+    /// compiler cannot remove, so each refill ends a basic block.
+    #[inline(always)]
+    pub(crate) fn reload(&mut self, src: &[u8]) -> bool {
+        let consumed = self.bits.trailing_zeros();
+        let pos = self.pos - (consumed >> 3) as usize;
+        self.refill_at(src, pos, consumed)
+    }
+
+    /// Refills from the word at `pos`, keeping the `consumed % 8` bits of
+    /// the byte the container stopped in consumed.
+    #[inline(always)]
+    fn refill_at(&mut self, src: &[u8], pos: usize, consumed: u32) -> bool {
         let Some(word) = src.get(pos..).and_then(<[u8]>::first_chunk::<8>) else {
             return false;
         };
@@ -420,6 +440,30 @@ mod tests {
         assert!(sentinel.reload_within(&src, limit));
         assert_eq!(sentinel.remaining(0), 2);
         assert_eq!(sentinel.into_container(&src, 0).look(8), 0x0a);
+    }
+
+    #[test]
+    fn sentinels_reload_like_a_clamp_that_never_binds() {
+        let src: [u8; 24] = core::array::from_fn(|index| index as u8 * 7 + 3);
+        let mut bits = BitContainer::new(&src[..16]).expect("terminated");
+        bits.reload_fast(&src[..16]);
+        let mut checked = Sentinel::from_container(bits, &src, 0);
+        let mut clamped = checked;
+        for skip in [8, 13, 3, 20] {
+            checked.skip(skip);
+            clamped.skip(skip);
+            assert!(checked.reload(&src));
+            assert!(clamped.reload_within(&src, src.len() - 8));
+            assert_eq!(checked.peek(0), clamped.peek(0));
+            assert_eq!(checked.remaining(0), clamped.remaining(0));
+        }
+        // A word that would leave the buffer refuses the refill and leaves
+        // the sentinel as it was.
+        checked.skip(8);
+        let before = checked;
+        assert!(!checked.reload(&src[..checked.remaining(0) + 6]));
+        assert_eq!(checked.peek(0), before.peek(0));
+        assert_eq!(checked.remaining(0), before.remaining(0));
     }
 
     #[test]

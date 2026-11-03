@@ -191,10 +191,10 @@ impl BlockDecoder {
 /// some outputs extend on demand.
 ///
 /// Safe code can only write initialized memory, so an output that starts
-/// uninitialized must be zeroed before the decoder writes it. Extending it
-/// a chunk at a time just ahead of the writes keeps the zeroed lines in the
-/// cache for the copies that overwrite them, where zeroing a whole block
-/// ahead would write each byte twice to the next level.
+/// uninitialized must be zeroed before the decoder writes it. A vector
+/// extends it a chunk at a time just ahead of the writes and appends long
+/// sequences, which are then written once; a caller's uninitialized slice
+/// zeroes each block's room before the block and never grows.
 pub(crate) trait BlockOutput {
     /// The initialized buffer.
     fn buffer(&mut self) -> &mut [u8];
