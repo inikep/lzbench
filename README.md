@@ -92,7 +92,7 @@ sources, the Notes column says so.
 | [mbrotli 0.5.20](https://github.com/M-Compressors/mbrotli) | 2026-11-01 | Requires the Rust toolchain 1.89+ (skipped for 32-bit, cross-compiled and Windows builds). Built through the `mbrotli-ffi` C ABI; manifests trimmed in lzbench (no dev-dependencies, rlib only) |
 | [memlz 0.5 beta](https://github.com/rrrlasse/memlz) | 2026-09-24 | Patched in lzbench: SSE4.2 target attribute also applied for MinGW (`memlz.h`) |
 | [misa77 0.6.0](https://github.com/welcome-to-the-sunny-side/misa77) | 2026-07-30 | Little-endian 64-bit only — needs a C++20 compiler (GCC 10+, Clang 12+); skipped automatically |
-| [mzstd 0.2.10](https://github.com/M-Compressors/mzstd) | 2026-11-03 | Requires the Rust toolchain 1.89+ (skipped for 32-bit, cross-compiled and Windows builds). Built through the `mzstd-ffi` C ABI; manifests trimmed in lzbench (no dev-dependencies, rlib only) |
+| [mzstd 0.2.11](https://github.com/M-Compressors/mzstd) | 2026-11-03 | Requires the Rust toolchain 1.89+ (skipped for 32-bit, cross-compiled and Windows builds). Built through the `mzstd-ffi` C ABI; manifests trimmed in lzbench (no dev-dependencies, rlib only) |
 | [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) | 2022-02-07 | CUDA only — built with `make ENABLE_CUDA=1`; not in the default CI matrix |
 | [openzl 0.2.3](https://openzl.org/) | 2026-07-28 | 64-bit only — upstream does not support 32-bit builds |
 | [ppmd8 26.03](http://7-zip.org) | 2026-09-03 | |

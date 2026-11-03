@@ -733,6 +733,12 @@ impl SequenceTables {
 
     /// Parses the header with the block's existing SIMD token; described
     /// FSE tables are built in that token's feature context.
+    ///
+    /// Kept out of line: inlined into the block decoder with AVX-512 in the
+    /// baseline, it worsened the sequence loop's code around it by 9% of
+    /// the instructions per decode (silesia.tar, `--fast=1`), 8-12% of the
+    /// time at every level.
+    #[inline(never)]
     pub(crate) fn read_header_on<S: Simd>(
         &mut self,
         simd: S,

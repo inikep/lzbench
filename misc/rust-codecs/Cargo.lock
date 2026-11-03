@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "mzstd"
-version = "0.2.10"
+version = "0.2.11"
 dependencies = [
  "borrowed-buf",
  "branches",
@@ -78,7 +78,7 @@ dependencies = [
 
 [[package]]
 name = "mzstd-ffi"
-version = "0.2.10"
+version = "0.2.11"
 dependencies = [
  "mzstd",
  "thiserror",
