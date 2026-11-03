@@ -778,6 +778,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn the_vector_short_scan_agrees_with_the_byte_walk_on_every_backend() {
         let mut state = 0x9E37_79B9_7F4A_7C15u64;
         let mut random = |bound: u32| {
@@ -799,16 +803,14 @@ mod tests {
         ];
         corpora.push(repeated());
 
-        for level in [
-            Level::try_detect().unwrap_or_else(Level::baseline),
-            Level::baseline(),
-            Level::fallback(),
-        ] {
+        // Miri samples positions, on both sides of the ring's wrap.
+        let step = if cfg!(miri) { 157 } else { 1 };
+        for level in crate::backend::Backend::levels() {
             for data in &corpora {
                 // No wrap, then a ring of 512 whose positions wrap around it.
                 for mask in [usize::MAX, 511] {
                     for short_scan in [0, 1, 2, 16, 33, 64] {
-                        for cur_ix in 0..data.len() - 8 {
+                        for cur_ix in (0..data.len() - 8).step_by(step) {
                             let cur_ix_masked = cur_ix & mask;
                             let max_length = data.len() - cur_ix_masked - 1;
                             for max_backward in [cur_ix, cur_ix.min(40), 0] {
@@ -861,6 +863,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn an_empty_tree_finds_only_what_the_short_scan_sees() {
         // With nothing stored, the tree contributes nothing; anything found is
         // the short backward scan's doing, and it never looks past its window.
@@ -880,6 +886,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn a_repeat_is_found_at_its_full_length() {
         let data = repeated();
         let found = walk(&data, 300, 64);
@@ -889,6 +899,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "the brute-force oracle is quadratic and too slow for Miri; the vector short scan has its own differential test"
+    )]
     fn the_longest_match_agrees_with_brute_force() {
         // Over a corpus of overlapping repeats the tree has to find, at every
         // position, exactly the longest match a full scan would — wherever the
@@ -1062,14 +1076,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn every_backend_finds_the_same_matches() {
         let data = repeated();
         let mut results = Vec::new();
-        for level in [
-            Level::try_detect().unwrap_or_else(Level::baseline),
-            Level::baseline(),
-            Level::fallback(),
-        ] {
+        for level in crate::backend::Backend::levels() {
             results.push(walk_with(level, &data, 300, 64));
         }
         assert!(results.windows(2).all(|pair| pair[0] == pair[1]));
@@ -1113,6 +1127,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "walks a degenerate tree at every position, which is too slow for Miri"
+    )]
     fn the_tree_search_depth_is_bounded() {
         // Every position hashes to one bucket, so the tree degenerates into a
         // chain; the traversal must still stop after its fixed depth.

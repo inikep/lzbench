@@ -5,9 +5,13 @@ use super::DecodeConfigError;
 /// Zstandard streams are commonly several frames back to back, possibly
 /// with skippable frames (user metadata) in between, and their content is
 /// the concatenation of the frames' contents. [`Self::Concatenated`], the
-/// default, decodes all of them until the input ends. [`Self::Single`]
-/// decodes one Zstandard frame and stops right after it, so a protocol can
-/// carry other data behind the frame. Skippable frames are always skipped.
+/// default, decodes all of them until the input ends, skipping skippable
+/// frames. [`Self::Single`] decodes exactly one frame and stops right after
+/// it, so a protocol can carry other data behind the frame. As for
+/// `ZSTD_decompressStream`, which reports a frame complete after either
+/// kind, that frame may be a skippable one: the operation then finishes
+/// with no output, and a Zstandard frame after it is left for the next
+/// operation.
 ///
 /// # Examples
 ///
@@ -33,7 +37,7 @@ pub enum FrameMode {
     /// Decode every frame until the input ends.
     #[default]
     Concatenated,
-    /// Decode exactly one Zstandard frame, after any skippable frames.
+    /// Decode exactly one frame, Zstandard or skippable.
     Single,
 }
 

@@ -1,4 +1,6 @@
-use super::core::DictView;
+use ::core::mem::MaybeUninit;
+
+use super::core::{DictView, Stream};
 use super::{DecodeError, Decompressor};
 use crate::dictionary::{DecodeDictionary, DictionaryRef};
 
@@ -117,16 +119,18 @@ impl<'d> DecoderSession<'d> {
     }
 }
 
-/// Runs one call on `decoder` with `dictionary` and applies its retention
-/// policy once the operation has ended, successfully or not.
+/// The borrowed view of an owned session's dictionary.
+fn dictionary_view<D: AsRef<DecodeDictionary>>(dictionary: Option<&D>) -> Option<DictView<'_>> {
+    dictionary.map(|dictionary| DictionaryRef::from(dictionary.as_ref()).view())
+}
+
+/// Runs one call on `decoder`'s stream and applies its retention policy
+/// once the operation has ended, successfully or not.
 fn process_on(
     decoder: &mut Decompressor,
-    dictionary: Option<DictView<'_>>,
-    input: &[u8],
-    output: &mut [u8],
-    operation: DecodeOperation,
+    call: impl FnOnce(&mut Stream) -> Result<DecodeProgress, DecodeFailure>,
 ) -> Result<DecodeProgress, DecodeFailure> {
-    let result = decoder.stream.process(input, output, operation, dictionary);
+    let result = call(&mut decoder.stream);
     if result
         .as_ref()
         .map_or(true, |progress| progress.status == DecoderStatus::Finished)
@@ -147,7 +151,8 @@ impl DecoderSession<'_> {
     /// [`DecoderStatus::Finished`].
     ///
     /// In [`super::FrameMode::Single`] the session finishes right after its
-    /// frame and leaves any later input unconsumed. In
+    /// first frame, Zstandard or skippable, and leaves any later input
+    /// unconsumed. In
     /// [`super::FrameMode::Concatenated`] a frame boundary reports
     /// `NeedsInput` until `Finish` confirms that the input ends there. A
     /// finished session reports zero progress and `Finished` again.
@@ -192,7 +197,52 @@ impl DecoderSession<'_> {
         output: &mut [u8],
         operation: DecodeOperation,
     ) -> Result<DecodeProgress, DecodeFailure> {
-        process_on(self.decoder, self.dictionary, input, output, operation)
+        let dictionary = self.dictionary;
+        process_on(self.decoder, |stream| {
+            stream.process(input, output, operation, dictionary)
+        })
+    }
+
+    /// [`Self::process`] into uninitialized memory, such as
+    /// [`Vec::spare_capacity_mut`](alloc::vec::Vec::spare_capacity_mut),
+    /// without zeroing it first.
+    ///
+    /// It produces the same bytes, `consumed` and `produced` counts,
+    /// statuses and errors as [`Self::process`], and calls of the two may
+    /// be mixed on one operation. Exactly `output[..produced]` is written,
+    /// on success and in a [`DecodeFailure`] alike; no byte after it is
+    /// touched.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::process`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mzstd::{DecodeOperation, DecoderStatus, Decompressor};
+    /// let frame = [0x28, 0xb5, 0x2f, 0xfd, 0x20, 0x05, 0x29, 0x00, 0x00, b'h', b'e', b'l', b'l', b'o'];
+    /// let mut decoder = Decompressor::default();
+    /// let mut session = decoder.start();
+    /// let mut decoded: Vec<u8> = Vec::with_capacity(16);
+    /// let progress =
+    ///     session.process_uninit(&frame, decoded.spare_capacity_mut(), DecodeOperation::Finish)?;
+    /// // SAFETY: `process_uninit` initialized the first `produced` bytes.
+    /// unsafe { decoded.set_len(progress.produced) };
+    /// assert_eq!(progress.status, DecoderStatus::Finished);
+    /// assert_eq!(decoded, b"hello");
+    /// # Ok::<(), mzstd::DecodeFailure>(())
+    /// ```
+    pub fn process_uninit(
+        &mut self,
+        input: &[u8],
+        output: &mut [MaybeUninit<u8>],
+        operation: DecodeOperation,
+    ) -> Result<DecodeProgress, DecodeFailure> {
+        let dictionary = self.dictionary;
+        process_on(self.decoder, |stream| {
+            stream.process_uninit(input, output, operation, dictionary)
+        })
     }
 
     /// Delivers pending output without offering input or ending it.
@@ -313,11 +363,44 @@ impl<D: AsRef<DecodeDictionary>> DecoderSessionOwned<D> {
         output: &mut [u8],
         operation: DecodeOperation,
     ) -> Result<DecodeProgress, DecodeFailure> {
-        let dictionary = self
-            .dictionary
-            .as_ref()
-            .map(|dictionary| DictionaryRef::from(dictionary.as_ref()).view());
-        process_on(&mut self.decoder, dictionary, input, output, operation)
+        let dictionary = dictionary_view(self.dictionary.as_ref());
+        process_on(&mut self.decoder, |stream| {
+            stream.process(input, output, operation, dictionary)
+        })
+    }
+
+    /// Decodes into uninitialized memory, exactly as
+    /// [`DecoderSession::process_uninit`].
+    ///
+    /// # Errors
+    ///
+    /// As [`DecoderSession::process`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use std::mem::MaybeUninit;
+    /// use mzstd::{DecodeOperation, DecoderStatus, Decompressor};
+    /// let frame = [0x28, 0xb5, 0x2f, 0xfd, 0x20, 0x02, 0x11, 0x00, 0x00, b'o', b'k'];
+    /// let mut session = Decompressor::default().into_session();
+    /// let mut output = [MaybeUninit::<u8>::uninit(); 8];
+    /// let progress = session.process_uninit(&frame, &mut output, DecodeOperation::Finish)?;
+    /// assert_eq!(progress.status, DecoderStatus::Finished);
+    /// // SAFETY: `process_uninit` initialized the first `produced` bytes.
+    /// let decoded = output[..progress.produced].iter().map(|byte| unsafe { byte.assume_init() });
+    /// assert!(decoded.eq(*b"ok"));
+    /// # Ok::<(), mzstd::DecodeFailure>(())
+    /// ```
+    pub fn process_uninit(
+        &mut self,
+        input: &[u8],
+        output: &mut [MaybeUninit<u8>],
+        operation: DecodeOperation,
+    ) -> Result<DecodeProgress, DecodeFailure> {
+        let dictionary = dictionary_view(self.dictionary.as_ref());
+        process_on(&mut self.decoder, |stream| {
+            stream.process_uninit(input, output, operation, dictionary)
+        })
     }
 
     /// Delivers pending output, as [`DecoderSession::flush`].

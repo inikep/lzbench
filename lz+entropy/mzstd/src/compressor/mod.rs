@@ -10,6 +10,8 @@ pub(crate) mod core;
 pub(crate) mod dictionary;
 mod encoder;
 mod error;
+#[cfg(feature = "framed")]
+pub mod framing;
 mod internal;
 #[cfg(not(feature = "no_std"))]
 pub mod io;

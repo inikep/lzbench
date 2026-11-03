@@ -410,8 +410,19 @@ trait Search {
 struct HashChain;
 /// The DUBT binary tree (`search_binaryTree`).
 struct BinaryTree;
-/// The row-based tag matcher (`search_rowHash`).
-struct RowHash;
+/// The row-based tag matcher (`search_rowHash`) for a minimum match of
+/// `MLS` (4, 5 or 6) and rows of `SLOTS` slots (16, 32 or 64).
+///
+/// Unlike the other searches it is specialized once per block (`row_block!`)
+/// rather than per search: each parser then inlines one row search at its
+/// call sites instead of all nine, and no search branches on the parameters
+/// (2% faster at the lazy2 levels, with 7% fewer mispredicted branches in
+/// Callgrind's model).
+struct RowHash<const MLS: u32, const SLOTS: usize>;
+/// The row-based tag matcher choosing its [`RowHash`] specialization per
+/// search, as `ZSTD_searchMax` does. The dictMatchState parsers use it, so
+/// their rarely run code is not multiplied by nine.
+struct RowHashAny;
 
 impl Search for HashChain {
     const ROW: bool = false;
@@ -501,7 +512,49 @@ impl Search for BinaryTree {
     }
 }
 
-impl Search for RowHash {
+impl<const MLS: u32, const SLOTS: usize> Search for RowHash<MLS, SLOTS> {
+    const ROW: bool = true;
+    type State<'t> = RowState<'t>;
+
+    fn state<'t>(ms: &'t mut MatchState, ctx: &Ctx<'_>) -> Self::State<'t> {
+        RowState::new(ms, ctx)
+    }
+
+    #[inline(always)]
+    fn find<S: Simd>(
+        simd: S,
+        state: &mut RowState<'_>,
+        ctx: &Ctx<'_>,
+        ip: u32,
+        lazy_skipping: bool,
+        offset: &mut u32,
+    ) -> usize {
+        row_find_best_match::<S, MLS, SLOTS>(simd, state, ctx, ip, lazy_skipping, offset).0
+    }
+
+    #[inline(always)]
+    fn find_dms<S: Simd>(
+        simd: S,
+        state: &mut RowState<'_>,
+        ctx: &Ctx<'_>,
+        dict: &DictCtx<'_>,
+        ip: u32,
+        lazy_skipping: bool,
+        offset: &mut u32,
+    ) -> usize {
+        let (s, d, l) = (state, dict, lazy_skipping);
+        row_find_best_match_dms::<S, MLS, SLOTS>(simd, s, ctx, d, ip, l, offset)
+    }
+
+    fn fill_cache(state: &mut RowState<'_>, ctx: &Ctx<'_>, i_limit: i64) {
+        let idx = state.next_to_update;
+        let bits = state.bits;
+        let tables = (&*state.tags, &*state.slots);
+        row_fill_hash_cache::<MLS>(state.cache, tables, ctx, bits, idx, i_limit);
+    }
+}
+
+impl Search for RowHashAny {
     const ROW: bool = true;
     type State<'t> = RowState<'t>;
 
@@ -520,15 +573,15 @@ impl Search for RowHash {
     ) -> usize {
         let (s, l) = (state, lazy_skipping);
         match (ctx.mls, ctx.row_log) {
-            (5, 4) => row_find_best_match::<S, 5, 16>(simd, s, ctx, ip, l, offset).0,
-            (5, 5) => row_find_best_match::<S, 5, 32>(simd, s, ctx, ip, l, offset).0,
-            (5, _) => row_find_best_match::<S, 5, 64>(simd, s, ctx, ip, l, offset).0,
-            (6, 4) => row_find_best_match::<S, 6, 16>(simd, s, ctx, ip, l, offset).0,
-            (6, 5) => row_find_best_match::<S, 6, 32>(simd, s, ctx, ip, l, offset).0,
-            (6, _) => row_find_best_match::<S, 6, 64>(simd, s, ctx, ip, l, offset).0,
-            (_, 4) => row_find_best_match::<S, 4, 16>(simd, s, ctx, ip, l, offset).0,
-            (_, 5) => row_find_best_match::<S, 4, 32>(simd, s, ctx, ip, l, offset).0,
-            (_, _) => row_find_best_match::<S, 4, 64>(simd, s, ctx, ip, l, offset).0,
+            (5, 4) => RowHash::<5, 16>::find(simd, s, ctx, ip, l, offset),
+            (5, 5) => RowHash::<5, 32>::find(simd, s, ctx, ip, l, offset),
+            (5, _) => RowHash::<5, 64>::find(simd, s, ctx, ip, l, offset),
+            (6, 4) => RowHash::<6, 16>::find(simd, s, ctx, ip, l, offset),
+            (6, 5) => RowHash::<6, 32>::find(simd, s, ctx, ip, l, offset),
+            (6, _) => RowHash::<6, 64>::find(simd, s, ctx, ip, l, offset),
+            (_, 4) => RowHash::<4, 16>::find(simd, s, ctx, ip, l, offset),
+            (_, 5) => RowHash::<4, 32>::find(simd, s, ctx, ip, l, offset),
+            (_, _) => RowHash::<4, 64>::find(simd, s, ctx, ip, l, offset),
         }
     }
 
@@ -544,27 +597,25 @@ impl Search for RowHash {
     ) -> usize {
         let (s, d, l) = (state, dict, lazy_skipping);
         match (ctx.mls, ctx.row_log) {
-            (5, 4) => row_find_best_match_dms::<S, 5, 16>(simd, s, ctx, d, ip, l, offset),
-            (5, 5) => row_find_best_match_dms::<S, 5, 32>(simd, s, ctx, d, ip, l, offset),
-            (5, _) => row_find_best_match_dms::<S, 5, 64>(simd, s, ctx, d, ip, l, offset),
-            (6, 4) => row_find_best_match_dms::<S, 6, 16>(simd, s, ctx, d, ip, l, offset),
-            (6, 5) => row_find_best_match_dms::<S, 6, 32>(simd, s, ctx, d, ip, l, offset),
-            (6, _) => row_find_best_match_dms::<S, 6, 64>(simd, s, ctx, d, ip, l, offset),
-            (_, 4) => row_find_best_match_dms::<S, 4, 16>(simd, s, ctx, d, ip, l, offset),
-            (_, 5) => row_find_best_match_dms::<S, 4, 32>(simd, s, ctx, d, ip, l, offset),
-            (_, _) => row_find_best_match_dms::<S, 4, 64>(simd, s, ctx, d, ip, l, offset),
+            (5, 4) => RowHash::<5, 16>::find_dms(simd, s, ctx, d, ip, l, offset),
+            (5, 5) => RowHash::<5, 32>::find_dms(simd, s, ctx, d, ip, l, offset),
+            (5, _) => RowHash::<5, 64>::find_dms(simd, s, ctx, d, ip, l, offset),
+            (6, 4) => RowHash::<6, 16>::find_dms(simd, s, ctx, d, ip, l, offset),
+            (6, 5) => RowHash::<6, 32>::find_dms(simd, s, ctx, d, ip, l, offset),
+            (6, _) => RowHash::<6, 64>::find_dms(simd, s, ctx, d, ip, l, offset),
+            (_, 4) => RowHash::<4, 16>::find_dms(simd, s, ctx, d, ip, l, offset),
+            (_, 5) => RowHash::<4, 32>::find_dms(simd, s, ctx, d, ip, l, offset),
+            (_, _) => RowHash::<4, 64>::find_dms(simd, s, ctx, d, ip, l, offset),
         }
     }
 
     fn fill_cache(state: &mut RowState<'_>, ctx: &Ctx<'_>, i_limit: i64) {
-        let idx = state.next_to_update;
-        let bits = state.bits;
-        let cache = &mut *state.cache;
-        let tables = (&*state.tags, &*state.slots);
+        // Filling the cache depends on the minimum match; the rows it
+        // prefetches follow `ctx.row_log`, whatever the row size named here.
         match ctx.mls {
-            5 => row_fill_hash_cache::<5>(cache, tables, ctx, bits, idx, i_limit),
-            6 => row_fill_hash_cache::<6>(cache, tables, ctx, bits, idx, i_limit),
-            _ => row_fill_hash_cache::<4>(cache, tables, ctx, bits, idx, i_limit),
+            5 => RowHash::<5, 16>::fill_cache(state, ctx, i_limit),
+            6 => RowHash::<6, 16>::fill_cache(state, ctx, i_limit),
+            _ => RowHash::<4, 16>::fill_cache(state, ctx, i_limit),
         }
     }
 }
@@ -1362,11 +1413,12 @@ impl<'t> RowState<'t> {
             hash_table,
             hash_cache,
             next_to_update,
+            row_view,
             ..
         } = ms;
         Self {
-            tags: aligned_rows(tag_table, rows_len),
-            slots: aligned_rows(hash_table, rows_len),
+            tags: aligned_rows(tag_table, rows_len, *row_view),
+            slots: aligned_rows(hash_table, rows_len, *row_view),
             cache: hash_cache,
             next_to_update: *next_to_update,
             ms_next_to_update: next_to_update,
@@ -1389,19 +1441,19 @@ impl<'t> RowState<'t> {
     }
 }
 
-/// The first `len` entries of `table` from its first 64-byte boundary, as
-/// the reference places its tables (`ZSTD_cwksp_reserve_aligned64`): a row
-/// of tags or positions then never straddles a cache line, and its vector
-/// load never splits. A table without
-/// [`ROW_TABLE_SLACK`](super::match_state::ROW_TABLE_SLACK) entries to spare
-/// is used from its start.
+/// The first `len` entries of `table` from `view` entries past its first
+/// 64-byte boundary, as the reference places its tables
+/// (`ZSTD_cwksp_reserve_aligned64`): a row of tags or positions then never
+/// straddles a cache line, and its vector load never splits. A table
+/// without [`ROW_TABLE_SLACK`](super::match_state::ROW_TABLE_SLACK) entries
+/// to spare is used from its start.
 ///
 /// The view's position in the allocation does not change the frames: a
 /// search reads only the entries the finder wrote since the window's
 /// indices were last invalidated, and every older entry, wherever it lies,
 /// is below `lowLimit` and ends the search as a zero would.
-fn aligned_rows<T>(table: &mut [T], len: usize) -> &mut [T] {
-    let range = aligned_range(table, len);
+fn aligned_rows<T>(table: &mut [T], len: usize, view: usize) -> &mut [T] {
+    let range = aligned_range(table, len, view);
     &mut table[range]
 }
 
@@ -1457,9 +1509,8 @@ fn row_find_best_match<S: Simd, const MLS: u32, const ROW: usize>(
         // At most `ROW - 1` slots match (slot 0 never does), so the
         // attempts cannot run out and the loop counts only the candidates,
         // which also stay below the buffer's 64 slots.
-        while matches != 0 {
-            let match_pos = (head as usize + matches.trailing_zeros() as usize) & (ROW - 1);
-            matches &= matches - 1;
+        while let Some(offset) = matches.pop() {
+            let match_pos = (head as usize + offset) & (ROW - 1);
             let match_index = slot_row[match_pos];
             if match_index < low_limit {
                 break;
@@ -1473,9 +1524,10 @@ fn row_find_best_match<S: Simd, const MLS: u32, const ROW: usize>(
     } else {
         // Fewer attempts than a row has slots, all within the buffer.
         let nb_attempts = state.nb_attempts;
-        while matches != 0 && num_matches < nb_attempts {
-            let match_pos = (head as usize + matches.trailing_zeros() as usize) & (ROW - 1);
-            matches &= matches - 1;
+        while num_matches < nb_attempts
+            && let Some(offset) = matches.pop()
+        {
+            let match_pos = (head as usize + offset) & (ROW - 1);
             let match_index = slot_row[match_pos];
             if match_index < low_limit {
                 break;
@@ -1608,11 +1660,11 @@ impl<'a> DictCtx<'a> {
             index_delta: prefix_lowest.wrapping_sub(end),
             tags: ms
                 .tag_table
-                .get(aligned_range(&ms.tag_table, rows_len))
+                .get(aligned_range(&ms.tag_table, rows_len, ms.row_view))
                 .unwrap_or_default(),
             slots: ms
                 .hash_table
-                .get(aligned_range(&ms.hash_table, rows_len))
+                .get(aligned_range(&ms.hash_table, rows_len, ms.row_view))
                 .unwrap_or_default(),
         }
     }
@@ -1855,9 +1907,10 @@ fn row_find_best_match_dms<S: Simd, const MLS: u32, const ROW: usize>(
     // prefetches.
     let window = dict.src.as_ptr().wrapping_sub(dict.start as usize);
     let mut num_matches = 0usize;
-    while matches != 0 && nb_attempts > 0 {
-        let match_pos = (head as usize + matches.trailing_zeros() as usize) & (ROW - 1);
-        matches &= matches - 1;
+    while nb_attempts > 0
+        && let Some(offset) = matches.pop()
+    {
+        let match_pos = (head as usize + offset) & (ROW - 1);
         let match_index = slot_row[match_pos];
         if match_index < dict.start {
             break;
@@ -1905,21 +1958,21 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
     block: &BlockInput<'_>,
 ) -> usize {
     let prefix = block.window.prefix;
-    let istart = i64::from(block.start);
-    let iend = i64::from(block.end);
-    let ilimit = if M::ROW {
-        iend - 8 - ROW_HASH_CACHE_SIZE as i64
-    } else {
-        iend - 8
-    };
-    let prefix_lowest = i64::from(ms.window.dict_limit);
+    let base = prefix.start();
+    let src = prefix.slice(base, block.end);
+    let istart = (block.start - base) as usize;
+    let iend = src.len();
+    let margin = if M::ROW { 8 + ROW_HASH_CACHE_SIZE } else { 8 };
+    let ilimit = iend.saturating_sub(margin);
+    let cache_limit = i64::from(block.end) - margin as i64;
+    let prefix_lowest = (ms.window.dict_limit - base) as usize;
     let ctx = Ctx::new(
         block,
         ms.cparams.min_match.clamp(4, 6),
         ms.cparams.search_log.clamp(4, 6),
         false,
     );
-    let count = |a: i64, b: i64| ctx.count(simd, a as u32, b as u32);
+    let count = |a: usize, b: usize| mem::count_at_simd(simd, src, a, b);
     let mut offset_1 = rep[0];
     let mut offset_2 = rep[1];
     let mut offset_saved1 = 0u32;
@@ -1927,9 +1980,9 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
 
     let mut ip = istart;
     let mut anchor = istart;
-    ip += i64::from(ip == prefix_lowest);
+    ip += usize::from(ip == prefix_lowest);
     {
-        let curr = ip as u32;
+        let curr = base + ip as u32;
         let window_low = ms.lowest_prefix_index(curr, ms.cparams.window_log);
         let max_rep = curr - window_low;
         if offset_2 > max_rep {
@@ -1943,7 +1996,7 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
     }
     let mut lazy_skipping = false;
     let mut state = M::state(ms, &ctx);
-    M::fill_cache(&mut state, &ctx, ilimit);
+    M::fill_cache(&mut state, &ctx, cache_limit);
 
     while ip < ilimit {
         let mut match_length = 0usize;
@@ -1951,8 +2004,8 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
         let mut start = ip + 1;
         let mut store_now = false;
 
-        if offset_1 > 0 && ctx.repeats((ip + 1) as u32, offset_1) {
-            match_length = count(ip + 1 + 4, ip + 1 + 4 - i64::from(offset_1)) + 4;
+        if offset_1 > 0 && ctx.repeats(base + (ip + 1) as u32, offset_1) {
+            match_length = count(ip + 1 + 4, ip + 1 + 4 - offset_1 as usize) + 4;
             if DEPTH == 0 {
                 store_now = true;
             }
@@ -1960,7 +2013,14 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
 
         if !store_now {
             let mut found = NO_OFFBASE;
-            let ml2 = M::find(simd, &mut state, &ctx, ip as u32, lazy_skipping, &mut found);
+            let ml2 = M::find(
+                simd,
+                &mut state,
+                &ctx,
+                base + ip as u32,
+                lazy_skipping,
+                &mut found,
+            );
             if ml2 > match_length {
                 match_length = ml2;
                 start = ip;
@@ -1968,8 +2028,8 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
             }
 
             if match_length < 4 {
-                let step = ((ip - anchor) >> SEARCH_STRENGTH) as usize + 1;
-                ip += step as i64;
+                let step = ((ip - anchor) >> SEARCH_STRENGTH) + 1;
+                ip += step;
                 lazy_skipping = step > LAZY_SKIPPING_STEP;
                 continue;
             }
@@ -1977,8 +2037,8 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
             if DEPTH >= 1 {
                 while ip < ilimit {
                     ip += 1;
-                    if off_base != 0 && offset_1 > 0 && ctx.repeats(ip as u32, offset_1) {
-                        let ml_rep = count(ip + 4, ip + 4 - i64::from(offset_1)) + 4;
+                    if off_base != 0 && offset_1 > 0 && ctx.repeats(base + ip as u32, offset_1) {
+                        let ml_rep = count(ip + 4, ip + 4 - offset_1 as usize) + 4;
                         let gain2 = (ml_rep * 3) as i32;
                         let gain1 = gain(match_length, 3, off_base, 1);
                         if ml_rep >= 4 && gain2 > gain1 {
@@ -1993,7 +2053,7 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
                             simd,
                             &mut state,
                             &ctx,
-                            ip as u32,
+                            base + ip as u32,
                             lazy_skipping,
                             &mut candidate,
                         );
@@ -2008,8 +2068,9 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
                     }
                     if DEPTH == 2 && ip < ilimit {
                         ip += 1;
-                        if off_base != 0 && offset_1 > 0 && ctx.repeats(ip as u32, offset_1) {
-                            let ml_rep = count(ip + 4, ip + 4 - i64::from(offset_1)) + 4;
+                        if off_base != 0 && offset_1 > 0 && ctx.repeats(base + ip as u32, offset_1)
+                        {
+                            let ml_rep = count(ip + 4, ip + 4 - offset_1 as usize) + 4;
                             let gain2 = (ml_rep * 4) as i32;
                             let gain1 = gain(match_length, 4, off_base, 1);
                             if ml_rep >= 4 && gain2 > gain1 {
@@ -2023,7 +2084,7 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
                             simd,
                             &mut state,
                             &ctx,
-                            ip as u32,
+                            base + ip as u32,
                             lazy_skipping,
                             &mut candidate,
                         );
@@ -2042,10 +2103,10 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
 
             // Catch up.
             if off_base > 3 {
-                let offset = i64::from(offbase_to_offset(off_base));
+                let offset = offbase_to_offset(off_base) as usize;
                 while start > anchor
                     && start - offset > prefix_lowest
-                    && prefix.byte((start - 1) as u32) == prefix.byte((start - offset - 1) as u32)
+                    && src[start - 1] == src[start - offset - 1]
                 {
                     start -= 1;
                     match_length += 1;
@@ -2056,23 +2117,19 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
         }
 
         // _storeSequence:
-        seq_store.store_seq(
-            prefix.slice(anchor as u32, start as u32),
-            off_base,
-            match_length,
-        );
-        ip = start + match_length as i64;
+        seq_store.store_seq(&src[anchor..start], off_base, match_length);
+        ip = start + match_length;
         anchor = ip;
         if lazy_skipping {
-            M::fill_cache(&mut state, &ctx, ilimit);
+            M::fill_cache(&mut state, &ctx, cache_limit);
             lazy_skipping = false;
         }
 
-        while ip <= ilimit && offset_2 > 0 && ctx.repeats(ip as u32, offset_2) {
-            let ml = count(ip + 4, ip + 4 - i64::from(offset_2)) + 4;
+        while ip <= ilimit && offset_2 > 0 && ctx.repeats(base + ip as u32, offset_2) {
+            let ml = count(ip + 4, ip + 4 - offset_2 as usize) + 4;
             core::mem::swap(&mut offset_1, &mut offset_2);
             seq_store.store_seq_only(0, repcode_to_offbase(1), ml);
-            ip += ml as i64;
+            ip += ml;
             anchor = ip;
         }
     }
@@ -2094,7 +2151,7 @@ fn lazy_generic<S: Simd, M: Search, const DEPTH: u32>(
     } else {
         offset_saved2
     };
-    (iend - anchor) as usize
+    iend - anchor
 }
 
 /// `ZSTD_compressBlock_lazy_extDict_generic`.
@@ -2556,9 +2613,72 @@ block_compressors! {
     lazy, lazy_ext => HashChain, 1;
     lazy2, lazy2_ext => HashChain, 2;
     btlazy2, btlazy2_ext => BinaryTree, 2;
-    greedy_row, greedy_row_ext => RowHash, 0;
-    lazy_row, lazy_row_ext => RowHash, 1;
-    lazy2_row, lazy2_row_ext => RowHash, 2;
+}
+
+/// Runs `$run!` with the [`RowHash`] specialization for the minimum match
+/// and row size of `$ms`, clamped as the parsers pass them to [`Ctx::new`]
+/// (the reference's `ZSTD_searchMax` switch, taken once per block).
+macro_rules! row_block {
+    ($ms:expr, $run:ident) => {
+        match ($ms.cparams.min_match.clamp(4, 6), $ms.cparams.search_log.clamp(4, 6)) {
+            (5, 4) => $run!(RowHash<5, 16>),
+            (5, 5) => $run!(RowHash<5, 32>),
+            (5, _) => $run!(RowHash<5, 64>),
+            (6, 4) => $run!(RowHash<6, 16>),
+            (6, 5) => $run!(RowHash<6, 32>),
+            (6, _) => $run!(RowHash<6, 64>),
+            (_, 4) => $run!(RowHash<4, 16>),
+            (_, 5) => $run!(RowHash<4, 32>),
+            (_, _) => $run!(RowHash<4, 64>),
+        }
+    };
+}
+
+/// Defines the row finder's block compressors of one depth, as
+/// `block_compressors!` does, with the search specialized by `row_block!`
+/// inside the backend's dispatch.
+macro_rules! row_block_compressors {
+    ($($name:ident, $ext_name:ident => $depth:expr;)*) => {$(
+        pub(crate) fn $name(
+            ms: &mut MatchState,
+            seq_store: &mut SeqStore,
+            rep: &mut [u32; 3],
+            block: &BlockInput<'_>,
+        ) -> usize {
+            let backend = ms.backend;
+            fearless_simd::dispatch!(backend.0, simd => {
+                macro_rules! run {
+                    ($search:ty) => {
+                        lazy_generic::<_, $search, $depth>(simd, ms, seq_store, rep, block)
+                    };
+                }
+                row_block!(ms, run)
+            })
+        }
+
+        pub(crate) fn $ext_name(
+            ms: &mut MatchState,
+            seq_store: &mut SeqStore,
+            rep: &mut [u32; 3],
+            block: &BlockInput<'_>,
+        ) -> usize {
+            let backend = ms.backend;
+            fearless_simd::dispatch!(backend.0, simd => {
+                macro_rules! run {
+                    ($search:ty) => {
+                        lazy_ext_generic::<_, $search, $depth>(simd, ms, seq_store, rep, block)
+                    };
+                }
+                row_block!(ms, run)
+            })
+        }
+    )*};
+}
+
+row_block_compressors! {
+    greedy_row, greedy_row_ext => 0;
+    lazy_row, lazy_row_ext => 1;
+    lazy2_row, lazy2_row_ext => 2;
 }
 
 /// Indexes dictionary content up to `target` (`ZSTD_loadDictionaryContent`
@@ -2647,9 +2767,9 @@ dms_block_compressors! {
     lazy_dms, lazy => HashChain, 1;
     lazy2_dms, lazy2 => HashChain, 2;
     btlazy2_dms, btlazy2 => BinaryTree, 2;
-    greedy_row_dms, greedy_row => RowHash, 0;
-    lazy_row_dms, lazy_row => RowHash, 1;
-    lazy2_row_dms, lazy2_row => RowHash, 2;
+    greedy_row_dms, greedy_row => RowHashAny, 0;
+    lazy_row_dms, lazy_row => RowHashAny, 1;
+    lazy2_row_dms, lazy2_row => RowHashAny, 2;
 }
 
 #[cfg(test)]
@@ -2711,18 +2831,23 @@ mod tests {
     #[test]
     fn row_tables_start_at_a_cache_line() {
         let mut slots = vec![0u32; 1024 + ROW_TABLE_SLACK];
-        let view = aligned_rows(&mut slots, 1024);
+        let view = aligned_rows(&mut slots, 1024, 0);
         assert_eq!(view.len(), 1024);
         assert_eq!(view.as_ptr().addr() % 64, 0);
         let mut tags = vec![0u8; 512 + ROW_TABLE_SLACK];
-        let view = aligned_rows(&mut tags, 512);
+        let view = aligned_rows(&mut tags, 512, 0);
         assert_eq!(view.len(), 512);
         assert_eq!(view.as_ptr().addr() % 64, 0);
+        // A moved view starts whole rows later, still on a cache line.
+        let last = ROW_TABLE_SLACK - 64;
+        let start = aligned_rows(&mut tags, 512, 0).as_ptr().addr();
+        let moved = aligned_rows(&mut tags, 512, last);
+        assert_eq!((moved.len(), moved.as_ptr().addr() - start), (512, last));
         // Without room to move, a table is used from its start.
         let mut short = vec![0u8; 100];
         let start = short.as_ptr();
-        assert_eq!(aligned_rows(&mut short, 200).as_ptr(), start);
-        assert_eq!(aligned_rows(&mut short, 200).len(), 100);
+        assert_eq!(aligned_rows(&mut short, 200, 0).as_ptr(), start);
+        assert_eq!(aligned_rows(&mut short, 200, 0).len(), 100);
     }
 
     /// The per-index fallback of a row update inserts exactly what the
@@ -2751,8 +2876,9 @@ mod tests {
             // Each state's rows start where its own allocation aligns.
             let rows = |ms: &mut MatchState| {
                 let len = 1usize << ms.cparams.hash_log;
-                let tags = aligned_rows(&mut ms.tag_table, len).to_vec();
-                (tags, aligned_rows(&mut ms.hash_table, len).to_vec())
+                let view = ms.row_view;
+                let tags = aligned_rows(&mut ms.tag_table, len, view).to_vec();
+                (tags, aligned_rows(&mut ms.hash_table, len, view).to_vec())
             };
             assert!(rows(&mut fast) == rows(&mut checked), "{MLS} {ROW}");
             assert_eq!(fast.hash_cache, checked.hash_cache, "{MLS} {ROW}");
@@ -3008,6 +3134,55 @@ mod tests {
         }
     }
 
+    /// The row finder's parsers are specialized per block on the minimum
+    /// match and row size (`row_block!`): every one of the nine pairs, at
+    /// every depth, on prefix-only and extDict windows, writes the
+    /// reference's frames.
+    #[test]
+    fn every_row_specialization_matches_the_reference() {
+        let input = [corpus::text(40_000, 71), corpus::mixed(30_000, 72)].concat();
+        let chunks: Vec<&[u8]> = input.chunks(5_003).collect();
+        let steps: Vec<(&[u8], Directive)> = chunks
+            .iter()
+            .enumerate()
+            .map(|(n, &data)| {
+                let op = if n + 1 == chunks.len() {
+                    Directive::End
+                } else {
+                    Directive::Continue
+                };
+                (data, op)
+            })
+            .collect();
+        for backend in Backend::available() {
+            let mut engine = Engine::with_backend(backend);
+            for strategy in [Strategy::Greedy, Strategy::Lazy, Strategy::Lazy2] {
+                for min_match in 4..=6 {
+                    for search_log in 4..=6 {
+                        let mut requested = RequestedParams::default();
+                        requested.cparams.strategy = Some(strategy);
+                        requested.cparams.min_match = min_match;
+                        requested.cparams.search_log = search_log;
+                        requested.use_row_match_finder = ParamSwitch::Enable;
+                        let case =
+                            alloc::format!("{backend} {strategy:?} {min_match} {search_log}");
+                        let ours =
+                            compress_once(&mut engine, &requested, &input, 1).expect("compress");
+                        let theirs =
+                            oracle::compress2(&input, &oracle_params(&requested)).expect("oracle");
+                        assert!(ours == theirs, "{case} prefix");
+
+                        requested.cparams.window_log = 12;
+                        let theirs = oracle::compress_stream(&oracle_params(&requested), &steps)
+                            .expect("oracle");
+                        let ours = stream(&mut engine, &requested, None, &chunks);
+                        assert!(ours == theirs, "{case} extDict");
+                    }
+                }
+            }
+        }
+    }
+
     /// Whether frames attaching a dictionary made for `strategy` run this
     /// module's dictMatchState compressors.
     fn lazy_family(strategy: Strategy) -> bool {
@@ -3233,7 +3408,12 @@ mod tests {
                 seq_store.reserve(bytes.len(), cparams.min_match);
                 let mut rep = [1, 4, 8];
                 let last = compressor(&mut ms, &mut seq_store, &mut rep, &block);
-                (last, rep, seq_store.sequences, seq_store.literals)
+                (
+                    last,
+                    rep,
+                    seq_store.sequences().to_vec(),
+                    seq_store.literals().to_vec(),
+                )
             };
             let expected = run(plain);
             assert!(!expected.2.is_empty(), "{strategy:?}");

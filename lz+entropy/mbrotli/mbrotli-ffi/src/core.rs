@@ -6,6 +6,8 @@
 //! call inside a panic guard, and finally the mapping of the private
 //! [`FfiError`] onto the public status code.
 
+pub(crate) mod sessions;
+
 use crate::MbrotliResult;
 use borrowed_buf::BorrowedBuf;
 use mbrotli::{

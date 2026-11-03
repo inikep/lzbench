@@ -57,6 +57,16 @@ pub(super) const fn mask(count: u32) -> u64 {
     (1u64 << count) - 1
 }
 
+/// Whole bytes a refill accepts with `count` bits buffered: those that fit
+/// below bit 64, `(63 - count) / 8` for the `count` below 64 the reservoir
+/// always holds. Masking keeps the result below eight by construction, so a
+/// slice advance by it needs no bounds check beyond an eight-byte one. The
+/// accepted bytes raise `count` to `56 + count % 8`, which is `count | 56`.
+#[inline(always)]
+const fn whole_bytes(count: u32) -> u32 {
+    (!count >> 3) & 7
+}
+
 impl Bits {
     /// Buffered bits.
     #[inline(always)]
@@ -136,8 +146,8 @@ impl Bits {
         // are the input bytes that follow, which a later load ORs in again
         // unchanged. Leaving them keeps the mask off the decoding chain.
         self.value |= u64::from_le_bytes(*chunk) << self.count;
-        let bytes = (63 - self.count) >> 3;
-        self.count += bytes * 8;
+        let bytes = whole_bytes(self.count);
+        self.count |= 56;
         *consumed += bytes as usize;
         true
     }
@@ -152,11 +162,11 @@ impl Bits {
         };
         debug_assert!(self.count < 64);
         self.value |= u64::from_le_bytes(*chunk) << self.count;
-        let bytes = (63 - self.count) >> 3;
-        self.count += bytes * 8;
-        // At most seven bytes are accepted, so the bound is never reached;
-        // stating it lets the eight-byte check above cover the advance.
-        *rest = &rest[(bytes as usize).min(8)..];
+        let bytes = whole_bytes(self.count);
+        self.count |= 56;
+        // At most seven bytes are accepted, which the eight-byte check above
+        // already covers.
+        *rest = &rest[bytes as usize..];
         true
     }
 
@@ -243,6 +253,14 @@ impl Bits {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn whole_byte_refills_fill_to_the_count_they_report() {
+        for count in 0..64u32 {
+            assert_eq!(whole_bytes(count), (63 - count) >> 3);
+            assert_eq!(count + whole_bytes(count) * 8, count | 56);
+        }
+    }
     fn probe(bytes: &[u8]) -> Input<'_> {
         Input::new(bytes, 0, None)
     }

@@ -6,6 +6,7 @@ Zstandard (RFC 8878) compression and decompression in safe Rust.
 [![docs.rs](https://docs.rs/mzstd/badge.svg)][api]
 [![Tests](https://github.com/M-Compressors/mzstd/actions/workflows/ci.yml/badge.svg?branch=main)][ci]
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
+[![hotpath-cloud](https://img.shields.io/endpoint?url=https://hotpath.rs/badge-cloud.json)](https://hotpath.rs/app/repos/M-Compressors/mzstd)
 
 - **Byte-identical encoder.** For the same input and parameters,
   single-threaded compression writes exactly the bytes of zstd 1.5.7:
@@ -23,7 +24,56 @@ Zstandard (RFC 8878) compression and decompression in safe Rust.
   are not byte-identical to zstd's multithreaded mode. Segments are primed
   with the input before them the way zstd's multithreaded mode primes a job.
 - **No `unsafe`, no dependencies on zstd.** It runs with `no_std` + `alloc`,
-  and there is a C ABI in `mzstd-ffi`.
+  and there is a C ABI, one-shot and streaming, in `mzstd-ffi`.
+
+## Performance
+
+### Our benchmarks
+
+Compression writes byte-identical frames to zstd 1.5.7 and reaches a median
+1.256× its speed across the comparison corpus; decompression reaches 1.502×.
+These medians include empty and tiny inputs. Alice text remains slower at
+some compression levels and at every decompression level, and on whole
+Silesia files both codecs still trail C by 2–6% at most levels.
+
+<details>
+<summary>Compression benchmark results and methodology</summary>
+
+![Compression speed and output size relative to zstd 1.5.7 across levels -5 to 22][bench-chart]
+
+**Recorded 2026-10-30 · working tree on `0a4fd87` and main · AMD Ryzen 9 7950X (KVM) · cold one-shot APIs.**
+Each value is the median of per-dataset ratios across eight equally weighted datasets,
+including empty and tiny inputs. A speed ratio above **1×** is faster than C; every
+frame is byte-identical to zstd's, so the size ratio is **1×** at every level. The
+median over all 192 dataset/level pairs is **1.256×**, with lower mean latency
+in 179 pairs (main: 1.254×, 178 pairs). The slower pairs are Alice at levels
+-1, 1, 2, 4-9, 11 and 12 (0.94–0.99×) and random 1 MiB at levels 3 and 4.
+
+The benchmark includes compressor construction, allocation, compression, and disposal.
+Results apply to the [recorded revision and machine][bench-levels]; [Silesia][silesia]
+covers whole large files with reused contexts.
+
+[Per-dataset results and methodology][benchmarks] · [Raw measurements][bench-csv] · [Reproduce the benchmarks][benchmarking]
+
+</details>
+
+<details>
+<summary>Decompression benchmark results and methodology</summary>
+
+![Decompression speed relative to zstd 1.5.7 by source level][decoder-bench-chart]
+
+**Recorded 2026-10-30 · working tree on `0a4fd87` and main · AMD Ryzen 9 7950X (KVM) · cold one-shot APIs.**
+zstd C and mzstd decode identical C-written frames at source levels **-5 to 22**.
+All **384 cases** restore the original bytes. The median over all 192 pairs is
+**1.502×** (main 1.400×), faster in 143 pairs: much faster on empty and tiny
+frames and on random data, 1.44× on structured binary and 1.51× on run-length
+data, and 0.94× (Alice) and 0.97× (cyclic Alice) on compressible text.
+Construction, allocation, decode and disposal are timed; C reads the output
+capacity from the frame header.
+
+[Per-level and dataset results][decoder-benchmarks] · [Raw measurements][decoder-bench-csv] · [Methodology and limits][decoder-bench-report]
+
+</details>
 
 ```toml
 [dependencies]
@@ -94,7 +144,7 @@ either for a whole input at once or for input that arrives in chunks. It require
 | Drive input/output incrementally | `start` → `EncoderSession` | `start` → `DecoderSession` |
 | Same, with the session owning the codec | `into_session` → `EncoderSessionOwned` | `into_session` → `DecoderSessionOwned` |
 | Any of the above with a dictionary | `compress_with_dictionary*`, `start_with_dictionary`, `into_session_with_dictionary`, `writer_with_dictionary`, `reader_with_dictionary` | `decompress_with_dictionary*`, `start_with_dictionary`, `into_session_with_dictionary`, `writer_with_dictionary`, `reader_with_dictionary` |
-| Split one known input across your threads | `ParallelCompressor::prepare_slice` → `ScopedParallelBatch` | — |
+| Split one known input across your threads | `ParallelCompressor::prepare_slice` / `prepare_source` → `ScopedParallelBatch` | — |
 | Stream chunked input across your threads | `ParallelCompressor::start` → `ParallelEncoderSession` + `ParallelTaskQueue` | — |
 | Same, with the session owning the compressor | `ParallelCompressor::into_session` → `ParallelEncoderSessionOwned` | — |
 | Push or pull through `std::io` across your threads | `ParallelCompressor::writer`, `ParallelCompressor::reader` | — |
@@ -107,54 +157,32 @@ either for a whole input at once or for input that arrives in chunks. It require
 | `decompression` | yes | `mzstd::decompressor` |
 | `std` | yes | `std::error::Error`, `mzstd::io`, parallel compression |
 | `no_std` | no | alloc-only build; overrides `std` |
-| `hotpath`, `hotpath-cpu`, `hotpath-alloc` | no | profiling anchors |
+| `framed` | no | `mzstd::framing`: seekable containers of resources and metadata, built only from Zstandard frames (see below) |
+| `hotpath`, `hotpath-cpu`, `hotpath-alloc`, `hotpath-callgrind`, `hotpath-cloud` | no | profiling anchors; Callgrind instruction counts and hotpath Cloud upload |
 
-## Performance
+## Framed containers
 
-### Our benchmarks
+With `features = ["framed"]`, `mzstd::framing` stores ordered resources,
+metadata, padding, a central directory and a footer in one container,
+with the same API as mbrotli's framing. The container is only Zstandard
+frames: every visible resource is a sequence of regular frames, so
+`zstd -d` prints the visible resources concatenated; everything else is
+in skippable frames; and the last frame is a seek table in zstd's
+`contrib/seekable_format` layout, which seekable readers use to jump to
+any offset.
 
-Compression writes byte-identical frames to zstd 1.5.7 and reaches a median
-1.099× its speed across the comparison corpus; decompression reaches 1.024×.
-These medians include empty and tiny inputs. Text at the fastest compression
-levels and compressible-text decoding remain slower.
+```rust
+use mzstd::framing::{FramedCompressor, FramedDecompressor, FramedItem, FramedResource};
 
-<details>
-<summary>Compression benchmark results and methodology</summary>
+let items = [FramedItem::Resource(FramedResource::from(&b"payload"[..]))];
+let container = FramedCompressor::new(Default::default())?.compress(items.as_slice().into())?;
+let output = FramedDecompressor::new(Default::default())?.decompress(&container)?;
+assert_eq!(output.resources[0].data, b"payload");
+```
 
-![Compression speed and output size relative to zstd 1.5.7 across levels -5 to 22][bench-chart]
-
-**Recorded 2026-10-15 · mzstd 0.2.5 · Intel Core i7-13700KF · WSL2 · cold one-shot APIs.**
-Each value is the median of per-dataset ratios across eight equally weighted datasets,
-including empty and tiny inputs. A speed ratio above **1×** is faster than C; every
-frame is byte-identical to zstd's, so the size ratio is **1×** at every level. The
-median over all 192 dataset/level pairs is **1.099×**, with lower mean latency
-in 157 pairs. Across levels, Alice text reaches a median **0.965×** and cyclic
-Alice at 1 MiB **1.015×**; every other dataset's median is above 1×. Alice at
-levels -5 to 1 remains slower (0.89–0.94×).
-
-The benchmark includes compressor construction, allocation, compression, and disposal.
-Results apply to the [recorded revision and machine][bench-levels].
-
-[Per-dataset results and methodology][benchmarks] · [Raw measurements][bench-csv] · [Reproduce the benchmarks][benchmarking]
-
-</details>
-
-<details>
-<summary>Decompression benchmark results and methodology</summary>
-
-![Decompression speed relative to zstd 1.5.7 by source level][decoder-bench-chart]
-
-**Recorded 2026-10-15 · mzstd 0.2.5 · Intel Core i7-13700KF · WSL2 · cold one-shot APIs.**
-zstd C and mzstd decode identical C-written frames at source levels **-5 to 22**.
-All **384 cases** restore the original bytes. The median over all 192 pairs is
-**1.024×**: much faster on empty and tiny frames and on random data, and
-0.81–1.01× on compressible text. Run-length data measured 0.91× in this sweep
-and 1.38× in separate processes; its cold timing depends on allocator state. Construction, allocation, decode and disposal are timed; C reads the output
-capacity from the frame header.
-
-[Per-level and dataset results][decoder-benchmarks] · [Raw measurements][decoder-bench-csv] · [Methodology and limits][decoder-bench-report]
-
-</details>
+`FramedDecompressor::framed_seek_reader` reads one resource of a container
+through any `Read + Seek` source. The format is specified in
+[architecture/framing.md](architecture/framing.md).
 
 ## Verification
 
@@ -168,8 +196,20 @@ capacity from the frame header.
 - AFL++ targets in `fuzz/afl`. Encoder targets: differential, output
   capacity, sessions, lifecycle, parallel and parameter parsing. Decoder
   targets: raw input against the reference decoder, chunked sessions, and
-  reference-written frames.
+  reference-written frames. ClusterFuzzLite runs the same targets under
+  libFuzzer and AddressSanitizer daily and on pull requests that touch code.
+- Miri over the code that reaches `unsafe` in dependencies (the
+  `fearless_simd` vector kernels and `borrowed-buf` uninitialized output),
+  and AddressSanitizer over the integration tests, on every release tag.
 - 100% function coverage, checked with `cargo llvm-cov`.
+- [Formal verification](architecture/formal-verification.md) in Lean 4 of
+  parts of the format against RFC 8878 itself, not the C library: Charon and
+  Aeneas translate the Rust code, and machine-checked proofs show that the
+  frame and block headers, `Number_of_Sequences`, the length and offset code
+  tables, the default distributions, the repeat offset update and the FSE
+  state transitions follow the RFC, that encoder and decoder agree on them,
+  and that the translated code cannot panic or overflow on the inputs the
+  proofs cover.
 
 See [`architecture/`](architecture/README.md) for how the code is organized
 and verified.
@@ -181,6 +221,17 @@ and verified.
 - External sequence producers
 - Legacy (v0.x) frames
 - Byte identity with zstd's multithreaded mode
+
+## Contributing
+
+Bug reports, differential test cases, fuzz findings and pull requests are
+welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the checks a
+change must pass, and follow the [Code of Conduct](CODE_OF_CONDUCT.md). If
+compression output differs from zstd 1.5.7, open an issue with the
+[Output differs from zstd][mismatch] template.
+
+Report security vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md), not as public issues.
 
 ## License
 
@@ -202,6 +253,7 @@ conditions.
 [crate]: https://crates.io/crates/mzstd
 [api]: https://docs.rs/mzstd
 [ci]: https://github.com/M-Compressors/mzstd/actions/workflows/ci.yml
+[mismatch]: https://github.com/M-Compressors/mzstd/issues/new?template=output_mismatch.yml
 [benchmarks]: ./docs/benchmarks/README.md
 [bench-levels]: ./docs/benchmarks/encoders/README.md
 [bench-csv]: ./docs/benchmarks/encoder-comparison.csv
@@ -211,3 +263,4 @@ conditions.
 [decoder-bench-csv]: ./docs/benchmarks/decoder-comparison.csv
 [decoder-bench-chart]: ./docs/benchmarks/decoders/charts/overview.svg
 [decoder-bench-report]: ./docs/benchmarks/decoder-comparison.md
+[silesia]: ./docs/benchmarks/silesia.md

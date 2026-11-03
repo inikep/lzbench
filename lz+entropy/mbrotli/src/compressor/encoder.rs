@@ -72,8 +72,10 @@ pub struct Compressor {
     pub(crate) workspace: EncoderCache,
     /// Input accepted by a session but not yet handed to the encoder.
     pub(crate) staging: Vec<u8>,
-    /// Encoded bytes not yet delivered to the caller.
+    /// Initialized output backing storage retained across stream deliveries.
     pub(crate) pending: Vec<u8>,
+    /// End of completed encoded bytes; storage beyond this offset is not output.
+    pub(crate) pending_end: usize,
     /// How much of [`Compressor::pending`] has already been delivered.
     pub(crate) served: usize,
     /// Whether a session is, or was left, in flight.
@@ -720,6 +722,7 @@ impl Compressor {
             self.workspace.invalidate();
             self.staging = Vec::new();
             self.pending = Vec::new();
+            self.pending_end = 0;
             self.served = 0;
         }
     }
@@ -781,6 +784,7 @@ impl Compressor {
             workspace: EncoderCache::default(),
             staging: Vec::new(),
             pending: Vec::new(),
+            pending_end: 0,
             served: 0,
             active: false,
         }
@@ -876,7 +880,7 @@ impl Compressor {
         };
 
         self.staging.clear();
-        self.pending.clear();
+        self.pending_end = 0;
         self.served = 0;
         if self.staging.capacity() < limit {
             self.staging
@@ -971,17 +975,17 @@ impl Compressor {
         self.trim(self.retention);
     }
 
-    /// Drops every trace of a stream, keeping capacity.
+    /// Resets logical stream state, keeping initialized output backing.
     fn reset_stream_state(&mut self) {
         self.staging.clear();
-        self.pending.clear();
+        self.pending_end = 0;
         self.served = 0;
         self.active = false;
     }
 
     /// Returns whether encoded bytes are still waiting to be delivered.
     pub(crate) const fn has_pending(&self) -> bool {
-        self.served < self.pending.len()
+        self.served < self.pending_end
     }
 }
 
@@ -1083,6 +1087,7 @@ impl CompressorBuilder {
             workspace: EncoderCache::default(),
             staging: Vec::new(),
             pending: Vec::new(),
+            pending_end: 0,
             served: 0,
             active: false,
         })
@@ -1096,6 +1101,39 @@ mod tests {
 
     fn compressor(quality: Quality) -> Compressor {
         Compressor::new(EncoderConfig::default().with_quality(quality)).expect("a legal config")
+    }
+
+    #[test]
+    fn session_resets_keep_initialized_pending_storage_without_publishing_it() {
+        let mut compressor = compressor(Quality::Q1);
+        compressor.pending = vec![0xa5; 128];
+        compressor.pending_end = 7;
+        compressor.served = 3;
+        assert!(compressor.has_pending());
+        compressor.reset_stream_state();
+        assert!(!compressor.has_pending());
+        assert_eq!(compressor.pending.len(), 128);
+
+        compressor.pending_end = 4;
+        compressor
+            .begin(None, StreamConfig::default())
+            .expect("begin");
+        assert_eq!(compressor.pending_end, 0);
+        assert_eq!(compressor.served, 0);
+        assert_eq!(compressor.pending.len(), 128);
+        compressor.recover();
+        assert!(!compressor.has_pending());
+        assert_eq!(compressor.pending.len(), 128);
+
+        {
+            let _session = compressor.start(StreamConfig::default()).expect("session");
+        }
+        assert!(!compressor.has_pending());
+        assert_eq!(compressor.pending.len(), 128);
+        compressor.trim(RetentionPolicy::ReleaseAll);
+        assert!(compressor.pending.is_empty());
+        assert_eq!(compressor.pending_end, 0);
+        assert_eq!(compressor.served, 0);
     }
 
     #[cfg(feature = "no_std")]

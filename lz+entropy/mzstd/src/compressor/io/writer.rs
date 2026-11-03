@@ -4,9 +4,15 @@ use std::io::{Error, ErrorKind, Result, Write};
 
 use crate::compressor::session::{EncoderSession, EncoderStatus, Operation};
 use crate::io::FinishError;
+use crate::shared::format::{BLOCK_HEADER_SIZE, BLOCK_SIZE_MAX};
 
-/// Room offered to the session per pull.
-const PULL_CHUNK: usize = 128 * 1024;
+/// Room offered to the session per pull: `ZSTD_CStreamOutSize`, a full
+/// block's compress bound plus a block header and a checksum. A session
+/// writes a block straight into room that holds its bound, so with this
+/// size every full block skips the session's internal output buffer and
+/// the copy out of it (the 128 KiB used before was a few hundred bytes too
+/// small, so every block took the detour).
+const PULL_CHUNK: usize = BLOCK_SIZE_MAX + (BLOCK_SIZE_MAX >> 8) + BLOCK_HEADER_SIZE + 4;
 
 /// Compresses everything written to it into an inner writer.
 ///
@@ -150,5 +156,18 @@ impl<W: Write> Write for EncoderWriter<'_, W> {
         }
         self.drain()?;
         self.sink.flush()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pull_chunk_is_the_reference_stream_output_size() {
+        let bound = zstd_ffi::oracle::compress_bound(BLOCK_SIZE_MAX);
+        assert_eq!(PULL_CHUNK, bound + BLOCK_HEADER_SIZE + 4);
+        // SAFETY: a pure function of compile-time constants.
+        assert_eq!(PULL_CHUNK, unsafe { zstd_ffi::ZSTD_CStreamOutSize() });
     }
 }

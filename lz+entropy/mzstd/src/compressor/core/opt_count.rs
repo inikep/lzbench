@@ -359,9 +359,14 @@ mod tests {
     #[test]
     fn windows_agree_with_a_byte_scan_on_every_backend() {
         let base = data(400);
+        // Miri interprets every lane, so under it only lengths next to a
+        // 16-byte boundary run, with sparser differences: every vector
+        // width, tail and full-length scan still occurs.
+        let near_a_boundary = |len: &usize| !cfg!(miri) || matches!(len % 16, 0 | 1 | 15);
+        let spacing = if cfg!(miri) { 4 } else { 37 };
         for backend in Backend::available() {
-            for len in 0..300 {
-                for diff in (0..=len).step_by(1 + len / 37) {
+            for len in (0..300).filter(near_a_boundary) {
+                for diff in (0..len).step_by(1 + len / spacing).chain([len]) {
                     let left = &base[..len];
                     let mut right = left.to_vec();
                     if diff < len {

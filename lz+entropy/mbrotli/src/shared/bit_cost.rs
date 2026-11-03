@@ -24,6 +24,46 @@ const THREE_SYMBOL_HISTOGRAM_COST: f64 = 28.0;
 /// Cost of a histogram with four used symbols (`kFourSymbolHistogramCost`).
 const FOUR_SYMBOL_HISTOGRAM_COST: f64 = 37.0;
 
+/// Symbols per block [`first_used_symbols`] tests for any use at once.
+const USED_SCAN_BLOCK: usize = 16;
+
+/// Returns the first five used symbols of `data` and how many were found.
+///
+/// Five is one more than any closed form of [`population_cost`] needs:
+/// finding a fifth is what rules them all out. The histograms clustering
+/// prices are often sparse, so whole blocks of unused symbols are skipped
+/// with one combined test each instead of a branch per symbol.
+#[inline(always)]
+fn first_used_symbols(data: &[u32]) -> ([usize; 5], usize) {
+    let mut used = [0usize; 5];
+    let mut count = 0usize;
+    let mut record = |symbol: usize| {
+        if let Some(slot) = used.get_mut(count) {
+            *slot = symbol;
+        }
+        count += 1;
+        count > 4
+    };
+    let (blocks, rest) = data.as_chunks::<USED_SCAN_BLOCK>();
+    for (block_index, block) in blocks.iter().enumerate() {
+        if block.iter().fold(0, |any, &value| any | value) == 0 {
+            continue;
+        }
+        for (offset, &value) in block.iter().enumerate() {
+            if value > 0 && record(block_index * USED_SCAN_BLOCK + offset) {
+                return (used, count);
+            }
+        }
+    }
+    let base = blocks.len() * USED_SCAN_BLOCK;
+    for (offset, &value) in rest.iter().enumerate() {
+        if value > 0 && record(base + offset) {
+            break;
+        }
+    }
+    (used, count)
+}
+
 /// Returns the estimated bits needed to store `histogram` and its symbols.
 ///
 /// `data_size` is how much of the alphabet may actually occur, which for
@@ -43,21 +83,7 @@ pub(crate) fn population_cost<const N: usize>(histogram: &Histogram<N>, data_siz
         return ONE_SYMBOL_HISTOGRAM_COST;
     }
 
-    // The first five used symbols, which is one more than any closed form
-    // needs: finding a fifth is what rules them all out.
-    let mut used = [0usize; 5];
-    let mut count = 0usize;
-    for (symbol, &value) in data.iter().enumerate() {
-        if value > 0 {
-            if let Some(slot) = used.get_mut(count) {
-                *slot = symbol;
-            }
-            count += 1;
-            if count > 4 {
-                break;
-            }
-        }
-    }
+    let (used, count) = first_used_symbols(data);
 
     match count {
         1 => return ONE_SYMBOL_HISTOGRAM_COST,
@@ -231,6 +257,46 @@ mod tests {
         // Only symbols one and two remain, so the two-symbol form applies —
         // over the *whole* count, which the reference does not narrow.
         assert_eq!(narrow, TWO_SYMBOL_HISTOGRAM_COST + 5.0);
+    }
+
+    #[test]
+    fn used_symbols_match_a_symbol_by_symbol_scan() {
+        // Lengths around the block width exercise both the skipped blocks and
+        // the unblocked tail; positions straddle block boundaries.
+        let lengths: &[usize] = if cfg!(miri) {
+            &[0, 15, 17, 40]
+        } else {
+            &[0, 1, 15, 16, 17, 31, 32, 33, 256, 544, 704]
+        };
+        for &length in lengths {
+            for seed in 0..64usize {
+                let mut data = vec![0u32; length];
+                let used = seed % 7;
+                for k in 0..used {
+                    if length > 0 {
+                        data[(seed * 37 + k * 13 + k * k * 5) % length] = (k + 1) as u32;
+                    }
+                }
+                let mut expected = [0usize; 5];
+                let mut count = 0usize;
+                for (symbol, &value) in data.iter().enumerate() {
+                    if value > 0 {
+                        if count < 5 {
+                            expected[count] = symbol;
+                        }
+                        count += 1;
+                        if count > 4 {
+                            break;
+                        }
+                    }
+                }
+                assert_eq!(
+                    first_used_symbols(&data),
+                    (expected, count),
+                    "length {length}, seed {seed}"
+                );
+            }
+        }
     }
 
     #[test]

@@ -182,6 +182,28 @@ impl<B: ByteBuffer + ?Sized> BitWriter<'_, B> {
         self.position += n_bits as usize;
     }
 
+    /// Writes two consecutive fields together when they fit in one word.
+    ///
+    /// Each field obeys `write`'s width and value bounds. A combined field
+    /// of at most 56 bits uses one write; wider pairs retain two writes.
+    /// Callers provide the same initialized output slack as individual writes.
+    #[inline(always)]
+    pub(crate) fn write_pair(
+        &mut self,
+        first_width: u32,
+        first_bits: u64,
+        second_width: u32,
+        second_bits: u64,
+    ) {
+        let width = first_width + second_width;
+        if width <= MAX_BITS_PER_WRITE {
+            self.write(width, first_bits | (second_bits << first_width));
+        } else {
+            self.write(first_width, first_bits);
+            self.write(second_width, second_bits);
+        }
+    }
+
     /// Overwrites `n_bits` bits that were already emitted at `position`.
     ///
     /// Mirrors `UpdateBits`; quality 0 uses it to widen the `MLEN` field of a
@@ -376,6 +398,34 @@ mod tests {
         let position = writer.position();
         assert!(!writer.overflowed());
         (storage, position)
+    }
+
+    #[test]
+    fn paired_fields_match_separate_writes_on_both_sides_of_the_word_limit() {
+        for first in [0, 1, 15, 24, 32, 40, 56] {
+            for second in [0, 1, 15, 24, 32, 40, 56] {
+                for alignment in 0..8 {
+                    let first_bits = 0xa555_aa55_5555_aaaa & ((1u64 << first) - 1);
+                    let second_bits = 0x5aaa_55aa_aaaa_5555 & ((1u64 << second) - 1);
+                    let expected = writer_output(&[
+                        (alignment, 0),
+                        (first, first_bits),
+                        (second, second_bits),
+                    ]);
+                    let mut actual = vec![0; 64];
+                    let mut writer = BitWriter::new(&mut actual, 0);
+                    writer.write(alignment, 0);
+                    writer.write_pair(first, first_bits, second, second_bits);
+                    let position = writer.position();
+                    assert!(!writer.overflowed());
+                    assert_eq!(
+                        (actual, position),
+                        expected,
+                        "widths {first}/{second}, alignment {alignment}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

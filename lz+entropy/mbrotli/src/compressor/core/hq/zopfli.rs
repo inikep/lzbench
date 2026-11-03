@@ -97,6 +97,36 @@ const CACHE_PROBES: [CacheProbe; NUM_DISTANCE_SHORT_CODES as usize] = [
     CacheProbe { slot: 1, offset: 3 },
 ];
 
+/// Hits [`ProbeMemo`] holds: one per short code for each of eight starts.
+const MEMO_HITS: usize = 8 * NUM_DISTANCE_SHORT_CODES as usize;
+
+/// Probe results of the distance caches already tried at one position.
+///
+/// Queued start positions reached through literals carry identical distance
+/// caches; their probe sequences (codes hit, lengths found) are identical too,
+/// only the prices differ, so a repeated cache replays the recorded hits.
+/// Slot `k` holds start `k`'s cache, and its hits are
+/// `hits[ends[k - 1]..ends[k]]`. A start finds at most one hit per short
+/// code, so eight starts never fill `hits`; quality 11 queues five.
+pub(crate) struct ProbeMemo {
+    /// The distance cache each start probed; zeros never match a real one.
+    caches: [[i32; 4]; 8],
+    /// Where each start's hits end in `hits`.
+    ends: [u8; 8],
+    /// Short code, longest length before the hit, and length found.
+    hits: [(u8, u32, u32); MEMO_HITS],
+}
+
+impl Default for ProbeMemo {
+    fn default() -> Self {
+        Self {
+            caches: [[0; 4]; 8],
+            ends: [0; 8],
+            hits: [(0, 0, 0); MEMO_HITS],
+        }
+    }
+}
+
 /// The mutable encoder state a Zopfli pass consumes and updates.
 pub(crate) struct ZopfliState {
     /// The four distances that have short codes.
@@ -357,8 +387,15 @@ fn prefix_copy_length(
 /// positions in turn, then the matches the tree found — but only from the two
 /// cheapest starts, because a further start with the same distances rarely
 /// pays.
+///
+/// With `MEMO` (quality 11, which queues several starts) a start whose
+/// distance cache equals an earlier start's at this position replays that
+/// start's probe hits from `memo` instead of probing again: the probes read
+/// only the cache and the input, so they find the same copies, and only the
+/// prices, which depend on the start, are recomputed, in the same order.
+/// Quality 10 queues one start and builds without it.
 #[simd]
-fn update_nodes<S: Simd, const ENABLE_PREFIX: bool, const INDEPENDENT: bool>(
+fn update_nodes<S: Simd, const ENABLE_PREFIX: bool, const INDEPENDENT: bool, const MEMO: bool>(
     simd: S,
     ctx: &UpdateContext<'_>,
     pos: usize,
@@ -422,98 +459,157 @@ fn update_nodes<S: Simd, const ENABLE_PREFIX: bool, const INDEPENDENT: bool>(
         let base_cost =
             start_costdiff + INS_EXTRA[usize::from(inscode)] as f32 + model.literal_costs(0, pos);
 
-        // Copies reachable through this start position's distance cache.
-        let mut best_len = min_len - 1;
-        // Codes below `next_code` have been tried at the current
-        // `best_len`; each time a copy extends it, the rest are filtered
-        // again against the new continuation byte, as the reference's
-        // sequential loop does.
-        let mut next_code = 0u32;
-        let distances = derived_distances(simd, &cache);
-        'probes: loop {
-            // An independent fragment carries no distance cache.
-            if INDEPENDENT || best_len >= max_len {
-                break;
-            }
-            // The byte a longer copy would have to agree on; a copy
-            // that would run off the ring ends the search.
-            let Some(&continuation) = window.get(cur_ix_masked + best_len) else {
-                break;
-            };
-            let found = site.candidates::<S, true>(simd, distances, &cache, best_len, continuation);
-            // With an attached prefix, a distance outside the window is the
-            // prefix arm's to decide, whatever its byte.
-            let admitted = if ENABLE_PREFIX {
-                found.agree & found.valid | !found.valid
-            } else {
-                found.agree & found.valid
-            };
-            let mut pending = u32::from(admitted) & (u32::MAX << next_code);
-            while pending != 0 {
-                let code = pending.trailing_zeros() as usize;
-                pending &= pending - 1;
-                let backward = CACHE_PROBES[code].distance(&cache);
-                // One unsigned compare admits exactly `1..=max_distance`:
-                // a zero distance wraps below it and a negative one wraps
-                // above, and every ordinary window distance is also
-                // within the dictionary bound the reference tests first.
-                let found = if backward.wrapping_sub(1) < max_distance {
-                    // An ordinary backward reference into the window,
-                    // measured only when it can beat `best_len`. The
-                    // candidate set may hold codes this rejects.
-                    let prev_ix = (cur_ix - backward) & ctx.ringbuffer_mask;
-                    (window.get(prev_ix + best_len) == Some(&continuation)).then(|| {
-                        find_match_length(simd, ctx.ringbuffer, prev_ix, cur_ix_masked, max_len)
-                    })
-                } else if ENABLE_PREFIX {
-                    prefix_copy_length(
-                        ctx,
-                        backward,
-                        dictionary_start,
-                        best_len,
-                        continuation,
-                        cur_ix_masked,
-                        max_len,
-                    )
+        // A cache already probed at this position: replay its hits.
+        let mut memo_slot = None;
+        let replayed = MEMO && !INDEPENDENT && max_iters > 1 && {
+            let previous = (0..k).find(|&j| queue.memo.caches[j] == cache);
+            if let Some(j) = previous {
+                let from = if j == 0 {
+                    0
                 } else {
-                    None
+                    usize::from(queue.memo.ends[j - 1])
                 };
-                let Some(len) = found else {
-                    continue;
-                };
-
-                // The continuation byte is only a filter: earlier bytes
-                // can disagree, leaving no newly reachable copy length.
-                if len <= best_len {
-                    continue;
-                }
-
-                let dist_cost = base_cost + model.distance_cost(code);
-                // Price every length the copy newly reaches. The node array
-                // extends one past the block, so the range is always inside
-                // it; an empty one prices nothing.
-                let command_costs = model.command_costs(inscode, code == 0, &mut command_scratch);
-                let reached = nodes
-                    .get_mut(pos + best_len + 1..=pos + len)
-                    .unwrap_or_default();
-                for (l, node) in (best_len + 1..).zip(reached) {
-                    let copycode = copy_length_code(l);
-                    let cost = if code == 0 && inscode < 8 && copycode < 16 {
-                        base_cost
-                    } else {
-                        dist_cost
-                    } + COPY_EXTRA[usize::from(copycode)] as f32
-                        + command_costs[usize::from(copycode) & 31];
-                    if cost < node.cost() {
-                        node.record(pos, start, l, l, backward, code + 1, cost);
-                        result = result.max(l);
+                let to = usize::from(queue.memo.ends[j]);
+                for &(code, best_len, len) in &queue.memo.hits[from..to] {
+                    let code = usize::from(code);
+                    let (best_len, len) = (best_len as usize, len as usize);
+                    let backward = CACHE_PROBES[code].distance(&cache);
+                    let dist_cost = base_cost + model.distance_cost(code);
+                    let command_costs =
+                        model.command_costs(inscode, code == 0, &mut command_scratch);
+                    let reached = nodes
+                        .get_mut(pos + best_len + 1..=pos + len)
+                        .unwrap_or_default();
+                    for (l, node) in (best_len + 1..).zip(reached) {
+                        let copycode = copy_length_code(l);
+                        let cost = if code == 0 && inscode < 8 && copycode < 16 {
+                            base_cost
+                        } else {
+                            dist_cost
+                        } + COPY_EXTRA[usize::from(copycode)] as f32
+                            + command_costs[usize::from(copycode) & 31];
+                        if cost < node.cost() {
+                            node.record(pos, start, l, l, backward, code + 1, cost);
+                            result = result.max(l);
+                        }
                     }
                 }
-                best_len = len;
-                next_code = code as u32 + 1;
-                continue 'probes;
+                queue.memo.caches[k] = [0, 0, 0, 0];
+                queue.memo.ends[k] = queue.memo.ends[k.wrapping_sub(1).min(7)] * u8::from(k > 0);
+                true
+            } else {
+                queue.memo.caches[k] = cache;
+                queue.memo.ends[k] = if k == 0 { 0 } else { queue.memo.ends[k - 1] };
+                memo_slot = Some(k);
+                false
             }
-            break;
+        };
+        if replayed && k >= 2 {
+            continue;
+        }
+        if !replayed {
+            // Copies reachable through this start position's distance cache.
+            let mut best_len = min_len - 1;
+            // Codes below `next_code` have been tried at the current
+            // `best_len`; each time a copy extends it, the rest are filtered
+            // again against the new continuation byte, as the reference's
+            // sequential loop does.
+            let mut next_code = 0u32;
+            let distances = derived_distances(simd, &cache);
+            'probes: loop {
+                // An independent fragment carries no distance cache.
+                if INDEPENDENT || best_len >= max_len {
+                    break;
+                }
+                // The byte a longer copy would have to agree on; a copy
+                // that would run off the ring ends the search.
+                let Some(&continuation) = window.get(cur_ix_masked + best_len) else {
+                    break;
+                };
+                let found =
+                    site.candidates::<S, true>(simd, distances, &cache, best_len, continuation);
+                // With an attached prefix, a distance outside the window is the
+                // prefix arm's to decide, whatever its byte.
+                let admitted = if ENABLE_PREFIX {
+                    found.agree & found.valid | !found.valid
+                } else {
+                    found.agree & found.valid
+                };
+                let mut pending = u32::from(admitted) & (u32::MAX << next_code);
+                while pending != 0 {
+                    let code = pending.trailing_zeros() as usize;
+                    pending &= pending - 1;
+                    let backward = CACHE_PROBES[code].distance(&cache);
+                    // One unsigned compare admits exactly `1..=max_distance`:
+                    // a zero distance wraps below it and a negative one wraps
+                    // above, and every ordinary window distance is also
+                    // within the dictionary bound the reference tests first.
+                    let found = if backward.wrapping_sub(1) < max_distance {
+                        // An ordinary backward reference into the window,
+                        // measured only when it can beat `best_len`. The
+                        // candidate set may hold codes this rejects.
+                        let prev_ix = (cur_ix - backward) & ctx.ringbuffer_mask;
+                        (window.get(prev_ix + best_len) == Some(&continuation)).then(|| {
+                            find_match_length(simd, ctx.ringbuffer, prev_ix, cur_ix_masked, max_len)
+                        })
+                    } else if ENABLE_PREFIX {
+                        prefix_copy_length(
+                            ctx,
+                            backward,
+                            dictionary_start,
+                            best_len,
+                            continuation,
+                            cur_ix_masked,
+                            max_len,
+                        )
+                    } else {
+                        None
+                    };
+                    let Some(len) = found else {
+                        continue;
+                    };
+
+                    // The continuation byte is only a filter: earlier bytes
+                    // can disagree, leaving no newly reachable copy length.
+                    if len <= best_len {
+                        continue;
+                    }
+
+                    if let Some(slot) = memo_slot {
+                        let end = usize::from(queue.memo.ends[slot]);
+                        if let Some(hit) = queue.memo.hits.get_mut(end) {
+                            *hit = (code as u8, best_len as u32, len as u32);
+                            queue.memo.ends[slot] += 1;
+                        }
+                    }
+                    let dist_cost = base_cost + model.distance_cost(code);
+                    // Price every length the copy newly reaches. The node array
+                    // extends one past the block, so the range is always inside
+                    // it; an empty one prices nothing.
+                    let command_costs =
+                        model.command_costs(inscode, code == 0, &mut command_scratch);
+                    let reached = nodes
+                        .get_mut(pos + best_len + 1..=pos + len)
+                        .unwrap_or_default();
+                    for (l, node) in (best_len + 1..).zip(reached) {
+                        let copycode = copy_length_code(l);
+                        let cost = if code == 0 && inscode < 8 && copycode < 16 {
+                            base_cost
+                        } else {
+                            dist_cost
+                        } + COPY_EXTRA[usize::from(copycode)] as f32
+                            + command_costs[usize::from(copycode) & 31];
+                        if cost < node.cost() {
+                            node.record(pos, start, l, l, backward, code + 1, cost);
+                            result = result.max(l);
+                        }
+                    }
+                    best_len = len;
+                    next_code = code as u32 + 1;
+                    continue 'probes;
+                }
+                break;
+            }
         }
 
         // Beyond the second start position only new cached distances help, and
@@ -702,7 +798,7 @@ fn zopfli_iterate<S: Simd, const ENABLE_PREFIX: bool, const INDEPENDENT: bool>(
     while i + 3 < num_bytes {
         let count = num_matches[i] as usize;
         let matches = &arena[cur_match_pos..cur_match_pos + count];
-        let mut skip = update_nodes::<_, ENABLE_PREFIX, INDEPENDENT>(
+        let mut skip = update_nodes::<_, ENABLE_PREFIX, INDEPENDENT, true>(
             simd, &ctx, i, matches, model, queue, nodes,
         );
         if skip < LONG_COPY_QUICK_STEP {
@@ -954,7 +1050,7 @@ fn zopfli_compute_shortest_path<S: Simd, const ENABLE_PREFIX: bool, const INDEPE
             scratch.push(longest);
         }
 
-        let mut skip = update_nodes::<_, ENABLE_PREFIX, INDEPENDENT>(
+        let mut skip = update_nodes::<_, ENABLE_PREFIX, INDEPENDENT, false>(
             simd, &ctx, i, scratch, model, queue, nodes,
         );
         if skip < LONG_COPY_QUICK_STEP {
@@ -1446,6 +1542,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call the C oracle")]
     fn the_command_stream_matches_the_c_search() {
         let mut rng = 0x243F_6A88_85A3_08D3u64;
         let mut next = move || {
@@ -1488,6 +1585,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call the C oracle")]
     fn every_prefix_of_a_repetitive_block_matches_the_c_search() {
         // The lengths around a repeat period are where a copy that just fits
         // and one that just does not are priced against each other.

@@ -260,6 +260,7 @@ impl OperationState {
             workspace,
             staging,
             pending,
+            pending_end,
             served,
             ..
         } = &mut *compressor;
@@ -275,6 +276,7 @@ impl OperationState {
             Buffers {
                 staging,
                 pending,
+                pending_end,
                 served,
                 allow_pending: true,
             },
@@ -344,7 +346,7 @@ impl OperationState {
             compressor.workspace.invalidate();
         }
         compressor.staging.clear();
-        compressor.pending.clear();
+        compressor.pending_end = 0;
         compressor.served = 0;
         compressor.active = false;
         compressor.finish_operation();

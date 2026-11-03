@@ -5,6 +5,8 @@
 //! sequence tables and the repeat offsets. A Zstandard-format dictionary
 //! seeds all of them at the frame start.
 
+use ::core::ops::Range;
+
 use fearless_simd::Simd;
 
 use super::BlockError;
@@ -114,29 +116,26 @@ impl BlockDecoder {
     ///
     /// `content` holds exactly [`BlockHeader::content_size`] bytes.
     /// [`BlockError::OutputFull`] reports that `out` ends before the block
-    /// does. Compressed blocks run on `backend`, selected here once per
-    /// block.
+    /// does, and cannot grow there. Compressed blocks run on `backend`,
+    /// selected here once per block.
     pub(crate) fn decode(
         &mut self,
         backend: Backend,
         header: &BlockHeader,
         content: &[u8],
-        out: &mut [u8],
+        out: &mut dyn BlockOutput,
         op: usize,
         context: BlockContext<'_>,
     ) -> Result<usize, BlockError> {
         match header.kind {
             BlockKind::Raw => {
-                let end = op + content.len();
-                let target = out.get_mut(op..end).ok_or(BlockError::OutputFull)?;
-                target.copy_from_slice(content);
-                Ok(end)
+                out.put(op, content)?;
+                Ok(op + content.len())
             }
             BlockKind::Rle => {
                 let &byte = content.first().ok_or(InvalidDataKind::BlockSize)?;
                 let end = op + header.size;
-                let target = out.get_mut(op..end).ok_or(BlockError::OutputFull)?;
-                target.fill(byte);
+                out.target(op..end)?.fill(byte);
                 Ok(end)
             }
             BlockKind::Compressed => {
@@ -146,7 +145,7 @@ impl BlockDecoder {
                     MatchCopy::Scalar
                 };
                 let target = Target { out, op, context };
-                fearless_simd::dispatch!(backend.0, simd => self.decode_compressed(simd, copy, content, target))
+                fearless_simd::dispatch!(backend.block_decode_level(), simd => self.decode_compressed(simd, copy, content, target))
             }
         }
     }
@@ -166,13 +165,11 @@ impl BlockDecoder {
             .literals
             .decode(simd, content, context.block_max, tree)?;
         let sequences = content.get(used..).unwrap_or(&[]);
-        let (count, header_size) = self.sequences.read_header(sequences)?;
+        let (count, header_size) = self.sequences.read_header_on(simd, sequences)?;
         if count == 0 {
             // The literals section already bounds its size by the block's.
-            let end = op + literals.len;
-            let target = out.get_mut(op..end).ok_or(BlockError::OutputFull)?;
-            target.copy_from_slice(&literals.bytes[..literals.len]);
-            return Ok(end);
+            out.put(op, &literals.bytes[..literals.len])?;
+            return Ok(op + literals.len);
         }
         let stream = sequences.get(header_size..).unwrap_or(&[]);
         let section = SequenceSection {
@@ -190,12 +187,86 @@ impl BlockDecoder {
     }
 }
 
+/// A block's output buffer: an initialized prefix, history included, that
+/// some outputs extend on demand.
+///
+/// Safe code can only write initialized memory, so an output that starts
+/// uninitialized must be zeroed before the decoder writes it. Extending it
+/// a chunk at a time just ahead of the writes keeps the zeroed lines in the
+/// cache for the copies that overwrite them, where zeroing a whole block
+/// ahead would write each byte twice to the next level.
+pub(crate) trait BlockOutput {
+    /// The initialized buffer.
+    fn buffer(&mut self) -> &mut [u8];
+
+    /// Extends the buffer to at least `end` bytes, or as far as it may
+    /// grow, returning whether it grew at all.
+    fn grow(&mut self, end: usize) -> bool;
+
+    /// Whether [`Self::grow`] or [`Self::append`] may ever extend the
+    /// buffer; a buffer that never grows runs the sequence loop without
+    /// stops.
+    fn grows(&self) -> bool {
+        true
+    }
+
+    /// Cuts the buffer at `at` and appends `literals`, then a match of
+    /// `match_length` bytes from `offset` bytes before the literals' end
+    /// (ignored without a match), writing each byte once. Returns `false`,
+    /// having changed nothing, where the output cannot append, the match
+    /// reaches before the buffer, or the sequence passes the block's room.
+    fn append(
+        &mut self,
+        _at: usize,
+        _literals: &[u8],
+        _offset: usize,
+        _match_length: usize,
+    ) -> bool {
+        false
+    }
+}
+
+impl dyn BlockOutput + '_ {
+    /// `range` of the buffer, extended to its end first if needed.
+    pub(crate) fn target(&mut self, range: Range<usize>) -> Result<&mut [u8], BlockError> {
+        if self.buffer().len() < range.end {
+            self.grow(range.end);
+        }
+        self.buffer().get_mut(range).ok_or(BlockError::OutputFull)
+    }
+
+    /// Writes `bytes` at `at`: over the buffer where it reaches that far,
+    /// else appended where the output can, else into room grown for them.
+    pub(crate) fn put(&mut self, at: usize, bytes: &[u8]) -> Result<(), BlockError> {
+        let end = at + bytes.len();
+        if self.buffer().len() < end && self.append(at, bytes, 0, 0) {
+            return Ok(());
+        }
+        self.target(at..end)?.copy_from_slice(bytes);
+        Ok(())
+    }
+}
+
+/// A buffer that is initialized throughout and never grows.
+impl BlockOutput for &mut [u8] {
+    fn buffer(&mut self) -> &mut [u8] {
+        self
+    }
+
+    fn grow(&mut self, _end: usize) -> bool {
+        false
+    }
+
+    fn grows(&self) -> bool {
+        false
+    }
+}
+
 /// Where a block's output goes: `out[op..]`, after the history that
 /// `context` bounds.
-#[derive(Debug)]
 pub(crate) struct Target<'a> {
     /// The output buffer, history included.
-    pub(crate) out: &'a mut [u8],
+    pub(crate) out: &'a mut dyn BlockOutput,
     /// Where the block's output starts.
     pub(crate) op: usize,
     /// The history's start, the frame's limits and its dictionary.
@@ -203,10 +274,96 @@ pub(crate) struct Target<'a> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::decompressor::core::copy::WILDCOPY_OVERLENGTH;
     use alloc::vec::Vec;
+
+    /// An output that zeroes `step` bytes at a time up to `limit`, as a
+    /// caller's vector does, and appends byte by byte when `appends`.
+    pub(crate) struct Growing {
+        pub(crate) buffer: Vec<u8>,
+        pub(crate) limit: usize,
+        pub(crate) step: usize,
+        pub(crate) appends: bool,
+    }
+
+    impl BlockOutput for Growing {
+        fn buffer(&mut self) -> &mut [u8] {
+            &mut self.buffer
+        }
+
+        fn grow(&mut self, end: usize) -> bool {
+            let target = end.max(self.buffer.len() + self.step).min(self.limit);
+            if target <= self.buffer.len() {
+                return false;
+            }
+            self.buffer.resize(target, 0);
+            true
+        }
+
+        fn append(
+            &mut self,
+            at: usize,
+            literals: &[u8],
+            offset: usize,
+            match_length: usize,
+        ) -> bool {
+            let lit_end = at + literals.len();
+            if !self.appends
+                || at > self.buffer.len()
+                || lit_end + match_length > self.limit
+                || (match_length > 0 && !(1..=lit_end).contains(&offset))
+            {
+                return false;
+            }
+            self.buffer.truncate(at);
+            self.buffer.extend_from_slice(literals);
+            for _ in 0..match_length {
+                let byte = self.buffer[self.buffer.len() - offset];
+                self.buffer.push(byte);
+            }
+            true
+        }
+    }
+
+    #[test]
+    fn fixed_buffers_never_grow_and_report_running_out() {
+        let mut storage = *b"abcdef";
+        let mut fixed = &mut storage[..];
+        let out: &mut dyn BlockOutput = &mut fixed;
+        assert!(!out.grow(10));
+        assert!(!out.append(0, b"xy", 0, 0));
+        out.put(1, b"XY").expect("fits");
+        assert_eq!(out.target(4..6).expect("fits"), b"ef");
+        assert_eq!(out.target(4..7), Err(BlockError::OutputFull));
+        assert_eq!(out.put(5, b"zz"), Err(BlockError::OutputFull));
+        assert_eq!(&storage, b"aXYdef");
+    }
+
+    #[test]
+    fn growing_buffers_append_or_zero_room_for_writes() {
+        let mut growing = Growing {
+            buffer: b"ab".to_vec(),
+            limit: 8,
+            step: 3,
+            appends: true,
+        };
+        let out: &mut dyn BlockOutput = &mut growing;
+        // Past the buffer, bytes are appended where the output can.
+        out.put(2, b"cd").expect("appended");
+        assert_eq!(out.buffer(), b"abcd");
+        // Within it, they are written in place.
+        out.put(1, b"B").expect("in place");
+        assert_eq!(out.buffer(), b"aBcd");
+        // Without appends, room is zeroed a step at a time, to the limit.
+        growing.appends = false;
+        let out: &mut dyn BlockOutput = &mut growing;
+        out.put(4, b"e").expect("grown");
+        assert_eq!(out.buffer(), b"aBcde\0\0");
+        assert_eq!(out.put(7, b"fg"), Err(BlockError::OutputFull));
+        assert_eq!(out.buffer().len(), 8);
+    }
 
     const CONTEXT: BlockContext<'static> = BlockContext {
         history_start: 0,
@@ -231,7 +388,7 @@ mod tests {
             Backend::SCALAR,
             header,
             content,
-            &mut buffer,
+            &mut buffer.as_mut_slice(),
             start,
             context,
         )?;

@@ -680,6 +680,13 @@ impl Compressor {
     pub(crate) fn apply_retention(&mut self) {
         self.trim(self.retention);
     }
+
+    /// An independent compressor with this one's configuration, retention
+    /// and backend, holding no buffers.
+    #[cfg(feature = "framed")]
+    pub(crate) fn fork_empty(&self) -> Self {
+        Self::validated(self.config, self.retention, self.backend)
+    }
 }
 
 /// Builds a [`Compressor`] with non-default options.

@@ -14,13 +14,17 @@
 //!
 //! [`stream`] is the incremental form: input arrives in chunks, full
 //! segments become queued tasks, and finished parts are delivered in order.
+//! [`source`] is what a batch reads: a borrowed slice or a shared
+//! random-access source.
 
+mod source;
 mod stream;
 
 use alloc::vec;
 use alloc::vec::Vec;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+pub(crate) use source::{Input, SeekReader, SharedSource};
 pub(crate) use stream::{QueueHandle, Stream, StreamTask};
 
 use crate::compressor::core::cctx::{AppliedParams, Engine, RequestedParams, compress_bound};

@@ -21,12 +21,13 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::num::NonZeroUsize;
 
-use fearless_simd::{Simd, SimdBase, SimdMask, u8x16, u8x32, u32x16};
+use fearless_simd::{Bytes, Simd, SimdBase, SimdCombine, SimdMask, i32x16, u8x16, u8x32, u64x8};
 use fearless_simd_macros::simd;
 
 use super::super::cache_probe::ProbeSite;
 use super::params::{BucketShape, ChainShape, HasherPlan};
 use super::probe::{StoreOutlook, sample_store_outlook};
+use crate::shared::baseline::prefetch;
 use crate::shared::constants::HASH_MUL32;
 use crate::shared::dictionary::{self, DictionaryStats};
 use crate::shared::fixed::{fixed_table, fixed_table_from_vec};
@@ -299,6 +300,23 @@ pub(crate) trait MatchRun {
     /// Records every position in `start..end` (`StoreRange`).
     fn store_range(&mut self, data: &[u8], mask: usize, start: usize, end: usize);
 
+    /// Stores a range using the search loop's already-selected SIMD token.
+    #[inline(always)]
+    fn store_range_simd<S: Simd>(
+        &mut self,
+        _simd: S,
+        data: &[u8],
+        mask: usize,
+        start: usize,
+        end: usize,
+    ) {
+        self.store_range(data, mask, start, end);
+    }
+
+    /// Hints the bucket a later search at `ix` reads.
+    #[inline(always)]
+    fn prefetch(&self, _data: &[u8], _mask: usize, _ix: usize) {}
+
     /// Searches for the best match at `query.cur_ix` (`FindLongestMatch`).
     ///
     /// `out` is only improved, never worsened: a search that finds nothing
@@ -446,10 +464,17 @@ pub(crate) trait Matcher {
 /// packing holds for slots below 2^17 — every quick shape — and positions
 /// below [`SMALL_SLOTS_MAX_INPUT`], which [`QuickMatcher::prepare`] only
 /// admits for a one-shot stream of at most that many bytes.
+///
+/// `reset(input_size)` reserves at least twice as many entries as input
+/// positions before any store. Each position deterministically selects one
+/// logical slot, including swept shapes, and overwrites do not add keys.
+/// The map therefore stays at most half full without growth checks or a
+/// population counter in the hot loop. Only a fresh final block at position
+/// zero uses it; history, stitching across blocks, and reuse select a full
+/// table in `QuickMatcher::prepare` before storing anything.
 #[derive(Default)]
 struct SmallSlots {
     entries: Vec<u32>,
-    count: usize,
 }
 
 /// Bits of a [`SmallSlots`] entry holding the position plus one.
@@ -500,15 +525,14 @@ impl SmallSlots {
     }
 
     /// Writes `value` into `slot`, returning what it held, or zero.
+    ///
+    /// The caller has reset the map for the whole one-shot input, and must
+    /// not introduce more distinct slots than that input has positions.
     #[inline(always)]
     fn replace(&mut self, slot: usize, value: u32) -> u32 {
-        if 2 * (self.count + 1) > self.entries.len() {
-            self.grow();
-        }
         let index = self.find(slot) & (self.entries.len() - 1);
         let entry = &mut self.entries[index];
         let previous = if *entry == 0 {
-            self.count += 1;
             0
         } else {
             (*entry & SMALL_SLOTS_VALUE_MASK) - 1
@@ -518,20 +542,6 @@ impl SmallSlots {
         previous
     }
 
-    fn grow(&mut self) {
-        let size = (self.entries.len() * 2).max(32);
-        let previous = ::core::mem::replace(&mut self.entries, vec![0; size]);
-        self.count = 0;
-        for entry in previous {
-            if entry != 0 {
-                self.write(
-                    (entry >> SMALL_SLOTS_VALUE_BITS) as usize,
-                    (entry & SMALL_SLOTS_VALUE_MASK) - 1,
-                );
-            }
-        }
-    }
-
     /// Empties the map, sized so `input_size` distinct keys never grow it.
     fn reset(&mut self, input_size: usize) {
         let size = (2 * input_size).next_power_of_two().max(32);
@@ -539,7 +549,6 @@ impl SmallSlots {
         if self.entries.len() < size {
             self.entries.resize(size, 0);
         }
-        self.count = 0;
     }
 }
 
@@ -694,6 +703,40 @@ type QuickShape<
     const USE_DICTIONARY: bool,
 > = QuickMatcher<BUCKETS, SWEEP_BITS, HASH_LEN, USE_DICTIONARY>;
 
+/// Hashes eight consecutive positions from one contiguous sixteen-byte load.
+///
+/// The last byte is unused. Duplicating the input into each sixteen-byte
+/// block and shuffling within blocks constructs overlapping words without
+/// gather loads. The caller retains ascending stores for colliding hashes.
+#[inline(always)]
+fn quick_hashes8<S: Simd, const BUCKETS: usize, const HASH_LEN: u32>(
+    simd: S,
+    bytes: &[u8; 16],
+) -> [u64; 8] {
+    let input = u8x16::load_array_ref(simd, bytes);
+    let twice = input.combine(input);
+    let repeated = twice.combine(twice);
+    let words: u64x8<S> = repeated
+        .swizzle_dyn_within_blocks([
+            0, 1, 2, 3, 4, 5, 6, 7, 1, 2, 3, 4, 5, 6, 7, 8, 2, 3, 4, 5, 6, 7, 8, 9, 3, 4, 5, 6, 7,
+            8, 9, 10, 4, 5, 6, 7, 8, 9, 10, 11, 5, 6, 7, 8, 9, 10, 11, 12, 6, 7, 8, 9, 10, 11, 12,
+            13, 7, 8, 9, 10, 11, 12, 13, 14,
+        ])
+        .bitcast();
+    let multiplier = u64x8::splat(simd, HASH_MUL64 << (64 - 8 * HASH_LEN));
+    #[cfg(target_arch = "aarch64")]
+    {
+        // Extract the high-bit fields for ordered scalar table writes;
+        // vector products stay explicit without NEON variable shifts.
+        let products: [u64; 8] = (words * multiplier).into();
+        products.map(|product| product >> (64 - BUCKETS.trailing_zeros()))
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        ((words * multiplier) >> (64 - BUCKETS.trailing_zeros())).into()
+    }
+}
+
 /// A [`QuickMatcher`]'s slots borrowed for one block; see [`MatchRun`].
 pub(crate) struct QuickRun<
     T: QuickSlots,
@@ -723,6 +766,84 @@ impl<
                 & QuickShape::<BUCKETS, SWEEP_BITS, HASH_LEN, USE_DICTIONARY>::BUCKET_MASK
         }
     }
+
+    /// Commits vector-computed keys in input order, including collisions.
+    #[inline(always)]
+    fn store_hashes8(&mut self, keys: [u64; 8], start: usize) {
+        macro_rules! store {
+            ($lane:expr) => {
+                self.slots.write(
+                    Self::slot_of(keys[$lane] as usize, start + $lane),
+                    (start + $lane) as u32,
+                );
+            };
+        }
+        store!(0);
+        store!(1);
+        store!(2);
+        store!(3);
+        store!(4);
+        store!(5);
+        store!(6);
+        store!(7);
+    }
+    /// Keeps explicit vector range work outside the search loop register set.
+    #[inline(never)]
+    #[simd]
+    fn store_range_vectorized<S: Simd>(
+        &mut self,
+        simd: S,
+        data: &[u8],
+        mask: usize,
+        start: usize,
+        end: usize,
+    ) {
+        let masked = start & mask;
+        let count = end.saturating_sub(start);
+        if masked + count <= mask.saturating_add(1)
+            && let Some(bytes) = data.get(masked..masked + count + 7)
+        {
+            // A final eight-position batch needs fifteen input bytes. Borrow
+            // one further physical byte when present for the sixteen-byte
+            // vector load; it never contributes to any hash.
+            let bytes = data.get(masked..masked + count + 8).unwrap_or(bytes);
+            let batches = ((bytes.len() - 8) / 8).min(count / 8);
+            for (batch, window) in bytes.windows(16).step_by(8).enumerate() {
+                let offset = batch * 8;
+                if let Some(chunk) = window.first_chunk::<16>() {
+                    let keys = quick_hashes8::<S, BUCKETS, HASH_LEN>(simd, chunk);
+                    self.store_hashes8(keys, start + offset);
+                }
+            }
+            // At most eight ordered scalar stores remain. Explicit bounded
+            // steps avoid turning this tail into gather/scatter accesses.
+            let done = batches * 8;
+            let mut words = bytes[done..].windows(8);
+            macro_rules! tail {
+                ($lane:expr) => {
+                    if done + $lane < count
+                        && let Some(word) = words.next()
+                    {
+                        let ix = start + done + $lane;
+                        let key = QuickShape::<BUCKETS, SWEEP_BITS, HASH_LEN, USE_DICTIONARY>::hash(
+                            word, 0,
+                        );
+                        self.slots.write(Self::slot_of(key, ix), ix as u32);
+                    }
+                };
+            }
+            tail!(0);
+            tail!(1);
+            tail!(2);
+            tail!(3);
+            tail!(4);
+            tail!(5);
+            tail!(6);
+            tail!(7);
+        } else {
+            self.store_range(data, mask, start, end);
+        }
+    }
 }
 
 impl<
@@ -743,9 +864,45 @@ impl<
         self.slots.write(Self::slot_of(key, ix), ix as u32);
     }
 
+    // Bounded scalar reference for short, wrapped, and baseline ranges.
+    // Its separate entry also keeps range work out of the search loop.
+    #[inline(never)]
     fn store_range(&mut self, data: &[u8], mask: usize, start: usize, end: usize) {
+        let masked = start & mask;
+        let count = end.saturating_sub(start);
+        if masked + count <= mask.saturating_add(1)
+            && let Some(bytes) = data.get(masked..masked + count + 7)
+        {
+            for (ix, word) in (start..end).zip(bytes.windows(8)) {
+                let key =
+                    QuickShape::<BUCKETS, SWEEP_BITS, HASH_LEN, USE_DICTIONARY>::hash(word, 0);
+                self.slots.write(Self::slot_of(key, ix), ix as u32);
+            }
+            return;
+        }
         for ix in start..end {
             self.store(data, mask, ix);
+        }
+    }
+
+    #[inline(always)]
+    fn store_range_simd<S: Simd>(
+        &mut self,
+        simd: S,
+        data: &[u8],
+        mask: usize,
+        start: usize,
+        end: usize,
+    ) {
+        let can_batch = !simd.level().is_fallback();
+        // SSE2's emulated wide integer products lose to the bounded scalar
+        // loop on the measured range workloads. Higher levels batch hashes.
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        let can_batch = can_batch && simd.level().as_sse4_2().is_some();
+        if end.saturating_sub(start) < 16 || cfg!(target_endian = "big") || !can_batch {
+            self.store_range(data, mask, start, end);
+        } else {
+            self.store_range_vectorized(simd, data, mask, start, end);
         }
     }
 
@@ -1000,13 +1157,22 @@ const COMPACT_INPUT_LIMIT: usize = 1024;
 /// usually reached its long copy before it is first judged.
 const CHECKPOINT_INTERVAL: usize = 1 << 14;
 
-/// Slots a starter block holds; a bucket's fifth store grows it to full depth.
+/// Slots a starter block holds; a bucket's seventeenth store grows it to
+/// full depth.
 ///
 /// Quality nine keeps two hundred and fifty-six positions per bucket, a
 /// kilobyte each, and a short input activates a bucket for almost every
 /// position it hashes. Starting small keeps that input from zeroing a
-/// mebibyte it never reads.
-const STARTER_SLOTS: usize = 4;
+/// mebibyte it never reads. Sixteen slots are one cache line: four grew
+/// most buckets of ordinary input into full blocks, whose allocation and
+/// copy dominated short structured inputs (64 KiB of binary at qualities
+/// seven to nine spent 1.1 to 1.5 times as long), while a starter still
+/// costs a sixteenth of a quality-nine block. It may not exceed the
+/// shallowest bucket depth, sixteen slots at quality five.
+const STARTER_SLOTS: usize = 16;
+
+// Starters fill a block's top slots and index them with a mask.
+const _: () = assert!(STARTER_SLOTS.is_power_of_two() && STARTER_SLOTS <= 16);
 
 /// Bits of a sparse entry holding the wrapping store counter.
 const COUNT_BITS: u32 = 16;
@@ -1865,9 +2031,23 @@ impl<const BUCKETS: usize, const BLOCK: usize> SparseLayout<BUCKETS, BLOCK> {
     /// Stores `ix` with `tag` into `key` of the sparse table.
     #[inline(always)]
     fn push(&mut self, key: usize, ix: u32, tag: u8, size_hint: usize) {
+        self.stores += 1;
+        self.place(key, ix, tag, size_hint);
+    }
+
+    /// [`Self::push`] without counting the store, for a caller that counts
+    /// a whole range at once.
+    ///
+    /// The counter lives behind the same reference as the pools the store
+    /// writes, so the compiler cannot keep it in a register across them;
+    /// counted per store, its read-modify-write in memory chains every
+    /// store of a range to the one before.
+    #[inline(always)]
+    fn place(&mut self, key: usize, ix: u32, tag: u8, size_hint: usize) {
         let key = key & (BUCKETS - 1);
         let (count, offset) = self.decode_entry(self.entries[key]);
-        self.push_found(key, count, offset, ix, tag, size_hint);
+        let offset = self.push_block(count, offset, ix, tag, size_hint);
+        self.entries[key] = self.encode_entry(count.wrapping_add(1), offset);
     }
 
     /// Stores `ix` with `tag` into `key` of the sparse table, whose entry
@@ -2263,6 +2443,105 @@ fn consider<S: Simd, const HASH64: bool>(
     true
 }
 
+/// Returns the continuation suffix of the original physical window.
+///
+/// Matches the window prefix prepared by `create_backward_references`. Every
+/// accepted match rebuilds this from `data`, so shorter best lengths can expose
+/// positions that the previous suffix could not read.
+#[inline(always)]
+fn raw_continuation_window(data: &[u8], mask: usize, len: u32) -> &[u8] {
+    let window_end = mask.saturating_add(1).min(data.len());
+    let window = &data[..window_end];
+    window.get(len.wrapping_sub(3) as usize..).unwrap_or(&[])
+}
+
+/// Judges one deep raw candidate against an already rebased continuation.
+///
+/// The hot loop carries a best word and suffix pointer/length, without a best
+/// length or original window pointer/length. Original window bounds come from
+/// `data` and `mask` only after acceptance; `accept_candidate` keeps its ABI.
+#[inline(always)]
+fn consider_raw_rebased<'a, S: Simd, const HASH64: bool>(
+    scan: BucketScan<'a, S>,
+    prev_ix: u32,
+    best_word: &mut u32,
+    continuation: &mut &'a [u8],
+    found: &mut Found,
+) -> bool {
+    let backward = scan.cur_ix.wrapping_sub(prev_ix as usize);
+    if backward > scan.max_backward {
+        return false;
+    }
+    let prev_ix = prev_ix as usize & scan.mask;
+    let Some(word) = continuation.get(prev_ix..prev_ix + 4) else {
+        return true;
+    };
+    if *best_word != u32::from_le_bytes(word.try_into().unwrap_or([0; 4])) {
+        return true;
+    }
+    if let Some((accepted, score)) = accept_candidate::<S, HASH64>(
+        scan.simd,
+        scan.data,
+        (scan.cur_ix & scan.mask) as u32,
+        scan.max_length as u32,
+        prev_ix as u32,
+        backward,
+        found.score,
+    ) {
+        *best_word = accepted.word;
+        *continuation = raw_continuation_window(scan.data, scan.mask, accepted.len);
+        *found = Found {
+            len: accepted.len as usize,
+            distance: backward,
+            score: score.get(),
+        };
+    }
+    true
+}
+
+/// Checks one candidate in a proved young, chronological bucket.
+///
+/// The caller checks `max_backward == cur_ix`, a low-ones mask, `cur_ix <= mask`
+/// and a nonfuture newest head. Reachable slots are ordered newest to oldest,
+/// so every position is at most that head: it is already a physical index and
+/// its backward distance is within the limit. Keep the logical position for
+/// the word read and compute the distance only when that word matches.
+#[inline(always)]
+fn consider_raw_young<'a, S: Simd, const HASH64: bool>(
+    scan: BucketScan<'a, S>,
+    prev_ix: u32,
+    best_word: &mut u32,
+    continuation: &mut &'a [u8],
+    found: &mut Found,
+) {
+    let prev_ix = prev_ix as usize;
+    debug_assert!(prev_ix <= scan.cur_ix);
+    let Some(word) = continuation.get(prev_ix..prev_ix + 4) else {
+        return;
+    };
+    if *best_word != u32::from_le_bytes(word.try_into().unwrap_or([0; 4])) {
+        return;
+    }
+    let backward = scan.cur_ix - prev_ix;
+    if let Some((accepted, score)) = accept_candidate::<S, HASH64>(
+        scan.simd,
+        scan.data,
+        scan.cur_ix as u32,
+        scan.max_length as u32,
+        prev_ix as u32,
+        backward,
+        found.score,
+    ) {
+        *best_word = accepted.word;
+        *continuation = raw_continuation_window(scan.data, scan.mask, accepted.len);
+        *found = Found {
+            len: accepted.len as usize,
+            distance: backward,
+            score: score.get(),
+        };
+    }
+}
+
 /// Runs the cached-distance probes and the bucket scan for one search.
 ///
 /// `bucket` is the bucket's `N` slots, `count` stores deep; `tags` is its
@@ -2413,7 +2692,10 @@ fn probe_derived_distances<S: Simd, const BLOCK: usize>(
         // rejects exactly the distances outside `1..=min(cur_ix, max_backward)`.
         max_distance: cur_ix.min(max_backward),
     };
-    let distances = u32x16::load_array(simd, cache.map(|distance| distance as u32));
+    // Signed distances keep their bits in the unsigned range check. Load the
+    // cache directly: mapping an owned array can copy it through stack scratch
+    // before loading the vector, despite every element conversion being free.
+    let distances = i32x16::load_array_ref(simd, cache).bitcast();
     let probed = (1u32 << count) - 1;
     let mut next_index = 0u32;
     'probes: while let Some(&continuation) = window.get(cur_ix_masked + *best_len) {
@@ -2537,6 +2819,24 @@ fn probe_last_distances<S: Simd, const BLOCK: usize>(
     (best_len, found)
 }
 
+/// Prefetches the lines holding a bucket's newest slots.
+///
+/// Two lines cover a bucket of up to 32 slots; deeper buckets get only the
+/// newest slot's line and the one sixteen slots older, as the reference
+/// hints the bucket and `bucket + 16`.
+#[inline(always)]
+fn prefetch_newest<const N: usize>(bucket: &[u32; N], count: u16) {
+    let newest = !usize::from(count.wrapping_sub(1)) & (N - 1);
+    if let Some(slot) = bucket.get(newest) {
+        prefetch(slot);
+    }
+    if N > 16
+        && let Some(slot) = bucket.get((newest + 16) & (N - 1))
+    {
+        prefetch(slot);
+    }
+}
+
 /// Walks a bucket's candidates newest to oldest, updating `found`.
 ///
 /// `equal` is the tag mask, `newest` the slot of the newest position, and
@@ -2553,6 +2853,71 @@ fn scan_bucket<S: Simd, const HASH64: bool, const N: usize>(
 ) {
     let data = scan.data;
     let cur_ix_masked = scan.cur_ix & scan.mask;
+    if N > 32 && N <= 128 {
+        // Native measurements favor young scans on AVX2, and on AVX-512 only
+        // for the 128-slot wide hash; other entries keep the general scan.
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        let use_young = match scan.simd.level() {
+            fearless_simd::Level::Avx2(_) => true,
+            fearless_simd::Level::Avx512(_) => HASH64 && N == 128,
+            _ => false,
+        };
+        #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+        let use_young = false;
+        // A young window and chronological row need no distance or mask checks.
+        if (N == 64 || N == 128)
+            && use_young
+            && available != 0
+            && scan.max_backward == scan.cur_ix
+            && scan.cur_ix <= scan.mask
+            && scan.mask & scan.mask.wrapping_add(1) == 0
+        {
+            let mut slot = newest & (N - 1);
+            let mut prev_ix = bucket[slot];
+            if prev_ix as usize <= scan.cur_ix {
+                let mut best_word = read_u32(data, cur_ix_masked + best_len - 3);
+                let mut continuation =
+                    raw_continuation_window(scan.data, scan.mask, best_len as u32);
+                let mut remaining = available;
+                loop {
+                    consider_raw_young::<S, HASH64>(
+                        scan,
+                        prev_ix,
+                        &mut best_word,
+                        &mut continuation,
+                        found,
+                    );
+                    remaining -= 1;
+                    if remaining == 0 {
+                        break;
+                    }
+                    slot = (slot + 1) & (N - 1);
+                    prev_ix = bucket[slot];
+                }
+                return;
+            }
+        }
+        // Aged, wrapped and unusual private queries retain the general path.
+        let mut best_word = read_u32(data, cur_ix_masked + best_len - 3);
+        let mut continuation = raw_continuation_window(scan.data, scan.mask, best_len as u32);
+        let mut slot = newest;
+        let mut remaining = available;
+        while remaining != 0 {
+            let prev_ix = bucket[slot & (N - 1)];
+            if !consider_raw_rebased::<S, HASH64>(
+                scan,
+                prev_ix,
+                &mut best_word,
+                &mut continuation,
+                found,
+            ) {
+                break;
+            }
+            slot = (slot + 1) & (N - 1);
+            remaining -= 1;
+        }
+        return;
+    }
     let mut best = Best {
         len: best_len as u32,
         word: read_u32(data, cur_ix_masked + best_len - 3),
@@ -2591,7 +2956,9 @@ fn scan_bucket<S: Simd, const HASH64: bool, const N: usize>(
 ///
 /// Arrays rather than slices: their sizes are the matcher's constants, so
 /// the run carries three pointers and no bounds, and every index the key
-/// or a slot mask produces is in range by construction.
+/// or a slot mask produces is in range by construction. Only blocks of at
+/// most 32 slots carry tags; feature-specialized hot entries keep that
+/// constant visible so deeper shapes retain no optional-tag branches.
 pub(crate) struct DenseRun<'a, const HASH64: bool, const BUCKETS: usize, const BLOCK: usize> {
     num: &'a mut [u16; BUCKETS],
     dense: &'a mut [[u32; BLOCK]; BUCKETS],
@@ -2616,6 +2983,18 @@ impl<const HASH64: bool, const BUCKETS: usize, const BLOCK: usize> MatchRun
     const STORE_LOOKAHEAD: usize = Self::HASH_TYPE_LENGTH;
 
     #[inline(always)]
+    fn prefetch(&self, data: &[u8], mask: usize, ix: usize) {
+        let hash = hash_with_tag::<HASH64, BUCKETS>(data, ix & mask);
+        let key = (hash >> 8) & (BUCKETS - 1);
+        let (count, offset) = self.layout.decode_entry(self.layout.entries[key]);
+        if let Some(BlockRef::Full(index)) = SparseLayout::<BUCKETS, BLOCK>::block(offset)
+            && let Some(bucket) = self.layout.blocks.get(index)
+        {
+            prefetch_newest(bucket, count);
+        }
+    }
+
+    #[inline(always)]
     fn store(&mut self, data: &[u8], mask: usize, ix: usize) {
         let hash = hash_with_tag::<HASH64, BUCKETS>(data, ix & mask);
         self.layout
@@ -2624,8 +3003,11 @@ impl<const HASH64: bool, const BUCKETS: usize, const BLOCK: usize> MatchRun
 
     fn store_range(&mut self, data: &[u8], mask: usize, start: usize, end: usize) {
         for ix in start..end {
-            self.store(data, mask, ix);
+            let hash = hash_with_tag::<HASH64, BUCKETS>(data, ix & mask);
+            self.layout
+                .place(hash >> 8, ix as u32, hash as u8, self.size_hint);
         }
+        self.layout.stores += end.saturating_sub(start);
     }
 
     #[inline(always)]
@@ -2689,12 +3071,28 @@ impl<const HASH64: bool, const BUCKETS: usize, const BLOCK: usize> MatchRun
     const STORE_LOOKAHEAD: usize = Self::HASH_TYPE_LENGTH;
 
     #[inline(always)]
+    fn prefetch(&self, data: &[u8], mask: usize, ix: usize) {
+        let hash = hash_with_tag::<HASH64, BUCKETS>(data, ix & mask);
+        let key = (hash >> 8) & (BUCKETS - 1);
+        prefetch_newest(&self.dense[key], self.num[key]);
+        if BLOCK <= 32
+            && let Some(tags) = self.tags.as_deref()
+        {
+            prefetch(&tags[key]);
+        }
+    }
+
+    #[inline(always)]
     fn store(&mut self, data: &[u8], mask: usize, ix: usize) {
         let hash = hash_with_tag::<HASH64, BUCKETS>(data, ix & mask);
         dense_store(
             self.num,
             self.dense,
-            self.tags.as_deref_mut(),
+            if BLOCK <= 32 {
+                self.tags.as_deref_mut()
+            } else {
+                None
+            },
             hash >> 8,
             ix as u32,
             hash as u8,
@@ -2715,17 +3113,9 @@ impl<const HASH64: bool, const BUCKETS: usize, const BLOCK: usize> MatchRun
             && masked + count <= mask.saturating_add(1)
             && let Some(bytes) = data.get(masked..masked + count + 7)
         {
-            let mut tags = self.tags.as_deref_mut();
             for (ix, word) in (start..end).zip(bytes.windows(8)) {
                 let hash = hash_with_tag::<HASH64, BUCKETS>(word, 0);
-                dense_store(
-                    self.num,
-                    self.dense,
-                    tags.as_deref_mut(),
-                    hash >> 8,
-                    ix as u32,
-                    hash as u8,
-                );
+                dense_store(self.num, self.dense, None, hash >> 8, ix as u32, hash as u8);
             }
             return;
         }
@@ -2749,12 +3139,20 @@ impl<const HASH64: bool, const BUCKETS: usize, const BLOCK: usize> MatchRun
         let tag = hash as u8;
         let count = self.num[key];
         let bucket = &self.dense[key];
-        let tags = self.tags.as_deref().map(|tags| &tags[key]);
+        let tags = if BLOCK <= 32 {
+            self.tags.as_deref().map(|tags| &tags[key])
+        } else {
+            None
+        };
         search_bucket::<S, HASH64, BLOCK, BLOCK>(simd, &query, out, tag, count, bucket, tags);
         dense_store(
             self.num,
             self.dense,
-            self.tags.as_deref_mut(),
+            if BLOCK <= 32 {
+                self.tags.as_deref_mut()
+            } else {
+                None
+            },
             key,
             query.cur_ix as u32,
             tag,
@@ -3674,6 +4072,10 @@ mod tests {
 
     #[cfg(not(feature = "no_std"))]
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "scalar run detection over 64 KiB histories, too slow for Miri; it reaches no SIMD kernel or uninitialized memory"
+    )]
     fn history_runs_keep_only_their_last_four_periods() {
         let total = |ranges: &[(usize, usize)]| ranges.iter().map(|(s, e)| e - s).sum::<usize>();
         // Zeros repeat every byte: the start and the last four positions.
@@ -3735,6 +4137,180 @@ mod tests {
         }
         check::<16>();
         check::<64>();
+    }
+
+    #[test]
+    fn a_quick_store_range_preserves_order_and_ring_wrapping() {
+        fn check<const SWEEP_BITS: u32>() {
+            let data: Vec<u8> = (0..1088).map(|i| (i * 131 % 251) as u8).collect();
+            for data in [&data[..0], &data[..4], &data[..1024], &data[..]] {
+                for (start, end) in [
+                    (0, 0),
+                    (5, 200),
+                    (1000, 1024),
+                    (1000, 1100),
+                    (3082, 3372),
+                    (7, 3),
+                ] {
+                    let mut ranged = [0; 256];
+                    let mut single = [0; 256];
+                    QuickRun::<_, 256, SWEEP_BITS, 5, false> { slots: &mut ranged }
+                        .store_range(data, 1023, start, end);
+                    let mut run = QuickRun::<_, 256, SWEEP_BITS, 5, false> { slots: &mut single };
+                    for ix in start..end {
+                        run.store(data, 1023, ix);
+                    }
+                    assert_eq!(ranged, single, "{start}..{end}, sweep {SWEEP_BITS}");
+                }
+            }
+        }
+        check::<0>();
+        check::<1>();
+        check::<2>();
+    }
+
+    #[test]
+    #[cfg(target_endian = "little")]
+    fn quick_simd_hash_batches_match_little_endian_scalar_hashes() {
+        fn check<S: Simd, const BUCKETS: usize, const HASH_LEN: u32>(simd: S, data: &[u8]) {
+            for bytes in data.windows(16) {
+                let chunk: &[u8; 16] = bytes.try_into().expect("sixteen-byte test window");
+                let hashes = quick_hashes8::<S, BUCKETS, HASH_LEN>(simd, chunk);
+                for (lane, &actual) in hashes.iter().enumerate() {
+                    assert_eq!(
+                        actual as usize,
+                        QuickShape::<BUCKETS, 0, HASH_LEN, false>::hash(bytes, lane)
+                    );
+                }
+            }
+        }
+        let size = if cfg!(miri) { 48 } else { 320 };
+        let random: Vec<u8> = (0..size).map(|i| ((i * 131) ^ (i * i * 7)) as u8).collect();
+        for backend in crate::compressor::Backend::available() {
+            for data in [&[0u8; 32][..], &[255u8; 32][..], &random[..]] {
+                dispatch!(backend.0, simd => check::<_, { 1 << 16 }, 5>(simd, data));
+                dispatch!(backend.0, simd => check::<_, { 1 << 17 }, 5>(simd, data));
+                dispatch!(backend.0, simd => check::<_, { 1 << 20 }, 7>(simd, data));
+            }
+        }
+    }
+
+    #[test]
+    fn quick_simd_range_stores_preserve_scalar_order_tails_and_wrapping() {
+        const BUCKETS: usize = if cfg!(miri) { 16 } else { 256 };
+        fn check<S: Simd, const SWEEP: u32, const HASH_LEN: u32>(simd: S, data: &[u8]) {
+            let counts: &[usize] = if cfg!(miri) {
+                &[0, 7, 8, 9, 15, 16, 17]
+            } else {
+                &[0, 1, 7, 8, 9, 15, 16, 17, 24, 25, 32, 127]
+            };
+            let starts: &[usize] = if cfg!(miri) {
+                &[0, 240]
+            } else {
+                &[0, 3, 240, 260]
+            };
+            for initial in [0, 0x5a5a_5a5a] {
+                for &count in counts {
+                    for &start in starts {
+                        let mut actual = [initial; BUCKETS];
+                        let mut expected = actual;
+                        QuickRun::<_, BUCKETS, SWEEP, HASH_LEN, false> {
+                            slots: &mut expected,
+                        }
+                        .store_range(data, 255, start, start + count);
+                        QuickRun::<_, BUCKETS, SWEEP, HASH_LEN, false> { slots: &mut actual }
+                            .store_range_simd(simd, data, 255, start, start + count);
+                        assert_eq!(
+                            actual, expected,
+                            "start={start}, count={count}, sweep={SWEEP}"
+                        );
+                    }
+                }
+            }
+        }
+        let mixed: Vec<u8> = (0..272).map(|i| (i * 131 % 251) as u8).collect();
+        let colliding = [b'a'; 272];
+        for backend in crate::compressor::Backend::available() {
+            for data in [
+                &mixed[..0],
+                &mixed[..4],
+                &mixed[..23],
+                &mixed[..24],
+                &mixed[..256],
+                &mixed[..],
+                &colliding[..],
+            ] {
+                dispatch!(backend.0, simd => check::<_, 0, 5>(simd, data));
+                dispatch!(backend.0, simd => check::<_, 1, 5>(simd, data));
+                dispatch!(backend.0, simd => check::<_, 2, 5>(simd, data));
+                dispatch!(backend.0, simd => check::<_, 2, 7>(simd, data));
+            }
+        }
+    }
+
+    #[test]
+    fn quick_simd_compact_range_stores_preserve_probes_and_overwrites() {
+        const BUCKETS: usize = if cfg!(miri) { 16 } else { 256 };
+        fn check<S: Simd, const SWEEP: u32>(simd: S, data: &[u8]) {
+            let counts: &[usize] = if cfg!(miri) {
+                &[16, 17, 32]
+            } else {
+                &[0, 1, 7, 8, 9, 15, 16, 17, 24, 25, 32, 127]
+            };
+            for seeded in [false, true] {
+                for &count in counts {
+                    for start in [0, 240] {
+                        let mut expected = SmallSlots::default();
+                        expected.reset(BUCKETS);
+                        if seeded {
+                            for key in 0..BUCKETS {
+                                expected.write(key, key as u32 + 1);
+                            }
+                        }
+                        let mut actual = SmallSlots {
+                            entries: expected.entries.clone(),
+                        };
+                        QuickRun::<_, BUCKETS, SWEEP, 5, false> {
+                            slots: &mut expected,
+                        }
+                        .store_range(data, 255, start, start + count);
+                        QuickRun::<_, BUCKETS, SWEEP, 5, false> { slots: &mut actual }
+                            .store_range_simd(simd, data, 255, start, start + count);
+                        assert_eq!(
+                            actual.entries, expected.entries,
+                            "start={start}, count={count}, sweep={SWEEP}, seeded={seeded}"
+                        );
+                    }
+                }
+            }
+        }
+        let mixed: Vec<u8> = (0..272).map(|i| (i * 131 % 251) as u8).collect();
+        let colliding = [b'a'; 272];
+        for backend in crate::compressor::Backend::available() {
+            for data in [&mixed[..23], &mixed[..24], &mixed[..], &colliding[..]] {
+                dispatch!(backend.0, simd => check::<_, 0>(simd, data));
+                dispatch!(backend.0, simd => check::<_, 1>(simd, data));
+                dispatch!(backend.0, simd => check::<_, 2>(simd, data));
+            }
+        }
+    }
+
+    #[test]
+    fn quick_simd_range_entry_keeps_other_matchers_scalar() {
+        let data: Vec<u8> = (0..96).map(|i| (i * 131 % 251) as u8).collect();
+        for backend in crate::compressor::Backend::available() {
+            for (start, end) in [(0, 0), (2, 40), (56, 80)] {
+                let mut expected = DenseLayout::<2, 16, 32>::default();
+                let mut actual = DenseLayout::<2, 16, 32>::default();
+                expected
+                    .dense_run::<false>()
+                    .store_range(&data, 63, start, end);
+                dispatch!(backend.0, simd => actual.dense_run::<false>().store_range_simd(simd, &data, 63, start, end));
+                assert_eq!(actual.num, expected.num);
+                assert_eq!(actual.dense, expected.dense);
+                assert_eq!(actual.dense_tags, expected.dense_tags);
+            }
+        }
     }
 
     #[test]
@@ -3813,13 +4389,14 @@ mod tests {
         slots.reset(100);
         assert_eq!(slots.entries.len(), 256);
         assert!(slots.entries.iter().all(|&entry| entry == 0));
-        assert_eq!((slots.count, slots.read(3)), (0, 0));
+        assert_eq!(slots.read(3), 0);
     }
 
     #[test]
-    fn compact_slots_preserve_colliding_keys_through_growth_overwrites_and_reset() {
+    fn compact_slots_preserve_colliding_keys_through_overwrites_and_reset() {
         let mut slots = SmallSlots::default();
         assert_eq!(slots.read(3), 0);
+        slots.reset(1024);
         for key in 0..1024 {
             slots.write(key * 32 + 3, key as u32 + 1);
         }
@@ -3828,7 +4405,10 @@ mod tests {
             slots.write(key * 32 + 3, SMALL_SLOTS_MAX_INPUT as u32 - 1);
             assert_eq!(slots.read(key * 32 + 3), SMALL_SLOTS_MAX_INPUT as u32 - 1);
         }
-        assert_eq!(slots.count, 1024);
+        assert_eq!(
+            slots.entries.iter().filter(|&&entry| entry != 0).count(),
+            1024
+        );
         assert_eq!(slots.read(4), 0);
         let capacity = slots.entries.capacity();
         slots.reset(16);
@@ -3836,6 +4416,67 @@ mod tests {
         assert_eq!(slots.read(3), 0);
         slots.write(3, 7);
         assert_eq!(slots.read(3), 7);
+    }
+
+    #[test]
+    fn compact_slots_hold_the_maximum_prepared_population() {
+        let size = if cfg!(miri) {
+            1024
+        } else {
+            SMALL_SLOTS_MAX_INPUT
+        };
+        let mut slots = SmallSlots::default();
+        slots.reset(size);
+        let capacity = slots.entries.len();
+        for index in 0..size {
+            slots.write(index * 4, index as u32);
+        }
+        for index in 0..size {
+            assert_eq!(
+                slots.replace(index * 4, SMALL_SLOTS_MAX_INPUT as u32 - 1),
+                index as u32
+            );
+        }
+        assert_eq!(slots.entries.len(), capacity);
+        assert!(slots.entries.contains(&0));
+        for index in 0..size {
+            assert_eq!(slots.read(index * 4), SMALL_SLOTS_MAX_INPUT as u32 - 1);
+        }
+    }
+
+    #[test]
+    fn compact_quick_preparation_limits_maps_to_fresh_bounded_streams() {
+        type Small = QuickMatcher<{ 1 << 16 }, 0, 5, true, true>;
+        let data = vec![0; SMALL_SLOTS_MAX_INPUT + 9];
+        for input_size in [0, 1, SMALL_SLOTS_MAX_INPUT, SMALL_SLOTS_MAX_INPUT + 1] {
+            let mut matcher = Small::new();
+            matcher.prepare(true, input_size, &data, false);
+            assert_eq!(
+                matcher.buckets.is_none(),
+                input_size <= SMALL_SLOTS_MAX_INPUT
+            );
+            let entries = matcher.compact.entries.len();
+            let end = input_size.saturating_sub(7);
+            // Miri still checks the capacity boundary and its final position;
+            // the native test fills every intervening position too.
+            let prefix = if cfg!(miri) { end.min(64) } else { end };
+            matcher.store_range(&data, usize::MAX, 0, prefix);
+            if prefix < end {
+                matcher.store(&data, usize::MAX, end - 1);
+            }
+            assert_eq!(matcher.compact.entries.len(), entries);
+            // Replay/reset of a previous stream promotes before any new stores.
+            matcher.prepare(true, input_size, &data, true);
+            assert!(matcher.buckets.is_some());
+            assert!(matcher.compact.entries.is_empty());
+        }
+        // History and nonfinal first blocks must use a full table before
+        // boundary stitching can write positions outside one final block.
+        let mut streaming = Small::new();
+        streaming.prepare(false, 0, &data, false);
+        assert!(streaming.buckets.is_some());
+        streaming.stitch_to_previous_block(32, 32, &data, usize::MAX);
+        assert!(streaming.compact.entries.is_empty());
     }
 
     #[test]
@@ -3848,7 +4489,11 @@ mod tests {
                     search_with(backend.0, &mut matcher, &data, REPEAT_AT)
                 });
                 let actual = with_matcher!(MatchFinder::for_input(plan, 16), |matcher| {
-                    let mut matcher = primed(matcher, &data);
+                    let mut matcher = matcher;
+                    // A dirty preparation promotes the compact finder to a
+                    // full table, so the first stream must start clean.
+                    matcher.prepare(true, data.len(), &data, false);
+                    matcher.store_range(&data, usize::MAX, 0, REPEAT_AT);
                     search_with(backend.0, &mut matcher, &data, REPEAT_AT)
                 });
                 assert_eq!(actual, expected, "{backend:?}, {plan:?}");
@@ -4078,11 +4723,14 @@ mod tests {
             let capacity = if enough_capacity { 64 } else { 1 };
             layout.blocks = Vec::with_capacity(capacity);
             layout.blocks.push([123; BLOCK]);
+            // One starter, so even a one-block pool is at least as large.
+            layout.starters = Vec::with_capacity(1);
             layout.starters.push([456; STARTER_SLOTS]);
             let tagged = BLOCK <= 32;
             if tagged {
                 layout.block_tags = Vec::with_capacity(capacity);
                 layout.block_tags.push([7; BLOCK]);
+                layout.starter_tags = Vec::with_capacity(1);
                 layout.starter_tags.push([8; STARTER_SLOTS]);
             }
             let positions = layout.blocks.as_ptr().cast::<u32>();
@@ -4125,9 +4773,10 @@ mod tests {
         let Layout::Sparse(layout) = &mut matcher.layout else {
             panic!("sparse layout");
         };
-        layout.starters = Vec::with_capacity(256);
+        // Exactly the dense table, so boxing it cannot shrink and move it.
+        layout.starters = Vec::with_capacity(64 * 16 / STARTER_SLOTS);
         layout.starters.push([123; STARTER_SLOTS]);
-        layout.starter_tags = Vec::with_capacity(256);
+        layout.starter_tags = Vec::with_capacity(64 * 16 / STARTER_SLOTS);
         layout.starter_tags.push([7; STARTER_SLOTS]);
         let positions = layout.starters.as_ptr().cast::<u32>();
         let tags = layout.starter_tags.as_ptr().cast::<u8>();
@@ -4175,6 +4824,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "checks the sparse-to-dense layout policy, not memory safety, and fills an 8 MiB table twice; `a_dense_table_keeps_its_blocks_and_clears_only_its_counters` covers the dense table under Miri"
+    )]
     fn a_deep_shape_takes_the_dense_table_once_it_is_reused() {
         // A quarter-mebibyte hint is below an eighth of the 8 MiB table, so
         // the first stream stays on demand; the second stream, a sixty-fourth
@@ -4310,6 +4963,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "checks the sparse-to-dense layout policy, not memory safety, over 64 KiB inputs; `a_dense_table_keeps_its_blocks_and_clears_only_its_counters` covers the dense table under Miri"
+    )]
     fn a_reused_tagged_shape_takes_the_dense_table_from_a_sixty_fourth() {
         fn is_dense<const H: bool, const B: usize, const K: usize, const S: usize>(
             matcher: &BucketMatcher<H, B, K, S>,
@@ -4418,6 +5075,10 @@ mod tests {
     type Q6Bucket = BucketMatcher<false, { 1 << 14 }, 32, { (1 << 14) * 32 }>;
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn a_tagged_shape_needs_twice_the_store_rate_of_a_deep_one() {
         let data = repeated();
         let expected = search_at(&mut primed(Q6Bucket::new(1 << 20), &data), &data, REPEAT_AT);
@@ -4593,6 +5254,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "scalar map against a `BTreeMap`, too slow for Miri; `the_key_map_keeps_colliding_keys_through_growth_and_reset` covers its storage there"
+    )]
     fn key_map_growth_from_empty_and_overwrites_match_an_ordered_map() {
         let mut map = KeyMap::default();
         map.grow();
@@ -4662,6 +5327,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn tag_equality_matches_scalar_comparison_on_every_backend() {
         fn check<const N: usize>(backend: crate::compressor::Backend) {
             let tags: [u8; N] = ::core::array::from_fn(|i| (i % 5) as u8);
@@ -4751,23 +5420,28 @@ mod tests {
             let Layout::Sparse(layout) = &mut matcher.layout else {
                 panic!("sparse layout")
             };
+            // One store past a full starter grows it into a full block.
+            const STORES: usize = STARTER_SLOTS + 1;
             for key in 0..1030 {
-                for store in 0..5 {
-                    layout.push(key, (key * 5 + store) as u32, store as u8, 1 << 16);
+                for store in 0..STORES {
+                    layout.push(key, (key * STORES + store) as u32, store as u8, 1 << 16);
                 }
             }
             for key in 0..1030 {
                 let entry = layout.entries[key];
                 let (count, offset) = layout.decode_entry(entry);
-                assert_eq!(count, 5);
+                assert_eq!(usize::from(count), STORES);
                 let Some(BlockRef::Full(index)) = SparseLayout::<{ 1 << 14 }, BLOCK>::block(offset)
                 else {
-                    panic!("five stores promote a starter");
+                    panic!("a store past a full starter promotes it");
                 };
-                for (age, &position) in layout.blocks[index][BLOCK - 5..].iter().enumerate() {
-                    assert_eq!(position, (key * 5 + 4 - age) as u32);
+                for (age, &position) in layout.blocks[index][BLOCK - STORES..].iter().enumerate() {
+                    assert_eq!(position, (key * STORES + STORES - 1 - age) as u32);
                     if BucketMatcher::<false, { 1 << 14 }, BLOCK, SLOTS>::TAGGED {
-                        assert_eq!(layout.block_tags[index][BLOCK - 5 + age], (4 - age) as u8);
+                        assert_eq!(
+                            layout.block_tags[index][BLOCK - STORES + age],
+                            (STORES - 1 - age) as u8
+                        );
                     }
                 }
             }
@@ -4980,13 +5654,378 @@ mod tests {
         let query = query(data, cache, cur_ix);
         let expected =
             dispatch!(Level::fallback(), simd => probe_on::<_, BLOCK>(simd, &query, out));
-        let level = Level::try_detect().unwrap_or_else(Level::baseline);
-        let actual = dispatch!(level, simd => probe_on::<_, BLOCK>(simd, &query, out));
-        assert_eq!(
-            actual, expected,
-            "block {BLOCK}, cur_ix {cur_ix}, cache {cache:?}, incoming {}",
-            out.len
+        for level in crate::backend::Backend::levels() {
+            let actual = dispatch!(level, simd => probe_on::<_, BLOCK>(simd, &query, out));
+            assert_eq!(
+                actual, expected,
+                "block {BLOCK}, cur_ix {cur_ix}, cache {cache:?}, incoming {}",
+                out.len
+            );
+        }
+    }
+
+    /// The newest candidate passes a distant word check but matches only six
+    /// bytes; the next matches eight, and the oldest matches twenty.
+    fn young_scan_fixture() -> [u8; 256] {
+        let mut data = [0; 256];
+        for (index, value) in data[80..104].iter_mut().enumerate() {
+            *value = 80 + index as u8;
+        }
+        data.copy_within(80..86, 64);
+        data.copy_within(92..96, 76);
+        data.copy_within(80..88, 56);
+        data.copy_within(80..100, 0);
+        data
+    }
+
+    #[test]
+    fn young_raw_scan_rebuilds_original_window_after_shorter_matches() {
+        fn check<S: Simd, const HASH64: bool>(simd: S, data: &[u8]) {
+            let scan = BucketScan {
+                simd,
+                data,
+                window: &data[..128],
+                cur_ix: 80,
+                mask: 127,
+                max_backward: 80,
+                max_length: 24,
+            };
+            for (initial_len, initial_score) in [(15, 0), (15, usize::MAX), (200, 0)] {
+                let mut reference = Best {
+                    len: initial_len,
+                    word: read_u32(data, 80 + initial_len as usize - 3),
+                };
+                let mut word = reference.word;
+                let mut continuation = raw_continuation_window(data, 127, initial_len);
+                let initial = Found {
+                    len: 0,
+                    distance: 0,
+                    score: initial_score,
+                };
+                let mut expected = initial;
+                let mut actual = initial;
+                for (prev_ix, accepted_len) in [(64, 6), (56, 8), (0, 20)] {
+                    assert!(consider::<S, HASH64>(
+                        scan,
+                        prev_ix,
+                        &mut reference,
+                        &mut expected,
+                    ));
+                    consider_raw_young::<S, HASH64>(
+                        scan,
+                        prev_ix,
+                        &mut word,
+                        &mut continuation,
+                        &mut actual,
+                    );
+                    if initial_len == 15 && initial_score == 0 {
+                        assert_eq!(reference.len, accepted_len);
+                    }
+                    assert_eq!(word, reference.word);
+                    assert_eq!(
+                        (actual.len, actual.distance, actual.score),
+                        (expected.len, expected.distance, expected.score),
+                    );
+                    let reference_window = raw_continuation_window(data, 127, reference.len);
+                    assert_eq!(continuation.len(), reference_window.len());
+                    if !continuation.is_empty() {
+                        assert_eq!(continuation.as_ptr(), reference_window.as_ptr());
+                    }
+                }
+            }
+        }
+        let data = young_scan_fixture();
+        for level in crate::backend::Backend::levels() {
+            dispatch!(level, simd => check::<_, false>(simd, &data));
+            dispatch!(level, simd => check::<_, true>(simd, &data));
+        }
+    }
+
+    /// Uses the unchanged scalar filter as an oracle for the whole bucket walk.
+    fn assert_young_bucket_result<S: Simd, const HASH64: bool, const N: usize>(
+        scan: BucketScan<'_, S>,
+        positions: &[u32],
+        best_len: usize,
+        initial_score: usize,
+    ) -> Found {
+        let mut reference = Best {
+            len: best_len as u32,
+            word: read_u32(scan.data, (scan.cur_ix & scan.mask) + best_len - 3),
+        };
+        let initial = Found {
+            len: 0,
+            distance: 0,
+            score: initial_score,
+        };
+        let mut expected = initial;
+        for &position in positions {
+            if !consider::<S, HASH64>(scan, position, &mut reference, &mut expected) {
+                break;
+            }
+        }
+        let mut bucket = [0; N];
+        let newest = N - 1;
+        for (age, &position) in positions.iter().enumerate() {
+            bucket[(newest + age) & (N - 1)] = position;
+        }
+        let mut actual = initial;
+        scan_bucket::<S, HASH64, N>(
+            scan,
+            &bucket,
+            u32::MAX,
+            newest,
+            positions.len(),
+            best_len,
+            &mut actual,
         );
+        assert_eq!(
+            (actual.len, actual.distance, actual.score),
+            (expected.len, expected.distance, expected.score),
+            "N={N}, HASH64={HASH64}, current={}, mask={}, max_backward={}",
+            scan.cur_ix,
+            scan.mask,
+            scan.max_backward,
+        );
+        actual
+    }
+
+    #[test]
+    fn young_bucket_scan_keeps_results_at_eligibility_boundaries() {
+        fn check<S: Simd, const HASH64: bool, const N: usize>(simd: S, data: &[u8]) {
+            let young = BucketScan {
+                simd,
+                data,
+                window: &data[..128],
+                cur_ix: 80,
+                mask: 127,
+                max_backward: 80,
+                max_length: 24,
+            };
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(young, &[64, 56, 0], 15, 0).len,
+                20,
+            );
+            // The old candidate would win if the age check were dropped.
+            let aged = BucketScan {
+                max_backward: 40,
+                ..young
+            };
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(aged, &[64, 56, 0], 15, 0).len,
+                8,
+            );
+            // This mask maps logical56 to physical24, not physical56.
+            let unusual = BucketScan {
+                mask: 95,
+                window: &data[..96],
+                ..young
+            };
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(unusual, &[64, 56], 15, 0).len,
+                6,
+            );
+            // Logical positions have wrapped within the physical ring.
+            let wrapped = BucketScan {
+                cur_ix: 208,
+                max_backward: 208,
+                ..young
+            };
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(wrapped, &[192, 184, 128], 15, 0).len,
+                20,
+            );
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(young, &[81, 64, 56, 0], 15, 0).len,
+                0,
+            );
+            let linear = BucketScan {
+                mask: usize::MAX,
+                window: data,
+                ..young
+            };
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(linear, &[64, 56, 0], 15, 0).len,
+                20,
+            );
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(young, &[], 15, 0).len,
+                0,
+            );
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(young, &[64, 56, 0], 200, 0).len,
+                0,
+            );
+            let no_length = BucketScan {
+                max_length: 0,
+                ..young
+            };
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(no_length, &[64, 56, 0], 15, 0).len,
+                0,
+            );
+            let empty = BucketScan {
+                data: &[],
+                window: &[],
+                cur_ix: 0,
+                max_backward: 0,
+                ..young
+            };
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(empty, &[0, 0], 3, 0).len,
+                0,
+            );
+            let zero_mask = BucketScan {
+                window: &data[..1],
+                mask: 0,
+                cur_ix: 0,
+                max_backward: 0,
+                ..young
+            };
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(zero_mask, &[0, 0], 3, 0).len,
+                0,
+            );
+            // The four-byte comparison ends exactly at the physical window.
+            let at_mask = BucketScan {
+                cur_ix: 127,
+                max_backward: 127,
+                ..young
+            };
+            assert_eq!(
+                assert_young_bucket_result::<S, HASH64, N>(at_mask, &[112, 104, 96], 15, 0).len,
+                24,
+            );
+            if N == 64 {
+                // The same logical fixture remains valid in legacy shapes.
+                assert_eq!(
+                    assert_young_bucket_result::<S, HASH64, 16>(young, &[64, 56, 0], 15, 0).len,
+                    20,
+                );
+                assert_eq!(
+                    assert_young_bucket_result::<S, HASH64, 256>(young, &[64, 56, 0], 15, 0).len,
+                    20,
+                );
+            }
+        }
+        let data = young_scan_fixture();
+        for level in crate::backend::Backend::levels() {
+            dispatch!(level, simd => check::<_, false, 64>(simd, &data));
+            dispatch!(level, simd => check::<_, false, 128>(simd, &data));
+            dispatch!(level, simd => check::<_, true, 64>(simd, &data));
+            dispatch!(level, simd => check::<_, true, 128>(simd, &data));
+        }
+    }
+
+    #[test]
+    fn rebased_raw_scan_rebuilds_the_original_window_after_shorter_matches() {
+        fn check<S: Simd, const HASH64: bool>(simd: S, data: &[u8]) {
+            let scan = BucketScan {
+                simd,
+                data,
+                window: &data[..64],
+                cur_ix: 80,
+                mask: 63,
+                max_backward: 79,
+                max_length: 24,
+            };
+            // This deliberately adversarial incoming best loses on score to a
+            // shorter candidate. The next candidate is readable only after the
+            // continuation has moved backwards within the ORIGINAL window.
+            let mut reference = Best {
+                len: 15,
+                word: read_u32(data, 28),
+            };
+            let mut word = reference.word;
+            let mut continuation = raw_continuation_window(data, 63, reference.len);
+            let initial = Found {
+                len: 0,
+                distance: 0,
+                score: 0,
+            };
+            let mut expected = initial;
+            let mut actual = initial;
+            for (prev_ix, expected_len) in [(64, 6), (56, 8), (0, 8)] {
+                let expected_keep =
+                    consider::<S, HASH64>(scan, prev_ix, &mut reference, &mut expected);
+                let actual_keep = consider_raw_rebased::<S, HASH64>(
+                    scan,
+                    prev_ix,
+                    &mut word,
+                    &mut continuation,
+                    &mut actual,
+                );
+                assert_eq!(actual_keep, expected_keep);
+                assert_eq!(reference.len, expected_len);
+                assert_eq!(word, reference.word);
+                assert_eq!(
+                    (actual.len, actual.distance, actual.score),
+                    (expected.len, expected.distance, expected.score)
+                );
+                assert_eq!(
+                    continuation.as_ptr(),
+                    data[reference.len as usize - 3..].as_ptr()
+                );
+                assert_eq!(continuation.len(), 64 - (reference.len as usize - 3));
+            }
+            // A future position must still stop before any physical read.
+            assert!(!consider_raw_rebased::<S, HASH64>(
+                scan,
+                81,
+                &mut word,
+                &mut continuation,
+                &mut actual,
+            ));
+            fn full_scan<S: Simd, const HASH64: bool, const N: usize>(
+                scan: BucketScan<'_, S>,
+                data: &[u8],
+                initial: Found,
+            ) {
+                let mut bucket = [0; N];
+                bucket[N - 1] = 64;
+                bucket[0] = 56;
+                bucket[1] = 0;
+                let mut best = Best {
+                    len: 15,
+                    word: read_u32(data, 28),
+                };
+                let mut expected = initial;
+                for age in 0..3 {
+                    if !consider::<S, HASH64>(
+                        scan,
+                        bucket[(N - 1 + age) & (N - 1)],
+                        &mut best,
+                        &mut expected,
+                    ) {
+                        break;
+                    }
+                }
+                let mut actual = initial;
+                scan_bucket::<S, HASH64, N>(scan, &bucket, u32::MAX, N - 1, N, 15, &mut actual);
+                assert_eq!(
+                    (actual.len, actual.distance, actual.score),
+                    (expected.len, expected.distance, expected.score)
+                );
+            }
+            full_scan::<S, HASH64, 16>(scan, data, initial);
+            full_scan::<S, HASH64, 64>(scan, data, initial);
+            full_scan::<S, HASH64, 128>(scan, data, initial);
+            full_scan::<S, HASH64, 256>(scan, data, initial);
+        }
+        let mut data = [0; 128];
+        for (index, value) in data[16..40].iter_mut().enumerate() {
+            *value = 80 + index as u8;
+        }
+        data.copy_within(16..22, 0);
+        data.copy_within(28..32, 12);
+        data.copy_within(16..24, 56);
+        data.copy_within(0..8, 64);
+        assert!(raw_continuation_window(&[], usize::MAX, 3).is_empty());
+        assert!(raw_continuation_window(&data, 63, 67).is_empty());
+        assert_eq!(raw_continuation_window(&data, usize::MAX, 3), &data);
+        for level in crate::backend::Backend::levels() {
+            dispatch!(level, simd => check::<_, false>(simd, &data));
+            dispatch!(level, simd => check::<_, true>(simd, &data));
+        }
     }
 
     #[test]
@@ -5009,7 +6048,8 @@ mod tests {
                 data.extend_from_slice(&stretch);
             }
         }
-        for _ in 0..4000 {
+        let rounds = if cfg!(miri) { 100 } else { 4000 };
+        for _ in 0..rounds {
             let cur_ix = (next() % (data.len() as u64 - 64)) as usize;
             let mut cache = INITIAL_DISTANCE_CACHE;
             for entry in &mut cache[..NUM_REMEMBERED_DISTANCES] {
@@ -5027,6 +6067,30 @@ mod tests {
             };
             probes_agree::<64>(&data, &cache, cur_ix, &out);
             probes_agree::<256>(&data, &cache, cur_ix, &out);
+        }
+    }
+
+    #[test]
+    fn filtered_cache_probes_preserve_signed_distance_bits() {
+        let data = b"abcdabcdabcdabcdabcdabcdabcdabcd";
+        for remembered in [
+            [i32::MIN + 3, i32::MAX - 3, 0, -1],
+            [4, 8, i32::MIN, i32::MAX],
+            [0, -4, 4, 8],
+        ] {
+            let mut cache = INITIAL_DISTANCE_CACHE;
+            cache[..NUM_REMEMBERED_DISTANCES].copy_from_slice(&remembered);
+            prepare_distance_cache(&mut cache, NUM_DISTANCE_SHORT_CODES);
+            for position in [0, 4, 16, data.len() - 1] {
+                for len in 0..=4 {
+                    let out = SearchResult {
+                        len,
+                        ..SearchResult::empty()
+                    };
+                    probes_agree::<64>(data, &cache, position, &out);
+                    probes_agree::<256>(data, &cache, position, &out);
+                }
+            }
         }
     }
 

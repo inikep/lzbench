@@ -68,7 +68,7 @@ pub(crate) struct Match {
 }
 
 /// Pricing statistics of the optimal parser (`optState_t`).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub(crate) struct OptState {
     pub(crate) lit_freq: Vec<u32>,
     pub(crate) lit_length_freq: Vec<u32>,
@@ -117,16 +117,55 @@ struct PriceTables {
     opt_level: u32,
 }
 
+impl PriceTables {
+    /// Every weight zero.
+    const EMPTY: Self = Self {
+        literal: [0; 256],
+        lit_length: [0; 64],
+        match_length: [0; 128],
+        off_code: [0; 32],
+        opt_level: 0,
+    };
+}
+
 impl Default for PriceTables {
     fn default() -> Self {
-        Self {
-            literal: [0; 256],
-            lit_length: [0; 64],
-            match_length: [0; 128],
-            off_code: [0; 32],
-            opt_level: 0,
-        }
+        Self::EMPTY
     }
+}
+
+impl OptState {
+    /// No statistics and no buffers: the state of an engine whose strategy
+    /// has not needed the optimal parser.
+    const EMPTY: Self = Self {
+        lit_freq: Vec::new(),
+        lit_length_freq: Vec::new(),
+        match_length_freq: Vec::new(),
+        off_code_freq: Vec::new(),
+        match_table: Vec::new(),
+        price_table: Vec::new(),
+        lit_sum: 0,
+        lit_length_sum: 0,
+        match_length_sum: 0,
+        off_code_sum: 0,
+        lit_sum_base_price: 0,
+        lit_length_sum_base_price: 0,
+        match_length_sum_base_price: 0,
+        off_code_sum_base_price: 0,
+        price_type: PriceType::Dynamic,
+        literal_compression: ParamSwitch::Auto,
+        tables: PriceTables::EMPTY,
+    };
+}
+
+impl Default for OptState {
+    fn default() -> Self {
+        Self::EMPTY
+    }
+}
+
+impl super::lazy_box::StaticEmpty for OptState {
+    const EMPTY_REF: &'static Self = &Self::EMPTY;
 }
 
 impl PriceTables {
@@ -2774,7 +2813,12 @@ mod tests {
                 seq_store.reserve(bytes.len(), cparams.min_match);
                 let mut rep = [1, 4, 8];
                 let last = compressor(&mut ms, &mut seq_store, &mut rep, &block);
-                outputs.push((last, rep, seq_store.sequences, seq_store.literals));
+                outputs.push((
+                    last,
+                    rep,
+                    seq_store.sequences().to_vec(),
+                    seq_store.literals().to_vec(),
+                ));
             }
             assert_eq!(outputs[0], outputs[1], "level {level}");
         }

@@ -247,10 +247,25 @@ impl RequestedParams {
 
 /// Entropy tables and repeat offsets a block inherits
 /// (`ZSTD_compressedBlockState_t`).
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct BlockState {
     pub(crate) entropy: Tables,
     pub(crate) rep: [u32; REP_NUM],
+}
+
+impl Clone for BlockState {
+    fn clone(&self) -> Self {
+        Self {
+            entropy: self.entropy.clone(),
+            rep: self.rep,
+        }
+    }
+
+    /// Field by field, so written tables are copied into place.
+    fn clone_from(&mut self, source: &Self) {
+        self.entropy.clone_from(&source.entropy);
+        self.rep = source.rep;
+    }
 }
 
 impl BlockState {
@@ -302,8 +317,16 @@ pub(crate) struct Engine {
 impl Engine {
     /// A context with no frame begun and no tables allocated, on the
     /// detected backend.
+    #[cfg(any(test, not(feature = "no_std")))]
     pub(crate) fn new() -> Self {
+        Self::with_backend(Backend::default())
+    }
+
+    /// A context with no frame begun whose kernels run on `backend`.
+    pub(crate) fn with_backend(backend: Backend) -> Self {
         let applied = RequestedParams::default().resolve(CONTENT_SIZE_UNKNOWN);
+        let mut ms = MatchState::empty(applied.cparams, applied.use_row_match_finder);
+        ms.backend = backend;
         Self {
             applied,
             stage: Stage::Created,
@@ -317,22 +340,12 @@ impl Engine {
             seq_store: SeqStore::default(),
             prev: Box::default(),
             next: Box::default(),
-            ms: MatchState::empty(applied.cparams, applied.use_row_match_finder),
+            ms,
             ldm: LdmState::default(),
             ldm_store: RawSeqStore::default(),
-            backend: Backend::default(),
+            backend,
             dict_id: 0,
         }
-    }
-
-    /// A context with no frame begun whose kernels run on `backend`.
-    pub(crate) fn with_backend(backend: Backend) -> Self {
-        let mut engine = Self {
-            backend,
-            ..Self::new()
-        };
-        engine.ms.backend = backend;
-        engine
     }
 
     /// Starts a frame (`ZSTD_resetCCtx_internal` without dictionaries).
@@ -496,73 +509,17 @@ impl Engine {
     #[inline]
     fn write_frame_header(&self, dst: &mut [u8], pledged: u64) -> Result<usize, CoreError> {
         let fparams = self.applied.fparams;
-        let dict_id = self.dict_id;
-        let dict_id_size_code = if fparams.no_dict_id {
-            0
-        } else {
-            u8::from(dict_id > 0) + u8::from(dict_id >= 256) + u8::from(dict_id >= 65536)
-        };
-        let checksum = u8::from(fparams.checksum);
-        let window_size = 1u64 << self.applied.cparams.window_log;
-        let single_segment = fparams.content_size && window_size >= pledged;
-        let window_log_byte =
-            ((self.applied.cparams.window_log - WINDOW_LOG_ABSOLUTE_MIN) << 3) as u8;
-        let fcs_code: u8 = if fparams.content_size {
-            u8::from(pledged >= 256)
-                + u8::from(pledged >= 65536 + 256)
-                + u8::from(pledged >= 0xFFFF_FFFF)
-        } else {
-            0
-        };
-        let descriptor =
-            dict_id_size_code + (checksum << 2) + (u8::from(single_segment) << 5) + (fcs_code << 6);
-        if dst.len() < FRAME_HEADER_SIZE_MAX {
-            return Err(CoreError::DstSizeTooSmall);
-        }
-        dst[..4].copy_from_slice(&MAGIC_NUMBER.to_le_bytes());
-        let mut pos = 4;
-        dst[pos] = descriptor;
-        pos += 1;
-        if !single_segment {
-            dst[pos] = window_log_byte;
-            pos += 1;
-        }
-        match dict_id_size_code {
-            0 => {}
-            1 => {
-                dst[pos] = dict_id as u8;
-                pos += 1;
-            }
-            2 => {
-                dst[pos..pos + 2].copy_from_slice(&(dict_id as u16).to_le_bytes());
-                pos += 2;
-            }
-            _ => {
-                dst[pos..pos + 4].copy_from_slice(&dict_id.to_le_bytes());
-                pos += 4;
-            }
-        }
-        match fcs_code {
-            0 => {
-                if single_segment {
-                    dst[pos] = pledged as u8;
-                    pos += 1;
-                }
-            }
-            1 => {
-                dst[pos..pos + 2].copy_from_slice(&((pledged - 256) as u16).to_le_bytes());
-                pos += 2;
-            }
-            2 => {
-                dst[pos..pos + 4].copy_from_slice(&(pledged as u32).to_le_bytes());
-                pos += 4;
-            }
-            _ => {
-                dst[pos..pos + 8].copy_from_slice(&pledged.to_le_bytes());
-                pos += 8;
-            }
-        }
-        Ok(pos)
+        write_frame_header(
+            dst,
+            FrameHeaderFields {
+                window_log: self.applied.cparams.window_log,
+                dict_id: self.dict_id,
+                no_dict_id: fparams.no_dict_id,
+                checksum: fparams.checksum,
+                content_size: fparams.content_size,
+                pledged,
+            },
+        )
     }
 
     /// Compresses `len` bytes at `src` (`ZSTD_compressContinue_internal` in
@@ -699,7 +656,7 @@ impl Engine {
         } else {
             (level - 2) as usize
         };
-        presplit::split_block(&src[..block_size_max], level)
+        presplit::split_block(&src[..block_size_max], level, self.ms.backend)
     }
 
     /// Compresses a chunk into one or more blocks (`ZSTD_compress_frameChunk`).
@@ -833,6 +790,101 @@ impl Engine {
     }
 }
 
+/// What a frame header declares: `ZSTD_writeFrameHeader`'s inputs.
+#[derive(Clone, Copy, Debug)]
+struct FrameHeaderFields {
+    /// Window size as a power of two, from `WINDOW_LOG_ABSOLUTE_MIN`.
+    window_log: u32,
+    /// Dictionary ID; zero declares none.
+    dict_id: u32,
+    /// Leaves the dictionary ID out even when it is not zero.
+    no_dict_id: bool,
+    /// Announces a content checksum after the last block.
+    checksum: bool,
+    /// Declares `pledged` as the frame's content size.
+    content_size: bool,
+    /// The frame's content size, when declared.
+    pledged: u64,
+}
+
+/// Writes a frame header at the start of `dst`, returning its size
+/// (`ZSTD_writeFrameHeader`).
+fn write_frame_header(dst: &mut [u8], header: FrameHeaderFields) -> Result<usize, CoreError> {
+    let FrameHeaderFields {
+        window_log,
+        dict_id,
+        no_dict_id,
+        checksum,
+        content_size,
+        pledged,
+    } = header;
+    let dict_id_size_code = if no_dict_id {
+        0
+    } else {
+        u8::from(dict_id > 0) + u8::from(dict_id >= 256) + u8::from(dict_id >= 65536)
+    };
+    let checksum = u8::from(checksum);
+    let window_size = 1u64 << window_log;
+    let single_segment = content_size && window_size >= pledged;
+    let window_log_byte = ((window_log - WINDOW_LOG_ABSOLUTE_MIN) << 3) as u8;
+    let fcs_code: u8 = if content_size {
+        u8::from(pledged >= 256)
+            + u8::from(pledged >= 65536 + 256)
+            + u8::from(pledged >= 0xFFFF_FFFF)
+    } else {
+        0
+    };
+    let descriptor =
+        dict_id_size_code + (checksum << 2) + (u8::from(single_segment) << 5) + (fcs_code << 6);
+    if dst.len() < FRAME_HEADER_SIZE_MAX {
+        return Err(CoreError::DstSizeTooSmall);
+    }
+    dst[..4].copy_from_slice(&MAGIC_NUMBER.to_le_bytes());
+    let mut pos = 4;
+    dst[pos] = descriptor;
+    pos += 1;
+    if !single_segment {
+        dst[pos] = window_log_byte;
+        pos += 1;
+    }
+    match dict_id_size_code {
+        0 => {}
+        1 => {
+            dst[pos] = dict_id as u8;
+            pos += 1;
+        }
+        2 => {
+            dst[pos..pos + 2].copy_from_slice(&(dict_id as u16).to_le_bytes());
+            pos += 2;
+        }
+        _ => {
+            dst[pos..pos + 4].copy_from_slice(&dict_id.to_le_bytes());
+            pos += 4;
+        }
+    }
+    match fcs_code {
+        0 => {
+            if single_segment {
+                dst[pos] = pledged as u8;
+                pos += 1;
+            }
+        }
+        1 => {
+            dst[pos..pos + 2].copy_from_slice(&((pledged - 256) as u16).to_le_bytes());
+            pos += 2;
+        }
+        2 => {
+            dst[pos..pos + 4].copy_from_slice(&(pledged as u32).to_le_bytes());
+            pos += 4;
+        }
+        _ => {
+            dst[pos..pos + 8].copy_from_slice(&pledged.to_le_bytes());
+            pos += 8;
+        }
+    }
+    Ok(pos)
+}
+
 /// Writes a block header.
 pub(crate) fn write_block_header(dst: &mut [u8], kind: u32, size: u32, last_block: bool) {
     let header = u32::from(last_block) + (kind << 1) + (size << 3);
@@ -871,6 +923,28 @@ pub(crate) fn rle_compress_block(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn block_states_start_without_tables_and_copy_field_by_field() {
+        let engine = Engine::new();
+        assert_eq!(engine.prev.entropy.heap_bytes(), 0);
+        assert_eq!(engine.next.entropy.heap_bytes(), 0);
+        assert_eq!(engine.ms.opt.heap_bytes(), 0);
+
+        let mut source = BlockState {
+            rep: [7, 8, 9],
+            ..BlockState::default()
+        };
+        source.entropy.fse.offcode.table_log = 5;
+        source.entropy.fse.offcode_repeat = FseRepeat::Valid;
+        let copy = source.clone();
+        assert_eq!(copy.rep, source.rep);
+        assert_eq!(copy.entropy, source.entropy);
+        let mut target = BlockState::default();
+        target.clone_from(&source);
+        assert_eq!(target.rep, [7, 8, 9]);
+        assert_eq!(target.entropy, source.entropy);
+    }
 
     #[test]
     fn compress_bound_matches_the_reference_formula() {

@@ -10,7 +10,7 @@ use super::cdict::TableLoad;
 use super::fast::{DictBytes, rep_index_ok, tags_match, write_tagged_index};
 use super::match_state::{BlockInput, DictMatchState, MatchState};
 use super::mem::{
-    count_at_simd, count_slices_simd, hash_ptr, hash_word, load32, load64, try_load64,
+    count_at_simd, count_slices_simd, hash_ptr, hash_word, load32, load64, prefetch_l1, try_load64,
 };
 use super::params::SHORT_CACHE_TAG_BITS;
 use super::seq_store::{SeqStore, offset_to_offbase, repcode_to_offbase};
@@ -175,11 +175,36 @@ fn compress_block_mls<S: Simd, const MLS: u32>(
     let (literals, [rep_1, rep_2]) = if in_prefix {
         let scan = scan(prefix_lowest_index);
         let ip = (ip - prefix_lowest_index) as usize;
-        compress_scan::<S, MLS, true>(simd, tables, seq_store, &scan, ip, [offset_1, offset_2])
+        let reps = [offset_1, offset_2];
+        macro_rules! scan {
+            ($hl:literal, $hs:literal) => {
+                compress_scan_widths::<S, MLS, $hl, $hs>(simd, tables, seq_store, &scan, ip, reps)
+            };
+        }
+        // The table widths of the default parameters (`hashLog`, `chainLog`
+        // after their adjustment to the input's size) are compiled in with
+        // their match lengths: levels 3 and 4 above 256 KiB, levels 2 and 3
+        // up to 256 KiB and levels 3 and 4 up to 64 KiB.
+        match (MLS, cparams.hash_log, cparams.chain_log) {
+            (5, 14, 14) => scan!(14, 14),
+            (4, 16, 16) => scan!(16, 16),
+            (5, 17, 16) => scan!(17, 16),
+            (5, 18, 18) => scan!(18, 18),
+            (5, 16, 15) => scan!(16, 15),
+            (4, 17, 16) => scan!(17, 16),
+            _ => compress_scan::<S, MLS, true, 0, 0>(simd, tables, seq_store, &scan, ip, reps),
+        }
     } else {
         let scan = scan(base);
         let ip = (ip - base) as usize;
-        compress_scan::<S, MLS, false>(simd, tables, seq_store, &scan, ip, [offset_1, offset_2])
+        compress_scan::<S, MLS, false, 0, 0>(
+            simd,
+            tables,
+            seq_store,
+            &scan,
+            ip,
+            [offset_1, offset_2],
+        )
     };
     offset_1 = rep_1;
     offset_2 = rep_2;
@@ -228,6 +253,87 @@ struct Scan<'a> {
     h_bits_s: u32,
 }
 
+/// The two hash tables of a `dfast` search as cells, with their widths:
+/// `HL` and `HS` when compiled in (non-zero), else `h_bits_l` and
+/// `h_bits_s`.
+///
+/// The slots are found by methods that are always inlined, rather than by
+/// closures over the widths: when LLVM left a closure that calls them out
+/// of line, the widths and table lengths it had captured were loaded from
+/// memory again, the hash shifts became variable and the bounds checks came
+/// back.
+#[derive(Clone, Copy)]
+struct Slots<'t, const MLS: u32, const HL: u32, const HS: u32> {
+    /// Eight-byte hashes (`hashLong`), `1 << HL` entries when `HL` is set.
+    long: &'t [Cell<u32>],
+    /// `MLS`-byte hashes (`hashSmall`), `1 << HS` entries when `HS` is set.
+    small: &'t [Cell<u32>],
+    /// `hashLog`, used when `HL` is zero.
+    h_bits_l: u32,
+    /// `chainLog`, used when `HS` is zero.
+    h_bits_s: u32,
+}
+
+impl<'t, const MLS: u32, const HL: u32, const HS: u32> Slots<'t, MLS, HL, HS> {
+    /// The long table's slot for the eight bytes `word`. The hash is below
+    /// the table's size (a power of two), so masking it with `len - 1`
+    /// changes nothing and proves the index in bounds.
+    #[inline(always)]
+    fn long(self, word: u64) -> &'t Cell<u32> {
+        let bits = if HL == 0 { self.h_bits_l } else { HL };
+        &self.long[hash_word::<8>(word, bits) & (self.long.len() - 1)]
+    }
+
+    /// The short table's slot for the `MLS` bytes that `word` starts with.
+    #[inline(always)]
+    fn small(self, word: u64) -> &'t Cell<u32> {
+        let bits = if HS == 0 { self.h_bits_s } else { HS };
+        &self.small[hash_word::<MLS>(word, bits) & (self.small.len() - 1)]
+    }
+
+    /// The word at offset `p` of `src` and its long-table slot, or `None`
+    /// when the eight bytes at `p` are not all inside `src` (`p > ilimit`);
+    /// the two candidates of `p` are prefetched.
+    ///
+    /// After a match the search goes on from where it ends: these are loaded
+    /// there before the match's backward extension and its store, so the
+    /// next search's loads wait neither for the catch-up loop nor for the
+    /// store's branches (2-3% less time on text).
+    #[inline(always)]
+    fn ahead(self, src: &[u8], base: u32, p: usize) -> Option<(u64, &'t Cell<u32>)> {
+        let word = try_load64(src, p)?;
+        let slot = self.long(word);
+        // Only with the default widths: the run-time widths serve the
+        // small inputs, whose tables stay in L1 (tiny text at level 3 took
+        // 4% longer with the prefetches).
+        if HL != 0 {
+            prefetch_l1(src, slot.get().wrapping_sub(base) as usize);
+            prefetch_l1(src, self.small(word).get().wrapping_sub(base) as usize);
+        }
+        Some((word, slot))
+    }
+}
+
+/// [`compress_scan`] in the prefix with the hash widths `HL` and `HS`
+/// compiled in: the hash shifts become immediates and the table bounds
+/// constants, which frees four of the loop's registers.
+///
+/// Each width pair is its own function, out of line: inlined side by side
+/// into one caller, LLVM merged the instances back into a single loop that
+/// selects the widths at run time.
+#[simd]
+#[inline(never)]
+fn compress_scan_widths<S: Simd, const MLS: u32, const HL: u32, const HS: u32>(
+    simd: S,
+    tables: Tables<'_>,
+    seq_store: &mut SeqStore,
+    scan: &Scan<'_>,
+    ip: usize,
+    reps: [u32; 2],
+) -> (usize, [u32; 2]) {
+    compress_scan::<S, MLS, true, HL, HS>(simd, tables, seq_store, scan, ip, reps)
+}
+
 /// The search and match loop of `ZSTD_compressBlock_doubleFast_noDict_generic`
 /// from offset `ip` of `scan.src`, with the repcodes `reps`. Returns the
 /// length of the trailing literals and the final repcodes.
@@ -235,7 +341,7 @@ struct Scan<'a> {
 /// `IN_PREFIX` states that `scan.prefix_lowest` is zero, so the candidates'
 /// history is all of `src` and its lower bound the window index `origin`.
 #[inline(always)]
-fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool>(
+fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool, const HL: u32, const HS: u32>(
     simd: S,
     tables: Tables<'_>,
     seq_store: &mut SeqStore,
@@ -244,27 +350,32 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool>(
     reps: [u32; 2],
 ) -> (usize, [u32; 2]) {
     let Scan {
-        src,
-        origin: base,
-        h_bits_l,
-        h_bits_s,
-        ..
+        src, origin: base, ..
     } = *scan;
+    let h_bits_l = if HL == 0 { scan.h_bits_l } else { HL };
+    let h_bits_s = if HS == 0 { scan.h_bits_s } else { HS };
     let prefix_lowest = if IN_PREFIX { 0 } else { scan.prefix_lowest };
     let prefix_lowest_index = base + prefix_lowest as u32;
     // The candidate load's bound also enforces the searchable lower limit.
     let history = &src[prefix_lowest..];
     let iend = src.len();
     let mut anchor = scan.start;
-    // A block shorter than HASH_READ_SIZE never enters the search: the
-    // first `ip1 > ilimit` test fails for any `ilimit < 1`.
-    let ilimit = iend.saturating_sub(HASH_READ_SIZE as usize);
-    let [mut offset_1, mut offset_2] = reps;
+    // The reference's `ilimit` is `iend - HASH_READ_SIZE`: a position `p`
+    // is at most `ilimit` exactly while the eight bytes at `p` are inside
+    // `src`, so `try_load64` is that test throughout.
+    // Offsets below 2^32, as `usize` so that the repcode tests and reads
+    // share one register.
+    let [mut offset_1, mut offset_2] = reps.map(|rep| rep as usize);
     let k_step_incr: usize = 1 << SEARCH_STRENGTH;
 
     let index = |p: usize| p as u32 + base;
     let read32 = |p: usize| load32(src, p);
-    let count = |a: usize, b: usize| count_slices_simd(simd, &src[a..], &src[b..]);
+    // The first word is compared inline (`count_at_simd`), without the two
+    // slices the full count builds. With the loop inlined into
+    // `compress_block_mls` this took 3-6% longer on text; since the
+    // compiled-in widths moved the loop into its own function it saves
+    // 1-3% (i7-13700KF, 2026-10-18).
+    let count = |a: usize, b: usize| count_at_simd(simd, src, a, b);
 
     let Tables {
         long: hash_long,
@@ -272,18 +383,35 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool>(
     } = tables;
     // Hashes are below the table sizes (`1 << hash_log`, `1 << chain_log`);
     // masking with `len - 1` changes nothing and, with the tables known to
-    // be non-empty, proves every index in bounds.
+    // be non-empty, proves every index in bounds. With a width compiled in,
+    // the tables are first cut to that size, which makes the mask a
+    // constant (a table is never smaller than its `1 << hash_log`).
+    let hash_long = if HL == 0 {
+        hash_long
+    } else {
+        &mut hash_long[..1 << HL]
+    };
+    let hash_small = if HS == 0 {
+        hash_small
+    } else {
+        &mut hash_small[..1 << HS]
+    };
     assert!(!hash_long.is_empty() && !hash_small.is_empty());
-    let (mask_l, mask_s) = (hash_long.len() - 1, hash_small.len() - 1);
     // The search keeps references to the slots it will write rather than
     // their hashes, so a slot is bounds checked once, where its hash is
     // computed.
-    let hash_long = Cell::from_mut(hash_long).as_slice_of_cells();
-    let hash_small = Cell::from_mut(hash_small).as_slice_of_cells();
-    let slot_l = |word: u64| &hash_long[hash_word::<8>(word, h_bits_l) & mask_l];
-    let slot_s = |word: u64| &hash_small[hash_word::<MLS>(word, h_bits_s) & mask_s];
-    let hash_l = |p: usize| slot_l(load64(src, p));
-    let hash_s = |p: usize| slot_s(load64(src, p));
+    let slots = Slots::<MLS, HL, HS> {
+        long: Cell::from_mut(hash_long).as_slice_of_cells(),
+        small: Cell::from_mut(hash_small).as_slice_of_cells(),
+        h_bits_l,
+        h_bits_s,
+    };
+    // A block whose first position is past `ilimit` is all literals: the
+    // first `ip1 > ilimit` test would stop it too.
+    let Some(mut word0) = try_load64(src, ip) else {
+        return (iend - anchor, [offset_1 as u32, offset_2 as u32]);
+    };
+    let mut slot_l0 = slots.long(word0);
 
     'outer: loop {
         let mut step: usize = 1;
@@ -296,15 +424,13 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool>(
         let Some(mut word1) = try_load64(src, ip1) else {
             break 'outer;
         };
-        let mut word0 = load64(src, ip);
-        let mut slot_l0 = slot_l(word0);
         let mut idxl0 = slot_l0.get();
         let mut curr: u32;
 
         enum Next<'t> {
             Stored(usize),
             Found {
-                offset: u32,
+                offset: usize,
                 m_length: usize,
                 slot_l1: &'t Cell<u32>,
             },
@@ -315,31 +441,24 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool>(
             },
         }
         let next = loop {
-            let slot_s0 = slot_s(word0);
+            let slot_s0 = slots.small(word0);
             let idxs0 = slot_s0.get();
             curr = index(ip);
             slot_l0.set(curr);
             slot_s0.set(curr);
 
-            if offset_1 > 0 && read32(ip + 1 - offset_1 as usize) == (word0 >> 8) as u32 {
-                let m_length = count(ip + 1 + 4, ip + 1 + 4 - offset_1 as usize) + 4;
+            if offset_1 > 0 && read32(ip + 1 - offset_1) == (word0 >> 8) as u32 {
+                let m_length = count(ip + 1 + 4, ip + 1 + 4 - offset_1) + 4;
                 ip += 1;
-                seq_store.store_seq_from(src, anchor, ip - anchor, repcode_to_offbase(1), m_length);
                 break Next::Stored(m_length);
             }
 
-            let slot_l1 = slot_l(word1);
+            let slot_l1 = slots.long(word1);
             if super::mem::matches64(history, idxl0.wrapping_sub(prefix_lowest_index), word0) {
-                let mut matchl0 = (idxl0 - base) as usize;
-                let mut m_length = count(ip + 8, matchl0 + 8) + 8;
-                let offset = (ip - matchl0) as u32;
-                while ip > anchor && matchl0 > prefix_lowest && src[ip - 1] == src[matchl0 - 1] {
-                    ip -= 1;
-                    matchl0 -= 1;
-                    m_length += 1;
-                }
+                let matchl0 = (idxl0 - base) as usize;
+                let m_length = count(ip + 8, matchl0 + 8) + 8;
                 break Next::Found {
-                    offset,
+                    offset: ip - matchl0,
                     m_length,
                     slot_l1,
                 };
@@ -359,6 +478,9 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool>(
             }
 
             if ip1 >= next_step {
+                // `PREFETCH_L1`, as the reference does when the step grows.
+                prefetch_l1(src, ip1 + 64);
+                prefetch_l1(src, ip1 + 128);
                 step += 1;
                 next_step += k_step_incr;
             }
@@ -373,26 +495,49 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool>(
             }
         };
 
-        let m_length = match next {
-            Next::Stored(m_length) => m_length,
+        // The match's forward end, the position the search goes on from.
+        let end;
+        let next_word = match next {
+            Next::Stored(m_length) => {
+                end = ip + m_length;
+                let next_word = slots.ahead(src, base, end);
+                store_seq_wild(
+                    seq_store,
+                    src,
+                    anchor,
+                    ip - anchor,
+                    repcode_to_offbase(1),
+                    m_length,
+                );
+                next_word
+            }
             Next::Found {
                 offset,
-                m_length,
+                mut m_length,
                 slot_l1,
             } => {
+                end = ip + m_length;
+                let next_word = slots.ahead(src, base, end);
+                let mut matchl0 = ip - offset;
+                while ip > anchor && matchl0 > prefix_lowest && src[ip - 1] == src[matchl0 - 1] {
+                    ip -= 1;
+                    matchl0 -= 1;
+                    m_length += 1;
+                }
                 offset_2 = offset_1;
                 offset_1 = offset;
                 if step < 4 {
                     slot_l1.set(index(ip1));
                 }
-                seq_store.store_seq_from(
+                store_seq_wild(
+                    seq_store,
                     src,
                     anchor,
                     ip - anchor,
-                    offset_to_offbase(offset),
+                    offset_to_offbase(offset as u32),
                     m_length,
                 );
-                m_length
+                next_word
             }
             Next::SearchNextLong {
                 idxs0,
@@ -401,7 +546,7 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool>(
             } => {
                 let mut matchs0 = (idxs0 - base) as usize;
                 let mut m_length = count(ip + 4, matchs0 + 4) + 4;
-                let mut offset = (ip - matchs0) as u32;
+                let mut offset = ip - matchs0;
                 // This second long candidate uses a strict lower limit in C.
                 if super::mem::matches64(
                     &history[1..],
@@ -413,10 +558,12 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool>(
                     if l1len > m_length {
                         ip = ip1;
                         m_length = l1len;
-                        offset = (ip - matchl1) as u32;
+                        offset = ip - matchl1;
                         matchs0 = matchl1;
                     }
                 }
+                end = ip + m_length;
+                let next_word = slots.ahead(src, base, end);
                 while ip > anchor && matchs0 > prefix_lowest && src[ip - 1] == src[matchs0 - 1] {
                     ip -= 1;
                     matchs0 -= 1;
@@ -427,41 +574,68 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool>(
                 if step < 4 {
                     slot_l1.set(index(ip1));
                 }
-                seq_store.store_seq_from(
+                store_seq_wild(
+                    seq_store,
                     src,
                     anchor,
                     ip - anchor,
-                    offset_to_offbase(offset),
+                    offset_to_offbase(offset as u32),
                     m_length,
                 );
-                m_length
+                next_word
             }
         };
 
         // _match_stored:
-        ip += m_length;
+        ip = end;
         anchor = ip;
-        if ip <= ilimit {
+        // `ip <= ilimit`:
+        if let Some((word, slot)) = next_word {
+            (word0, slot_l0) = (word, slot);
             let index_to_insert = curr + 2;
             let insert_at = (index_to_insert - base) as usize;
-            hash_l(insert_at).set(index_to_insert);
-            hash_l(ip - 2).set(index(ip - 2));
-            hash_s(insert_at).set(index_to_insert);
-            hash_s(ip - 1).set(index(ip - 1));
+            slots.long(load64(src, insert_at)).set(index_to_insert);
+            slots.long(load64(src, ip - 2)).set(index(ip - 2));
+            slots.small(load64(src, insert_at)).set(index_to_insert);
+            slots.small(load64(src, ip - 1)).set(index(ip - 1));
 
-            while ip <= ilimit && offset_2 > 0 && read32(ip) == read32(ip - offset_2 as usize) {
-                let r_length = count(ip + 4, ip + 4 - offset_2 as usize) + 4;
+            while offset_2 > 0 && read32(ip - offset_2) == word0 as u32 {
+                let r_length = count(ip + 4, ip + 4 - offset_2) + 4;
                 core::mem::swap(&mut offset_1, &mut offset_2);
-                hash_s(ip).set(index(ip));
-                hash_l(ip).set(index(ip));
+                slots.small(word0).set(index(ip));
+                slot_l0.set(index(ip));
                 seq_store.store_seq_only(0, repcode_to_offbase(1), r_length);
                 ip += r_length;
                 anchor = ip;
+                match try_load64(src, ip) {
+                    Some(word) => (word0, slot_l0) = (word, slots.long(word)),
+                    None => break 'outer,
+                }
             }
         }
     }
 
-    (iend - anchor, [offset_1, offset_2])
+    (iend - anchor, [offset_1 as u32, offset_2 as u32])
+}
+
+/// [`SeqStore::store_seq_from`] for the prefix search: a literal run of at
+/// most 16 bytes is copied as the 16-byte chunk at `anchor` (`ZSTD_copy16`)
+/// when `src` holds that many, and the excess is cut off again.
+///
+/// The chunk is appended straight from `src`, without the shared helper's
+/// copy through the stack, and its bounds test is `16 <= src.len() - anchor`,
+/// which cannot overflow.
+#[inline(always)]
+fn store_seq_wild(
+    seq_store: &mut SeqStore,
+    src: &[u8],
+    anchor: usize,
+    lit_length: usize,
+    off_base: u32,
+    match_length: usize,
+) {
+    seq_store.push_literals_wild(src, anchor, lit_length);
+    seq_store.store_seq_only(lit_length, off_base, match_length);
 }
 
 /// `ZSTD_compressBlock_doubleFast_extDict`: selects the variant compiled for
@@ -1011,6 +1185,79 @@ mod tests {
     use zstd_ffi::{corpus, oracle};
 
     #[test]
+    fn wild_literal_copies_store_what_the_shared_helper_stores() {
+        // Runs up to 16 bytes take the chunk while it fits before the end
+        // of `src`, longer runs and runs near the end the exact copy.
+        let src: alloc::vec::Vec<u8> = (0..64u8).map(|byte| byte.wrapping_mul(37)).collect();
+        for anchor in 0..src.len() {
+            for lit_length in 0..=(src.len() - anchor).min(40) {
+                let mut wild = SeqStore::default();
+                let mut shared = SeqStore::default();
+                wild.reserve(1 << 10, 4);
+                shared.reserve(1 << 10, 4);
+                wild.store_last_literals(&[0xAA]);
+                shared.store_last_literals(&[0xAA]);
+                store_seq_wild(&mut wild, &src, anchor, lit_length, 7, 5);
+                shared.store_seq_from(&src, anchor, lit_length, 7, 5);
+                assert_eq!(wild.literals(), shared.literals(), "{anchor} {lit_length}");
+                assert_eq!(wild.literals()[1..], src[anchor..anchor + lit_length]);
+                assert_eq!(
+                    wild.sequences(),
+                    shared.sequences(),
+                    "{anchor} {lit_length}"
+                );
+            }
+        }
+    }
+
+    /// Checks `Slots::<MLS, HL, HS>` over tables of `1 << bits_l` and
+    /// `1 << bits_s` entries against the plain hashes, and its look-ahead
+    /// load against `try_load64`.
+    fn check_slots<const MLS: u32, const HL: u32, const HS: u32>(bits_l: u32, bits_s: u32) {
+        let src = corpus::text(300, 7);
+        let mut long = vec![0u32; 1 << bits_l];
+        let mut small = vec![0u32; 1 << bits_s];
+        for (i, slot) in long.iter_mut().enumerate() {
+            *slot = i as u32;
+        }
+        for (i, slot) in small.iter_mut().enumerate() {
+            *slot = !(i as u32);
+        }
+        let slots = Slots::<MLS, HL, HS> {
+            long: Cell::from_mut(long.as_mut_slice()).as_slice_of_cells(),
+            small: Cell::from_mut(small.as_mut_slice()).as_slice_of_cells(),
+            h_bits_l: bits_l,
+            h_bits_s: bits_s,
+        };
+        for p in 0..src.len() + 2 {
+            let ahead = slots.ahead(&src, 3, p);
+            let Some(word) = try_load64(&src, p) else {
+                assert!(ahead.is_none(), "{p}");
+                continue;
+            };
+            let long_slot = slots.long(word);
+            assert_eq!(long_slot.get(), hash_word::<8>(word, bits_l) as u32);
+            assert_eq!(
+                slots.small(word).get(),
+                !(hash_word::<MLS>(word, bits_s) as u32)
+            );
+            let Some((ahead_word, ahead_slot)) = ahead else {
+                panic!("{p}: the look-ahead stopped before the end");
+            };
+            assert_eq!(ahead_word, word);
+            assert!(core::ptr::eq(ahead_slot, long_slot));
+        }
+    }
+
+    #[test]
+    fn slots_hash_like_the_tables_with_compiled_and_run_time_widths() {
+        check_slots::<5, 14, 14>(14, 14);
+        check_slots::<4, 17, 16>(17, 16);
+        check_slots::<6, 0, 0>(12, 11);
+        check_slots::<4, 0, 0>(10, 9);
+    }
+
+    #[test]
     fn dfast_levels_attach_dictionaries_like_the_reference() {
         let (trained, records) = trained();
         let raw = raw_dictionary(&records);
@@ -1105,6 +1352,52 @@ mod tests {
     }
 
     #[test]
+    fn every_compiled_width_pair_compresses_like_the_reference() {
+        // One input size and level per `(min_match, hashLog, chainLog)`
+        // that `compress_block_mls` compiles in, and one beside them that
+        // takes the run-time widths.
+        let cases = [
+            (150_000, 2, (5, 14, 14)),
+            (150_000, 3, (4, 16, 16)),
+            (300_000, 3, (5, 17, 16)),
+            (300_000, 4, (5, 18, 18)),
+            (100_000, 3, (5, 16, 15)),
+            (65_536, 4, (4, 17, 16)),
+            (100_000, 4, (4, 17, 17)),
+        ];
+        for (size, level, widths) in cases {
+            let cparams = level_cparams(level, size as u64);
+            assert_eq!(
+                cparams.strategy,
+                Strategy::DFast,
+                "{size} bytes, level {level}"
+            );
+            assert_eq!(
+                (cparams.min_match, cparams.hash_log, cparams.chain_log),
+                widths,
+                "{size} bytes, level {level}"
+            );
+            let half = size / 2;
+            let input = [corpus::text(half, 21), corpus::binary(size - half, 22)].concat();
+            let expected = oracle::compress(&input, level);
+            let requested = RequestedParams {
+                compression_level: level,
+                ..RequestedParams::default()
+            };
+            for backend in Backend::available() {
+                let mut engine = Engine::with_backend(backend);
+                let mut dst = vec![0u8; compress_bound(input.len()).expect("bound")];
+                let size = compress_once_into(&mut engine, &requested, None, &input, 1, &mut dst)
+                    .expect("compresses");
+                assert!(
+                    dst[..size] == expected[..],
+                    "{backend} level {level} {widths:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn without_a_dictionary_the_dict_match_state_entry_compresses_as_no_dict() {
         let input = corpus::text(20_000, 3);
         let cparams = level_cparams(3, input.len() as u64);
@@ -1125,7 +1418,12 @@ mod tests {
             seq_store.reserve(input.len(), cparams.min_match);
             let mut rep = [1, 4, 8];
             let literals = compressor(&mut ms, &mut seq_store, &mut rep, &block);
-            (literals, rep, seq_store.sequences, seq_store.literals)
+            (
+                literals,
+                rep,
+                seq_store.sequences().to_vec(),
+                seq_store.literals().to_vec(),
+            )
         };
         let ours = run(compress_block_dict_match_state);
         assert!(!ours.2.is_empty());

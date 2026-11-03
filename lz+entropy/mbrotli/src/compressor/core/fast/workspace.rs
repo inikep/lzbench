@@ -17,6 +17,7 @@ use super::tables::{
 const COMMAND_CODE_CAPACITY: usize = 512;
 
 /// Scratch state of the quality 0 one-pass encoder.
+#[cfg_attr(test, derive(Clone))]
 pub(crate) struct OnePassArena {
     /// Bit depths of the current literal prefix code.
     pub(crate) lit_depth: [u8; NUM_LITERAL_SYMBOLS],

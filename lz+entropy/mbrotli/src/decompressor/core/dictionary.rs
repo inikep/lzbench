@@ -4,7 +4,7 @@ use super::super::{DecodeError, InvalidDataKind};
 use crate::dictionary::DictionaryRef;
 use crate::shared::dictionary::{
     BUILTIN_OFFSETS_BY_LENGTH, BUILTIN_SIZE_BITS_BY_LENGTH, BUILTIN_WORDS,
-    transform::{SCRATCH_BYTES, Transform},
+    transform::{SCRATCH_BYTES, apply_builtin},
 };
 
 pub(super) fn resolve(
@@ -26,13 +26,12 @@ pub(super) fn resolve(
         return Err(InvalidDataKind::DictionaryReference.into());
     }
     let shift = BUILTIN_SIZE_BITS_BY_LENGTH[length];
-    let transform = usize::try_from(address >> shift)
-        .ok()
-        .and_then(Transform::builtin)
-        .ok_or(DecodeError::InvalidData {
-            kind: InvalidDataKind::DictionaryReference,
-        })?;
     let index = (address & ((1 << shift) - 1)) as usize;
     let offset = BUILTIN_OFFSETS_BY_LENGTH[length] as usize + index * length;
-    Ok(transform.apply(&BUILTIN_WORDS[offset..offset + length], scratch))
+    usize::try_from(address >> shift)
+        .ok()
+        .and_then(|transform| apply_builtin(transform, BUILTIN_WORDS, offset, length, scratch))
+        .ok_or(DecodeError::InvalidData {
+            kind: InvalidDataKind::DictionaryReference,
+        })
 }

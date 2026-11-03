@@ -852,7 +852,7 @@ fn long_prefix<S: Simd>(simd: S, data: &[u8], max_length: usize, matches: &mut [
 mod tests {
     use super::*;
     use alloc::vec::Vec;
-    use fearless_simd::{Level, dispatch};
+    use fearless_simd::dispatch;
 
     /// Runs the search on the host's SIMD level and on the scalar fallback,
     /// over `data` and over `data` followed by bytes past `max_length` — the
@@ -868,10 +868,7 @@ mod tests {
             padded.extend_from_slice(b" ing the .com/ of ");
         }
         let mut tables = Vec::new();
-        for level in [
-            Level::try_detect().unwrap_or_else(Level::baseline),
-            Level::fallback(),
-        ] {
+        for level in crate::backend::Backend::levels() {
             for input in [data, &padded[..]] {
                 let mut matches = [INVALID_MATCH; MAX_STATIC_DICTIONARY_MATCH_LEN + 1];
                 dispatch!(level, simd => find_all(simd, input, min_length, max_length, &mut matches));
@@ -936,6 +933,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call the C oracle")]
     fn every_word_and_transform_agrees_with_the_c_search() {
         // Walking the dictionary's own words is what reaches the transform
         // cases: each word bare, then with every prefix and suffix the
@@ -988,6 +986,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call the C oracle")]
     fn structural_bytes_agree_with_the_c_search() {
         let cases: [(&str, Vec<u8>); 7] = [
             ("ascending", (0..64u8).collect()),
@@ -1012,6 +1011,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call the C oracle")]
     fn random_bytes_agree_with_the_c_search() {
         let mut rng = Rng(0x5D1C_7104_0BAD_C0DE);
         for case in 0..3000u32 {
@@ -1038,6 +1038,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot read the corpus file or call the C oracle")]
     fn every_position_of_a_text_corpus_agrees_with_the_c_search() {
         // Real text reaches the prefixed families the synthetic cases only
         // exercise one at a time.
@@ -1103,6 +1104,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn a_plain_dictionary_word_matches_at_its_own_length() {
         // "time" is the first four-letter word of the dictionary.
         let matches = find(b"time and again");
@@ -1116,6 +1121,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn a_suffix_transform_extends_the_match_past_the_word() {
         // "time" followed by a space is the "" + IDENTITY + " " transform, so a
         // five-byte match exists that the bare word cannot give.
@@ -1129,6 +1138,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn an_uppercase_first_word_is_found() {
         // The dictionary holds "time" in lower case only; the uppercase-first
         // transform is what makes "Time" match.
@@ -1140,6 +1153,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn an_omit_last_transform_shortens_a_longer_word() {
         // "download" with its last byte omitted is a seven-byte match, which
         // only the OMIT_LAST_1 transform can produce.
@@ -1152,6 +1169,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn a_space_prefixed_word_is_found() {
         let matches = find(b" the quick brown");
         assert!(
@@ -1162,6 +1183,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn a_binary_run_matches_the_words_the_reference_finds() {
         // The dictionary holds binary sequences as well as words, and an
         // ascending byte run is one of them. These are the exact matches

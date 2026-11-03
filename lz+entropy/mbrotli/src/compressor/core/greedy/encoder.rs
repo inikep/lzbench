@@ -60,6 +60,13 @@ enum Cleanup {
     Applied,
 }
 
+/// Output position relative to this block and the carried partial byte.
+struct BlockEmission {
+    position: usize,
+    last_byte: u8,
+    appended: bool,
+}
+
 /// Streaming encoder for qualities three to five.
 ///
 /// `INDEPENDENT` selects the fragment-only kernels of an independent worker,
@@ -445,11 +452,33 @@ impl<const INDEPENDENT: bool> GreedyEncoder<INDEPENDENT> {
         debug_assert!(input.len() <= self.block_size_limit());
 
         self.copy_input_to_ring_buffer(input);
-        self.encode_data(is_last, false, attached)?;
+        self.encode_data(is_last, false, attached, None)?;
         match self.storage.get(..self.output_len) {
             Some(output) => Ok(output),
             None => Err(BrotliCompressError::BufferOverflow),
         }
+    }
+
+    /// Appends a block, bypassing scratch when verbatim storage was selected.
+    #[cfg_attr(all(feature = "hotpath", not(feature = "no_std")), hotpath::measure)]
+    pub(crate) fn encode_block_append(
+        &mut self,
+        input: &[u8],
+        is_last: bool,
+        attached: Option<&SharedContextInner>,
+        output: &mut Vec<u8>,
+    ) -> BrotliResult<usize> {
+        debug_assert!(!self.finished);
+        debug_assert!(input.len() <= self.block_size_limit());
+        let start = output.len();
+        self.copy_input_to_ring_buffer(input);
+        self.encode_data(is_last, false, attached, Some(output))?;
+        let bytes = self
+            .storage
+            .get(..self.output_len)
+            .ok_or(BrotliCompressError::BufferOverflow)?;
+        output.extend_from_slice(bytes);
+        Ok(output.len() - start)
     }
 
     /// Compresses `input` and closes the meta-block, leaving the stream open.
@@ -478,7 +507,7 @@ impl<const INDEPENDENT: bool> GreedyEncoder<INDEPENDENT> {
         debug_assert!(input.len() <= self.block_size_limit());
 
         self.copy_input_to_ring_buffer(input);
-        self.encode_data(false, true, attached)?;
+        self.encode_data(false, true, attached, None)?;
 
         // `encode_data` may have returned without touching the scratch buffer
         // — a flush with nothing buffered still has to emit the padding, so
@@ -612,6 +641,7 @@ impl<const INDEPENDENT: bool> GreedyEncoder<INDEPENDENT> {
         is_last: bool,
         force_flush: bool,
         attached: Option<&SharedContextInner>,
+        output: Option<&mut Vec<u8>>,
     ) -> BrotliResult<()> {
         self.output_len = 0;
         let delta = self.input_pos - self.last_processed_pos;
@@ -718,14 +748,38 @@ impl<const INDEPENDENT: bool> GreedyEncoder<INDEPENDENT> {
         debug_assert!(self.input_pos - self.last_flush_pos <= 1 << 24);
 
         let metablock_size = (self.input_pos - self.last_flush_pos) as usize;
-        self.reserve_storage(metablock_size)?;
-        self.seed_storage_with_the_partial_byte();
+        let emission = if metablock_size != 0
+            && !should_compress(
+                self.ringbuffer.buffer(),
+                self.ringbuffer.mask(),
+                self.last_flush_pos,
+                metablock_size,
+                self.references.num_literals,
+                self.commands.len(),
+            ) {
+            if let Some(output) = output {
+                self.append_uncompressed_meta_block(metablock_size, is_last, output)?
+            } else {
+                let position = self.write_uncompressed_meta_block(metablock_size, is_last)?;
+                BlockEmission {
+                    position,
+                    last_byte: self.storage.get(position >> 3).copied().unwrap_or(0),
+                    appended: false,
+                }
+            }
+        } else {
+            self.reserve_storage(metablock_size)?;
+            self.seed_storage_with_the_partial_byte();
+            let position = self.write_meta_block(metablock_size, is_last)?;
+            BlockEmission {
+                position,
+                last_byte: self.storage.get(position >> 3).copied().unwrap_or(0),
+                appended: false,
+            }
+        };
 
-        let position = self.write_meta_block(metablock_size, is_last)?;
-
-        let complete = position >> 3;
-        self.last_bytes = u16::from(self.storage.get(complete).copied().unwrap_or(0));
-        self.last_bytes_bits = (position & 7) as u32;
+        self.last_bytes = u16::from(emission.last_byte);
+        self.last_bytes_bits = (emission.position & 7) as u32;
         self.last_flush_pos = self.input_pos;
         if self.update_last_processed_pos() {
             self.is_prepared = false;
@@ -750,7 +804,11 @@ impl<const INDEPENDENT: bool> GreedyEncoder<INDEPENDENT> {
         self.commands.clear();
         self.references.num_literals = 0;
         self.saved_dist_cache = remembered(&self.references.dist_cache);
-        self.output_len = complete;
+        self.output_len = if emission.appended {
+            0
+        } else {
+            emission.position >> 3
+        };
         self.finished = is_last;
         Ok(())
     }
@@ -780,6 +838,88 @@ impl<const INDEPENDENT: bool> GreedyEncoder<INDEPENDENT> {
             .stitch_to_previous_block(input_size, position, data, mask);
     }
 
+    /// Writes verbatim bytes after an existing output prefix, retaining only complete bytes.
+    fn append_uncompressed_meta_block(
+        &mut self,
+        bytes: usize,
+        is_last: bool,
+        output: &mut Vec<u8>,
+    ) -> BrotliResult<BlockEmission> {
+        let start = output.len();
+        let start_bits = start
+            .checked_mul(8)
+            .ok_or(BrotliCompressError::BufferOverflow)?;
+        let position = start_bits
+            .checked_add(self.last_bytes_bits as usize)
+            .ok_or(BrotliCompressError::BufferOverflow)?;
+        // The initial large-window header plus meta-block header needs at most
+        // six bytes, a final empty block one, and the bit writer touches eight
+        // bytes beyond its current position.
+        let reserve = bytes
+            .checked_add(2 * OUTPUT_SLACK)
+            .and_then(|extra| start.checked_add(extra))
+            .ok_or(BrotliCompressError::BufferOverflow)?;
+        output.reserve(reserve - start);
+        output.extend_from_slice(&self.last_bytes.to_le_bytes());
+        self.references.dist_cache[..NUM_REMEMBERED_DISTANCES]
+            .copy_from_slice(&self.saved_dist_cache);
+        let mut writer = BitWriter::append(output, position);
+        store_uncompressed_meta_block(
+            is_last,
+            self.ringbuffer.buffer(),
+            wrap_position(self.last_flush_pos) as usize,
+            self.ringbuffer.mask(),
+            bytes,
+            &mut writer,
+        );
+        if writer.overflowed() {
+            return Err(BrotliCompressError::BufferOverflow);
+        }
+        let end = writer.position();
+        let emission = BlockEmission {
+            position: end - start_bits,
+            last_byte: writer.byte(end >> 3),
+            appended: true,
+        };
+        output.truncate(end >> 3);
+        Ok(emission)
+    }
+
+    /// Copies a known uncompressed block into scratch without clearing its payload.
+    fn write_uncompressed_meta_block(
+        &mut self,
+        bytes: usize,
+        is_last: bool,
+    ) -> BrotliResult<usize> {
+        let capacity = bytes
+            .checked_add(OUTPUT_RESERVE_CONST)
+            .and_then(|capacity| capacity.checked_add(OUTPUT_SLACK))
+            .ok_or(BrotliCompressError::BufferOverflow)?;
+        self.storage
+            .reserve(capacity.saturating_sub(self.storage.len()));
+        if self.storage.len() < 2 {
+            self.storage.resize(2, 0);
+        }
+        self.seed_storage_with_the_partial_byte();
+        // Discarded commands must not update the remembered distance history.
+        // Derived entries are rebuilt before the next match search uses them.
+        self.references.dist_cache[..NUM_REMEMBERED_DISTANCES]
+            .copy_from_slice(&self.saved_dist_cache);
+        let mut w = BitWriter::append(&mut self.storage, self.last_bytes_bits as usize);
+        store_uncompressed_meta_block(
+            is_last,
+            self.ringbuffer.buffer(),
+            wrap_position(self.last_flush_pos) as usize,
+            self.ringbuffer.mask(),
+            bytes,
+            &mut w,
+        );
+        if w.overflowed() {
+            return Err(BrotliCompressError::BufferOverflow);
+        }
+        Ok(w.position())
+    }
+
     /// Writes one meta-block, returning the bit position after it.
     ///
     /// Mirrors `WriteMetaBlockInternal`.
@@ -806,34 +946,6 @@ impl<const INDEPENDENT: bool> GreedyEncoder<INDEPENDENT> {
             // Write the ISLAST and ISEMPTY bits and stop.
             w.write(2, 3);
             w.align();
-            let position = w.position();
-            if w.overflowed() {
-                return Err(BrotliCompressError::BufferOverflow);
-            }
-            return Ok(position);
-        }
-
-        if !should_compress(
-            data,
-            mask,
-            self.last_flush_pos,
-            bytes,
-            references.num_literals,
-            commands.len(),
-        ) {
-            // The distance cache was updated for commands that are now
-            // discarded, so it has to be restored. Only the four remembered
-            // entries are saved: the derived ones are rebuilt from them before
-            // the next search reads them.
-            references.dist_cache[..NUM_REMEMBERED_DISTANCES].copy_from_slice(saved_dist_cache);
-            store_uncompressed_meta_block(
-                is_last,
-                data,
-                wrapped_last_flush_pos,
-                mask,
-                bytes,
-                &mut w,
-            );
             let position = w.position();
             if w.overflowed() {
                 return Err(BrotliCompressError::BufferOverflow);
@@ -1029,6 +1141,176 @@ mod tests {
     }
 
     #[test]
+    fn direct_uncompressed_output_preserves_prefix_carry_and_cache() {
+        let input: Vec<u8> = (0..1024).map(|index| (index * 37) as u8).collect();
+        for alignment in (0..8).chain([14]) {
+            for is_last in [false, true] {
+                let mut encoder = encoder(QualityLevel::Q2, 0);
+                encoder.copy_input_to_ring_buffer(&input);
+                for prefix in [0, 1, 255, 257] {
+                    let carried = 0x2d57 & ((1u16 << alignment) - 1);
+                    encoder.last_bytes = carried;
+                    encoder.last_bytes_bits = alignment;
+                    encoder.saved_dist_cache = [4, 11, 15, 16];
+                    encoder.references.dist_cache.fill(99);
+                    let expected_position = encoder
+                        .write_uncompressed_meta_block(input.len(), is_last)
+                        .expect("scratch block");
+                    let expected = encoder.storage[..expected_position / 8].to_vec();
+                    encoder.references.dist_cache.fill(99);
+                    let mut output = vec![91; prefix];
+                    let emission = encoder
+                        .append_uncompressed_meta_block(input.len(), is_last, &mut output)
+                        .expect("append block");
+                    assert!(emission.appended);
+                    assert_eq!(emission.position, expected_position);
+                    assert_eq!(emission.last_byte, encoder.storage[expected_position >> 3]);
+                    assert!(output[..prefix].iter().all(|&byte| byte == 91));
+                    assert_eq!(&output[prefix..], &expected);
+                    assert_eq!(
+                        &encoder.references.dist_cache[..4],
+                        &encoder.saved_dist_cache
+                    );
+                    assert!(
+                        encoder.references.dist_cache[4..]
+                            .iter()
+                            .all(|&value| value == 99)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn direct_uncompressed_overflow_preserves_output_and_distance_cache() {
+        let mut encoder = encoder(QualityLevel::Q2, 0);
+        encoder.references.dist_cache.fill(99);
+        encoder.saved_dist_cache = [4, 11, 15, 16];
+        let mut output = vec![3, 7, 11];
+        assert!(matches!(
+            encoder.append_uncompressed_meta_block(usize::MAX, false, &mut output),
+            Err(BrotliCompressError::BufferOverflow)
+        ));
+        assert_eq!(output, [3, 7, 11]);
+        assert!(
+            encoder
+                .references
+                .dist_cache
+                .iter()
+                .all(|&value| value == 99)
+        );
+    }
+
+    #[test]
+    fn direct_append_matches_scratch_through_blocks_flushes_and_reset() {
+        let mut state = 0x1234_5678u64;
+        let random: Vec<u8> = (0..if cfg!(miri) { 1024 } else { 65536 })
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                (state >> 24) as u8
+            })
+            .collect();
+        let text = b"compressible block and remembered distances ".repeat(if cfg!(miri) {
+            8
+        } else {
+            512
+        });
+        let mut scratch = encoder(QualityLevel::Q2, 0);
+        let mut append = encoder(QualityLevel::Q2, 0);
+        let block_size = scratch.block_size_limit();
+        for _ in 0..2 {
+            let mut expected = vec![91; 17];
+            let mut actual = expected.clone();
+            for data in [&text[..], &random[..], &text[..], &random[..2]]
+                .into_iter()
+                .flat_map(|data| data.chunks(block_size))
+            {
+                expected.extend_from_slice(scratch.encode_block(data, false).expect("scratch"));
+                let start = actual.len();
+                let written = append
+                    .encode_block_append(data, false, None, &mut actual)
+                    .expect("append");
+                assert_eq!(written, actual.len() - start);
+                assert_eq!(actual, expected);
+                expected.extend_from_slice(scratch.flush_block(&[], None).expect("scratch flush"));
+                actual.extend_from_slice(append.flush_block(&[], None).expect("append flush"));
+                assert_eq!(actual, expected);
+            }
+            expected.extend_from_slice(scratch.encode_block(&[], true).expect("empty finish"));
+            let start = actual.len();
+            let written = append
+                .encode_block_append(&[], true, None, &mut actual)
+                .expect("append finish");
+            assert_eq!(written, actual.len() - start);
+            assert_eq!(actual, expected);
+            assert_eq!(append.references.dist_cache, scratch.references.dist_cache);
+            assert_eq!(append.last_bytes, scratch.last_bytes);
+            assert_eq!(append.last_bytes_bits, scratch.last_bytes_bits);
+            scratch.reset();
+            append.reset();
+        }
+    }
+
+    #[test]
+    fn uncompressed_scratch_preserves_carried_bits_and_restores_history_on_reuse() {
+        let input: Vec<u8> = (0..1024).map(|index| (index * 37) as u8).collect();
+        for alignment in 0..8 {
+            for is_last in [false, true] {
+                let mut encoder = encoder(QualityLevel::Q2, 0);
+                encoder.copy_input_to_ring_buffer(&input);
+                let saved = [4, 11, 15, 16];
+                for bytes in [input.len(), 17] {
+                    let carried = 0b101_0111 & ((1u16 << alignment) - 1);
+                    encoder.last_bytes = carried;
+                    encoder.last_bytes_bits = alignment;
+                    encoder.saved_dist_cache = saved;
+                    encoder.references.dist_cache.fill(99);
+                    let mut expected = vec![0; bytes * 2 + OUTPUT_RESERVE_CONST + OUTPUT_SLACK];
+                    expected[0] = carried as u8;
+                    let mut writer = BitWriter::new(&mut expected, alignment as usize);
+                    store_uncompressed_meta_block(
+                        is_last,
+                        &input[..bytes],
+                        0,
+                        usize::MAX,
+                        bytes,
+                        &mut writer,
+                    );
+                    let expected_position = writer.position();
+                    assert!(!writer.overflowed());
+                    let actual_position = encoder
+                        .write_uncompressed_meta_block(bytes, is_last)
+                        .expect("bounded uncompressed block");
+                    assert_eq!(actual_position, expected_position);
+                    let output_bytes = actual_position.div_ceil(8);
+                    assert_eq!(&encoder.storage[..output_bytes], &expected[..output_bytes]);
+                    assert_eq!(&encoder.references.dist_cache[..4], &saved);
+                    assert!(
+                        encoder.references.dist_cache[4..]
+                            .iter()
+                            .all(|&value| value == 99)
+                    );
+                    // A fresh payload is appended without initializing the old
+                    // twice-input scratch bound; a shorter reuse keeps that backing.
+                    assert!(encoder.storage.len() < input.len() * 2);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn uncompressed_scratch_rejects_an_overflowing_capacity_before_writing() {
+        let mut encoder = encoder(QualityLevel::Q2, 0);
+        assert!(matches!(
+            encoder.write_uncompressed_meta_block(usize::MAX, false),
+            Err(BrotliCompressError::BufferOverflow)
+        ));
+        assert!(encoder.storage.is_empty());
+    }
+
+    #[test]
     fn a_tiny_block_is_never_compressed() {
         assert!(!should_compress(&[1, 2], usize::MAX, 0, 2, 2, 0));
         assert!(!should_compress(&[], usize::MAX, 0, 0, 0, 0));
@@ -1041,6 +1323,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "a scalar heuristic over 200 KB, too slow for Miri; it reaches no SIMD kernel"
+    )]
     fn random_literals_are_stored_uncompressed() {
         let mut rng = 0x1234_5678u64;
         let data: Vec<u8> = (0..200_000)
@@ -1101,15 +1387,12 @@ mod tests {
 
     #[test]
     fn every_backend_produces_the_same_stream() {
-        let data: Vec<u8> = (0..200_000u32).map(|i| (i * 7 % 253) as u8).collect();
+        let len = if cfg!(miri) { 20_000 } else { 200_000 };
+        let data: Vec<u8> = (0..len).map(|i| (i * 7 % 253) as u8).collect();
         for quality in [QualityLevel::Q3, QualityLevel::Q4, QualityLevel::Q5] {
             let params = CompressParams::new(quality, WindowBits::DEFAULT);
             let mut streams = Vec::new();
-            for backend in [
-                Backend::default(),
-                Backend(fearless_simd::Level::baseline()),
-                Backend::SCALAR,
-            ] {
+            for backend in Backend::available() {
                 let mut encoder = GreedyEncoder::<false>::new(backend, &params, data.len())
                     .expect("supported quality");
                 let limit = encoder.block_size_limit();
