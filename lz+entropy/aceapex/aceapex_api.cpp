@@ -298,6 +298,8 @@ int64_t aceapex_decompress_mt(
     const double t2 = ax_pt() ? ax_now() : 0;
     free(S.l);free(S.o);free(S.n);free(S.c);
     if (ax_pt()) fprintf(stderr, "[phase] entropy total %.3f s, match (%d threads) %.3f s, free %.3f s\n", t1 - t0, budget, t2 - t1, ax_now() - t2);
+    // a literal chunk decoded inside the match phase (tiled path: DNA, zstd) reports through g_dec_err (lzbench #357)
+    if (g_dec_err) return ACEAPEX_ERR_DATA;
     return (int64_t)S.hdr.orig_size;
 }
 
@@ -682,7 +684,7 @@ int64_t aceapex_decompress_stream(aceapex_read_fn rd, void* rctx, aceapex_write_
     StCtx c; c.rd = rd; c.rctx = rctx; c.wr = wr; c.wctx = wctx; c.flags = flags;
     AetHeader hdr; if (!st_read(c, 0, &hdr, sizeof hdr)) return ACEAPEX_ERR_DATA;
     if (memcmp(hdr.magic, "ACEPX2\0\0", 8) != 0) return ACEAPEX_ERR_DATA;
-    if (hdr.version == AXF_VERSION) return ax_fast_stream(rd, rctx, wr, wctx, threads, flags, hdr);
+    if (axf_is_v3((const uint8_t*)&hdr, sizeof hdr)) return ax_fast_stream(rd, rctx, wr, wctx, threads, flags, (const uint8_t*)&hdr);
     if (hdr.num_blocks == 0) { if (!ax_is_empty_archive(hdr)) return ACEAPEX_ERR_DATA; return 0; }
     if (hdr.block_size == 0 || (uint64_t)hdr.num_blocks * hdr.block_size < hdr.orig_size || (uint64_t)(hdr.num_blocks - 1) * hdr.block_size >= hdr.orig_size) return ACEAPEX_ERR_DATA;
     c.orig = hdr.orig_size; c.bs = hdr.block_size; c.nb = hdr.num_blocks;

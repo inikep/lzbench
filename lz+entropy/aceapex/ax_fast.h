@@ -62,8 +62,19 @@ typedef struct {
     const uint8_t* data;   /* payload */
 } axf_arc_t;
 
-AXF_INLINE uint32_t axf_rd32(const uint8_t* p) { uint32_t v; memcpy(&v, p, 4); return v; }
-AXF_INLINE uint64_t axf_rd64(const uint8_t* p) { uint64_t v; memcpy(&v, p, 8); return v; }
+/* Every multi-byte field is little-endian. On a big-endian host the reads (and the encoder's writes and 8-byte compares)
+ * swap bytes, so archives are the same bytes on every host (2.6.1, lzbench #357: until 2.6.0 the fast profile was
+ * little-endian only). On little-endian hosts the swap compiles away. */
+#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#define AXF_BIG_ENDIAN 1
+AXF_INLINE uint32_t axf_le32(uint32_t v) { return __builtin_bswap32(v); }
+AXF_INLINE uint64_t axf_le64(uint64_t v) { return __builtin_bswap64(v); }
+#else
+AXF_INLINE uint32_t axf_le32(uint32_t v) { return v; }
+AXF_INLINE uint64_t axf_le64(uint64_t v) { return v; }
+#endif
+AXF_INLINE uint32_t axf_rd32(const uint8_t* p) { uint32_t v; memcpy(&v, p, 4); return axf_le32(v); }
+AXF_INLINE uint64_t axf_rd64(const uint8_t* p) { uint64_t v; memcpy(&v, p, 8); return axf_le64(v); }
 AXF_INLINE uint64_t axf_boff(const axf_arc_t* a, uint32_t i) { return axf_rd64(a->tab + 8ull * i); }
 
 /* 1 if the 68 bytes at p are a version-3 header (magic + version only; axf_open validates the rest) */
@@ -71,17 +82,27 @@ AXF_INLINE int axf_is_v3(const uint8_t* p, size_t n) {
     return n >= 68 && memcmp(p, "ACEPX2\0\0", 8) == 0 && axf_rd32(p + 8) == AXF_VERSION;
 }
 
-/* Parse and validate a version-3 archive: header fields, the block table (monotonic, inside the payload, every block
- * at least a block header plus the pad), payload inside the buffer. Returns 0, or -2 (ACEAPEX_ERR_DATA). */
-static int axf_open(const uint8_t* p, size_t n, axf_arc_t* a) {
-    uint64_t need, prev, i;
-    if (!axf_is_v3(p, n)) return -2;
+/* The 68-byte header alone (the 68 bytes at p): version, reserved fields, profile, min_match, block size, block count
+ * consistent with orig_size, payload large enough for nb minimal blocks. Lets a streaming reader check the header
+ * before it allocates the block table (2.6.1, lzbench #357). Returns 0, or -2 (ACEAPEX_ERR_DATA). */
+static int axf_open_header(const uint8_t* p, axf_arc_t* a) {
+    if (!axf_is_v3(p, 68)) return -2;
     a->orig = axf_rd64(p + 12); a->bs = axf_rd32(p + 20); a->nb = axf_rd32(p + 24);
     a->profile = axf_rd32(p + 36); a->mm = axf_rd32(p + 40); a->payload = axf_rd64(p + 44);
     if (axf_rd64(p + 52) != 0 || axf_rd64(p + 60) != 0) return -2;                 /* reserved: must be zero */
     if (a->profile != AXF_PROFILE_FAST || a->mm < AXF_MM_MIN || a->mm > AXF_MM_MAX) return -2;
     if (a->bs == 0 || a->bs > AXF_BLOCK_MAX || a->nb == 0 || a->orig == 0) return -2;    /* the empty input is a version-2 archive */
     if ((uint64_t)a->nb * a->bs < a->orig || (uint64_t)(a->nb - 1) * a->bs >= a->orig) return -2;
+    if (a->payload / (AXF_BHDR + AXF_PAD) < a->nb) return -2;                        /* every block >= header + pad */
+    return 0;
+}
+/* Parse and validate a version-3 archive of n bytes whose header and block table are at p (n may exceed what is in
+ * memory: a streaming reader passes the archive size and has only header + table): header fields, the block table
+ * (monotonic, inside the payload, every block at least a block header plus the pad), payload inside n.
+ * Returns 0, or -2 (ACEAPEX_ERR_DATA). */
+static int axf_open64(const uint8_t* p, uint64_t n, axf_arc_t* a) {
+    uint64_t need, prev, i;
+    if (n < 68 || axf_open_header(p, a) != 0) return -2;
     need = 68 + 8ull * ((uint64_t)a->nb + 1);
     if (need > n || a->payload > n - need) return -2;
     a->tab = p + 68; a->data = p + (size_t)need;
@@ -94,6 +115,8 @@ static int axf_open(const uint8_t* p, size_t n, axf_arc_t* a) {
     }
     return 0;
 }
+/* the whole archive in memory: n bytes at p */
+static int axf_open(const uint8_t* p, size_t n, axf_arc_t* a) { return axf_open64(p, (uint64_t)n, a); }
 
 /* original bytes held by block b */
 AXF_INLINE uint32_t axf_block_len(const axf_arc_t* a, uint32_t b) {

@@ -1,6 +1,7 @@
 #include "aceapex.h"
 #include "ax_align.h"
 #include "ax_env.h"      // ax_getenv: tuning knobs only with ACEAPEX_ENV_TUNING (lzbench #336)
+#include "ax_fast.h"     // axf_le32/64: little-endian fields (the fast profile and the empty archive are endian-safe, 2.6.1)
 #if defined(__SSSE3__)
 #include <tmmintrin.h>
 #endif
@@ -897,8 +898,10 @@ static inline bool ax_is_empty_archive(const AetHeader& h) {
            h.zlit_sz == 0 && h.zoff_sz == 0 && h.zlen_sz == 0 && h.zcmd_sz == 0;
 }
 static inline void ax_empty_header(AetHeader& h) {
-    memset(&h, 0, sizeof(h)); memcpy(h.magic, "ACEPX2\0\0", 8); h.version = 2; h.block_size = 65536;
-    uint64_t hv = OUR_CHECKSUM(nullptr, 0); memcpy(h.xxhash, &hv, 8);
+    // little-endian fields: the empty archive (written for an empty input at every level, fast ones included) is the
+    // same bytes on every host (2.6.1); its zero fields read the same either way
+    memset(&h, 0, sizeof(h)); memcpy(h.magic, "ACEPX2\0\0", 8); h.version = axf_le32(2); h.block_size = axf_le32(65536);
+    uint64_t hv = axf_le64(OUR_CHECKSUM(nullptr, 0)); memcpy(h.xxhash, &hv, 8);
 }
 static bool ax_header_ok(const AetHeader& h, uint64_t src_size) {
     if (h.num_blocks == 0) return ax_is_empty_archive(h) && src_size >= sizeof(AetHeader);
@@ -1194,9 +1197,11 @@ static void parallel_decode(
         dargs[t]={lit,off,len,cmd,boffs,dst,dst_size,bstart,bend,block_size,ax_nt_for(nthreads,dst_size)};
     }
     if (nt == 1) { dec_worker(&dargs[0]); return; }   // threads=1: nothing is spawned
-    std::vector<pthread_t> dpts(nt);
-    for(size_t t=0;t<nt;t++) ax_thread(&dpts[t],dec_worker,&dargs[t]);
-    for(size_t t=0;t<nt;t++) pthread_join(dpts[t],nullptr);
+    // the caller decodes the last range itself: nt threads in all, not nt spawned + the caller waiting (2.6.1, lzbench #357)
+    std::vector<pthread_t> dpts(nt-1);
+    for(size_t t=0;t+1<nt;t++) ax_thread(&dpts[t],dec_worker,&dargs[t]);
+    dec_worker(&dargs[nt-1]);
+    for(size_t t=0;t+1<nt;t++) pthread_join(dpts[t],nullptr);
 }
  
 // Helper: chunked FSE decompress a stream
@@ -1328,9 +1333,8 @@ static void ax_entropy_split(size_t zlit, size_t ztok, int budget, int& lit_t, i
     double f = (zlit + ztok) ? (double)ztok / (double)(zlit + ztok) : 0.5;
     tok_t = (int)(budget * f + 0.5); if (tok_t < 1) tok_t = 1; if (tok_t > budget - 1) tok_t = budget - 1;
     lit_t = budget - tok_t;
-    // token streams under half a thread's share (DNA: < 1 % of the bytes) finish long before the literals: they get
-    // one thread on top of the budget instead of taking one from the literals (2 threads decoded the literals on 1)
-    if (budget * f < 0.5) { lit_t = budget; tok_t = 1; }
+    // token streams under half a thread's share (DNA: < 1 % of the bytes) keep their one thread, taken from the
+    // literals: lit_t + tok_t == budget (2.6.1; until 2.6.0 they got one thread on top of the budget, lzbench #357)
 }
 
 // Parallel entropy encode — 4 streams simultaneously
@@ -1645,7 +1649,7 @@ static int ax_lit_chunks(const uint8_t* src, size_t src_sz, size_t& orig_sz, siz
 static bool ax_lit_chunk_decode(const AxLitChunk& d, uint8_t* out) {
     if(!d.isz) return !d.raw;                                      // a chunk with bytes needs a body
     if(!d.tg) return zdec_ok(out,d.raw,d.in,d.isz);
-    if(d.in[0]==1){ dna_decompress(d.in+1,d.isz-1,out,d.raw); return true; }
+    if(d.in[0]==1){ dna_decompress(d.in+1,d.isz-1,out,d.raw); return !g_dec_err; }   // dna_decompress reports through g_dec_err
     if(d.in[0]==2) return axo_dna_decode(d.in+1,d.isz-1,out,d.raw)==0;
     if(d.in[0]==3) return axo_piece_decode(d.in+1,d.isz-1,out,d.raw)==0;
     return zdec_ok(out,d.raw,d.in+1,d.isz-1);
@@ -1850,8 +1854,9 @@ static int ax_cli_lm_decompress(const char* in, const char* out, int threads) {
 // `--in -` or `--in /dev/stdin` from a pipe: the whole of stdin goes to an anonymous in-memory file (memfd; a
 // tmpfile elsewhere) and its /proc/self/fd path replaces the input, so compress and decompress take their usual
 // path (mmap, pread, seek). An empty pipe or a read error is an error (rc 1), never an empty archive. A regular file
-// redirected to stdin is read in place.
-#ifndef _WIN32
+// redirected to stdin is read in place. CLI only (memfd_create needs glibc 2.27+; a library build such as lzbench's
+// never compiles it, lzbench #357).
+#if !defined(_WIN32) && (!defined(ACEAPEX_NO_MAIN) || defined(ACEAPEX_CLI))
 static char g_stdin_path[64];
 static int ax_cli_stdin(const char*& in) {
     if (strcmp(in, "-") && strcmp(in, "/dev/stdin")) return 0;
@@ -2051,7 +2056,7 @@ static int do_decompress_stream(const char* in_path, int threads) {
     {   // a literal stream without the chunked layout (text in the default profile; DNA archives above ~4 GiB of
         // literals written before 2.3) is not streamed: the whole-file decoder writes to stdout
         AetHeader h; uint64_t w = 0;
-        if (ax_pread(fd, &h, sizeof h, 0) == (ssize_t)sizeof h && !memcmp(h.magic, "ACEPX2\0\0", 8) && h.version == 2 && h.num_blocks && h.zlit_sz >= 8 &&
+        if (ax_pread(fd, &h, sizeof h, 0) == (ssize_t)sizeof h && !memcmp(h.magic, "ACEPX2\0\0", 8) && axf_le32(h.version) == 2 && h.num_blocks && h.zlit_sz >= 8 &&
             ax_pread(fd, &w, 8, sizeof h + (uint64_t)h.num_blocks * sizeof(BlockOffsets)) == 8 && !(((w >> 62) & 1) && ((w >> 61) & 1))) {
             close(fd); fprintf(stderr, "  literal stream not chunked: whole-file decode to stdout (memory = archive + output)\n");
             return do_decompress(in_path, "/dev/stdout", threads); } }
@@ -2076,7 +2081,7 @@ static int do_decompress(const char* in_path, const char* out_path, int threads=
     // Версия писалась с первого дня и не проверялась ни разу. Архив, созданный
     // более новым кодером, старый декодер читал как валидный и выдавал мусор:
     // при интерпретации новых битов orig_size получалось 3.4 эксабайта.
-    if (hdr.version == AXF_VERSION) {                 // FAST profile (2.4.0): the whole file in memory, blocks on the pool
+    if (axf_is_v3((const uint8_t*)&hdr, sizeof hdr)) {   // FAST profile (2.4.0): the whole file in memory, blocks on the pool
         fprintf(stderr,"[*] Decompress: %s -> %s (fast profile)\n",in_path,out_path);
         fseek(fin, 0, SEEK_END); const long fsz = ftell(fin); fseek(fin, 0, SEEK_SET);
         if (fsz < 68) { fprintf(stderr,"Cannot read: %s\n",in_path); fclose(fin); return 1; }
@@ -2087,15 +2092,15 @@ static int do_decompress(const char* in_path, const char* out_path, int threads=
         uint8_t* dst = ax_big_malloc((size_t)a.orig); if (!dst) { free(arc); return 1; }
         const int T = ax_decode_budget(threads, a.orig);
         const double t0 = now_sec(); const bool ok_dec = ax_fast_decode_blocks(a, 0, a.nb, dst, T); const double dec_time = now_sec() - t0;
-        uint64_t dv = OUR_CHECKSUM(dst, (size_t)a.orig), hv3; memcpy(&hv3, hdr.xxhash, 8); const bool ok = ok_dec && dv == hv3;
+        const uint64_t dv = OUR_CHECKSUM(dst, (size_t)a.orig), hv3 = axf_rd64(hdr.xxhash); const bool ok = ok_dec && dv == hv3;
         FILE* fout = fopen(out_path, "wb"); if (fout) { fwrite(dst, 1, (size_t)a.orig, fout); fclose(fout); }
         fprintf(stderr,"  Profile: fast (min match %u), %u blocks of %u, %d threads\n  Decode: %.2f MB/s  (%.3fs, algorithmic)\n  Decode wall: %.2f MB/s  (%.3fs, wall clock)\n",
                 a.mm, a.nb, a.bs, T, a.orig / dec_time / 1e6, dec_time, a.orig / (now_sec() - t_wall) / 1e6, now_sec() - t_wall);
         if (!ok_dec) fprintf(stderr,"  Status: ❌ DECODE ERROR (corrupt block)\n"); else if (!ok) fprintf(stderr,"  Status: ❌ HASH MISMATCH\n");
         free(dst); free(arc); return ok ? 0 : 1;
     }
-    if (hdr.version != 2) {
-        fprintf(stderr,"Unsupported format version %u (this build reads 2 and 3)\n", hdr.version);
+    if (axf_le32(hdr.version) != 2) {
+        fprintf(stderr,"Unsupported format version %u (this build reads 2 and 3)\n", axf_le32(hdr.version));
         return 1;
     }
     fprintf(stderr,"[*] Decompress: %s -> %s\n",in_path,out_path);
@@ -2106,7 +2111,7 @@ static int do_decompress(const char* in_path, const char* out_path, int threads=
           fprintf(stderr,"Corrupt archive (header)\n"); fclose(fin); return 1; } }
     if (hdr.num_blocks == 0) {                        // empty archive: one header, no blocks
         fclose(fin); FILE* fo=fopen(out_path,"wb"); if(!fo){ fprintf(stderr,"Cannot write: %s\n",out_path); return 1; }
-        fclose(fo); uint64_t dv=OUR_CHECKSUM(nullptr,0), hv3; memcpy(&hv3,hdr.xxhash,8);
+        fclose(fo); const uint64_t dv=OUR_CHECKSUM(nullptr,0), hv3=axf_rd64(hdr.xxhash);
         fprintf(stderr,"  Empty archive: 0 bytes written, %s\n", dv==hv3?"hash OK":"HASH MISMATCH"); return dv==hv3?0:1; }
 
     uint32_t nb=hdr.num_blocks;

@@ -52,9 +52,21 @@ static inline size_t enc_bound(size_t n, uint32_t mm) {
 struct Enc { std::vector<uint32_t> head, chain; std::vector<uint32_t> bl, bd; std::vector<double> price; std::vector<uint32_t> from, mlen, mdist;
              std::vector<uint32_t> stab, stok; std::vector<uint8_t> slit, sext; std::vector<uint8_t> out; };
 
-static inline uint32_t rd32(const uint8_t* p) { uint32_t v; memcpy(&v, p, 4); return v; }
-static inline uint64_t rd64(const uint8_t* p) { uint64_t v; memcpy(&v, p, 8); return v; }
-static inline void wr32(uint8_t* p, uint32_t v) { memcpy(p, &v, 4); }
+// little-endian on every host (axf_le32/64 in ax_fast.h): the hash keys, the 8-byte XOR compares (ctz counts matching
+// bytes from the lower address, clz from the higher one) and every written field give the same archive bytes on
+// big-endian hosts as on little-endian ones (2.6.1, lzbench #357)
+static inline uint32_t rd32(const uint8_t* p) { uint32_t v; memcpy(&v, p, 4); return axf_le32(v); }
+static inline uint64_t rd64(const uint8_t* p) { uint64_t v; memcpy(&v, p, 8); return axf_le64(v); }
+static inline void wr32(uint8_t* p, uint32_t v) { v = axf_le32(v); memcpy(p, &v, 4); }
+static inline void wr64(uint8_t* p, uint64_t v) { v = axf_le64(v); memcpy(p, &v, 8); }
+// k tokens as little-endian u32 (one memcpy on little-endian hosts)
+static inline void wrtok(uint8_t* p, const uint32_t* t, size_t k) {
+#ifdef AXF_BIG_ENDIAN
+    for (size_t i = 0; i < k; i++) wr32(p + 4 * i, t[i]);
+#else
+    if (k) memcpy(p, t, 4 * k);
+#endif
+}
 static inline void cpyn(uint8_t* d, const void* s, size_t k) { if (k) memcpy(d, s, k); }
 static inline uint32_t ctz64(uint64_t x) {
 #if defined(__GNUC__)
@@ -88,7 +100,7 @@ struct Out {
     }
     size_t write(uint8_t* out, uint32_t tail) const {
         uint8_t* p = out; wr32(p, (uint32_t)tok.size()); wr32(p + 4, (uint32_t)ext.size()); wr32(p + 8, tail); p += AXF_BHDR;
-        cpyn(p, tok.data(), tok.size() * 4); p += tok.size() * 4; cpyn(p, ext.data(), ext.size()); p += ext.size();
+        wrtok(p, tok.data(), tok.size()); p += tok.size() * 4; cpyn(p, ext.data(), ext.size()); p += ext.size();
         cpyn(p, lit.data(), lit.size()); p += lit.size();
         memset(p, 0, AXF_PAD); p += AXF_PAD;
         return (size_t)(p - out);
@@ -210,7 +222,7 @@ static size_t enc_sparse(const uint8_t* in, uint32_t n, uint8_t* out, const Para
     }
     cpyn(L + nl, in + anchor, n - anchor); nl += n - anchor;
     uint8_t* p = out; wr32(p, nt); wr32(p + 4, ne); wr32(p + 8, n - anchor); p += AXF_BHDR;
-    cpyn(p, TK, (size_t)nt * 4); p += (size_t)nt * 4; cpyn(p, E, ne); p += ne; cpyn(p, L, nl); p += nl;
+    wrtok(p, TK, nt); p += (size_t)nt * 4; cpyn(p, E, ne); p += ne; cpyn(p, L, nl); p += nl;
     memset(p, 0, AXF_PAD); p += AXF_PAD;
     return (size_t)(p - out);
 }
@@ -293,14 +305,13 @@ static inline size_t archive_size(const std::vector<std::vector<uint8_t>>& block
 }
 static inline void write_header(uint8_t* p, uint64_t orig, uint32_t bs, uint32_t nb, uint64_t xxh, uint32_t mm, uint64_t payload) {
     memset(p, 0, 68); memcpy(p, "ACEPX2\0\0", 8);
-    const uint32_t v = AXF_VERSION, pr = AXF_PROFILE_FAST;
-    memcpy(p + 8, &v, 4); memcpy(p + 12, &orig, 8); memcpy(p + 20, &bs, 4); memcpy(p + 24, &nb, 4); memcpy(p + 28, &xxh, 8);
-    memcpy(p + 36, &pr, 4); memcpy(p + 40, &mm, 4); memcpy(p + 44, &payload, 8);
+    wr32(p + 8, AXF_VERSION); wr64(p + 12, orig); wr32(p + 20, bs); wr32(p + 24, nb); wr64(p + 28, xxh);
+    wr32(p + 36, AXF_PROFILE_FAST); wr32(p + 40, mm); wr64(p + 44, payload);
 }
 // table + blocks after the header: p points at byte 68 of the archive
 static inline void write_body(uint8_t* p, const std::vector<std::vector<uint8_t>>& blocks) {
     uint64_t o = 0;
-    for (size_t b = 0; b <= blocks.size(); b++) { memcpy(p + 8 * b, &o, 8); if (b < blocks.size()) o += blocks[b].size(); }
+    for (size_t b = 0; b <= blocks.size(); b++) { wr64(p + 8 * b, o); if (b < blocks.size()) o += blocks[b].size(); }
     p += 8 * (blocks.size() + 1);
     for (const auto& b : blocks) { memcpy(p, b.data(), b.size()); p += b.size(); }
 }
