@@ -12,21 +12,10 @@
 //! they read are the reference's. Reading past the first byte is not checked
 //! per read; it leaves the consumed count above 64, which
 //! [`BitContainer::is_exhausted`] then rejects, exactly as the reference's
-//! `BIT_endOfDStream` does.
-//!
-//! [`ReverseBitReader`] reloads on every read and reads zeros past the start;
-//! the Huffman weight decoder relies on its [`ReverseBitReader::overflowed`]
-//! test, which mirrors the reference's FSE overflow handling.
+//! `BIT_endOfDStream` does, and which [`BitContainer::overflowed`] reports
+//! as the reference's FSE decoders test it.
 
 use crate::shared::format::highbit32;
-
-/// A backward reader over one bitstream.
-#[derive(Clone, Debug)]
-pub(crate) struct ReverseBitReader<'a> {
-    src: &'a [u8],
-    /// Number of unread bits; negative once reads ran past the first byte.
-    position: i64,
-}
 
 /// Loads up to eight bytes from `src[start..]` as a little-endian word,
 /// padding with zeros past the end.
@@ -38,73 +27,6 @@ fn load_word(src: &[u8], start: usize) -> u64 {
     let mut word = [0u8; 8];
     word[..tail.len()].copy_from_slice(tail);
     u64::from_le_bytes(word)
-}
-
-impl<'a> ReverseBitReader<'a> {
-    /// Opens `src`, or returns `None` when it is empty or its last byte holds
-    /// no end marker.
-    pub(crate) fn new(src: &'a [u8]) -> Option<Self> {
-        let &last = src.last()?;
-        if last == 0 {
-            return None;
-        }
-        let whole = i64::try_from(src.len() - 1).ok()?.checked_mul(8)?;
-        Some(Self {
-            src,
-            position: whole + i64::from(highbit32(u32::from(last))),
-        })
-    }
-
-    /// Bits `[start, start + count)` of the stream as an integer whose most
-    /// significant bit is the highest-numbered one; bits below zero read as
-    /// zeros. `count` must not exceed 56.
-    fn bits_at(&self, start: i64, count: u32) -> u64 {
-        debug_assert!(count <= 56);
-        if count == 0 {
-            return 0;
-        }
-        let end = start + i64::from(count);
-        if end <= 0 {
-            return 0;
-        }
-        let (low, shift_in) = if start < 0 {
-            (0, (-start) as u32)
-        } else {
-            (start, 0)
-        };
-        let width = (end - low) as u32;
-        let byte = (low / 8) as usize;
-        let word = load_word(self.src, byte) >> (low % 8);
-        (word & ((1u64 << width) - 1)) << shift_in
-    }
-
-    /// The next `count` bits without consuming them; `count <= 56`.
-    pub(crate) fn peek(&self, count: u32) -> u64 {
-        self.bits_at(self.position - i64::from(count), count)
-    }
-
-    /// Consumes `count` bits.
-    pub(crate) fn consume(&mut self, count: u32) {
-        self.position -= i64::from(count);
-    }
-
-    /// Reads and consumes `count` bits; `count <= 56`.
-    pub(crate) fn read(&mut self, count: u32) -> u64 {
-        let value = self.peek(count);
-        self.consume(count);
-        value
-    }
-
-    /// Whether more bits were consumed than the stream holds.
-    pub(crate) const fn overflowed(&self) -> bool {
-        self.position < 0
-    }
-
-    /// Whether every bit was consumed, and no more.
-    #[cfg(test)]
-    pub(crate) const fn is_exhausted(&self) -> bool {
-        self.position == 0
-    }
 }
 
 /// Width of the bit container in bits.
@@ -232,8 +154,8 @@ impl BitContainer {
             self.reload_fast(src);
             return true;
         }
-        if self.avail > CONTAINER_BITS {
-            // Read past the start: corrupt, and caught by `is_exhausted`.
+        if self.pos == 0 || self.avail > CONTAINER_BITS {
+            // At the start there is nothing to refill; overflow is permanent.
             return false;
         }
         let (next, full) = self.reload_tail(src);
@@ -263,6 +185,13 @@ impl BitContainer {
     #[inline]
     pub(crate) const fn is_exhausted(&self) -> bool {
         self.pos == 0 && self.avail == 0
+    }
+
+    /// Whether more bits were consumed than the stream holds: the
+    /// reference's `BIT_DStream_overflow`.
+    #[inline(always)]
+    pub(crate) const fn overflowed(&self) -> bool {
+        self.avail > CONTAINER_BITS
     }
 }
 
@@ -301,10 +230,16 @@ impl Sentinel {
     /// `src`.
     #[inline(always)]
     pub(crate) fn into_container(self, src: &[u8], start: usize) -> BitContainer {
+        // A fast loop may load a word that starts in the preceding stream.
+        // Move its base to this stream's first byte and remove those prefix
+        // bits from the available count. A consumed prefix wraps avail above
+        // 64, preserving the cautious reader's permanent overflow state.
+        let pos = self.pos.max(start);
+        let prefix_bits = ((pos - self.pos) as u32).wrapping_mul(8);
         BitContainer {
-            container: read64(src, self.pos),
-            avail: CONTAINER_BITS - self.bits.trailing_zeros(),
-            pos: self.pos - start,
+            container: read64(src, pos),
+            avail: (CONTAINER_BITS - self.bits.trailing_zeros()).wrapping_sub(prefix_bits),
+            pos: pos - start,
         }
     }
 
@@ -314,16 +249,42 @@ impl Sentinel {
         self.pos - start
     }
 
-    /// Moves back by the consumed whole bytes and refills. Positions
-    /// never pass `last`, the start of `src`'s last whole word: clamping to
-    /// it changes nothing but lets the compiler drop the bounds check.
+    /// Moves back by the consumed whole bytes and refills, for callers that
+    /// keep the position at most `limit`, itself at most `src.len() - 8`.
+    /// The position is clamped to `limit`, which never changes it but shows
+    /// the word in bounds, so the fast loops refill without a branch.
+    /// Returns `false`, leaving the sentinel as it was, only when `limit`
+    /// is out of range.
     #[inline(always)]
-    pub(crate) fn reload(&mut self, src: &[u8], last: usize) {
+    pub(crate) fn reload_within(&mut self, src: &[u8], limit: usize) -> bool {
         let consumed = self.bits.trailing_zeros();
-        self.pos -= (consumed >> 3) as usize;
-        let at = self.pos.min(last);
-        let word = src[at..at + 8].try_into().unwrap_or([0; 8]);
-        self.bits = (u64::from_le_bytes(word) | 1) << (consumed & 7);
+        let pos = (self.pos - (consumed >> 3) as usize).min(limit);
+        self.refill_at(src, pos, consumed)
+    }
+
+    /// Moves back by the consumed whole bytes and refills, testing with a
+    /// branch that the word lies inside `src`. Returns `false`, leaving the
+    /// sentinel as it was, when it does not.
+    ///
+    /// Unlike [`Self::reload_within`]'s clamp, the branch is one the
+    /// compiler cannot remove, so each refill ends a basic block.
+    #[inline(always)]
+    pub(crate) fn reload(&mut self, src: &[u8]) -> bool {
+        let consumed = self.bits.trailing_zeros();
+        let pos = self.pos - (consumed >> 3) as usize;
+        self.refill_at(src, pos, consumed)
+    }
+
+    /// Refills from the word at `pos`, keeping the `consumed % 8` bits of
+    /// the byte the container stopped in consumed.
+    #[inline(always)]
+    fn refill_at(&mut self, src: &[u8], pos: usize, consumed: u32) -> bool {
+        let Some(word) = src.get(pos..).and_then(<[u8]>::first_chunk::<8>) else {
+            return false;
+        };
+        self.pos = pos;
+        self.bits = (u64::from_le_bytes(*word) | 1) << (consumed & 7);
+        true
     }
 
     /// The next `64 - shift` bits.
@@ -387,14 +348,14 @@ mod tests {
 
     #[test]
     fn empty_and_unterminated_streams_are_rejected() {
-        assert!(ReverseBitReader::new(&[]).is_none());
-        assert!(ReverseBitReader::new(&[0x12, 0x00]).is_none());
+        assert!(BitContainer::new(&[]).is_none());
+        assert!(BitContainer::new(&[0x12, 0x00]).is_none());
     }
 
     #[test]
     fn the_marker_bit_and_padding_are_skipped() {
         // 0b0000_0101: marker at bit 2, two payload bits `01`.
-        let mut bits = ReverseBitReader::new(&[0b0000_0101]).expect("terminated");
+        let mut bits = BitContainer::new(&[0b0000_0101]).expect("terminated");
         assert_eq!(bits.read(1), 0);
         assert_eq!(bits.read(1), 1);
         assert!(bits.is_exhausted());
@@ -406,7 +367,7 @@ mod tests {
         // Bits from the top: byte 1 = 0b1_0110011 (marker then 0110011),
         // byte 0 = 0b1010_0101.
         let src = [0b1010_0101, 0b1011_0011];
-        let mut bits = ReverseBitReader::new(&src).expect("terminated");
+        let mut bits = BitContainer::new(&src).expect("terminated");
         assert_eq!(bits.read(7), 0b011_0011);
         assert_eq!(bits.read(4), 0b1010);
         assert_eq!(bits.read(4), 0b0101);
@@ -414,24 +375,141 @@ mod tests {
     }
 
     #[test]
-    fn reading_past_the_start_yields_zeros_and_overflows() {
-        let mut bits = ReverseBitReader::new(&[0b0000_0111]).expect("terminated");
-        assert_eq!(bits.peek(4), 0b1100);
-        assert_eq!(bits.read(4), 0b1100);
+    fn reading_past_the_start_overflows_until_reset() {
+        let src = [0b0000_0111];
+        let mut bits = BitContainer::new(&src).expect("terminated");
+        bits.read(2);
+        assert!(!bits.overflowed());
+        bits.read(2);
         assert!(bits.overflowed());
         assert!(!bits.is_exhausted());
-        assert_eq!(bits.read(8), 0);
+        // A refill cannot undo it.
+        assert!(!bits.reload(&src));
+        assert!(bits.overflowed());
     }
 
     #[test]
-    fn wide_reads_use_whole_words() {
-        let src: [u8; 12] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 0x80];
-        let mut bits = ReverseBitReader::new(&src).expect("terminated");
+    fn refills_continue_wide_streams_where_reads_left_off() {
+        // Bytes 1..=19, then the marker byte.
+        let mut src: [u8; 20] = core::array::from_fn(|index| index as u8 + 1);
+        src[19] = 0x80;
+        let mut bits = BitContainer::new(&src).expect("terminated");
         assert_eq!(bits.read(7), 0);
+        assert_eq!(bits.read(32), 0x1312_1110);
+        // A whole word refill, then a cautious one that still moves back
+        // as far as asked, then one that reaches the start early.
+        assert!(bits.reload(&src));
+        assert_eq!(bits.read(32), 0x0f0e_0d0c);
+        assert!(bits.reload(&src));
         assert_eq!(bits.read(32), 0x0b0a_0908);
+        assert!(!bits.reload(&src));
         assert_eq!(bits.read(32), 0x0706_0504);
         assert_eq!(bits.read(24), 0x03_0201);
         assert!(bits.is_exhausted());
+        assert!(!bits.overflowed());
+    }
+
+    #[test]
+    fn sentinels_refill_only_within_the_buffer() {
+        // Bytes 1..=15, then a byte of padding and the marker.
+        let mut src: [u8; 16] = core::array::from_fn(|index| index as u8 + 1);
+        src[15] = 0x01;
+        let mut bits = BitContainer::new(&src).expect("terminated");
+        bits.reload_fast(&src);
+        let mut sentinel = Sentinel::from_container(bits, &src, 0);
+        // The marker byte is consumed: the top bits are byte 14.
+        assert_eq!(sentinel.peek(56), 0x0f);
+        sentinel.skip(8);
+        let limit = src.len() - 8;
+        assert!(sentinel.reload_within(&src, limit));
+        assert_eq!(sentinel.peek(56), 0x0e);
+        // A limit past the end refuses the refill and leaves the sentinel
+        // as it was.
+        sentinel.skip(16);
+        let before = sentinel;
+        assert!(!sentinel.reload_within(&src[..11], limit));
+        assert_eq!(sentinel.peek(56), before.peek(56));
+        assert_eq!(sentinel.remaining(0), before.remaining(0));
+        assert!(sentinel.reload_within(&src, limit));
+        assert_eq!(sentinel.peek(56), 0x0c);
+        // A position past the limit is clamped to it.
+        sentinel.skip(8);
+        assert!(sentinel.reload_within(&src, 2));
+        assert_eq!(sentinel.remaining(0), 2);
+        assert_eq!(sentinel.peek(56), 0x0a);
+        assert!(sentinel.reload_within(&src, limit));
+        assert_eq!(sentinel.remaining(0), 2);
+        assert_eq!(sentinel.into_container(&src, 0).look(8), 0x0a);
+    }
+
+    #[test]
+    fn sentinels_reload_like_a_clamp_that_never_binds() {
+        let src: [u8; 24] = core::array::from_fn(|index| index as u8 * 7 + 3);
+        let mut bits = BitContainer::new(&src[..16]).expect("terminated");
+        bits.reload_fast(&src[..16]);
+        let mut checked = Sentinel::from_container(bits, &src, 0);
+        let mut clamped = checked;
+        for skip in [8, 13, 3, 20] {
+            checked.skip(skip);
+            clamped.skip(skip);
+            assert!(checked.reload(&src));
+            assert!(clamped.reload_within(&src, src.len() - 8));
+            assert_eq!(checked.peek(0), clamped.peek(0));
+            assert_eq!(checked.remaining(0), clamped.remaining(0));
+        }
+        // A word that would leave the buffer refuses the refill and leaves
+        // the sentinel as it was.
+        checked.skip(8);
+        let before = checked;
+        assert!(!checked.reload(&src[..checked.remaining(0) + 6]));
+        assert_eq!(checked.peek(0), before.peek(0));
+        assert_eq!(checked.remaining(0), before.remaining(0));
+    }
+
+    #[test]
+    fn sentinels_crossing_stream_starts_keep_only_the_stream_bits() {
+        let src: [u8; 32] = core::array::from_fn(|i| (i as u8).wrapping_mul(37).wrapping_add(11));
+        let start = 8;
+        let word = u64::from_le_bytes(src[start..start + 8].try_into().expect("whole word"));
+        // The common word starts in a preceding stream. Every remaining
+        // bit count, including an exact end, refers to this stream only.
+        for prefix in 1..=8 {
+            let pos = start - prefix;
+            for consumed in 0..=64 - prefix as u32 * 8 {
+                let sentinel = Sentinel {
+                    bits: (read64(&src, pos) | 1) << consumed,
+                    pos,
+                };
+                let mut container = sentinel.into_container(&src, start);
+                let available = 64 - consumed - prefix as u32 * 8;
+                assert_eq!(container.pos, 0);
+                assert!(!container.overflowed());
+                assert_eq!(container.read(available), word & ((1 << available) - 1));
+                assert!(container.is_exhausted());
+            }
+        }
+    }
+
+    #[test]
+    fn sentinels_read_past_stream_starts_remain_overflowed() {
+        let src: [u8; 64] = core::array::from_fn(|i| (i as u8).wrapping_mul(29).wrapping_add(17));
+        let start = 16;
+        for prefix in 1..=16 {
+            let pos = start - prefix;
+            let consumed = 64u32.saturating_sub(prefix as u32 * 8) + 1;
+            let sentinel = Sentinel {
+                bits: (read64(&src, pos) | 1) << consumed,
+                pos,
+            };
+            let mut container = sentinel.into_container(&src, start);
+            assert_eq!(container.pos, 0);
+            assert!(container.overflowed());
+            assert!(!container.is_exhausted());
+            assert!(!container.reload(&src[start..]));
+            container.read(7);
+            assert!(container.overflowed());
+            assert!(!container.is_exhausted());
+        }
     }
 
     #[test]

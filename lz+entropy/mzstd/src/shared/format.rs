@@ -18,7 +18,7 @@ pub(crate) const BLOCK_HEADER_SIZE: usize = 3;
 /// Largest block content: 128 KiB.
 pub(crate) const BLOCK_SIZE_MAX: usize = 1 << 17;
 /// Size of the optional content checksum.
-#[cfg(feature = "decompression")]
+#[cfg(any(feature = "decompression", feature = "framed"))]
 pub(crate) const CHECKSUM_SIZE: usize = 4;
 /// Largest frame header: magic, descriptor, window, dictionary ID and size.
 pub(crate) const FRAME_HEADER_SIZE_MAX: usize = 18;

@@ -3,7 +3,7 @@
 # crates that are not vendored). The library sources in src/ are unmodified.
 [package]
 name = "mbrotli"
-version = "0.5.15"
+version = "0.5.20"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
@@ -26,6 +26,13 @@ default-features = false
 version = "0.1"
 optional = true
 
+# The match finders' cache hint: a safe prefetch on stable Rust.
+[dependencies.branches]
+version = "0.5"
+optional = true
+default-features = false
+features = ["prefetch"]
+
 [dependencies.thiserror]
 version = "2"
 optional = true
@@ -45,10 +52,12 @@ optional = true
 [features]
 default = ["std", "compression", "decompression"]
 # Independently selectable public codecs and their private implementations.
-compression = ["dep:fearless_simd", "dep:fearless_simd_macros", "dep:thiserror"]
+compression = ["dep:branches", "dep:fearless_simd", "dep:fearless_simd_macros", "dep:thiserror"]
 decompression = ["dep:fearless_simd", "dep:thiserror", "dep:borrowed-buf"]
-# Dependency runtime detection for ordinary builds.
-std = ["fearless_simd?/std", "thiserror?/std"]
+# Dependency runtime detection for ordinary builds. `branches` without `std`
+# calls `core::intrinsics::abort_immediate` on nightly, which older nightlies
+# (such as the ClusterFuzzLite image's) lack.
+std = ["fearless_simd?/std", "thiserror?/std", "branches?/std"]
 # Opt-in alloc-backed support; overrides std-only APIs and instrumentation.
 # Disable default features too when targeting a platform without std.
 no_std = ["dep:libm", "fearless_simd?/libm"]

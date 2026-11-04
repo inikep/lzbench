@@ -95,7 +95,7 @@ fn build_literals_stats(
     if repeat == huf::Repeat::Check && !prev.table.validate(&count, max_symbol_value) {
         repeat = huf::Repeat::None;
     }
-    next.table = huf::CTable::default();
+    *next.table = huf::CTable::EMPTY;
     let flags = Flags {
         optimal_depth,
         ..Flags::default()
@@ -252,7 +252,7 @@ fn estimate_block_size(
     write_lit_entropy: bool,
 ) -> usize {
     let literals_size = estimate_literals(
-        &store.literals,
+        store.literals(),
         &entropy.huf,
         huf_metadata,
         write_lit_entropy,
@@ -299,7 +299,7 @@ fn estimate_sub_block_size(engine: &mut Engine, store: &mut SeqStore) -> Result<
     let strategy = engine.applied.cparams.strategy;
     let disabled = engine.applied.literals_compression_disabled();
     let huf_metadata = build_literals_stats(
-        &store.literals,
+        store.literals(),
         &engine.prev.entropy.huf,
         &mut engine.next.entropy.huf,
         disabled,
@@ -330,7 +330,7 @@ impl SeqStore {
                     LongLength::Literal(pos) if pos as usize == i => 0x10000,
                     _ => 0,
                 };
-                usize::from(self.sequences[i].lit_length) + extra
+                usize::from(self.sequences()[i].lit_length) + extra
             })
             .sum()
     }
@@ -343,7 +343,7 @@ impl SeqStore {
                     LongLength::Match(pos) if pos as usize == i => 0x10000,
                     _ => 0,
                 };
-                usize::from(self.sequences[i].ml_base) + MIN_MATCH + extra
+                usize::from(self.sequences()[i].ml_base) + MIN_MATCH + extra
             })
             .sum()
     }
@@ -367,23 +367,24 @@ impl SeqStore {
             LongLength::Match(pos) => LongLength::Match(pos - start as u32),
         };
         let lit_end = if end == self.nb_seq() {
-            self.literals.len()
+            self.literals().len()
         } else {
-            let shifted = SeqStore {
-                sequences: self.sequences[start..end].to_vec(),
-                ..SeqStore::default()
-            };
+            let shifted = SeqStore::from_parts(
+                self.sequences()[start..end].to_vec(),
+                Vec::new(),
+                LongLength::None,
+                0,
+                0,
+            );
             lit_start + shifted.literal_bytes(0, end - start, long_length)
         };
-        SeqStore {
-            sequences: self.sequences[start..end].to_vec(),
-            literals: self.literals[lit_start..lit_end].to_vec(),
-            codes: Vec::new(),
-            code_counts: CodeCounts::default(),
+        SeqStore::from_parts(
+            self.sequences()[start..end].to_vec(),
+            self.literals()[lit_start..lit_end].to_vec(),
             long_length,
-            max_nb_seq: self.max_nb_seq,
-            max_nb_lit: self.max_nb_lit,
-        }
+            self.max_nb_seq,
+            self.max_nb_lit,
+        )
     }
 }
 
@@ -434,7 +435,7 @@ fn resolve_off_codes(d_rep: &mut [u32; REP_NUM], c_rep: &mut [u32; REP_NUM], sto
         _ => nb_seq,
     };
     for idx in 0..nb_seq {
-        let seq = &mut store.sequences[idx];
+        let seq = &mut store.sequences_mut()[idx];
         let ll0 = seq.lit_length == 0 && idx != long_lit_len_idx;
         let off_base = seq.off_base;
         if offbase_is_repcode(off_base) {

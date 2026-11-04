@@ -1,5 +1,5 @@
-//! C ABI for [mzstd](https://docs.rs/mzstd): one-shot Zstandard compression
-//! and decompression into caller-owned buffers.
+//! C ABI for [mzstd](https://docs.rs/mzstd): one-shot and incremental
+//! Zstandard compression and decompression into caller-owned buffers.
 //!
 //! The crate builds a `cdylib` and a `staticlib` named `mzstd_ffi`. The C
 //! declarations live in `include/mzstd.h`:
@@ -18,11 +18,35 @@
 //! mzstd_result mzstd_decompress(const uint8_t *input, size_t input_len,
 //!                               uint8_t *output, size_t *output_len);
 //! size_t mzstd_compress_bound(size_t input_len);
+//!
+//! mzstd_result mzstd_encoder_create(int level, mzstd_encoder **encoder);
+//! mzstd_result mzstd_encoder_reset(mzstd_encoder *encoder,
+//!                                  uint64_t pledged_size);
+//! mzstd_result mzstd_encoder_process(mzstd_encoder *encoder,
+//!                                    const uint8_t *input, size_t *input_len,
+//!                                    uint8_t *output, size_t *output_len,
+//!                                    mzstd_operation operation,
+//!                                    mzstd_status *status);
+//! void mzstd_encoder_free(mzstd_encoder *encoder);
+//!
+//! mzstd_result mzstd_decoder_create(int window_log_max,
+//!                                   mzstd_decoder **decoder);
+//! mzstd_result mzstd_decoder_reset(mzstd_decoder *decoder);
+//! mzstd_result mzstd_decoder_process(mzstd_decoder *decoder,
+//!                                    const uint8_t *input, size_t *input_len,
+//!                                    uint8_t *output, size_t *output_len,
+//!                                    mzstd_decode_operation operation,
+//!                                    mzstd_status *status);
+//! void mzstd_decoder_free(mzstd_decoder *decoder);
 //! ```
 //!
-//! Every call is self-contained: it builds its codec, runs it and releases it,
-//! so the functions are safe to call from any number of threads at once. No
-//! panic unwinds into C; one would be reported as [`MzstdResult::Error`].
+//! Every one-shot call is self-contained: it builds its codec, runs it and
+//! releases it, so the functions are safe to call from any number of threads
+//! at once. A session handle ([`MzstdEncoder`], [`MzstdDecoder`]) keeps its
+//! codec between calls instead, frame after frame; it may move between
+//! threads but serves one call at a time. No panic unwinds into C; one would
+//! be reported as [`MzstdResult::Error`], and a handle it interrupted stays
+//! unusable until it is released.
 //!
 //! # Examples
 //!
@@ -60,6 +84,14 @@
 //! ```
 
 mod core;
+mod session;
+
+pub use session::{
+    MZSTD_CONTENT_SIZE_UNKNOWN, MzstdDecodeOperation, MzstdDecoder, MzstdEncoder, MzstdOperation,
+    MzstdStatus, mzstd_decoder_create, mzstd_decoder_free, mzstd_decoder_process,
+    mzstd_decoder_reset, mzstd_encoder_create, mzstd_encoder_free, mzstd_encoder_process,
+    mzstd_encoder_reset,
+};
 
 use std::ffi::c_int;
 
@@ -82,8 +114,9 @@ pub enum MzstdResult {
     /// bytes written.
     Ok = 0,
     /// `MZSTD_INVALID_PARAMETER`: an argument was rejected before any work
-    /// was done — a null `output_len`, a null buffer with a non-zero length,
-    /// overlapping buffers, or a level out of range.
+    /// was done — a null `output_len` or handle, a null buffer with a
+    /// non-zero length, overlapping buffers, or a level, window log or
+    /// operation out of range.
     InvalidParameter = 1,
     /// `MZSTD_OUTPUT_TOO_SMALL`: the result does not fit in the output
     /// buffer.
@@ -176,7 +209,8 @@ pub unsafe extern "C" fn mzstd_compress(
 /// bound the result.
 ///
 /// Every window size the format allows, up to 2 GiB, is accepted: the output
-/// buffer bounds the memory the call uses. `output` is zeroed before decoding.
+/// buffer bounds the memory the call uses. `output` may be uninitialized;
+/// on success no byte after the result is written.
 ///
 /// # Errors
 ///

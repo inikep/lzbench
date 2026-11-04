@@ -41,3 +41,9 @@ endif
 ifeq ($(SNAPPY_RVV_0_7),1)
     SNAPPY_FLAGS += -DSNAPPY_RVV_0_7
 endif
+
+# CMake generates SNAPPY_IS_BIG_ENDIAN in snappy's config.h; without it snappy
+# assumes a little-endian CPU
+ifeq ($(TARGET_BIG_ENDIAN),1)
+    SNAPPY_FLAGS += -DSNAPPY_IS_BIG_ENDIAN=1
+endif

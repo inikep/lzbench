@@ -3,7 +3,7 @@
 # vendored). The library sources in src/ are unmodified.
 [package]
 name = "mzstd"
-version = "0.2.5"
+version = "0.2.11"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
@@ -38,8 +38,9 @@ optional = true
 default-features = false
 features = ["prefetch"]
 
-# Safe bookkeeping for uninitialized session output: the encoder writes
-# into a zeroed-ahead prefix instead of a temporary buffer.
+# Safe bookkeeping for uninitialized output: the encoder and the decoder's
+# one-shot path write into a zeroed-ahead prefix instead of a temporary
+# buffer.
 [dependencies.borrowed-buf]
 version = "0.1.1"
 optional = true
@@ -55,12 +56,28 @@ compression = [
     "dep:fearless_simd_macros",
     "dep:thiserror",
 ]
-decompression = ["dep:fearless_simd", "dep:fearless_simd_macros", "dep:thiserror"]
+decompression = [
+    "dep:borrowed-buf",
+    "dep:fearless_simd",
+    "dep:fearless_simd_macros",
+    "dep:thiserror",
+]
 # Standard library support: `std::io` adapters, `std::error::Error` and
 # runtime SIMD detection.
 std = ["branches?/std", "fearless_simd?/std", "thiserror?/std"]
 # Opt-in alloc-backed support; overrides std-only APIs and instrumentation.
 no_std = ["fearless_simd?/libm"]
+
+# Structured, seekable containers of Zstandard frames (`mzstd::framing`):
+# resources, metadata, padding, a central directory and a seek table in the
+# `contrib/seekable_format` layout. The container is this crate's own format,
+# so nothing behind this gate rests on byte identity with a pinned C
+# encoder: its Zstandard frames are byte-identical to `ZSTD_compress2`, and
+# whole containers are checked against zstd's own decoders (visible
+# resources with `ZSTD_decompress`, seeks with the contrib seekable decoder).
+# The API behind this gate may change in a patch release; the default
+# surface may not. It adds nothing without a codec.
+framed = []
 
 # Declared but inert in lzbench: upstream wires it to a profiler crate that is
 # not vendored here. Keeping the name avoids unexpected_cfgs warnings from the

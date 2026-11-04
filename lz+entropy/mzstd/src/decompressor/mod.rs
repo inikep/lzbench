@@ -51,6 +51,8 @@ mod config;
 mod core;
 mod decoder;
 mod error;
+#[cfg(feature = "framed")]
+pub mod framing;
 mod session;
 
 #[cfg(not(feature = "no_std"))]

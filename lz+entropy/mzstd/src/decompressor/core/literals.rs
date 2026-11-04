@@ -16,7 +16,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use super::copy::WILDCOPY_OVERLENGTH;
-use super::huffman::HuffmanTable;
+use super::huffman::{FIXED_OUT, HuffmanTable};
 use crate::decompressor::InvalidDataKind;
 use crate::shared::format::EncodingType;
 
@@ -36,6 +36,11 @@ pub(crate) const fn encoding_type(bits: u8) -> EncodingType {
         _ => EncodingType::Repeat,
     }
 }
+
+/// Four-stream sections from this size on decode in a buffer of
+/// [`FIXED_OUT`] bytes, for the pair loop; smaller ones decode in a buffer
+/// of their own size, so small frames do not zero the whole buffer.
+const FIXED_MIN: usize = 4096;
 
 /// A block's literals, followed by at least [`WILDCOPY_OVERLENGTH`]
 /// readable bytes.
@@ -222,18 +227,25 @@ impl LiteralsDecoder {
                     section
                 };
                 let len = size + WILDCOPY_OVERLENGTH;
-                if self.buffer.len() < len {
-                    self.buffer.resize(len, 0);
+                // Large four-stream sections decode in a buffer of a fixed
+                // size, which the pair loop needs.
+                let room = if four_streams && size >= FIXED_MIN {
+                    len.max(FIXED_OUT)
+                } else {
+                    len
+                };
+                if self.buffer.len() < room {
+                    self.buffer.resize(room, 0);
                 }
-                let buffer = &mut self.buffer[..len];
-                let out = &mut buffer[..size];
+                let buffer = &mut self.buffer[..room];
                 if self.tree == TreeSource::Dictionary {
                     let table = dictionary.ok_or(invalid)?;
-                    table.decode_streams_shared(simd, streams, out, four_streams)?;
+                    table.decode_streams_shared(simd, streams, buffer, size, four_streams)?;
                 } else {
                     let table = self.huffman.as_deref_mut().ok_or(invalid)?;
-                    table.decode_streams(simd, streams, out, four_streams)?;
+                    table.decode_streams(simd, streams, buffer, size, four_streams)?;
                 }
+                let buffer = &self.buffer[..len];
                 Ok((
                     Literals {
                         bytes: buffer,

@@ -27,7 +27,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
-use fearless_simd::{Simd, SimdBase, dispatch, u8x16, u8x32};
+use fearless_simd::{Simd, dispatch};
 
 /// Smallest ring allocation; growth doubles up to the window size.
 const MIN_RING: u64 = 64;
@@ -409,30 +409,63 @@ fn copy_overlapping(ring: &mut [u8], dst: usize, src: usize, len: usize, distanc
 
 /// Copies sixteen bytes when both windows are inside the ring; the slots
 /// past the real copy are the format's unreachable bytes ahead of the
-/// window, or still unwritten ring space. The vector stays in registers
-/// between the source and destination bounds checks.
+/// window, or still unwritten ring space.
 #[inline(always)]
-fn copy16<S: Simd>(simd: S, ring: &mut [u8], src: usize, dst: usize) -> bool {
-    if let Some(word) = ring.get(src..).and_then(|s| s.first_chunk::<16>())
-        && let word = u8x16::load_array_ref(simd, word)
-        && let Some(target) = ring.get_mut(dst..).and_then(|t| t.first_chunk_mut::<16>())
-    {
-        word.store_array(target);
-        return true;
-    }
-    false
+fn copy16(ring: &mut [u8], src: usize, dst: usize) -> bool {
+    copy_chunk::<16>(ring, src, dst)
 }
 
 /// Copies a snapshot of thirty-two bytes for a non-overlapping copy of 17
 /// to 32 bytes. At most fifteen unreachable bytes ahead are overwritten.
 /// Loading the whole source first also permits physically overlapping slots.
 #[inline(always)]
-fn copy32<S: Simd>(simd: S, ring: &mut [u8], src: usize, dst: usize) -> bool {
-    if let Some(word) = ring.get(src..).and_then(|s| s.first_chunk::<32>())
-        && let word = u8x32::load_array_ref(simd, word)
-        && let Some(target) = ring.get_mut(dst..).and_then(|t| t.first_chunk_mut::<32>())
+fn copy32(ring: &mut [u8], src: usize, dst: usize) -> bool {
+    copy_chunk::<32>(ring, src, dst)
+}
+
+/// Moves `N` bytes from `src` to `dst` as one fixed-size array when both
+/// windows fit, which the enclosing backend's target features compile to
+/// vector loads and stores without a library call. One test of the later
+/// window against the last start that fits covers both windows, so the
+/// slicing below needs no check of its own.
+#[inline(always)]
+fn copy_chunk<const N: usize>(ring: &mut [u8], src: usize, dst: usize) -> bool {
+    let Some(last) = ring.len().checked_sub(N) else {
+        return false;
+    };
+    if src.max(dst) > last {
+        return false;
+    }
+    let Some(&word) = ring[src..].first_chunk::<N>() else {
+        return false;
+    };
+    let Some(target) = ring[dst..].first_chunk_mut::<N>() else {
+        return false;
+    };
+    *target = word;
+    true
+}
+
+/// Writes a dictionary word of at most 32 bytes from the front of `scratch`
+/// as one fixed-size chunk when the chunk fits the ring at `dst`, and reports
+/// whether it did. Like [`copy16`] and [`copy32`], the chunk overwrites at
+/// most fifteen bytes past the word, which are unreachable or unwritten.
+#[inline(always)]
+fn put_word(ring: &mut [u8], dst: usize, scratch: &[u8; SCRATCH_BYTES], length: usize) -> bool {
+    if length <= 16 {
+        put_chunk::<16>(ring, dst, scratch)
+    } else {
+        length <= 32 && put_chunk::<32>(ring, dst, scratch)
+    }
+}
+
+/// Writes the first `N` bytes of `scratch` at `dst` when they fit the ring.
+#[inline(always)]
+fn put_chunk<const N: usize>(ring: &mut [u8], dst: usize, scratch: &[u8; SCRATCH_BYTES]) -> bool {
+    if let Some(&word) = scratch.first_chunk::<N>()
+        && let Some(target) = ring.get_mut(dst..).and_then(|t| t.first_chunk_mut::<N>())
     {
-        word.store_array(target);
+        *target = word;
         return true;
     }
     false
@@ -440,9 +473,11 @@ fn copy32<S: Simd>(simd: S, ring: &mut [u8], src: usize, dst: usize) -> bool {
 
 /// Copies `length` bytes from `distance` back, in ring pieces that neither
 /// wrap nor need per-byte handling. The ring already holds `position + length`.
+/// The token only selects the instantiation compiled with its backend's
+/// target features; the short pieces are fixed-size array moves.
 #[inline(always)]
 fn copy_ring<'a, S: Simd, O: Sink<'a>, const LINEAR: bool>(
-    simd: S,
+    _simd: S,
     ring: &mut [u8],
     position: &mut u64,
     distance: u64,
@@ -458,7 +493,7 @@ fn copy_ring<'a, S: Simd, O: Sink<'a>, const LINEAR: bool>(
         let piece = length.min(size - dst).min(size - src);
         if src < dst && (distance as usize) < piece {
             copy_overlapping(ring, dst, src, piece, distance as usize);
-        } else if !(piece <= 16 && copy16(simd, ring, src, dst)) {
+        } else if !(piece <= 16 && copy16(ring, src, dst)) {
             ring.copy_within(src..src + piece, dst);
         }
         *position += piece as u64;
@@ -501,6 +536,22 @@ fn write_ring<'a, O: Sink<'a>, const LINEAR: bool>(
         }
     }
 }
+
+/// [`Block::switch_fast`] out of the command loop: switches are rare next to
+/// the commands around them, and taking the reservoir by value keeps it in
+/// the loop's registers instead of behind a reference.
+#[cold]
+#[inline(never)]
+fn switch_block(block: &mut Block, mut bits: Bits) -> Bits {
+    block.switch_fast(&mut bits);
+    bits
+}
+
+/// Marks the branch that calls it as rare, so the command loop's register
+/// allocation favours the paths that run per command and places spills on
+/// the rare ones.
+#[cold]
+const fn cold() {}
 
 /// Grows the ring so positions below `end` are addressable, doubling up to
 /// the window size. A full ring wraps instead.
@@ -602,22 +653,23 @@ struct Tables {
     scratch_len: usize,
 }
 
-impl Default for Tables {
-    fn default() -> Self {
-        Self {
-            builder: Builder::default(),
-            blocks: Default::default(),
-            modes: [0; 256],
-            maps: Default::default(),
-            trees: Default::default(),
-            distances: DistanceLayout::default(),
-            distance_table: Vec::new(),
-            distance_table_layout: None,
-            scratch: [0; SCRATCH_BYTES],
-            scratch_pos: 0,
-            scratch_len: 0,
-        }
-    }
+impl Tables {
+    /// The workspace before its first meta-block, as a constant: creating it
+    /// copies these bytes into place once, where a constructor would build
+    /// the value on the stack and then move it.
+    const EMPTY: Self = Self {
+        builder: Builder::EMPTY,
+        blocks: [Block::EMPTY, Block::EMPTY, Block::EMPTY],
+        modes: [0; 256],
+        maps: [ContextMap::EMPTY, ContextMap::EMPTY],
+        trees: [Group::EMPTY, Group::EMPTY, Group::EMPTY],
+        distances: DistanceLayout::EMPTY,
+        distance_table: Vec::new(),
+        distance_table_layout: None,
+        scratch: [0; SCRATCH_BYTES],
+        scratch_pos: 0,
+        scratch_len: 0,
+    };
 }
 
 /// Literal context of the next byte: the block's context mode applied to
@@ -784,7 +836,7 @@ impl Stream {
     fn ensure_tables(&mut self) -> Result<&mut Tables, DecodeError> {
         if self.tables.is_empty() {
             self.memory.reserve(&mut self.tables, 1)?;
-            self.tables.push(Tables::default());
+            self.tables.push(Tables::EMPTY);
         }
         self.tables
             .first_mut()
@@ -890,7 +942,10 @@ impl Stream {
         let distance_table = distances.table(distance_table);
         let mut bits = *saved_bits;
         let mut position = *saved_position;
-        let mut remaining = *saved_remaining;
+        // The meta-block's end and the end of this call's output space as
+        // positions: both counters fall exactly as `position` advances, so
+        // the loop keeps them as constants and tests against `position`.
+        let meta_end = position + *saved_remaining;
         let mut flushed = position;
         // The input cursor and the recent-distance cache live in locals too.
         // The cursor is the unread acceptable input, which shrinks from the
@@ -901,20 +956,16 @@ impl Stream {
             .unwrap_or_default();
         let mut rest = fast_input;
         let mut cache = *saved_cache;
-        // Command state the resumable stages read; written back on a pause.
-        let mut literals = 0u64;
-        let mut copy = 0u64;
-        let mut implicit = false;
-        let mut distance = 0u64;
-        let mut distance_code = 0usize;
         // Output space still free, counting pending ring bytes as used; it
         // only ever shrinks, since delivering pending bytes does not change it.
-        let mut space = out_end - output.produced;
+        let space_end = position + (out_end - output.produced) as u64;
+        // Every write in this call ends at or before both.
+        let limit_end = meta_end.min(space_end);
         // A linear member decodes straight into the caller's slice, which is
         // taken out of `output` until the loop leaves; it never grows, since
         // `space` keeps every write below its bounded length, and never
         // wraps, so its positions are its indices and need no mask.
-        let history_end = output.history_end(position, remaining, out_end);
+        let history_end = output.history_end(position, meta_end - position, out_end);
         let linear_bytes: &mut [u8] = if LINEAR {
             output.bytes.take_history()
         } else {
@@ -942,20 +993,49 @@ impl Stream {
         let literal_tables = trees[0].tables();
         let command_tables = trees[1].tables();
         let distance_tables = trees[2].tables();
+        // Each group's second-level storage, held once for all of its roots.
+        let literal_second = literal_tables.second();
+        let command_second = command_tables.second();
+        let distance_second = distance_tables.second();
         let distance_map = maps[1].values.as_slice();
         let [literal_block, command_block, distance_block] = blocks;
         // Per-block-type command and distance tables, refreshed at switches.
         let mut command_type = command_block.current;
-        let mut command_table = command_tables.table(command_type);
-        let mut distance_type = usize::MAX;
-        // Per-block-type literal state, refreshed at every literal block switch.
-        let mut literal_type = usize::MAX;
-        let mut lut = context_lut(0);
-        let mut contexts: &[u8; 64] = &[0; 64];
-        let mut trivial = false;
-        let mut trivial_table = literal_tables.table(0);
-        // Per-block-type distance codes, one per distance context.
-        let mut distance_trees = [distance_tables.table(0); 4];
+        let mut command_table = command_tables.root(command_type);
+        // Per-block-type literal state, set here and refreshed at every
+        // literal block switch, so a run never compares block types.
+        macro_rules! literal_state {
+            () => {{
+                let literal_type = literal_block.current;
+                let contexts = literal_map[literal_type * 64..]
+                    .first_chunk::<64>()
+                    .unwrap_or(&[0; 64]);
+                let trivial = maps[0].trivial(literal_type);
+                let first = literal_tables.root(usize::from(contexts[0]));
+                // Each context's code resolved once per block type, so a
+                // contextual literal reads its root without a bounds check;
+                // block switches are rare next to the literals they cover.
+                let roots = if trivial {
+                    [first; 64]
+                } else {
+                    contexts.map(|tree| literal_tables.root(usize::from(tree)))
+                };
+                (context_lut(modes[literal_type]), roots, trivial, first)
+            }};
+        }
+        let (mut lut, mut roots, mut trivial, mut trivial_table) = literal_state!();
+        // Per-block-type distance codes, one per distance context, refreshed
+        // the same way at distance block switches.
+        macro_rules! distance_state {
+            () => {
+                distance_map[distance_block.current * 4..]
+                    .first_chunk::<4>()
+                    .copied()
+                    .unwrap_or([0; 4])
+                    .map(|tree| distance_tables.root(usize::from(tree)))
+            };
+        }
+        let mut distance_trees = distance_state!();
         macro_rules! leave {
             () => {{
                 flush_ring::<O, LINEAR>(ring, position, &mut flushed, output);
@@ -965,105 +1045,119 @@ impl Stream {
                 input.consumed += fast_input.len() - rest.len();
                 *saved_bits = bits;
                 *saved_position = position;
-                *saved_remaining = remaining;
+                *saved_remaining = meta_end - position;
                 *saved_cache = cache;
-                *saved_literals = literals;
-                *saved_copy = copy;
-                *saved_implicit = implicit;
-                *saved_distance = distance;
-                *saved_distance_code = distance_code;
-            }};
-        }
-        macro_rules! pause {
-            ($stage:expr) => {{
-                leave!();
-                *stage = $stage;
-                return Ok(());
-            }};
-        }
-        macro_rules! check {
-            ($result:expr) => {
-                match $result {
-                    Ok(value) => value,
-                    Err(error) => {
-                        leave!();
-                        return Err(error);
-                    }
-                }
-            };
-        }
-        // Grows the ring for every byte this call could still produce, so
-        // growth happens once per call rather than once per doubling. That
-        // covers `end` whenever the write fits in `space`: copies and
-        // dictionary words larger than `space` pause before reaching here, and
-        // an insert longer than `space` writes only what fits. Growing to the
-        // whole of such an insert would reserve history for output this call
-        // cannot hold, and fail a workspace limit that linear delivery into
-        // the same slice never meets. The pending bytes keep their indices
-        // because a ring only grows before it has wrapped.
-        macro_rules! reach {
-            ($end:expr) => {{
-                let end: u64 = $end;
-                if !LINEAR && end > ring_limit {
-                    let bound = position.saturating_add(remaining.min(space as u64));
-                    // A failed growth leaves the storage, and so the pending
-                    // bytes, untouched; the slice is re-borrowed either way.
-                    let grown = grow_ring(memory, storage, window_size, bound);
-                    ring = storage.as_mut_slice();
-                    ring_len = ring.len();
-                    mask = history_mask(ring_len);
-                    ring_limit = if ring_len as u64 >= window_size {
-                        u64::MAX
-                    } else {
-                        ring_len as u64
-                    };
-                    check!(grown);
-                }
             }};
         }
         // Entered at `Stage::Literals`, the loop resumes the pending insert
         // run of the command whose fields the stages saved, then continues.
         let mut resume = matches!(*stage, Stage::Literals);
-        loop {
-            let (insert, distance_context) = if resume {
+        let exit: Result<Stage, DecodeError> = 'run: loop {
+            // Every exit leaves through the one `leave!` after the loop, so the
+            // loop carries a single exit edge rather than one write-back per
+            // pause and failure site.
+            macro_rules! pause {
+                ($stage:expr) => {{
+                    cold();
+                    break 'run Ok($stage);
+                }};
+            }
+            macro_rules! check {
+                ($result:expr) => {
+                    match $result {
+                        Ok(value) => value,
+                        Err(error) => {
+                            cold();
+                            break 'run Err(error);
+                        }
+                    }
+                };
+            }
+            // Command fields a resumable stage reads, written only by the
+            // pauses that leave them pending: a field decoded in this
+            // iteration is never carried into the next one, and a pause
+            // before the next command's fields needs none of them.
+            // Failures poison the session, so they write none either.
+            macro_rules! save {
+                ($($field:ident = $value:expr),*) => {{
+                    $(*$field = $value;)*
+                }};
+            }
+            // Grows the ring for every byte this call could still produce, so
+            // growth happens once per call rather than once per doubling. That
+            // covers `end` whenever the write fits in `space`: copies and
+            // dictionary words larger than `space` pause before reaching here, and
+            // an insert longer than `space` writes only what fits. Growing to the
+            // whole of such an insert would reserve history for output this call
+            // cannot hold, and fail a workspace limit that linear delivery into
+            // the same slice never meets. The pending bytes keep their indices
+            // because a ring only grows before it has wrapped.
+            macro_rules! reach {
+                ($end:expr) => {{
+                    let end: u64 = $end;
+                    if !LINEAR && end > ring_limit {
+                        cold();
+                        let bound = limit_end;
+                        // A failed growth leaves the storage, and so the pending
+                        // bytes, untouched; the slice is re-borrowed either way.
+                        let grown = grow_ring(memory, storage, window_size, bound);
+                        ring = storage.as_mut_slice();
+                        ring_len = ring.len();
+                        mask = history_mask(ring_len);
+                        ring_limit = if ring_len as u64 >= window_size {
+                            u64::MAX
+                        } else {
+                            ring_len as u64
+                        };
+                        check!(grown);
+                    }
+                }};
+            }
+            // The command's fields, which the resumable stages read when a
+            // pause leaves them pending (see `save!`).
+            let (insert, distance_context, copy, implicit) = if resume {
                 resume = false;
-                literals = *saved_literals;
-                copy = *saved_copy;
-                implicit = *saved_implicit;
-                (literals, copy.saturating_sub(2).min(3) as u8)
+                let copy = *saved_copy;
+                (
+                    *saved_literals,
+                    copy.saturating_sub(2).min(3) as u8,
+                    copy,
+                    *saved_implicit,
+                )
             } else {
-                if remaining == 0 || !bits.refill_rest(&mut rest) {
+                if position == meta_end || !bits.refill_rest(&mut rest) {
                     pause!(Stage::Command);
                 }
                 if command_block.remaining == 0 {
+                    cold();
                     if !command_block.switch_ready() {
                         pause!(Stage::Command);
                     }
-                    command_block.switch_fast(&mut bits);
+                    bits = switch_block(command_block, bits);
                     if command_block.current != command_type {
                         command_type = command_block.current;
-                        command_table = command_tables.table(command_type);
+                        command_table = command_tables.root(command_type);
                     }
                     if !bits.refill_rest(&mut rest) {
                         pause!(Stage::Command);
                     }
                 }
-                let symbol = command_table.decode_fast(&mut bits);
+                let symbol = command_table.decode_fast(command_second, &mut bits);
                 command_block.remaining -= 1;
                 let command = COMMANDS[symbol & (COMMAND_SLOTS - 1)];
                 let insert =
                     u64::from(command.insert_base) + bits.take(u32::from(command.insert_extra));
-                if insert > remaining {
+                if insert > meta_end - position {
                     check!(Err(InvalidDataKind::MetaBlock.into()));
                 }
-                implicit = command.implicit;
-                literals = insert;
                 if bits.count() < 24 && !bits.refill_rest(&mut rest) {
+                    save!(saved_literals = insert, saved_implicit = command.implicit);
                     pause!(Stage::CopyExtra(usize::from(command.copy_code)));
                 }
-                copy = u64::from(command.copy_base) + bits.take(u32::from(command.copy_extra));
-                (insert, command.distance_context)
+                let copy = u64::from(command.copy_base) + bits.take(u32::from(command.copy_extra));
+                (insert, command.distance_context, copy, command.implicit)
             };
+            let mut literals = insert;
             if insert != 0 {
                 // `position + remaining` was validated at the meta-block header.
                 reach!(position + insert);
@@ -1072,29 +1166,22 @@ impl Stream {
                         break Pause::Done;
                     }
                     if literal_block.remaining == 0 {
+                        cold();
                         if !literal_block.switch_ready()
                             || (bits.count() < 54 && !bits.refill_rest(&mut rest))
                         {
                             break Pause::Input;
                         }
-                        literal_block.switch_fast(&mut bits);
+                        bits = switch_block(literal_block, bits);
+                        (lut, roots, trivial, trivial_table) = literal_state!();
                         continue;
-                    }
-                    if literal_block.current != literal_type {
-                        literal_type = literal_block.current;
-                        lut = context_lut(modes[literal_type]);
-                        contexts = literal_map[literal_type * 64..]
-                            .first_chunk::<64>()
-                            .unwrap_or(&[0; 64]);
-                        trivial = maps[0].trivial(literal_type);
-                        trivial_table = literal_tables.table(usize::from(contexts[0]));
                     }
                     let index = (position & mask) as usize;
                     // A run bounded by every loop-invariant limit, so the run
                     // itself checks only the bit reservoir.
                     let run = literals
                         .min(literal_block.remaining)
-                        .min(space as u64)
+                        .min(space_end - position)
                         .min((ring_len - index) as u64) as usize;
                     if run == 0 {
                         break Pause::Output;
@@ -1108,16 +1195,16 @@ impl Stream {
                             if bits.count() < 45 && !bits.refill_rest(&mut rest) {
                                 break;
                             }
-                            slots[0] = trivial_table.decode_fast(&mut bits) as u8;
-                            slots[1] = trivial_table.decode_fast(&mut bits) as u8;
-                            slots[2] = trivial_table.decode_fast(&mut bits) as u8;
+                            slots[0] = trivial_table.decode_fast(literal_second, &mut bits) as u8;
+                            slots[1] = trivial_table.decode_fast(literal_second, &mut bits) as u8;
+                            slots[2] = trivial_table.decode_fast(literal_second, &mut bits) as u8;
                             done += 3;
                         }
                         for slot in ring[index + done..index + run].iter_mut() {
                             if bits.count() < 15 && !bits.refill_rest(&mut rest) {
                                 break;
                             }
-                            *slot = trivial_table.decode_fast(&mut bits) as u8;
+                            *slot = trivial_table.decode_fast(literal_second, &mut bits) as u8;
                             done += 1;
                         }
                     } else {
@@ -1128,8 +1215,8 @@ impl Stream {
                             }
                             let context =
                                 usize::from(lut[usize::from(p1)] | lut[256 + usize::from(p2)]);
-                            let tree = usize::from(contexts[context & 63]);
-                            let byte = literal_tables.table(tree).decode_fast(&mut bits) as u8;
+                            let byte =
+                                roots[context & 63].decode_fast(literal_second, &mut bits) as u8;
                             *slot = byte;
                             p2 = p1;
                             p1 = byte;
@@ -1138,8 +1225,6 @@ impl Stream {
                     }
                     position += done as u64;
                     literals -= done as u64;
-                    remaining -= done as u64;
-                    space -= done;
                     literal_block.remaining -= done as u64;
                     // Linear history is delivered when the loop leaves.
                     if !LINEAR && index + done == ring_len {
@@ -1150,39 +1235,61 @@ impl Stream {
                     }
                 };
                 if outcome != Pause::Done {
+                    save!(
+                        saved_literals = literals,
+                        saved_copy = copy,
+                        saved_implicit = implicit
+                    );
                     pause!(Stage::Literals);
                 }
+                // A command without literals starts below the meta-block end,
+                // which the command decode has just checked.
+                if position == meta_end {
+                    pause!(Stage::Command);
+                }
             }
-            if remaining == 0 {
-                pause!(Stage::Command);
-            }
-            distance = if implicit {
-                distance_code = 0;
+            let mut distance_code = 0;
+            let distance = if implicit {
                 // Re-pushed below, which keeps the cache unchanged.
                 cache.pop()
             } else {
                 if bits.count() < distance_need && !bits.refill_rest(&mut rest) {
-                    pause!(Stage::Distance);
+                    {
+                        save!(
+                            saved_literals = 0,
+                            saved_copy = copy,
+                            saved_implicit = implicit
+                        );
+                        pause!(Stage::Distance);
+                    }
                 }
                 if distance_block.remaining == 0 {
+                    cold();
                     if !distance_block.switch_ready() {
-                        pause!(Stage::Distance);
+                        {
+                            save!(
+                                saved_literals = 0,
+                                saved_copy = copy,
+                                saved_implicit = implicit
+                            );
+                            pause!(Stage::Distance);
+                        }
                     }
-                    distance_block.switch_fast(&mut bits);
+                    bits = switch_block(distance_block, bits);
+                    distance_trees = distance_state!();
                     if !bits.refill_rest(&mut rest) {
-                        pause!(Stage::Distance);
+                        {
+                            save!(
+                                saved_literals = 0,
+                                saved_copy = copy,
+                                saved_implicit = implicit
+                            );
+                            pause!(Stage::Distance);
+                        }
                     }
                 }
-                if distance_block.current != distance_type {
-                    distance_type = distance_block.current;
-                    let contexts = distance_map[distance_type * 4..]
-                        .first_chunk::<4>()
-                        .copied()
-                        .unwrap_or([0; 4]);
-                    distance_trees = contexts.map(|tree| distance_tables.table(usize::from(tree)));
-                }
-                let symbol =
-                    distance_trees[usize::from(distance_context) & 3].decode_fast(&mut bits);
+                let symbol = distance_trees[usize::from(distance_context) & 3]
+                    .decode_fast(distance_second, &mut bits);
                 distance_block.remaining -= 1;
                 distance_code = symbol;
                 if symbol == 0 {
@@ -1195,6 +1302,12 @@ impl Stream {
                     let width = entry.width as u32;
                     let extra = if width > 32 {
                         if rest.len() < 16 || !bits.refill_rest(&mut rest) {
+                            save!(
+                                saved_literals = 0,
+                                saved_copy = copy,
+                                saved_implicit = implicit,
+                                saved_distance_code = distance_code
+                            );
                             pause!(Stage::DistanceExtra(symbol));
                         }
                         let low = bits.take(32);
@@ -1208,8 +1321,11 @@ impl Stream {
                     entry.base + (extra << postfix)
                 }
             };
-            let available = position.min(max_backward);
-            if distance > available {
+            // Beyond the history this position can reach: two tests that
+            // keep the bound itself off the common path.
+            if distance > position || distance > max_backward {
+                cold();
+                let available = position.min(max_backward);
                 if distance_code == 0 {
                     // Neither a prefix nor a dictionary reference enters the
                     // cache, and the byte-exact stages expect it whole.
@@ -1217,6 +1333,13 @@ impl Stream {
                 }
                 let prefix_len = dictionary.map_or(0, DictionaryRef::prefix_len);
                 if distance - available <= prefix_len {
+                    save!(
+                        saved_literals = 0,
+                        saved_copy = copy,
+                        saved_implicit = implicit,
+                        saved_distance = distance,
+                        saved_distance_code = distance_code
+                    );
                     pause!(Stage::Resolve);
                 }
                 let (p1, p2) = previous_bytes(ring, position);
@@ -1229,47 +1352,77 @@ impl Stream {
                     context,
                     scratch,
                 ));
-                if length as u64 > remaining {
+                if length as u64 > meta_end - position {
                     check!(Err(InvalidDataKind::MetaBlock.into()));
                 }
-                if length == 0 && distance <= 120 {
-                    check!(Err(InvalidDataKind::DictionaryReference.into()));
+                if length == 0 {
+                    cold();
+                    if distance <= 120 {
+                        check!(Err(InvalidDataKind::DictionaryReference.into()));
+                    }
+                    // An empty word writes nothing, and must not reach the
+                    // chunk store below: `reach!` grows nothing for it, so
+                    // when `position` equals the length of a ring that is
+                    // still smaller than the window, `dst` wraps to 0 and
+                    // the store would overwrite live history.
+                    continue 'run;
                 }
                 *scratch_len = length;
                 *scratch_pos = 0;
-                if length > space {
+                if length as u64 > space_end - position {
+                    save!(
+                        saved_literals = 0,
+                        saved_copy = copy,
+                        saved_implicit = implicit,
+                        saved_distance = distance,
+                        saved_distance_code = distance_code
+                    );
                     pause!(Stage::Dictionary);
                 }
                 reach!(position + length as u64);
-                write_ring::<O, LINEAR>(
-                    ring,
-                    &mut position,
-                    &scratch[..length],
-                    Some((&mut flushed, &mut *output)),
-                );
-                remaining -= length as u64;
-                space -= length;
+                let dst = (position & mask) as usize;
+                if put_word(ring, dst, scratch, length) {
+                    position += length as u64;
+                    if !LINEAR && dst + length == ring_len {
+                        flush_ring::<O, LINEAR>(ring, position, &mut flushed, output);
+                    }
+                } else {
+                    write_ring::<O, LINEAR>(
+                        ring,
+                        &mut position,
+                        &scratch[..length],
+                        Some((&mut flushed, &mut *output)),
+                    );
+                }
             } else {
                 // One test covers both limits; the rare failure then tells
                 // corrupt input from a full output.
-                if copy > remaining.min(space as u64) {
-                    if copy > remaining {
+                if copy > limit_end - position {
+                    if copy > meta_end - position {
                         check!(Err(InvalidDataKind::MetaBlock.into()));
                     }
                     // `Stage::Copy` resumes the copy without touching the
                     // cache, so the distance enters it before the pause.
                     cache.push(distance);
+                    save!(
+                        saved_literals = 0,
+                        saved_copy = copy,
+                        saved_implicit = implicit,
+                        saved_distance = distance,
+                        saved_distance_code = distance_code
+                    );
                     pause!(Stage::Copy);
                 }
                 // An implicit distance re-enters the slot it was popped from;
                 // an explicit one takes a new slot, both as one write.
                 cache.push(distance);
+                let end = position + copy;
                 // A unit-distance run that must grow the ring is a fill: grow
                 // with the repeated byte in one pass instead of zeroing the new
                 // region and overwriting it. Runs that fit, or that wrap past
                 // the window, take the general copy below.
-                let end = position + copy;
                 if !LINEAR && distance == 1 && end > ring_limit && end <= window_size {
+                    cold();
                     let byte = ring[((position - 1) & mask) as usize];
                     // Bind the result and re-borrow before `check!`, whose
                     // failure path flushes through `ring`.
@@ -1283,8 +1436,6 @@ impl Stream {
                         ring_len as u64
                     };
                     position = end;
-                    remaining -= copy;
-                    space -= copy as usize;
                     if position == ring_len as u64 {
                         flush_ring::<O, LINEAR>(ring, position, &mut flushed, output);
                     }
@@ -1299,9 +1450,9 @@ impl Stream {
                 // checks imply that neither side wraps.
                 let short = distance >= copy
                     && if len <= 16 {
-                        copy16(simd, ring, src, dst)
+                        copy16(ring, src, dst)
                     } else {
-                        len <= 32 && copy32(simd, ring, src, dst)
+                        len <= 32 && copy32(ring, src, dst)
                     };
                 if short || dst.max(src) + len <= ring_len {
                     if short {
@@ -1316,11 +1467,13 @@ impl Stream {
                         flush_ring::<O, LINEAR>(ring, position, &mut flushed, output);
                     }
                 } else if LINEAR {
+                    cold();
                     // Linear history holds the whole meta-block within the
                     // call's output space and never wraps, so every copy
                     // that fits `space` also fits it unsplit.
                     check!(Err(DecodeError::InternalInvariant));
                 } else {
+                    cold();
                     copy_ring::<S, O, LINEAR>(
                         simd,
                         ring,
@@ -1331,10 +1484,11 @@ impl Stream {
                         output,
                     );
                 }
-                remaining -= copy;
-                space -= len;
             }
-        }
+        };
+        leave!();
+        *stage = exit?;
+        Ok(())
     }
 
     fn run_stages<'a, O: Sink<'a>, const LINEAR: bool>(
@@ -1584,9 +1738,13 @@ impl Stream {
                         self.stage = Stage::EndBlock;
                         continue;
                     }
-                    dispatch!(backend.0, simd => self.fast::<_, O, LINEAR>(simd, input, output, out_end, dictionary))?;
-                    if !matches!(self.stage, Stage::Command) {
-                        continue;
+                    // The bulk loop needs a whole-word refill for any command;
+                    // within the input's last word it would only pause again.
+                    if input.consumed + 8 <= fast_end {
+                        dispatch!(backend.0, simd => self.fast::<_, O, LINEAR>(simd, input, output, out_end, dictionary))?;
+                        if !matches!(self.stage, Stage::Command) {
+                            continue;
+                        }
                     }
                     if self.remaining == 0 {
                         self.stage = Stage::EndBlock;
@@ -2035,11 +2193,30 @@ mod tests {
         assert_eq!(&written, b"abcd\xAA\xAA");
     }
 
-    /// Decodes alice29 in one call asking for linear delivery into `bytes`.
+    /// The golden a linear request decodes, and its decoded bytes: alice29,
+    /// or under Miri the much smaller monkey.
+    fn linear_golden() -> (&'static [u8], &'static [u8]) {
+        if cfg!(miri) {
+            (
+                include_bytes!(
+                    "../../../brotli-ffi/vendor/brotli/tests/testdata/monkey.compressed"
+                ),
+                include_bytes!("../../../brotli-ffi/vendor/brotli/tests/testdata/monkey"),
+            )
+        } else {
+            (
+                include_bytes!(
+                    "../../../brotli-ffi/vendor/brotli/tests/testdata/alice29.txt.compressed"
+                ),
+                include_bytes!("../../../brotli-ffi/vendor/brotli/tests/testdata/alice29.txt"),
+            )
+        }
+    }
+
+    /// Decodes [`linear_golden`] in one call asking for linear delivery into
+    /// `bytes`.
     fn decode_linear_request<'a, O: Sink<'a>>(stream: &mut Stream, bytes: O) -> usize {
-        let encoded = include_bytes!(
-            "../../../brotli-ffi/vendor/brotli/tests/testdata/alice29.txt.compressed"
-        );
+        let (encoded, _) = linear_golden();
         let config = DecoderConfig::default();
         stream.reset(config);
         let mut input = Input::new(encoded, 0, None);
@@ -2069,8 +2246,7 @@ mod tests {
     #[test]
     fn a_linear_request_decodes_into_an_initialized_sink_without_a_ring() {
         const { assert!(<&mut [u8] as Sink>::LINEAR) };
-        let expected =
-            include_bytes!("../../../brotli-ffi/vendor/brotli/tests/testdata/alice29.txt");
+        let (_, expected) = linear_golden();
         let mut bytes = alloc::vec![0; expected.len()];
         let mut stream = Stream::default();
         let produced = decode_linear_request(&mut stream, &mut bytes[..]);
@@ -2083,8 +2259,7 @@ mod tests {
     #[test]
     fn a_linear_request_decodes_through_the_ring_for_an_uninitialized_sink() {
         const { assert!(!<&mut [MaybeUninit<u8>] as Sink>::LINEAR) };
-        let expected =
-            include_bytes!("../../../brotli-ffi/vendor/brotli/tests/testdata/alice29.txt");
+        let (_, expected) = linear_golden();
         let mut bytes = alloc::vec![MaybeUninit::new(0); expected.len()];
         let mut stream = Stream::default();
         let produced = decode_linear_request(&mut stream, &mut bytes[..]);
@@ -2225,7 +2400,7 @@ mod tests {
         };
         for backend in crate::Backend::available() {
             for size in [64usize, 256] {
-                for _ in 0..400 {
+                for _ in 0..if cfg!(miri) { 60 } else { 400 } {
                     let mut expected = alloc::vec![0u8; size];
                     for byte in &mut expected {
                         *byte = random() as u8;
@@ -2282,7 +2457,7 @@ mod tests {
     #[test]
     fn scalar_and_host_backends_decode_goldens_with_output_backpressure() {
         use crate::{Backend, DecodeOperation, DecodeStreamConfig, DecoderStatus, Decompressor};
-        let cases: &[(&[u8], &[u8])] = &[
+        let large: &[(&[u8], &[u8])] = &[
             (
                 include_bytes!(
                     "../../../brotli-ffi/vendor/brotli/tests/testdata/alice29.txt.compressed"
@@ -2298,6 +2473,22 @@ mod tests {
                 ),
             ),
         ];
+        // Miri decodes small goldens: literals and copies, and one run. A
+        // long run is too slow there: at a one-byte capacity every output
+        // byte costs a `process` call.
+        let small: &[(&[u8], &[u8])] = &[
+            (
+                include_bytes!(
+                    "../../../brotli-ffi/vendor/brotli/tests/testdata/monkey.compressed"
+                ),
+                include_bytes!("../../../brotli-ffi/vendor/brotli/tests/testdata/monkey"),
+            ),
+            (
+                include_bytes!("../../../brotli-ffi/vendor/brotli/tests/testdata/64x.compressed"),
+                include_bytes!("../../../brotli-ffi/vendor/brotli/tests/testdata/64x"),
+            ),
+        ];
+        let cases = if cfg!(miri) { small } else { large };
         for backend in Backend::available() {
             let mut decoder = Decompressor::builder(DecoderConfig::default())
                 .with_backend(backend)
@@ -2330,8 +2521,15 @@ mod tests {
 
     #[test]
     fn vector_copies_match_snapshots_for_every_host_backend_and_ring_boundary() {
+        // Miri keeps the sizes around the narrow width and one past the wide
+        // one.
+        let sizes: &[usize] = if cfg!(miri) {
+            &[0, 1, 15, 16, 17, 33]
+        } else {
+            &[0, 1, 15, 16, 17, 31, 32, 33, 63, 64, 65, 97]
+        };
         for backend in crate::Backend::available() {
-            for size in [0, 1, 15, 16, 17, 31, 32, 33, 63, 64, 65, 97] {
+            for &size in sizes {
                 let original: Vec<u8> = (0..size).map(|i| (i * 37) as u8).collect();
                 for src in 0..=size + 1 {
                     for dst in 0..=size + 1 {
@@ -2344,13 +2542,100 @@ mod tests {
                                     .copy_from_slice(&original[src..src + width]);
                             }
                             let copied = dispatch!(backend.0, simd => {
-                                if width == 16 { copy16(simd, &mut actual, src, dst) }
-                                else { copy32(simd, &mut actual, src, dst) }
+                                let _ = simd;
+                                if width == 16 { copy16(&mut actual, src, dst) }
+                                else { copy32(&mut actual, src, dst) }
                             });
                             assert_eq!(copied, fits, "{backend}, {size}, {src}, {dst}, {width}");
                             assert_eq!(actual, expected);
                         }
                     }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn dictionary_words_are_written_as_one_chunk_only_when_it_fits() {
+        let scratch: [u8; SCRATCH_BYTES] = core::array::from_fn(|i| (i as u8) ^ 0x5a);
+        for ring_len in [0, 15, 16, 31, 32, 40] {
+            for length in [0, 1, 16, 17, 32, 33] {
+                for dst in 0..=ring_len {
+                    let mut ring = vec![0xee; ring_len];
+                    let chunk = if length <= 16 { 16 } else { 32 };
+                    let fits = length <= 32 && dst + chunk <= ring_len;
+                    assert_eq!(put_word(&mut ring, dst, &scratch, length), fits);
+                    let mut expected = vec![0xee; ring_len];
+                    if fits {
+                        expected[dst..dst + chunk].copy_from_slice(&scratch[..chunk]);
+                    }
+                    assert_eq!(ring, expected, "{ring_len}, {length}, {dst}");
+                }
+            }
+        }
+    }
+
+    /// A truncated large-window stream whose dictionary reference at
+    /// position 64 transforms to an empty word. With a 10-byte output buffer
+    /// the 64-byte ring is full and has not grown yet when the fast path
+    /// reaches it, so `position & mask` is 0.
+    const EMPTY_WORD_AT_RING_END: [u8; 71] = [
+        0x11, 0x2f, 0x4c, 0x10, 0x00, 0x00, 0x28, 0xb7, 0xa5, 0x7a, 0xb9, 0x6e, 0xf3, 0xc5, 0x2a,
+        0x28, 0xbe, 0x06, 0x53, 0x96, 0x5a, 0x06, 0x4a, 0x8c, 0x95, 0x8c, 0x93, 0x0a, 0xc9, 0x00,
+        0x08, 0x00, 0xd2, 0x4d, 0x6c, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x79,
+        0x58, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x39, 0x00, 0xff, 0xff, 0x79, 0xff,
+        0x28, 0x06, 0x00, 0xff, 0x28, 0x79, 0x79, 0x79, 0x79, 0x58, 0x28,
+    ];
+
+    /// Decodes all of `encoded` without finishing, `capacity` bytes per call.
+    fn decode_available(
+        decoder: &mut crate::Decompressor,
+        encoded: &[u8],
+        chunk: usize,
+        capacity: usize,
+    ) -> Vec<u8> {
+        use crate::{DecodeOperation, DecodeStreamConfig, DecoderStatus};
+        let mut session = decoder.start(DecodeStreamConfig::default()).unwrap();
+        let mut output = alloc::vec![0; capacity];
+        let mut result = Vec::new();
+        let mut cursor = 0;
+        loop {
+            let end = (cursor + chunk).min(encoded.len());
+            let progress = session
+                .process(&encoded[cursor..end], &mut output, DecodeOperation::Process)
+                .unwrap();
+            cursor += progress.consumed;
+            result.extend_from_slice(&output[..progress.produced]);
+            if progress.status == DecoderStatus::NeedsInput && cursor == encoded.len() {
+                return result;
+            }
+        }
+    }
+
+    #[test]
+    fn an_empty_dictionary_word_at_the_ring_end_keeps_the_history() {
+        for backend in crate::Backend::available() {
+            let mut decoder = crate::Decompressor::builder(DecoderConfig::default())
+                .with_backend(backend)
+                .build()
+                .unwrap();
+            let expected = decode_available(&mut decoder, &EMPTY_WORD_AT_RING_END, 71, 4096);
+            // The last command copies five bytes from 81 back.
+            assert_eq!(expected.len(), 93);
+            assert_eq!(expected[88..], expected[7..12]);
+            for chunk in [1, 18, 71] {
+                for capacity in 1..=33 {
+                    // A fresh decoder, so its ring starts empty and grows.
+                    let mut fresh = crate::Decompressor::builder(DecoderConfig::default())
+                        .with_backend(backend)
+                        .build()
+                        .unwrap();
+                    let actual =
+                        decode_available(&mut fresh, &EMPTY_WORD_AT_RING_END, chunk, capacity);
+                    assert_eq!(
+                        actual, expected,
+                        "{backend}, chunk {chunk}, capacity {capacity}"
+                    );
                 }
             }
         }
@@ -2393,7 +2678,7 @@ mod tests {
         // A stream with no output yet has zero context in every mode.
         let stream = Stream::default();
         assert_eq!(previous_bytes(&stream.ring, stream.position), (0, 0));
-        let mut tables = Tables::default();
+        let mut tables = Tables::EMPTY;
         for mode in 0..4 {
             tables.modes[0] = mode;
             assert_eq!(context(&tables, &stream.ring, stream.position), 0);

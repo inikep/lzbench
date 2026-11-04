@@ -87,12 +87,12 @@ CLEAN_FILES += $(AOCL_RAW) $(AOCL_ARCHIVE)
 # warnings on newer compilers don't fail the build.
 AOCL_INC = -I$(AOCL_SRC) -I$(AOCL_GEN) -I$(AOCL_GEN)/algos/common \
            -I$(AOCL_SRC)/algos/common -I$(AOCL_SRC)/utils -I$(AOCL_SRC)/api
-# BUILD_TYPE=debug builds AOCL with -O0 -g like the rest of lzbench
-# (_FORTIFY_SOURCE needs optimization, so it is left out there).
+# BUILD_TYPE=debug builds AOCL with -O0 -g like the rest of lzbench, and a
+# release build leaves out _FORTIFY_SOURCE like OPT_FLAGS_O3 in the Makefile.
 ifeq ($(BUILD_TYPE),debug)
     AOCL_OPT = -O0 -g
 else
-    AOCL_OPT = -O3 -DNDEBUG -D_FORTIFY_SOURCE=2
+    AOCL_OPT = -O3 -DNDEBUG -U_FORTIFY_SOURCE
 endif
 AOCL_COMMON_FLAGS = $(AOCL_OPT) -fomit-frame-pointer -fstrict-aliasing \
     -fstack-protector-strong -Wformat -Wformat-security \

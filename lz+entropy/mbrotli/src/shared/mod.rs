@@ -15,6 +15,8 @@
 //! context tables and built-in dictionary data directly from this module.
 
 #[cfg(feature = "compression")]
+pub(crate) mod baseline;
+#[cfg(feature = "compression")]
 pub(crate) mod bit_cost;
 #[cfg(feature = "compression")]
 pub(crate) mod bits;
@@ -49,6 +51,8 @@ pub(crate) mod match_len;
 pub(crate) mod metablock;
 #[cfg(feature = "compression")]
 pub(crate) mod ringbuffer;
+#[cfg(feature = "compression")]
+pub(crate) mod scan;
 #[cfg(feature = "compression")]
 pub(crate) mod score;
 #[cfg(feature = "compression")]

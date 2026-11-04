@@ -47,9 +47,10 @@ dependencies = [
 
 [[package]]
 name = "mbrotli"
-version = "0.5.15"
+version = "0.5.20"
 dependencies = [
  "borrowed-buf",
+ "branches",
  "fearless_simd",
  "fearless_simd_macros",
  "thiserror",
@@ -57,7 +58,7 @@ dependencies = [
 
 [[package]]
 name = "mbrotli-ffi"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "borrowed-buf",
  "mbrotli",
@@ -66,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "mzstd"
-version = "0.2.5"
+version = "0.2.11"
 dependencies = [
  "borrowed-buf",
  "branches",
@@ -77,9 +78,8 @@ dependencies = [
 
 [[package]]
 name = "mzstd-ffi"
-version = "0.2.5"
+version = "0.2.11"
 dependencies = [
- "borrowed-buf",
  "mzstd",
  "thiserror",
 ]

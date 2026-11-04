@@ -1,9 +1,11 @@
+use ::core::mem::MaybeUninit;
 use ::core::ops::Range;
 use alloc::vec::Vec;
 
 use super::core::{DictView, Stream};
 use super::{
-    DecodeError, DecodeOperation, DecoderConfig, DecoderSession, DecoderSessionOwned, DecoderStatus,
+    DecodeError, DecodeFailure, DecodeOperation, DecodeProgress, DecoderConfig, DecoderSession,
+    DecoderSessionOwned, DecoderStatus,
 };
 use crate::dictionary::{DecodeDictionary, DictionaryRef};
 use crate::{Backend, RetentionPolicy};
@@ -283,8 +285,9 @@ impl Decompressor {
     ///
     /// In [`FrameMode::Concatenated`](super::FrameMode::Concatenated) the
     /// input must consist of whole frames, at least one; in
-    /// [`FrameMode::Single`](super::FrameMode::Single) of one Zstandard
-    /// frame after any skippable frames, and nothing else.
+    /// [`FrameMode::Single`](super::FrameMode::Single) of exactly one
+    /// frame, which may be a skippable one (decoding to nothing), and
+    /// nothing else.
     ///
     /// # Errors
     ///
@@ -403,19 +406,67 @@ impl Decompressor {
             return Ok(written);
         }
         let mut session = DecoderSession::new(self, dictionary);
-        let progress = session.process(src, dst, DecodeOperation::Finish)?;
-        match progress.status {
-            DecoderStatus::NeedsOutput => Err(DecodeError::OutputTooSmall {
-                written: progress.produced,
-            }),
-            DecoderStatus::NeedsInput => Err(DecodeError::UnexpectedEndOfInput),
-            DecoderStatus::Finished if progress.consumed != src.len() => {
-                Err(DecodeError::TrailingData {
-                    offset: progress.consumed as u64,
-                })
-            }
-            DecoderStatus::Finished => Ok(progress.produced),
+        one_shot_outcome(
+            session.process(src, dst, DecodeOperation::Finish),
+            src.len(),
+        )
+    }
+
+    /// [`Self::decompress_to_slice`] into uninitialized memory, such as
+    /// [`Vec::spare_capacity_mut`], without zeroing it first.
+    ///
+    /// It returns the same counts and errors as
+    /// [`Self::decompress_to_slice`]. On success exactly `dst[..written]`
+    /// is initialized and no byte after it has been written. After
+    /// [`DecodeError::OutputTooSmall`] all of `dst` holds the output's
+    /// prefix; after other errors treat `dst` as uninitialized.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::decompress_to_slice`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mzstd::Decompressor;
+    /// let frame = [0x28, 0xb5, 0x2f, 0xfd, 0x20, 0x02, 0x11, 0x00, 0x00, b'o', b'k'];
+    /// let mut decoder = Decompressor::default();
+    /// let mut output: Vec<u8> = Vec::with_capacity(16);
+    /// let written = decoder.decompress_to_uninit(&frame, output.spare_capacity_mut())?;
+    /// // SAFETY: `decompress_to_uninit` initialized the first `written` bytes.
+    /// unsafe { output.set_len(written) };
+    /// assert_eq!(output, b"ok");
+    /// # Ok::<(), mzstd::DecodeError>(())
+    /// ```
+    pub fn decompress_to_uninit(
+        &mut self,
+        src: &[u8],
+        dst: &mut [MaybeUninit<u8>],
+    ) -> Result<usize, DecodeError> {
+        self.decode_to_uninit(src, dst, None)
+    }
+
+    /// [`Self::decompress_to_uninit`] with an optional dictionary.
+    fn decode_to_uninit(
+        &mut self,
+        src: &[u8],
+        dst: &mut [MaybeUninit<u8>],
+        dictionary: Option<DictView<'_>>,
+    ) -> Result<usize, DecodeError> {
+        // As `decode_to_slice`. A failed direct attempt may have written
+        // inside the frames it reached; the incremental path rewrites at
+        // least those on success, and its results stand.
+        self.stream.reset(self.config);
+        let direct = self.stream.decode_to_uninit(src, dst, dictionary);
+        if let Some(written) = direct {
+            self.apply_retention();
+            return Ok(written);
         }
+        let mut session = DecoderSession::new(self, dictionary);
+        one_shot_outcome(
+            session.process_uninit(src, dst, DecodeOperation::Finish),
+            src.len(),
+        )
     }
 
     /// Decodes complete input that was compressed with `dictionary` into a
@@ -499,5 +550,60 @@ impl Decompressor {
         dst: &mut [u8],
     ) -> Result<usize, DecodeError> {
         self.decode_to_slice(src, dst, Some(dictionary.into().view()))
+    }
+
+    /// Decodes complete input that was compressed with `dictionary` into
+    /// uninitialized memory, as [`Self::decompress_to_uninit`] does.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::decompress_with_dictionary_to_slice`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mzstd::dictionary::DecodeDictionary;
+    /// use mzstd::Decompressor;
+    /// let dictionary = DecodeDictionary::try_from(&b"history"[..])?;
+    /// let frame = [0x28, 0xb5, 0x2f, 0xfd, 0x20, 0x02, 0x11, 0x00, 0x00, b'o', b'k'];
+    /// let mut output: Vec<u8> = Vec::with_capacity(4);
+    /// let written = Decompressor::default().decompress_with_dictionary_to_uninit(
+    ///     &dictionary,
+    ///     &frame,
+    ///     output.spare_capacity_mut(),
+    /// )?;
+    /// // SAFETY: the first `written` bytes were initialized.
+    /// unsafe { output.set_len(written) };
+    /// assert_eq!(output, b"ok");
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn decompress_with_dictionary_to_uninit<'dict>(
+        &mut self,
+        dictionary: impl Into<DictionaryRef<'dict>>,
+        src: &[u8],
+        dst: &mut [MaybeUninit<u8>],
+    ) -> Result<usize, DecodeError> {
+        self.decode_to_uninit(src, dst, Some(dictionary.into().view()))
+    }
+}
+
+/// The result of a one-shot call from its single `Finish` session call
+/// over all `input_len` bytes.
+fn one_shot_outcome(
+    result: Result<DecodeProgress, DecodeFailure>,
+    input_len: usize,
+) -> Result<usize, DecodeError> {
+    let progress = result?;
+    match progress.status {
+        DecoderStatus::NeedsOutput => Err(DecodeError::OutputTooSmall {
+            written: progress.produced,
+        }),
+        DecoderStatus::NeedsInput => Err(DecodeError::UnexpectedEndOfInput),
+        DecoderStatus::Finished if progress.consumed != input_len => {
+            Err(DecodeError::TrailingData {
+                offset: progress.consumed as u64,
+            })
+        }
+        DecoderStatus::Finished => Ok(progress.produced),
     }
 }

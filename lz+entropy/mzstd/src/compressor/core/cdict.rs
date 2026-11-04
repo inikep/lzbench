@@ -237,6 +237,7 @@ impl CDict {
             + 4 * (self.ms.hash_table.capacity() + self.ms.chain_table.capacity())
             + self.ms.tag_table.capacity()
             + core::mem::size_of::<BlockState>()
+            + self.block_state.entropy.heap_bytes()
     }
 }
 

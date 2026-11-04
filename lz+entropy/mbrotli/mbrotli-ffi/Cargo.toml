@@ -2,11 +2,11 @@
 # crate-type reduced to rlib.
 [package]
 name = "mbrotli-ffi"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
-description = "C ABI for mbrotli: one-shot Brotli compression and decompression"
+description = "C ABI for mbrotli: one-shot and streaming Brotli compression and decompression"
 repository = "https://github.com/M-Compressors/mbrotli"
 homepage = "https://github.com/M-Compressors/mbrotli"
 readme = "README.md"
@@ -21,7 +21,7 @@ crate-type = ["rlib"]
 
 [dependencies.mbrotli]
 path = ".."
-version = "0.5.15"
+version = "0.5.20"
 default-features = false
 features = ["std", "compression", "decompression"]
 

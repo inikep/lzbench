@@ -60,6 +60,8 @@ CLANG_VERSION = $(shell $(CC) -v 2>&1 | grep "clang version" | sed -e 's:.*versi
 HOST_ARCH      := $(shell uname -m)
 TARGET_MACHINE := $(shell $(CXX) -dumpmachine)
 TARGET_ARCH    := $(firstword $(subst -, ,$(TARGET_MACHINE)))
+# 1 for a big-endian target (e.g. s390x); __BYTE_ORDER__ expands to 4321 there
+TARGET_BIG_ENDIAN := $(if $(filter 4321,$(shell echo __BYTE_ORDER__ | $(CC) -E -P -x c - 2>/dev/null)),1)
 # 1 for a Windows target (e.g. x86_64-w64-mingw32), also when cross-compiling
 TARGET_WINDOWS := $(if $(filter mingw% cygwin% windows%,$(subst -, ,$(TARGET_MACHINE))),1)
 HOST_WINDOWS   := $(if $(filter Windows%,$(OS)),1)
@@ -129,8 +131,11 @@ ifeq ($(BUILD_TYPE),debug)
     OPT_FLAGS_O2 = $(OPT_FLAGS) -O0 -g
     OPT_FLAGS_O3 = $(OPT_FLAGS) -O0 -g
 else
-    OPT_FLAGS_O2 = $(OPT_FLAGS) -O2 -DNDEBUG
-    OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG
+    # Some distributions (e.g. Ubuntu) build gcc to define _FORTIFY_SOURCE at -O1
+    # and above, which adds run-time checks to memcpy() and friends and skews
+    # the results; MOREFLAGS="-D_FORTIFY_SOURCE=3" turns them back on
+    OPT_FLAGS_O2 = $(OPT_FLAGS) -O2 -DNDEBUG -U_FORTIFY_SOURCE
+    OPT_FLAGS_O3 = $(OPT_FLAGS) -O3 -DNDEBUG -U_FORTIFY_SOURCE
 endif
 
 # Everything is built with -O3, except the objects of codecs that set

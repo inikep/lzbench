@@ -33,6 +33,29 @@ static int64_t ax_fast_assemble(const std::vector<std::vector<uint8_t>>& blocks,
     axf::write_body(dst + 68, blocks);
     return (int64_t)total;
 }
+// one thread (lzbench, TurboBench, a caller's own pool): blocks are encoded straight into dst after the header and the
+// table - no per-block vectors, no assembly copy. Same bytes as ax_fast_encode + ax_fast_assemble. Returns the archive size,
+// -1 (ACEAPEX_ERR_BUFFER) when cap is short, -2 for a bad level.
+static int64_t ax_fast_compress_1t(const uint8_t* src, size_t n, int flevel, uint8_t* dst, size_t cap) {
+    axf::Params P; if (!axf::level_params(flevel, P)) return -2;
+    uint32_t bs = AXF_BLOCK_MAX;
+    { const char* e = ax_getenv("ACEAPEX_BS"); if (e) { const unsigned long v = strtoul(e, 0, 10); if (v >= 4096 && v <= AXF_BLOCK_MAX) bs = (uint32_t)v; } }
+    const uint64_t nb64 = ((uint64_t)n + bs - 1) / bs; if (nb64 > 0xffffffffu) return -2;
+    const uint32_t nb = (uint32_t)nb64; const size_t head = 68 + 8 * ((size_t)nb + 1);
+    if (cap < head) return -1;
+    axf::Enc e; uint64_t off = 0; uint8_t* p = dst + head;
+    for (uint32_t b = 0; b < nb; b++) {
+        axf::wr64(dst + 68 + 8 * (size_t)b, off);
+        const size_t o = (size_t)b * bs; const uint32_t k = (uint32_t)std::min<size_t>(bs, n - o);
+        const size_t room = cap - head - (size_t)off, need = axf::enc_bound(k, P.mm); size_t c;
+        if (room >= need) c = axf::enc_block(src + o, k, p, P, e);
+        else { if (e.out.size() < need) e.out.resize(need); c = axf::enc_block(src + o, k, e.out.data(), P, e); if (c > room) return -1; memcpy(p, e.out.data(), c); }
+        p += c; off += c;
+    }
+    axf::wr64(dst + 68 + 8 * (size_t)nb, off);
+    axf::write_header(dst, n, bs, nb, OUR_CHECKSUM(src, n), P.mm, off);
+    return (int64_t)(head + off);
+}
 // worst case for aceapex_compress_bound: header + table + every block at its bound (axf::enc_bound)
 static inline size_t ax_fast_bound(size_t n) {
     const size_t nb = (n + AXF_BLOCK_MAX - 1) / AXF_BLOCK_MAX;
@@ -114,30 +137,34 @@ static int64_t ax_fast_ranges(const uint8_t* p, size_t ssz, aceapex_range_t* rg,
 }
 
 // ---- streaming decode: header + table through rd, then groups of T blocks: read, decode on the pool, write in order.
-// Memory O(T x (block + its compressed bytes)); ACEAPEX_STREAM_VERIFY hashes the handed-out bytes.
-static int64_t ax_fast_stream(aceapex_read_fn rd, void* rctx, aceapex_write_fn wr, void* wctx, int threads, unsigned flags, const AetHeader& hdr) {
-    if (hdr.num_blocks == 0) return -2;
-    const uint64_t need = 68 + 8ull * ((uint64_t)hdr.num_blocks + 1);
+// Memory O(T x (block + its compressed bytes)); ACEAPEX_STREAM_VERIFY hashes the handed-out bytes. h68: the 68 header
+// bytes as read. The header is validated before the block table is allocated, the archive size is 64-bit on every
+// build, and a failed allocation returns ACEAPEX_ERR_MEMORY instead of leaving through the C API (2.6.1, lzbench #357).
+static int64_t ax_fast_stream(aceapex_read_fn rd, void* rctx, aceapex_write_fn wr, void* wctx, int threads, unsigned flags, const uint8_t* h68) try {
+    axf_arc_t a; if (axf_open_header(h68, &a) != 0) return -2;
+    if (a.payload > ((uint64_t)1 << 62)) return -2;
+    const uint64_t need = 68 + 8ull * ((uint64_t)a.nb + 1);
+    if (need > (uint64_t)SIZE_MAX) return -3;
     std::vector<uint8_t> hd((size_t)need);
     for (uint64_t o = 0; o < need; ) { const int64_t r = rd(rctx, o, hd.data() + o, (size_t)(need - o)); if (r <= 0) return -2; o += (uint64_t)r; }
-    uint64_t payload; memcpy(&payload, hd.data() + 44, 8);
-    if (payload > ((uint64_t)1 << 62)) return -2;
-    axf_arc_t a; if (axf_open(hd.data(), (size_t)(need + payload), &a) != 0) return -2;   // validates header + table; data is not touched
+    if (axf_open64(hd.data(), need + a.payload, &a) != 0) return -2;   // header + table; the payload is not touched
     const int T = std::max(1, ax_decode_budget(threads, a.orig));
-    XXH3_state_t* xs = nullptr; if (flags & ACEAPEX_STREAM_VERIFY) { xs = XXH3_createState(); XXH3_64bits_reset(xs); }
     std::vector<uint8_t> zb, ob((size_t)T * a.bs); int64_t rc = 0;
-    for (uint32_t b0 = 0; b0 < a.nb && rc == 0; ) {
-        const uint32_t b1 = std::min<uint32_t>(a.nb, b0 + (uint32_t)T);
-        const uint64_t z0 = axf_boff(&a, b0), z1 = axf_boff(&a, b1); zb.resize((size_t)(z1 - z0));
-        for (uint64_t o = 0; o < z1 - z0; ) { const int64_t r = rd(rctx, need + z0 + o, zb.data() + o, (size_t)(z1 - z0 - o)); if (r <= 0) { rc = -2; break; } o += (uint64_t)r; }
-        if (rc) break;
-        axf_arc_t g = a; g.data = zb.data() - z0;   // block b of the group at zb + (boff[b] - z0)
-        if (!ax_fast_decode_blocks(g, b0, b1, ob.data(), T)) { rc = -2; break; }
-        const size_t n = (size_t)(std::min<uint64_t>((uint64_t)b1 * a.bs, a.orig) - (uint64_t)b0 * a.bs);
-        if (xs) XXH3_64bits_update(xs, ob.data(), n);
-        if (wr(wctx, ob.data(), n) != 0) { rc = -1; break; }
-        b0 = b1;
-    }
-    if (xs) { const uint64_t h = XXH3_64bits_digest(xs); XXH3_freeState(xs); uint64_t want; memcpy(&want, hdr.xxhash, 8); if (rc == 0 && h != want) rc = -2; }
+    XXH3_state_t* xs = nullptr; if (flags & ACEAPEX_STREAM_VERIFY) { xs = XXH3_createState(); if (!xs) return -3; XXH3_64bits_reset(xs); }
+    try {
+        for (uint32_t b0 = 0; b0 < a.nb && rc == 0; ) {
+            const uint32_t b1 = std::min<uint32_t>(a.nb, b0 + (uint32_t)T);
+            const uint64_t z0 = axf_boff(&a, b0), z1 = axf_boff(&a, b1); zb.resize((size_t)(z1 - z0));
+            for (uint64_t o = 0; o < z1 - z0; ) { const int64_t r = rd(rctx, need + z0 + o, zb.data() + o, (size_t)(z1 - z0 - o)); if (r <= 0) { rc = -2; break; } o += (uint64_t)r; }
+            if (rc) break;
+            axf_arc_t g = a; g.data = zb.data() - z0;   // block b of the group at zb + (boff[b] - z0)
+            if (!ax_fast_decode_blocks(g, b0, b1, ob.data(), T)) { rc = -2; break; }
+            const size_t n = (size_t)(std::min<uint64_t>((uint64_t)b1 * a.bs, a.orig) - (uint64_t)b0 * a.bs);
+            if (xs) XXH3_64bits_update(xs, ob.data(), n);
+            if (wr(wctx, ob.data(), n) != 0) { rc = -1; break; }
+            b0 = b1;
+        }
+    } catch (const std::bad_alloc&) { rc = -3; }
+    if (xs) { const uint64_t h = XXH3_64bits_digest(xs); XXH3_freeState(xs); if (rc == 0 && h != axf_rd64(h68 + 28)) rc = -2; }
     return rc ? rc : (int64_t)a.orig;
-}
+} catch (const std::bad_alloc&) { return -3; }

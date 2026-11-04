@@ -1,6 +1,11 @@
 # bsc (libbsc)
 CODECS += BSC
 
+# bsc assumes a little-endian CPU: its round trip fails on s390x
+ifeq ($(TARGET_BIG_ENDIAN),1)
+    DONT_BUILD_BSC ?= 1
+endif
+
 # On 32-bit ARM (armv5/v7) bsc crashes in its multithreaded decompress path
 # (lzbench#293).
 ifneq (,$(filter arm armeb armv%,$(TARGET_ARCH)))

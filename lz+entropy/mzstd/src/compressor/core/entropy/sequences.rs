@@ -492,7 +492,7 @@ fn encode_on<S: Simd>(
     let Some((last, codes)) = store.codes[..n].split_last() else {
         return Err(CoreError::Generic);
     };
-    let Some((last_seq, seqs)) = store.sequences[..n].split_last() else {
+    let Some((last_seq, seqs)) = store.sequences()[..n].split_last() else {
         return Err(CoreError::Generic);
     };
 
@@ -549,7 +549,7 @@ mod tests {
             return 0;
         };
         let n = store.nb_seq();
-        let (seqs, codes) = (&store.sequences[..n], &store.codes[..n]);
+        let (seqs, codes) = (&store.sequences()[..n], &store.codes[..n]);
         let ll_bits = |code: u8| u32::from(LL_BITS[usize::from(code)]);
         let ml_bits = |code: u8| u32::from(ML_BITS[usize::from(code)]);
         let last = &codes[n - 1];

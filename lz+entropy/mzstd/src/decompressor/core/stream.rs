@@ -14,13 +14,16 @@
 //! [`DictView`]: the decoder keeps no reference to it between calls, and
 //! each frame starts from it.
 
+use ::core::mem::MaybeUninit;
 use alloc::vec::Vec;
 
-use super::block::{BlockHeader, BlockKind};
+use borrowed_buf::BorrowedBuf;
+
+use super::block::{BlockHeader, BlockKind, BlockOutput};
 use super::copy::WILDCOPY_OVERLENGTH;
 use super::dictionary::DictView;
 use super::frame::{FrameDecoder, FrameHeader, MAGIC_SIZE, header_size};
-use super::history::History;
+use super::history::{History, Sink};
 use crate::Backend;
 use crate::decompressor::{
     DecodeError, DecodeFailure, DecodeOperation, DecodeProgress, DecoderConfig, DecoderStatus,
@@ -223,6 +226,31 @@ impl Stream {
         operation: DecodeOperation,
         dictionary: Option<DictView<'_>>,
     ) -> Result<DecodeProgress, DecodeFailure> {
+        self.process_into(input, output, operation, dictionary)
+    }
+
+    /// [`Self::process`] into memory that may be uninitialized. Calls of
+    /// the two may alternate on one operation; either writes exactly
+    /// `output[..produced]`, also when it fails.
+    pub(crate) fn process_uninit(
+        &mut self,
+        input: &[u8],
+        output: &mut [MaybeUninit<u8>],
+        operation: DecodeOperation,
+        dictionary: Option<DictView<'_>>,
+    ) -> Result<DecodeProgress, DecodeFailure> {
+        self.process_into(input, output, operation, dictionary)
+    }
+
+    /// The body of [`Self::process`] and [`Self::process_uninit`], one
+    /// instantiation per destination type.
+    fn process_into<O: Sink + ?Sized>(
+        &mut self,
+        input: &[u8],
+        output: &mut O,
+        operation: DecodeOperation,
+        dictionary: Option<DictView<'_>>,
+    ) -> Result<DecodeProgress, DecodeFailure> {
         let failure = |error, consumed, produced| DecodeFailure {
             error,
             consumed,
@@ -293,17 +321,17 @@ impl Stream {
 
     /// Advances the state machine until it needs input or output space, or
     /// the operation completes.
-    fn run(
+    fn run<O: Sink + ?Sized>(
         &mut self,
         input: &mut &[u8],
-        output: &mut [u8],
+        output: &mut O,
         produced: &mut usize,
         finish: bool,
         dictionary: Option<DictView<'_>>,
     ) -> Result<DecoderStatus, DecodeError> {
         loop {
             if self.history.pending() > 0 {
-                *produced += self.history.deliver(&mut output[*produced..]);
+                *produced += self.history.deliver(output, *produced);
                 if self.history.pending() > 0 {
                     return Ok(DecoderStatus::NeedsOutput);
                 }
@@ -356,7 +384,7 @@ impl Stream {
                         return Ok(DecoderStatus::NeedsInput);
                     }
                     self.complete_frames += 1;
-                    self.state = State::Magic;
+                    self.state = self.after_frame();
                 }
                 State::FrameHeader => {
                     if !fill(&mut self.scratch, input, 1) {
@@ -386,12 +414,13 @@ impl Stream {
                         return Ok(DecoderStatus::NeedsInput);
                     }
                     let window = self.window_size().ok_or(DecodeError::InvalidState)?;
-                    let (buffer, start) = self.history.prepare(window, self.frame.block_max())?;
+                    let (mut buffer, start) =
+                        self.history.prepare(window, self.frame.block_max())?;
                     let end = self.frame.decode_block(
                         self.backend,
                         &block,
                         &self.scratch,
-                        buffer,
+                        &mut buffer,
                         0..start,
                         dictionary,
                     )?;
@@ -427,6 +456,13 @@ impl Stream {
     fn end_frame(&mut self) -> State {
         self.frames += 1;
         self.complete_frames += 1;
+        self.after_frame()
+    }
+
+    /// What follows a completed frame of either kind: a single-frame
+    /// operation ends after a skippable frame too, as a
+    /// `ZSTD_decompressStream` member does.
+    const fn after_frame(&self) -> State {
         match self.config.frame_mode() {
             FrameMode::Single => State::Done,
             FrameMode::Concatenated => State::Magic,
@@ -470,6 +506,7 @@ impl Stream {
             filled: 0,
             frame_end: None,
             cut,
+            limit: 0,
         };
         out.filled = out.buffer.len();
         let result = self.walk(src, &mut out, dictionary);
@@ -495,6 +532,27 @@ impl Stream {
     ) -> Option<usize> {
         let mut out = SliceOutput {
             buffer: dst,
+            filled: 0,
+            frame_end: 0,
+        };
+        self.walk(src, &mut out, dictionary).ok()?;
+        Some(out.filled)
+    }
+
+    /// [`Self::decode_to_slice`] into memory that may be uninitialized.
+    ///
+    /// The decoder reads its output back as history, so `dst` is zeroed
+    /// one block ahead of it, never past the current frame's declared end:
+    /// on success no byte after the returned length has been written.
+    #[cfg_attr(all(feature = "hotpath", not(feature = "no_std")), hotpath::measure)]
+    pub(crate) fn decode_to_uninit(
+        &mut self,
+        src: &[u8],
+        dst: &mut [MaybeUninit<u8>],
+        dictionary: Option<DictView<'_>>,
+    ) -> Option<usize> {
+        let mut out = UninitOutput {
+            buffer: BorrowedBuf::from(dst),
             filled: 0,
             frame_end: 0,
         };
@@ -540,6 +598,9 @@ impl Stream {
                 }
                 reader.take(size as usize)?;
                 complete_frames += 1;
+                if self.config.frame_mode() == FrameMode::Single {
+                    return single_end(&reader, src);
+                }
                 continue;
             }
             if magic != MAGIC_NUMBER {
@@ -587,15 +648,21 @@ impl Stream {
             }
             complete_frames += 1;
             if self.config.frame_mode() == FrameMode::Single {
-                if reader.position < src.len() {
-                    return Err(DecodeError::TrailingData {
-                        offset: reader.position as u64,
-                    });
-                }
-                return Ok(());
+                return single_end(&reader, src);
             }
         }
     }
+}
+
+/// The end of a single-frame one-shot operation whose frame ended at
+/// `reader`'s position in `src`: anything after it is trailing data.
+const fn single_end(reader: &SliceReader<'_>, src: &[u8]) -> Result<(), DecodeError> {
+    if reader.position < src.len() {
+        return Err(DecodeError::TrailingData {
+            offset: reader.position as u64,
+        });
+    }
+    Ok(())
 }
 
 /// Where the one-shot driver writes: a buffer whose prefix up to
@@ -608,9 +675,9 @@ trait Output {
     /// `unread` input bytes follow the header.
     fn begin_frame(&mut self, content_size: Option<u64>, unread: usize) -> Result<(), DecodeError>;
 
-    /// The buffer, with room for a block of `block_max` bytes after the
-    /// output where it can grow.
-    fn reserve(&mut self, block_max: usize) -> Result<&mut [u8], DecodeError>;
+    /// The buffer, which may grow to hold a block of `block_max` bytes
+    /// after the output where the output can grow.
+    fn reserve(&mut self, block_max: usize) -> Result<&mut dyn BlockOutput, DecodeError>;
 
     /// Records the end of the block just decoded.
     fn commit(&mut self, end: usize);
@@ -631,7 +698,16 @@ trait Output {
 /// declared frame before seeing any output.
 const PLAUSIBLE_RATIO: usize = 32;
 
+/// Bytes a growing output zeroes at a time ahead of a block's writes:
+/// small enough to stay in the first-level cache until the copies
+/// overwrite them, large enough that each extension costs little.
+const ZERO_CHUNK: usize = 4 * 1024;
+
 /// A caller's vector, grown with initialized slack for chunked copies.
+///
+/// Its length is the end of the zeroed prefix, which runs ahead of the
+/// output; each compressed block extends it a chunk at a time
+/// ([`BlockOutput::grow`]), up to [`Self::limit`].
 struct VecOutput<'a> {
     buffer: &'a mut Vec<u8>,
     filled: usize,
@@ -639,6 +715,49 @@ struct VecOutput<'a> {
     frame_end: Option<usize>,
     /// Whether blocks are cut at [`Self::frame_end`].
     cut: bool,
+    /// How far the block in progress may extend the buffer.
+    limit: usize,
+}
+
+impl BlockOutput for VecOutput<'_> {
+    fn buffer(&mut self) -> &mut [u8] {
+        self.buffer
+    }
+
+    fn grow(&mut self, end: usize) -> bool {
+        let len = self.buffer.len();
+        let target = end.max(len + ZERO_CHUNK).min(self.limit);
+        if target <= len {
+            return false;
+        }
+        // `reserve` made room for the limit, so this never reallocates.
+        self.buffer.resize(target, 0);
+        true
+    }
+
+    fn append(&mut self, at: usize, literals: &[u8], offset: usize, match_length: usize) -> bool {
+        let lit_end = at + literals.len();
+        if at > self.buffer.len() || lit_end + match_length > self.limit {
+            return false;
+        }
+        let start = match lit_end.checked_sub(offset) {
+            _ if match_length == 0 => 0,
+            Some(start) if offset > 0 => start,
+            _ => return false,
+        };
+        // Bytes zeroed past `at` are written again by the append.
+        self.buffer.truncate(at);
+        self.buffer.extend_from_slice(literals);
+        // The copied source doubles while it is shorter than the match, so
+        // an overlapping match repeats its period.
+        let mut copied = 0;
+        while copied < match_length {
+            let step = (match_length - copied).min(offset + copied);
+            self.buffer.extend_from_within(start..start + step);
+            copied += step;
+        }
+        true
+    }
 }
 
 impl Output for VecOutput<'_> {
@@ -663,19 +782,26 @@ impl Output for VecOutput<'_> {
         Ok(())
     }
 
-    fn reserve(&mut self, block_max: usize) -> Result<&mut [u8], DecodeError> {
+    /// Reserves the block's room without zeroing it: the block zeroes
+    /// what it reaches, a chunk at a time.
+    fn reserve(&mut self, block_max: usize) -> Result<&mut dyn BlockOutput, DecodeError> {
         let slack = block_max + WILDCOPY_OVERLENGTH;
         let wanted = self.filled + slack;
         if self.cut
             && let Some(end) = self.frame_end
         {
             let len = wanted.min(end);
-            grow_output(self.buffer, len, Some(end))?;
-            return Ok(&mut self.buffer[..len]);
+            reserve_output(self.buffer, len, Some(end))?;
+            // Slack zeroed for an earlier, uncut block may reach past the
+            // frame's end; the buffer is cut back to it.
+            self.buffer.truncate(len);
+            self.limit = len;
+            return Ok(self);
         }
         let bound = self.frame_end.and_then(|end| end.checked_add(slack));
-        grow_output(self.buffer, wanted, bound)?;
-        Ok(self.buffer)
+        reserve_output(self.buffer, wanted, bound)?;
+        self.limit = wanted;
+        Ok(self)
     }
 
     fn commit(&mut self, end: usize) {
@@ -703,24 +829,13 @@ impl Output for VecOutput<'_> {
     }
 }
 
-/// Grows `buffer` to `len` initialized bytes.
+/// Makes room for `len` bytes in `buffer`, without initializing them.
 ///
 /// Capacity doubles, as `Vec` would grow it, so allocation stays within
 /// twice the output requested so far. When the frame's last request
 /// `bound` is known and lies within that factor, capacity jumps straight
 /// to it: the frame then needs no further reallocation, copy, or capacity
 /// past its end.
-fn grow_output(buffer: &mut Vec<u8>, len: usize, bound: Option<usize>) -> Result<(), DecodeError> {
-    if buffer.len() >= len {
-        return Ok(());
-    }
-    reserve_output(buffer, len, bound)?;
-    buffer.resize(len, 0);
-    Ok(())
-}
-
-/// Makes room for `len` bytes in `buffer` under [`grow_output`]'s
-/// capacity policy, without initializing them.
 fn reserve_output(
     buffer: &mut Vec<u8>,
     len: usize,
@@ -747,6 +862,20 @@ struct SliceOutput<'a> {
     frame_end: usize,
 }
 
+impl BlockOutput for SliceOutput<'_> {
+    fn buffer(&mut self) -> &mut [u8] {
+        &mut self.buffer[..self.frame_end]
+    }
+
+    fn grow(&mut self, _end: usize) -> bool {
+        false
+    }
+
+    fn grows(&self) -> bool {
+        false
+    }
+}
+
 impl Output for SliceOutput<'_> {
     fn filled(&self) -> usize {
         self.filled
@@ -769,12 +898,120 @@ impl Output for SliceOutput<'_> {
         }
     }
 
-    fn reserve(&mut self, _block_max: usize) -> Result<&mut [u8], DecodeError> {
-        Ok(&mut self.buffer[..self.frame_end])
+    fn reserve(&mut self, _block_max: usize) -> Result<&mut dyn BlockOutput, DecodeError> {
+        Ok(self)
     }
 
     fn commit(&mut self, end: usize) {
         self.filled = end;
+    }
+}
+
+/// A caller's uninitialized slice, cut at each frame's declared end as
+/// [`SliceOutput`] is. The buffer's filled part is the zeroed-ahead prefix
+/// the decoder may read and write. Each compressed block's room is zeroed
+/// before the block, never past the frame's end, so each byte is zeroed at
+/// most once and only inside a frame's output, and the sequence loop runs
+/// over a fixed buffer, without stops.
+///
+/// Zeroing a block's room at once costs less than zeroing it a chunk at a
+/// time as the loop reaches it: the room fits in the second-level cache,
+/// and the fixed loop needs no room tests (silesia.tar through
+/// `mzstd_decompress` decodes 5-9% faster).
+struct UninitOutput<'a> {
+    buffer: BorrowedBuf<'a, u8>,
+    /// Bytes of output, never more than `buffer.len()`.
+    filled: usize,
+    frame_end: usize,
+}
+
+impl BlockOutput for UninitOutput<'_> {
+    fn buffer(&mut self) -> &mut [u8] {
+        self.buffer.filled_mut()
+    }
+
+    /// The block's whole room is zeroed before it starts.
+    fn grow(&mut self, _end: usize) -> bool {
+        false
+    }
+
+    fn grows(&self) -> bool {
+        false
+    }
+}
+
+impl UninitOutput<'_> {
+    /// Extends the zeroed prefix to at least `end`.
+    fn zero_to(&mut self, end: usize) {
+        if let Some(grow) = end.checked_sub(self.buffer.len()).filter(|&grow| grow > 0) {
+            self.buffer.unfilled().append_fill(grow, 0);
+        }
+    }
+}
+
+impl Output for UninitOutput<'_> {
+    fn filled(&self) -> usize {
+        self.filled
+    }
+
+    fn begin_frame(
+        &mut self,
+        content_size: Option<u64>,
+        _unread: usize,
+    ) -> Result<(), DecodeError> {
+        let room = (self.buffer.capacity() - self.filled) as u64;
+        match content_size {
+            Some(size) if size <= room => {
+                self.frame_end = self.filled + size as usize;
+                Ok(())
+            }
+            _ => Err(DecodeError::OutputTooSmall {
+                written: self.filled,
+            }),
+        }
+    }
+
+    /// Zeroes the block's room: its maximum and the copies' overlength,
+    /// cut at the frame's end.
+    fn reserve(&mut self, block_max: usize) -> Result<&mut dyn BlockOutput, DecodeError> {
+        let end = self
+            .filled
+            .saturating_add(block_max + WILDCOPY_OVERLENGTH)
+            .min(self.frame_end);
+        self.zero_to(end);
+        Ok(self)
+    }
+
+    fn commit(&mut self, end: usize) {
+        self.filled = end;
+    }
+
+    /// Writes raw and RLE blocks in one pass: zeroing room for them first
+    /// would write every byte twice.
+    fn place(&mut self, block: &BlockHeader, content: &[u8]) -> Result<Option<&[u8]>, DecodeError> {
+        let len = match block.kind {
+            BlockKind::Raw => content.len(),
+            BlockKind::Rle => block.size,
+            BlockKind::Compressed => return Ok(None),
+        };
+        let start = self.filled;
+        let end = start + len;
+        if end > self.frame_end {
+            return Err(DecodeError::OutputTooSmall { written: start });
+        }
+        // Bytes zeroed ahead for an earlier block are overwritten in place;
+        // the rest is appended.
+        let zeroed = self.buffer.len().clamp(start, end);
+        if block.kind == BlockKind::Rle {
+            let &byte = content.first().ok_or(InvalidDataKind::BlockSize)?;
+            self.buffer.filled_mut()[start..zeroed].fill(byte);
+            self.buffer.unfilled().append_fill(end - zeroed, byte);
+        } else {
+            let (head, tail) = content.split_at(zeroed - start);
+            self.buffer.filled_mut()[start..zeroed].copy_from_slice(head);
+            self.buffer.unfilled().append(tail);
+        }
+        Ok(Some(&self.buffer.filled()[start..end]))
     }
 }
 
@@ -857,8 +1094,7 @@ mod tests {
 
     #[test]
     fn single_mode_stops_after_the_first_frame() {
-        let mut input = SKIP.to_vec();
-        input.extend_from_slice(&hello());
+        let mut input = hello();
         input.extend_from_slice(b"tail");
         let mut stream = stream(FrameMode::Single.into());
         let mut out = [0u8; 16];
@@ -868,6 +1104,25 @@ mod tests {
         assert_eq!(progress.status, DecoderStatus::Finished);
         assert_eq!(progress.consumed, input.len() - 4);
         assert_eq!(&out[..progress.produced], b"hello");
+        assert_eq!(stream.frames_decoded(), 1);
+    }
+
+    #[test]
+    fn single_mode_stops_after_a_skippable_frame() {
+        let mut input = SKIP.to_vec();
+        input.extend_from_slice(&hello());
+        let mut stream = stream(FrameMode::Single.into());
+        let mut out = [0u8; 16];
+        let progress = stream
+            .process(&input, &mut out, DecodeOperation::Process, None)
+            .expect("valid");
+        assert_eq!(progress.status, DecoderStatus::Finished);
+        assert_eq!((progress.consumed, progress.produced), (SKIP.len(), 0));
+        assert_eq!(stream.frames_decoded(), 0);
+        assert!(matches!(
+            stream.decode_all(&input, &mut Vec::new(), None),
+            Err(DecodeError::TrailingData { offset: 9 })
+        ));
     }
 
     #[test]
@@ -1034,6 +1289,13 @@ mod tests {
 
     #[test]
     fn output_growth_doubles_and_stops_at_a_frames_bound() {
+        let grow_output = |buffer: &mut Vec<u8>, len, bound| {
+            reserve_output(buffer, len, bound)?;
+            if buffer.len() < len {
+                buffer.resize(len, 0);
+            }
+            Ok::<(), DecodeError>(())
+        };
         // Without a bound, capacity doubles.
         let mut buffer = Vec::new();
         grow_output(&mut buffer, 100, None).expect("grows");
@@ -1058,6 +1320,39 @@ mod tests {
             grow_output(&mut buffer, usize::MAX, None),
             Err(DecodeError::AllocationFailed)
         ));
+    }
+
+    #[test]
+    fn vec_output_zeroes_in_chunks_and_appends_long_sequences() {
+        let mut dst = b"ab".to_vec();
+        let mut out = VecOutput {
+            buffer: &mut dst,
+            filled: 2,
+            frame_end: None,
+            cut: true,
+            limit: 0,
+        };
+        // Room for a block is reserved, not zeroed.
+        let room = out.reserve(10).expect("room");
+        assert_eq!(room.buffer(), b"ab");
+        // A chunk at a time, capped at the block and the overlength.
+        assert!(room.grow(3));
+        assert_eq!(room.buffer().len(), 2 + 10 + WILDCOPY_OVERLENGTH);
+        assert!(!room.grow(50));
+        // Appending cuts the zeroed bytes; an overlapping match repeats
+        // its period.
+        assert!(room.append(2, b"cd", 2, 7));
+        assert_eq!(room.buffer(), b"abcdcdcdcdc");
+        // A match before the buffer or with offset zero, a sequence past
+        // the room, or a start past the buffer is refused.
+        assert!(!room.append(11, b"", 12, 1));
+        assert!(!room.append(11, b"", 0, 1));
+        assert!(!room.append(11, b"x", 1, 40));
+        assert!(!room.append(12, b"x", 1, 1));
+        // Without a match the offset does not matter.
+        assert!(room.append(11, b"xyz", 0, 0));
+        assert_eq!(room.buffer(), b"abcdcdcdcdcxyz");
+        assert!(dst.capacity() >= 2 + 10 + WILDCOPY_OVERLENGTH);
     }
 
     #[test]
@@ -1110,5 +1405,138 @@ mod tests {
             stream(limits.into()).decode_all(&frame, &mut out, None),
             Err(DecodeError::OutputLimitExceeded { limit: 4 })
         ));
+    }
+
+    /// Reads back memory a test initialized in full.
+    fn bytes(output: &[MaybeUninit<u8>]) -> Vec<u8> {
+        // SAFETY: each test initializes every element before reading.
+        output
+            .iter()
+            .map(|slot| unsafe { slot.assume_init() })
+            .collect()
+    }
+
+    fn block(kind: BlockKind, size: usize) -> BlockHeader {
+        BlockHeader {
+            last: false,
+            kind,
+            size,
+        }
+    }
+
+    #[test]
+    fn uninit_output_zeroes_each_block_room_within_the_frame() {
+        let mut storage = [MaybeUninit::new(0xAAu8); 64];
+        let mut out = UninitOutput {
+            buffer: BorrowedBuf::from(&mut storage[..]),
+            filled: 0,
+            frame_end: 0,
+        };
+        assert!(matches!(
+            out.begin_frame(None, 0),
+            Err(DecodeError::OutputTooSmall { written: 0 })
+        ));
+        assert!(matches!(
+            out.begin_frame(Some(65), 0),
+            Err(DecodeError::OutputTooSmall { written: 0 })
+        ));
+        out.begin_frame(Some(60), 0).expect("fits");
+        // A block's whole room is zeroed before it starts: its maximum and
+        // the overlength. The room never grows.
+        let room = out.reserve(1).expect("room");
+        assert!(!room.grows());
+        assert_eq!(room.buffer().len(), 1 + WILDCOPY_OVERLENGTH);
+        assert!(!room.grow(40));
+        assert_eq!(room.buffer().len(), 1 + WILDCOPY_OVERLENGTH);
+        out.commit(1);
+        // The next block zeroes only what lies past the zeroed prefix, and
+        // the frame's end caps it however large a block may be.
+        let room = out.reserve(1 << 17).expect("room");
+        assert_eq!(room.buffer().len(), 60);
+        assert_eq!(out.filled(), 1);
+        assert_eq!(bytes(&storage[..61]), [&[0u8; 60][..], &[0xAA]].concat());
+    }
+
+    #[test]
+    fn uninit_output_places_raw_and_rle_blocks_over_and_past_the_zeroed_prefix() {
+        let mut storage = [MaybeUninit::new(0xAAu8); 64];
+        let mut out = UninitOutput {
+            buffer: BorrowedBuf::from(&mut storage[..]),
+            filled: 0,
+            frame_end: 0,
+        };
+        out.begin_frame(Some(40), 0).expect("fits");
+        assert!(
+            out.place(&block(BlockKind::Compressed, 3), b"abc")
+                .expect("deferred")
+                .is_none()
+        );
+        // Zero the copies' overlength ahead, then place a raw block across
+        // its end.
+        let room = out.reserve(0).expect("room");
+        assert!(room.buffer().iter().all(|&byte| byte == 0));
+        out.commit(0);
+        let zeroed = out.buffer.len();
+        assert_eq!(zeroed, WILDCOPY_OVERLENGTH);
+        assert!(matches!(
+            out.place(&block(BlockKind::Rle, 1), b""),
+            Err(DecodeError::InvalidData { .. })
+        ));
+        let raw = alloc::vec![b'r'; zeroed + 3];
+        let placed = out
+            .place(&block(BlockKind::Raw, raw.len()), &raw)
+            .expect("fits");
+        assert_eq!(placed, Some(&raw[..]));
+        out.commit(raw.len());
+        // An RLE block appended entirely past the zeroed prefix.
+        let placed = out.place(&block(BlockKind::Rle, 5), b"z").expect("fits");
+        assert_eq!(placed, Some(&b"zzzzz"[..]));
+        let end = raw.len() + 5;
+        out.commit(end);
+        assert!(matches!(
+            out.place(&block(BlockKind::Rle, 40), b"z"),
+            Err(DecodeError::OutputTooSmall { .. })
+        ));
+        let expected = [&raw[..], b"zzzzz", &[0xAA; 64][end..]].concat();
+        assert_eq!(bytes(&storage), expected);
+    }
+
+    #[test]
+    fn decode_to_uninit_writes_nothing_past_the_output() {
+        let frame = hello();
+        let mut storage = [MaybeUninit::new(0xAAu8); 8];
+        let mut stream = stream(DecoderConfig::DEFAULT);
+        assert_eq!(stream.decode_to_uninit(&frame, &mut storage, None), Some(5));
+        assert_eq!(bytes(&storage), b"hello\xAA\xAA\xAA");
+        // A frame that does not fit is left to the incremental path.
+        assert_eq!(
+            stream.decode_to_uninit(&frame, &mut storage[..4], None),
+            None
+        );
+    }
+
+    #[test]
+    fn process_uninit_delivers_exactly_the_produced_prefix() {
+        let frame = hello();
+        let mut stream = stream(DecoderConfig::DEFAULT);
+        let mut storage = [MaybeUninit::new(0xAAu8); 3];
+        let progress = stream
+            .process_uninit(&frame, &mut storage, DecodeOperation::Finish, None)
+            .expect("decodes");
+        assert_eq!(progress.produced, 3);
+        assert_eq!(progress.status, DecoderStatus::NeedsOutput);
+        assert_eq!(bytes(&storage), b"hel");
+        let mut storage = [MaybeUninit::new(0xAAu8); 4];
+        let progress = stream
+            .process_uninit(
+                &frame[progress.consumed..],
+                &mut storage,
+                DecodeOperation::Finish,
+                None,
+            )
+            .expect("decodes");
+        assert_eq!(progress.produced, 2);
+        assert_eq!(progress.status, DecoderStatus::Finished);
+        assert_eq!(bytes(&storage), b"lo\xAA\xAA");
     }
 }

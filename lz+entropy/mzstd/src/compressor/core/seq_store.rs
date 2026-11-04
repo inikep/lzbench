@@ -38,6 +38,20 @@ pub(crate) enum LongLength {
     Match(u32),
 }
 
+/// Records a block's exceptional long length, in the reference's order.
+#[cold]
+#[inline(never)]
+fn mark_long_length(long_length: &mut LongLength, pos: u32, lit_length: usize, ml_base: usize) {
+    if lit_length > 0xffff {
+        debug_assert_eq!(*long_length, LongLength::None);
+        *long_length = LongLength::Literal(pos);
+    }
+    if ml_base > 0xffff {
+        debug_assert_eq!(*long_length, LongLength::None);
+        *long_length = LongLength::Match(pos);
+    }
+}
+
 /// `REPCODE_TO_OFFBASE`.
 pub(crate) const fn repcode_to_offbase(repcode: u32) -> u32 {
     repcode
@@ -117,6 +131,51 @@ pub(crate) const fn ml_code(ml_base: u32) -> u8 {
     }
 }
 
+/// Small literal lengths mapped to their code and extra-bit width with
+/// one load. Larger lengths use their high bit for both values.
+const LL_CODE_BITS: [u16; 64] = {
+    let mut entries = [0; 64];
+    let mut length = 0;
+    while length < entries.len() {
+        let code = ll_code(length as u32);
+        entries[length] = code as u16 | ((LL_BITS[code as usize] as u16) << 8);
+        length += 1;
+    }
+    entries
+};
+
+/// The matching map for `match_length - MIN_MATCH`.
+const ML_CODE_BITS: [u16; 128] = {
+    let mut entries = [0; 128];
+    let mut length = 0;
+    while length < entries.len() {
+        let code = ml_code(length as u32);
+        entries[length] = code as u16 | ((ML_BITS[code as usize] as u16) << 8);
+        length += 1;
+    }
+    entries
+};
+
+#[inline(always)]
+const fn ll_code_bits(length: u16) -> u32 {
+    if length < 64 {
+        LL_CODE_BITS[length as usize] as u32
+    } else {
+        let high = highbit32(length as u32);
+        (high + 19) | (high << 8)
+    }
+}
+
+#[inline(always)]
+const fn ml_code_bits(length: u16) -> u32 {
+    if length < 128 {
+        ML_CODE_BITS[length as usize] as u32
+    } else {
+        let high = highbit32(length as u32);
+        (high + 36) | (high << 8)
+    }
+}
+
 /// The literal and match lengths of one sequence
 /// (`ZSTD_getSequenceLength`).
 #[cfg(test)]
@@ -189,6 +248,94 @@ const ML_EXTRA_BITS: [u8; CODE_COUNT_SLOTS] = padded_bits(ML_BITS);
 /// six bits, so a code masked to them indexes without a bounds check.
 pub(crate) const CODE_COUNT_SLOTS: usize = 64;
 
+/// The maximum sequence and literal counts of a full block whose matches
+/// have at least four bytes.
+pub(crate) const FULL_BLOCK_SEQUENCES: usize = 1 << 15;
+pub(crate) const FULL_BLOCK_LITERALS: usize = 1 << 17;
+
+/// A full block's initialized sequence and literal destinations. Positions
+/// belong to the writer rather than the vectors, so a match does not update
+/// vector metadata or test capacity.
+pub(crate) struct SeqCursor<'a> {
+    sequences: &'a mut [SeqDef; FULL_BLOCK_SEQUENCES],
+    literals: &'a mut [u8; FULL_BLOCK_LITERALS + 16],
+    long_length: &'a mut LongLength,
+    sequence_count: usize,
+    literal_count: usize,
+}
+
+impl SeqCursor<'_> {
+    #[inline(always)]
+    pub(crate) const fn nb_seq(&self) -> usize {
+        self.sequence_count
+    }
+
+    /// A cursor over the same destinations with the same counts; write its
+    /// [`Self::counts`] back with [`Self::set_counts`].
+    #[inline(always)]
+    pub(crate) const fn reborrow(&mut self) -> SeqCursor<'_> {
+        SeqCursor {
+            sequences: &mut *self.sequences,
+            literals: &mut *self.literals,
+            long_length: &mut *self.long_length,
+            sequence_count: self.sequence_count,
+            literal_count: self.literal_count,
+        }
+    }
+
+    /// The numbers of sequences and literals written.
+    #[inline(always)]
+    pub(crate) const fn counts(&self) -> (usize, usize) {
+        (self.sequence_count, self.literal_count)
+    }
+
+    /// Takes over the counts of a [`Self::reborrow`]ed cursor.
+    #[inline(always)]
+    pub(crate) const fn set_counts(&mut self, (sequences, literals): (usize, usize)) {
+        self.sequence_count = sequences;
+        self.literal_count = literals;
+    }
+
+    #[inline(always)]
+    pub(crate) fn store_seq_only(&mut self, lit_length: usize, off_base: u32, match_length: usize) {
+        debug_assert!(self.sequence_count < FULL_BLOCK_SEQUENCES);
+        debug_assert!(match_length >= MIN_MATCH);
+        let pos = self.sequence_count as u32;
+        let ml_base = match_length - MIN_MATCH;
+        if (lit_length | ml_base) > 0xffff {
+            mark_long_length(self.long_length, pos, lit_length, ml_base);
+        }
+        self.sequences[self.sequence_count & (FULL_BLOCK_SEQUENCES - 1)] = SeqDef {
+            off_base,
+            lit_length: lit_length as u16,
+            ml_base: ml_base as u16,
+        };
+        self.sequence_count += 1;
+    }
+
+    #[inline(always)]
+    pub(crate) fn store_seq_from(
+        &mut self,
+        src: &[u8],
+        anchor: usize,
+        lit_length: usize,
+        off_base: u32,
+        match_length: usize,
+    ) {
+        let start = self.literal_count & (FULL_BLOCK_LITERALS - 1);
+        let end = start + lit_length;
+        debug_assert!(end <= FULL_BLOCK_LITERALS);
+        match src.get(anchor..).and_then(<[u8]>::first_chunk::<16>) {
+            Some(chunk) if lit_length <= 16 => {
+                self.literals[start..start + 16].copy_from_slice(chunk);
+            }
+            _ => self.literals[start..end].copy_from_slice(&src[anchor..anchor + lit_length]),
+        }
+        self.literal_count = end;
+        self.store_seq_only(lit_length, off_base, match_length);
+    }
+}
+
 /// Histograms of a block's three code streams (`HIST_countFast_wksp` over
 /// `llCode`, `ofCode` and `mlCode`), counted while the codes are made.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -208,13 +355,110 @@ impl Default for CodeCounts {
     }
 }
 
+/// Writes into canonical vectors or a promoted full-block cursor.
+pub(crate) trait SeqWrite {
+    fn nb_seq(&self) -> usize;
+
+    fn store_seq_only(&mut self, lit_length: usize, off_base: u32, match_length: usize);
+
+    fn store_seq_wild(
+        &mut self,
+        src: &[u8],
+        anchor: usize,
+        lit_length: usize,
+        off_base: u32,
+        match_length: usize,
+    );
+}
+
+impl SeqWrite for SeqStore {
+    #[inline(always)]
+    fn nb_seq(&self) -> usize {
+        SeqStore::nb_seq(self)
+    }
+
+    #[inline(always)]
+    fn store_seq_only(&mut self, lit_length: usize, off_base: u32, match_length: usize) {
+        SeqStore::store_seq_only(self, lit_length, off_base, match_length);
+    }
+
+    #[inline(always)]
+    fn store_seq_wild(
+        &mut self,
+        src: &[u8],
+        anchor: usize,
+        lit_length: usize,
+        off_base: u32,
+        match_length: usize,
+    ) {
+        self.push_literals_wild(src, anchor, lit_length);
+        self.store_seq_only(lit_length, off_base, match_length);
+    }
+}
+
+impl SeqWrite for SeqCursor<'_> {
+    #[inline(always)]
+    fn nb_seq(&self) -> usize {
+        SeqCursor::nb_seq(self)
+    }
+
+    #[inline(always)]
+    fn store_seq_only(&mut self, lit_length: usize, off_base: u32, match_length: usize) {
+        SeqCursor::store_seq_only(self, lit_length, off_base, match_length);
+    }
+
+    #[inline(always)]
+    fn store_seq_wild(
+        &mut self,
+        src: &[u8],
+        anchor: usize,
+        lit_length: usize,
+        off_base: u32,
+        match_length: usize,
+    ) {
+        self.store_seq_from(src, anchor, lit_length, off_base, match_length);
+    }
+}
+
+/// A full block's sequence and literal destinations, zeroed once and kept
+/// by a [`SeqStore`] across blocks.
+#[derive(Clone, Debug)]
+struct FullBlock {
+    sequences: alloc::boxed::Box<[SeqDef; FULL_BLOCK_SEQUENCES]>,
+    literals: alloc::boxed::Box<[u8; FULL_BLOCK_LITERALS + 16]>,
+}
+
+impl FullBlock {
+    fn new() -> Self {
+        let sequences = alloc::vec![SeqDef::default(); FULL_BLOCK_SEQUENCES].into_boxed_slice();
+        let literals = alloc::vec![0; FULL_BLOCK_LITERALS + 16].into_boxed_slice();
+        match (sequences.try_into(), literals.try_into()) {
+            (Ok(sequences), Ok(literals)) => Self {
+                sequences,
+                literals,
+            },
+            _ => unreachable!("the vectors have the arrays' lengths"),
+        }
+    }
+}
+
 /// Sequences and literals of one block.
+///
+/// They are written to the vectors, except where a block's finder is
+/// promoted to a full-block cursor: the block then lives in the kept
+/// [`FullBlock`] destinations, so promotion does not zero a block's room
+/// again per block.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct SeqStore {
     /// Sequences in order.
-    pub(crate) sequences: alloc::vec::Vec<SeqDef>,
+    sequences: alloc::vec::Vec<SeqDef>,
     /// Literals of every sequence and the block's trailing literals.
-    pub(crate) literals: alloc::vec::Vec<u8>,
+    literals: alloc::vec::Vec<u8>,
+    /// The full-block cursor's destinations, once a block was promoted.
+    full: Option<FullBlock>,
+    /// The current block's sequence and literal counts in [`Self::full`],
+    /// when it was promoted.
+    full_counts: Option<(usize, usize)>,
     /// Per-sequence codes, filled by [`SeqStore::fill_codes`]; only the
     /// first [`Self::nb_seq`] entries belong to the current block.
     pub(crate) codes: alloc::vec::Vec<SeqCodes>,
@@ -229,6 +473,78 @@ pub(crate) struct SeqStore {
 }
 
 impl SeqStore {
+    /// A store holding `sequences` and `literals`, for blocks of at most
+    /// `max_nb_seq` sequences and `max_nb_lit` literals.
+    pub(crate) fn from_parts(
+        sequences: alloc::vec::Vec<SeqDef>,
+        literals: alloc::vec::Vec<u8>,
+        long_length: LongLength,
+        max_nb_seq: usize,
+        max_nb_lit: usize,
+    ) -> Self {
+        Self {
+            sequences,
+            literals,
+            long_length,
+            max_nb_seq,
+            max_nb_lit,
+            ..Self::default()
+        }
+    }
+
+    /// The block's sequences.
+    #[inline]
+    pub(crate) fn sequences(&self) -> &[SeqDef] {
+        match (&self.full, self.full_counts) {
+            (Some(full), Some((sequences, _))) => &full.sequences[..sequences],
+            _ => &self.sequences,
+        }
+    }
+
+    /// The block's sequences, to rewrite their offsets.
+    #[inline]
+    pub(crate) fn sequences_mut(&mut self) -> &mut [SeqDef] {
+        match (&mut self.full, self.full_counts) {
+            (Some(full), Some((sequences, _))) => &mut full.sequences[..sequences],
+            _ => &mut self.sequences,
+        }
+    }
+
+    /// The block's literals.
+    #[inline]
+    pub(crate) fn literals(&self) -> &[u8] {
+        match (&self.full, self.full_counts) {
+            (Some(full), Some((_, literals))) => &full.literals[..literals],
+            _ => &self.literals,
+        }
+    }
+
+    /// Runs a full-block finder over the kept full-block destinations,
+    /// allocated and zeroed on the first promotion, after the entries the
+    /// vectors already hold; the block's entries then stay there.
+    #[inline(always)]
+    pub(crate) fn with_full_block_cursor<R>(
+        &mut self,
+        run: impl FnOnce(&mut SeqCursor<'_>) -> R,
+    ) -> R {
+        debug_assert!(self.full_counts.is_none());
+        let full = self.full.get_or_insert_with(FullBlock::new);
+        let sequence_count = self.sequences.len();
+        let literal_count = self.literals.len();
+        full.sequences[..sequence_count].copy_from_slice(&self.sequences);
+        full.literals[..literal_count].copy_from_slice(&self.literals);
+        let mut cursor = SeqCursor {
+            sequences: &mut full.sequences,
+            literals: &mut full.literals,
+            long_length: &mut self.long_length,
+            sequence_count,
+            literal_count,
+        };
+        let result = run(&mut cursor);
+        self.full_counts = Some((SeqWrite::nb_seq(&cursor), cursor.literal_count));
+        result
+    }
+
     /// Sizes the store for blocks of `block_size` bytes with matches of at
     /// least `min_match` bytes (`ZSTD_maxNbSeq`).
     pub(crate) fn reserve(&mut self, block_size: usize, min_match: u32) {
@@ -242,37 +558,61 @@ impl SeqStore {
 
     /// Bytes held between blocks.
     pub(crate) fn retained_bytes(&self) -> usize {
+        let full = if self.full.is_some() {
+            size_of::<[SeqDef; FULL_BLOCK_SEQUENCES]>() + FULL_BLOCK_LITERALS + 16
+        } else {
+            0
+        };
         self.sequences.capacity() * core::mem::size_of::<SeqDef>()
             + self.literals.capacity()
             + self.codes.capacity() * core::mem::size_of::<SeqCodes>()
+            + full
     }
 
     /// Empties the store for a new block (`ZSTD_resetSeqStore`).
     pub(crate) fn reset(&mut self) {
         self.sequences.clear();
         self.literals.clear();
+        self.full_counts = None;
         self.long_length = LongLength::None;
     }
 
     /// Number of sequences.
     pub(crate) fn nb_seq(&self) -> usize {
-        self.sequences.len()
+        match self.full_counts {
+            Some((sequences, _)) => sequences,
+            None => self.sequences.len(),
+        }
+    }
+
+    /// Appends `src[anchor..anchor + lit_length]`; a run of at most 16 bytes
+    /// is appended as one 16-byte chunk straight from `src` when `src` holds
+    /// it, with a bounds test (`16 <= src.len() - anchor`) that cannot
+    /// overflow, and cut back.
+    #[inline(always)]
+    pub(crate) fn push_literals_wild(&mut self, src: &[u8], anchor: usize, lit_length: usize) {
+        debug_assert!(self.literals.len() + lit_length <= self.max_nb_lit);
+        let literals = &mut self.literals;
+        match src.get(anchor..).and_then(<[u8]>::first_chunk::<16>) {
+            Some(chunk) if lit_length <= 16 => {
+                let start = literals.len();
+                literals.extend_from_slice(chunk);
+                literals.truncate(start + lit_length);
+            }
+            _ => literals.extend_from_slice(&src[anchor..anchor + lit_length]),
+        }
     }
 
     /// Appends a sequence without its literals (`ZSTD_storeSeqOnly`).
     #[inline(always)]
     pub(crate) fn store_seq_only(&mut self, lit_length: usize, off_base: u32, match_length: usize) {
+        debug_assert!(self.full_counts.is_none());
         debug_assert!(self.sequences.len() < self.max_nb_seq);
         debug_assert!(match_length >= MIN_MATCH);
         let pos = self.sequences.len() as u32;
-        if lit_length > 0xFFFF {
-            debug_assert_eq!(self.long_length, LongLength::None);
-            self.long_length = LongLength::Literal(pos);
-        }
         let ml_base = match_length - MIN_MATCH;
-        if ml_base > 0xFFFF {
-            debug_assert_eq!(self.long_length, LongLength::None);
-            self.long_length = LongLength::Match(pos);
+        if (lit_length | ml_base) > 0xffff {
+            mark_long_length(&mut self.long_length, pos, lit_length, ml_base);
         }
         self.sequences.push(SeqDef {
             off_base,
@@ -318,9 +658,16 @@ impl SeqStore {
         self.store_seq_only(lit_length, off_base, match_length);
     }
 
-    /// Appends the block's trailing literals (`ZSTD_storeLastLiterals`).
+    /// Appends the block's trailing literals (`ZSTD_storeLastLiterals`),
+    /// after a promoted block's in its full-block destination.
     pub(crate) fn store_last_literals(&mut self, literals: &[u8]) {
-        self.literals.extend_from_slice(literals);
+        match (&mut self.full, &mut self.full_counts) {
+            (Some(full), Some((_, count))) => {
+                full.literals[*count..*count + literals.len()].copy_from_slice(literals);
+                *count += literals.len();
+            }
+            _ => self.literals.extend_from_slice(literals),
+        }
     }
 
     /// Fills the codes, their extra bits and their histograms
@@ -335,7 +682,7 @@ impl SeqStore {
     /// The full lengths of sequence `index` (`ZSTD_getSequenceLength`).
     #[cfg(test)]
     pub(crate) fn sequence_length(&self, index: usize) -> SequenceLength {
-        let seq = self.sequences[index];
+        let seq = self.sequences()[index];
         let mut lengths = SequenceLength {
             lit_length: u32::from(seq.lit_length),
             match_length: u32::from(seq.ml_base) + MIN_MATCH as u32,
@@ -352,33 +699,54 @@ impl SeqStore {
 /// [`SeqStore::fill_codes`] inside `simd`'s feature context.
 #[simd]
 fn fill_codes_on<S: Simd>(simd: S, store: &mut SeqStore) {
-    let n = store.sequences.len();
+    let long_length = store.long_length;
+    let SeqStore {
+        sequences,
+        full,
+        full_counts,
+        codes: code_store,
+        code_counts: counts,
+        ..
+    } = store;
+    let sequences: &[SeqDef] = match (full, *full_counts) {
+        (Some(full), Some((n, _))) => &full.sequences[..n],
+        _ => sequences,
+    };
+    let n = sequences.len();
     // Every entry below `n` is written before it is read: the buffer only
     // grows, and only its new tail is zeroed.
-    if store.codes.len() < n {
-        store.codes.resize(n, SeqCodes::default());
+    if code_store.len() < n {
+        code_store.resize(n, SeqCodes::default());
     }
-    let counts = &mut store.code_counts;
     *counts = CodeCounts::default();
-    for (seq, codes) in store.sequences[..n].iter().zip(&mut store.codes[..n]) {
+    for (seq, codes) in sequences.iter().zip(&mut code_store[..n]) {
         // Masked to the histograms' size in 32 bits; every code is below
         // it already.
-        let ll = u32::from(ll_code(u32::from(seq.lit_length))) & (CODE_COUNT_SLOTS as u32 - 1);
-        let ml = u32::from(ml_code(u32::from(seq.ml_base))) & (CODE_COUNT_SLOTS as u32 - 1);
+        let ll_packed = ll_code_bits(seq.lit_length);
+        let ml_packed = ml_code_bits(seq.ml_base);
+        let ll = ll_packed & (CODE_COUNT_SLOTS as u32 - 1);
+        let ml = ml_packed & (CODE_COUNT_SLOTS as u32 - 1);
         // `highbit32`; an offset base is never zero, so setting the low bit
         // changes nothing and spares the zero case.
         let of = (seq.off_base | 1).ilog2();
         counts.ll[ll as usize] += 1;
         counts.of[of as usize] += 1;
         counts.ml[ml as usize] += 1;
-        *codes = SeqCodes::new(ll, of, ml);
+        *codes = SeqCodes {
+            ll: ll as u8,
+            of: of as u8,
+            ml: ml as u8,
+            // The low bytes sum to at most MAX_LL + MAX_ML < 256,
+            // so they cannot carry into the combined width.
+            extra_bits: (((ll_packed + ml_packed) >> 8) + of) as u8,
+        };
     }
-    let (pos, ll, ml) = match store.long_length {
+    let (pos, ll, ml) = match long_length {
         LongLength::Literal(pos) => (pos as usize, Some(MAX_LL), None),
         LongLength::Match(pos) => (pos as usize, None, Some(MAX_ML)),
         LongLength::None => return,
     };
-    if let Some(codes) = store.codes[..n].get_mut(pos) {
+    if let Some(codes) = code_store[..n].get_mut(pos) {
         let ll = ll.unwrap_or(codes.ll);
         let ml = ml.unwrap_or(codes.ml);
         counts.ll[usize::from(codes.ll)] -= 1;
@@ -392,6 +760,158 @@ fn fill_codes_on<S: Simd>(simd: S, store: &mut SeqStore) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn packed_length_codes_match_code_and_width_for_every_stored_length() {
+        for length in 0..=u16::MAX {
+            let ll = ll_code(u32::from(length));
+            let ml = ml_code(u32::from(length));
+            assert_eq!(
+                ll_code_bits(length),
+                u32::from(ll) | (u32::from(LL_BITS[usize::from(ll)]) << 8),
+                "literal length {length}",
+            );
+            assert_eq!(
+                ml_code_bits(length),
+                u32::from(ml) | (u32::from(ML_BITS[usize::from(ml)]) << 8),
+                "match base {length}",
+            );
+        }
+        for ll in 0..=MAX_LL {
+            for ml in 0..=MAX_ML {
+                let ll_bits = u32::from(LL_BITS[usize::from(ll)]);
+                let ml_bits = u32::from(ML_BITS[usize::from(ml)]);
+                let ll_packed = u32::from(ll) | (ll_bits << 8);
+                let ml_packed = u32::from(ml) | (ml_bits << 8);
+                assert_eq!((ll_packed + ml_packed) >> 8, ll_bits + ml_bits);
+            }
+        }
+    }
+
+    #[test]
+    fn full_block_cursor_matches_vector_stores_at_buffer_edges() {
+        let src: alloc::vec::Vec<u8> = (0..FULL_BLOCK_LITERALS).map(|i| i as u8).collect();
+        let mut cursor_store = SeqStore::default();
+        let mut vector_store = SeqStore::default();
+        cursor_store.reserve(FULL_BLOCK_LITERALS, 4);
+        vector_store.reserve(FULL_BLOCK_LITERALS, 4);
+        let cases = [
+            (0, 0, 4),
+            (7, 16, 4),
+            (25, 17, 9),
+            (FULL_BLOCK_LITERALS - 7, 7, 5),
+        ];
+        cursor_store.with_full_block_cursor(|cursor| {
+            for (anchor, len, ml) in cases {
+                cursor.store_seq_from(&src, anchor, len, 7, ml);
+            }
+        });
+        for (anchor, len, ml) in cases {
+            vector_store.store_seq_from(&src, anchor, len, 7, ml);
+        }
+        assert_eq!(cursor_store.sequences(), vector_store.sequences());
+        assert_eq!(cursor_store.literals(), vector_store.literals());
+        assert_eq!(cursor_store.long_length, vector_store.long_length);
+        cursor_store.reset();
+        cursor_store.with_full_block_cursor(|cursor| {
+            for _ in 0..FULL_BLOCK_SEQUENCES {
+                cursor.store_seq_only(0, 1, 4);
+            }
+        });
+        assert_eq!(cursor_store.sequences().len(), FULL_BLOCK_SEQUENCES);
+        assert!(cursor_store.literals().is_empty());
+        for (ll, ml) in [(0x10000, 4), (0, 0x10000 + MIN_MATCH)] {
+            cursor_store.reset();
+            vector_store.reset();
+            cursor_store.with_full_block_cursor(|cursor| cursor.store_seq_only(ll, 7, ml));
+            vector_store.store_seq_only(ll, 7, ml);
+            assert_eq!(cursor_store.sequences(), vector_store.sequences());
+            assert_eq!(cursor_store.long_length, vector_store.long_length);
+        }
+    }
+
+    #[test]
+    fn promoted_blocks_reuse_the_kept_full_block_and_expose_only_their_own() {
+        let src: alloc::vec::Vec<u8> = (0..FULL_BLOCK_LITERALS).map(|i| (i * 7) as u8).collect();
+        let mut store = SeqStore::default();
+        store.reserve(FULL_BLOCK_LITERALS, 4);
+        let before = store.retained_bytes();
+        store.with_full_block_cursor(|cursor| {
+            for anchor in 0..1000 {
+                cursor.store_seq_from(&src, anchor * 40, 20, 9, 4);
+            }
+        });
+        let kept = store.full.as_ref().map(|full| full.sequences.as_ptr());
+        assert_eq!(
+            store.retained_bytes() - before,
+            FULL_BLOCK_SEQUENCES * size_of::<SeqDef>() + FULL_BLOCK_LITERALS + 16
+        );
+        let cases = [
+            (3usize, 2usize, 5usize),
+            (100, 16, 4),
+            (FULL_BLOCK_LITERALS - 5, 5, 6),
+        ];
+        let mut expected = SeqStore::default();
+        expected.reserve(FULL_BLOCK_LITERALS, 4);
+        for (anchor, len, ml) in cases {
+            expected.store_seq_from(&src, anchor, len, 11, ml);
+        }
+        expected.store_last_literals(&src[..3]);
+        // A block written through the vectors, then one promoted after its
+        // first sequence: both expose exactly their own entries.
+        for promoted in [false, true] {
+            store.reset();
+            assert!(store.sequences().is_empty() && store.literals().is_empty());
+            let (first, rest) = cases.split_first().unwrap();
+            store.store_seq_from(&src, first.0, first.1, 11, first.2);
+            if promoted {
+                store.with_full_block_cursor(|cursor| {
+                    for &(anchor, len, ml) in rest {
+                        cursor.store_seq_from(&src, anchor, len, 11, ml);
+                    }
+                });
+            } else {
+                for &(anchor, len, ml) in rest {
+                    store.store_seq_from(&src, anchor, len, 11, ml);
+                }
+            }
+            store.store_last_literals(&src[..3]);
+            assert_eq!(store.sequences(), expected.sequences(), "{promoted}");
+            assert_eq!(store.literals(), expected.literals(), "{promoted}");
+            assert_eq!(store.nb_seq(), cases.len());
+            store.sequences_mut()[0].off_base = 1;
+            assert_eq!(store.sequences()[0].off_base, 1);
+        }
+        assert_eq!(
+            store.full.as_ref().map(|full| full.sequences.as_ptr()),
+            kept
+        );
+    }
+
+    #[test]
+    fn stores_from_parts_hold_exactly_those_parts() {
+        let sequences = alloc::vec![SeqDef {
+            off_base: 9,
+            lit_length: 2,
+            ml_base: 0
+        }];
+        let parts = SeqStore::from_parts(
+            sequences.clone(),
+            b"xy".to_vec(),
+            LongLength::Match(0),
+            7,
+            8,
+        );
+        assert_eq!(
+            (parts.sequences(), parts.literals()),
+            (&sequences[..], &b"xy"[..])
+        );
+        assert_eq!(
+            (parts.nb_seq(), parts.max_nb_seq, parts.max_nb_lit),
+            (1, 7, 8)
+        );
+        assert_eq!(parts.long_length, LongLength::Match(0));
+    }
 
     #[test]
     fn repeat_offsets_follow_the_format_rules() {
@@ -434,8 +954,8 @@ mod tests {
                 exact.reserve(1 << 10, 4);
                 exact.store_seq(&src[anchor..anchor + lit_length], offset_to_offbase(7), 5);
                 exact.store_seq(&src[..3], repcode_to_offbase(1), 4);
-                assert_eq!(wild.literals, exact.literals, "{anchor} {lit_length}");
-                assert_eq!(wild.sequences, exact.sequences);
+                assert_eq!(wild.literals(), exact.literals(), "{anchor} {lit_length}");
+                assert_eq!(wild.sequences(), exact.sequences());
             }
         }
     }
@@ -467,13 +987,13 @@ mod tests {
             // base 35 one above its code's (extra 1), then the offset.
             let off_extra = u64::from(offset_to_offbase(100)) - (1 << 6);
             assert_eq!(
-                first.extra(&store.sequences[0]),
+                first.extra(&store.sequences()[0]),
                 (off_extra << 2) | (1 << 1),
                 "{backend}"
             );
             let second = store.codes[1];
             assert_eq!(
-                (second.extra(&store.sequences[1]), second.extra_bits),
+                (second.extra(&store.sequences()[1]), second.extra_bits),
                 (0, 0)
             );
             assert_eq!(store.code_counts.of[0], 1);
@@ -493,7 +1013,7 @@ mod tests {
         assert_eq!(store.code_counts.ll[usize::from(MAX_LL)], 1);
         assert_eq!(store.code_counts.ll.iter().sum::<u32>(), 2);
         assert_eq!(store.codes[0].extra_bits, 16 + 3);
-        assert_eq!(store.codes[0].extra(&store.sequences[0]) & 0xFFFF, 5);
+        assert_eq!(store.codes[0].extra(&store.sequences()[0]) & 0xFFFF, 5);
         assert_eq!(store.sequence_length(0).lit_length, 0x10005);
         let mut other = SeqStore::default();
         other.reserve(1 << 17, 4);

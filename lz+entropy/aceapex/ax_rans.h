@@ -90,6 +90,11 @@ static inline size_t axr_encode(const uint8_t* in, size_t n, uint8_t* out, uint1
 #include <immintrin.h>
 #include "ax_env.h"     /* ax_getenv (AX_RANS_SIMD only with ACEAPEX_ENV_TUNING) */
 #include <stdlib.h>
+/* the AVX-512 decoder needs avx512vbmi2 and _mm256_maskz_expandloadu_epi16: GCC 8+ / Clang 6+ (lzbench #357; lzbench
+ * builds with GCC 7.1+). Older compilers build the AVX2 and scalar decoders only. */
+#if (defined(__clang__) && __clang_major__ >= 6) || (!defined(__clang__) && defined(__GNUC__) && __GNUC__ >= 8)
+#define AXR_AVX512 1
+#endif
 #endif
 
 /* Decode one chunk of exactly n bytes from src[0..sz). Returns 0 on success, -1 on any
@@ -254,7 +259,7 @@ __attribute__((target("avx2,popcnt"))) static int axr_decode_avx2(const uint8_t*
 }
 #endif
 
-#ifdef AXR_SIMD
+#ifdef AXR_AVX512
 /* AVX-512 decoder (AX_RANS_SIMD=512; needs AVX-512 F/BW/VL/VBMI2): 16 lanes per vector, the 32 lanes as 2 vectors in
  * lane order; the same table and steps as axr_decode_avx2; renormalisation by an expand-load of 16-bit words (vpexpandw:
  * the lanes below 2^16 take the next popcount words in lane order, and only those words are read). */
@@ -328,8 +333,10 @@ __attribute__((target("avx512f,avx512bw,avx512vl,avx512vbmi2,popcnt"))) static i
 #ifdef AXR_SIMD
 static int axr_simd_mode(void) {
     const char* ev = ax_getenv("AX_RANS_SIMD"); const int want = ev ? atoi(ev) : 1;
+#ifdef AXR_AVX512
     if (want == 512 && __builtin_cpu_supports("avx512f") && __builtin_cpu_supports("avx512bw") && __builtin_cpu_supports("avx512vl")
         && __builtin_cpu_supports("avx512vbmi2")) return 512;
+#endif
     return (want != 0 && __builtin_cpu_supports("avx2") && __builtin_cpu_supports("popcnt")) ? 1 : 0;
 }
 #endif
@@ -337,7 +344,9 @@ static inline int axr_decode(const uint8_t* src, size_t sz, uint8_t* out, size_t
 #ifdef AXR_SIMD
     /* computed once; concurrent first calls store the same value (as the other lazily built tables of the decoders) */
     static volatile int mode_s = -1; int mode = mode_s; if (mode < 0) { mode = axr_simd_mode(); mode_s = mode; }
+#ifdef AXR_AVX512
     if (mode == 512) return axr_decode_avx512(src, sz, out, n);
+#endif
     if (mode) return axr_decode_avx2(src, sz, out, n);
 #endif
     return axr_decode_scalar(src, sz, out, n);

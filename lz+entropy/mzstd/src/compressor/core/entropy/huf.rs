@@ -69,15 +69,24 @@ pub(crate) struct CTable {
     pub(crate) value: [u16; 256],
 }
 
+impl CTable {
+    /// The all-zero table a block state starts with.
+    pub(crate) const EMPTY: Self = Self {
+        table_log: 0,
+        max_symbol_value: 0,
+        nb_bits: [0; 256],
+        value: [0; 256],
+    };
+}
+
 impl Default for CTable {
     fn default() -> Self {
-        Self {
-            table_log: 0,
-            max_symbol_value: 0,
-            nb_bits: [0; 256],
-            value: [0; 256],
-        }
+        Self::EMPTY
     }
+}
+
+impl crate::compressor::core::lazy_box::StaticEmpty for CTable {
+    const EMPTY_REF: &'static Self = &Self::EMPTY;
 }
 
 /// A node of the construction tree (`nodeElt`).
@@ -130,16 +139,34 @@ fn bucket_index(count: u32) -> u32 {
     }
 }
 
-/// Descending insertion sort of `nodes` (`HUF_insertionSort`).
-fn insertion_sort(nodes: &mut [Node]) {
-    for i in 1..nodes.len() {
-        let key = nodes[i];
-        let mut j = i as isize - 1;
-        while j >= 0 && nodes[j as usize].count < key.count {
-            nodes[(j + 1) as usize] = nodes[j as usize];
+/// Ranges of `high - low` below this are sorted without partitioning.
+const INSERTION_SORT_THRESHOLD: isize = 8;
+
+/// Ranges [`quick_sort`] can have waiting at once. They are disjoint, each
+/// holds more than `INSERTION_SORT_THRESHOLD` nodes, and a bucket holds at
+/// most one node per symbol.
+const QUICK_SORT_PENDING: usize =
+    (SYMBOL_VALUE_MAX as usize + 1) / (INSERTION_SORT_THRESHOLD as usize + 1);
+
+/// Sorts `nodes[low..=high]` by descending count (`HUF_insertionSort`).
+///
+/// A node moves only past strictly smaller counts, so equal counts keep
+/// their order. The runs are at most `INSERTION_SORT_THRESHOLD + 1` long,
+/// which `slice::sort_by_key` would also sort by insertion, but only after
+/// linking its whole stable sort for `Node`.
+fn sort_short(nodes: &mut [Node], low: isize, high: isize) {
+    if high <= low {
+        return;
+    }
+    let run = &mut nodes[low as usize..=high as usize];
+    for i in 1..run.len() {
+        let key = run[i];
+        let mut j = i;
+        while j > 0 && run[j - 1].count < key.count {
+            run[j] = run[j - 1];
             j -= 1;
         }
-        nodes[(j + 1) as usize] = key;
+        run[j] = key;
     }
 }
 
@@ -158,53 +185,93 @@ fn partition(nodes: &mut [Node], low: isize, high: isize) -> isize {
 }
 
 /// Descending quicksort with insertion sort for short runs
-/// (`HUF_simpleQuickSort`).
-fn quick_sort(nodes: &mut [Node], mut low: isize, mut high: isize) {
-    const INSERTION_SORT_THRESHOLD: isize = 8;
+/// (`HUF_simpleQuickSort`), without recursion.
+///
+/// The reference recurses into the smaller side of each partition and keeps
+/// partitioning the larger side in its loop, where short ranges are not
+/// special-cased. Sorting a range never touches another, so the smaller
+/// sides wait on a stack instead, and a short one is sorted at once, as the
+/// reference's call would. The result is the reference's order, including
+/// among equal counts. A bucket holds at most 256 nodes, so the waiting
+/// bounds fit in bytes, which keeps the stack cleared per call small.
+fn quick_sort(nodes: &mut [Node]) {
+    let mut pending = [(0u8, 0u8); QUICK_SORT_PENDING];
+    let mut waiting = 0;
+    let (mut low, mut high) = (0, nodes.len() as isize - 1);
     if high - low < INSERTION_SORT_THRESHOLD {
-        if high > low {
-            insertion_sort(&mut nodes[low as usize..=high as usize]);
-        }
+        sort_short(nodes, low, high);
         return;
     }
-    while low < high {
-        let idx = partition(nodes, low, high);
-        if idx - low < high - idx {
-            quick_sort(nodes, low, idx - 1);
-            low = idx + 1;
-        } else {
-            quick_sort(nodes, idx + 1, high);
-            high = idx - 1;
+    loop {
+        while low < high {
+            let idx = partition(nodes, low, high);
+            let smaller = if idx - low < high - idx {
+                let side = (low, idx - 1);
+                low = idx + 1;
+                side
+            } else {
+                let side = (idx + 1, high);
+                high = idx - 1;
+                side
+            };
+            if smaller.1 - smaller.0 < INSERTION_SORT_THRESHOLD {
+                sort_short(nodes, smaller.0, smaller.1);
+            } else {
+                pending[waiting] = (smaller.0 as u8, smaller.1 as u8);
+                waiting += 1;
+            }
         }
+        if waiting == 0 {
+            return;
+        }
+        waiting -= 1;
+        let (first, last) = pending[waiting];
+        (low, high) = (first.into(), last.into());
     }
 }
 
 /// Sorts symbols by decreasing count into `tree` (`HUF_sort`).
+///
+/// Symbols that do not occur are left out. The reference puts them in the
+/// last bucket, after every other symbol, so the order of the rest is the
+/// same, and their nodes in the zeroed `tree` already hold the count and
+/// length the later steps read. Leaving them out removes the longest runs
+/// of increments to one bucket, which serialize through memory.
+///
+/// The reference keeps a start and a cursor per bucket. One array serves as
+/// both: after the suffix sums `rank[r]` is where bucket `r - 1` starts, the
+/// placement advances it to where that bucket ends, which is where bucket
+/// `r - 2` starts, so afterwards bucket `n - 1` spans
+/// `rank[n + 1]..rank[n]`.
 fn sort(tree: &mut Tree, count: &[u32], max_symbol_value: u32) {
     let symbols = max_symbol_value as usize + 1;
-    let mut base = [0u16; RANK_POSITION_TABLE_SIZE];
-    let mut curr = [0u16; RANK_POSITION_TABLE_SIZE];
+    let mut rank = [0u16; RANK_POSITION_TABLE_SIZE];
     for &c in &count[..symbols] {
-        base[bucket_index(c) as usize] += 1;
+        if c != 0 {
+            rank[bucket_index(c) as usize] += 1;
+        }
     }
-    for n in (1..RANK_POSITION_TABLE_SIZE).rev() {
-        base[n - 1] += base[n];
-        curr[n - 1] = base[n - 1];
+    let mut total = 0;
+    for r in rank.iter_mut().rev() {
+        total += *r;
+        *r = total;
     }
     for (n, &c) in count[..symbols].iter().enumerate() {
-        let r = bucket_index(c) as usize + 1;
-        let pos = curr[r];
-        curr[r] += 1;
-        let node = tree.at_mut(pos as isize);
-        node.count = c;
-        node.byte = n as u8;
+        if c != 0 {
+            let r = bucket_index(c) as usize + 1;
+            let pos = rank[r];
+            rank[r] += 1;
+            let node = tree.at_mut(pos as isize);
+            node.count = c;
+            node.byte = n as u8;
+        }
     }
+    // The reference sorts buckets `n - 1` for these `n`, from count 164 up.
     for n in RANK_POSITION_DISTINCT_COUNT_CUTOFF as usize..RANK_POSITION_TABLE_SIZE - 1 {
-        let bucket_size = curr[n] as isize - base[n] as isize;
-        let start = usize::from(base[n]);
-        if bucket_size > 1 {
-            let nodes = &mut tree.nodes[start + 1..];
-            quick_sort(nodes, 0, bucket_size - 1);
+        let start = usize::from(rank[n + 1]);
+        let end = usize::from(rank[n]);
+        if end - start > 1 {
+            quick_sort(&mut tree.nodes[start + 1..end + 1]);
         }
     }
 }
@@ -372,18 +439,19 @@ impl CTable {
         let mut nb_per_rank = [0u16; TABLE_LOG_MAX as usize + 1];
         let mut val_per_rank = [0u16; TABLE_LOG_MAX as usize + 1];
         let alphabet_size = max_symbol_value as usize + 1;
+        // Absent symbols have no node (see `sort`), so they are cleared here
+        // rather than through their leaves.
+        self.nb_bits[..alphabet_size].fill(0);
         for n in 0..=non_null_rank {
-            nb_per_rank[usize::from(tree.at(n).nb_bits)] += 1;
+            let node = tree.at(n);
+            nb_per_rank[usize::from(node.nb_bits)] += 1;
+            self.nb_bits[usize::from(node.byte)] = node.nb_bits;
         }
         let mut min: u16 = 0;
         for n in (1..=max_nb_bits as usize).rev() {
             val_per_rank[n] = min;
             min += nb_per_rank[n];
             min >>= 1;
-        }
-        for n in 0..alphabet_size {
-            let node = tree.at(n as isize);
-            self.nb_bits[usize::from(node.byte)] = node.nb_bits;
         }
         for n in 0..alphabet_size {
             let bits = usize::from(self.nb_bits[n]);
@@ -528,16 +596,15 @@ const HUF_CONTAINER_BITS: u32 = 64;
 /// Every symbol is packed; only those the table describes are meaningful.
 #[inline(always)]
 fn packed_codes(table: &CTable) -> [u64; 256] {
-    let mut codes = [0u64; 256];
     // Branch-free over the whole alphabet, so the loop vectorizes: a symbol
     // without a code packs to garbage (its shift wraps), but the input
-    // holds no such symbol and it is never written.
-    for ((code, &nb_bits), &value) in codes.iter_mut().zip(&table.nb_bits).zip(&table.value) {
-        let nb_bits = u32::from(nb_bits);
-        *code = u64::from(value).wrapping_shl(HUF_CONTAINER_BITS.wrapping_sub(nb_bits))
-            | u64::from(nb_bits);
-    }
-    codes
+    // holds no such symbol and it is never written. Each entry is written
+    // once, with no zeroing first.
+    core::array::from_fn(|symbol| {
+        let nb_bits = u32::from(table.nb_bits[symbol]);
+        u64::from(table.value[symbol]).wrapping_shl(HUF_CONTAINER_BITS.wrapping_sub(nb_bits))
+            | u64::from(nb_bits)
+    })
 }
 
 /// The Huffman stream writer (`HUF_CStream_t`).
@@ -914,7 +981,7 @@ pub(crate) fn compress(
     dst: &mut [u8],
     src: &[u8],
     options: Options,
-    old_table: &mut CTable,
+    old_table: &mut crate::compressor::core::lazy_box::LazyBox<CTable>,
     repeat: &mut Repeat,
 ) -> Result<usize, CoreError> {
     let Options {
@@ -1014,7 +1081,7 @@ pub(crate) fn compress(
         return Ok(0);
     }
     *repeat = Repeat::None;
-    *old_table = table;
+    old_table.set(table);
     Ok(compress_with_table(
         dst, h_size, src, streams, old_table, backend,
     ))
@@ -1213,6 +1280,25 @@ mod tests {
     }
 
     #[test]
+    fn rebuilt_tables_drop_symbols_that_no_longer_occur() {
+        let mut table = CTable::default();
+        let mut count = [0u32; 256];
+        count[..6].copy_from_slice(&[9, 7, 5, 3, 2, 1]);
+        table.build(&count, 5, 11).expect("table");
+        assert!(table.nb_bits[..6].iter().all(|&bits| bits != 0));
+
+        // Symbol 0 is absent now, and so are 2 and 4 between present ones.
+        count[..6].copy_from_slice(&[0, 7, 0, 3, 0, 1]);
+        let log = table.build(&count, 5, 11).expect("table");
+        let expected = zstd_ffi::oracle::huf_build(&count[..6], 11).expect("reference");
+        assert_eq!(log, expected.table_log);
+        assert_eq!(&table.nb_bits[..6], &expected.nb_bits[..]);
+        assert_eq!(table.nb_bits[0], 0);
+        assert_eq!(table.nb_bits[2], 0);
+        assert_eq!(table.nb_bits[4], 0);
+    }
+
+    #[test]
     fn validation_requires_a_code_for_every_present_symbol() {
         let mut table = CTable::default();
         let mut count = [0u32; 256];
@@ -1225,7 +1311,7 @@ mod tests {
 
     #[test]
     fn tiny_or_empty_inputs_are_not_compressed() {
-        let mut table = CTable::default();
+        let mut table = crate::compressor::core::lazy_box::LazyBox::<CTable>::default();
         let mut repeat = Repeat::None;
         let mut dst = [0u8; 64];
         let options = Options {
@@ -1240,10 +1326,183 @@ mod tests {
         let result = compress(&mut dst, &[9; 40], options, &mut table, &mut repeat);
         assert_eq!(result, Ok(1));
         assert_eq!(dst[0], 9);
+        // Neither outcome builds a table, so none is allocated.
+        assert_eq!(table.heap_bytes(), 0);
         assert_eq!(compress_4x(&mut dst, &[1; 8], &table, Backend::SCALAR), 0);
         assert_eq!(
             compress_1x(&mut dst[..7], &[1; 8], &table, Backend::SCALAR),
             0
         );
+    }
+
+    /// `HUF_insertionSort` as the reference writes it.
+    fn reference_insertion_sort(nodes: &mut [Node]) {
+        for i in 1..nodes.len() {
+            let key = nodes[i];
+            let mut j = i as isize - 1;
+            while j >= 0 && nodes[j as usize].count < key.count {
+                nodes[(j + 1) as usize] = nodes[j as usize];
+                j -= 1;
+            }
+            nodes[(j + 1) as usize] = key;
+        }
+    }
+
+    /// `HUF_simpleQuickSort` as the reference writes it, recursion included.
+    fn reference_quick_sort(nodes: &mut [Node], mut low: isize, mut high: isize) {
+        if high - low < INSERTION_SORT_THRESHOLD {
+            if high > low {
+                reference_insertion_sort(&mut nodes[low as usize..=high as usize]);
+            }
+            return;
+        }
+        while low < high {
+            let idx = partition(nodes, low, high);
+            if idx - low < high - idx {
+                reference_quick_sort(nodes, low, idx - 1);
+                low = idx + 1;
+            } else {
+                reference_quick_sort(nodes, idx + 1, high);
+                high = idx - 1;
+            }
+        }
+    }
+
+    #[test]
+    fn quick_sort_orders_equal_counts_like_the_recursive_reference() {
+        let mut seed = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let max = SYMBOL_VALUE_MAX as usize + 1;
+        for len in 0..=max {
+            for shape in 0..6 {
+                let nodes: alloc::vec::Vec<Node> = (0..len)
+                    .map(|i| Node {
+                        count: match shape {
+                            0 => (next() % 4) as u32,
+                            1 => (next() % 40) as u32,
+                            2 => next() as u32,
+                            3 => 7,
+                            4 => i as u32 / 3,
+                            _ => (len - i) as u32 / 5,
+                        },
+                        byte: i as u8,
+                        ..Node::default()
+                    })
+                    .collect();
+                let mut ours = nodes.clone();
+                quick_sort(&mut ours);
+                let mut reference = nodes;
+                reference_quick_sort(&mut reference, 0, len as isize - 1);
+                let order = |nodes: &[Node]| -> alloc::vec::Vec<(u32, u8)> {
+                    nodes.iter().map(|node| (node.count, node.byte)).collect()
+                };
+                assert_eq!(order(&ours), order(&reference), "len {len} shape {shape}");
+            }
+        }
+    }
+
+    #[test]
+    fn short_runs_keep_equal_counts_in_place() {
+        let mut nodes: alloc::vec::Vec<Node> = [3, 5, 3, 9, 5, 3]
+            .into_iter()
+            .enumerate()
+            .map(|(i, count)| Node {
+                count,
+                byte: i as u8,
+                ..Node::default()
+            })
+            .collect();
+        let mut reference = nodes.clone();
+        sort_short(&mut nodes, 0, 5);
+        reference_insertion_sort(&mut reference);
+        let bytes = |nodes: &[Node]| -> alloc::vec::Vec<u8> {
+            nodes.iter().map(|node| node.byte).collect()
+        };
+        assert_eq!(bytes(&nodes), [3, 1, 4, 0, 2, 5]);
+        assert_eq!(bytes(&nodes), bytes(&reference));
+    }
+
+    /// `HUF_sort` as the reference writes it: a start and a cursor per
+    /// bucket, every symbol placed, and the recursive quicksort.
+    fn reference_sort(tree: &mut Tree, count: &[u32], max_symbol_value: u32) {
+        let symbols = max_symbol_value as usize + 1;
+        let mut base = [0u16; RANK_POSITION_TABLE_SIZE];
+        let mut curr = [0u16; RANK_POSITION_TABLE_SIZE];
+        for &c in &count[..symbols] {
+            base[bucket_index(c) as usize] += 1;
+        }
+        for n in (1..RANK_POSITION_TABLE_SIZE).rev() {
+            base[n - 1] += base[n];
+            curr[n - 1] = base[n - 1];
+        }
+        for (n, &c) in count[..symbols].iter().enumerate() {
+            let r = bucket_index(c) as usize + 1;
+            let pos = curr[r];
+            curr[r] += 1;
+            let node = tree.at_mut(pos as isize);
+            node.count = c;
+            node.byte = n as u8;
+        }
+        for n in RANK_POSITION_DISTINCT_COUNT_CUTOFF as usize..RANK_POSITION_TABLE_SIZE - 1 {
+            let bucket_size = curr[n] as isize - base[n] as isize;
+            let start = usize::from(base[n]);
+            if bucket_size > 1 {
+                reference_quick_sort(&mut tree.nodes[start + 1..], 0, bucket_size - 1);
+            }
+        }
+    }
+
+    #[test]
+    fn sort_places_present_symbols_like_the_reference() {
+        let mut seed = 0xD1B5_4A32_D192_ED03u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut histograms = literal_histograms();
+        for shape in 0..64u64 {
+            let symbols = 2 + (next() % 255) as usize;
+            let histogram = (0..symbols)
+                .map(|_| {
+                    let r = next();
+                    match shape % 4 {
+                        // Counts around the first sorted bucket (164) and
+                        // the first logarithmic one (165).
+                        0 => 160 + (r % 8) as u32,
+                        1 => u32::from(r % 3 == 0) * (r % 600) as u32,
+                        2 => 1 << (r % 32),
+                        _ => r as u32,
+                    }
+                })
+                .collect();
+            histograms.push(histogram);
+        }
+        for count in histograms {
+            let max = count.len() as u32 - 1;
+            let mut ours = Tree {
+                nodes: [Node::default(); TREE_SLOTS],
+            };
+            let mut reference = Tree {
+                nodes: [Node::default(); TREE_SLOTS],
+            };
+            sort(&mut ours, &count, max);
+            reference_sort(&mut reference, &count, max);
+            let present = count.iter().filter(|&&c| c != 0).count() as isize;
+            for n in 0..present {
+                let (a, b) = (ours.at(n), reference.at(n));
+                assert_eq!((a.count, a.byte), (b.count, b.byte), "{count:?} rank {n}");
+            }
+            // Absent symbols keep cleared nodes: no count, no length.
+            for n in present..TREE_SLOTS as isize - 1 {
+                assert_eq!((ours.at(n).count, ours.at(n).nb_bits), (0, 0));
+            }
+        }
     }
 }

@@ -12,7 +12,7 @@
 
 use alloc::vec::Vec;
 
-use super::bits::BitWriter;
+use super::bits::{BitWriter, ByteBuffer};
 use super::block_split::{BlockSplit, MAX_NUMBER_OF_BLOCK_TYPES};
 use super::command::Command;
 use super::constants::{NUM_COMMAND_SYMBOLS, NUM_LITERAL_SYMBOLS};
@@ -109,7 +109,10 @@ pub(crate) fn store_compressed_meta_block_header(
 /// Mirrors `BrotliStoreUncompressedMetaBlockHeader`. An uncompressed
 /// meta-block can never be the last one, so the caller appends an empty final
 /// block after it.
-fn store_uncompressed_meta_block_header(length: usize, w: &mut BitWriter) {
+fn store_uncompressed_meta_block_header<B: ByteBuffer + ?Sized>(
+    length: usize,
+    w: &mut BitWriter<'_, B>,
+) {
     w.write(1, 0);
     let (nibblesbits, nlenbits, lenbits) = encode_mlen(length);
     w.write(2, nibblesbits);
@@ -842,14 +845,15 @@ impl MetaBlockWriter {
                 num_literals += command.insert_len as usize;
                 pos += command.copy_len() as usize;
             }
-            self.prepare_literals();
+            let mut literal_depth = [0u8; NUM_LITERAL_SYMBOLS];
+            let mut literal_bits = [0u16; NUM_LITERAL_SYMBOLS];
             build_and_store_huffman_tree_fast(
                 &mut self.tree,
                 &literals,
                 num_literals,
                 8,
-                &mut self.literal_depth,
-                &mut self.literal_bits,
+                &mut literal_depth,
+                &mut literal_bits,
                 w,
             );
             store_static_command_huffman_tree(w);
@@ -859,8 +863,8 @@ impl MetaBlockWriter {
                 start_pos,
                 mask,
                 commands,
-                &self.literal_depth,
-                &self.literal_bits,
+                &literal_depth,
+                &literal_bits,
                 &STATIC_COMMAND_CODE_DEPTH,
                 &STATIC_COMMAND_CODE_BITS,
                 &STATIC_DISTANCE_CODE_DEPTH,
@@ -1088,15 +1092,28 @@ fn store_data_with_huffman_codes(
     let mut pos = start_pos;
     for command in commands {
         let cmd_code = usize::from(command.cmd_prefix);
-        w.write(
+        let (nbits, bits) = command.extra_bits();
+        w.write_pair(
             u32::from(cmd_depth[cmd_code]),
             u64::from(cmd_bits[cmd_code]),
+            nbits,
+            bits,
         );
-        let (nbits, bits) = command.extra_bits();
-        w.write(nbits, bits);
         let insert_len = command.insert_len as usize;
         if let Some(literals) = contiguous(input, pos, mask, insert_len) {
-            for &literal in literals {
+            // General literal codes use at most 15 bits. Two codes fit in
+            // one 30-bit write; their order is the same as individual writes.
+            let (pairs, tail) = literals.as_chunks::<2>();
+            for &[first, second] in pairs {
+                let first = usize::from(first);
+                let second = usize::from(second);
+                let first_width = u32::from(lit_depth[first]);
+                let width = first_width + u32::from(lit_depth[second]);
+                let bits =
+                    u64::from(lit_bits[first]) | (u64::from(lit_bits[second]) << first_width);
+                w.write(width, bits);
+            }
+            for &literal in tail {
                 let literal = usize::from(literal);
                 w.write(u32::from(lit_depth[literal]), u64::from(lit_bits[literal]));
             }
@@ -1110,11 +1127,12 @@ fn store_data_with_huffman_codes(
         pos += command.copy_len() as usize;
         if command.has_distance() {
             let dist_code = usize::from(command.distance_code());
-            w.write(
+            w.write_pair(
                 u32::from(dist_depth[dist_code]),
                 u64::from(dist_bits[dist_code]),
+                command.distance_extra_bits(),
+                u64::from(command.dist_extra),
             );
-            w.write(command.distance_extra_bits(), u64::from(command.dist_extra));
         }
     }
 }
@@ -1123,13 +1141,13 @@ fn store_data_with_huffman_codes(
 ///
 /// Mirrors `BrotliStoreUncompressedMetaBlock`. An uncompressed meta-block is
 /// never final, so a final empty one is appended when the stream ends here.
-pub(crate) fn store_uncompressed_meta_block(
+pub(crate) fn store_uncompressed_meta_block<B: ByteBuffer + ?Sized>(
     is_final_block: bool,
     input: &[u8],
     position: usize,
     mask: usize,
     len: usize,
-    w: &mut BitWriter,
+    w: &mut BitWriter<'_, B>,
 ) {
     let mut masked_pos = position & mask;
     let mut len = len;
@@ -1165,7 +1183,74 @@ mod tests {
     use super::*;
 
     #[test]
-    fn small_static_blocks_allocate_only_literal_scratch_and_match_preallocated_storage() {
+    fn packed_literal_runs_match_single_symbol_writes_at_boundaries() {
+        let input: Vec<u8> = (0..32).map(|value| (value * 37) as u8).collect();
+        let cmd_depth = [5; NUM_COMMAND_SYMBOLS];
+        let cmd_bits = [13; NUM_COMMAND_SYMBOLS];
+        for uniform_depth in [None, Some(0), Some(15)] {
+            let lit_depth: [u8; NUM_LITERAL_SYMBOLS] =
+                core::array::from_fn(|index| uniform_depth.unwrap_or((index % 16) as u8));
+            let lit_bits: [u16; NUM_LITERAL_SYMBOLS] = core::array::from_fn(|index| {
+                (index as u16 * 57) & ((1u16 << lit_depth[index]) - 1)
+            });
+            for alignment in 0..8 {
+                if cfg!(miri) && !matches!(alignment, 0 | 7) {
+                    continue;
+                }
+                for len in 0..=32 {
+                    if cfg!(miri) && !matches!(len, 0..=4 | 15 | 32) {
+                        continue;
+                    }
+                    for (data, start, mask) in [
+                        (input.as_slice(), 0, usize::MAX),
+                        (input.as_slice(), 29, 31),
+                        (&input[..16], 14, 31),
+                    ] {
+                        let command = Command::insert_only(len);
+                        let actual = written(|writer| {
+                            writer.write(alignment, (1 << alignment) - 1);
+                            store_data_with_huffman_codes(
+                                data,
+                                start,
+                                mask,
+                                core::slice::from_ref(&command),
+                                &lit_depth,
+                                &lit_bits,
+                                &cmd_depth,
+                                &cmd_bits,
+                                &[],
+                                &[],
+                                writer,
+                            );
+                        });
+                        let expected = written(|writer| {
+                            writer.write(alignment, (1 << alignment) - 1);
+                            let code = usize::from(command.cmd_prefix);
+                            writer.write(u32::from(cmd_depth[code]), u64::from(cmd_bits[code]));
+                            let (width, bits) = command.extra_bits();
+                            writer.write(width, bits);
+                            for offset in 0..len {
+                                let literal = usize::from(
+                                    data.get((start + offset) & mask).copied().unwrap_or(0),
+                                );
+                                writer.write(
+                                    u32::from(lit_depth[literal]),
+                                    u64::from(lit_bits[literal]),
+                                );
+                            }
+                        });
+                        assert_eq!(
+                            actual, expected,
+                            "depth {uniform_depth:?}, alignment {alignment}, length {len}, start {start}, mask {mask}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn small_static_blocks_keep_only_tree_scratch_and_match_preallocated_storage() {
         let mut lazy = MetaBlockWriter::default();
         assert_eq!(lazy.retained_bytes(), 0);
         for length in [1, 2, 3, 4, 16, 128, 129, 256] {
@@ -1198,10 +1283,40 @@ mod tests {
                 );
             });
             assert_eq!(actual, expected);
+            assert!(lazy.literal_depth.is_empty());
+            assert!(lazy.literal_bits.is_empty());
             assert!(lazy.command_depth.is_empty());
             assert!(lazy.distance_depth.is_empty());
             assert!(lazy.arena.is_none());
             assert!(lazy.retained_bytes() < preallocated.retained_bytes());
+        }
+    }
+
+    #[test]
+    fn switching_static_and_dynamic_codes_matches_fresh_entropy_scratch() {
+        let mut reused = MetaBlockWriter::default();
+        for count in [1, 128, 129, 128, 130, 1] {
+            let data: Vec<u8> = (0..count).map(|i| (i % 251) as u8).collect();
+            let commands: Vec<Command> = (0..count).map(|_| Command::insert_only(1)).collect();
+            let encode = |writer: &mut MetaBlockWriter| {
+                written(|output| {
+                    writer.store_meta_block_fast(
+                        &data,
+                        0,
+                        data.len(),
+                        usize::MAX,
+                        true,
+                        &DistanceParams::default(),
+                        &commands,
+                        output,
+                    );
+                })
+            };
+            assert_eq!(encode(&mut reused), encode(&mut MetaBlockWriter::default()));
+            if count > MAX_COMMANDS_FOR_STATIC_CODES {
+                assert_eq!(reused.literal_depth.len(), NUM_LITERAL_SYMBOLS);
+                assert_eq!(reused.literal_bits.len(), NUM_LITERAL_SYMBOLS);
+            }
         }
     }
 

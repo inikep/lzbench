@@ -70,6 +70,13 @@ impl Cache {
 }
 
 impl DistanceLayout {
+    /// The layout `default()` gives, as a constant.
+    pub(super) const EMPTY: Self = Self {
+        postfix: 0,
+        direct: 0,
+        large: false,
+    };
+
     pub(super) const fn from_header(header: u8, large: bool) -> Self {
         let postfix = header & 3;
         Self {

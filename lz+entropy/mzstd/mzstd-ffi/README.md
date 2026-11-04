@@ -1,8 +1,8 @@
 # mzstd-ffi
 
-C ABI for [mzstd](https://crates.io/crates/mzstd): one-shot Zstandard
-compression and decompression into caller-owned buffers, byte-identical to
-zstd 1.5.7's `ZSTD_compress`.
+C ABI for [mzstd](https://crates.io/crates/mzstd): one-shot and streaming
+Zstandard compression and decompression into caller-owned buffers,
+byte-identical to zstd 1.5.7's `ZSTD_compress` and `ZSTD_compressStream2`.
 
 ## Build
 
@@ -49,5 +49,44 @@ return (`0` after any failure). Null pointers with a non-zero length, lengths
 above `PTRDIFF_MAX`, overlapping arguments and out-of-range levels return
 `MZSTD_INVALID_PARAMETER`. Every call is independent and thread-safe, and a
 Rust panic is reported as `MZSTD_ERROR` instead of unwinding into C.
+
+## Sessions
+
+Encoder and decoder handles stream data through buffers of any size and are
+reused across frames:
+
+```c
+mzstd_encoder *enc;
+if (mzstd_encoder_create(3, &enc) != MZSTD_OK) { /* handle error */ }
+mzstd_encoder_reset(enc, MZSTD_CONTENT_SIZE_UNKNOWN); /* or the exact size */
+
+mzstd_status status;
+do {
+    size_t in_len = chunk_len, out_len = sizeof out;
+    if (mzstd_encoder_process(enc, chunk, &in_len, out, &out_len,
+                              last ? MZSTD_END : MZSTD_CONTINUE,
+                              &status) != MZSTD_OK) { /* handle error */ }
+    chunk += in_len; chunk_len -= in_len;
+    write_out(out, out_len);
+} while (chunk_len > 0 || (last && status != MZSTD_FINISHED));
+mzstd_encoder_free(enc);
+```
+
+| Function | Contract |
+| --- | --- |
+| `mzstd_encoder_create` | `level` as for `mzstd_compress`; the first frame starts with an undeclared size. |
+| `mzstd_encoder_reset` | Starts the next frame, declaring `pledged_size` bytes or `MZSTD_CONTENT_SIZE_UNKNOWN`. |
+| `mzstd_encoder_process` | `ZSTD_compressStream2` with `MZSTD_CONTINUE`, `MZSTD_FLUSH` or `MZSTD_END`; repeat `FLUSH`/`END` while it reports `MZSTD_NEEDS_OUTPUT`. |
+| `mzstd_decoder_create` | Windows up to `2^window_log_max` (`10..=31`, `0` for 27). |
+| `mzstd_decoder_reset` | Starts the next operation. |
+| `mzstd_decoder_process` | `ZSTD_decompressStream` with `MZSTD_DECODE_PROCESS`, then `MZSTD_DECODE_FINISH` on every call once the input is known to end, until `MZSTD_FINISHED`. |
+| `mzstd_encoder_free`, `mzstd_decoder_free` | Release a handle; `NULL` is ignored. |
+
+On each process call `*input_len` and `*output_len` are the bytes offered and
+the room available on entry, and the bytes consumed and produced on return
+(`0` after any failure); `*status` is written on `MZSTD_OK`. A codec error
+fails the frame until the next reset. A handle may move between threads but
+must serve one call at a time; one a panic interrupted reports `MZSTD_ERROR`
+until it is freed.
 
 See [architecture/c-abi.md](../architecture/c-abi.md) for the design.
