@@ -10,6 +10,7 @@ pub(crate) mod entropy;
 pub(crate) mod error;
 pub(crate) mod fast;
 pub(crate) mod lazy;
+mod lazy_box;
 pub(crate) mod ldm;
 pub(crate) mod ldm_geartab;
 pub(crate) mod match_state;

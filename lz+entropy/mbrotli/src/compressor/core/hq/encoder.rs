@@ -810,6 +810,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "a scalar heuristic over 200 KB, too slow for Miri; it reaches no SIMD kernel"
+    )]
     fn random_literals_are_stored_uncompressed() {
         let mut rng = 0x1234_5678u64;
         let data: Vec<u8> = (0..200_000)
@@ -831,6 +835,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
+    #[cfg_attr(
+        all(miri, not(target_arch = "aarch64")),
+        ignore = "each stream costs Miri most of a minute; `every_backend_produces_the_same_stream` encodes with every backend there"
+    )]
     fn both_qualities_produce_a_non_empty_stream() {
         for quality in [QualityLevel::Q10, QualityLevel::Q11] {
             let stream = compress(quality, b"hello hello hello hello hello hello");
@@ -857,15 +869,32 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        all(miri, target_arch = "aarch64"),
+        ignore = "Miri has no shim for the Neon intrinsics this reaches; see CONTRIBUTING.md"
+    )]
     fn every_backend_produces_the_same_stream() {
-        let data: Vec<u8> = (0..120_000u32).map(|i| (i * 7 % 253) as u8).collect();
-        for quality in [QualityLevel::Q10, QualityLevel::Q11] {
+        // Clustering the histograms of even a short stream costs Miri most of
+        // a minute, so there it encodes at quality eleven, which reaches every
+        // kernel quality ten does, with the scalar and the highest backend.
+        // The kernels' own tests compare every level in between.
+        let (len, qualities, backends): (usize, &[QualityLevel], Vec<Backend>) = if cfg!(miri) {
+            (
+                600,
+                &[QualityLevel::Q11],
+                vec![Backend::SCALAR, Backend::default()],
+            )
+        } else {
+            (
+                120_000,
+                &[QualityLevel::Q10, QualityLevel::Q11],
+                Backend::available(),
+            )
+        };
+        let data: Vec<u8> = (0..len).map(|i| (i * 7 % 253) as u8).collect();
+        for &quality in qualities {
             let mut streams = Vec::new();
-            for backend in [
-                Backend::default(),
-                Backend(fearless_simd::Level::baseline()),
-                Backend::SCALAR,
-            ] {
+            for &backend in &backends {
                 streams.push(compress_with(backend, quality, &data));
             }
             assert!(
@@ -913,6 +942,7 @@ mod tests {
     const COLLISION_REGRESSION: &[u8] = include_bytes!("collision_regression.bin");
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call the C oracle")]
     fn the_collision_regression_matches_the_c_encoder() {
         for quality in [QualityLevel::Q10, QualityLevel::Q11] {
             let expected = c_compress(usize::from(quality) as i32, 22, COLLISION_REGRESSION);
@@ -928,6 +958,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call the C oracle")]
     fn a_collision_pattern_matches_the_c_encoder() {
         // Five identical bytes then a random one: every position shares a
         // four-byte prefix, which is what makes the binary tree deep and the
@@ -958,6 +989,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore = "Miri cannot call the C oracle")]
     fn a_copy_continued_into_the_next_input_block_matches_the_c_encoder() {
         // A period no window position breaks: the copy that reaches the end of
         // each 256 KiB input block runs on into the next one, where the
@@ -973,6 +1005,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(
+        miri,
+        ignore = "measures compression ratio, not memory safety, and is too slow for Miri"
+    )]
     fn quality_eleven_compresses_at_least_as_well_as_quality_ten() {
         let mut data = Vec::new();
         while data.len() < 200_000 {

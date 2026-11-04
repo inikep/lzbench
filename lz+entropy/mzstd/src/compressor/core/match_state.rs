@@ -3,6 +3,7 @@
 use alloc::vec::Vec;
 
 use super::entropy::Tables;
+use super::lazy_box::LazyBox;
 use super::ldm::RawSeqStore;
 use super::mem;
 use super::opt::OptState;
@@ -17,8 +18,19 @@ const HASHLOG3_MAX: u32 = 17;
 pub(crate) const ROW_HASH_CACHE_SIZE: usize = 8;
 /// Entries the row match finder's tables carry past their size, so that the
 /// finder can start both at a 64-byte boundary, as the reference's
-/// workspace aligns them.
-pub(crate) const ROW_TABLE_SLACK: usize = 64;
+/// workspace aligns them, and, from [`ROW_VIEW_MIN`] entries on, move its
+/// view of them by whole rows ([`ROW_VIEW_STEP`]) between inputs.
+pub(crate) const ROW_TABLE_SLACK: usize = 64 + (ROW_VIEWS - 1) * ROW_VIEW_STEP;
+/// The smallest row tables whose view moves. Below it the views' slack
+/// would be a noticeable part of tables that tiny inputs allocate and zero
+/// on every call (5-8% of a level 5 call on 44 bytes), while their stale
+/// entries cost little.
+const ROW_VIEW_MIN: usize = 1 << 14;
+/// The step between the row finder's views: the largest row, so every view
+/// starts on a row boundary of every row size.
+const ROW_VIEW_STEP: usize = 64;
+/// The number of views the row finder cycles through.
+const ROW_VIEWS: usize = 8;
 
 /// The block a match finder works on.
 #[derive(Copy, Clone, Debug)]
@@ -72,6 +84,9 @@ pub(crate) struct MatchState {
     pub(crate) hash_log3: u32,
     /// Row match finder: hash log of rows.
     pub(crate) row_hash_log: u32,
+    /// Row match finder: where its view of both tables starts past their
+    /// 64-byte boundary, a multiple of [`ROW_VIEW_STEP`] entries.
+    pub(crate) row_view: usize,
     /// Row match finder: per-row tags and heads.
     pub(crate) tag_table: Vec<u8>,
     /// Row match finder: hashes of upcoming positions.
@@ -81,8 +96,9 @@ pub(crate) struct MatchState {
     pub(crate) chain_table: Vec<u32>,
     /// Treat the next input as non-contiguous.
     pub(crate) force_non_contiguous: bool,
-    /// Optimal parser state.
-    pub(crate) opt: OptState,
+    /// Optimal parser state, allocated when an optimal strategy first
+    /// needs it (2 KB a one-shot call at the other levels never touches).
+    pub(crate) opt: LazyBox<OptState>,
     pub(crate) cparams: CParams,
     /// Lazy match finders only insert searched positions.
     pub(crate) lazy_skipping: bool,
@@ -113,13 +129,14 @@ impl MatchState {
             next_to_update: 0,
             hash_log3: 0,
             row_hash_log: 0,
+            row_view: 0,
             tag_table: Vec::new(),
             hash_cache: [0; ROW_HASH_CACHE_SIZE],
             hash_table: Vec::new(),
             hash_table3: Vec::new(),
             chain_table: Vec::new(),
             force_non_contiguous: false,
-            opt: OptState::default(),
+            opt: LazyBox::default(),
             cparams,
             lazy_skipping: false,
             use_row_match_finder,
@@ -192,7 +209,10 @@ impl MatchState {
         self.next_to_update = self.window.dict_limit;
         self.loaded_dict_end = 0;
         self.dict_match_state = false;
-        self.opt.lit_length_sum = 0;
+        // An unallocated state already reads as a zero sum.
+        if let Some(opt) = self.opt.get_mut() {
+            opt.lit_length_sum = 0;
+        }
 
         // The reference zeroes its tables only when indices restart
         // (`ZSTD_cwksp_mark_tables_dirty`, then `ZSTD_cwksp_clean_tables`),
@@ -207,7 +227,12 @@ impl MatchState {
         // (`ZSTD_cwksp_reserve_aligned_init_once`); its salt only permutes
         // rows and tags, so it is not modelled.
         let keep_stale = !reset_index;
-        let slack = if row { ROW_TABLE_SLACK } else { 0 };
+        let views = row && h_size >= ROW_VIEW_MIN;
+        let slack = match (row, views) {
+            (true, true) => ROW_TABLE_SLACK,
+            (true, false) => 64,
+            (false, _) => 0,
+        };
         for (table, size) in [
             (&mut self.hash_table, h_size + slack),
             (&mut self.chain_table, chain_size),
@@ -226,6 +251,22 @@ impl MatchState {
             self.tag_table.resize(h_size + slack, 0);
             let row_log = cparams.search_log.clamp(4, 6);
             self.row_hash_log = cparams.hash_log - row_log;
+            // Kept tables are searched through the next view, a row further
+            // on. The tag table is never cleared, and an input of content
+            // similar to the previous one would otherwise hash its
+            // positions to the rows and tags of the previous entries, so
+            // every search would find and dismiss them. Through a moved
+            // view they lie in rows of unrelated hashes, whose tags match
+            // by chance only. The reference keeps them apart by salting
+            // its hash at every reset (`ZSTD_advanceHashSalt`), which costs
+            // an operation per hash; a view costs nothing per position. As
+            // the reference's salt, the view changes no frame: every kept
+            // entry is below the new window.
+            self.row_view = if keep_stale && views {
+                (self.row_view + ROW_VIEW_STEP) % (ROW_VIEWS * ROW_VIEW_STEP)
+            } else {
+                0
+            };
         }
         if strategy >= Strategy::BtOpt && !for_dictionary {
             self.opt.allocate();
@@ -283,12 +324,12 @@ impl MatchState {
         let h_size = 1usize << dict.cparams.hash_log;
         let row = row_match_finder_used(dict.cparams.strategy, dict.use_row_match_finder);
         if row {
-            // Row tables are read from their first 64-byte boundary.
-            let dst = aligned_range(&self.hash_table, h_size);
-            let src = aligned_range(&dict.hash_table, h_size);
+            // Row tables are read through their views.
+            let dst = aligned_range(&self.hash_table, h_size, self.row_view);
+            let src = aligned_range(&dict.hash_table, h_size, dict.row_view);
             copy(&mut self.hash_table[dst], &dict.hash_table[src]);
-            let dst = aligned_range(&self.tag_table, h_size);
-            let src = aligned_range(&dict.tag_table, h_size);
+            let dst = aligned_range(&self.tag_table, h_size, self.row_view);
+            let src = aligned_range(&dict.tag_table, h_size, dict.row_view);
             self.tag_table[dst].copy_from_slice(&dict.tag_table[src]);
         } else {
             copy(&mut self.hash_table[..h_size], &dict.hash_table[..h_size]);
@@ -332,14 +373,16 @@ impl MatchState {
     }
 }
 
-/// Where the first `len` entries of a row table start at its first 64-byte
-/// boundary, as the reference's workspace aligns row tables; a table
-/// without [`ROW_TABLE_SLACK`] entries to spare is used from its start.
-pub(crate) fn aligned_range<T>(table: &[T], len: usize) -> core::ops::Range<usize> {
+/// Where the first `len` entries of a row table start `view` entries past
+/// its first 64-byte boundary, as the reference's workspace aligns row
+/// tables ([`MatchState::row_view`]); a table without the entries to spare
+/// is used from its start.
+pub(crate) fn aligned_range<T>(table: &[T], len: usize, view: usize) -> core::ops::Range<usize> {
     const ALIGN: usize = 64;
     let skip = table.as_ptr().addr().wrapping_neg() % ALIGN / size_of::<T>().max(1);
-    if skip < ROW_TABLE_SLACK && skip + len <= table.len() {
-        skip..skip + len
+    let start = skip + view;
+    if skip < ALIGN && start + len <= table.len() {
+        start..start + len
     } else {
         0..len.min(table.len())
     }
@@ -380,6 +423,38 @@ fn reduce_table(table: &mut [u32], reducer: u32, preserve_mark: bool) {
 mod tests {
     use super::*;
     use crate::compressor::core::params::level_cparams;
+
+    #[test]
+    fn kept_row_tables_are_viewed_a_row_further_at_every_reset() {
+        let cparams = level_cparams(5, 100_000);
+        let mut ms = MatchState::new(cparams, ParamSwitch::Enable);
+        assert_eq!(ms.row_view, 0);
+        let mut views = alloc::vec::Vec::new();
+        for _ in 0..ROW_VIEWS {
+            ms.reset(cparams, ParamSwitch::Enable, false);
+            views.push(ms.row_view);
+            let range = aligned_range(&ms.tag_table, 1 << cparams.hash_log, ms.row_view);
+            assert!(range.end <= ms.tag_table.len() && range.start >= ms.row_view);
+        }
+        let expected: alloc::vec::Vec<usize> = (1..=ROW_VIEWS)
+            .map(|i| i % ROW_VIEWS * ROW_VIEW_STEP)
+            .collect();
+        assert_eq!(views, expected);
+        // Cleared tables, a dictionary's among them, start from the first.
+        ms.reset(cparams, ParamSwitch::Enable, false);
+        ms.reset(cparams, ParamSwitch::Enable, true);
+        assert_eq!(ms.row_view, 0);
+        let mut dict = MatchState::empty(cparams, ParamSwitch::Enable);
+        dict.reset_for_dictionary(cparams, ParamSwitch::Enable);
+        assert_eq!(dict.row_view, 0);
+        // Small tables keep one view and only the alignment's slack.
+        let small = level_cparams(5, 1000);
+        assert!(1usize << small.hash_log < ROW_VIEW_MIN);
+        let mut tiny = MatchState::new(small, ParamSwitch::Enable);
+        tiny.reset(small, ParamSwitch::Enable, false);
+        assert_eq!(tiny.row_view, 0);
+        assert_eq!(tiny.tag_table.len(), (1 << small.hash_log) + 64);
+    }
 
     #[test]
     fn reducing_indices_shifts_recent_entries_and_clears_older_ones() {

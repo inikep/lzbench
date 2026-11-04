@@ -69,7 +69,65 @@ pub enum ParallelEncodeError {
         /// The first segment of the task.
         segment: u64,
     },
+    /// The length of a [`RandomAccessSource`](super::RandomAccessSource)
+    /// could not be read.
+    #[error("the parallel source's length could not be read")]
+    SourceMetadata(#[source] SourceIoError),
+    /// Reading a [`RandomAccessSource`](super::RandomAccessSource) failed.
+    #[error("reading segment {segment} of the parallel source failed")]
+    SourceRead {
+        /// The segment being read, or whose range of the source was being
+        /// hashed for the checksum.
+        segment: u64,
+        /// The source's failure.
+        #[source]
+        source: SourceIoError,
+    },
+    /// A source's length or [identity](super::SourceIdentity) changed
+    /// between preparing and finishing its batch.
+    #[error("the parallel source changed during compression")]
+    SourceChanged,
 }
+
+/// An I/O failure of a [`RandomAccessSource`](super::RandomAccessSource).
+///
+/// It shares the [`io::Error`], so [`ParallelEncodeError`] stays cloneable;
+/// [`AsRef`] reaches it. Two values are equal when their kinds and messages
+/// are.
+///
+/// # Examples
+///
+/// ```
+/// use mzstd::compressor::parallel::SourceIoError;
+/// use std::io;
+///
+/// let error = SourceIoError::from(io::Error::from(io::ErrorKind::UnexpectedEof));
+/// assert_eq!(error.as_ref().kind(), io::ErrorKind::UnexpectedEof);
+/// assert_eq!(error.clone(), error);
+/// ```
+#[derive(Error, Debug, Clone)]
+#[error(transparent)]
+pub struct SourceIoError(Arc<io::Error>);
+
+impl From<io::Error> for SourceIoError {
+    fn from(error: io::Error) -> Self {
+        Self(Arc::new(error))
+    }
+}
+
+impl AsRef<io::Error> for SourceIoError {
+    fn as_ref(&self) -> &io::Error {
+        &self.0
+    }
+}
+
+impl PartialEq for SourceIoError {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.kind() == other.0.kind() && self.0.to_string() == other.0.to_string()
+    }
+}
+
+impl Eq for SourceIoError {}
 
 impl ParallelEncodeError {
     /// The [`io::ErrorKind`] this failure carries through an adapter.
@@ -91,6 +149,13 @@ impl ParallelEncodeError {
             | Self::TaskQueueClosed
             | Self::TaskAbandoned { .. }
             | Self::TaskPanicked { .. } => io::ErrorKind::Other,
+            Self::SourceMetadata(error) | Self::SourceRead { source: error, .. } => {
+                match error.as_ref().kind() {
+                    io::ErrorKind::Interrupted | io::ErrorKind::WouldBlock => io::ErrorKind::Other,
+                    kind => kind,
+                }
+            }
+            Self::SourceChanged => io::ErrorKind::InvalidData,
         }
     }
 }
@@ -101,8 +166,10 @@ impl From<ParallelEncodeError> for io::Error {
     /// The kind is that of the root cause, looked up through
     /// [`ParallelEncodeError::StreamFailed`] and
     /// [`ParallelEncodeError::BatchFailed`]: a declared size the input
-    /// contradicts is [`io::ErrorKind::InvalidInput`], and failures of tasks
-    /// and queues are [`io::ErrorKind::Other`]. The error itself stays the
+    /// contradicts is [`io::ErrorKind::InvalidInput`], a source failure keeps
+    /// its own kind (except the retryable `Interrupted` and `WouldBlock`), a
+    /// changed source is [`io::ErrorKind::InvalidData`], and failures of
+    /// tasks and queues are [`io::ErrorKind::Other`]. The error itself stays the
     /// source, so the whole chain survives.
     ///
     /// # Examples
@@ -172,6 +239,36 @@ mod tests {
                 ParallelEncodeError::TaskPanicked { segment: 0 },
                 io::ErrorKind::Other,
             ),
+            (
+                ParallelEncodeError::SourceMetadata(
+                    io::Error::from(io::ErrorKind::NotFound).into(),
+                ),
+                io::ErrorKind::NotFound,
+            ),
+            (
+                ParallelEncodeError::SourceRead {
+                    segment: 1,
+                    source: io::Error::from(io::ErrorKind::UnexpectedEof).into(),
+                },
+                io::ErrorKind::UnexpectedEof,
+            ),
+            (
+                ParallelEncodeError::SourceRead {
+                    segment: 1,
+                    source: io::Error::from(io::ErrorKind::Interrupted).into(),
+                },
+                io::ErrorKind::Other,
+            ),
+            (
+                ParallelEncodeError::SourceMetadata(
+                    io::Error::from(io::ErrorKind::WouldBlock).into(),
+                ),
+                io::ErrorKind::Other,
+            ),
+            (
+                ParallelEncodeError::SourceChanged,
+                io::ErrorKind::InvalidData,
+            ),
         ];
         for (error, expected) in cases {
             let label = format!("{error:?}");
@@ -225,5 +322,38 @@ mod tests {
                 .to_string(),
             "the parallel batch failed"
         );
+    }
+
+    #[test]
+    fn source_failures_keep_their_io_error_in_the_chain() {
+        let error = ParallelEncodeError::SourceRead {
+            segment: 7,
+            source: io::Error::new(io::ErrorKind::PermissionDenied, "denied").into(),
+        };
+        assert_eq!(
+            error.to_string(),
+            "reading segment 7 of the parallel source failed"
+        );
+        let source = error.source().unwrap();
+        assert_eq!(source.to_string(), "denied");
+        let source = source.downcast_ref::<SourceIoError>().unwrap();
+        assert_eq!(source.as_ref().kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(
+            ParallelEncodeError::SourceMetadata(io::Error::other("gone").into()).to_string(),
+            "the parallel source's length could not be read"
+        );
+        assert_eq!(
+            ParallelEncodeError::SourceChanged.to_string(),
+            "the parallel source changed during compression"
+        );
+    }
+
+    #[test]
+    fn source_io_errors_compare_by_kind_and_message() {
+        let error = |kind, message| SourceIoError::from(io::Error::new(kind, message));
+        let denied = error(io::ErrorKind::PermissionDenied, "denied");
+        assert_eq!(denied, error(io::ErrorKind::PermissionDenied, "denied"));
+        assert_ne!(denied, error(io::ErrorKind::NotFound, "denied"));
+        assert_ne!(denied, error(io::ErrorKind::PermissionDenied, "other"));
     }
 }

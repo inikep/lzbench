@@ -415,8 +415,8 @@ impl<'c, 'd> EncoderSession<'c, 'd> {
     /// Safe code cannot read back memory it has not initialized, so qualities
     /// 0 and 1 cannot run their in-place bit writer here, which
     /// [`Self::process`] uses when `output` has room for a whole fragment.
-    /// Every block is encoded into retained scratch and copied once instead,
-    /// as qualities 2–11 always are.
+    /// Every block is encoded into retained initialized storage before its
+    /// completed bytes are copied to `output`.
     ///
     /// # Errors
     ///

@@ -162,34 +162,25 @@ pub(crate) fn optimize_huffman_counts_for_rle(
     good_for_rle: &mut [u8],
 ) {
     let mut nonzero_count = 0usize;
-    for &count in counts.iter().take(length) {
-        if count != 0 {
-            nonzero_count += 1;
-        }
-    }
+    let mut last = 0usize;
+    let mut smallest = 1u32 << 30;
+    let length = length.min(counts.len());
+    super::scan::for_each_nonzero_u32(&counts[..length], |i, count| {
+        nonzero_count += 1;
+        last = i;
+        smallest = smallest.min(count);
+    });
     if nonzero_count < 16 {
         return;
     }
-    let mut length = length;
-    while length != 0 && counts[length - 1] == 0 {
-        length -= 1;
-    }
-    if length == 0 {
-        return;
-    }
+    let length = last + 1;
     // Cut to the trimmed length once: every index below is then bounded by
     // the loop conditions, and the run fills are single range writes.
     let counts = &mut counts[..length];
 
     {
-        let mut nonzeros = 0usize;
-        let mut smallest_nonzero = 1u32 << 30;
-        for &count in counts.iter() {
-            if count != 0 {
-                nonzeros += 1;
-                smallest_nonzero = smallest_nonzero.min(count);
-            }
-        }
+        let nonzeros = nonzero_count;
+        let smallest_nonzero = smallest;
         if nonzeros < 5 {
             // A small histogram is modelled well as it is.
             return;
@@ -213,20 +204,15 @@ pub(crate) fn optimize_huffman_counts_for_rle(
     let good_for_rle = &mut good_for_rle[..length];
     good_for_rle.fill(0);
     {
-        let mut symbol = counts[0];
-        let mut step = 0usize;
-        for i in 0..=length {
-            if i == length || counts[i] != symbol {
-                if (symbol == 0 && step >= 5) || (symbol != 0 && step >= 7) {
-                    good_for_rle[i - step..i].fill(1);
-                }
-                step = 1;
-                if i != length {
-                    symbol = counts[i];
-                }
-            } else {
-                step += 1;
+        let mut i = 0usize;
+        while i < length {
+            let symbol = counts[i];
+            let end = super::scan::run_end_u32(counts, i);
+            let step = end - i;
+            if (symbol == 0 && step >= 5) || (symbol != 0 && step >= 7) {
+                good_for_rle[i..end].fill(1);
             }
+            i = end;
         }
     }
 

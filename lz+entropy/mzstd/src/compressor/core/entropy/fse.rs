@@ -45,14 +45,22 @@ pub(crate) struct CTable {
     pub(crate) symbol_tt: [SymbolTransform; MAX_SYMBOLS],
 }
 
+impl CTable {
+    /// The all-zero table a block state starts with.
+    pub(crate) const EMPTY: Self = Self {
+        table_log: 0,
+        max_symbol_value: 0,
+        state_table: [0; 1 << STATE_TABLE_LOG],
+        symbol_tt: [SymbolTransform {
+            delta_find_state: 0,
+            delta_nb_bits: 0,
+        }; MAX_SYMBOLS],
+    };
+}
+
 impl Default for CTable {
     fn default() -> Self {
-        Self {
-            table_log: 0,
-            max_symbol_value: 0,
-            state_table: [0; 1 << STATE_TABLE_LOG],
-            symbol_tt: [SymbolTransform::default(); MAX_SYMBOLS],
-        }
+        Self::EMPTY
     }
 }
 

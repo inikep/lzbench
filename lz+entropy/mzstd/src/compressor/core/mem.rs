@@ -165,15 +165,27 @@ pub(crate) fn count_at_simd<S: fearless_simd::Simd>(
     count_slices_simd(simd, &src[ip..], &src[m..])
 }
 
-/// The number of bytes that `a` and `b` end with in common: how far a match
-/// whose start is at the ends of both extends backwards.
+/// [`count_at_simd`] for a match `m` behind `ip`: the first eight bytes at
+/// `m` lie inside `src` whenever those at `ip` do, so one test covers both
+/// loads.
 #[inline(always)]
-pub(crate) fn common_suffix(a: &[u8], b: &[u8]) -> usize {
-    a.iter()
-        .rev()
-        .zip(b.iter().rev())
-        .take_while(|(x, y)| x == y)
-        .count()
+pub(crate) fn count_behind_simd<S: fearless_simd::Simd>(
+    simd: S,
+    src: &[u8],
+    ip: usize,
+    m: usize,
+) -> usize {
+    let (ip, m) = (ip & u32::MAX as usize, m & u32::MAX as usize);
+    if m < ip
+        && let Some(a) = src.get(ip..ip + 8).and_then(<[u8]>::first_chunk::<8>)
+        && let Some(b) = src.get(m..m + 8).and_then(<[u8]>::first_chunk::<8>)
+    {
+        let difference = u64::from_le_bytes(*a) ^ u64::from_le_bytes(*b);
+        if difference != 0 {
+            return difference.trailing_zeros() as usize >> 3;
+        }
+    }
+    count_slices_simd(simd, &src[ip..], &src[m..])
 }
 
 /// Baseline callers keep their compact 32-byte loop. Keeping the scan out
@@ -467,6 +479,13 @@ pub(crate) fn matches32_branchy(src: &[u8], at: u32, word: u32) -> bool {
 pub(crate) fn matches64(src: &[u8], at: u32, word: u64) -> bool {
     let word = word.to_le_bytes();
     *candidate(src, at, &word) == word
+}
+
+/// Hints that `src[at]` will be read soon (`PREFETCH_L1`). The pointer only
+/// reaches the prefetch instruction, so an offset past the end is harmless.
+#[inline(always)]
+pub(crate) fn prefetch_l1(src: &[u8], at: usize) {
+    branches::prefetch_read_data::<u8, 0>(src.as_ptr().wrapping_add(at));
 }
 
 /// The little-endian `u64` at offset `at` of `src`, or `None` when the
@@ -829,12 +848,26 @@ mod tests {
     }
 
     #[test]
-    fn common_suffixes_stop_at_the_first_difference_or_shorter_side() {
-        assert_eq!(common_suffix(b"", b"abc"), 0);
-        assert_eq!(common_suffix(b"xabc", b"yabc"), 3);
-        assert_eq!(common_suffix(b"abc", b"zzabc"), 3);
-        assert_eq!(common_suffix(b"zzabc", b"bc"), 2);
-        assert_eq!(common_suffix(b"abcd", b"abce"), 0);
+    fn counts_behind_equal_counts_at_every_boundary() {
+        let backend = crate::Backend::available();
+        let mut src: alloc::vec::Vec<u8> = (0..300u32).map(|i| (i % 7) as u8).collect();
+        src[250] ^= 0xFF;
+        for backend in backend {
+            for (ip, m) in [
+                (7, 0),
+                (14, 7),
+                (21, 0),
+                (250, 243),
+                (292, 285),
+                (299, 292),
+                (5, 5),
+            ] {
+                let behind = fearless_simd::dispatch!(backend.0, simd => count_behind_simd(simd, &src, ip, m));
+                let at =
+                    fearless_simd::dispatch!(backend.0, simd => count_at_simd(simd, &src, ip, m));
+                assert_eq!(behind, at, "{backend} {ip} {m}");
+            }
+        }
     }
 
     #[test]

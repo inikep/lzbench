@@ -62,11 +62,33 @@ pub struct ParallelProgress {
 /// queued and returns `None` once the stream has finished, failed or been
 /// dropped, so `for task in queue { task.run() }` is a complete worker loop.
 ///
-/// Dropping every handle abandons the tasks still queued: the session then
-/// fails with [`ParallelEncodeError::TaskQueueClosed`] or a task abandonment
-/// instead of waiting forever. A session whose handles are alive but never
-/// drained cannot make progress; on a single thread, run queued tasks with
-/// [`Self::try_recv`] before waiting.
+/// # Progress and blocking
+///
+/// Keeping a queue handle alive does not execute its tasks. If tasks remain
+/// queued, or an executor holds a task without running or dropping it, operations
+/// that need their results can wait indefinitely. There is no automatic timeout
+/// or error just because executors stop making progress.
+///
+/// - [`ParallelEncoderSession::process`] does not block: it reports
+///   [`ParallelEncoderStatus::Pending`] when task completion is needed.
+///   [`ParallelEncoderSession::wait`] can block indefinitely;
+///   [`ParallelEncoderSession::wait_timeout`] bounds that wait without cancelling
+///   tasks. On a single thread, run tasks taken with [`Self::try_recv`] before
+///   waiting.
+/// - The blocking reader and writer adapters wait internally. A reader's `read`
+///   or a writer's `write`, `flush`, `try_finish` or
+///   [`finish`](super::ParallelEncoderWriter::finish) can block while tasks are
+///   outstanding. Keep executors able to run throughout these calls, including
+///   until `finish` returns. In a bounded pool, do not occupy every worker with
+///   callers waiting for tasks scheduled on that same pool.
+///
+/// Dropping every queue handle closes the queue and abandons tasks still queued.
+/// A later attempt to queue work fails with [`ParallelEncodeError::TaskQueueClosed`];
+/// dropping a queued or received task without running it reports
+/// [`ParallelEncodeError::TaskAbandoned`]. The session wraps these causes in
+/// [`ParallelEncodeError::StreamFailed`], and the reader and writer surface them
+/// through [`std::io::Error`]. Closing the queue does not drop tasks already held
+/// by executors: those tasks must still be run or dropped.
 ///
 /// # Examples
 ///

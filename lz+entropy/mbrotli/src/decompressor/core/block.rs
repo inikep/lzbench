@@ -1,10 +1,14 @@
-use super::super::DecodeError;
+use super::super::{DecodeError, InvalidDataKind};
 use super::{
     bits::{Bits, Input},
     huffman::{Builder, Huffman},
     memory::Memory,
 };
 use crate::shared::format::PREFIX_CODE_RANGES;
+
+/// RFC 7932 section 10: the count of a category with one block type. Running
+/// it out is invalid, since there is no block-type code to switch with.
+const SINGLE_TYPE_COUNT: u64 = 1 << 24;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum Stage {
@@ -29,27 +33,24 @@ pub(super) struct Block {
     lengths: Huffman,
 }
 
-impl Default for Block {
-    fn default() -> Self {
-        Self {
-            count: 1,
-            current: 0,
-            previous: 1,
-            remaining: u64::MAX,
-            stage: Stage::TypeCount,
-            types: Huffman::default(),
-            lengths: Huffman::default(),
-        }
-    }
-}
-
 impl Block {
+    /// A single-type category before its header is read.
+    pub(super) const EMPTY: Self = Self {
+        count: 1,
+        current: 0,
+        previous: 1,
+        remaining: SINGLE_TYPE_COUNT,
+        stage: Stage::TypeCount,
+        types: Huffman::EMPTY,
+        lengths: Huffman::EMPTY,
+    };
+
     /// Starts a meta-block: one type, no switches, and no pending header.
     pub(super) const fn reset(&mut self) {
         self.count = 1;
         self.current = 0;
         self.previous = 1;
-        self.remaining = u64::MAX;
+        self.remaining = SINGLE_TYPE_COUNT;
         self.stage = Stage::TypeCount;
     }
 
@@ -123,6 +124,11 @@ impl Block {
     }
 
     /// Byte-exact block switch when the current block is exhausted.
+    ///
+    /// # Errors
+    ///
+    /// Returns a meta-block error when a single-type category runs out of
+    /// its RFC count, and decoding errors from the switch itself.
     pub(super) fn prepare(
         &mut self,
         bits: &mut Bits,
@@ -130,6 +136,9 @@ impl Block {
     ) -> Result<bool, DecodeError> {
         if self.remaining != 0 {
             return Ok(true);
+        }
+        if self.count == 1 {
+            return Err(InvalidDataKind::MetaBlock.into());
         }
         if self.stage == Stage::Ready {
             let Some(symbol) = self.types.codes().decode_refilling(bits, input)? else {
@@ -153,9 +162,11 @@ impl Block {
         self.remaining = u64::from(base) + bits.take(width);
     }
 
-    /// Whether the fast switch may run: no partially parsed switch is pending.
+    /// Whether the fast switch may run: no partially parsed switch is pending
+    /// and there are types to switch between. A single-type category falls
+    /// back to [`Self::prepare`], which rejects the exhausted count.
     pub(super) fn switch_ready(&self) -> bool {
-        self.stage == Stage::Ready
+        self.stage == Stage::Ready && self.count > 1
     }
 
     pub(super) const fn advance(&mut self) {
@@ -189,11 +200,11 @@ mod tests {
             let bytes = switch_fixture(symbol);
             let mut bits = Bits::default();
             let mut input = fixtures::input(&bytes);
-            let mut block = Block::default();
+            let mut block = Block::EMPTY;
             let mut memory = Memory::default();
             assert!(
                 block
-                    .header(&mut bits, &mut input, &mut Builder::default(), &mut memory)
+                    .header(&mut bits, &mut input, &mut { Builder::EMPTY }, &mut memory)
                     .unwrap()
             );
             assert_eq!((block.count, block.current, block.remaining), (2, 0, 1));
@@ -204,8 +215,34 @@ mod tests {
             assert!(block.prepare(&mut bits, &mut input).unwrap());
             assert_eq!(block.current, usize::from(symbol == 3));
             block.reset();
-            assert_eq!((block.count, block.remaining), (1, u64::MAX));
+            assert_eq!((block.count, block.remaining), (1, SINGLE_TYPE_COUNT));
         }
+    }
+
+    #[test]
+    fn exhausted_single_type_count_is_a_meta_block_error() {
+        // A zero type-count field: one type, and no switch codes to read.
+        let bytes = [0];
+        let mut bits = Bits::default();
+        let mut input = fixtures::input(&bytes);
+        let mut block = Block::EMPTY;
+        let mut memory = Memory::default();
+        assert!(
+            block
+                .header(&mut bits, &mut input, &mut { Builder::EMPTY }, &mut memory)
+                .unwrap()
+        );
+        assert_eq!((block.count, block.remaining), (1, SINGLE_TYPE_COUNT));
+        assert!(!block.switch_ready());
+        block.remaining = 1;
+        assert!(block.prepare(&mut bits, &mut input).unwrap());
+        block.advance();
+        assert!(matches!(
+            block.prepare(&mut bits, &mut input),
+            Err(DecodeError::InvalidData {
+                kind: InvalidDataKind::MetaBlock
+            })
+        ));
     }
 
     #[test]
@@ -213,15 +250,15 @@ mod tests {
         for symbol in [0, 1, 3] {
             let mut bytes = switch_fixture(symbol);
             bytes.extend([0u8; 8]);
-            let mut slow = Block::default();
-            let mut fast = Block::default();
+            let mut slow = Block::EMPTY;
+            let mut fast = Block::EMPTY;
             let mut memory = Memory::default();
             for (block, use_fast) in [(&mut slow, false), (&mut fast, true)] {
                 let mut bits = Bits::default();
                 let mut input = fixtures::input(&bytes);
                 assert!(
                     block
-                        .header(&mut bits, &mut input, &mut Builder::default(), &mut memory)
+                        .header(&mut bits, &mut input, &mut { Builder::EMPTY }, &mut memory)
                         .unwrap()
                 );
                 block.advance();

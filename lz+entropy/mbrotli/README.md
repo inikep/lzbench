@@ -11,6 +11,7 @@ parallel compression when a workload benefits from it.
 [![docs.rs](https://docs.rs/mbrotli/badge.svg)][api]
 [![Tests](https://github.com/M-Compressors/mbrotli/actions/workflows/ci.yml/badge.svg?branch=master)][ci]
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#License)
+[![hotpath-cloud](https://img.shields.io/endpoint?url=https://hotpath.rs/badge-cloud.json)](https://hotpath.rs/app/repos/M-Compressors/mbrotli)
 
 [Quick start](#quick-start) · [Benchmarks](#performance) · [`Read` / `Write`](#read-and-write-streaming) · [API guide][guide] · [Compatibility](#compatibility) · [Changelog][changelog]
 
@@ -30,6 +31,9 @@ parallel compression when a workload benefits from it.
 ## Performance
 
 ### lzbench (independent)
+
+<details>
+<summary>lzbench 2.4 results for mbrotli 0.5.2 and Google Brotli 1.2.0</summary>
 
 [lzbench](https://github.com/inikep/lzbench) is a long-running open-source
 in-memory benchmark: every codec is built from source into one binary with the
@@ -51,55 +55,49 @@ the compressed size as a percentage of the input and matches for both.
 
 **Summary:** the same compressed size as Google Brotli (+0.005% at -11),
 **14–20% faster** compression at -8 and -11, within 9% at lower levels, and
-decompression 3–10% behind C. Our own
-[local lzbench rerun](docs/benchmarks/README.md#local-lzbench-rerun-ours-not-independent)
-measures the current tree on a different machine and compiler.
+decompression 3–10% behind C. This historical external table measures mbrotli
+0.5.2; the current local library comparison follows below.
+
+</details>
 
 ### Our benchmarks
 
-Compression performance is generally close to or faster than Google C Brotli,
-depending on the workload and quality setting.
+Full library comparisons cover 432 encoding and 384 decoding cases on the
+recorded optimized checkout. Results vary by workload and quality.
 
-<details>
-<summary>Compression benchmark results and methodology</summary>
+#### Compression
 
 ![Compression speed and output size relative to Google C Brotli across qualities 0–11][bench-chart]
 
-**Recorded 2026-10-09 · Intel Core i7-13700KF · WSL2 · window 22 · cold serial APIs.**
-Each value is the median of per-dataset ratios across eight equally weighted datasets,
-including empty and tiny inputs. A speed ratio above **1×** is faster than C; a size
-ratio below **1×** is smaller. These are compression results; the separate decoder comparison follows below.
+**Recorded 2026-10-30 · AMD Ryzen 9 7950X VDS · Linux · window 22 · cold serial APIs.**
+Across all 96 corpus/quality pairs, mbrotli's median speed / C is **1.099×**,
+with lower mean latency in **67/96** cases. Each quality bar takes the
+median of eight equally weighted per-dataset ratios, including empty and tiny
+inputs. A speed ratio above **1×** is faster; a size ratio below **1×** is smaller.
+Point counts and corpus medians do not establish statistical significance.
 
-The benchmark includes encoder construction, allocation, compression, and disposal.
-Results apply to the [recorded revision and machine][bench-qualities].
+The benchmark includes construction, allocation, compression and disposal.
+Results apply to the [recorded source and machine][bench-qualities].
 
-[Per-dataset results and methodology][benchmarks] · [Raw measurements][bench-csv] · [Reproduce the benchmarks][benchmarking]
+[Per-dataset results and methodology][benchmarks] · [Raw measurements][bench-csv] · [Reproduce][benchmarking]
 
-</details>
-
-<details>
-<summary>Decompression benchmark results and methodology</summary>
+#### Decompression
 
 ![Decompression speed relative to Google C Brotli by source quality][decoder-bench-chart]
 
-**Recorded 2026-10-09 · Intel Core i7-13700KF · WSL2 · window 22 · cold serial APIs.**
-Google C, mbrotli, Rust brotli and Burli decode identical C-generated streams at
-source qualities **0–11**. SIMD Brotli shares Rust brotli's decoder and is omitted;
-Burli decodes every source quality. All **384 cases** restore the original bytes.
+**Recorded 2026-10-30 · AMD Ryzen 9 7950X VDS · Linux · window 22 · cold serial APIs.**
+Google C, mbrotli, Rust brotli and Burli restore identical C-generated streams
+at source qualities **0–11** in all **384 cases**. SIMD Brotli shares the Rust
+Brotli decoder project and is omitted; Burli decodes every source quality.
 
-Across the eight equally weighted inputs, the median speed / Burli is
-**0.999×**, and the median speed / Google
-C ranges from **3.1× to 3.8×** by source quality. Empty and tiny inputs retain
-the same weight as larger datasets. The chart shows per-quality medians of
-C-time/decoder-time ratios; above **1×** is faster than C. Throughput in the
-quality pages counts restored bytes. Construction, allocation, decode and disposal
-are timed. C receives the known output capacity; Rust brotli includes its native
-4 KiB I/O adapter. These are cold API measurements on the recorded machine,
-with results varying by workload and source quality.
+Across 96 corpus/quality pairs, mbrotli's median speed is **2.588× C**
+and **1.006× Burli**. Per-quality C-relative medians range from
+**2.547× to 3.461×**. These are medians of direct per-dataset
+time ratios with equal input weight. Throughput counts restored bytes.
+Construction, allocation, decode and disposal are timed; C receives the known
+output capacity and Rust Brotli includes its native 4 KiB I/O adapter.
 
 [Per-quality and dataset results][decoder-benchmarks] · [Raw measurements][decoder-bench-csv] · [Methodology and limits][decoder-bench-report]
-
-</details>
 
 ## Quick start
 
@@ -107,7 +105,7 @@ Requires **Rust 1.89 or later**. Add it to your project:
 
 ```toml
 [dependencies]
-mbrotli = "0.5.15"
+mbrotli = "0.5.20"
 ```
 
 ```rust
@@ -414,7 +412,7 @@ features to select one codec or use `no_std` with `alloc`. For an alloc-backed d
 
 ```toml
 [dependencies]
-mbrotli = { version = "0.5.15", default-features = false, features = ["no_std", "decompression"] }
+mbrotli = { version = "0.5.20", default-features = false, features = ["no_std", "decompression"] }
 ```
 
 Add `"compression"` for both codecs, or use `"std"` instead of `"no_std"` for standard
@@ -463,10 +461,10 @@ from the ordinary encoder's byte-identity checks. See the [dictionary and format
 ## Validation
 
 The repository includes differential tests against the pinned C encoder and decoder,
-cross-API and cross-backend checks, AFL++ fuzz targets, Miri checks, and AddressSanitizer
+cross-API and cross-backend checks, AFL++ fuzz targets, Miri checks, AddressSanitizer and [formal verification](architecture/formal-verification.md) via lean4
 workflows. Read the [compatibility and validation guide][validation] and the
 [native decoder checks][decoder-checks] for supported configurations,
-reproduction commands, and limitations. Testing and fuzzing are evidence, not formal verification.
+reproduction commands, and limitations.
 
 The crate enforces `#![cfg_attr(not(test), forbid(unsafe_code))]`. This describes
 mbrotli's production implementation, not every transitive dependency: SIMD intrinsics
@@ -478,7 +476,13 @@ are encapsulated by `fearless_simd`, and differential tests use a C FFI referenc
 
 Bug reports with a minimal input, codec settings, and reproduction steps are welcome.
 For performance reports, include the CPU, compiler, feature set, and workload.
-The [development guide][development] covers local checks, coverage, and fuzzing.
+If compression output differs from Google Brotli under equivalent streaming settings,
+open an issue with the [Output differs from Google Brotli][mismatch] template.
+
+Read [CONTRIBUTING.md][contributing] for the checks a change must pass, and follow
+the [Code of Conduct][conduct]. The [development guide][development] covers local
+checks, coverage, and fuzzing. Report security vulnerabilities privately as described
+in [SECURITY.md][security], not as public issues.
 
 ## License
 
@@ -487,7 +491,7 @@ The [development guide][development] covers local checks, coverage, and fuzzing.
 [crate]: https://crates.io/crates/mbrotli
 [api]: https://docs.rs/mbrotli
 [ci]: https://github.com/M-Compressors/mbrotli/actions/workflows/ci.yml
-[license]: ./LICENSE
+[license]: #license
 [changelog]: ./CHANGELOG.md
 [guide]: ./docs/README.md
 [parallel]: ./docs/parallel.md
@@ -496,6 +500,10 @@ The [development guide][development] covers local checks, coverage, and fuzzing.
 [decoder-checks]: ./architecture/decompressor-compatibility.md
 [validation]: ./docs/correctness.md
 [development]: ./docs/development.md
+[contributing]: ./CONTRIBUTING.md
+[conduct]: ./CODE_OF_CONDUCT.md
+[security]: ./SECURITY.md
+[mismatch]: https://github.com/M-Compressors/mbrotli/issues/new?template=output_mismatch.yml
 [architecture]: ./architecture/README.md
 [benchmarks]: ./docs/benchmarks/README.md
 [bench-qualities]: ./docs/benchmarks/encoders/README.md

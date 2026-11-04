@@ -134,6 +134,23 @@ impl Backend {
     pub(crate) fn has_fast_shuffle(self) -> bool {
         !matches!(self.name(), "fallback" | "sse2")
     }
+
+    /// The level the block decoder's loops compile for: AVX-512 runs them
+    /// with AVX2's features. The loops are scalar apart from 16- and
+    /// 32-byte copies, so AVX-512 adds nothing to them, while its cheap
+    /// gathers lead the compiler to vectorize the four Huffman streams'
+    /// independent lookups across lanes, which lengthens every stream's
+    /// dependency chain.
+    #[cfg(feature = "decompression")]
+    pub(crate) fn block_decode_level(self) -> Level {
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        if let Level::Avx512(_) = self.0
+            && let Some(avx2) = self.0.as_avx2()
+        {
+            return Level::Avx2(avx2);
+        }
+        self.0
+    }
 }
 
 impl Default for Backend {

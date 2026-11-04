@@ -203,6 +203,8 @@ impl From<Strategy> for u8 {
 ///     .with_strategy(Strategy::Lazy2);
 /// assert_eq!(params.window_log(), Some(20));
 /// assert_eq!(params.hash_log(), None);
+/// // `0` restores the level's value, as in zstd.
+/// assert_eq!(params.with_window_log(0).window_log(), None);
 /// ```
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct CompressionParams {
@@ -218,10 +220,14 @@ pub struct CompressionParams {
 macro_rules! param_accessors {
     ($($(#[$doc:meta])* $field:ident, $with:ident, $range:literal;)*) => {$(
         $(#[$doc])*
-        #[doc = concat!("\n\nValid values: ", $range, ".")]
+        #[doc = concat!(
+            "\n\nValid values: ", $range, ". `0` restores the default, as it does for \
+             `ZSTD_CCtx_setParameter`, so the last call wins and a loop over \
+             caller parameters can apply each one directly."
+        )]
         #[must_use]
         pub const fn $with(mut self, value: u32) -> Self {
-            self.$field = Some(value);
+            self.$field = if value == 0 { None } else { Some(value) };
             self
         }
 
@@ -247,9 +253,8 @@ impl CompressionParams {
         search_log, with_search_log, "`1..=30`";
         /// Shortest match searched for (`ZSTD_c_minMatch`).
         min_match, with_min_match, "`3..=7`";
-        /// Strategy-specific length target (`ZSTD_c_targetLength`); `0`
-        /// keeps the level's value.
-        target_length, with_target_length, "`0..=131072`";
+        /// Strategy-specific length target (`ZSTD_c_targetLength`).
+        target_length, with_target_length, "`1..=131072`";
     }
 
     /// Selects a strategy (`ZSTD_c_strategy`).
@@ -294,7 +299,7 @@ impl LdmParams {
         /// Base-2 logarithm of the bucket size (`ZSTD_c_ldmBucketSizeLog`).
         bucket_size_log, with_bucket_size_log, "`1..=8`";
         /// Base-2 logarithm of the insertion rate (`ZSTD_c_ldmHashRateLog`).
-        hash_rate_log, with_hash_rate_log, "`0..=25`";
+        hash_rate_log, with_hash_rate_log, "`1..=25`";
     }
 }
 

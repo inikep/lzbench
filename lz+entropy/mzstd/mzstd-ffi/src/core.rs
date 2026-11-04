@@ -4,13 +4,15 @@
 //! check a C caller's arguments go through lives here: pointer validation
 //! first, then the one `unsafe` conversion into slices, then the safe codec
 //! call inside a panic guard, and finally the mapping of the private
-//! [`FfiError`] onto the public status code.
+//! [`FfiError`] onto the public status code. The session handles build on the
+//! same pieces in [`session`].
+
+pub(crate) mod session;
 
 use crate::MzstdResult;
-use borrowed_buf::BorrowedBuf;
 use mzstd::{
-    Compressor, ConfigError, DecodeError, DecodeLimits, DecoderConfig, Decompressor, EncodeError,
-    EncoderConfig, Level,
+    Compressor, ConfigError, DecodeConfigError, DecodeError, DecodeLimits, DecoderConfig,
+    Decompressor, EncodeError, EncoderConfig, Level,
 };
 use std::ffi::c_int;
 use std::mem::MaybeUninit;
@@ -20,12 +22,13 @@ use thiserror::Error;
 /// Why a C call failed, before it is reduced to an [`MzstdResult`].
 #[derive(Debug, Error)]
 pub(crate) enum FfiError {
-    /// `output_len` was null.
-    #[error("the output length pointer is null")]
-    NullLength,
-    /// `output_len` was not aligned for a `size_t`.
-    #[error("the output length pointer is misaligned")]
-    MisalignedLength,
+    /// A pointer that must be dereferenced (a length, status or handle
+    /// argument) was null.
+    #[error("a required pointer argument is null")]
+    NullPointer,
+    /// Such a pointer was not aligned for its type.
+    #[error("a pointer argument is misaligned")]
+    MisalignedPointer,
     /// A buffer pointer was null although its length was not zero.
     #[error("a buffer pointer is null but its length is {len}")]
     NullBuffer {
@@ -39,8 +42,9 @@ pub(crate) enum FfiError {
         /// The declared length.
         len: usize,
     },
-    /// The input, the output and the length slot were not pairwise disjoint.
-    #[error("the input, output and length arguments overlap")]
+    /// The buffers and the slots the call writes were not pairwise
+    /// disjoint.
+    #[error("the buffer, length and status arguments overlap")]
     Overlap,
     /// A compression level outside `-131072..=22`.
     #[error("compression level {level} is out of range")]
@@ -51,6 +55,21 @@ pub(crate) enum FfiError {
         #[source]
         source: ConfigError,
     },
+    /// A decoder window log outside `10..=31`, other than `0`.
+    #[error("window log {value} is out of range")]
+    WindowLog {
+        /// The rejected value.
+        value: c_int,
+        /// Why it was rejected.
+        #[source]
+        source: DecodeConfigError,
+    },
+    /// An operation argument that names no operation.
+    #[error("operation {value} is not defined")]
+    Operation {
+        /// The rejected value.
+        value: c_int,
+    },
     /// The encoder failed, including an output buffer that was too small.
     #[error("compression failed")]
     Encode(#[from] EncodeError),
@@ -60,20 +79,27 @@ pub(crate) enum FfiError {
     /// The codec panicked; the panic was stopped at the C boundary.
     #[error("the codec panicked")]
     Panic,
+    /// A session handle whose codec panicked in an earlier call.
+    #[error("the session panicked earlier and cannot be used")]
+    Poisoned,
 }
 
 impl From<&FfiError> for MzstdResult {
     fn from(error: &FfiError) -> Self {
         match error {
-            FfiError::NullLength
-            | FfiError::MisalignedLength
+            FfiError::NullPointer
+            | FfiError::MisalignedPointer
             | FfiError::NullBuffer { .. }
             | FfiError::OversizedBuffer { .. }
             | FfiError::Overlap
-            | FfiError::Level { .. } => Self::InvalidParameter,
+            | FfiError::Level { .. }
+            | FfiError::WindowLog { .. }
+            | FfiError::Operation { .. } => Self::InvalidParameter,
             FfiError::Encode(EncodeError::OutputTooSmall { .. })
             | FfiError::Decode(DecodeError::OutputTooSmall { .. }) => Self::OutputTooSmall,
-            FfiError::Encode(_) | FfiError::Decode(_) | FfiError::Panic => Self::Error,
+            FfiError::Encode(_) | FfiError::Decode(_) | FfiError::Panic | FfiError::Poisoned => {
+                Self::Error
+            }
         }
     }
 }
@@ -114,26 +140,36 @@ impl Region {
     }
 }
 
-/// The validated `output_len` argument: non-null, aligned, and ending inside
-/// the address space.
-#[derive(Copy, Clone, Debug)]
-struct LengthSlot {
-    pointer: *mut usize,
+/// Whether no two of `regions` share a byte.
+fn disjoint(regions: &[Region]) -> bool {
+    regions.iter().enumerate().all(|(index, region)| {
+        regions[index + 1..]
+            .iter()
+            .all(|other| !region.overlaps(*other))
+    })
+}
+
+/// A validated pointer to one `T` the call reads or writes: an `output_len`,
+/// a status, a handle or a handle's out-parameter. It is non-null, aligned,
+/// and ends inside the address space.
+#[derive(Debug)]
+struct Slot<T> {
+    pointer: *mut T,
     region: Region,
 }
 
-impl LengthSlot {
-    /// Validates the length pointer.
+impl<T> Slot<T> {
+    /// Validates the pointer.
     ///
     /// A slot that fails here is never written, since it may not be memory.
-    fn new(pointer: *mut usize) -> Result<Self, FfiError> {
+    fn new(pointer: *mut T) -> Result<Self, FfiError> {
         if pointer.is_null() {
-            return Err(FfiError::NullLength);
+            return Err(FfiError::NullPointer);
         }
         if !pointer.is_aligned() {
-            return Err(FfiError::MisalignedLength);
+            return Err(FfiError::MisalignedPointer);
         }
-        let region = Region::new(pointer.addr(), size_of::<usize>())?;
+        let region = Region::new(pointer.addr(), size_of::<T>())?;
         Ok(Self { pointer, region })
     }
 }
@@ -149,19 +185,22 @@ struct Arguments {
 impl Arguments {
     /// Checks every property of the buffers that can be checked without
     /// dereferencing them: null pointers, impossible lengths, and that the
-    /// input, the output and the length slot are pairwise disjoint.
+    /// input, the output and the `slots` the call also touches are pairwise
+    /// disjoint.
     fn new(
         input: *const u8,
         input_len: usize,
         output: *mut u8,
         output_len: usize,
-        slot: LengthSlot,
+        slots: &[Region],
     ) -> Result<Self, FfiError> {
         let input_region = Region::new(input.addr(), input_len)?;
         let output_region = Region::new(output.addr(), output_len)?;
-        if input_region.overlaps(slot.region)
-            || output_region.overlaps(slot.region)
-            || output_region.overlaps(input_region)
+        if output_region.overlaps(input_region)
+            || slots
+                .iter()
+                .any(|slot| slot.overlaps(input_region) || slot.overlaps(output_region))
+            || !disjoint(slots)
         {
             return Err(FfiError::Overlap);
         }
@@ -230,21 +269,22 @@ pub(crate) unsafe fn call(
     length: *mut usize,
     codec: impl FnOnce(&[u8], &mut [MaybeUninit<u8>]) -> Result<usize, FfiError>,
 ) -> MzstdResult {
-    let slot = match LengthSlot::new(length) {
+    let slot = match Slot::new(length) {
         Ok(slot) => slot,
         Err(error) => return MzstdResult::from(&error),
     };
     // SAFETY: `slot` is non-null and aligned, and the caller guarantees that
     // such a pointer is valid for reading a `size_t`.
     let output_len = unsafe { slot.pointer.read() };
-    let outcome =
-        Arguments::new(input, input_len, output, output_len, slot).and_then(|arguments| {
+    let outcome = Arguments::new(input, input_len, output, output_len, &[slot.region]).and_then(
+        |arguments| {
             // SAFETY: the buffers passed `Arguments::new`, and the caller
             // guarantees their validity and exclusivity for the duration of this
             // call, which outlives both slices.
             let (src, dst) = unsafe { arguments.slices() };
             guarded(|| codec(src, dst))
-        });
+        },
+    );
     let (status, written) = match outcome {
         Ok(written) => (MzstdResult::Ok, written),
         Err(error) => (MzstdResult::from(&error), 0),
@@ -258,11 +298,11 @@ pub(crate) unsafe fn call(
 
 /// Runs `body`, turning a panic into [`FfiError::Panic`] so it never unwinds
 /// into C.
-fn guarded(body: impl FnOnce() -> Result<usize, FfiError>) -> Result<usize, FfiError> {
-    // `AssertUnwindSafe` is sound here: after a panic the only state the
-    // closure could have left half-updated is the output buffer, whose
-    // contents are unspecified after any failure, and the codec it built,
-    // which is dropped with the closure.
+fn guarded<T>(body: impl FnOnce() -> Result<T, FfiError>) -> Result<T, FfiError> {
+    // `AssertUnwindSafe` is sound here: after a panic the state the closure
+    // could have left half-updated is the output buffer, whose contents are
+    // unspecified after any failure, a codec it built, which is dropped with
+    // the closure, or a session, which `session::run` poisons.
     panic::catch_unwind(AssertUnwindSafe(body)).unwrap_or(Err(FfiError::Panic))
 }
 
@@ -290,27 +330,35 @@ pub(crate) fn compress(
     dst: &mut [MaybeUninit<u8>],
     level_value: c_int,
 ) -> Result<usize, FfiError> {
+    Ok(compressor(level_value)?.compress_to_uninit(src, dst)?)
+}
+
+/// A compressor with zstd's defaults at `level_value`: content size recorded,
+/// no checksum.
+///
+/// # Errors
+///
+/// [`FfiError::Level`] for a level out of range.
+fn compressor(level_value: c_int) -> Result<Compressor, FfiError> {
     let config = EncoderConfig::default().with_level(level(level_value)?);
     // A configuration holding only a valid level has nothing else to reject,
     // so the error arm reports a validation bug rather than panicking.
-    let mut encoder = match Compressor::new(config) {
-        Ok(encoder) => encoder,
-        Err(source) => {
-            return Err(FfiError::Level {
-                level: level_value,
-                source,
-            });
-        }
-    };
-    Ok(encoder.compress_to_uninit(src, dst)?)
+    match Compressor::new(config) {
+        Ok(compressor) => Ok(compressor),
+        Err(source) => Err(FfiError::Level {
+            level: level_value,
+            source,
+        }),
+    }
 }
 
 /// Decodes every frame of `src` into `dst`, as zstd's `ZSTD_decompress`
 /// does.
 ///
 /// An empty `src` decodes to nothing, and every window the format allows is
-/// accepted, since `dst` already bounds the output. `dst` is zeroed first,
-/// because the decoder writes into initialized memory.
+/// accepted, since `dst` already bounds the output. `dst` stays
+/// uninitialized memory throughout: on success nothing past the result is
+/// written.
 ///
 /// # Errors
 ///
@@ -321,8 +369,7 @@ pub(crate) fn decompress(src: &[u8], dst: &mut [MaybeUninit<u8>]) -> Result<usiz
         return Ok(0);
     }
     let mut decoder = Decompressor::from(DecoderConfig::DEFAULT.with_limits(LIMITS));
-    let mut zeroed = BorrowedBuf::<u8>::from(dst);
-    Ok(decoder.decompress_to_slice(src, zeroed.unfilled().ensure_init())?)
+    Ok(decoder.decompress_to_uninit(src, dst)?)
 }
 
 /// Decoder limits of the C ABI: the widest window the format allows, and no
@@ -400,6 +447,57 @@ mod tests {
     }
 
     #[test]
+    fn regions_are_disjoint_only_when_no_pair_overlaps() {
+        let region = |start, len| Region { start, len };
+        assert!(disjoint(&[]));
+        assert!(disjoint(&[region(0, 8)]));
+        assert!(disjoint(&[region(0, 8), region(8, 8), region(16, 0)]));
+        assert!(!disjoint(&[region(0, 8), region(16, 8), region(20, 1)]));
+        assert!(!disjoint(&[region(0, 8), region(16, 8), region(7, 1)]));
+    }
+
+    #[test]
+    fn slot_refuses_null_and_misaligned_pointers() {
+        let mut value = 0usize;
+        assert!(Slot::new(&raw mut value).is_ok());
+        assert!(matches!(
+            Slot::new(std::ptr::null_mut::<usize>()),
+            Err(FfiError::NullPointer)
+        ));
+        let misaligned = (&raw mut value)
+            .cast::<u8>()
+            .wrapping_add(1)
+            .cast::<usize>();
+        assert!(matches!(
+            Slot::new(misaligned),
+            Err(FfiError::MisalignedPointer)
+        ));
+    }
+
+    #[test]
+    fn arguments_refuse_a_buffer_overlapping_any_slot_or_slots_overlapping_each_other() {
+        let mut buffer = [0u8; 64];
+        let base = buffer.as_mut_ptr();
+        let slot = |offset: usize, len| Region {
+            start: base.addr() + offset,
+            len,
+        };
+        let check = |slots: &[Region]| {
+            Arguments::new(base, 16, base.wrapping_add(16), 16, slots).map(|_| ())
+        };
+        assert!(check(&[slot(32, 8), slot(40, 8)]).is_ok());
+        assert!(matches!(check(&[slot(8, 8)]), Err(FfiError::Overlap)));
+        assert!(matches!(
+            check(&[slot(40, 8), slot(24, 8)]),
+            Err(FfiError::Overlap)
+        ));
+        assert!(matches!(
+            check(&[slot(32, 8), slot(36, 8)]),
+            Err(FfiError::Overlap)
+        ));
+    }
+
+    #[test]
     fn level_accepts_exactly_the_reference_range() {
         for value in [-131_072, -5, -1, 0, 1, 3, 19, 22] {
             assert!(level(value).is_ok(), "{value}");
@@ -414,7 +512,7 @@ mod tests {
 
     #[test]
     fn guarded_turns_a_panic_into_an_error() {
-        let outcome = guarded(|| panic!("codec bug"));
+        let outcome: Result<usize, _> = guarded(|| panic!("codec bug"));
         assert!(matches!(outcome, Err(FfiError::Panic)));
         assert_eq!(guarded(|| Ok(7)).ok(), Some(7));
     }
@@ -424,13 +522,18 @@ mod tests {
         let Err(level_error) = level(99) else {
             panic!("level 99 is out of range");
         };
+        let Err(window_error) = session::window_limits(9) else {
+            panic!("window log 9 is out of range");
+        };
         let invalid = [
-            FfiError::NullLength,
-            FfiError::MisalignedLength,
+            FfiError::NullPointer,
+            FfiError::MisalignedPointer,
             FfiError::NullBuffer { len: 1 },
             FfiError::OversizedBuffer { len: 1 },
             FfiError::Overlap,
             level_error,
+            window_error,
+            FfiError::Operation { value: 7 },
         ];
         for error in &invalid {
             assert_eq!(MzstdResult::from(error), MzstdResult::InvalidParameter);
@@ -446,6 +549,7 @@ mod tests {
             FfiError::Encode(EncodeError::InvalidState),
             FfiError::Decode(DecodeError::UnexpectedEndOfInput),
             FfiError::Panic,
+            FfiError::Poisoned,
         ];
         for error in &failed {
             assert_eq!(MzstdResult::from(error), MzstdResult::Error);

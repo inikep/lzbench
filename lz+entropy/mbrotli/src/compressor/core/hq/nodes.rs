@@ -213,6 +213,8 @@ impl Default for PosData {
 pub(crate) struct StartPosQueue {
     queue: [PosData; START_POS_QUEUE_SIZE],
     idx: usize,
+    /// Probe results of the queued starts at the current position.
+    pub(crate) memo: super::zopfli::ProbeMemo,
 }
 
 impl Default for StartPosQueue {
@@ -221,6 +223,7 @@ impl Default for StartPosQueue {
         Self {
             queue: [PosData::default(); START_POS_QUEUE_SIZE],
             idx: 0,
+            memo: super::zopfli::ProbeMemo::default(),
         }
     }
 }

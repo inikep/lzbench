@@ -34,6 +34,17 @@ pub(super) struct ContextMap {
 }
 
 impl ContextMap {
+    /// The map before any description is read, equal to `default()`.
+    pub(super) const EMPTY: Self = Self {
+        values: Vec::new(),
+        trees: 0,
+        stage: Stage::TreeCount,
+        run: 0,
+        index: 0,
+        tree: Huffman::EMPTY,
+        trivial: [0; 4],
+    };
+
     pub(super) fn reset(&mut self) {
         self.stage = Stage::TreeCount;
         self.values.clear();
@@ -215,7 +226,7 @@ mod tests {
                     4,
                     &mut Bits::default(),
                     &mut fixtures::input(&bytes),
-                    &mut Builder::default(),
+                    &mut { Builder::EMPTY },
                     &mut Memory::default()
                 )
                 .unwrap()

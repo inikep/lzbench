@@ -85,6 +85,32 @@ pub(crate) const fn combine_length_codes(
     }
 }
 
+/// Length bases and extra-bit widths indexed by the already computed symbol.
+///
+/// Bits 0–15 hold the insert base, 16–31 the copy base, 32–36 the insert
+/// width and 40–45 the total width. All bases fit in u16. Padding the 704
+/// valid symbols to a power of two removes a bounds check at the lookup.
+/// Constructors and command extension keep the prefix consistent with both
+/// lengths; the table reverses their existing `combine_length_codes` result.
+const COMMAND_EXTRAS: [u64; 1024] = {
+    let mut entries = [0; 1024];
+    let mut insert = 0;
+    while insert < 24 {
+        let mut copy = 0;
+        while copy < 24 {
+            let fields = (INS_BASE[insert] as u64)
+                | ((COPY_BASE[copy] as u64) << 16)
+                | ((INS_EXTRA[insert] as u64) << 32)
+                | (((INS_EXTRA[insert] + COPY_EXTRA[copy]) as u64) << 40);
+            entries[combine_length_codes(insert as u16, copy as u16, false) as usize] = fields;
+            entries[combine_length_codes(insert as u16, copy as u16, true) as usize] = fields;
+            copy += 1;
+        }
+        insert += 1;
+    }
+    entries
+};
+
 /// Returns the command symbol for an insert and copy length.
 #[inline(always)]
 pub(crate) const fn length_code(insertlen: usize, copylen: usize, use_last_distance: bool) -> u16 {
@@ -273,19 +299,16 @@ impl Command {
     /// Writes the extra bits of the insert and copy lengths.
     ///
     /// Mirrors `StoreCommandExtra`; both fields together never exceed the bit
-    /// writer's single-call limit.
+    /// writer's single-call limit. The already resolved command prefix selects
+    /// their bases and widths without recomputing the length classes.
     #[inline(always)]
-    pub(crate) fn extra_bits(&self) -> (u32, u64) {
-        let copylen_code = self.copy_len_code();
-        let inscode = insert_length_code(self.insert_len as usize);
-        let copycode = copy_length_code(copylen_code as usize);
-        let insnumextra = INS_EXTRA[inscode as usize];
-        let insextraval = u64::from(self.insert_len - INS_BASE[inscode as usize]);
-        let copyextraval = u64::from(copylen_code - COPY_BASE[copycode as usize]);
-        (
-            insnumextra + COPY_EXTRA[copycode as usize],
-            (copyextraval << insnumextra) | insextraval,
-        )
+    pub(crate) const fn extra_bits(&self) -> (u32, u64) {
+        let fields = COMMAND_EXTRAS[self.cmd_prefix as usize & 1023];
+        let insert_width = ((fields >> 32) & 31) as u32;
+        let width = ((fields >> 40) & 63) as u32;
+        let insert_extra = (self.insert_len - (fields as u16 as u32)) as u64;
+        let copy_extra = (self.copy_len_code() - ((fields >> 16) as u16 as u32)) as u64;
+        (width, (copy_extra << insert_width) | insert_extra)
     }
 }
 
@@ -371,14 +394,11 @@ pub(crate) fn extend_last_command<S: fearless_simd::Simd>(simd: S, input: Comman
                 span,
             );
         }
-        // The copy length changed, so the command symbol has to be recomputed.
-        // `ExtendLastCommand` reads the length-code delta as an unsigned field
-        // here, which agrees with the signed reading everywhere it can occur:
-        // only a dictionary match sets it, and never to a negative value.
+        // Rebuild from the encoded length, including signed dictionary
+        // deltas and experimental absolute-length tags, even without growth.
         command.cmd_prefix = length_code(
             command.insert_len as usize,
-            (command.copy_len & COPY_LEN_MASK) as usize
-                + (command.copy_len >> COPY_LEN_CODE_SHIFT) as usize,
+            command.copy_len_code() as usize,
             command.distance_code() == 0,
         );
     }
@@ -489,6 +509,56 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn assert_extension_without_prefix_preserves_dictionary_code(copy_len: usize, delta: i32) {
+        use crate::compressor::Backend;
+        use crate::shared::ringbuffer::{BlockSpan, Window};
+
+        let dist = DistanceParams::default();
+        let original = Command::new(&dist, 0, copy_len, delta, 19);
+        assert_eq!(original.copy_len_code(), 4);
+        assert_eq!(original.extra_bits(), (0, 0));
+        let data = [0; 128];
+        for backend in Backend::available() {
+            let mut command = original;
+            let initial_span = BlockSpan {
+                position: copy_len as u32,
+                bytes: 1,
+            };
+            let mut span = initial_span;
+            // At command start no history is available, but its dictionary
+            // distance aliases the initial cached distance 4. The outer guard
+            // admits it; no prefix exists, so extension absorbs no bytes.
+            let extension = CommandExtension {
+                command: &mut command,
+                lgwin: 10,
+                dist: &dist,
+                last_distance: 4,
+                window: Window {
+                    data: &data,
+                    mask: 127,
+                },
+                last_processed_pos: copy_len as u64,
+                attached: None,
+                span: &mut span,
+            };
+            fearless_simd::dispatch!(backend.0, simd => extend_last_command(simd, extension));
+            assert_eq!(span, initial_span, "{backend:?}");
+            assert_eq!(command, original, "{backend:?}");
+            assert_eq!(command.extra_bits(), (0, 0), "{backend:?}");
+        }
+    }
+
+    #[test]
+    fn extension_without_prefix_preserves_negative_dictionary_delta() {
+        assert_extension_without_prefix_preserves_dictionary_code(6, -2);
+    }
+
+    #[cfg(feature = "experimental")]
+    #[test]
+    fn extension_without_prefix_preserves_absolute_dictionary_length() {
+        assert_extension_without_prefix_preserves_dictionary_code(104, -100);
     }
 
     #[test]
@@ -609,6 +679,68 @@ mod tests {
                 let command = Command::new(&dist, insert, copy, 0, 20);
                 assert!(command.distance_context() < 4);
             }
+        }
+    }
+
+    #[test]
+    fn extra_bit_lookup_matches_length_calculation_for_every_command_class() {
+        let dist = DistanceParams::default();
+        for insert_code in 0..24 {
+            for copy_code in 0..24 {
+                for upper in [false, true] {
+                    let insert = INS_BASE[insert_code]
+                        + if upper {
+                            (1 << INS_EXTRA[insert_code]) - 1
+                        } else {
+                            0
+                        };
+                    let copy = COPY_BASE[copy_code]
+                        + if upper {
+                            (1 << COPY_EXTRA[copy_code]) - 1
+                        } else {
+                            0
+                        };
+                    for delta in [-3, 0, 3] {
+                        let actual_copy = i64::from(copy) - i64::from(delta);
+                        if actual_copy < 2 {
+                            continue;
+                        }
+                        for distance in [0, 16] {
+                            let command = Command::new(
+                                &dist,
+                                insert as usize,
+                                actual_copy as usize,
+                                delta,
+                                distance,
+                            );
+                            let old_insert_code =
+                                insert_length_code(command.insert_len as usize) as usize;
+                            let old_copy_code =
+                                copy_length_code(command.copy_len_code() as usize) as usize;
+                            let insert_width = INS_EXTRA[old_insert_code];
+                            let expected = (
+                                insert_width + COPY_EXTRA[old_copy_code],
+                                (u64::from(command.copy_len_code() - COPY_BASE[old_copy_code])
+                                    << insert_width)
+                                    | u64::from(command.insert_len - INS_BASE[old_insert_code]),
+                            );
+                            assert_eq!(
+                                command.extra_bits(),
+                                expected,
+                                "insert {insert}, copy {copy}, delta {delta}, distance {distance}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        for insert in [0, 1, 6, 130, 2114, 6210, 22594, 1 << 24] {
+            let command = Command::insert_only(insert);
+            let code = insert_length_code(insert) as usize;
+            assert_eq!(
+                command.extra_bits(),
+                (INS_EXTRA[code], (insert as u32 - INS_BASE[code]) as u64)
+            );
         }
     }
 

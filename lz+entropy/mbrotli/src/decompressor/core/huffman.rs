@@ -62,16 +62,7 @@ impl Table<'_> {
     /// Decodes with at least fifteen buffered bits.
     #[inline(always)]
     pub(super) fn decode_fast(self, bits: &mut Bits) -> usize {
-        let peek = bits.value();
-        let mut entry = self.root[(peek & (ROOT_SIZE as u64 - 1)) as usize];
-        if entry.bits() > ROOT_BITS {
-            let index =
-                entry.value() + ((peek >> ROOT_BITS) & mask(entry.bits() - ROOT_BITS)) as usize;
-            bits.drop(ROOT_BITS);
-            entry = self.second[index];
-        }
-        bits.drop(entry.bits());
-        entry.value()
+        Root(self.root).decode_fast(self.second, bits)
     }
 
     /// Decodes with whatever is buffered; `None` needs at least one more byte.
@@ -126,6 +117,30 @@ impl Table<'_> {
     }
 }
 
+/// The root table of one code without its group's second-level storage,
+/// which each decode takes instead. A loop holding several codes of one
+/// group then keeps that storage once, and each code as a single pointer.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Root<'a>(&'a [Code; ROOT_SIZE]);
+
+impl Root<'_> {
+    /// Decodes with at least fifteen buffered bits; `second` is the storage
+    /// of the group the root came from.
+    #[inline(always)]
+    pub(super) fn decode_fast(self, second: &[Code], bits: &mut Bits) -> usize {
+        let peek = bits.value();
+        let mut entry = self.0[(peek & (ROOT_SIZE as u64 - 1)) as usize];
+        if entry.bits() > ROOT_BITS {
+            let index =
+                entry.value() + ((peek >> ROOT_BITS) & mask(entry.bits() - ROOT_BITS)) as usize;
+            bits.drop(ROOT_BITS);
+            entry = second[index];
+        }
+        bits.drop(entry.bits());
+        entry.value()
+    }
+}
+
 /// Every prefix code of one kind for a meta-block in one vector: the roots
 /// first, one per code, then the second-level tables appended as codes are
 /// built, so only tables that exist are ever written. The vector's length is
@@ -139,6 +154,14 @@ pub(super) struct Group {
 }
 
 impl Group {
+    /// The empty group, as a constant so a containing workspace can be
+    /// created by copying it rather than by running its constructor.
+    pub(super) const EMPTY: Self = Self {
+        codes: Vec::new(),
+        count: 0,
+        used: 0,
+    };
+
     /// Reserves `count` roots for `alphabet`, discarding earlier tables.
     pub(super) fn prepare(
         &mut self,
@@ -200,6 +223,18 @@ impl<'a> Tables<'a> {
             second: self.second,
         }
     }
+
+    /// The root of code `tree`, to decode against [`Self::second`].
+    #[inline(always)]
+    pub(super) fn root(self, tree: usize) -> Root<'a> {
+        Root(&self.roots[tree])
+    }
+
+    /// The group's second-level storage, shared by all of its roots.
+    #[inline(always)]
+    pub(super) const fn second(self) -> &'a [Code] {
+        self.second
+    }
 }
 
 /// One owned prefix code, a group with a single slot.
@@ -226,19 +261,35 @@ impl LengthCode {
             table.fill(Code::new(0, symbol));
             return Self(table);
         }
+        // Canonical order by a counting sort: one pass places every coded
+        // symbol after the shorter lengths, in increasing symbol order.
+        let mut counts = [0u8; LENGTH_BITS as usize + 1];
+        for &length in lengths {
+            counts[usize::from(length)] += 1;
+        }
+        let mut offsets = [0u8; LENGTH_BITS as usize + 1];
+        for length in 2..=LENGTH_BITS as usize {
+            offsets[length] = offsets[length - 1] + counts[length - 1];
+        }
+        let mut sorted = [0u8; 18];
+        for (symbol, &length) in lengths.iter().enumerate() {
+            if length != 0 {
+                let slot = &mut offsets[usize::from(length)];
+                sorted[usize::from(*slot)] = symbol as u8;
+                *slot += 1;
+            }
+        }
         let mut code = 0usize;
-        for length in 1..=LENGTH_BITS as usize {
-            for (symbol, _) in lengths
-                .iter()
-                .enumerate()
-                .filter(|&(_, &width)| usize::from(width) == length)
-            {
+        let mut index = 0;
+        for (length, &count) in counts.iter().enumerate().skip(1) {
+            for _ in 0..count {
                 replicate(
                     &mut table,
                     key_of(code, length),
                     1 << length,
-                    Code::new(length as u32, symbol),
+                    Code::new(length as u32, usize::from(sorted[index])),
                 );
+                index += 1;
                 code += 1;
             }
             code <<= 1;
@@ -461,30 +512,28 @@ pub(super) struct Builder {
     repeat: usize,
 }
 
-impl Default for Builder {
-    fn default() -> Self {
-        Self {
-            stage: Stage::Start,
-            next: [NONE; MAX_ALPHABET],
-            head: [NONE; MAX_LENGTH + 1],
-            tail: [NONE; MAX_LENGTH + 1],
-            counts: [0; MAX_LENGTH + 1],
-            total: 0,
-            last: 0,
-            small: [0; 18],
-            code: LengthCode::default(),
-            symbols: [0; 4],
-            count: 0,
-            index: 0,
-            space: 0,
-            previous: 8,
-            repeat_length: 0,
-            repeat: 0,
-        }
-    }
-}
-
 impl Builder {
+    /// The idle reader. `next` links only symbols already pushed, so its
+    /// initial contents are never read.
+    pub(super) const EMPTY: Self = Self {
+        stage: Stage::Start,
+        next: [NONE; MAX_ALPHABET],
+        head: [NONE; MAX_LENGTH + 1],
+        tail: [NONE; MAX_LENGTH + 1],
+        counts: [0; MAX_LENGTH + 1],
+        total: 0,
+        last: 0,
+        small: [0; 18],
+        code: LengthCode([Code(0); LENGTH_SIZE]),
+        symbols: [0; 4],
+        count: 0,
+        index: 0,
+        space: 0,
+        previous: 8,
+        repeat_length: 0,
+        repeat: 0,
+    };
+
     /// Abandons a partial description. The next start clears its lists.
     pub(super) const fn reset(&mut self) {
         self.stage = Stage::Start;
@@ -915,7 +964,7 @@ mod tests {
     use super::*;
 
     fn build(lengths: &[u8]) -> Result<(Huffman, usize), DecodeError> {
-        let mut builder = Builder::default();
+        let mut builder = Builder::EMPTY;
         builder.assign(lengths)?;
         let mut code = Huffman::default();
         let max_symbol = builder.build(lengths.len(), &mut Memory::default(), &mut code)?;
@@ -995,6 +1044,53 @@ mod tests {
             Some(16)
         );
         assert_eq!(bits.count(), 0);
+    }
+
+    #[test]
+    fn counting_sorted_length_codes_decode_canonically_for_random_complete_codes() {
+        let mut rng = 0x2545_f491_4f6c_dd1du64;
+        let mut random = move || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            rng
+        };
+        let rounds = if cfg!(miri) { 8 } else { 400 };
+        for _ in 0..rounds {
+            // Split random leaves of a complete code up to five bits deep.
+            let mut leaves = vec![1u8, 1];
+            let target = 2 + (random() % 17) as usize;
+            while leaves.len() < target {
+                let open: Vec<usize> = (0..leaves.len()).filter(|&i| leaves[i] < 5).collect();
+                if open.is_empty() {
+                    break;
+                }
+                let leaf = open[random() as usize % open.len()];
+                leaves[leaf] += 1;
+                leaves.push(leaves[leaf]);
+            }
+            let mut symbols: Vec<usize> = (0..18).collect();
+            for i in (1..symbols.len()).rev() {
+                symbols.swap(i, random() as usize % (i + 1));
+            }
+            let mut lengths = [0u8; 18];
+            for (&length, &symbol) in leaves.iter().zip(&symbols) {
+                lengths[symbol] = length;
+            }
+            let code = LengthCode::build(&lengths, leaves.len());
+            for byte in 0..32u8 {
+                let mut bits = Bits::default();
+                let bytes = [byte];
+                let mut input = fixtures::input(&bytes);
+                let mut taken = 0;
+                let expected = canonical(&lengths, || {
+                    taken += 1;
+                    u64::from(byte >> (taken - 1) & 1)
+                });
+                assert_eq!(code.decode(&mut bits, &mut input).unwrap(), Some(expected));
+                assert_eq!(bits.count(), 8 - taken);
+            }
+        }
     }
 
     #[test]
@@ -1088,7 +1184,7 @@ mod tests {
         let mut memory = Memory::default();
         let mut group = Group::default();
         group.prepare(1, 4, &mut memory).unwrap();
-        let mut builder = Builder::default();
+        let mut builder = Builder::EMPTY;
         builder.assign(&[1, 1]).unwrap();
         assert!(matches!(
             builder.build_slot(2, &mut group, 1, &mut memory),
@@ -1155,7 +1251,7 @@ mod tests {
             *length = i;
         }
         split[7] = 8;
-        let mut builder = Builder::default();
+        let mut builder = Builder::EMPTY;
         builder.assign(&split).unwrap();
         assert_eq!(second_size(&builder.counts), 0);
         split[7] = 9;
@@ -1218,7 +1314,7 @@ mod tests {
         group.prepare(3, 256, &mut memory).unwrap();
         assert_eq!((group.count(), group.codes.len()), (3, 3 * ROOT_SIZE));
         assert!(group.prepare(1, 4000, &mut memory).is_err());
-        let mut builder = Builder::default();
+        let mut builder = Builder::EMPTY;
         builder.assign(&[2, 2, 2, 2]).unwrap();
         assert_eq!(
             builder.build_slot(4, &mut group, 1, &mut memory).unwrap(),
@@ -1251,7 +1347,7 @@ mod tests {
         assert_eq!(key_of(0b1_0000_0000, 9), 1);
         assert_eq!(key_of(0b111_1111_1111_1111, 15), 0x7fff);
         // A run links its symbols in order and terminates at its end.
-        let mut builder = Builder::default();
+        let mut builder = Builder::EMPTY;
         builder.clear();
         push_run(
             &mut builder.next,
@@ -1278,7 +1374,7 @@ mod tests {
         let mut bits = Bits::default();
         let mut input = fixtures::input(&bytes);
         let mut memory = Memory::default();
-        let mut builder = Builder::default();
+        let mut builder = Builder::EMPTY;
         assert!(builder.read(256, &mut bits, &mut input).unwrap());
         let mut tree = Huffman::default();
         assert_eq!(builder.build(256, &mut memory, &mut tree).unwrap(), 5);
@@ -1335,7 +1431,7 @@ mod tests {
                 let mut bits = Bits::default();
                 let mut input = fixtures::input(&padded);
                 let mut memory = Memory::default();
-                let mut builder = Builder::default();
+                let mut builder = Builder::EMPTY;
                 let alphabet = if repeat == 16 { 4 } else { 8 };
                 assert!(builder.read(alphabet, &mut bits, &mut input).unwrap());
                 let mut tree = Huffman::default();

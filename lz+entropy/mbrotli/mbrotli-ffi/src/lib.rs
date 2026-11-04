@@ -1,4 +1,4 @@
-//! C ABI for [mbrotli](https://docs.rs/mbrotli): one-shot Brotli compression
+//! C ABI for [mbrotli](https://docs.rs/mbrotli): one-shot and streaming Brotli compression
 //! and decompression into caller-owned buffers.
 //!
 //! The crate builds a `cdylib` and a `staticlib` named `mbrotli_ffi`. The C
@@ -20,8 +20,8 @@
 //! size_t mbrotli_compress_bound(size_t input_len);
 //! ```
 //!
-//! Every call is self-contained: it builds its codec, runs it and releases it,
-//! so the functions are safe to call from any number of threads at once. No
+//! One-shot calls are self-contained. Session handles retain their codec and
+//! require exclusive access; distinct handles can run on different threads. No
 //! panic unwinds into C; one would be reported as [`MbrotliResult::Error`].
 //!
 //! # Examples
@@ -64,7 +64,8 @@ mod core;
 
 use std::ffi::c_int;
 
-/// Status returned by every fallible function; `mbrotli_result` in C.
+/// Status returned by buffer operations and session reinitialization;
+/// `mbrotli_result` in C. Session creation returns a pointer or null instead.
 ///
 /// The discriminants are part of the ABI and never change.
 ///
@@ -92,6 +93,12 @@ pub enum MbrotliResult {
     /// `MBROTLI_ERROR`: any other failure, such as corrupt, truncated or
     /// trailing compressed input, or an allocation failure.
     Error = 3,
+    /// A session needs more input; an encoder flush has been fully delivered.
+    NeedsInput = 4,
+    /// A session needs output space; retry with the unconsumed input suffix.
+    NeedsOutput = 5,
+    /// The stream has finished and all output has been delivered.
+    Finished = 6,
 }
 
 /// Compresses `input` into `output` as one complete Brotli stream.
@@ -252,4 +259,346 @@ pub unsafe extern "C" fn mbrotli_decompress(
 #[unsafe(no_mangle)]
 pub extern "C" fn mbrotli_compress_bound(input_len: usize) -> usize {
     core::compress_bound(input_len)
+}
+
+/// Operation passed as an integer to session `process` functions.
+/// Unknown values are rejected without advancing the session.
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MbrotliOperation {
+    /// Accept more input without declaring EOF.
+    Process = 0,
+    /// Flush an encoder; decoders accept only Process and Finish.
+    Flush = 1,
+    /// Declare the final input suffix and finish the stream.
+    Finish = 2,
+}
+
+/// Opaque owning encoder session. Only use pointers returned by
+/// [`mbrotli_encoder_session_create`]; release with [`mbrotli_encoder_session_destroy`].
+/// This is a pointer-only ABI token, not the layout of the allocation behind it.
+/// Never allocate, copy, dereference or pass a handle object by value; only its
+/// pointer may cross the ABI. Internal session layout changes do not affect C.
+#[repr(C)]
+pub struct MbrotliEncoderSession {
+    _private: [u8; 0],
+}
+
+/// Creates an independent encoder session with default stream settings.
+/// `quality` is 0..=11; `lgwin` is 10..=24. Input size is initially unknown.
+/// Returns null on invalid configuration, codec failure or a caught panic.
+/// The handle must eventually be destroyed, including after an error.
+///
+/// # Examples
+///
+/// ```
+/// use mbrotli_ffi::{mbrotli_encoder_session_create, mbrotli_encoder_session_destroy};
+/// let session = mbrotli_encoder_session_create(5, 22);
+/// assert!(!session.is_null());
+/// // SAFETY: this is the live handle just created, with no concurrent access.
+/// unsafe { mbrotli_encoder_session_destroy(session) };
+/// ```
+#[unsafe(no_mangle)]
+pub extern "C" fn mbrotli_encoder_session_create(
+    quality: c_int,
+    lgwin: c_int,
+) -> *mut MbrotliEncoderSession {
+    core::sessions::encoder_create(quality, lgwin)
+}
+
+/// Releases a session, abandoning any unfinished stream. Null is a no-op.
+///
+/// # Safety
+/// A non-null handle must be a live result of [`mbrotli_encoder_session_create`],
+/// used exclusively and destroyed exactly once. No pointer into it may be used
+/// after this call. Misaligned pointers are rejected without dereferencing.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mbrotli_encoder_session_destroy(session: *mut MbrotliEncoderSession) {
+    // SAFETY: forwarded from the public handle contract.
+    unsafe { core::sessions::encoder_destroy(session) }
+}
+
+/// Abandons the current stream and starts a new one with the same configuration.
+/// Retained workspace is reused according to the codec's retention policy.
+///
+/// # Errors
+/// Returns InvalidParameter for a null or misaligned handle, Error on codec
+/// failure or panic, and Ok on success. A poisoned session can be reinitialized.
+///
+/// # Safety
+/// The handle must be null or a live, exclusively accessed result of
+/// [`mbrotli_encoder_session_create`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mbrotli_encoder_session_reinit(
+    session: *mut MbrotliEncoderSession,
+) -> MbrotliResult {
+    // SAFETY: forwarded from the public handle contract.
+    unsafe { core::sessions::encoder_reinit(session) }
+}
+
+/// Advances the encoder into a possibly uninitialized output buffer.
+///
+/// On entry `*input_len` is the available input and `*output_len` the output
+/// capacity. On return they are the bytes consumed and produced in this call.
+/// Advance the input by the consumed count before retrying. NeedsOutput is
+/// backpressure, not a failure. NeedsInput requests more input; Finished ends
+/// the stream. Empty buffers may be null. No buffers are retained across calls.
+/// Once Finish is submitted, repeat Finish with exactly its unconsumed suffix.
+/// Process, Flush and Finish are accepted. Repeat Flush until NeedsInput;
+/// then input may resume. On Error both counts are zero and output is unspecified.
+/// Streaming bytes follow the Rust session API, without the one-shot bound or
+/// Google's one-shot empty-stream/fallback special cases.
+/// Exactly the reported output prefix is initialized; bytes after it are untouched
+/// on successful calls.
+///
+/// # Errors
+/// InvalidParameter rejects null/misaligned handles or count pointers, unknown
+/// operations, impossible buffer lengths, and overlapping buffers/counts/handle.
+/// Rejected arguments leave both counts unchanged and do not advance the session.
+/// Error reports a codec failure or panic; call reinit before further processing.
+/// A caught panic zeros both counts and leaves output unspecified.
+///
+/// # Safety
+/// The handle must be null or a live result of [`mbrotli_encoder_session_create`].
+/// Non-null aligned count pointers must be readable and writable `size_t` slots.
+/// Nonempty, non-null buffers must be valid for their declared lengths: input
+/// readable and output writable (initialization is unnecessary). No concurrent
+/// access to the handle, counts or output, or mutation of input, is permitted.
+/// Dangling pointers, handles of the wrong kind and undersized allocations
+/// cannot be detected and must never be supplied.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mbrotli_encoder_session_process(
+    session: *mut MbrotliEncoderSession,
+    input: *const u8,
+    input_len: *mut usize,
+    output: *mut u8,
+    output_len: *mut usize,
+    operation: c_int,
+) -> MbrotliResult {
+    // SAFETY: forwarded verbatim from this function's contract.
+    unsafe {
+        core::sessions::encoder_process(session, input, input_len, output, output_len, operation)
+    }
+}
+
+/// Drains accepted input without declaring EOF, into uninitialized output.
+/// Equivalent to [`mbrotli_encoder_session_process`] with empty input and
+/// Flush. Repeat while NeedsOutput is returned.
+/// For an encoder, NeedsInput means flushing is complete.
+///
+/// # Errors
+/// Same statuses and count/output guarantees as [`mbrotli_encoder_session_process`].
+///
+/// # Safety
+/// Same handle and output contracts as [`mbrotli_encoder_session_process`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mbrotli_encoder_session_flush(
+    session: *mut MbrotliEncoderSession,
+    output: *mut u8,
+    output_len: *mut usize,
+) -> MbrotliResult {
+    let mut input_len = 0;
+    // SAFETY: empty input is valid and the remaining contract is forwarded.
+    unsafe {
+        core::sessions::encoder_process(
+            session,
+            std::ptr::null(),
+            &mut input_len,
+            output,
+            output_len,
+            1,
+        )
+    }
+}
+
+/// Finishes the stream after all input has been accepted, into uninitialized output.
+/// Equivalent to [`mbrotli_encoder_session_process`] with empty input and
+/// Finish. Repeat while NeedsOutput is returned.
+/// The process operation's final-suffix rules still apply.
+///
+/// # Errors
+/// Same statuses and count/output guarantees as [`mbrotli_encoder_session_process`].
+///
+/// # Safety
+/// Same handle and output contracts as [`mbrotli_encoder_session_process`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mbrotli_encoder_session_finish(
+    session: *mut MbrotliEncoderSession,
+    output: *mut u8,
+    output_len: *mut usize,
+) -> MbrotliResult {
+    let mut input_len = 0;
+    // SAFETY: empty input is valid and the remaining contract is forwarded.
+    unsafe {
+        core::sessions::encoder_process(
+            session,
+            std::ptr::null(),
+            &mut input_len,
+            output,
+            output_len,
+            2,
+        )
+    }
+}
+
+/// Opaque owning decoder session. Only use pointers returned by
+/// [`mbrotli_decoder_session_create`]; release with [`mbrotli_decoder_session_destroy`].
+/// This is a pointer-only ABI token, not the layout of the allocation behind it.
+/// Never allocate, copy, dereference or pass a handle object by value; only its
+/// pointer may cross the ABI. Internal session layout changes do not affect C.
+#[repr(C)]
+pub struct MbrotliDecoderSession {
+    _private: [u8; 0],
+}
+
+/// Creates an independent decoder session with default stream settings.
+/// Returns null on invalid configuration, codec failure or a caught panic.
+/// The handle must eventually be destroyed, including after an error.
+///
+/// # Examples
+///
+/// ```
+/// use mbrotli_ffi::{mbrotli_decoder_session_create, mbrotli_decoder_session_destroy};
+/// let session = mbrotli_decoder_session_create();
+/// assert!(!session.is_null());
+/// // SAFETY: this is the live handle just created, with no concurrent access.
+/// unsafe { mbrotli_decoder_session_destroy(session) };
+/// ```
+#[unsafe(no_mangle)]
+pub extern "C" fn mbrotli_decoder_session_create() -> *mut MbrotliDecoderSession {
+    core::sessions::decoder_create()
+}
+
+/// Releases a session, abandoning any unfinished stream. Null is a no-op.
+///
+/// # Safety
+/// A non-null handle must be a live result of [`mbrotli_decoder_session_create`],
+/// used exclusively and destroyed exactly once. No pointer into it may be used
+/// after this call. Misaligned pointers are rejected without dereferencing.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mbrotli_decoder_session_destroy(session: *mut MbrotliDecoderSession) {
+    // SAFETY: forwarded from the public handle contract.
+    unsafe { core::sessions::decoder_destroy(session) }
+}
+
+/// Abandons the current stream and starts a new one with the same configuration.
+/// Retained workspace is reused according to the codec's retention policy.
+///
+/// # Errors
+/// Returns InvalidParameter for a null or misaligned handle, Error on codec
+/// failure or panic, and Ok on success. A poisoned session can be reinitialized.
+///
+/// # Safety
+/// The handle must be null or a live, exclusively accessed result of
+/// [`mbrotli_decoder_session_create`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mbrotli_decoder_session_reinit(
+    session: *mut MbrotliDecoderSession,
+) -> MbrotliResult {
+    // SAFETY: forwarded from the public handle contract.
+    unsafe { core::sessions::decoder_reinit(session) }
+}
+
+/// Advances the decoder into a possibly uninitialized output buffer.
+///
+/// On entry `*input_len` is the available input and `*output_len` the output
+/// capacity. On return they are the bytes consumed and produced in this call.
+/// Advance the input by the consumed count before retrying. NeedsOutput is
+/// backpressure, not a failure. NeedsInput requests more input; Finished ends
+/// the stream. Empty buffers may be null. No buffers are retained across calls.
+/// Once Finish is submitted, repeat Finish with exactly its unconsumed suffix.
+/// Only Process and Finish are accepted. Finish declares EOF and detects
+/// truncation. Decoding uses the default single-member policy; trailing input
+/// is left unconsumed when Finished is returned. On codec Error, counts retain the exact partial progress.
+/// Exactly the reported output prefix is initialized; bytes after it are untouched
+/// on successful calls, and on decoder errors.
+///
+/// # Errors
+/// InvalidParameter rejects null/misaligned handles or count pointers, unknown
+/// operations, impossible buffer lengths, and overlapping buffers/counts/handle.
+/// Rejected arguments leave both counts unchanged and do not advance the session.
+/// Error reports a codec failure or panic; call reinit before further processing.
+/// A caught panic zeros both counts and leaves output unspecified.
+///
+/// # Safety
+/// The handle must be null or a live result of [`mbrotli_decoder_session_create`].
+/// Non-null aligned count pointers must be readable and writable `size_t` slots.
+/// Nonempty, non-null buffers must be valid for their declared lengths: input
+/// readable and output writable (initialization is unnecessary). No concurrent
+/// access to the handle, counts or output, or mutation of input, is permitted.
+/// Dangling pointers, handles of the wrong kind and undersized allocations
+/// cannot be detected and must never be supplied.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mbrotli_decoder_session_process(
+    session: *mut MbrotliDecoderSession,
+    input: *const u8,
+    input_len: *mut usize,
+    output: *mut u8,
+    output_len: *mut usize,
+    operation: c_int,
+) -> MbrotliResult {
+    // SAFETY: forwarded verbatim from this function's contract.
+    unsafe {
+        core::sessions::decoder_process(session, input, input_len, output, output_len, operation)
+    }
+}
+
+/// Drains accepted input without declaring EOF, into uninitialized output.
+/// Equivalent to [`mbrotli_decoder_session_process`] with empty input and
+/// Process. Repeat while NeedsOutput is returned.
+/// The process operation's final-suffix rules still apply.
+///
+/// # Errors
+/// Same statuses and count/output guarantees as [`mbrotli_decoder_session_process`].
+///
+/// # Safety
+/// Same handle and output contracts as [`mbrotli_decoder_session_process`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mbrotli_decoder_session_flush(
+    session: *mut MbrotliDecoderSession,
+    output: *mut u8,
+    output_len: *mut usize,
+) -> MbrotliResult {
+    let mut input_len = 0;
+    // SAFETY: empty input is valid and the remaining contract is forwarded.
+    unsafe {
+        core::sessions::decoder_process(
+            session,
+            std::ptr::null(),
+            &mut input_len,
+            output,
+            output_len,
+            0,
+        )
+    }
+}
+
+/// Finishes the stream after all input has been accepted, into uninitialized output.
+/// Equivalent to [`mbrotli_decoder_session_process`] with empty input and
+/// Finish. Repeat while NeedsOutput is returned.
+/// The process operation's final-suffix rules still apply.
+///
+/// # Errors
+/// Same statuses and count/output guarantees as [`mbrotli_decoder_session_process`].
+///
+/// # Safety
+/// Same handle and output contracts as [`mbrotli_decoder_session_process`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mbrotli_decoder_session_finish(
+    session: *mut MbrotliDecoderSession,
+    output: *mut u8,
+    output_len: *mut usize,
+) -> MbrotliResult {
+    let mut input_len = 0;
+    // SAFETY: empty input is valid and the remaining contract is forwarded.
+    unsafe {
+        core::sessions::decoder_process(
+            session,
+            std::ptr::null(),
+            &mut input_len,
+            output,
+            output_len,
+            2,
+        )
+    }
 }

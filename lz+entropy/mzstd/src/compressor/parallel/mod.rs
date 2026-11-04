@@ -12,6 +12,10 @@
 //! [`ParallelCompressor::prepare_slice`] and matches
 //! [`Compressor::compress`](crate::Compressor::compress).
 //!
+//! [`ParallelCompressor::prepare_source`] plans the same frame over a
+//! [`RandomAccessSource`] the tasks read their segments from, so they own
+//! everything they touch and run on detached threads.
+//!
 //! # Examples
 //!
 //! ```
@@ -35,21 +39,26 @@ mod core;
 mod error;
 mod io;
 mod session;
+mod source;
 
 use alloc::sync::Arc;
 use alloc::vec;
 use alloc::vec::Vec;
 use std::sync::Mutex;
 
-pub use error::ParallelEncodeError;
+pub use error::{ParallelEncodeError, SourceIoError};
 pub use io::{ParallelEncoderReader, ParallelEncoderWriter};
 pub use session::{
     OwnedParallelTask, ParallelEncoderSession, ParallelEncoderSessionOwned, ParallelEncoderStatus,
     ParallelProgress, ParallelTaskQueue, ParallelTasks,
 };
+pub use source::{ArcBytesSource, FileSource, RandomAccessSource, SeekSource, SourceIdentity};
 
-use self::core::{EnginePool, FramePlan, compress_segment, compress_serial, lock};
+use self::core::{
+    EnginePool, FramePlan, Input, SharedSource, compress_segment, compress_serial, lock,
+};
 use super::config::{ConfigError, EncoderConfig, Parameter};
+use super::core::cctx::Engine;
 use super::core::cctx::RequestedParams;
 use super::error::EncodeError;
 use super::internal::requested_params;
@@ -254,72 +263,174 @@ impl ParallelCompressor {
         self.pool.release();
     }
 
-    /// Plans the compression of `input` into at most `tasks` tasks.
+    /// Plans the compression of a borrowed `input` into at most `tasks`
+    /// tasks, without compressing or copying anything yet.
     ///
-    /// Segments are grouped contiguously; the grouping does not change the
-    /// frame.
+    /// The input is cut into segments of the configured
+    /// [`SegmentSize`], and the segments are split into contiguous runs, one
+    /// per task, their counts differing by at most one. There are never more
+    /// tasks than segments. The frame depends on the segment size, never on
+    /// `tasks` or on the order the tasks run in. An input that fits in one
+    /// segment, empty input included, becomes a single task that compresses
+    /// it serially, and the frame is byte-identical to
+    /// [`Compressor::compress`](crate::Compressor::compress).
+    ///
+    /// The tasks borrow `input`, so they run within its lifetime, for
+    /// example on [`std::thread::scope`] or a scoped pool. Take them with
+    /// [`ScopedParallelBatch::take_tasks`], run each on any thread, then
+    /// call [`ScopedParallelBatch::finish`]. `finish` runs the tasks that
+    /// were never taken on the calling thread. Each task reads its segments
+    /// in place, together with the overlap before them, so the input is
+    /// never copied. For tasks that must outlive the input, use
+    /// [`Self::prepare_source`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mzstd::compressor::parallel::{
+    ///     ParallelCompressor, ParallelConfig, SegmentSize, TaskCount,
+    /// };
+    ///
+    /// let config = ParallelConfig::default().with_segment_size(SegmentSize::MIN);
+    /// let mut compressor = ParallelCompressor::new(Default::default(), config)?;
+    /// let input = b"borrowed by scoped tasks ".repeat(10_000);
+    ///
+    /// // 250 000 bytes are four 64 KiB segments, so three tasks.
+    /// let mut batch = compressor.prepare_slice(&input, TaskCount::try_from(3)?);
+    /// let tasks = batch.take_tasks();
+    /// assert_eq!(tasks.len(), 3);
+    /// std::thread::scope(|scope| {
+    ///     for task in tasks {
+    ///         scope.spawn(move || task.run());
+    ///     }
+    /// });
+    /// let frame = batch.finish()?;
+    /// // The task count does not change the frame.
+    /// assert_eq!(frame, compressor.compress(&input)?);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
     pub fn prepare_slice<'a>(
         &mut self,
         input: &'a [u8],
         tasks: TaskCount,
     ) -> ScopedParallelBatch<'a> {
+        self.prepare(Input::Slice(input), input.len() as u64, tasks)
+    }
+
+    /// Plans the compression of an owned or shared source into at most
+    /// `tasks` tasks that own everything they read, so they run on detached
+    /// threads.
+    ///
+    /// The source is converted into an `Arc<S>` once, and its length and
+    /// [identity](RandomAccessSource::identity) are recorded. Each task reads
+    /// its segments and their overlap; a frame with a checksum reads the
+    /// whole source once more when the batch is finished. The frame is
+    /// byte-identical to [`Self::prepare_slice`] over the same bytes.
+    ///
+    /// Concrete sources and `Arc<dyn RandomAccessSource>` both enter here.
+    /// An existing `Arc` or a custom conversion may need `S` named, for
+    /// example `prepare_source::<FileSource, _>(shared_file, tasks)`,
+    /// because `Into<Arc<S>>` admits more than one target.
+    ///
+    /// # Errors
+    ///
+    /// [`ParallelEncodeError::SourceMetadata`] when the source's length
+    /// cannot be read.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mzstd::compressor::parallel::{
+    ///     ParallelCompressor, ParallelConfig, SeekSource, SegmentSize, TaskCount,
+    /// };
+    /// use std::io::Cursor;
+    ///
+    /// let config = ParallelConfig::default().with_segment_size(SegmentSize::MIN);
+    /// let mut compressor = ParallelCompressor::new(Default::default(), config)?;
+    /// let input = b"read by detached tasks ".repeat(10_000);
+    /// let source = SeekSource::from(Cursor::new(input.clone()));
+    ///
+    /// let mut batch = compressor.prepare_source(source, TaskCount::try_from(4)?)?;
+    /// let workers: Vec<_> = batch
+    ///     .take_tasks()
+    ///     .into_iter()
+    ///     .map(|task| std::thread::spawn(move || task.run()))
+    ///     .collect();
+    /// workers.into_iter().for_each(|worker| worker.join().unwrap());
+    /// assert_eq!(batch.finish()?, compressor.compress(&input)?);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn prepare_source<S, T>(
+        &mut self,
+        source: T,
+        tasks: TaskCount,
+    ) -> Result<OwnedParallelBatch, ParallelEncodeError>
+    where
+        S: RandomAccessSource + ?Sized,
+        T: Into<Arc<S>>,
+    {
+        let input = Input::Source(Arc::new(SharedSource(source.into())));
+        let len = input.len()?;
+        Ok(self.prepare(input, len, tasks))
+    }
+
+    /// Plans `len` bytes of `input` into at most `tasks` tasks.
+    fn prepare<'a>(&self, input: Input<'a>, len: u64, tasks: TaskCount) -> ScopedParallelBatch<'a> {
         let segment = self.parallel.segment_size.get();
         let shared = Arc::new(BatchShared::default());
-        let plan = FramePlan::new(&self.requested, Some(input.len() as u64));
-        if input.len() <= segment {
-            let task = ScopedParallelTask {
-                work: Work::Serial {
-                    requested: self.requested,
-                    input,
-                },
-                index: 0,
-                segment: 0,
-                shared: Arc::clone(&shared),
-                pool: Arc::clone(&self.pool),
-                running: false,
-                published: false,
+        let plan = FramePlan::new(&self.requested, Some(len));
+        let identity = input.identity();
+        let task = |work, index, segment| ScopedParallelTask {
+            work,
+            index,
+            segment,
+            shared: Arc::clone(&shared),
+            pool: Arc::clone(&self.pool),
+            running: false,
+            published: false,
+        };
+        let serial = len <= segment as u64;
+        let list = if serial {
+            let work = Work::Serial {
+                requested: self.requested,
+                input: input.clone(),
+                len,
             };
-            return ScopedParallelBatch {
-                tasks: vec![task],
-                shared,
-                expected: 1,
-                serial: true,
-                plan,
-                input,
-            };
-        }
-        let segments = input.len().div_ceil(segment);
-        let task_count = tasks.get().min(segments);
-        let per_task = segments / task_count;
-        let extra = segments % task_count;
-        let mut list = Vec::with_capacity(task_count);
-        let mut first = 0;
-        for t in 0..task_count {
-            let count = per_task + usize::from(t < extra);
-            list.push(ScopedParallelTask {
-                work: Work::Segments {
-                    plan,
-                    input,
-                    first,
-                    count,
-                    segment,
-                },
-                index: t,
-                segment: first as u64,
-                shared: Arc::clone(&shared),
-                pool: Arc::clone(&self.pool),
-                running: false,
-                published: false,
-            });
-            first += count;
-        }
+            vec![task(work, 0, 0)]
+        } else {
+            let segments = len.div_ceil(segment as u64);
+            // At most `TaskCount::MAX` tasks, so the count fits a `usize`.
+            let task_count = (tasks.get() as u64).min(segments);
+            let per_task = segments / task_count;
+            let extra = segments % task_count;
+            let mut first = 0;
+            (0..task_count)
+                .map(|t| {
+                    let count = per_task + u64::from(t < extra);
+                    let work = Work::Segments {
+                        plan,
+                        input: input.clone(),
+                        len,
+                        first,
+                        count,
+                        segment,
+                    };
+                    let task = task(work, t as usize, first);
+                    first += count;
+                    task
+                })
+                .collect()
+        };
         ScopedParallelBatch {
+            expected: list.len(),
             tasks: list,
             shared,
-            expected: task_count,
-            serial: false,
+            serial,
             plan,
             input,
+            len,
+            identity,
+            segment,
         }
     }
 
@@ -345,26 +456,76 @@ struct BatchShared {
 /// What a scoped task compresses.
 #[derive(Debug)]
 enum Work<'a> {
-    /// The whole input, serially.
+    /// The whole input of `len` bytes, serially.
     Serial {
         requested: RequestedParams,
-        input: &'a [u8],
+        input: Input<'a>,
+        len: u64,
     },
-    /// `count` segments starting at segment `first`.
+    /// `count` segments of `segment` bytes starting at segment `first`, of
+    /// an input of `len` bytes.
     Segments {
         plan: FramePlan,
-        input: &'a [u8],
-        first: usize,
-        count: usize,
+        input: Input<'a>,
+        len: u64,
+        first: u64,
+        count: u64,
         segment: usize,
     },
+}
+
+impl Work<'_> {
+    /// Compresses the work with `engine`: a whole frame, or the segments'
+    /// blocks.
+    ///
+    /// # Errors
+    ///
+    /// [`ParallelEncodeError::SourceRead`] when a source fails, and
+    /// [`ParallelEncodeError::Encode`] when a segment fails to compress.
+    fn compress(&self, engine: &mut Engine) -> Result<Vec<u8>, ParallelEncodeError> {
+        let mut buffer = Vec::new();
+        match self {
+            Self::Serial {
+                requested,
+                input,
+                len,
+            } => {
+                let data = input.read(0..*len, 0, &mut buffer)?;
+                Ok(compress_serial(engine, requested, data)?)
+            }
+            Self::Segments {
+                plan,
+                input,
+                len,
+                first,
+                count,
+                segment,
+            } => {
+                let overlap = plan.overlap() as u64;
+                let segment = *segment as u64;
+                let mut out = Vec::new();
+                for s in *first..first + count {
+                    let start = s * segment;
+                    let end = (start + segment).min(*len);
+                    let from = start.saturating_sub(overlap);
+                    let data = input.read(from..end, s, &mut buffer)?;
+                    compress_segment(engine, plan, data, (start - from) as usize, &mut out)
+                        .map_err(|error| EncodeError::from_core(error, 0, None))?;
+                }
+                Ok(out)
+            }
+        }
+    }
 }
 
 /// One unit of work of a batch; run it on any thread.
 ///
 /// Dropping it unrun makes [`ScopedParallelBatch::finish`] report
-/// [`ParallelEncodeError::TaskAbandoned`], and a panic while it runs
+/// [`ParallelEncodeError::TaskAbandoned`], and a panic while it runs,
+/// including one inside a [`RandomAccessSource`],
 /// [`ParallelEncodeError::TaskPanicked`]; the panic itself still unwinds.
+/// The tasks of [`ParallelCompressor::prepare_source`] borrow nothing and
+/// are `'static`.
 #[derive(Debug)]
 pub struct ScopedParallelTask<'a> {
     work: Work<'a>,
@@ -379,46 +540,14 @@ pub struct ScopedParallelTask<'a> {
 }
 
 impl ScopedParallelTask<'_> {
-    /// Compresses this task's segments.
+    /// Compresses this task's segments, reading them first from a source.
     pub fn run(mut self) {
         self.running = true;
         let mut engine = self.pool.take();
-        let result = match &self.work {
-            Work::Serial { requested, input } => compress_serial(&mut engine, requested, input),
-            Work::Segments {
-                plan,
-                input,
-                first,
-                count,
-                segment,
-            } => {
-                let overlap = plan.overlap();
-                let mut out = Vec::new();
-                let mut result = Ok(());
-                for s in *first..first + count {
-                    let start = s * segment;
-                    let end = (start + segment).min(input.len());
-                    let from = start.saturating_sub(overlap);
-                    match compress_segment(
-                        &mut engine,
-                        plan,
-                        &input[from..end],
-                        start - from,
-                        &mut out,
-                    ) {
-                        Ok(()) => {}
-                        Err(error) => {
-                            result = Err(EncodeError::from_core(error, 0, None));
-                            break;
-                        }
-                    }
-                }
-                result.map(|()| out)
-            }
-        };
+        let result = self.work.compress(&mut engine);
         // An engine that unwound is dropped instead of being returned here.
         self.pool.give(engine);
-        self.publish(result.map_err(ParallelEncodeError::from));
+        self.publish(result);
     }
 
     fn publish(&mut self, result: Result<Vec<u8>, ParallelEncodeError>) {
@@ -452,8 +581,17 @@ pub struct ScopedParallelBatch<'a> {
     expected: usize,
     serial: bool,
     plan: FramePlan,
-    input: &'a [u8],
+    input: Input<'a>,
+    /// The input's length when the batch was planned.
+    len: u64,
+    /// A source's identity when the batch was planned.
+    identity: Option<SourceIdentity>,
+    segment: usize,
 }
+
+/// A batch over an owned source, from
+/// [`ParallelCompressor::prepare_source`]; its tasks are `'static`.
+pub type OwnedParallelBatch = ScopedParallelBatch<'static>;
 
 impl<'a> ScopedParallelBatch<'a> {
     /// Takes the tasks.
@@ -467,11 +605,16 @@ impl<'a> ScopedParallelBatch<'a> {
     ///
     /// [`ParallelEncodeError::BatchFailed`] with the failure of the first
     /// failing task as its source: a segment that failed to compress
-    /// ([`ParallelEncodeError::Encode`]), a task dropped without running
+    /// ([`ParallelEncodeError::Encode`]), a source that failed to read it
+    /// ([`ParallelEncodeError::SourceRead`]), a task dropped without running
     /// ([`ParallelEncodeError::TaskAbandoned`]) or one that panicked
     /// ([`ParallelEncodeError::TaskPanicked`]).
     /// [`ParallelEncodeError::InvalidState`] when a task was leaked and never
-    /// reported.
+    /// reported. For a source, [`ParallelEncodeError::SourceChanged`] when
+    /// its length or identity differs from when the batch was planned,
+    /// [`ParallelEncodeError::SourceMetadata`] when its length cannot be
+    /// read, and [`ParallelEncodeError::SourceRead`] when reading it for the
+    /// checksum fails.
     ///
     /// # Examples
     ///
@@ -513,18 +656,20 @@ impl<'a> ScopedParallelBatch<'a> {
                 Err(error) => return Err(ParallelEncodeError::BatchFailed(Arc::new(error))),
             }
         }
+        self.input.verify(self.len, self.identity.as_ref())?;
         if self.serial {
             parts.iter().for_each(|part| out.extend_from_slice(part));
             return Ok(());
+        }
+        // Hashed before `out` is touched: reading a source may fail.
+        let mut hasher = Xxh64::new(0);
+        if self.plan.applied.fparams.checksum {
+            self.input.hash(self.len, self.segment, &mut hasher)?;
         }
         let header = self.plan.header();
         out.reserve(header.len() + parts.iter().map(Vec::len).sum::<usize>() + 7);
         out.extend_from_slice(&header);
         parts.iter().for_each(|part| out.extend_from_slice(part));
-        let mut hasher = Xxh64::new(0);
-        if self.plan.applied.fparams.checksum {
-            hasher.update(self.input);
-        }
         out.extend_from_slice(&self.plan.epilogue(&hasher));
         Ok(())
     }

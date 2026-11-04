@@ -87,10 +87,35 @@ impl OwnedParallelTask {
 /// dropped, so `for task in queue { task.run() }` is a complete executor
 /// loop.
 ///
-/// Dropping every handle abandons the tasks still queued: the session then
-/// fails with [`ParallelEncodeError::TaskAbandoned`] or
-/// [`ParallelEncodeError::TaskQueueClosed`] instead of waiting forever. On a
-/// single thread, run queued tasks with [`Self::next_task`] before waiting.
+/// # Progress and blocking
+///
+/// Keeping a queue handle alive does not run its tasks. If tasks stay
+/// queued, or an executor holds a task without running or dropping it,
+/// operations that need their results can wait indefinitely. Executors that
+/// stop making progress cause no error, and there is no timeout.
+///
+/// - [`ParallelEncoderSession::process`] does not block: it reports
+///   [`ParallelEncoderStatus::Pending`](super::ParallelEncoderStatus::Pending)
+///   when it needs a task to complete. [`ParallelEncoderSession::wait`] can
+///   block indefinitely. On a single thread, run the tasks taken with
+///   [`Self::next_task`] before waiting.
+/// - The [`ParallelEncoderReader`](super::ParallelEncoderReader) and
+///   [`ParallelEncoderWriter`](super::ParallelEncoderWriter) adapters wait
+///   internally. A reader's `read`, or a writer's `write`, `flush`,
+///   [`try_finish`](super::ParallelEncoderWriter::try_finish) or
+///   [`finish`](super::ParallelEncoderWriter::finish), can block while tasks
+///   are outstanding. Keep executors able to run throughout these calls,
+///   until `finish` returns. In a bounded pool, do not occupy every worker
+///   with callers waiting for tasks scheduled on that same pool.
+///
+/// Dropping every queue handle closes the queue and abandons the tasks still
+/// queued. A later attempt to queue a task fails with
+/// [`ParallelEncodeError::TaskQueueClosed`], and dropping a queued or taken
+/// task without running it reports [`ParallelEncodeError::TaskAbandoned`].
+/// The session wraps these causes in [`ParallelEncodeError::StreamFailed`],
+/// and the reader and writer surface them as [`std::io::Error`]s. Closing
+/// the queue does not drop tasks executors already hold: those must still be
+/// run or dropped.
 ///
 /// # Examples
 ///

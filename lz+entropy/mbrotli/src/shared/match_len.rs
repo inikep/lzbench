@@ -528,15 +528,14 @@ mod tests {
             data.extend(core::iter::repeat_n(run % 3, usize::from(run)));
         }
         // Every level the host runs, and the scalar fallback.
-        let levels: Vec<Level> = crate::backend::Backend::available()
-            .into_iter()
-            .map(|backend| backend.0)
-            .collect();
-        for level in levels {
-            for cur_ix in (0..data.len()).step_by(5) {
+        // Miri samples positions sparsely, with prime steps so they still
+        // land at every offset within a vector.
+        let (cur_step, prev_step) = if cfg!(miri) { (293, 131) } else { (5, 3) };
+        for level in crate::backend::Backend::levels() {
+            for cur_ix in (0..data.len()).step_by(cur_step) {
                 for max_length in [0, 1, 7, 8, 9, 16, 17, 63, 200] {
                     let cur = current_window(&data, cur_ix, max_length);
-                    for prev_ix in (0..data.len() + 4).step_by(3) {
+                    for prev_ix in (0..data.len() + 4).step_by(prev_step) {
                         let (inlined, outlined) = both_scans(level, &data, prev_ix, cur);
                         assert_eq!(
                             inlined, outlined,
@@ -596,8 +595,9 @@ mod tests {
                 window - window % stride
             );
         }
-        dispatch!(Level::try_detect().unwrap_or_else(Level::baseline), simd => check(simd));
-        dispatch!(Level::fallback(), simd => check(simd));
+        for level in crate::backend::Backend::levels() {
+            dispatch!(level, simd => check(simd));
+        }
     }
 
     #[test]
@@ -611,10 +611,7 @@ mod tests {
         for mismatch in [0usize, 3, 7, 8, 9, 15, 16, 31, 32, 63, 64, 99] {
             right[mismatch] ^= 1;
             assert_eq!(common_prefix_len(&left, &right, 100), mismatch);
-            for level in [
-                Level::try_detect().unwrap_or_else(Level::baseline),
-                Level::fallback(),
-            ] {
+            for level in crate::backend::Backend::levels() {
                 let wide =
                     dispatch!(level, simd => common_prefix_len_simd(simd, &left, &right, 100));
                 assert_eq!(wide, mismatch, "{mismatch}");
