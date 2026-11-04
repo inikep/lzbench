@@ -6,7 +6,7 @@ v2.x.y (work-in-progress)
 - added zlib-turbo 1.1.0 (by @icodywu)
 - updated aceapex to 2.5.0 (thanks to @yasha1971-coder); adds aceapex_fast (levels 1-8): the FAST profile, LZ77 without an entropy stage
 - updated kanzi to 2.6.0 (by @flanglet)
-- updated lzav to 7.0 (thanks to @avaneev)
+- updated lzav to 7.1 (thanks to @avaneev)
 - updated mbrotli to 0.5.15 (by @Mnwa)
 - updated slz to 1.4-dev3 (by @wtarreau)
 - updated zxc to 0.15.0 (thanks to @hellobertrand)

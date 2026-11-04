@@ -1,16 +1,13 @@
 /**
  * @file lzav.h
  *
- * @version 7.0
+ * @version 7.1
  *
  * @brief Self-contained header file for the "LZAV" in-memory data compression
  * and decompression algorithms.
  *
  * The source code is written in ISO C99 and automatically provides full C++
- * compatibility when compiled with a C++ compiler. Compliance with regard to
- * pointer arithmetic beyond the end of a buffer is explicitly waived -
- * the code assumes a flat memory space and that pointer arithmetic is
- * modulo 2^w.
+ * compatibility when compiled with a C++ compiler.
  *
  * The description is available at https://github.com/avaneev/lzav
  *
@@ -42,8 +39,8 @@
 #ifndef LZAV_INCLUDED
 #define LZAV_INCLUDED
 
-#define LZAV_API_VER 0x300 ///< API version; unrelated to the code version.
-#define LZAV_VER_STR "7.0" ///< LZAV source code version string.
+#define LZAV_API_VER 0x301 ///< API version; unrelated to the code version.
+#define LZAV_VER_STR "7.1" ///< LZAV source code version string.
 
 /**
  * @def LZAV_FMT_MIN
@@ -140,8 +137,9 @@
 
 #if defined( __cplusplus )
 
+	#include <cstddef>
 	#include <climits>
-	#include <cstring> // Defines std::size_t.
+	#include <cstring>
 
 	#if defined( LZAV_EXCEPT )
 		#define LZAV_NOEXC
@@ -191,8 +189,9 @@
 
 #else // defined( __cplusplus )
 
+	#include <stddef.h>
 	#include <limits.h>
-	#include <string.h> // Defines size_t.
+	#include <string.h>
 	#include <stdint.h>
 
 	#define LZAV_NOEXC
@@ -305,14 +304,7 @@
 
 /**
  * @def LZAV_PTR32
- * @brief Macro denoting that pointers are likely to be 32-bit (pointer
- * overflow checks are required).
- *
- * Note that on 64-bit platforms, pointer overflow cannot happen since the
- * LZAV data format's varint decoding produces a value strictly less than
- * `2^31 + 16`, while 64-bit pointers on existing platforms are limited to
- * values up to `2^57` (or `2^52` on AArch64). `2^57 + 2^31 + 16` is much less
- * than `2^64`.
+ * @brief Macro denoting that pointers are likely to be 32-bit.
  */
 
 #if SIZE_MAX <= 0xFFFFFFFFUL && \
@@ -630,6 +622,7 @@ namespace LZAV_NS {
 using std::memcpy;
 using std::memset;
 using std::size_t;
+using std::ptrdiff_t;
 
 #if __cplusplus >= 201103L
 
@@ -658,8 +651,7 @@ enum LZAV_ERROR
 	LZAV_E_DSTOOB = -3, ///< Destination buffer out-of-bounds error.
 	LZAV_E_REFOOB = -4, ///< Back-reference out-of-bounds or varint error.
 	LZAV_E_DSTLEN = -5, ///< Decompressed length mismatch error.
-	LZAV_E_UNKFMT = -6, ///< Unknown data format or invalid `mref`.
-	LZAV_E_PTROVR = -7 ///< Pointer overflow error.
+	LZAV_E_UNKFMT = -6 ///< Unknown data format or invalid `mref`.
 };
 
 #if defined( LZAV_NS )
@@ -826,7 +818,9 @@ LZAV_INLINE_F size_t lzav_match_len( const uint8_t* const p1,
 		#endif // defined( _MSC_VER )
 		}
 
+		#if !defined( LZAV_ARCH64 )
 		o2 += 4;
+		#endif // defined( LZAV_ARCH64 )
 		o += 4;
 	}
 
@@ -932,8 +926,9 @@ LZAV_INLINE_F uint8_t* lzav_write_varint_4( uint8_t* op,
 
 		if LZAV_LIKELY( v < 32768 )
 		{
-			const uint16_t ov = (uint16_t) LZAV_COND_EC( v, v << 8 | v >> 8 );
+			uint16_t ov = (uint16_t) v;
 
+			LZAV_IEC16( ov );
 			memcpy( op + 1, &ov, 2 );
 			op += 3;
 		}
@@ -1525,7 +1520,8 @@ scan_ip:
 
 			if LZAV_UNLIKELY( mavg < ( 100 << 10 ))
 			{
-				ip += (size_t) 100 - ( mavg >> 10 );
+				const size_t adv = (size_t) 100 - ( mavg >> 10 );
+				ip += ( (size_t) ( ipe - ip ) < adv ? 0 : adv );
 			}
 		}
 	}
@@ -2154,15 +2150,15 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 	const uint8_t* LZAV_RESTRICT ip =
 		(const uint8_t*) src; // Compressed data pointer.
 
-	const uint8_t* const ipet = ip + srclen - litfin; // Block header read
-		// threshold.
-	const uint8_t* const ipetg = ( ipet - ip < 64 ?
+	const uint8_t* const ipe = ip + srclen; // Compressed data end pointer.
+	const uint8_t* const ipet = ipe - litfin; // Block header read threshold.
+	const uint8_t* const ipetg = ( (size_t) ( ipet - ip ) < 64 ?
 		ip : ipet - 64 ); // Threshold for `goto refblk`.
 
 	uint8_t* op = (uint8_t*) dst; // Destination (decompressed data) pointer.
 	uint8_t* const ope = op + dstlen; // Destination boundary pointer.
-	uint8_t* const opet = ( ope - op < 63 ? op : ope - 63 ); // Threshold for
-		// fast copying to the destination.
+	uint8_t* const opet = ( (size_t) ( ope - op ) < 63 ? op : ope - 63 );
+		// Threshold for fast copying to the destination.
 
 	const size_t mref1 = (size_t) ( *ip & 15 ) - 1; // Minimum reference
 		// length minus 1.
@@ -2179,6 +2175,8 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 	lzav_shift_t csh = 8; // Reference offset-carry shift (inverse).
 
 	#define LZAV_RLE_INIT8( incvar ) \
+		if LZAV_UNLIKELY( d == 0 ) \
+			goto err_refoob; \
 		op[ 0 ] = ipd[ 0 ]; \
 		op[ 1 ] = ipd[ 1 ]; \
 		op[ 2 ] = ipd[ 2 ]; \
@@ -2190,8 +2188,8 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 		size_t d = ( x ) >> csh; \
 		const size_t md = (size_t) ( op - (uint8_t*) dst ); \
 		csh = ( sh ); \
-		d |= cv; \
 		bt &= 3; \
+		d |= cv; \
 		ipd = op; \
 		cv = ( v ); \
 		if LZAV_UNLIKELY( d > md ) \
@@ -2219,11 +2217,11 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 
 	while LZAV_LIKELY( ip < ipet )
 	{
+		const uint8_t* ipd; // Source data pointer.
 		size_t cc; // Byte copy count.
 
 		if LZAV_LIKELY(( bh & 0x30 ) != 0 ) // Block type != 0.
 		{
-			const uint8_t* ipd; // Source data pointer.
 			size_t bt; // Block type (3 bits).
 
 			static const uint32_t rleinc1[ 16 ] = {
@@ -2251,7 +2249,7 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 				8, 8, 8 - 2, 8 - 3, 8, 8 - 3, 8 - 5, 8 - 6 };
 
 			LZAV_SET_IPD_CV_4(( bv << 9 | bh << 1 ) & om[ bt ],
-				(size_t) ip[ bt - 1 ] >> csh, ocsh[ bt ]);
+				(size_t) ip[ (ptrdiff_t) bt - 1 ] >> csh, ocsh[ bt ]);
 
 			const size_t bt8 = bt << 3;
 			ip += bt;
@@ -2259,12 +2257,11 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 
 			LZAV_PREFETCH( ipd );
 
-			uint8_t* opcc = op + mref1;
 			cc = bh & 15;
 
 			if LZAV_LIKELY( cc != 0 ) // True if no length bytes follow.
 			{
-				opcc += cc;
+				cc += mref1;
 				bh = bv & 0xFF;
 
 				if LZAV_LIKELY( op < opet )
@@ -2273,100 +2270,68 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 					{
 						memcpy( op, ipd, 16 );
 						memcpy( op + 16, ipd + 16, 4 );
-						op = opcc;
+						op += cc;
 						continue;
 					}
 
-					if LZAV_UNLIKELY( d == 0 )
-					{
-						goto err_refoob;
-					}
+					LZAV_RLE_INIT8( bt );
 
-					LZAV_RLE_INIT8( cc );
-
-					memcpy( op + 8, ipd + cc, 8 );
-					memcpy( op + 16, ipd + cc + 8, 4 );
-					op = opcc;
+					memcpy( op + 8, ipd + bt, 8 );
+					memcpy( op + 16, ipd + bt + 8, 4 );
+					op += cc;
 					continue;
 				}
 			}
 			else
 			{
-				bh = bv & 0xFF;
+				cc = bv & 0xFF;
 				ip++;
 
-				if LZAV_UNLIKELY( bh == 255 )
+				if LZAV_UNLIKELY( cc == 255 )
 				{
-					LZAV_LOAD_VARINT_4( bh );
-
-					#if defined( LZAV_PTR32 )
-					if( bh >= 0x7FFFFFE0 )
-					{
-						goto err_refoob;
-					}
-					#endif // defined( LZAV_PTR32 )
+					LZAV_LOAD_VARINT_4( cc );
 				}
 
-				opcc += bh + 16;
 				bh = *ip;
-
-				#if defined( LZAV_PTR32 )
-				if LZAV_UNLIKELY( opcc < op )
-				{
-					goto err_ptrovr;
-				}
-				#endif // defined( LZAV_PTR32 )
-
-				#if defined( LZAV_LONG_COPY )
-				if LZAV_LIKELY(( opcc < opet ) & ( d > 15 ))
-				{
-					do LZAV_LIKELY_DO
-					{
-						memcpy( op, ipd, 16 );
-						memcpy( op + 16, ipd + 16, 16 );
-						memcpy( op + 32, ipd + 32, 16 );
-						memcpy( op + 48, ipd + 48, 16 );
-						op += 64;
-						ipd += 64;
-					} while LZAV_LIKELY_DO_EXPR( op < opcc );
-
-					op = opcc;
-					continue;
-				}
-				#else // defined( LZAV_LONG_COPY )
-				if LZAV_LIKELY(( opcc < opet ) & ( d > 7 ))
-				{
-					do LZAV_LIKELY_DO
-					{
-						memcpy( op, ipd, 8 );
-						memcpy( op + 8, ipd + 8, 8 );
-						memcpy( op + 16, ipd + 16, 8 );
-						memcpy( op + 24, ipd + 24, 8 );
-						op += 32;
-						ipd += 32;
-					} while LZAV_LIKELY_DO_EXPR( op < opcc );
-
-					op = opcc;
-					continue;
-				}
-				#endif // defined( LZAV_LONG_COPY )
+				cc += mref1 + 16;
 			}
 
-			if LZAV_LIKELY( d < 8 )
+			if LZAV_UNLIKELY( cc > (size_t) ( ope - op ))
 			{
-				if LZAV_UNLIKELY(( ope - opcc < 8 ) | ( d == 0 ))
-				{
-					goto err_dstoob_ref;
-				}
-
-				LZAV_RLE_INIT8( cc );
-
-				op += 8;
-				ipd += cc;
+				goto err_dstoob_ref1;
 			}
+
+			uint8_t* opcc;
+			opcc = op + cc;
+
+			#if defined( LZAV_LONG_COPY )
+			if LZAV_LIKELY(( opcc < opet ) & ( d > 15 ))
+			{
+				do LZAV_LIKELY_DO
+				{
+					memcpy( op, ipd, 16 );
+					memcpy( op + 16, ipd + 16, 16 );
+					memcpy( op + 32, ipd + 32, 16 );
+					memcpy( op + 48, ipd + 48, 16 );
+					op += 64;
+					ipd += 64;
+				} while LZAV_LIKELY_DO_EXPR( op < opcc );
+
+				op = opcc;
+				continue;
+			}
+			#endif // defined( LZAV_LONG_COPY )
 
 			if LZAV_LIKELY( opcc < opet )
 			{
+				if LZAV_LIKELY( d < 8 )
+				{
+					LZAV_RLE_INIT8( cc );
+
+					op += 8;
+					ipd += cc;
+				}
+
 				do LZAV_LIKELY_DO
 				{
 					memcpy( op, ipd, 8 );
@@ -2383,10 +2348,18 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 
 			if LZAV_UNLIKELY( ope - opcc < 8 )
 			{
-				goto err_dstoob_ref;
+				goto err_dstoob_ref2;
 			}
 
-			while LZAV_LIKELY( op + 7 < opcc )
+			if LZAV_LIKELY( d < 8 )
+			{
+				LZAV_RLE_INIT8( cc );
+
+				op += 8;
+				ipd += cc;
+			}
+
+			while LZAV_LIKELY( opcc - op > 7 )
 			{
 				memcpy( op, ipd, 8 );
 				memcpy( op + 8, ipd + 8, 8 );
@@ -2402,23 +2375,25 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 			op = opcc;
 			continue;
 
-		err_dstoob_ref:
+		err_dstoob_ref1:
+			opcc = ope;
+
+		err_dstoob_ref2:
 			if LZAV_UNLIKELY( d == 0 )
 			{
 				goto err_refoob;
 			}
 
-			while( op != ope )
+			while( op != opcc )
 			{
 				*op = *ipd;
-				ipd++;
 				op++;
+				ipd++;
 			}
 
+			*pwl = (int) ( op - (uint8_t*) dst );
 			return( LZAV_E_DSTOOB );
 		}
-
-		const uint8_t* LZAV_RESTRICT ipd; // Source data pointer.
 
 		size_t ncv = bh >> 6; // Additional offset-carry bits.
 		ip++;
@@ -2428,18 +2403,35 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 		{
 			ipd = ip;
 			cv <<= 2;
-			csh -= 2;
 			ip += cc;
+			csh -= 2;
 			cv |= ncv;
 
 			if LZAV_LIKELY( op < opet )
 			{
-				bh = *ip;
+				bh = ipd[ cc ];
 				memcpy( op, ipd, 16 );
 				op += cc;
 
 				goto refblk; // Reference block follows if not at EOS.
 			}
+
+			if LZAV_UNLIKELY( cc > (size_t) ( ope - op ))
+			{
+				goto err_dstoob_lit;
+			}
+
+			memcpy( op, ipd, cc );
+			op += cc;
+
+			if LZAV_UNLIKELY( ip >= ipet )
+			{
+				break;
+			}
+
+			bh = *ip;
+
+			goto refblk; // Guards against `csh` accumulation.
 		}
 		else
 		{
@@ -2452,27 +2444,25 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 			if LZAV_UNLIKELY( cc == 255 )
 			{
 				LZAV_LOAD_VARINT_4( cc );
-
-				#if defined( LZAV_PTR32 )
-				if( cc >= 0x7FFFFFF0 )
-				{
-					goto err_refoob;
-				}
-				#endif // defined( LZAV_PTR32 )
 			}
 
-			cc += 16;
 			ipd = ip;
+			cc += 16;
+
+			if LZAV_UNLIKELY( cc > (size_t) ( ipe - ip ))
+			{
+				goto err_srcoob_lit;
+			}
+
 			ip += cc;
 
-			uint8_t* const opcc = op + cc;
-
-			#if defined( LZAV_PTR32 )
-			if LZAV_UNLIKELY(( ip < ipd ) | ( opcc < op ))
+			if LZAV_UNLIKELY( cc > (size_t) ( ope - op ))
 			{
-				goto err_ptrovr;
+				goto err_dstoob_lit;
 			}
-			#endif // defined( LZAV_PTR32 )
+
+			uint8_t* opcc;
+			opcc = op + cc;
 
 			if LZAV_LIKELY(( opcc < opet ) & ( ip < ipetg ))
 			{
@@ -2503,54 +2493,29 @@ LZAV_NO_INLINE int lzav_decompress_4( const void* const src, void* const dst,
 
 				goto refblk; // Reference block follows if not at EOS.
 			}
-		}
 
-		uint8_t* const opcc = op + cc;
-
-		if LZAV_UNLIKELY( opcc > ope )
-		{
-			goto err_dstoob_lit;
-		}
-
-		if LZAV_LIKELY( ip < ipet )
-		{
 			memcpy( op, ipd, cc );
+			op += cc;
+
+			if LZAV_UNLIKELY( ip >= ipet )
+			{
+				break;
+			}
+
 			bh = *ip;
-			op = opcc;
 
 			goto refblk; // Guards against `csh` accumulation.
 		}
 
-		if LZAV_UNLIKELY( ip > ipet + litfin )
-		{
-			goto err_srcoob_lit;
-		}
+	err_srcoob_lit:
+		cc = (size_t) ( ipe - ipd );
+		cc = ( cc < (size_t) ( ope - op ) ? cc : (size_t) ( ope - op ));
 
 		memcpy( op, ipd, cc );
-		op = opcc;
-		break;
-
-	err_srcoob_lit:
-		cc = (size_t) ( ipet + litfin - ipd );
-
-		if( cc < (size_t) ( ope - op ))
-		{
-			memcpy( op, ipd, cc );
-			*pwl = (int) ( op + cc - (uint8_t*) dst );
-		}
-		else
-		{
-			memcpy( op, ipd, (size_t) ( ope - op ));
-		}
-
+		*pwl = (int) ( op + cc - (uint8_t*) dst );
 		return( LZAV_E_SRCOOB );
 
 	err_dstoob_lit:
-		if LZAV_UNLIKELY( ip > ipet + litfin )
-		{
-			goto err_srcoob_lit;
-		}
-
 		memcpy( op, ipd, (size_t) ( ope - op ));
 		return( LZAV_E_DSTOOB );
 	}
@@ -2569,12 +2534,6 @@ err_refoob:
 err_dstlen:
 	*pwl = (int) ( op - (uint8_t*) dst );
 	return( LZAV_E_DSTLEN );
-
-#if defined( LZAV_PTR32 )
-err_ptrovr:
-	*pwl = (int) ( op - (uint8_t*) dst );
-	return( LZAV_E_PTROVR );
-#endif // defined( LZAV_PTR32 )
 }
 
 #undef LZAV_RLE_INIT8
@@ -2600,7 +2559,7 @@ err_ptrovr:
  *
  * The `cvar` variable should contain the least significant `sh0` bits of the
  * value. The code reads up to 4 additional bytes, forming a value strictly
- * less than `2^(sh0+28)`.
+ * less than `2^(sh0+24)`.
  *
  * @param cvar Name of the variable that receives the varint value.
  * @param sh0 The number of least significant bits already present in `cvar`.
@@ -2642,21 +2601,18 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 	}
 
 	const size_t litfin = 9; // The number of literals in the final block.
-		// Also used in `ipet + litfin` (compressed data boundary) to reduce
-		// variable usage.
-
 	const uint8_t* LZAV_RESTRICT ip =
 		(const uint8_t*) src; // Compressed data pointer.
 
-	const uint8_t* const ipet = ip + srclen - litfin; // Block header read
-		// threshold.
-	const uint8_t* const ipetg = ( ipet - ip < 64 ?
+	const uint8_t* const ipe = ip + srclen; // Compressed data end pointer.
+	const uint8_t* const ipet = ipe - litfin; // Block header read threshold.
+	const uint8_t* const ipetg = ( (size_t) ( ipet - ip ) < 64 ?
 		ip : ipet - 64 ); // Threshold for `goto refblk`.
 
 	uint8_t* op = (uint8_t*) dst; // Destination (decompressed data) pointer.
 	uint8_t* const ope = op + dstlen; // Destination boundary pointer.
-	uint8_t* const opet = ( ope - op < 63 ? op : ope - 63 ); // Threshold for
-		// fast copying to the destination.
+	uint8_t* const opet = ( (size_t) ( ope - op ) < 63 ? op : ope - 63 );
+		// Threshold for fast copying to the destination.
 
 	const size_t mref1 = (size_t) ( *ip & 15 ) - 1; // Minimum reference
 		// length minus 1.
@@ -2687,10 +2643,12 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 		do \
 		{ \
 			bh = *ip; \
-			ip++; \
 			cvar += ( bh & 0x7F ) << sh; \
-			if( sh == sh0 + 21 ) \
+			ip++; \
+			if LZAV_UNLIKELY( sh == sh0 + 21 ) \
 			{ \
+				if LZAV_UNLIKELY( bh > 7 ) \
+					goto err_refoob; \
 				break; \
 			} \
 			sh += 7; \
@@ -2702,11 +2660,11 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 
 	while LZAV_LIKELY( ip < ipet )
 	{
+		const uint8_t* ipd; // Source data pointer.
 		size_t cc; // Byte copy count.
 
 		if LZAV_LIKELY(( bh & 0x30 ) != 0 ) // Block type != 0.
 		{
-			const uint8_t* ipd; // Source data pointer.
 			size_t bt; // Block type.
 
 		refblk:
@@ -2724,19 +2682,18 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 			const lzav_shift_t ncsh = ocsh[ bt ];
 
 			LZAV_SET_IPD_CV(( (size_t) bv << 2 | bh >> 6 ) & om[ bt ],
-				( (size_t) ip[ bt - 1 ] << ncsh ) >> 8, ncsh );
+				( (size_t) ip[ (ptrdiff_t) bt - 1 ] << ncsh ) >> 8, ncsh );
 
 			ip += bt;
 			bv >>= bt8;
 
 			LZAV_PREFETCH( ipd );
 
-			uint8_t* opcc = op + mref1;
 			cc = bh & 15;
 
 			if LZAV_LIKELY( cc != 0 ) // True if no length bytes follow.
 			{
-				opcc += cc;
+				cc += mref1;
 				bh = bv & 0xFF;
 
 				if LZAV_LIKELY( op < opet )
@@ -2745,7 +2702,7 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 					{
 						memcpy( op, ipd, 16 );
 						memcpy( op + 16, ipd + 16, 4 );
-						op = opcc;
+						op += cc;
 						continue;
 					}
 
@@ -2754,7 +2711,7 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 						memcpy( op, ipd, 8 );
 						memcpy( op + 8, ipd + 8, 8 );
 						memcpy( op + 16, ipd + 16, 4 );
-						op = opcc;
+						op += cc;
 						continue;
 					}
 
@@ -2763,75 +2720,58 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 			}
 			else
 			{
+				cc = bv & 0x7F;
 				ip++;
-
-			#if defined( LZAV_PTR32 )
-
-				cc = ( bv & 0x7F ) + 16;
 
 				if LZAV_UNLIKELY(( bv & 0x80 ) != 0 )
 				{
 					LZAV_LOAD_VARINT( cc, 7 );
-					cc &= 0x7FFFFFFF;
 				}
-
-				opcc += cc;
-
-			#else // defined( LZAV_PTR32 )
-
-				opcc += bv & 0x7F;
-
-				if LZAV_UNLIKELY(( bv & 0x80 ) != 0 )
-				{
-					LZAV_LOAD_VARINT( opcc, 7 );
-				}
-
-				opcc += 16;
-
-			#endif // defined( LZAV_PTR32 )
 
 				bh = *ip;
+				cc += mref1 + 16;
+			}
 
-				#if defined( LZAV_PTR32 )
-				if LZAV_UNLIKELY( opcc < op )
+			if LZAV_UNLIKELY( cc > (size_t) ( ope - op ))
+			{
+				goto err_dstoob_ref1;
+			}
+
+			uint8_t* opcc;
+			opcc = op + cc;
+
+			#if defined( LZAV_LONG_COPY )
+			if LZAV_LIKELY(( opcc < opet ) & ( d > 15 ))
+			{
+				do LZAV_LIKELY_DO
 				{
-					goto err_ptrovr;
-				}
-				#endif // defined( LZAV_PTR32 )
+					memcpy( op, ipd, 16 );
+					memcpy( op + 16, ipd + 16, 16 );
+					memcpy( op + 32, ipd + 32, 16 );
+					memcpy( op + 48, ipd + 48, 16 );
+					op += 64;
+					ipd += 64;
+				} while LZAV_LIKELY_DO_EXPR( op < opcc );
 
-				#if defined( LZAV_LONG_COPY )
-				if LZAV_LIKELY(( opcc < opet ) & ( d > 15 ))
+				op = opcc;
+				continue;
+			}
+			#endif // defined( LZAV_LONG_COPY )
+
+			if LZAV_LIKELY(( opcc < opet ) & ( d > 7 ))
+			{
+				do LZAV_LIKELY_DO
 				{
-					do LZAV_LIKELY_DO
-					{
-						memcpy( op, ipd, 16 );
-						memcpy( op + 16, ipd + 16, 16 );
-						memcpy( op + 32, ipd + 32, 16 );
-						memcpy( op + 48, ipd + 48, 16 );
-						op += 64;
-						ipd += 64;
-					} while LZAV_LIKELY_DO_EXPR( op < opcc );
+					memcpy( op, ipd, 8 );
+					memcpy( op + 8, ipd + 8, 8 );
+					memcpy( op + 16, ipd + 16, 8 );
+					memcpy( op + 24, ipd + 24, 8 );
+					op += 32;
+					ipd += 32;
+				} while LZAV_LIKELY_DO_EXPR( op < opcc );
 
-					op = opcc;
-					continue;
-				}
-				#endif // defined( LZAV_LONG_COPY )
-
-				if LZAV_LIKELY(( opcc < opet ) & ( d > 7 ))
-				{
-					do LZAV_LIKELY_DO
-					{
-						memcpy( op, ipd, 8 );
-						memcpy( op + 8, ipd + 8, 8 );
-						memcpy( op + 16, ipd + 16, 8 );
-						memcpy( op + 24, ipd + 24, 8 );
-						op += 32;
-						ipd += 32;
-					} while LZAV_LIKELY_DO_EXPR( op < opcc );
-
-					op = opcc;
-					continue;
-				}
+				op = opcc;
+				continue;
 			}
 
 			if LZAV_UNLIKELY( d < 8 )
@@ -2841,10 +2781,10 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 
 			if LZAV_UNLIKELY( ope - opcc < 8 )
 			{
-				goto err_dstoob_ref;
+				goto err_dstoob_ref2;
 			}
 
-			while( op + 7 < opcc )
+			while LZAV_LIKELY( opcc - op > 7 )
 			{
 				memcpy( op, ipd, 8 );
 				memcpy( op + 8, ipd + 8, 8 );
@@ -2860,18 +2800,25 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 			op = opcc;
 			continue;
 
-		err_dstoob_ref:
-			while( op != ope )
+		err_dstoob_ref1:
+			opcc = ope;
+
+		err_dstoob_ref2:
+			if LZAV_UNLIKELY( d == 0 )
 			{
-				*op = *ipd;
-				ipd++;
-				op++;
+				goto err_refoob;
 			}
 
+			while( op != opcc )
+			{
+				*op = *ipd;
+				op++;
+				ipd++;
+			}
+
+			*pwl = (int) ( op - (uint8_t*) dst );
 			return( LZAV_E_DSTOOB );
 		}
-
-		const uint8_t* LZAV_RESTRICT ipd; // Source data pointer.
 
 		size_t ncv = bh >> 6; // Additional offset-carry bits.
 		ip++;
@@ -2880,58 +2827,84 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 		if LZAV_LIKELY( cc != 0 ) // True if no length bytes follow.
 		{
 			ipd = ip;
-			ncv <<= csh;
-			ip += cc;
-			csh += 2;
-			cv |= ncv;
 
-			if LZAV_LIKELY(( op < opet ) & ( ipd < ipetg ))
+			if LZAV_LIKELY( ip < ipetg )
 			{
-				bh = *ip;
-				memcpy( op, ipd, 16 );
-				op += cc;
+				ncv <<= csh;
+				ip += cc;
+				csh += 2;
+				cv |= ncv;
 
-				goto refblk; // Reference block follows if not at EOS.
+				if LZAV_LIKELY( op < opet )
+				{
+					bh = ipd[ cc ];
+					memcpy( op, ipd, 16 );
+					op += cc;
+
+					goto refblk; // Reference block follows if not at EOS.
+				}
 			}
+			else
+			{
+				if LZAV_UNLIKELY( cc > (size_t) ( ipe - ip ))
+				{
+					goto err_srcoob_lit;
+				}
+
+				ncv <<= csh;
+				ip += cc;
+				csh += 2;
+				cv |= ncv;
+			}
+
+			if LZAV_UNLIKELY( cc > (size_t) ( ope - op ))
+			{
+				goto err_dstoob_lit;
+			}
+
+			memcpy( op, ipd, cc );
+			op += cc;
+
+			if LZAV_UNLIKELY( ip >= ipet )
+			{
+				break;
+			}
+
+			bh = *ip;
+
+			goto refblk; // Guards against `csh` accumulation.
 		}
 		else
 		{
-			bh = *ip;
+			cc = *ip;
 			ncv <<= csh;
 			ip++;
 			csh += 2;
 			cv |= ncv;
 
-			if LZAV_LIKELY(( bh & 0x80 ) == 0 )
+			if LZAV_UNLIKELY(( cc & 0x80 ) != 0 )
 			{
-				cc = bh + 16;
-			}
-			else
-			{
-				cc = ( bh & 0x7F ) + 16;
+				cc &= 0x7F;
 				LZAV_LOAD_VARINT( cc, 7 );
-
-				#if defined( LZAV_PTR32 )
-					cc &= 0x7FFFFFFF;
-
-					if LZAV_UNLIKELY( cc == 0 )
-					{
-						goto err_refoob;
-					}
-				#endif // defined( LZAV_PTR32 )
 			}
 
 			ipd = ip;
+			cc += 16;
+
+			if LZAV_UNLIKELY( cc > (size_t) ( ipe - ip ))
+			{
+				goto err_srcoob_lit;
+			}
+
 			ip += cc;
 
-			uint8_t* const opcc = op + cc;
-
-			#if defined( LZAV_PTR32 )
-			if LZAV_UNLIKELY(( ip < ipd ) | ( opcc < op ))
+			if LZAV_UNLIKELY( cc > (size_t) ( ope - op ))
 			{
-				goto err_ptrovr;
+				goto err_dstoob_lit;
 			}
-			#endif // defined( LZAV_PTR32 )
+
+			uint8_t* opcc;
+			opcc = op + cc;
 
 			if LZAV_LIKELY(( opcc < opet ) & ( ip < ipetg ))
 			{
@@ -2962,54 +2935,29 @@ LZAV_NO_INLINE int lzav_decompress_3( const void* const src, void* const dst,
 
 				goto refblk; // Reference block follows if not at EOS.
 			}
-		}
 
-		uint8_t* const opcc = op + cc;
-
-		if LZAV_UNLIKELY( opcc > ope )
-		{
-			goto err_dstoob_lit;
-		}
-
-		if LZAV_LIKELY( ip < ipet )
-		{
 			memcpy( op, ipd, cc );
+			op += cc;
+
+			if LZAV_UNLIKELY( ip >= ipet )
+			{
+				break;
+			}
+
 			bh = *ip;
-			op = opcc;
 
 			goto refblk; // Guards against `csh` accumulation.
 		}
 
-		if LZAV_UNLIKELY( ip > ipet + litfin )
-		{
-			goto err_srcoob_lit;
-		}
+	err_srcoob_lit:
+		cc = (size_t) ( ipe - ipd );
+		cc = ( cc < (size_t) ( ope - op ) ? cc : (size_t) ( ope - op ));
 
 		memcpy( op, ipd, cc );
-		op = opcc;
-		break;
-
-	err_srcoob_lit:
-		cc = (size_t) ( ipet + litfin - ipd );
-
-		if( cc < (size_t) ( ope - op ))
-		{
-			memcpy( op, ipd, cc );
-			*pwl = (int) ( op + cc - (uint8_t*) dst );
-		}
-		else
-		{
-			memcpy( op, ipd, (size_t) ( ope - op ));
-		}
-
+		*pwl = (int) ( op + cc - (uint8_t*) dst );
 		return( LZAV_E_SRCOOB );
 
 	err_dstoob_lit:
-		if LZAV_UNLIKELY( ip > ipet + litfin )
-		{
-			goto err_srcoob_lit;
-		}
-
 		memcpy( op, ipd, (size_t) ( ope - op ));
 		return( LZAV_E_DSTOOB );
 	}
@@ -3028,12 +2976,6 @@ err_refoob:
 err_dstlen:
 	*pwl = (int) ( op - (uint8_t*) dst );
 	return( LZAV_E_DSTLEN );
-
-#if defined( LZAV_PTR32 )
-err_ptrovr:
-	*pwl = (int) ( op - (uint8_t*) dst );
-	return( LZAV_E_PTROVR );
-#endif // defined( LZAV_PTR32 )
 }
 
 #undef LZAV_SET_IPD_CV
