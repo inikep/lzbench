@@ -1,0 +1,4 @@
+# huffman-zlib (zlib)
+CODECS += HUFFMAN_ZLIB
+HUFFMAN_ZLIB_OBJS  :=
+HUFFMAN_ZLIB_FLAGS :=

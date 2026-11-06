@@ -303,6 +303,15 @@ void lzbench_aocl_zstd_deinit(char* workmem);
 #endif // BENCH_REMOVE_GPUCOMPACT
 
 
+#ifndef BENCH_REMOVE_HUFFMAN_ZLIB
+    int64_t lzbench_huffman_zlib_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_huffman_zlib_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_huffman_zlib_compress NULL
+    #define lzbench_huffman_zlib_decompress NULL
+#endif
+
+
 #ifndef BENCH_REMOVE_KANZI
     int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);

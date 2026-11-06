@@ -229,6 +229,7 @@ static const compressor_desc_t comp_desc[] =
 #if !defined(BENCH_REMOVE_GPUCOMPACT) && defined(BENCH_HAS_CUDA)
     { "gpucompact", "gpucompact 1.1",          "BWT + tANS",                  1,   5,    0,  NO_THREADING,  lzbench_gpucompact_compress, lzbench_gpucompact_decompress, lzbench_gpucompact_init,  lzbench_gpucompact_deinit },
 #endif
+    { "huffman-zlib",   "huffman-zlib 1.3.2",  "Huffman",                     1,   1,    0,  BENCH_POOL_MT, lzbench_huffman_zlib_compress,   lzbench_zlib_decompress,   NULL,                    NULL },
     { "kanzi",      "kanzi 2.6.0",             "LZ77, ROLZ, BWT or CM",       1,   9,    0, FULL_THREADING, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
     { "lbzip2",     "lbzip2 2.6.5",            "BWT + Huffman",               1,   9,    0,  BENCH_POOL_MT, lzbench_lbzip2_compress,     lzbench_lbzip2_decompress,     NULL,                    NULL },
     { "libdeflate", "libdeflate 1.26",         "LZ77 + Huffman",              1,  12,    0,  BENCH_POOL_MT, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
