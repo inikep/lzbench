@@ -78,7 +78,7 @@ sources, the Notes column says so.
 | [lbzip2 2.6.5](https://github.com/caius72/lbzip2) | 2026-08-18 | bzip2 format; benchmarked single-threaded |
 | [libdeflate v1.26](https://github.com/ebiggers/libdeflate) | 2026-08-22 | |
 | [lizard v2.1](https://github.com/inikep/lizard) | 2025-01-26 | |
-| [lz4/lz4hc v1.11.0](https://github.com/lz4/lz4) | 2026-11-04 | |
+| [lz4/lz4hc/lz4frame v1.11.0](https://github.com/lz4/lz4) | 2026-11-04 | lz4frame: frame format, 4 MB independent blocks, multithreaded compression with `-I#` |
 | [lzav 7.1](https://github.com/avaneev/lzav) | 2026-11-04 | |
 | [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html) | 2014-03-13 | |
 | [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse) | 2017-03-08 | |

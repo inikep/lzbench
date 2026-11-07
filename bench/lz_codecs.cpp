@@ -118,6 +118,79 @@ int64_t lzbench_lz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t 
     return LZ4_decompress_safe(inbuf, outbuf, insize, outsize);
 }
 
+#include "lz/lz4/lib/lz4frame.h"
+
+typedef struct {
+    LZ4F_cctx* cctx; // keeps its worker threads between frames
+    LZ4F_dctx* dctx;
+} lz4frame_params_s;
+
+void lzbench_lz4frame_deinit(char* workmem)
+{
+    lz4frame_params_s* p = (lz4frame_params_s*) workmem;
+    if (!p) return;
+    if (p->cctx) LZ4F_freeCompressionContext(p->cctx);
+    if (p->dctx) LZ4F_freeDecompressionContext(p->dctx);
+    free(p);
+}
+
+char* lzbench_lz4frame_init(size_t insize, size_t level, size_t)
+{
+    lz4frame_params_s* p = (lz4frame_params_s*) calloc(1, sizeof(lz4frame_params_s));
+    if (!p) return NULL;
+    if (LZ4F_isError(LZ4F_createCompressionContext(&p->cctx, LZ4F_VERSION)) ||
+        LZ4F_isError(LZ4F_createDecompressionContext(&p->dctx, LZ4F_VERSION))) {
+        lzbench_lz4frame_deinit((char*) p);
+        return NULL;
+    }
+    return (char*) p;
+}
+
+// 4 MB independent blocks, as the lz4 CLI's default: the output does not depend on the
+// number of worker threads. No content checksum (the CLI adds one), to compare with lz4.
+// Levels as the CLI: 1 is lz4, 2 is lz4hc 1-2 (lz4mid), 3-12 are lz4hc 3-12.
+int64_t lzbench_lz4frame_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    lz4frame_params_s* p = (lz4frame_params_s*) codec_options->work_mem;
+    if (!p) return 0;
+
+    LZ4F_preferences_t prefs;
+    memset(&prefs, 0, sizeof(prefs));
+    prefs.frameInfo.blockSizeID = LZ4F_max4MB;
+    prefs.frameInfo.blockMode = LZ4F_blockIndependent;
+    prefs.frameInfo.contentSize = insize;
+    prefs.compressionLevel = codec_options->level;
+    prefs.nbWorkers = (codec_options->threads > 1) ? codec_options->threads : 0;
+
+    size_t res = LZ4F_compressFrame_usingCDict(p->cctx, outbuf, outsize, inbuf, insize, NULL, &prefs);
+    if (LZ4F_isError(res)) return 0;
+    return res;
+}
+
+int64_t lzbench_lz4frame_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options)
+{
+    lz4frame_params_s* p = (lz4frame_params_s*) codec_options->work_mem;
+    if (!p) return 0;
+
+    LZ4F_decompressOptions_t opts;
+    memset(&opts, 0, sizeof(opts));
+    opts.stableDst = 1; // the whole output stays in outbuf
+
+    LZ4F_resetDecompressionContext(p->dctx);
+    size_t inpos = 0, outpos = 0, hint = 1;
+    while (inpos < insize) {
+        size_t srcSize = insize - inpos, dstSize = outsize - outpos;
+        hint = LZ4F_decompress(p->dctx, outbuf + outpos, &dstSize, inbuf + inpos, &srcSize, &opts);
+        if (LZ4F_isError(hint)) return 0;
+        inpos += srcSize;
+        outpos += dstSize;
+        if (hint == 0) break;                      // frame complete
+        if (srcSize == 0 && dstSize == 0) return 0; // no progress: output buffer too small
+    }
+    if (hint != 0) return 0; // truncated frame
+    return outpos;
+}
+
 #endif // BENCH_REMOVE_LZ4
 
 

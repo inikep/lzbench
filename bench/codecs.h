@@ -344,11 +344,19 @@ void lzbench_aocl_zstd_deinit(char* workmem);
     int64_t lzbench_lz4fast_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_lz4hc_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_lz4_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    char*   lzbench_lz4frame_init(size_t insize, size_t level, size_t);
+    void    lzbench_lz4frame_deinit(char* workmem);
+    int64_t lzbench_lz4frame_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_lz4frame_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
 #else
     #define lzbench_lz4_compress NULL
     #define lzbench_lz4fast_compress NULL
     #define lzbench_lz4hc_compress NULL
     #define lzbench_lz4_decompress NULL
+    #define lzbench_lz4frame_init NULL
+    #define lzbench_lz4frame_deinit NULL
+    #define lzbench_lz4frame_compress NULL
+    #define lzbench_lz4frame_decompress NULL
 #endif
 
 
