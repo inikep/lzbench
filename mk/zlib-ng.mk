@@ -1,5 +1,6 @@
 # zlib-ng: only the generic C implementations (arch/generic) are built
 CODECS += ZLIB_NG
+ZLIB_NG_UPSTREAM := git-tags https://github.com/zlib-ng/zlib-ng
 ZLIB_NG_OBJS := $(addprefix lz+entropy/zlib-ng/, \
     adler32.o crc32.o deflate_medium.o deflate_stored.o inftrees.o uncompr.o compress.o deflate.o \
     deflate_quick.o functable.o insert_string.o zutil.o cpu_features.o deflate_fast.o deflate_rle.o \

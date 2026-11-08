@@ -1,5 +1,6 @@
 # Go 1.22+ builds go-brrr as a C archive.
 CODECS += GOBRRR
+GOBRRR_UPSTREAM := git-tags https://github.com/molecule-man/go-brrr readme=go-brrr
 
 GOBRRR_OBJS  := lz+entropy/gobrrr/libgobrrr.a
 GOBRRR_STAMP := lz+entropy/gobrrr/libgobrrr.config

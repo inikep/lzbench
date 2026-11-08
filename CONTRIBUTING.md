@@ -25,6 +25,9 @@ The trade-off is that local patches must be re-applied when a codec is updated. 
 forward, say so in the commit message so it is not silently lost on the next update.
 
 ## 3. Updating Existing Codecs
+`make check-updates` lists the codecs that have a newer upstream version, and codecs taken from a
+commit that have newer commits. It reads where each codec is published from `mk/<codec>.mk`.
+
 When updating an existing codec, please follow these steps:
 
 - Update the codec files (e.g., `lz+entropy/zlib-ng/*`).
@@ -92,11 +95,15 @@ int64_t lzbench_xxxx_decompress(char* inbuf, size_t insize, char* outbuf, size_t
 CODECS += XXXX
 XXXX_OBJS  := $(addprefix lz/xxxx/, YYYY.o YYYY_Dec.o YYYY_Enc.o)
 XXXX_FLAGS := -Ilz/xxxx/include
+XXXX_UPSTREAM := git-tags https://github.com/xxxx/xxxx
 ```
 
 `XXXX_OBJS` are compiled with the generic rules and linked into lzbench, with `XXXX_FLAGS` (optional)
 added to their compiler command line. `make DONT_BUILD_XXXX=1` leaves them out and defines
 `BENCH_REMOVE_XXXX`. The "Codecs" section of the `Makefile` lists what else a mk file may do, e.g.
-disable its codec on some platforms with `DONT_BUILD_XXXX ?= 1`.
+disable its codec on some platforms with `DONT_BUILD_XXXX ?= 1`. `XXXX_UPSTREAM` tells
+`make check-updates` where new versions are published: `git-tags <git URL>` for a project that tags
+its releases, or another method listed in `tools/check-updates.py` (a GitHub release, a version in a
+web page, the last commit for a codec taken from a commit, `manual` or `frozen`).
 
 - Refer to example commit: [Add zpaq 7.15](https://github.com/inikep/lzbench/commit/20f553b).

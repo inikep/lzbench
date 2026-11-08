@@ -1,5 +1,6 @@
 # aceapex
 CODECS += ACEAPEX
+ACEAPEX_UPSTREAM := gh-release yasha1971-coder/aceapex
 
 # aceapex assumes a little-endian CPU: its round trip fails on s390x
 ifeq ($(TARGET_BIG_ENDIAN),1)

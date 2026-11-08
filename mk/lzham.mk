@@ -1,5 +1,6 @@
 # lzham
 CODECS += LZHAM
+LZHAM_UPSTREAM := git-head https://github.com/richgel999/lzham_codec
 
 # lzham uses a 64 MB dictionary (m_dict_size_log2=26) and multiplies that working
 # set across helper threads; on 32-bit x86 it overflows the limited address space

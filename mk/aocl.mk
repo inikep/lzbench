@@ -1,6 +1,7 @@
 # AOCL-Compression (AMD optimized): opt-in, x86_64 Linux only.
 # Enable: make DONT_BUILD_AOCL=0
 CODECS += AOCL
+AOCL_UPSTREAM := git-tags https://github.com/amd/aocl-compression pattern=(\d+\.\d+\.\d+) desc=aocl-zstd readme=aocl-compression
 
 DONT_BUILD_AOCL ?= 1
 NM      ?= nm

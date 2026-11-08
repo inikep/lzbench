@@ -1,5 +1,6 @@
 # kanzi
 CODECS += KANZI
+KANZI_UPSTREAM := git-tags https://github.com/flanglet/kanzi-cpp
 KANZI_OBJS := $(addprefix misc/kanzi-cpp/src/, \
     io/CompressedOutputStream.o io/CompressedInputStream.o entropy/EntropyUtils.o \
     entropy/ExpGolombEncoder.o entropy/FPAQEncoder.o entropy/ANSRangeEncoder.o \

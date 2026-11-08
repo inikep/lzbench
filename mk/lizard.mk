@@ -1,5 +1,6 @@
 # lizard
 CODECS += LIZARD
+LIZARD_UPSTREAM := git-tags https://github.com/inikep/lizard
 LIZARD_OBJS := $(addprefix lz+entropy/lizard/, \
     lizard_compress.o lizard_decompress.o entropy/huf_compress.o entropy/huf_decompress.o \
     entropy/entropy_common.o entropy/fse_compress.o entropy/fse_decompress.o entropy/hist.o)

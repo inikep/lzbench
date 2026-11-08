@@ -1,6 +1,7 @@
 # mzstd: a Rust crate, built into the Rust codecs' library (see "Rust codecs"
 # in the Makefile) and called through its C ABI (mzstd-ffi)
 CODECS += MZSTD
+MZSTD_UPSTREAM := git-tags https://github.com/M-Compressors/mzstd
 
 ifneq ($(DONT_BUILD_MZSTD),1)
     ifneq ($(HAVE_RUST),1)

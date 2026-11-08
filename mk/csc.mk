@@ -1,5 +1,6 @@
 # csc (buggy: may crash)
 CODECS += CSC
+CSC_UPSTREAM := git-head https://github.com/fusiyuan2010/CSC
 
 ifeq ($(detected_OS),Darwin)
     DONT_BUILD_CSC ?= 1

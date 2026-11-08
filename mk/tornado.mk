@@ -1,5 +1,6 @@
 # tornado
 CODECS += TORNADO
+TORNADO_UPSTREAM := frozen last released in 2014
 TORNADO_OBJS := lz+entropy/tornado/tor_test.o
 
 # tornado dereferences unaligned 16/32/64-bit values directly (see value32() in

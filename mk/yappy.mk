@@ -1,5 +1,6 @@
 # yappy (buggy: may crash)
 CODECS += YAPPY
+YAPPY_UPSTREAM := frozen last released in 2014
 
 # yappy doesn't work on big-endian PowerPC
 ifeq ($(UNAME_P),powerpc)

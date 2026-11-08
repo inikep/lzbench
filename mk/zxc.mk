@@ -1,6 +1,7 @@
 # zxc: the *_default/_avx2/_avx512/_neon32 objects are built from the same
 # sources with different ISA flags, selected at run time
 CODECS += ZXC
+ZXC_UPSTREAM := git-tags https://github.com/hellobertrand/zxc
 ZXC_DIR := lz+entropy/zxc/src/lib
 
 # bench/lz_entropy_codecs.cpp includes the zxc headers too
