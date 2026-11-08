@@ -1,5 +1,6 @@
 # zling (libzling)
 CODECS += ZLING
+ZLING_UPSTREAM := git-head https://github.com/richox/libzling
 
 # zling doesn't work on big-endian PowerPC
 ifeq ($(UNAME_P),powerpc)

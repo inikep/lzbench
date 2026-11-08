@@ -1,5 +1,6 @@
 # xz (liblzma), built with the hand-written lz+entropy/xz/src/config.h
 CODECS += XZ
+XZ_UPSTREAM := git-tags https://github.com/tukaani-project/xz
 XZ_OBJS := $(addprefix lz+entropy/xz/src/liblzma/, \
     lzma/lzma_decoder.o lzma/lzma_encoder.o lzma/lzma_encoder_optimum_fast.o \
     lzma/lzma_encoder_optimum_normal.o lzma/fastpos_table.o lzma/lzma_encoder_presets.o \

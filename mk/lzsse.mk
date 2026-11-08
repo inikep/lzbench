@@ -1,5 +1,6 @@
 # lzsse: needs SSE4.1 and a 64-bit CPU
 CODECS += LZSSE
+LZSSE_UPSTREAM := git-head https://github.com/ConorStokes/LZSSE desc=lzsse4
 
 ifeq ($(BUILD_ARCH),32-bit)
     DONT_BUILD_LZSSE ?= 1

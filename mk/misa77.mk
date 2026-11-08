@@ -1,5 +1,6 @@
 # misa77: needs C++20 and a 64-bit little-endian target
 CODECS += MISA77
+MISA77_UPSTREAM := git-tags https://github.com/welcome-to-the-sunny-side/misa77
 
 # The probe is skipped when misa77 is already disabled with DONT_BUILD_MISA77=1.
 ifneq ($(DONT_BUILD_MISA77),1)

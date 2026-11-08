@@ -1,5 +1,6 @@
 # zpaq
 CODECS += ZPAQ
+ZPAQ_UPSTREAM := git-tags https://github.com/zpaq/zpaq
 ZPAQ_OBJS  := misc/zpaq/libzpaq.o
 ZPAQ_FLAGS := -I$(SRC)misc/zpaq
 

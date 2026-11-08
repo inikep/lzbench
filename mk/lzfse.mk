@@ -1,5 +1,6 @@
 # lzfse and lzvn
 CODECS += LZFSE
+LZFSE_UPSTREAM := git-head https://github.com/lzfse/lzfse
 
 # lzfse and lzvn assume a little-endian CPU: their round trip fails on s390x
 ifeq ($(TARGET_BIG_ENDIAN),1)

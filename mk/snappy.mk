@@ -1,5 +1,6 @@
 # snappy
 CODECS += SNAPPY
+SNAPPY_UPSTREAM := git-tags https://github.com/google/snappy
 SNAPPY_OBJS := $(addprefix lz/snappy/, snappy-sinksource.o snappy-stubs-internal.o snappy.o)
 
 # __builtin_ctz is efficient on CPUs with bit-manipulation support (e.g., RISC-V

@@ -1,5 +1,6 @@
 # lzo
 CODECS += LZO
+LZO_UPSTREAM := http http://www.oberhumer.com/opensource/lzo/download/ pattern=lzo-(\d[\d.]*)\.tar desc=lzo1x
 LZO_OBJS := $(addprefix lz/lzo/, \
     lzo1.o lzo1a.o lzo1a_99.o lzo1b_1.o lzo1b_2.o lzo1b_3.o lzo1b_4.o lzo1b_5.o lzo1b_6.o lzo1b_7.o \
     lzo1b_8.o lzo1b_9.o lzo1b_99.o lzo1b_9x.o lzo1b_cc.o lzo1b_d1.o lzo1b_d2.o lzo1b_rr.o \

@@ -266,6 +266,9 @@ cargo_at_least = $(shell printf "%s\n$(1)\n" "$(CARGO_VERSION)" | sort -V | head
 #   NAME_OPT   := O2 to build NAME_OBJS with -O2 instead of -O3 (optional)
 #   NAME_NEEDS := codecs whose objects NAME calls (optional): they are built
 #                 and linked with NAME even when left out themselves
+#   NAME_UPSTREAM := where new versions of NAME are published, for
+#                 "make check-updates" (tools/check-updates.py lists the methods),
+#                 e.g. "git-tags https://github.com/lz4/lz4"
 #
 # "make DONT_BUILD_NAME=1" leaves NAME_OBJS out (unless an enabled codec needs
 # them) and defines BENCH_REMOVE_NAME, which removes the codec from bench/*.cpp.
@@ -475,6 +478,13 @@ COMPILE_CU  = $(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) $(CODEC_FLAGS) -
 %.cpp.o: %.cpp
 	@$(MKDIR) $(dir $@)
 	$(COMPILE_CXX)
+
+# Compare each codec's version with its upstream (NAME_UPSTREAM in mk/*.mk)
+PYTHON ?= python3
+check-updates:
+	$(PYTHON) $(SOURCE_PATH)tools/check-updates.py
+
+.PHONY: check-updates
 
 clean:
 	rm -rf lzbench lzbench.exe
