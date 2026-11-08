@@ -166,6 +166,12 @@ typedef struct
     const char* params;
 } alias_desc_t;
 
+#if defined(DISABLE_THREADING)
+    #define LZ4F_THREADING BENCH_POOL_MT
+#else
+    #define LZ4F_THREADING FULL_THREADING // lz4frame.c built with LZ4F_MULTITHREAD=1
+#endif
+
 #if defined(_OPENMP)
     #define BSC_THREADING FULL_THREADING
 #else
@@ -229,6 +235,7 @@ static const compressor_desc_t comp_desc[] =
     { "lizard",     "lizard 2.1",             "LZ77 (+ Huffman)",            10,  49,    0,  BENCH_POOL_MT, lzbench_lizard_compress,     lzbench_lizard_decompress,     NULL,                    NULL },
     { "lz4",        "lz4 1.11.0",              "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_lz4_compress,        lzbench_lz4_decompress,        NULL,                    NULL },
     { "lz4fast",    "lz4 1.11.0 --fast",       "LZ77",                        1,  99,    0,  BENCH_POOL_MT, lzbench_lz4fast_compress,    lzbench_lz4_decompress,        NULL,                    NULL },
+    { "lz4frame",   "lz4frame 1.11.0",         "LZ77",                        1,  12,    0, LZ4F_THREADING, lzbench_lz4frame_compress,   lzbench_lz4frame_decompress,   lzbench_lz4frame_init,   lzbench_lz4frame_deinit },
     { "lz4hc",      "lz4hc 1.11.0",            "LZ77",                        1,  12,    0,  BENCH_POOL_MT, lzbench_lz4hc_compress,      lzbench_lz4_decompress,        NULL,                    NULL },
     { "lzav",       "lzav 7.1",                "LZ77",                        1,   2,    0,  BENCH_POOL_MT, lzbench_lzav_compress,       lzbench_lzav_decompress,       NULL,                    NULL },
     { "lzf",        "lzf 3.6",                 "LZ77",                        0,   1,    0,  BENCH_POOL_MT, lzbench_lzf_compress,        lzbench_lzf_decompress,        NULL,                    NULL },
@@ -369,7 +376,7 @@ static const alias_desc_t alias_desc[] =
     // CI uses LZ + LZ+ENTROPY + SYMMETRIC for single-threaded testing
     // LZ: LZ codecs, or levels of them, without an entropy coder
     { "LZ",   "Represents LZ-based compressors without an entropy coder.",
-              "memcpy/aceapex_fast,1,2,3,4/brieflz,1,3,6,8/crush,0,2/fastlz,1,2/kanzi,1/lizard,10,12,15,19,20,22,25,29/lz4fast,17,9,3/lz4/lz4hc,1,4,9,12/lzav/" \
+              "memcpy/aceapex_fast,1,2,3,4/brieflz,1,3,6,8/crush,0,2/fastlz,1,2/kanzi,1/lizard,10,12,15,19,20,22,25,29/lz4fast,17,9,3/lz4/lz4frame,1,12/lz4hc,1,4,9,12/lzav/" \
               "lzf,0,1/lzg,1,4,6,8/lzjb/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
               "lzsse2,1,6,12,16/lzsse4fast/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/memlz/misa77,-1,0,1,2,3,4/misa77_safe,-1,0,1,2,3/quicklz,1,2,3/" \
               "snappy/tamp,8,12,15/tornado,2/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/wlz4fast,17,9,3/wlz4/wlz4hc,0,2,6,10,12/" \
@@ -387,7 +394,7 @@ static const alias_desc_t alias_desc[] =
     // CI uses FASTEST for multi-threaded testing (except Tornado, which is disabled as it has issues with incompressible data)
     // lzg is left out too: its fast mode is very slow on small files (0.16 MB/s with -T2 -jr on 468 files of lz/lzo and lz/lz4)
     { "FASTEST", "All LZ/LZ+ENTROPY/SYMMETRIC compressors, each at only its fastest level.",
-       /* LZ */ "memcpy/aceapex_fast,1/brieflz,1/crush,0/fastlz,1/kanzi,1/lizard,10/lz4fast,99/lz4/lz4hc,1/lzav,1/lzf,0/lzjb/" \
+       /* LZ */ "memcpy/aceapex_fast,1/brieflz,1/crush,0/fastlz,1/kanzi,1/lizard,10/lz4fast,99/lz4/lz4frame,1/lz4hc,1/lzav,1/lzf,0/lzjb/" \
               "lzo1,1/lzo1a,1/lzo1b,1/lzo1c,1/lzo1f,1/lzo1x,1/lzo1y,1/lzo1z/lzo2a/lzsse2,1/lzsse4fast/lzsse4,1/lzsse8,1/lzvn/memlz/" \
               "misa77,0/misa77_safe,0/quicklz,1/snappy/tamp,8/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/wlz4fast,99/wlz4hc,0/yalz77,1/zpaq,1/" \
 /* LZ+ENTROPY */ "aceapex,3/brotli,0/fastlzma2,1/gobrrr,0/libdeflate,1/lzfse/lzham,0/lzlib,0/lzma,0/mbrotli,0/mzstd_fast,-5/mzstd,1/" \
@@ -404,7 +411,7 @@ static const alias_desc_t alias_desc[] =
     { "MAINSTREAM", "Represents mainstream compressors.",
               "memcpy/lz4fast,17,9,5/lz4/lz4hc,1,3,9/zstd_fast,-5,-3,-1/zstd,1,3,7,12,17,22/zlib,1,6,9/lzma,0,4,9/bzip2,1,9/ppmd8,4" },
     { "INT_MT", "Covers all compressors supporting internal multi-threading with -I option.",
-              "memcpy/bsc0/bsc1/bsc4/bsc5/bsc6/fastlzma2,1,5,10/kanzi,1,2,3,4,5,6,7/lzham,1,4/lzma,0,4,9/xz,0,4,9/zlib-turbo,4,6,9/zstd,1,5,9,14,18,22" },
+              "memcpy/bsc0/bsc1/bsc4/bsc5/bsc6/fastlzma2,1,5,10/kanzi,1,2,3,4,5,6,7/lz4frame,1,9,12/lzham,1,4/lzma,0,4,9/xz,0,4,9/zlib-turbo,4,6,9/zstd,1,5,9,14,18,22" },
     // OPT: levels that use an optimal (dynamic programming) parser, from each codec's source: brieflz leparse/btparse,
     // brotli zopfli (quality 10-11), fast-lzma2 FL2_opt/ultra, libdeflate near-optimal, lizard optimalPrice, lz4hc
     // LZ4HC_CLEVEL_OPT_MIN, lzham, lzlib and 7-zip/xz LZMA normal mode, zstd btopt/btultra
