@@ -81,9 +81,9 @@ sources, the Notes column says so.
 | [lz4/lz4hc/lz4frame v1.11.0](https://github.com/lz4/lz4) | 2026-11-04 | lz4frame: frame format, 4 MB independent blocks, multithreaded compression with `-I#` |
 | [lzav 7.1](https://github.com/avaneev/lzav) | 2026-11-04 | |
 | [lzf 3.6](http://software.schmorp.de/pkg/liblzf.html) | 2014-03-13 | |
-| [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse) | 2017-03-08 | |
-| [lzg 1.0.10](https://github.com/mbitsnbites/liblzg) | 2018-11-29 | |
-| [lzham 1.0](https://github.com/richgel999/lzham_codec) | 2020-09-15 | Public domain since 2020-09-15. Build fixed in lzbench for MinGW and newer compilers (`<cstdint>` includes, `GetSystemInfo`, `DISABLE_THREADING`). Disabled on macOS and 32-bit x86 — 64 MB dictionary overflows the 32-bit address space |
+| [lzfse/lzvn 1.0](https://github.com/lzfse/lzfse) | 2017-05-22 | |
+| [lzg 1.0.10](https://github.com/mbitsnbites/liblzg) | 2023-08-31 | |
+| [lzham 1.0](https://github.com/richgel999/lzham_codec) | 2022-01-03 | Public domain since 2020-09-15. Build fixed in lzbench for MinGW and newer compilers (`<cstdint>` includes, `GetSystemInfo`, `DISABLE_THREADING`). Disabled on macOS and 32-bit x86 — 64 MB dictionary overflows the 32-bit address space |
 | lzjb 2010 | 2010 | |
 | [lzlib 1.16](https://www.nongnu.org/lzip/lzlib.html) | 2026-03-11 | |
 | [lzma v26.03](http://7-zip.org) | 2026-09-03 | |
@@ -120,7 +120,7 @@ sources, the Notes column says so.
 | Compressor | Last update | Notes |
 | :--- | :--- | :--- |
 | [csc 2016-10-13](https://github.com/fusiyuan2010/CSC) | 2016-10-13 | Build fixed in lzbench (SSE intrinsics header, 7-Zip type guards). Disabled on macOS — segfaults with Apple LLVM 7.3.0 (clang-703.0.31) |
-| [gipfeli 2016-07-13](https://github.com/google/gipfeli) | 2016-07-13 | Decompression file mismatch when compiled with GCC 14.2 using -O3 |
+| [gipfeli 2016-08-16](https://github.com/google/gipfeli) | 2016-08-16 | Decompression file mismatch when compiled with GCC 14.2 using -O3 |
 | [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat) | 2008-07-08 | Build fixed in lzbench for 64-bit (pointer arithmetic truncated through `MP_U32`). Decompression bugs; may segfault with GCC 4.9+ using -O3 |
 | [lzrw 15-Jul-1991](https://en.wikipedia.org/wiki/LZRW) | 1991-07-15 | May segfault with GCC 4.9+ using -O3 |
 | [wflz 2015-09-16](https://github.com/ShaneWF/wflz) | 2015-09-16 | May segfault with GCC 4.9+ using -O3 |
@@ -221,7 +221,7 @@ of the single- and multi-threaded results can be sorted and searched, and charts
 | lzav 5.17 -2            |  42.8 MB/s |  2454 MB/s |    73869395 | 34.85 |
 | lzf 3.6 -0              |   318 MB/s |   530 MB/s |   105682088 | 49.86 |
 | lzf 3.6 -1              |   313 MB/s |   548 MB/s |   102041092 | 48.14 |
-| lzfse 2017-03-08        |  91.1 MB/s |   732 MB/s |    67624281 | 31.91 |
+| lzfse 2017-05-22        |  91.1 MB/s |   732 MB/s |    67624281 | 31.91 |
 | lzg 1.0.10 -1           |  89.4 MB/s |   477 MB/s |   108553667 | 51.22 |
 | lzg 1.0.10 -4           |  50.3 MB/s |   477 MB/s |    95930551 | 45.26 |
 | lzg 1.0.10 -6           |  31.2 MB/s |   506 MB/s |    89490220 | 42.22 |
@@ -278,7 +278,7 @@ of the single- and multi-threaded results can be sorted and searched, and charts
 | lzsse8 2019-04-18 -6    |  9.02 MB/s |  5007 MB/s |    75469717 | 35.61 |
 | lzsse8 2019-04-18 -12   |  8.84 MB/s |  5014 MB/s |    75464339 | 35.61 |
 | lzsse8 2019-04-18 -16   |  8.88 MB/s |  5019 MB/s |    75464339 | 35.61 |
-| lzvn 2017-03-08         |  69.0 MB/s |   799 MB/s |    80814609 | 38.13 |
+| lzvn 2017-05-22         |  69.0 MB/s |   799 MB/s |    80814609 | 38.13 |
 | mbrotli 0.5.2 -0        |   341 MB/s |   291 MB/s |    78433298 | 37.01 |
 | mbrotli 0.5.2 -2        |   127 MB/s |   349 MB/s |    68069489 | 32.12 |
 | mbrotli 0.5.2 -5        |  50.0 MB/s |   388 MB/s |    59555449 | 28.10 |
