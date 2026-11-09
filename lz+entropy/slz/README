@@ -1,4 +1,4 @@
-SLZ / StateLess Zip - v1.4-dev3 - 2026/10/25 - Willy Tarreau <w+slz@1wt.eu>
+SLZ / StateLess Zip - v1.4-dev5 - 2026/11/08 - Willy Tarreau <w+slz@1wt.eu>
 ---------------------------------------------------------------------------
 
 SLZ is a fast and memory-less stream compressor which produces an output that
@@ -17,8 +17,9 @@ divided by 10 and the CPU usage by 3.
 
 While zlib uses 256 kB of memory per stream in addition to a few tens of bytes
 for the stream descriptor itself, SLZ only stores a stream descriptor made of
-28 bytes. Thus it is particularly suited to environments having to deal with
-tens to hundreds of thousands of concurrent streams.
+40 bytes on 64-bit machines (32 bytes on 32-bit ones). Thus it is particularly
+suited to environments having to deal with tens to hundreds of thousands of
+concurrent streams.
 
 The key difference between zlib and SLZ is that SLZ is stateless in that it
 doesn't consider the data previously compressed as part of its dictionary. It
@@ -36,87 +37,207 @@ sensitive and attacker-controlled data in distinct batches. Since no dictionary
 persists between calls, there is no risk that attacker-controlled data is used
 to guess sensitive data using dictionary lookups.
 
-Another induced benefit which was not initially seeked is that SLZ is on
-average 3 times as fast as zlib in its fastest mode. This is the result of the
-simpler matching and encoding mechanisms involved which permit even more
-optimisations.
+Another induced benefit which was not initially seeked is that SLZ is about 5
+times as fast as zlib in its fastest mode. This is the result of the simpler
+matching and encoding mechanisms involved which permit even more optimisations.
 
-Some performance tests were run on various types of data showing anything
-between 227 MB/s and 753 MB/s per core on the test machine depending on the
-difficulty to find matching strings and on the amount of data emitted as
-literals (hence not compressed). In the end, comparative tests were performed
-using some reference datasets that are already being used for other libraries.
-This performance report was produced using the Silesia Corpus to get something
-comparable to what is reported by the LZ4 utility here :
+Since version 1.4, four compression levels are available. Level 1 is the
+fastest one and gives up early on hard-to-compress areas. Level 2 is the
+default, it gives up just as early but keeps checking the areas it skips, and
+stops skipping as soon as it recognizes something. Level 3 searches more
+before giving up. Level 4 never gives up and extends matches further
+backwards, for a slightly better ratio. In addition, a text content type may
+be selected for HTML, CSS, JS, JSON, SVG and similar contents
+(see "content type" below).
+
+Some performance tests were run using version 1.0 on various types of data
+showing anything between 227 MB/s and 753 MB/s per core on the older hardware
+depending on the difficulty to find matching strings and on the amount of data
+emitted as literals (hence not compressed). In the end, comparative tests were
+performed using some reference datasets that are already being used for other
+libraries. This performance report was produced using the Silesia Corpus to get
+something comparable to what is reported by the LZ4 utility here :
 
         https://github.com/Cyan4973/lz4
 
-The tests were run on a single core of a core i5-3320M at 3.3 GHz (turbo mode).
+Since then, tests have been performed on modern hardware, from 16-core ARM
+to 64-core AMD EPYC, and performance on x86_64 and ARMv8 has been further
+improved.
 
-Product           Input BW  Compression ratio
+The following tests were run on a single core of an Intel Core Ultra 7 265K at
+5.5 GHz (turbo mode). The figures for lz4, gzip and slz 1.4-dev5 were measured
+on the same machine. The input file is the Silesia Corpus tar file placed in a
+RAM disk (211947520 bytes). The output size was measured using "wc -c", but the
+bandwidth was measured by sending the output to /dev/null so as not to let the
+"wc" command slow everything down.
 
-lz4-r124          352 MB/s  2.09
-lzo-2.09          347 MB/s  2.10
-slz-1.2.1 -1 -D   293 MB/s  2.12  # deflate format
-slz-1.2.1 -3 -D   279 MB/s  2.20  # deflate format
-slz-1.2.1 -1      232 MB/s  2.12  # gzip format
-slz-1.2.1 -3      223 MB/s  2.20  # gzip format
-zlib-1.28 -1 -h    88 MB/s  1.64  # huffman only
-zlib-1.28 -1 -r    81 MB/s  1.65  # RLE only
-zlib-1.28 -1 -F    70 MB/s  2.32  # fixed huffman
-zlib-1.28 -1       70 MB/s  2.74
+  Product           Input BW  Compression ratio
+  lz4-1.8.2 -1      828 MB/s  2.10  # lz4 -1zc (fastest)
+  lz4-1.8.2 -2      828 MB/s  2.10  # lz4 -2zc (exact same output as -1)
+  zstd-1.5.7 --fast 694 MB/s  2.44  # zstd at fastest compression
+  zstd-1.5.7 -1     617 MB/s  2.89  # zstd -c1
+  zstd-1.5.7 -2     552 MB/s  3.05  # zstd -c2
+  zstd-1.5.7 -3     405 MB/s  3.20  # zstd -c3
+  slz-1.4 -1 -D     939 MB/s  2.15  # zenc in deflate format, level 1 (fastest)
+  slz-1.4 -1 -G     908 MB/s  2.15  # zenc in gzip format, level 1 (fastest)
+  slz-1.4 -1 -Z     908 MB/s  2.15  # zenc in zlib format, level 1 (fastest)
+  slz-1.4 -2 -D     830 MB/s  2.30  # zenc in deflate format, level 2 (default)
+  slz-1.4 -3 -D     795 MB/s  2.32  # zenc in deflate format, level 3
+  slz-1.4 -4 -D     746 MB/s  2.32  # zenc in deflate format, level 4 (best)
+  slz-1.4 -T -D     742 MB/s  2.40  # zenc in deflate format, text content type
+  slz-1.3.2 -1 -D   619 MB/s  2.13  # zenc in deflate format, level 1
+  slz-1.3.2 -1 -G   478 MB/s  2.13  # zenc in gzip format, level 1
+  slz-1.3.2 -1 -Z   547 MB/s  2.13  # zenc in zlib format, level 1
+  gzip-1.14 -1      163 MB/s  2.74  # gzip level 1 (fastest)
 
-Only zlib and SLZ can emit a stream that a regular zlib-compatible browser can
-decompress (RFC1950/1951/1952 aka zlib, deflate, gzip). Here SLZ is 3 times
-faster than zlib for a less compressed payload (29% larger than zlib). Tests
-run on other file types (including HTML, CSS, JS) show that the ratio of
-compression speed between SLZ and zlib varies from 2.5 to 3.5. The output
-compressed stream is often 24 to 32% larger for SLZ than zlib.
+Only gzip/zlib and SLZ can emit a stream that a regular zlib-compatible browser
+can decompress (RFC1950/1951/1952 aka zlib, deflate, gzip). Here SLZ is 4.5 to
+5.7 times faster than zlib, for a payload 14 to 27% larger than zlib's at its
+fastest level 1. Slz 1.4's gzip compression is 1.9 times faster than that of
+slz-1.3, its zlib's compression is 1.66 times faster than 1.3, and its deflate
+compression is 52% faster, all while compressing slightly more. What is
+particularly surprising is to see slz-1.4's levels 1 and 2 both being faster
+and stronger than lz4 on this machine. It has a bit to do with optimization
+level, as a generic build (which matches the build of the distro's package)
+shows 924 and 811 MB/s respectively, hence only level 1 is faster, but 2 is
+slightly slower (but both still compress better). Compared to zstd, slz is not
+put to shame either. Zstd always compresses better at all levels, and is always
+slower at all levels. The closest between the two is zstd --fast that is close
+to slz -T, at 2.44 vs 2.40 compression ratios (2% better for zstd), where slz
+is 6.9% faster. Again, we're flirting with CPU-specific optimizations here.
+
+The text content type was trained on web contents while Silesia does not match,
+but it still brings the output within 14% of zlib's because it contains some
+source code that's text and not very different from web contents. The three
+output formats now run at almost the same speed: the zlib and gzip formats
+cost only 3.5% compared to raw deflate on this CPU.
+
+Compressing the sources of a Linux 7.0 kernel better illustrates the gains to
+expect from text inputs, on the same machine:
+
+  Parameters        Input BW  Compression ratio
+  zstd-1.5.7        879 MB/s  5.29  # zstd --fast
+  zenc -1 -D       1052 MB/s  4.28  # slz in deflate format, level 1 (fastest)
+  zenc -2 -D       1046 MB/s  4.28  # slz in deflate format, level 2 (default)
+  zenc -T -D        994 MB/s  4.85  # slz in deflate format, text content type
+  gzip-1.14 -1      284 MB/s  4.97  # gzip level 1 (fastest)
+
+This is more than one gigabyte per second of input data that is divided in size
+by 4 to 5, it's 3.7 times faster than gzip for a 16% larger output at level 1,
+and still 3.5 times faster than gzip for a 2.4% larger output in text mode.
+
+Here again we can see that slz can complete the spectrum on the fast but lower
+compression side just after zstd, by compressing in its highest compression
+ratio 13% faster for 9% larger.
+
+Modern ARM cores deliver good performance as well, as seen below on an A720
+core of a CIX-P1 processor in Radxa Orion O6 on the Silesia corpus file:
+
+   parameters     ratio              speed (MB/s)
+   zenc -G -1     0.4680 = 1/2.14    505.7
+   zenc -Z -1     0.4680 = 1/2.14    529.5
+   zenc -D -1     0.4680 = 1/2.14    548.0
+   zenc -D -2     0.4362 = 1/2.29    485.1
+   zenc -D -3     0.4326 = 1/2.31    467.7
+   zenc -D -4     0.4315 = 1/2.32    438.4
+   zenc -D -T     0.4167 = 1/2.29    423.0
 
 Since SLZ focuses a lot on performance savings gained by keeping most of the
 workload in CPU cache, it scales very well when multiple cores are used in
-parallel (low memory bandwidth) as shown in this tests run on a quad-core ARM
-Cortex A17 (RK3288) running at 1.8 GHz and the same input data :
+parallel (low memory bandwidth) as shown in this tests run on a 16-core ARM
+Cortex A72 (NXP LX2160A) running at 2.2 GHz, using the same input data at
+level 1 in deflate format :
 
-   #Cores  Input size  Time(s)  BW/core(MB/s)   Total BW(MB/s)
-      1     211938580   2.870       73.8             73.8
-      2     211938580   2.880       73.5            147.1
-      3     211938580   2.885       73.4            220.3
-      4     211938580   2.975       71.2            284.9
+   #Cores  Input size  BW/core(MB/s)   Total BW(MB/s)
+       1    211947520      169.4            169.4
+       2    211947520      172.6            345.2
+       3    211947520      171.6            514.8
+       4    211947520      172.2            688.8
+       6    211947520      172.6           1035.6
+       8    211947520      173.3           1386.4
+      12    211947520      173.1           2077.2
+      16    211947520      172.7           2763.2
 
-On an ARMv8 with CRC32 (88F8040) running at 2.0 GHz it's even better:
+Here the scaling is perfectly linear: each core compresses as fast with all 16
+cores busy as when it runs alone. At level 3, the same machine processes
+141.7 MB/s on one core and 2328 MB/s on 16 cores.
 
-   #Cores  Input size  Time(s)  BW/core(MB/s)   Total BW(MB/s)
-      1     211938580   2.016      105.1            105.1
-      2     211938580   2.025      104.6            209.3
-      3     211938580   2.085      101.6            304.9
-      4     211938580   2.041      103.8            415.3
+On a more powerful machine (64-core 3rd gen AMD EPYC at 3.7 GHz), with the same
+settings, we observe this:
 
-On a more powerful machine (64-core AMD EPYC), we observe this:
+   #Cores  Input size  BW/core(MB/s)   Total BW(MB/s)
+       1    211947520      573.8            573.8
+       2    211947520      574.9           1095.8
+       3    211947520      572.4           1717.2
+       4    211947520      569.4           2277.6
+       8    211947520      540.1           4320.8
+      16    211947520      472.7           7563.2
+      32    211947520      461.6          14771.2
+      64    211947520      380.0          24320.0
 
-   #Cores  Input size  Time(s)  BW/core(MB/s)   Total BW(MB/s)
-      1     211957760   0.520      407.6            407.6
-      2     211957760   0.524      404.5            809.0
-      3     211957760   0.525      403.7           1211.1
-      4     211957760   0.526      403.0           1612.0
-      8     211957760   0.532      398.4           3187.3
-     16     211957760   0.626      338.6           5417.5
-     32     211957760   0.630      336.4          10766.1
-     64     211957760   0.724      292.8          18736.6
+On the same 64-core AMD EPYC with 2 threads per core:
 
-On a 64-core AMD EPYC with 2 threads per core:
+   #Cores  Input size  BW/core(MB/s)   Total BW(MB/s)
+       1  2*211947520      757.0            757.0
+       2  2*211947520      762.6           1523.2
+       3  2*211947520      754.0           2262.0
+       4  2*211947520      756.2           3024.8
+       8  2*211947520      720.0           5760.0
+      16  2*211947520      624.4           9990.4
+      32  2*211947520      610.4          19532.8
+      64  2*211947520      447.6          28646.4
 
-   #Cores  Input size  Time(s)  BW/core(MB/s)   Total BW(MB/s)
-      1   2*211957760   0.765      554.1            554.1
-      2   2*211957760   0.749      566.0           1132.0
-      4   2*211957760   0.752      563.7           2254.9
-      8   2*211957760   0.766      553.4           4427.3
-     16   2*211957760   0.772      549.1           8785.8
-     32   2*211957760   0.895      473.6          15156.8
-     64   2*211957760   0.912      464.8          29748.5
+The per-core drop seen here is not caused by SLZ but by the CPU's frequency,
+which falls as more cores become active: it runs at 3.7 GHz on up to 4 cores,
+3.1 GHz from 8 to 32 cores, and about 2.5 GHz on all 64 cores. With the
+frequency fixed at 2.5 GHz, the scaling is almost linear again, with each core
+retaining 93% of its single-core performance with all 64 cores busy, and
+running two threads per core brings 25 to 35% more.
 
-The last one compresses the equivalent of about 250 Gbps of input TCP traffic
-to 113 Gbps of output TCP traffic.
+One thread per core, at 2.5 GHz:
+
+   #Cores  Input size  BW/core(MB/s)   Total BW(MB/s)
+       1    211947520      380.4            384.9
+       2    211947520      380.6            761.2
+       3    211947520      379.0           1137.0
+       4    211947520      378.9           1515.6
+       8    211947520      374.0           2992.0
+      16    211947520      376.1           6017.6
+      32    211947520      371.4          11885.1
+      64    211947520      356.0          22783.4
+
+Two threads per core, at 2.5 GHz:
+
+   #Cores  Input size  BW/core(MB/s)   Total BW(MB/s)
+       1  2*211947520      506.3            506.3
+       2  2*211947520      507.2           1014.3
+       3  2*211947520      505.0           1515.0
+       4  2*211947520      504.2           2016.8
+       8  2*211947520      496.5           3971.8
+      16  2*211947520      494.1           7906.1
+      32  2*211947520      490.1          15684.0
+      64  2*211947520      450.9          28855.6
+
+With all 128 threads busy, the machine compresses the equivalent of about 230
+Gbps of input TCP traffic to 107 Gbps of output TCP traffic at level 1. At
+level 3, which compresses better (ratio 2.32 instead of 2.15), it still
+processes 26.0 GB/s, or 208 Gbps of input traffic compressed to 89.7 Gbps, and
+a single core runs at 491 MB/s (650 MB/s with two threads).
+
+Decompression is not SLZ's main purpose, but the zdec utility, based on the
+built-in uslz decompressor, is much faster (3x) than zcat on streams produced
+by zenc, and remains 2x faster on streams produced by gzip. These tests were
+run on a single core of a 3rd gen AMD EPYC at 3.7 GHz, decompressing the
+Silesia corpus compressed in gzip format (the output size is the 211947520
+bytes of the original data):
+
+   Stream produced by  Decompressor          Time(s)  Output BW(MB/s)
+   zenc -G -1          zdec (slz-1.4-dev5)    0.364       582
+   zenc -G -1          zcat (gzip-1.12)       1.076       196
+   zenc -G -T          zdec (slz-1.4-dev5)    0.570       372
+   zenc -G -T          zcat (gzip-1.12)       1.090       191
+   gzip -1             zdec (slz-1.4-dev5)    0.567       374
+   gzip -1             zcat (gzip-1.12)       1.114       190
 
 Since some products automatically throttle the compression level based on the
 CPU usage or the available memory, on high speed networks, zlib can end up
@@ -125,6 +246,9 @@ SLZ, no extra memory usage is needed for compression, and the CPU usage is
 reduced by 2.5-3.5 times, meaning that the throttling will happen at much
 higher data rates. The net effect is a significant improvement on the
 compression ratio compared to zlib at a given resource usage.
+
+Note: the measurements below were performed with version 1.2 and will need to
+be performed again with the current version.
 
 HAProxy running on a single core of a core i5-3320M, with 500 concurrent users,
 the default 16kB buffers, and accessing www.haproxy.org (76 kB) shows the
@@ -172,7 +296,8 @@ based compressor :
   and compression ratio. Smaller hash tables cause more collisions hurting the
   compression ratio, and larger ones experience a significant slowdown on
   certain datasets due to the hashtable having more difficulties to fit
-  entirely in the CPU cache.
+  entirely in the CPU cache. The size remains configurable at build time
+  using SLZ_HASH_BITS.
 
 - indexing : if sequences of less than 3 bytes are considered for a lookup,
   since we only keep the last occurrence, there's a high risk of not keeping
@@ -183,10 +308,12 @@ based compressor :
   than 4 bytes will only match once in a while and will prevent shorter series
   of characters from being matched. Experimentation has shown that hashing 3
   bytes only provided the same compression ratio as hashing 4 bytes, with up to
-  10% faster input processing thanks to the reduced cost of hashing. Attempts
-  to index the repeated data were made, and caused a significant performance
-  drop (about 5%) for less than 1% compression ratio improvement, so they were
-  abandonned.
+  10% faster input processing thanks to the reduced cost of hashing. Indexing
+  all the repeated data caused a significant performance drop (about 5%) for
+  less than 1% compression ratio improvement, so only the beginning of each
+  match is indexed. When a match is found, SLZ also checks whether it extends
+  backwards into the pending literals, which recovers bytes that were missed
+  without having to index more.
 
 - longest match : the longest match measurement is very similar to an strcmp()
   call except that we count similar characters. In order to avoid this slow
@@ -199,7 +326,9 @@ based compressor :
   this chance is significantly higher since not all 32 bits are used, it's more
   like 24 bits (6 bits per char), so it's one chance over 2048 that an entry
   will match. That's still 2047/2048 useless calls to the memmatch function
-  that are saved this way.
+  that are saved this way. The match itself is then measured one machine word
+  at a time, the first differing byte being located by counting the trailing
+  zeroes of the XOR of the two words.
 
 - encoding the output : deflate is often criticized for its bit-oriented stream
   which is expensive to manipulate as it requires bit shifts. Moreover, on top
@@ -212,43 +341,51 @@ based compressor :
   all lengths are stored as their respective huffman output bits. This avoids
   an encoding phase, sequences of bits are immediately sent to the destination
   buffer without any further operation, and remain reasonably cheap compared to
-  the more common usages.
+  the more common usages. On 64-bit machines, the bits are accumulated in a
+  machine word and a whole match (length and distance) is written with a single
+  unaligned store. Long runs of literals that do not match anything are skipped
+  and sent as plain literals without being looked up (at levels 1 to 3).
 
 - checksumming : 3 checksum methods exist depending on the encoding format.
-  RFC1950 (zlib format) uses an Adler-32 checksum which theorically involves
-  modulus (divide) but which can be optimized as it's done with a number very
-  close to a power of two. RFC1951 (raw deflate) doesn't involve any checksum.
-  RFC1952 (gzip) uses a CRC-32 which is somewhat expensive but can be optimized
-  in various ways. Since SLZ was designed around gzip mainly, most of the
-  optimizations were done to optimize CRC-32. Some well-known methods involve
-  pre-computed tables, which can be further optimized for multi-byte processing
-  and single-byte processing as well. It was found that updating the CRC-32 on
-  a per-character basis before looking up the hash came at almost no cost
-  because it would probably benefit make use of some pipeline stalls when the
-  hashed entry was not in the CPU's L1 cache. But in order to avoid multiplying
-  the functions, the checksum computation was moved out of the function with a
-  very low extra cost (less than 1%) as it can process all the input at once 4
-  bytes at a time, contributes to preloading the input data into the caches.
-  And on CPU architectures featuring a CRC32 instruction (e.g. ARMv8), this
-  instruction is used and allows the gzip format to be roughly as fast as the
-  deflate one.
+  RFC1951 (raw deflate) doesn't involve any checksum. RFC1952 (gzip) uses a
+  CRC-32 which is somewhat expensive but can be optimized in various ways.
+  On x86 CPUs with the carry-less multiplication instruction (PCLMULQDQ),
+  detected at boot time, SLZ computes it by folding 16 bytes at a time, which
+  makes it almost free. On ARMv8, the CPU's CRC-32 instructions are used when
+  available. Other machines use pre-computed tables processing 4 bytes at a
+  time. RFC1950 (zlib format) uses an Adler-32 checksum which theorically
+  involves modulus (divide) but which can be optimized as it's done with a
+  number very close to a power of two. This format matters more than it seems,
+  because it is what browsers call "deflate". Its two sums form a long
+  dependency chain which is hard to speed up, but on machines with SIMD units
+  (SSE2 on x86, NEON on ARM), SLZ splits the input into 32-byte blocks and sums
+  each byte offset of the blocks independently. This is written in plain C that
+  the compiler vectorizes, and made the zlib format 12 to 23% faster depending
+  on the CPU. It is now about as fast as gzip on x86 and faster than gzip on
+  ARM. The checksum is computed over all the input at once before compressing,
+  which also contributes to preloading the input data into the caches.
 
 - implementation-specific optimizations : modern CPUs can load unaligned words
   from memory with minimal to no overhead. On architectures that support this
-  (ix86, x86_64, armv7), this is used to limit the number of operations and
-  memory accesses. Some CPUs have a smaller cache and the direct mapping
-  between distances and huffman sequences can make it thrash a lot. Some
-  experimentations were made using a direct mapping only for shortest distances
-  (the most common ones), but results were not encouraging for now as a cache
-  miss is not completely offset by the amount of extra operations.
+  (ix86, x86_64, armv7, armv8), this is used to limit the number of operations
+  and memory accesses, both to compare data and to write the output. The bit
+  reversal needed by deflate's huffman codes uses the dedicated instruction on
+  ARM. Some CPUs have a smaller cache and the direct mapping between distances
+  and huffman sequences can make it thrash a lot. Some experimentations were
+  made using a direct mapping only for shortest distances (the most common
+  ones), but results were not encouraging for now as a cache miss is not
+  completely offset by the amount of extra operations.
 
 
-These two factors have a significant impact on the compression ratio :
+These three factors have a significant impact on the compression ratio :
 
 - collisions in the dictionary, caused by suboptimal hash distribution. Here
   with 8k entries we have what looks like the best tradeoff between speed and
   compression ratio for most workloads tested, and it can easily be changed
-  using a macro.
+  using a macro. This impact is dampened a bit by backward lookup upon a match,
+  based on the estimate that if a collision happens on the first byte, it will
+  not necessarily happen on the next one and if the match is 5 bytes or more,
+  it can still be found.
 
 - output encoding : the dynamic huffman trees would definitely shorten the
   output stream but at an important performance cost. But even with fixed trees
@@ -259,18 +396,34 @@ These two factors have a significant impact on the compression ratio :
   further. Second, referencing a match can be longer than the data it replaces.
   This is true for short sequences, but it can be true even for a long sequence
   in the middle of a series of plain literals. By monitoring the output stream
-  and verifying the encoding cost before switching, it is possible to avoid any
-  overhead beyond the base 5 bytes per 32kB plus headers for non-compressible
-  data.
+  and verifying the encoding cost before switching, it is possible to limit the
+  overhead to the base 5 bytes per 65535 bytes plus headers for non-compressible
+  data, plus at most SLZ_MAX_DEBT_BYTES (40 bytes, see slz.h) by which the
+  huffman encoding may lag behind before SLZ falls back to plain literals.
+  SLZ_MAX_OVERHEAD(len) in slz.h gives the room each call needs on top of its
+  input length.
+
+- content type : most of the contents compressed by HTTP servers and gateways
+  is text (HTML, CSS, JS, JSON, SVG...), on which zlib's default fixed huffman
+  tree is far from optimal, as it encodes most letters on 8 bits and match
+  lengths on 7 bits or more. Since 1.4, an application knowing that it
+  compresses such contents can call slz_set_content_type(strm, SLZ_CT_TEXT)
+  after initializing the stream. Instead of the fixed tree, SLZ then uses a
+  static tree that was trained on web contents, declared at the beginning of
+  each block in about 80 bytes. It remains as cheap to use as the fixed one, at
+  the expense of a few percent of speed, and shrinks the output of such
+  contents by 12 to 18%. It is not suited to binary contents nor to contents of
+  less than 1-2 kB.
 
 SLZ is provided as a library with a few extra tools (such as the zenc testing
-utility mentioned above). It is distributed under the X11 license, meaning
-that you can do a lot of things with it, such as merge it into GPL or BSD-
-licensed programs, as well as use it in proprietary software. Contributions are
-welcome and should be sent as Git patches (see "git format-patch") and will be
-made under the same license exclusively.
+utility mentioned above, and zdec, a decompressor based on uslz which can
+decompress any gzip, zlib or raw deflate stream, not only those produced by
+SLZ, and detects the gzip and zlib formats by itself). It is distributed under
+the X11 license, meaning that you can do a lot of things with it, such as merge
+it into GPL or BSD-licensed programs, as well as use it in proprietary
+software. Contributions are welcome and should be sent as Git patches (see "git
+format-patch") and will be made under the same license exclusively.
 
 Project's webpage : http://www.libslz.org/
 Download sources  : https://github.com/wtarreau/libslz/
 Contact           : Willy Tarreau <w+slz@1wt.eu>
-
