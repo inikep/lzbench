@@ -868,6 +868,10 @@ int64_t lzbench_slz_compress(char *inbuf, size_t insize, char *outbuf, size_t ou
     else
         slz_init(&strm, codec_options->level, SLZ_FMT_DEFLATE);
 
+    /* text-aware encoding is called level 5 here */
+    if (codec_options->level > 4)
+        slz_set_content_type(&strm, SLZ_CT_TEXT);
+
     do {
         blk = std::min(insize, (size_t)4096 << 10);
 

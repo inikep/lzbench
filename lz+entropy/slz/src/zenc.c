@@ -79,7 +79,10 @@ __attribute__((noreturn)) void usage(const char *name, int code)
 	    "  -h         display this help\n"
 	    "  -l <loops> loop <loops> times over the same file\n"
 	    "  -n         does nothing, just for gzip compatibility\n"
+	    "  -p         pre-heat: fault the input (mmap mode) and output buffers in\n"
+	    "             before compressing, and keep the input mapped between loops\n"
 	    "  -t         test mode: do not emit anything\n"
+	    "  -T         optimize for text contents (html, css, js, json, ...)\n"
 	    "  -v         increase verbosity\n"
 	    "\n"
 	    "  -D         use raw Deflate output format (RFC1951)\n"
@@ -109,6 +112,7 @@ int main(int argc, char **argv)
 	unsigned long long totin = 0;
 	unsigned long long totout = 0;
 	int buffer_mode = 0;
+	int preheat = 0;
 	int loops = 1;
 	int round = 0;          /* index of the pass being run */
 	int timed_round;        /* index of the pass the measurement starts on */
@@ -118,6 +122,7 @@ int main(int argc, char **argv)
 	int level   = 2;
 	int verbose = 0;
 	int test    = 0;
+	int ctype   = SLZ_CT_GENERIC;
 	int format  = SLZ_FMT_GZIP;
 	int force   = 0;
 	int fd = 0;
@@ -174,8 +179,14 @@ int main(int argc, char **argv)
 		else if (strcmp(argv[0], "-B") == 0)
 			buffer_mode = 1;
 
+		else if (strcmp(argv[0], "-p") == 0)
+			preheat = 1;
+
 		else if (strcmp(argv[0], "-t") == 0)
 			test = 1;
+
+		else if (strcmp(argv[0], "-T") == 0)
+			ctype = SLZ_CT_TEXT;
 
 		else if (strcmp(argv[0], "-v") == 0)
 			verbose++;
@@ -273,6 +284,20 @@ int main(int argc, char **argv)
 #if defined(MADV_SEQUENTIAL)
 			madvise((void *)buffer, mapsize, MADV_SEQUENTIAL);
 #endif
+			if (preheat) {
+				/* touch every page now so that no page fault is
+				 * left for the measured passes. The sum is only
+				 * there to keep the reads.
+				 */
+				volatile unsigned char sink;
+				unsigned char sum = 0;
+				off_t pos;
+
+				for (pos = 0; pos < toread; pos += PAGE_SIZE)
+					sum += buffer[pos];
+				sink = sum;
+				(void)sink;
+			}
 		}
 	}
 
@@ -304,6 +329,17 @@ int main(int argc, char **argv)
 		}
 	}
 
+	/* with -p, also fault the output buffer in now: with large blocks it
+	 * is large enough to be mapped on demand by calloc(), and the first
+	 * pass would otherwise pay for its page faults (~22k for -k 262144).
+	 */
+	if (preheat) {
+		size_t pos;
+
+		for (pos = 0; pos < outbsize + 4096; pos += PAGE_SIZE)
+			outbuf[pos] = 0;
+	}
+
 	/* When looping, the first pass is not measured: it is the one that
 	 * faults the input in and warms the caches, and counting it would
 	 * report the cost of the I/O rather than that of the compression.
@@ -319,6 +355,7 @@ int main(int argc, char **argv)
 		}
 
 		slz_init(&strm, level, format);
+		slz_set_content_type(&strm, ctype);
 
 		outblen = ofs = 0;
 		do {
@@ -363,8 +400,10 @@ int main(int argc, char **argv)
 			outblen += slz_encode(&strm, outbuf + outblen, start, tocompress, more);
 
 #if defined(MADV_DONTNEED)
-			if (!buffer_mode && (((ofs + tocompress) ^ ofs) & 2097152)) {
-				/* we've crossed a MB boundary, let's release the previous MB */
+			if (!buffer_mode && !preheat && (((ofs + tocompress) ^ ofs) & 2097152)) {
+				/* we've crossed a MB boundary, let's release the previous MB,
+				 * unless pre-heating, which wants it to stay mapped.
+				 */
 				madvise((void *)(buffer + (ofs & -2097152)), 2097152, MADV_DONTNEED);
 			}
 #endif
