@@ -1019,7 +1019,7 @@ int lzbench_main(lzbench_params_t* params, const char** inFileNames, unsigned if
 
 void usage(lzbench_params_t* params)
 {
-    fprintf(stdout, "lzbench - in-memory benchmark of open-source compressors\n\n");
+    fprintf(stdout, PROGNAME " - in-memory benchmark of open-source compressors\n\n");
     fprintf(stdout, "usage: " PROGNAME " [options] [input]\n\nwhere [input] is a file/s or a directory and [options] are:\n");
     fprintf(stdout, "  -b#   set block/chunk size to # KB, 0=disabled {default: %llu}\n", (uint64)(params->chunk_size>>10));
     fprintf(stdout, "  -c#   sort results by column # (1=algname, 2=ctime, 3=dtime, 4=comprsize)\n");

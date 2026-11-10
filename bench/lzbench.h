@@ -19,7 +19,12 @@
 #include "codecs.h"
 
 
-#define PROGNAME "lzbench"
+#ifdef ENTROPYBENCH
+    // "make entropybench": the same benchmark with only the entropy coders (mk/*.mk ENTROPY_CODECS)
+    #define PROGNAME "entropybench"
+#else
+    #define PROGNAME "lzbench"
+#endif
 #define PROGVERSION "2.4.1"
 #ifndef BENCH_REMOVE_AOCL
     #define PAD_SIZE (16*1024)
@@ -229,7 +234,7 @@ static const compressor_desc_t comp_desc[] =
 #if !defined(BENCH_REMOVE_GPUCOMPACT) && defined(BENCH_HAS_CUDA)
     { "gpucompact", "gpucompact 1.1",          "BWT + tANS",                  1,   5,    0,  NO_THREADING,  lzbench_gpucompact_compress, lzbench_gpucompact_decompress, lzbench_gpucompact_init,  lzbench_gpucompact_deinit },
 #endif
-    { "huffman-zlib",   "huffman-zlib 1.3.2",  "Huffman",                     1,   1,    0,  BENCH_POOL_MT, lzbench_huffman_zlib_compress,   lzbench_zlib_decompress,   NULL,                    NULL },
+    { "huffman-zlib","zlib 1.4 huffman",       "Huffman",                     1,   1,    0,  BENCH_POOL_MT, lzbench_huffman_zlib_compress, lzbench_huffman_zlib_decompress, NULL,                NULL },
     { "kanzi",      "kanzi 2.6.0",             "LZ77, ROLZ, BWT or CM",       1,   9,    0, FULL_THREADING, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
     { "lbzip2",     "lbzip2 2.6.5",            "BWT + Huffman",               1,   9,    0,  BENCH_POOL_MT, lzbench_lbzip2_compress,     lzbench_lbzip2_decompress,     NULL,                    NULL },
     { "libdeflate", "libdeflate 1.26",         "LZ77 + Huffman",              1,  12,    0,  BENCH_POOL_MT, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
@@ -366,7 +371,15 @@ static inline const char* lzbench_algorithm(const compressor_desc_t* desc, int l
 
 
 static const alias_desc_t alias_desc[] =
-{   // default alias
+{
+#ifdef ENTROPYBENCH
+    // entropybench: the default alias, and ALL, are its entropy coders
+    { "ENTROPY", "Represents entropy coders (Huffman, FSE/ANS or range coding) without a modelling stage (default alias).",
+              "memcpy/huffman-zlib" },
+    { "ALL",  "Represents all entropy coders.",
+              "ENTROPY" },
+#else
+    // default alias
     // FAST: every level that compressed silesia.tar at 100 MB/s or more on one thread of an AMD EPYC 9555P
     // (3.20 GHz, lzbench 2.4, doc/results); tornado -1 is left out as it fails on incompressible data
     { "FAST", "Refers to compressors capable of achieving compression speeds exceeding 100 MB/s (default alias).",
@@ -463,6 +476,7 @@ static const alias_desc_t alias_desc[] =
     { "openzl_zstd", nullptr, "openzl_zstd,-99,-90,-80,-70,-60,-50,-40,-30,-20,-10,-8,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,8,10,12,14,16,18,20,22" },
     { "openzl_lz4",  nullptr, "openzl_lz4,-99,-90,-80,-70,-60,-50,-40,-30,-20,-10,-8,-6,-5,-4,-3,-2,-1,1,2,3,4,5,6,7,8,9,10,11,12" },
 #endif
+#endif // ENTROPYBENCH
 };
 
 const long int LZBENCH_ALIASES_COUNT = sizeof(alias_desc)/sizeof(alias_desc[0]);

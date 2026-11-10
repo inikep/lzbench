@@ -51,6 +51,7 @@ lzbench.objs
 
 # Linux
 lzbench
+entropybench
 
 # backups, old versions
 *~

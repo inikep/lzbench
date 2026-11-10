@@ -99,4 +99,9 @@ added to their compiler command line. `make DONT_BUILD_XXXX=1` leaves them out a
 `BENCH_REMOVE_XXXX`. The "Codecs" section of the `Makefile` lists what else a mk file may do, e.g.
 disable its codec on some platforms with `DONT_BUILD_XXXX ?= 1`.
 
+An entropy coder without a modelling stage (Huffman, FSE/ANS or range coding on its own, e.g.
+`huffman-zlib`) goes into entropybench (`make entropybench`) instead of lzbench: its mk file says
+`ENTROPY_CODECS += XXXX` instead of `CODECS += XXXX`, its functions go into `bench/entropy_codecs.cpp`,
+and it is added to the `ENTROPY` alias, in entropybench's part of `alias_desc` in `bench/lzbench.h`.
+
 - Refer to example commit: [Add zpaq 7.15](https://github.com/inikep/lzbench/commit/20f553b).

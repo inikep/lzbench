@@ -13,6 +13,10 @@
 # For non-default compiler:
 #	make CC=gcc-14 CXX=g++-14
 #
+# The entropy coders without a modelling stage (Huffman, FSE/ANS or range coding)
+# are benchmarked by a second binary, built from the same bench/ sources:
+#	make entropybench
+#
 # For an optimized but non-portable build, use:
 #	make MOREFLAGS="-march=native"
 # or
@@ -267,6 +271,10 @@ cargo_at_least = $(shell printf "%s\n$(1)\n" "$(CARGO_VERSION)" | sort -V | head
 #   NAME_NEEDS := codecs whose objects NAME calls (optional): they are built
 #                 and linked with NAME even when left out themselves
 #
+# An entropy coder without a modelling stage says "ENTROPY_CODECS += NAME"
+# instead of "CODECS += NAME": it is built into entropybench ("make
+# entropybench") instead of lzbench, with the same NAME_* variables and options.
+#
 # "make DONT_BUILD_NAME=1" leaves NAME_OBJS out (unless an enabled codec needs
 # them) and defines BENCH_REMOVE_NAME, which removes the codec from bench/*.cpp.
 # A mk file may also:
@@ -290,24 +298,30 @@ MKDIR = mkdir -p
 # The codecs it names keep their defaults: one that is off on this platform (or
 # by default, as AOCL) stays off.
 ifneq ($(strip $(BUILD_ONLY)),)
-    ALL_CODECS := $(shell sed -n 's/^[[:space:]]*CODECS[[:space:]]*+=[[:space:]]*//p' $(SOURCE_PATH)mk/*.mk)
+    ALL_CODECS := $(shell sed -n 's/^[[:space:]]*\(ENTROPY_\)\{0,1\}CODECS[[:space:]]*+=[[:space:]]*//p' $(SOURCE_PATH)mk/*.mk)
     $(foreach c,$(filter-out $(BUILD_ONLY),$(ALL_CODECS)),$(eval DONT_BUILD_$(c) ?= 1))
 endif
 
 include $(sort $(wildcard $(SOURCE_PATH)mk/*.mk))
 
-ifneq ($(filter-out $(CODECS),$(BUILD_ONLY)),)
-    $(error BUILD_ONLY names unknown codecs: $(filter-out $(CODECS),$(BUILD_ONLY)) (the codecs are $(sort $(CODECS))))
+ifneq ($(filter-out $(CODECS) $(ENTROPY_CODECS),$(BUILD_ONLY)),)
+    $(error BUILD_ONLY names unknown codecs: $(filter-out $(CODECS) $(ENTROPY_CODECS),$(BUILD_ONLY)) (the codecs are $(sort $(CODECS) $(ENTROPY_CODECS))))
 endif
 
 CODECS_OFF := $(foreach c,$(CODECS),$(if $(filter 1,$(DONT_BUILD_$(c))),$(c)))
 CODECS_ON  := $(filter-out $(CODECS_OFF),$(CODECS))
-DEFINES    += $(addprefix -DBENCH_REMOVE_,$(CODECS_OFF))
+# lzbench has none of the entropy coders, which are in entropybench
+DEFINES    += $(addprefix -DBENCH_REMOVE_,$(CODECS_OFF) $(ENTROPY_CODECS))
 # the enabled codecs and the codecs they need, whose objects are linked
 CODECS_LINKED := $(sort $(CODECS_ON) $(foreach c,$(CODECS_ON),$($(c)_NEEDS)))
 
+# the same for entropybench
+ENTROPY_CODECS_OFF := $(foreach c,$(ENTROPY_CODECS),$(if $(filter 1,$(DONT_BUILD_$(c))),$(c)))
+ENTROPY_CODECS_ON  := $(filter-out $(ENTROPY_CODECS_OFF),$(ENTROPY_CODECS))
+ENTROPY_CODECS_LINKED := $(sort $(ENTROPY_CODECS_ON) $(foreach c,$(ENTROPY_CODECS_ON),$($(c)_NEEDS)))
+
 # Give each group's objects its compiler flags and optimization level.
-$(foreach g,$(CODECS_LINKED) $(OBJ_GROUPS),$(if $($(g)_OBJS), \
+$(foreach g,$(sort $(CODECS_LINKED) $(ENTROPY_CODECS_LINKED)) $(OBJ_GROUPS),$(if $($(g)_OBJS), \
     $(eval $$($(g)_OBJS): CODEC_FLAGS = $$($(g)_FLAGS)) \
     $(if $($(g)_OPT),$(eval $$($(g)_OBJS): OPT_LEVEL = $($(g)_OPT)))))
 
@@ -352,9 +366,10 @@ ifneq ($(strip $(RUST_FEATURES)),)
     endif
     RUST_DEPS += $(RUST_STAMP) $(addprefix $(RUST_SRC_DIR),Cargo.toml Cargo.lock lib.rs .cargo/config.toml)
 
-    # linked with -l, but lzbench is relinked when the library changes
+    # linked with -l, but lzbench is relinked when the library changes;
+    # RUST_LDFLAGS, not LDFLAGS, as entropybench does not link it
     LINK_DEPS += $(RUST_LIB)
-    LDFLAGS += -Wl,-rpath,$(RUST_SRC_DIR)target/release -L$(RUST_SRC_DIR)target/release -llzbench_rust
+    RUST_LDFLAGS := -Wl,-rpath,$(RUST_SRC_DIR)target/release -L$(RUST_SRC_DIR)target/release -llzbench_rust
 endif
 
 # cargo leaves an up-to-date library alone, so touch it: otherwise it would stay
@@ -374,17 +389,17 @@ endif
 # lzbench itself
 #------------------------------------------------------------------------------
 
-BENCH_OBJS := bench/entropy_codecs.o bench/lz_codecs.o bench/lz_entropy_codecs.o bench/buggy_codecs.o bench/symmetric_codecs.o bench/lzbench.o bench/misc_codecs.o
+BENCH_OBJS := bench/lz_codecs.o bench/lz_entropy_codecs.o bench/buggy_codecs.o bench/symmetric_codecs.o bench/lzbench.o bench/misc_codecs.o
 ifneq "$(DISABLE_THREADING)" "1"
     BENCH_OBJS += bench/threadpool.o
 endif
 
-bench/lz_codecs.o:        CODEC_FLAGS = $(addprefix -I$(SRC),lz lz/misa77/include)
-bench/entropy_codecs.o:   CODEC_FLAGS = $(addprefix -I$(SRC),entropy lz+entropy)
+# (the entropybench objects of the same sources, below, get the same flags)
+bench/lz_codecs.o bench/entropybench/lz_codecs.o: CODEC_FLAGS = $(addprefix -I$(SRC),lz lz/misa77/include)
 bench/lz_entropy_codecs.o: CODEC_FLAGS = $(addprefix -I$(SRC),lz+entropy lz+entropy/brotli/include lz+entropy/openzl/include lz+entropy/zxc/src/lib/vendors)
 bench/buggy_codecs.o:     CODEC_FLAGS = -I$(SRC)lz+entropy/libcsc
 bench/symmetric_codecs.o: CODEC_FLAGS = $(OPENMP_CXXFLAGS)
-bench/lzbench.o:          CODEC_FLAGS = $(OPENMP_CXXFLAGS) $(if $(GIT_COMMIT),-DLZBENCH_GIT_COMMIT=\"$(GIT_COMMIT)\")
+bench/lzbench.o bench/entropybench/lzbench.o: CODEC_FLAGS = $(OPENMP_CXXFLAGS) $(if $(GIT_COMMIT),-DLZBENCH_GIT_COMMIT=\"$(GIT_COMMIT)\")
 
 bench/lzbench.o: bench/lzbench.cpp bench/lzbench.h bench/threadpool.h bench/codecs.h
 
@@ -402,7 +417,7 @@ GIT_STAMP := bench/git-commit.stamp
 ifneq ($(shell cat $(GIT_STAMP) 2>/dev/null),commit: $(GIT_COMMIT))
     $(shell mkdir -p $(dir $(GIT_STAMP)) && echo 'commit: $(GIT_COMMIT)' > $(GIT_STAMP))
 endif
-bench/lzbench.o: $(GIT_STAMP)
+bench/lzbench.o bench/entropybench/lzbench.o: $(GIT_STAMP)
 CLEAN_FILES += $(GIT_STAMP)
 
 # bench/*.cpp compile each codec in or out with BENCH_REMOVE_* (and the CUDA
@@ -437,8 +452,47 @@ CLEAN_FILES += lzbench.objs
 # to be built first and trigger a relink when they change
 lzbench: $(LZBENCH_OBJS) $(LINK_DEPS)
 	$(WRITE_LINK_OBJS)
-	$(LINK) -o $@ @lzbench.objs $(LDFLAGS) $(LDFLAGS_LIBDL)
+	$(LINK) -o $@ @lzbench.objs $(LDFLAGS) $(RUST_LDFLAGS) $(LDFLAGS_LIBDL)
 	@echo Linked GCC_VERSION=$(GCC_VERSION) CLANG_VERSION=$(CLANG_VERSION) COMPILER=$(COMPILER)
+
+
+#------------------------------------------------------------------------------
+# entropybench: the entropy coders without a modelling stage
+#------------------------------------------------------------------------------
+#
+# The same benchmark as lzbench (bench/lzbench.cpp, with memcpy from
+# bench/lz_codecs.cpp), built with ENTROPYBENCH and with every codec but the
+# entropy coders (ENTROPY_CODECS in mk/*.mk) compiled out, so it links only the
+# entropy coders and the codecs they need. bench/*.cpp are compiled again into
+# bench/entropybench/, as each binary compiles them with its own BENCH_REMOVE_*.
+
+ENTROPYBENCH_OBJS := bench/entropybench/entropy_codecs.o bench/entropybench/lz_codecs.o bench/entropybench/lzbench.o
+ifneq "$(DISABLE_THREADING)" "1"
+    ENTROPYBENCH_OBJS += bench/entropybench/threadpool.o
+endif
+
+# lzbench's DEFINES, without its BENCH_REMOVE_* and BENCH_HAS_* (the CUDA codecs)
+ENTROPYBENCH_DEFINES := $(filter-out -DBENCH_%,$(DEFINES)) -DENTROPYBENCH $(addprefix -DBENCH_REMOVE_,$(CODECS) $(ENTROPY_CODECS_OFF))
+$(ENTROPYBENCH_OBJS): DEFINES = $(ENTROPYBENCH_DEFINES)
+bench/entropybench/entropy_codecs.o: CODEC_FLAGS = -I$(SRC)lz+entropy
+
+bench/entropybench/%.o: bench/%.cpp
+	@$(MKDIR) $(dir $@)
+	$(COMPILE_CXX)
+
+# rebuilt when its set of codecs changes, as BENCH_STAMP does for lzbench
+ENTROPYBENCH_STAMP  := bench/entropybench/codecs.stamp
+ENTROPYBENCH_CONFIG := codecs: $(sort $(filter -DBENCH_% -DENTROPYBENCH,$(subst ",,$(ENTROPYBENCH_DEFINES))))
+ifneq ($(shell cat $(ENTROPYBENCH_STAMP) 2>/dev/null),$(ENTROPYBENCH_CONFIG))
+    $(shell mkdir -p $(dir $(ENTROPYBENCH_STAMP)) && echo '$(ENTROPYBENCH_CONFIG)' > $(ENTROPYBENCH_STAMP))
+endif
+$(ENTROPYBENCH_OBJS): $(ENTROPYBENCH_STAMP)
+CLEAN_FILES += $(ENTROPYBENCH_STAMP)
+
+ENTROPYBENCH_CODEC_OBJS := $(foreach g,$(ENTROPY_CODECS_LINKED),$($(g)_OBJS))
+
+entropybench: $(ENTROPYBENCH_CODEC_OBJS) $(ENTROPYBENCH_OBJS)
+	$(LINK) -o $@ $^ $(LDFLAGS)
 
 
 #------------------------------------------------------------------------------
@@ -478,7 +532,7 @@ COMPILE_CU  = $(CUDA_CC) $(CUDA_CXXFLAGS) $(CUDA_HOST_CXXFLAGS) $(CODEC_FLAGS) -
 	$(COMPILE_CXX)
 
 clean:
-	rm -rf lzbench lzbench.exe
+	rm -rf lzbench lzbench.exe entropybench entropybench.exe
 	find . -type f -name "*.o" -exec rm -f {} +
 	find . -type f -name "*.d" -exec rm -f {} +
 	rm -rf $(CLEAN_DIRS)
@@ -486,5 +540,5 @@ clean:
 
 # Pull in the header dependencies generated by $(DEPFLAGS). Missing .d files
 # (a fresh tree, or a CUDA object built by nvcc) are silently ignored.
-DEPFILES := $(patsubst %.o,%.d,$(filter %.o,$(LZBENCH_OBJS)))
+DEPFILES := $(patsubst %.o,%.d,$(filter %.o,$(LZBENCH_OBJS) $(ENTROPYBENCH_CODEC_OBJS) $(ENTROPYBENCH_OBJS)))
 -include $(DEPFILES)
