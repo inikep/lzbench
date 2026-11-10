@@ -23,7 +23,7 @@
 #define MAXBITS 15
 
 const char inflate_copyright[] =
-   " inflate 1.3.2 Copyright 1995-2026 Mark Adler ";
+   " inflate 1.4 Copyright 1995-2026 Mark Adler ";
 /*
   If you use the zlib library in a product, an acknowledgment is welcome
   in the documentation of your product. If for some reason you cannot
@@ -71,7 +71,7 @@ int ZLIB_INTERNAL inflate_table(codetype type, unsigned short FAR *lens,
         35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258, 0, 0};
     static const unsigned short lext[31] = { /* Length codes 257..285 extra */
         16, 16, 16, 16, 16, 16, 16, 16, 17, 17, 17, 17, 18, 18, 18, 18,
-        19, 19, 19, 19, 20, 20, 20, 20, 21, 21, 21, 21, 16, 199, 75};
+        19, 19, 19, 19, 20, 20, 20, 20, 21, 21, 21, 21, 16, 71, 77};
     static const unsigned short dbase[32] = { /* Distance codes 0..29 base */
         1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193,
         257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145,
@@ -401,9 +401,10 @@ int main(void) {
     printf("static const code lenfix[%u] = {", size);
     low = 0;
     for (;;) {
-        if ((low % 7) == 0) printf("\n    ");
-        printf("{%u,%u,%d}", (low & 127) == 99 ? 64 : state.lencode[low].op,
-               state.lencode[low].bits, state.lencode[low].val);
+        if ((low % 4) == 0) printf("\n    ");
+        printf("ZT_CODE(%u,%u,%d)", state.lencode[low].bits,
+               (low & 127) == 99 ? 64 : state.lencode[low].op,
+               state.lencode[low].val);
         if (++low == size) break;
         putchar(',');
     }
@@ -412,9 +413,9 @@ int main(void) {
     printf("\nstatic const code distfix[%u] = {", size);
     low = 0;
     for (;;) {
-        if ((low % 6) == 0) printf("\n    ");
-        printf("{%u,%u,%d}", state.distcode[low].op, state.distcode[low].bits,
-               state.distcode[low].val);
+        if ((low % 4) == 0) printf("\n    ");
+        printf("ZT_CODE(%u,%u,%d)", state.distcode[low].bits,
+               state.distcode[low].op, state.distcode[low].val);
         if (++low == size) break;
         putchar(',');
     }
