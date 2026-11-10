@@ -4,7 +4,7 @@ v2.x.y (work-in-progress)
 - added lz4frame 1.11.0 (lz4 frame format with built-in multithreaded compression, -I#; levels 1-12 as the lz4 CLI)
 - added mzstd 0.2.11 (mzstd, mzstd_fast; Zstandard in safe Rust, by @Mnwa)
 - added wlz4 1.3.0 (wlz4, wlz4fast, wlz4hc) and wzip 1.3.0 (by @icodywu)
-- added zlib-turbo 1.1.0 (by @icodywu)
+- added zlib-turbo 1.2.2 (by @icodywu)
 - updated zlib to 1.4 (by @tansy)
 - updated gipfeli to 2016-08-16 (config.h detects __builtin_ctz and __builtin_expect from __GNUC__);
   lzfse/lzvn (2017-05-22), lzg (2023-08-31) and lzham (2022-01-03) were already at upstream HEAD,

@@ -149,6 +149,57 @@ local void adler32_avx2(unsigned long *a, unsigned long *s, const Bytef *buf,
 }
 #endif
 
+/* zlib-turbo: on 64-bit ARM, whose every processor has NEON, thirty-two bytes
+   at a time, the same way as with AVX2 above. -DNO_TURBO_NEON turns it off. */
+#if defined(__aarch64__) && defined(__ARM_NEON) && !defined(NO_TURBO_NEON) && \
+    !defined(Z_TURBO_ADLER_AVX2)
+#  define Z_TURBO_ADLER_NEON
+#  include <arm_neon.h>
+
+/* Update the sums *a and *s, each less than BASE, with the len bytes at buf,
+   len a multiple of 32, and leave them less than BASE. The weighted sums of
+   each block gather in 16-bit lanes, four products of at most 255 * 32 each,
+   and the vector sums are reduced every 5536 bytes, as with AVX2. */
+local void adler32_neon(unsigned long *a, unsigned long *s, const Bytef *buf,
+                        z_size_t len) {
+    static const unsigned char tap[32] = {32, 31, 30, 29, 28, 27, 26, 25,
+                                          24, 23, 22, 21, 20, 19, 18, 17,
+                                          16, 15, 14, 13, 12, 11, 10, 9,
+                                          8, 7, 6, 5, 4, 3, 2, 1};
+    const uint8x16_t t0 = vld1q_u8(tap), t1 = vld1q_u8(tap + 16);
+    unsigned long adler = *a, sum2 = *s;
+
+    while (len) {
+        z_size_t k = len < (NMAX / 32) * 32 ? len : (NMAX / 32) * 32;
+        uint32x4_t va = vdupq_n_u32(0), vp = va, vs = va;
+
+        len -= k;
+        k /= 32;
+        sum2 = (sum2 + 32 * adler * (unsigned long)k) % BASE;
+        do {
+            uint8x16_t b0 = vld1q_u8(buf), b1 = vld1q_u8(buf + 16);
+            uint16x8_t w;
+
+            vp = vaddq_u32(vp, va);             /* sum of a before each block */
+            va = vpadalq_u16(va, vaddq_u16(vpaddlq_u8(b0), vpaddlq_u8(b1)));
+            w = vmull_u8(vget_low_u8(b0), vget_low_u8(t0));
+            w = vmlal_u8(w, vget_high_u8(b0), vget_high_u8(t0));
+            w = vmlal_u8(w, vget_low_u8(b1), vget_low_u8(t1));
+            w = vmlal_u8(w, vget_high_u8(b1), vget_high_u8(t1));
+            vs = vpadalq_u16(vs, w);
+            buf += 32;
+        } while (--k);
+        vs = vaddq_u32(vs, vshlq_n_u32(vp, 5));
+        adler += vaddvq_u32(va);
+        sum2 += vaddvq_u32(vs);                 /* at most 3.93e9, as above */
+        adler %= BASE;
+        sum2 %= BASE;
+    }
+    *a = adler;
+    *s = sum2;
+}
+#endif
+
 /* ========================================================================= */
 uLong ZEXPORT adler32_z(uLong adler, const Bytef *buf, z_size_t len) {
     unsigned long sum2;
@@ -181,6 +232,16 @@ uLong ZEXPORT adler32_z(uLong adler, const Bytef *buf, z_size_t len) {
         z_size_t n = len & ~(z_size_t)31;
 
         adler32_avx2(&adler, &sum2, buf, n);
+        buf += n;
+        len -= n;
+    }
+#endif
+#ifdef Z_TURBO_ADLER_NEON
+    /* all but the last 0..31 bytes with NEON, the rest below */
+    if (len >= 64) {
+        z_size_t n = len & ~(z_size_t)31;
+
+        adler32_neon(&adler, &sum2, buf, n);
         buf += n;
         len -= n;
     }
