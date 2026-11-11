@@ -22,16 +22,16 @@ ifneq ($(DONT_BUILD_AOCL),1)
         override DONT_BUILD_AOCL := 1
     else ifeq (,$(shell command -v $(NM) 2>/dev/null))       # need binutils nm
         override DONT_BUILD_AOCL := 1
-    else ifeq (,$(wildcard $(SRC)lz/aocl-compression/api/api.cpp))  # AOCL source must be present
+    else ifeq (,$(wildcard $(SRC)misc/aocl-compression/api/api.cpp))  # AOCL source must be present
         override DONT_BUILD_AOCL := 1
-        $(info AOCL-Compression source not found at lz/aocl-compression - skipping AOCL build)
+        $(info AOCL-Compression source not found at misc/aocl-compression - skipping AOCL build)
     endif
 endif
 
 ifneq ($(DONT_BUILD_AOCL),1)
 
-AOCL_DIR = lz/aocl-compression
-AOCL_SRC = $(SRC)lz/aocl-compression
+AOCL_DIR = misc/aocl-compression
+AOCL_SRC = $(SRC)misc/aocl-compression
 AOCL_GEN = $(AOCL_SRC)/generated
 
 AOCL_BZIP2_OBJ = $(addprefix $(AOCL_DIR)/algos/bzip2/, \
