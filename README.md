@@ -94,7 +94,7 @@ sources, the Notes column says so.
 | [misa77 0.6.0](https://github.com/welcome-to-the-sunny-side/misa77) | 2026-07-30 | Little-endian 64-bit only — needs a C++20 compiler (GCC 10+, Clang 12+); skipped automatically |
 | [mzstd 0.2.11](https://github.com/M-Compressors/mzstd) | 2026-11-03 | Requires the Rust toolchain 1.89+ (skipped for 32-bit, cross-compiled and Windows builds). Built through the `mzstd-ffi` C ABI; manifests trimmed in lzbench (no dev-dependencies, rlib only) |
 | [nvcomp 2.2.0](https://github.com/NVIDIA/nvcomp) | 2022-02-07 | CUDA only — built with `make ENABLE_CUDA=1`; not in the default CI matrix |
-| [openzl 0.2.3](https://openzl.org/) | 2026-07-28 | 64-bit only — upstream does not support 32-bit builds |
+| [openzl 0.3.0](https://openzl.org/) | 2026-09-29 | 64-bit only — upstream does not support 32-bit builds |
 | [ppmd8 26.03](http://7-zip.org) | 2026-09-03 | |
 | [pulsar 2.5.0](https://github.com/ceedot-rock/pulsar-best) | 2026-09-02 | GPL-3; Rust 1.85+, skipped for 32-bit, cross-compiled and Windows builds. Patched in lzbench: `src/lib.rs` has a framed C ABI whose encoder does not re-decode candidates to verify them; `src/bin` not vendored |
 | [quicklz 1.5.1 beta 7](https://web.archive.org/web/20160110073818/https://quicklz.com/) | 2011-10-07 | |
