@@ -303,6 +303,15 @@ void lzbench_aocl_zstd_deinit(char* workmem);
 #endif // BENCH_REMOVE_GPUCOMPACT
 
 
+#ifndef BENCH_REMOVE_INDEXED_BZIP2
+    int64_t lzbench_indexed_bzip2_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+    int64_t lzbench_indexed_bzip2_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
+#else
+    #define lzbench_indexed_bzip2_compress NULL
+    #define lzbench_indexed_bzip2_decompress NULL
+#endif // BENCH_REMOVE_INDEXED_BZIP2
+
+
 #ifndef BENCH_REMOVE_KANZI
     int64_t lzbench_kanzi_compress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
     int64_t lzbench_kanzi_decompress(char *inbuf, size_t insize, char *outbuf, size_t outsize, codec_options_t *codec_options);
