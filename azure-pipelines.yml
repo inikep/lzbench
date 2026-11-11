@@ -367,6 +367,10 @@ jobs:
       echo "##vso[task.prependpath]/snap/bin"
       /snap/bin/zig version
     displayName: '*** Install Zig (for skim; Linux native builds only)'
+    # The snap store is sometimes unreachable from the agents. Without zig,
+    # mk/skim.mk skips skim, so the job still builds and tests everything else
+    # (it ends "partially succeeded"); jobs listing skim in REQUIRE_CODECS fail.
+    continueOnError: true
     condition: and(succeeded(), eq(variables['Agent.OS'], 'Linux'), eq(variables['QEMU_INTERPRETER'], ''), not(contains(variables['MORE_OPTIONS'], '32-bit')))
 
   # Pin Go for native Linux go-brrr builds and round-trip tests.
