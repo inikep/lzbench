@@ -23,8 +23,10 @@
  *
  * @par Compression usage
  * @code
- * zxc_compress_opts_t opts = { .level = 3, .checksum_enabled = 1 };
- * zxc_cstream* cs = zxc_cstream_create(&opts);
+ * zxc_cctx* cfg = zxc_create_cctx();
+ * zxc_cctx_set_param(cfg, ZXC_C_CHECKSUM, 1);
+ * zxc_cstream* cs = zxc_cstream_create(cfg);   // parameters copied at creation
+ * zxc_free_cctx(cfg);
  *
  * uint8_t in_buf[64*1024], out_buf[64*1024];
  * zxc_outbuf_t out = { out_buf, sizeof out_buf, 0 };
@@ -59,6 +61,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "zxc_buffer.h"
 #include "zxc_export.h"
 #include "zxc_opts.h"
 
@@ -114,21 +117,22 @@ typedef struct zxc_dstream_s zxc_dstream;
 /**
  * @brief Creates a push compression stream.
  *
- * @p opts is copied into the context and may be freed or reused afterwards.
+ * The parameters are copied from @p cfg at creation; the context itself may be
+ * freed or reused afterwards.
  *
- * Only @c level, @c block_size and @c checksum_enabled are honoured, and they
- * must be valid (an unsupported @c block_size fails creation); levels above
- * @ref ZXC_LEVEL_ULTRA are clamped. @c n_threads is ignored, this API being
- * single-threaded, see @ref zxc_stream_compress for the multi-threaded
- * @c FILE* pipeline. Dictionary options are rejected outright: push streams
- * take no dictionary yet (support can be added if a need arises), so @c dict /
- * @c dict_size / @c dict_huf fail creation rather than being silently dropped.
+ * Only @ref ZXC_C_LEVEL, @ref ZXC_C_BLOCK_SIZE and @ref ZXC_C_CHECKSUM are
+ * honoured. @ref ZXC_C_THREADS is ignored, this API being single-threaded,
+ * see @ref zxc_stream_compress for the multi-threaded @c FILE* pipeline; so
+ * are @ref ZXC_C_SEEKABLE and the progress callback. A dictionary on @p cfg
+ * fails creation: push streams take no dictionary yet (support can be added
+ * if a need arises), and dropping it silently would produce archives that
+ * decode wrong elsewhere.
  *
- * @param[in] opts  Compression options, or @c NULL for all defaults.
+ * @param[in] cfg  Configured compression context, or @c NULL for all defaults.
  * @return Context to release with @ref zxc_cstream_free, or @c NULL on
- *         allocation failure or invalid options.
+ *         allocation failure or a dictionary on @p cfg.
  */
-ZXC_EXPORT zxc_cstream* zxc_cstream_create(const zxc_compress_opts_t* opts);
+ZXC_EXPORT zxc_cstream* zxc_cstream_create(const zxc_cctx* cfg);
 
 /**
  * @brief Releases a compression stream and all internal buffers.
@@ -215,18 +219,18 @@ ZXC_EXPORT size_t zxc_cstream_out_size(const zxc_cstream* cs);
 /**
  * @brief Creates a push decompression stream.
  *
- * @p opts is copied into the context. Only @c checksum_enabled is honoured: it
- * decides whether the block checksums and archive digest are verified when present.
- * Push streams take no dictionary yet (support can be added if a need
- * arises): @c dict / @c dict_size / @c dict_huf fail creation, and an archive
- * whose header requires one fails with @ref ZXC_ERROR_DICT_REQUIRED at the
- * first decompress call.
+ * The parameters are copied from @p cfg at creation. Only @ref ZXC_D_CHECKSUM
+ * is honoured: it decides whether the block checksums and archive digest are
+ * verified when present. Push streams take no dictionary yet (support can be
+ * added if a need arises): a dictionary on @p cfg fails creation, and an
+ * archive whose header requires one fails with @ref ZXC_ERROR_DICT_REQUIRED
+ * at the first decompress call.
  *
- * @param[in] opts  Decompression options, or @c NULL for defaults.
+ * @param[in] cfg  Configured decompression context, or @c NULL for defaults.
  * @return Context to release with @ref zxc_dstream_free, or @c NULL on
- *         allocation failure or dictionary options in @p opts.
+ *         allocation failure or a dictionary on @p cfg.
  */
-ZXC_EXPORT zxc_dstream* zxc_dstream_create(const zxc_decompress_opts_t* opts);
+ZXC_EXPORT zxc_dstream* zxc_dstream_create(const zxc_dctx* cfg);
 
 /**
  * @brief Releases a decompression stream.  Safe to call with @c NULL.

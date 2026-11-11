@@ -73,6 +73,8 @@ typedef enum {
     /* Parameter errors */
     ZXC_ERROR_BAD_LEVEL = -18, /**< Compression level not supported by this context's workspace. */
     ZXC_ERROR_DICT_UNSUPPORTED = -19, /**< Dictionary not supported by this context's workspace. */
+    ZXC_ERROR_BAD_PARAM = -20,        /**< Unknown parameter, or value out of its bounds
+                                           (zxc_cctx_set_param(), zxc_dctx_set_param()). */
 
 } zxc_error_t;
 

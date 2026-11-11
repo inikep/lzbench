@@ -62,7 +62,10 @@ extern "C" {
  *
  * @param[in]  f_in   Input stream, opened in "rb" mode.
  * @param[out] f_out  Output stream, opened in "wb" mode.
- * @param[in]  opts   Compression options, or NULL for defaults.
+ * @param[in]  cfg    Configured compression context, read for its parameters
+ *                   (level, block size, threads, checksum, seek table,
+ *                   dictionary, progress callback), or NULL for defaults. Its
+ *                   buffers are not used: the pipeline carves its own per worker.
  *
  * @return Total compressed bytes written, or a negative @ref zxc_error_t
  *         (e.g. @ref ZXC_ERROR_IO).
@@ -72,7 +75,7 @@ extern "C" {
  *       @ref ZXC_ERROR_IO. @p f_out is left open: still check the result of
  *       your own @c fclose(), which can fail on its own (e.g. on NFS).
  */
-ZXC_EXPORT int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const zxc_compress_opts_t* opts);
+ZXC_EXPORT int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const zxc_cctx* cfg);
 
 /**
  * @brief Decompresses one file stream into another.
@@ -82,7 +85,9 @@ ZXC_EXPORT int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const zxc_compre
  *
  * @param[in]  f_in   Input stream, opened in "rb" mode.
  * @param[out] f_out  Output stream, opened in "wb" mode.
- * @param[in]  opts   Decompression options, or NULL for defaults.
+ * @param[in]  cfg    Configured decompression context, read for its parameters
+ *                   (threads, checksum, dictionary, progress callback), or
+ *                   NULL for defaults. Its buffers are not used.
  *
  * @return Total decompressed bytes written, or a negative @ref zxc_error_t
  *         (e.g. @ref ZXC_ERROR_BAD_HEADER).
@@ -92,8 +97,7 @@ ZXC_EXPORT int64_t zxc_stream_compress(FILE* f_in, FILE* f_out, const zxc_compre
  * @note A regular file is read ahead in batches; a pipe or socket is decoded block
  *       by block, so a live stream's output is never held back.
  */
-ZXC_EXPORT int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out,
-                                         const zxc_decompress_opts_t* opts);
+ZXC_EXPORT int64_t zxc_stream_decompress(FILE* f_in, FILE* f_out, const zxc_dctx* cfg);
 
 /**
  * @brief Reads the original size from a ZXC file's footers, without decoding.

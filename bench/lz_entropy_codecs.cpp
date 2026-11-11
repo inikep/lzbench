@@ -1290,15 +1290,13 @@ char *lzbench_zxc_init(size_t insize, size_t level, size_t)
     if (!bench)
         return NULL;
 
-    zxc_compress_opts_t copts = {0};
-    copts.level = (int)level;
-    /* 0 = default block size (512KB); otherwise a power of 2 in [4KB, 2MB]. */
-    copts.block_size = 0;
-
-    bench->cctx = zxc_create_cctx(&copts);
+    bench->cctx = zxc_create_cctx();
     bench->dctx = zxc_create_dctx();
 
-    if (!bench->cctx || !bench->dctx)
+    /* Level 1-7 on the context. Default block size; otherwise a power of 2 in [4K, 2MB]. */
+    if (!bench->cctx || !bench->dctx ||
+        zxc_cctx_set_param(bench->cctx, ZXC_C_LEVEL, (int64_t)level) != ZXC_OK ||
+        zxc_cctx_set_param(bench->cctx, ZXC_C_BLOCK_SIZE, ZXC_BLOCK_SIZE_DEFAULT) != ZXC_OK)
     {
         if (bench->cctx) zxc_free_cctx(bench->cctx);
         if (bench->dctx) zxc_free_dctx(bench->dctx);
@@ -1325,7 +1323,7 @@ int64_t lzbench_zxc_compress(char *inbuf, size_t insize, char *outbuf,
     if (!bench || !bench->cctx) return 0;
 
     int64_t res = zxc_compress_cctx(bench->cctx, inbuf, insize,
-                                     outbuf, outsize, NULL);
+                                     outbuf, outsize);
     return (res > 0) ? res : 0;
 }
 
@@ -1336,7 +1334,7 @@ int64_t lzbench_zxc_decompress(char *inbuf, size_t insize, char *outbuf,
     if (!bench || !bench->dctx) return 0;
 
     int64_t res = zxc_decompress_dctx(bench->dctx, inbuf, insize,
-                                       outbuf, outsize, NULL);
+                                       outbuf, outsize);
     return (res > 0) ? res : 0;
 }
 #endif // BENCH_REMOVE_ZXC

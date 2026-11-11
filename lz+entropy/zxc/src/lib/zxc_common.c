@@ -23,26 +23,6 @@
 // ============================================================================
 
 /**
- * @brief Returns @c sizeof(zxc_compress_opts_t) for ABI-safe allocation.
- *
- * Public API; see @c zxc_buffer.h. Lets callers (other languages, or a
- * different library version) size the options struct without knowing its layout.
- *
- * @return Size of @ref zxc_compress_opts_t in bytes.
- */
-size_t zxc_compress_opts_size(void) { return sizeof(zxc_compress_opts_t); }
-
-/**
- * @brief Returns @c sizeof(zxc_decompress_opts_t) for ABI-safe allocation.
- *
- * Public API; see @c zxc_buffer.h. Lets callers (other languages, or a
- * different library version) size the options struct without knowing its layout.
- *
- * @return Size of @ref zxc_decompress_opts_t in bytes.
- */
-size_t zxc_decompress_opts_size(void) { return sizeof(zxc_decompress_opts_t); }
-
-/**
  * @brief Returns @c sizeof(zxc_frame_info_t) for ABI-safe mirroring.
  *
  * Public API; see @c zxc_buffer.h.
@@ -57,7 +37,7 @@ typedef struct {
     // mode == 0 (decompress)
     size_t off_work;
     size_t off_lit_dctx;
-    // mode == 0: scratch for a Huffman-coded GLO token section (enc_tok == HUFFMAN).
+    // mode == 0: scratch for a Huffman-coded SPL token section (enc_tok == HUFFMAN).
     size_t off_tok_dctx;
     size_t sz_tok_dctx;
     // mode == 0: PivCo decode level scratch (one chunk-sized ping-pong buffer).
@@ -155,7 +135,7 @@ static zxc_cctx_layout_t compute_cctx_layout(const size_t chunk_size, const int 
         layout.total += ZXC_ALIGN_CL(sz_work);
         layout.off_lit_dctx = layout.total;
         layout.total += ZXC_ALIGN_CL(sz_lit);
-        // Token-section decode scratch (level-7 GLO Huffman-codes the tokens) +
+        // Token-section decode scratch (level-7 SPL Huffman-codes the tokens) +
         // PivCo ping-pong scratch. enc_lit/enc_tok are unpredictable, so static
         // workspaces provision both up front (no-alloc contract); heap contexts
         // defer them to the first entropy section, sparing L1-5 archives ~1.2x
@@ -178,8 +158,8 @@ static zxc_cctx_layout_t compute_cctx_layout(const size_t chunk_size, const int 
         layout.sz_hash_pos = ZXC_LZ_HASH_SIZE * sizeof(uint32_t);
         layout.sz_hash_tags = ZXC_LZ_HASH_SIZE * sizeof(uint8_t);
         const size_t sz_chain = ZXC_LZ_WINDOW_SIZE * sizeof(uint16_t);
-        // buf_sequences (GHI, level <= ZXC_LEVEL_FAST) aliases buf_offsets, buf_tokens and
-        // buf_split (GLO, level >= ZXC_LEVEL_DEFAULT): 4 bytes per sequence either way.
+        // buf_sequences (PAK, level <= ZXC_LEVEL_FAST) aliases buf_offsets, buf_tokens and
+        // buf_split (SPL, level >= ZXC_LEVEL_DEFAULT): 4 bytes per sequence either way.
         const size_t sz_seq_union = layout.max_seq * sizeof(uint32_t);
         const size_t vbyte_len = (offset_bits + 6) / 7;
         const size_t sz_extras = layout.max_seq * 2 * vbyte_len;
@@ -209,7 +189,7 @@ static zxc_cctx_layout_t compute_cctx_layout(const size_t chunk_size, const int 
         layout.off_seq_union = layout.total;
         layout.total += ZXC_ALIGN_CL(sz_seq_union);
         layout.off_split_hist = layout.total;
-        layout.total += ZXC_ALIGN_CL(sizeof(zxc_glo_split_hist_t));
+        layout.total += ZXC_ALIGN_CL(sizeof(zxc_spl_match_split_hist_t));
         layout.off_extras = layout.total;
         layout.total += ZXC_ALIGN_CL(sz_extras);
         layout.off_lit_cctx = layout.total;
@@ -310,7 +290,7 @@ int zxc_cctx_init_in_workspace(zxc_cctx_t* RESTRICT ctx, void* RESTRICT workspac
     ctx->buf_offsets = (uint16_t*)(mem + layout.off_seq_union);
     ctx->buf_tokens = mem + layout.off_seq_union + layout.max_seq * sizeof(uint16_t);
     ctx->buf_split = ctx->buf_tokens + layout.max_seq;
-    ctx->buf_split_hist = (zxc_glo_split_hist_t*)(void*)(mem + layout.off_split_hist);
+    ctx->buf_split_hist = (zxc_spl_match_split_hist_t*)(void*)(mem + layout.off_split_hist);
     ctx->buf_extras = mem + layout.off_extras;
     ctx->literals = mem + layout.off_lit_cctx;
     if (layout.sz_opt) {
@@ -511,7 +491,7 @@ int zxc_write_file_header(uint8_t* RESTRICT dst, const size_t dst_capacity, cons
 /**
  * @brief Parses and validates a ZXC file header from @p src.
  *
- * Checks the magic word, format version, and 16-bit checksum.
+ * Checks the magic word, format version, 16-bit checksum and reserved bits/bytes.
  */
 int zxc_read_file_header(const uint8_t* RESTRICT src, const size_t src_size,
                          size_t* RESTRICT out_block_size, int* RESTRICT out_has_checksum,
@@ -530,6 +510,11 @@ int zxc_read_file_header(const uint8_t* RESTRICT src, const size_t src_size,
     if (UNLIKELY(zxc_le16(src + 14) != zxc_hash16(temp) ||
                  (src[6] & ZXC_FILE_CHECKSUM_ALGO_MASK) != ZXC_CHECKSUM_RAPIDHASH))
         return ZXC_ERROR_BAD_HEADER;
+    // Reserved: flag bit 4, bytes 7-13 minus the dict_id (7-10).
+    if (UNLIKELY(src[6] & ZXC_FILE_FLAG_RESERVED)) return ZXC_ERROR_BAD_HEADER;
+    uint8_t rsv = 0;
+    for (size_t i = (src[6] & ZXC_FILE_FLAG_HAS_DICTIONARY) ? 11 : 7; i < 14; i++) rsv |= src[i];
+    if (UNLIKELY(rsv != 0)) return ZXC_ERROR_BAD_HEADER;
 
     if (out_block_size) {
         const uint8_t code = src[5];
@@ -698,7 +683,7 @@ int zxc_write_block_header(uint8_t* RESTRICT dst, const size_t dst_capacity,
 /**
  * @brief Parses and validates a block header from @p src.
  *
- * Validates the 8-bit checksum embedded in the header.
+ * Validates the 8-bit checksum, then requires Block Flags and Reserved to be 0.
  */
 int zxc_read_block_header(const uint8_t* RESTRICT src, const size_t src_size,
                           zxc_block_header_t* RESTRICT bh) {
@@ -708,9 +693,10 @@ int zxc_read_block_header(const uint8_t* RESTRICT src, const size_t src_size,
     ZXC_MEMCPY(temp, src, ZXC_BLOCK_HEADER_SIZE);
     temp[7] = 0;  // Zero out checksum byte before hashing
     if (UNLIKELY(src[7] != zxc_hash8(temp))) return ZXC_ERROR_BAD_HEADER;
+    if (UNLIKELY((src[1] | src[2]) != 0)) return ZXC_ERROR_BAD_HEADER;
 
     bh->block_type = src[0];
-    bh->block_flags = 0;  // Flags not used currently
+    bh->block_flags = src[1];
     bh->reserved = src[2];
     bh->comp_size = zxc_le32(src + 3);
     bh->header_checksum = src[7];
@@ -885,7 +871,7 @@ int zxc_parse_file_footer(const uint8_t* end, const size_t avail, uint64_t* src_
 }
 
 /**
- * @brief Writes the 12-byte GLO/GHI sub-header shared by both block types.
+ * @brief Writes the 12-byte SPL/PAK sub-header shared by both block types.
  *
  * @param[out] dst Destination buffer, at least 12 bytes.
  * @param[in]  gh  Populated header descriptor.
@@ -902,7 +888,7 @@ static ZXC_ALWAYS_INLINE void zxc_write_gnr_header(uint8_t* RESTRICT dst,
 }
 
 /**
- * @brief Reads the 12-byte GLO/GHI sub-header shared by both block types.
+ * @brief Reads the 12-byte SPL/PAK sub-header shared by both block types.
  *
  * @param[in]  src Source buffer, at least 12 bytes.
  * @param[out] gh  Receives the decoded header.
@@ -918,18 +904,18 @@ static ZXC_ALWAYS_INLINE void zxc_read_gnr_header(const uint8_t* RESTRICT src,
 }
 
 /**
- * @brief Size of the GLO section descriptors, implied by the encoding fields.
+ * @brief Size of the SPL section descriptors, implied by the encoding fields.
  *
- * 0, 4 or 8 bytes (@ref ZXC_GLO_DESC_MAX_SIZE) - see @ref zxc_write_glo_header_and_desc
+ * 0, 4 or 8 bytes (@ref ZXC_SPL_DESC_MAX_SIZE) - see @ref zxc_write_spl_header_and_desc
  * for what they hold.
  */
-static ZXC_ALWAYS_INLINE size_t zxc_glo_desc_size(const uint8_t enc_lit, const uint8_t enc_tok) {
+static ZXC_ALWAYS_INLINE size_t zxc_spl_desc_size(const uint8_t enc_lit, const uint8_t enc_tok) {
     return ((enc_lit != ZXC_SECTION_ENCODING_RAW) ? sizeof(uint32_t) : 0) +
            ((enc_tok == ZXC_SECTION_ENCODING_HUFFMAN) ? sizeof(uint32_t) : 0);
 }
 
 /**
- * @brief Serialises a GLO block header followed by its section descriptors.
+ * @brief Serialises a SPL block header followed by its section descriptors.
  *
  * Only the two sizes the header cannot imply are stored: the literal section's
  * compressed size when it is RLE- or entropy-coded, and the token section's
@@ -937,16 +923,16 @@ static ZXC_ALWAYS_INLINE size_t zxc_glo_desc_size(const uint8_t enc_lit, const u
  * size from @c n_literals, offsets from @c n_sequences and @c enc_off, extras
  * from the payload residue - so those cannot be forged inconsistently.
  */
-int zxc_write_glo_header_and_desc(uint8_t* RESTRICT dst, const size_t rem,
+int zxc_write_spl_header_and_desc(uint8_t* RESTRICT dst, const size_t rem,
                                   const zxc_gnr_header_t* RESTRICT gh, const uint32_t lit_comp,
                                   const uint32_t tok_comp) {
-    const size_t desc_sz = zxc_glo_desc_size(gh->enc_lit, gh->enc_tok);
-    const size_t needed = ZXC_GLO_HEADER_BINARY_SIZE + desc_sz;
+    const size_t desc_sz = zxc_spl_desc_size(gh->enc_lit, gh->enc_tok);
+    const size_t needed = ZXC_SPL_HEADER_BINARY_SIZE + desc_sz;
 
     if (UNLIKELY(rem < needed)) return ZXC_ERROR_DST_TOO_SMALL;
 
     zxc_write_gnr_header(dst, gh);
-    uint8_t* p = dst + ZXC_GLO_HEADER_BINARY_SIZE;
+    uint8_t* p = dst + ZXC_SPL_HEADER_BINARY_SIZE;
 
     if (gh->enc_lit != ZXC_SECTION_ENCODING_RAW) {
         zxc_store_le32(p, lit_comp);
@@ -960,20 +946,20 @@ int zxc_write_glo_header_and_desc(uint8_t* RESTRICT dst, const size_t rem,
 }
 
 /**
- * @brief Parses a GLO block header and its section descriptors from @p src.
+ * @brief Parses a SPL block header and its section descriptors from @p src.
  */
-int zxc_read_glo_header_and_desc(const uint8_t* RESTRICT src, const size_t len,
+int zxc_read_spl_header_and_desc(const uint8_t* RESTRICT src, const size_t len,
                                  zxc_gnr_header_t* RESTRICT gh, uint32_t* RESTRICT lit_comp,
                                  uint32_t* RESTRICT tok_comp) {
-    if (UNLIKELY(len < ZXC_GLO_HEADER_BINARY_SIZE)) return ZXC_ERROR_SRC_TOO_SMALL;
+    if (UNLIKELY(len < ZXC_SPL_HEADER_BINARY_SIZE)) return ZXC_ERROR_SRC_TOO_SMALL;
 
     zxc_read_gnr_header(src, gh);
 
-    const size_t desc_sz = zxc_glo_desc_size(gh->enc_lit, gh->enc_tok);
-    const size_t needed = ZXC_GLO_HEADER_BINARY_SIZE + desc_sz;
+    const size_t desc_sz = zxc_spl_desc_size(gh->enc_lit, gh->enc_tok);
+    const size_t needed = ZXC_SPL_HEADER_BINARY_SIZE + desc_sz;
     if (UNLIKELY(len < needed)) return ZXC_ERROR_SRC_TOO_SMALL;
 
-    const uint8_t* p = src + ZXC_GLO_HEADER_BINARY_SIZE;
+    const uint8_t* p = src + ZXC_SPL_HEADER_BINARY_SIZE;
 
     if (gh->enc_lit != ZXC_SECTION_ENCODING_RAW) {
         *lit_comp = zxc_le32(p);
@@ -987,27 +973,27 @@ int zxc_read_glo_header_and_desc(const uint8_t* RESTRICT src, const size_t len,
 }
 
 /**
- * @brief Serialises a GHI block header.
+ * @brief Serialises a PAK block header.
  *
- * GHI carries no section descriptors at all: its literals are always RAW
+ * PAK carries no section descriptors at all: its literals are always RAW
  * (`lit_comp == gh->n_literals`), its sequence stream is
  * `gh->n_sequences * 4` bytes wide, and its extras run from there to the
  * payload end.
  */
-int zxc_write_ghi_header(uint8_t* RESTRICT dst, const size_t rem,
+int zxc_write_pak_header(uint8_t* RESTRICT dst, const size_t rem,
                          const zxc_gnr_header_t* RESTRICT gh) {
-    if (UNLIKELY(rem < ZXC_GHI_HEADER_BINARY_SIZE)) return ZXC_ERROR_DST_TOO_SMALL;
+    if (UNLIKELY(rem < ZXC_PAK_HEADER_BINARY_SIZE)) return ZXC_ERROR_DST_TOO_SMALL;
 
     zxc_write_gnr_header(dst, gh);
-    return ZXC_GHI_HEADER_BINARY_SIZE;
+    return ZXC_PAK_HEADER_BINARY_SIZE;
 }
 
 /**
- * @brief Parses a GHI block header from @p src.
+ * @brief Parses a PAK block header from @p src.
  */
-int zxc_read_ghi_header(const uint8_t* RESTRICT src, const size_t len,
+int zxc_read_pak_header(const uint8_t* RESTRICT src, const size_t len,
                         zxc_gnr_header_t* RESTRICT gh) {
-    if (UNLIKELY(len < ZXC_GHI_HEADER_BINARY_SIZE)) return ZXC_ERROR_SRC_TOO_SMALL;
+    if (UNLIKELY(len < ZXC_PAK_HEADER_BINARY_SIZE)) return ZXC_ERROR_SRC_TOO_SMALL;
 
     zxc_read_gnr_header(src, gh);
     return ZXC_OK;
@@ -1026,48 +1012,49 @@ int zxc_read_ghi_header(const uint8_t* RESTRICT src, const size_t len,
  * The block count is derived from @ref ZXC_BLOCK_SIZE_MIN (4 KB) to
  * guarantee the bound holds for all valid block sizes and seekable mode.
  */
-uint64_t zxc_compress_bound(const size_t input_size) {
-    // Guard against uint64 overflow when summing per-block overhead
-    // across very large inputs (input_size approaching SIZE_MAX).
-    if (UNLIKELY(input_size > (SIZE_MAX - (SIZE_MAX >> 8)))) return 0;
-    uint64_t n = ((uint64_t)input_size + ZXC_BLOCK_SIZE_MIN - 1) / ZXC_BLOCK_SIZE_MIN;
+size_t zxc_compress_bound(const size_t input_size) {
+    // n <= 2^52 even for a 64-bit size_t, so the overhead sum fits a uint64.
+    uint64_t n = (uint64_t)input_size / ZXC_BLOCK_SIZE_MIN + (input_size % ZXC_BLOCK_SIZE_MIN != 0);
     if (n == 0) n = 1;
-    return ZXC_FILE_HEADER_SIZE +
-           (n * (ZXC_BLOCK_HEADER_SIZE + ZXC_BLOCK_CHECKSUM_SIZE + ZXC_BLOCK_FORMAT_OVERHEAD)) +
-           (uint64_t)input_size + ZXC_BLOCK_HEADER_SIZE + /* EOF block */
-           ZXC_BLOCK_HEADER_SIZE +                        /* SEK block header (seekable) */
-           zxc_seek_table_bytes(n) +                      /* SEK groups (seekable) */
-           ZXC_FOOTER_MAX_SIZE_WITH_DIGEST;               /* optional digest + footer */
+    const uint64_t overhead =
+        ZXC_FILE_HEADER_SIZE +
+        (n * (ZXC_BLOCK_HEADER_SIZE + ZXC_BLOCK_CHECKSUM_SIZE + ZXC_BLOCK_FORMAT_OVERHEAD)) +
+        ZXC_BLOCK_HEADER_SIZE +          /* EOF block */
+        ZXC_BLOCK_HEADER_SIZE +          /* SEK block header (seekable) */
+        zxc_seek_table_bytes(n) +        /* SEK groups (seekable) */
+        ZXC_FOOTER_MAX_SIZE_WITH_DIGEST; /* optional digest + footer */
+    // The bound is a buffer size: input + overhead must fit a size_t.
+    if (UNLIKELY(overhead > (uint64_t)(SIZE_MAX - input_size))) return 0;
+    return input_size + (size_t)overhead;
 }
 
 /**
  * @brief Returns the maximum compressed size for a single block (no file framing).
  */
-uint64_t zxc_compress_block_bound(const size_t input_size) {
+size_t zxc_compress_block_bound(const size_t input_size) {
     // Mirrors the Block API contract: outside [1, ZXC_BLOCK_SIZE_MAX] the call
     // would fail anyway, so the bound is undefined and 0 says "unusable". The cap
     // also makes the addition below trivially overflow-free.
     if (UNLIKELY(input_size == 0 || input_size > ZXC_BLOCK_SIZE_MAX)) return 0;
     // Outer block header + payload (worst case: incompressible, raw bytes)
     // + inner format overhead + optional checksum.
-    return (uint64_t)ZXC_BLOCK_HEADER_SIZE + (uint64_t)input_size + ZXC_BLOCK_FORMAT_OVERHEAD +
-           ZXC_BLOCK_CHECKSUM_SIZE;
+    return ZXC_BLOCK_HEADER_SIZE + input_size + ZXC_BLOCK_FORMAT_OVERHEAD + ZXC_BLOCK_CHECKSUM_SIZE;
 }
 
 /**
  * @brief Returns the minimum dst_capacity required by zxc_decompress_block().
  *
  * The decoder uses speculative wild-copy writes on its fast path.
- * Sizing the destination to uncompressed_size + ZXC_PAD_SIZE*66 guarantees
+ * Sizing the destination to uncompressed_size + ZXC_DECOMPRESS_TAIL_PAD guarantees
  * the fast path is always reachable and that tail bounds checks never
  * spuriously reject the last literals of a valid block.
  *
  * Returns 0 if @p uncompressed_size exceeds ZXC_BLOCK_SIZE_MAX (the Block API
  * limit), or if the arithmetic would overflow.
  */
-uint64_t zxc_decompress_block_bound(const size_t uncompressed_size) {
+size_t zxc_decompress_block_bound(const size_t uncompressed_size) {
     if (UNLIKELY(uncompressed_size > ZXC_BLOCK_SIZE_MAX)) return 0;
-    return (uint64_t)uncompressed_size + ZXC_DECOMPRESS_TAIL_PAD;
+    return uncompressed_size + ZXC_DECOMPRESS_TAIL_PAD;
 }
 
 /**
@@ -1084,10 +1071,10 @@ uint64_t zxc_decompress_block_bound(const size_t uncompressed_size) {
  * parser and reused as transient package-merge scratch for the Huffman
  * code-length builder.
  */
-uint64_t zxc_estimate_cctx_size(const size_t src_size, const int level) {
+size_t zxc_estimate_cctx_size(const size_t src_size, const int level) {
     if (UNLIKELY(src_size == 0)) return 0;
     const size_t chunk_size = zxc_block_size_ceil(src_size);
-    return (uint64_t)zxc_cctx_compute_workspace_size(chunk_size, 1, level, 0);
+    return zxc_cctx_compute_workspace_size(chunk_size, 1, level, 0);
 }
 
 // ============================================================================
@@ -1139,6 +1126,8 @@ const char* zxc_error_name(const int code) {
             return "ZXC_ERROR_BAD_LEVEL";
         case ZXC_ERROR_DICT_UNSUPPORTED:
             return "ZXC_ERROR_DICT_UNSUPPORTED";
+        case ZXC_ERROR_BAD_PARAM:
+            return "ZXC_ERROR_BAD_PARAM";
         default:
             return "ZXC_UNKNOWN_ERROR";
     }
@@ -1178,3 +1167,7 @@ int zxc_default_level(void) { return ZXC_LEVEL_DEFAULT; }
  * Format: "MAJOR.MINOR.PATCH".
  */
 const char* zxc_version_string(void) { return ZXC_LIB_VERSION_STR; }
+
+unsigned zxc_version_number(void) { return ZXC_VERSION_NUMBER; }
+
+const char* zxc_version_codename(void) { return ZXC_VERSION_CODENAME; }

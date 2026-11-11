@@ -19,20 +19,22 @@
  * @code
  * // Train a dictionary from a corpus of JSON samples
  * void* dict_buf = malloc(32768);
- * int64_t dict_sz = zxc_train_dict(samples, sizes, n, dict_buf, 32768);
+ * int64_t dict_sz = zxc_dict_train_content(samples, sizes, n, dict_buf, 32768);
  *
  * // Train the shared literal Huffman table on the same corpus
  * uint8_t huf[ZXC_HUF_TABLE_SIZE];
- * zxc_train_dict_huf(samples, sizes, n, dict_buf, dict_sz, huf);
+ * zxc_dict_train_huf(samples, sizes, n, dict_buf, dict_sz, huf);
  *
  * // Save to .zxd file (content + table)
  * void* zxd = malloc(zxc_dict_save_bound(dict_sz));
  * int64_t zxd_sz = zxc_dict_save(dict_buf, dict_sz, huf, zxd, ...);
  *
  * // Use for compression
- * zxc_compress_opts_t opts = {
- *     .level = 6, .dict = dict_buf, .dict_size = dict_sz, .dict_huf = huf };
- * zxc_compress(src, src_size, dst, dst_capacity, &opts);
+ * zxc_cctx* cctx = zxc_create_cctx();
+ * zxc_cctx_set_param(cctx, ZXC_C_LEVEL, 6);
+ * zxc_cctx_set_dict(cctx, dict_buf, dict_sz, huf);
+ * zxc_compress_cctx(cctx, src, src_size, dst, dst_capacity);
+ * zxc_free_cctx(cctx);
  * @endcode
  */
 
@@ -55,7 +57,11 @@ extern "C" {
  */
 
 /**
- * @brief Computes the dictionary ID for the given content and optional table.
+ * @brief Computes the dictionary ID from content, and optionally its table.
+ *
+ * One of three ways to an ID: this one hashes the bytes you hold;
+ * zxc_dict_read_id() reads the ID a `.zxd` file stores; zxc_get_dict_id()
+ * reads the one an archive requires.
  *
  * A deterministic 32-bit hash, stored in the ZXC file header so the decoder can
  * check it was handed the right dictionary. With @p huf_lengths NULL it hashes
@@ -69,7 +75,8 @@ extern "C" {
  *                        bytes), or NULL for a content-only ID.
  * @return 32-bit dictionary ID. Returns 0 if @p dict is NULL or @p dict_size is 0.
  */
-ZXC_EXPORT uint32_t zxc_dict_id(const void* dict, size_t dict_size, const void* huf_lengths);
+ZXC_EXPORT uint32_t zxc_dict_compute_id(const void* dict, size_t dict_size,
+                                        const void* huf_lengths);
 
 /**
  * @brief Loads and validates a `.zxd` dictionary file from a memory buffer.
@@ -94,7 +101,7 @@ ZXC_EXPORT int zxc_dict_load(const void* buf, size_t buf_size, const void** cont
 /**
  * @brief Serializes dictionary content and its shared Huffman table to `.zxd`.
  *
- * The 128-byte packed code-lengths table (from zxc_train_dict_huf()) is
+ * The 128-byte packed code-lengths table (from zxc_dict_train_huf()) is
  * mandatory and follows the content. The stored dict_id covers both, so
  * archives compressed with this dictionary are bound to the exact pair.
  *
@@ -117,34 +124,36 @@ ZXC_EXPORT int64_t zxc_dict_save(const void* content, size_t content_size, const
 ZXC_EXPORT size_t zxc_dict_save_bound(size_t content_size);
 
 /**
- * @brief Returns the dictionary ID stored in a `.zxd` file buffer.
+ * @brief Reads the dictionary ID stored in a `.zxd` file buffer.
  *
  * Reads the header's dict_id field only; the rest of the file is not validated.
+ * To recompute it from the content, see zxc_dict_compute_id(); for the ID an
+ * archive requires, see zxc_get_dict_id().
  *
  * @param[in] buf       Buffer containing the .zxd file.
  * @param[in] buf_size  Size of @p buf in bytes.
  * @return Dictionary ID, or 0 if @p buf is too small or the magic word does
  *         not match.
  */
-ZXC_EXPORT uint32_t zxc_dict_get_id(const void* buf, size_t buf_size);
+ZXC_EXPORT uint32_t zxc_dict_read_id(const void* buf, size_t buf_size);
 
 /**
  * @brief Trains a dictionary from a corpus of samples.
  *
  * Picks the byte sequences that maximize LZ77 match coverage across the
- * samples. The content can go straight into zxc_compress_opts_t::dict, or
+ * samples. The content can go straight to zxc_cctx_set_dict(), or
  * through zxc_dict_save().
  *
- * @param[in]  samples        Array of pointers to sample buffers.
- * @param[in]  sample_sizes   Array of sample sizes in bytes.
+ * @param[in]  samples        Array of pointers to sample buffers (NULL if size 0).
+ * @param[in]  sample_sizes   Sample sizes in bytes; a wrapped sum is @ref ZXC_ERROR_OVERFLOW.
  * @param[in]  n_samples      Number of samples.
  * @param[out] dict_buf       Output buffer for trained dictionary content.
  * @param[in]  dict_capacity  Capacity of @p dict_buf (max ZXC_DICT_SIZE_MAX).
  * @return Size of the trained dictionary on success, or a negative
  *         @ref zxc_error_t code.
  */
-ZXC_EXPORT int64_t zxc_train_dict(const void* const* samples, const size_t* sample_sizes,
-                                  size_t n_samples, void* dict_buf, size_t dict_capacity);
+ZXC_EXPORT int64_t zxc_dict_train_content(const void* const* samples, const size_t* sample_sizes,
+                                          size_t n_samples, void* dict_buf, size_t dict_capacity);
 
 /**
  * @brief Trains the shared literal Huffman table for an already-trained dictionary.
@@ -161,15 +170,15 @@ ZXC_EXPORT int64_t zxc_train_dict(const void* const* samples, const size_t* samp
  * @ref ZXC_ERROR_DICT_MISMATCH.
  *
  * @param[in]  samples         Array of pointers to sample buffers (typically
- *                             the same corpus used for zxc_train_dict()).
- * @param[in]  sample_sizes    Array of sample sizes in bytes.
+ *                             the same corpus used for zxc_dict_train_content()); NULL if size 0.
+ * @param[in]  sample_sizes    Sample sizes in bytes; a wrapped sum is @ref ZXC_ERROR_OVERFLOW.
  * @param[in]  n_samples       Number of samples.
  * @param[in]  dict            Trained dictionary content.
  * @param[in]  dict_size       Dictionary content size in bytes.
  * @param[out] huf_lengths_out Receives the 128-byte packed code-lengths table.
  * @return @ref ZXC_OK on success, or a negative @ref zxc_error_t code.
  */
-ZXC_EXPORT int zxc_train_dict_huf(const void* const* samples, const size_t* sample_sizes,
+ZXC_EXPORT int zxc_dict_train_huf(const void* const* samples, const size_t* sample_sizes,
                                   size_t n_samples, const void* dict, size_t dict_size,
                                   uint8_t* huf_lengths_out);
 
@@ -177,15 +186,15 @@ ZXC_EXPORT int zxc_train_dict_huf(const void* const* samples, const size_t* samp
  * @brief One-call dictionary creation: content + shared table, serialized to
  *        ready-to-write `.zxd` bytes.
  *
- * Runs zxc_train_dict(), then zxc_train_dict_huf() on the trained content, then
+ * Runs zxc_dict_train_content(), then zxc_dict_train_huf() on the trained content, then
  * zxc_dict_save() into @p zxd_buf. Size @p zxd_capacity from the dictionary you
  * expect, or use zxc_dict_save_bound(ZXC_DICT_SIZE_MAX) for a safe upper bound.
  * The three primitives stay available for the cases this shortcut does not
  * cover: content-only dictionaries, retraining just the table, externally
  * sourced content.
  *
- * @param[in]  samples       Array of pointers to sample buffers.
- * @param[in]  sample_sizes  Array of sample sizes in bytes.
+ * @param[in]  samples       Array of pointers to sample buffers (NULL if size 0).
+ * @param[in]  sample_sizes  Sample sizes in bytes; a wrapped sum is @ref ZXC_ERROR_OVERFLOW.
  * @param[in]  n_samples     Number of samples.
  * @param[out] zxd_buf       Output buffer for the `.zxd` file.
  * @param[in]  zxd_capacity  Capacity of @p zxd_buf.
