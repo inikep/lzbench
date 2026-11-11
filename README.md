@@ -60,7 +60,7 @@ sources, the Notes column says so.
 
 | Compressor | Last update | Notes |
 | :--- | :--- | :--- |
-| [aceapex 2.5.0](https://github.com/yasha1971-coder/aceapex) | 2026-10-28 | |
+| [aceapex 2.6.1](https://github.com/yasha1971-coder/aceapex) | 2026-11-03 | |
 | [aocl-compression 5.3.2](https://github.com/amd/aocl-compression/releases/tag/5.3.2) | 2026-08-20 | Disabled by default; enable with `make DONT_BUILD_AOCL=0`. Linux x86-64 only — AMD-optimized lz4/lz4hc/lzma/bzip2/snappy/zlib/zstd (compression prefixed `aocl-`); requires GNU binutils (`nm`, `objcopy`); license: BSD 3-Clause / MIT / NCSA |
 | [brieflz 1.3.0](https://github.com/jibsen/brieflz) | 2020-02-15 | |
 | [brotli 1.2.0](https://github.com/google/brotli) | 2025-10-27 | |
@@ -107,7 +107,7 @@ sources, the Notes column says so.
 | [wlz4/wlz4hc 1.3.0, wzip 1.3.0](https://github.com/icodywu/WZIP) | 2026-10-26 | |
 | [xz 5.8.4](https://github.com/tukaani-project/xz) | 2026-09-09 | Built in lzbench with a hand-written `config.h` (upstream uses autotools) |
 | [yalz77 2022-07-06](https://github.com/ivan-tkatchev/yalz77) | 2022-07-06 | |
-| [zlib 1.3.2](http://zlib.net) | 2026-02-17 | |
+| [zlib 1.4](http://zlib.net) | 2026-11-04 | |
 | [zlib-ng 2.3.3](https://github.com/zlib-ng/zlib-ng) | 2026-02-03 | |
 | [zlib-turbo 1.2.2](https://github.com/icodywu/zlib-turbo) | 2026-11-10 | Built with `Z_PREFIX`; levels 1-9 give zlib 1.4's output, also with `-I#` |
 | [zling 2018-10-12](https://github.com/richox/libzling) | 2018-10-12 | Build fixed in lzbench (missing `<functional>` include). Disabled on big-endian PowerPC; not recommended for production use (per author) |
