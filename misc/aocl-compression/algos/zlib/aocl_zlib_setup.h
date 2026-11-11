@@ -50,6 +50,8 @@ extern void aocl_destroy_tree(void);
 extern void aocl_setup_inflate(int optOff, CpuFeatures cpuFeatures);
 extern void aocl_destroy_inflate(void);
 
+extern void aocl_setup_count_lengths(int optOff, CpuFeatures cpuFeatures);
+
 #endif /* AOCL_ZLIB_OPT */
 
 #endif /* AOCL_ZLIB_SETUP_H */

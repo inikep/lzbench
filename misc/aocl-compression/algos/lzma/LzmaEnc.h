@@ -2,7 +2,7 @@
 2019-10-30 : Igor Pavlov : Public domain */
 
 /*
-* Modifications Copyright (C) 2022-2025, Advanced Micro Devices. All rights reserved.
+* Modifications Copyright (C) 2022-2026, Advanced Micro Devices. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are met:
@@ -167,7 +167,9 @@ LZMALIB_API CLzmaEncHandle LzmaEnc_Create(ISzAllocPtr alloc);
 * | \b allocBig   | in          | Allocator object for large blocks |
 *
 * @return void
-* 
+*
+* @note p is invalid after this call and must not be reused or destroyed again.
+*       Passing NULL is a no-op.
 */
 LZMALIB_API void LzmaEnc_Destroy(CLzmaEncHandle p, ISzAllocPtr alloc, ISzAllocPtr allocBig);
 

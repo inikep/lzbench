@@ -604,13 +604,21 @@ _last_literals:
         result = (int)(((char*)dst_without_lastLiterals) - dest);
         *last_anchor_ptr = (BYTE*)anchor;
         *last_bytes_len = (size_t)(iend - anchor);
+#if defined(AOCL_ENABLE_THREADS) && !defined(AOCL_USE_TBB)
         LOG_FORMATTED(INFO, logCtx, "Thread [id: %d] : result=%i, last_bytes_len=%i", omp_get_thread_num(), result, (int)(*last_bytes_len));
+#else
+        LOG_FORMATTED(INFO, logCtx, "result=%i, last_bytes_len=%i", result, (int)(*last_bytes_len));
+#endif
     }
     else
     {
         result = (int)(((char*)op) - dest);
         *last_anchor_ptr = (BYTE*)op;
+#if defined(AOCL_ENABLE_THREADS) && !defined(AOCL_USE_TBB)
         LOG_FORMATTED(INFO, logCtx, "Thread [id: %d] : result=%i", omp_get_thread_num(), result);
+#else
+        LOG_FORMATTED(INFO, logCtx, "result=%i", result);
+#endif
     }
     assert(result >= 0);
     

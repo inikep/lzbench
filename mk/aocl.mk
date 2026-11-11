@@ -82,7 +82,7 @@ AOCL_OBJS   := bench/aocl_codecs.o $(AOCL_ARCHIVE)
 AOCL_FLAGS  := -I$(AOCL_SRC)/api
 CLEAN_FILES += $(AOCL_RAW) $(AOCL_ARCHIVE)
 
-# Common flags mirror AOCL 5.3's Linux Release build. -fPIC replaces AOCL's
+# Common flags mirror AOCL 6.0's Linux Release build. -fPIC replaces AOCL's
 # -fpie since these objects go into a static archive (superset, link-safe).
 # -Werror (ENABLE_STRICT_WARNINGS) is intentionally kept out so third-party
 # warnings on newer compilers don't fail the build.
@@ -134,7 +134,7 @@ endif
 $(AOCL_DIR)/algos/zlib/crc32_x86_vpclmulqdq.o:             AOCL_ARCH = -mavx512f -mpclmul -mvpclmulqdq
 $(AOCL_DIR)/algos/zlib/zlib-ng/arch/x86/chunkset_avx512.o: AOCL_ARCH = -mavx512bw -mavx512f
 
-# GCC 15 scheduling workarounds from AOCL 5.3.2.
+# GCC >= 15 scheduling workarounds from AOCL 6.0.0.
 ifeq (1, $(shell [ "$(COMPILER)" = "gcc" ] && expr $(GCC_VERSION) \>= 150000))
 $(AOCL_DIR)/algos/zlib/zlib-ng/arch/x86/chunkset_avx512.o: AOCL_ARCH += -fno-schedule-insns2 -fno-code-hoisting
 $(AOCL_DIR)/algos/zstd/lib/decompress/zstd_decompress_block.o: AOCL_ARCH += -fno-schedule-insns -fno-tree-sink -fno-if-conversion

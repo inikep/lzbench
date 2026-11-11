@@ -65,7 +65,7 @@
 #undef FASTEST // not supported with AOCL zlib optimizations
 static int setup_ok_zlib_deflate = 0; // flag to indicate status of dynamic dispatcher setup
 static int optLevel = 0, optOff = 1; // optimization configurations
-#ifndef AOCL_ENABLE_THREADS
+#if !defined(AOCL_ENABLE_THREADS) || defined(AOCL_USE_TBB)
 static atomic_flag setup_zlib_deflate = ATOMIC_FLAG_INIT;
 #endif /* AOCL_ENABLE_THREADS */
 

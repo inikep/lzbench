@@ -2,7 +2,7 @@
 2020-03-19 : Igor Pavlov : Public domain */
 
 /*
-* Modifications Copyright (C) 2022-2025, Advanced Micro Devices. All rights reserved.
+* Modifications Copyright (C) 2022-2026, Advanced Micro Devices. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are met:
@@ -282,7 +282,9 @@ LZMALIB_API SRes LzmaDec_AllocateProbs(CLzmaDec* p, const Byte* props, unsigned 
 * | \b alloc    | in          | Allocator object |
 *
 * @return void
-* 
+*
+* @note p must have been initialized by LzmaDec_Construct() (or LzmaDec_Allocate*())
+*       before calling. Freeing an unconstructed object is undefined behavior.
 */
 LZMALIB_API void LzmaDec_FreeProbs(CLzmaDec* p, ISzAllocPtr alloc);
 
@@ -316,7 +318,9 @@ LZMALIB_API SRes LzmaDec_Allocate(CLzmaDec* p, const Byte* props, unsigned props
 * | \b alloc    | in          | Allocator object |
 *
 * @return void
-* 
+*
+* @note p must have been initialized by LzmaDec_Construct() (or LzmaDec_Allocate*())
+*       before calling. Freeing an unconstructed object is undefined behavior.
 */
 LZMALIB_API void LzmaDec_Free(CLzmaDec* p, ISzAllocPtr alloc);
 

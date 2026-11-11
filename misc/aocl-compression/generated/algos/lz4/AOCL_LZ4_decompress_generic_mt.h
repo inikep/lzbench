@@ -1,7 +1,7 @@
 /*
    LZ4 - Fast LZ compression algorithm
    Copyright (C) 2011-2020, Yann Collet.
-   Modifications Copyright (C) 2024-2025, Advanced Micro Devices. All rights reserved.
+   Modifications Copyright (C) 2024-2026, Advanced Micro Devices. All rights reserved.
 
    BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
 
@@ -35,7 +35,7 @@
 
 
 #ifdef AOCL_LZ4_OPT
-#ifdef AOCL_ENABLE_THREADS
+#if defined(AOCL_ENABLE_THREADS) && !defined(AOCL_USE_TBB)
 #define AOCL_LZ4_DGV_LOG_PREFIX "Thread [id: %d] : "
 #define AOCL_LZ4_DGV_LOG_UNFORMATTED(logType, logCtx, str) \
         LOG_FORMATTED(logType, logCtx, AOCL_LZ4_DGV_LOG_PREFIX str, omp_get_thread_num())
@@ -181,7 +181,7 @@ AOCL_LZ4_decompress_generic_mt(
                 if (is_last_thread) {
                     size_t const addl = read_variable_length(&ip, iend - LASTLITERALS + 1, 0);
                     if (addl == rvl_error) { 
-                        LOG_FORMATTED(ERR, logCtx, AOCL_LZ4_DGV_LOG_PREFIX"Encountered variable_length_error while decoding additional match length.", omp_get_thread_num());
+                        AOCL_LZ4_DGV_LOG_UNFORMATTED(ERR, logCtx, "Encountered variable_length_error while decoding additional match length.");
                         DEBUGLOG(5, "error reading long match length");
                         goto _output_error; 
                     }
@@ -189,7 +189,7 @@ AOCL_LZ4_decompress_generic_mt(
                 } else {
                     size_t const addl = read_variable_length(&ip, iend + 1, 0);
                     if (addl == rvl_error) {
-                        LOG_FORMATTED(ERR, logCtx, AOCL_LZ4_DGV_LOG_PREFIX"Encountered variable_length_error while decoding additional match length.", omp_get_thread_num());
+                        AOCL_LZ4_DGV_LOG_UNFORMATTED(ERR, logCtx, "Encountered variable_length_error while decoding additional match length.");
                         DEBUGLOG(5, "error reading long match length");
                         goto _output_error; 
                     }
@@ -350,7 +350,14 @@ AOCL_LZ4_decompress_generic_mt(
             /* copy literals */
             cpy = op+length;
 
+            /* First assert is the pre-existing MFLIMIT >= WILDCOPYLENGTH invariant
+             * that the AVX wildcopy paths elsewhere in this file still rely on; keep
+             * it here. The other two constrain the tail guard: it must cover the
+             * LZ4_wildCopy8 overrun (>=8) in the else branch and must not be
+             * stricter than the encoder (<= MFLIMIT). */
             LZ4_STATIC_ASSERT(MFLIMIT >= WILDCOPYLENGTH);
+            LZ4_STATIC_ASSERT(MFLIMIT >= 8);
+            LZ4_STATIC_ASSERT(MFLIMIT <= MFLIMIT);
             if ((cpy>oend-MFLIMIT) || (ip+length>iend-(2+1+LASTLITERALS))) {
                 /* We've either hit the input parsing restriction or the output parsing restriction.
                  * In the normal scenario, decoding a full block, it must be the last sequence,
@@ -385,8 +392,8 @@ AOCL_LZ4_decompress_generic_mt(
                       * so check that we exactly consume the input and don't overrun the output buffer.
                       */
                     if ((is_last_thread && (ip + length != iend)) || (cpy > oend)) {
-                        LOG_FORMATTED(ERR, logCtx, AOCL_LZ4_DGV_LOG_PREFIX" Must be the last (or invalid) sequence because of the parsing limitations. Error, %s.",
-                        omp_get_thread_num(), (is_last_thread && (ip + length != iend)) ? "exact input not consumed" : "output buffer overflow");
+                        AOCL_LZ4_DGV_LOG_FORMATTED(ERR, logCtx, "Must be the last (or invalid) sequence because of the parsing limitations. Error, %s.",
+                        (is_last_thread && (ip + length != iend)) ? "exact input not consumed" : "output buffer overflow");
 
                         DEBUGLOG(5, "should have been last run of literals")
                         DEBUGLOG(5, "ip(%p) + length(%i) = %p != iend (%p)", ip, (int)length, ip+length, iend);
@@ -545,4 +552,3 @@ AOCL_LZ4_decompress_generic_mt(
     }
 }
 #endif
-

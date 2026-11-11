@@ -2,7 +2,7 @@
 2021-07-13 : Igor Pavlov : Public domain */
 
 /**
-* Modifications Copyright (C) 2022-23, Advanced Micro Devices. All rights reserved.
+* Modifications Copyright (C) 2022-2026, Advanced Micro Devices. All rights reserved.
 *
 * Redistribution and use in source and binary forms, with or without
 * modification, are permitted provided that the following conditions are met:
@@ -159,6 +159,7 @@ void MatchFinder_Construct(CMatchFinder *p);
 /* Conditions:
      historySize <= 3 GB
      keepAddBufferBefore + matchMaxLen + keepAddBufferAfter < 511MB
+   Returns 0 on failure; the caller must check the return before MatchFinder_Init().
 */
 int MatchFinder_Create(CMatchFinder *p, UInt32 historySize,
     UInt32 keepAddBufferBefore, UInt32 matchMaxLen, UInt32 keepAddBufferAfter,
@@ -205,6 +206,9 @@ typedef struct _IMatchFinder
 
 void MatchFinder_CreateVTable(CMatchFinder *p, IMatchFinder2 *vTable);
 
+/* MatchFinder_Init* require a match finder set up via
+   MatchFinder_Construct() then a successful MatchFinder_Create().
+   Calling Init on an unconstructed/failed object is undefined behavior. */
 void MatchFinder_Init_LowHash(CMatchFinder *p);
 void MatchFinder_Init_HighHash(CMatchFinder *p);
 void MatchFinder_Init_4(CMatchFinder *p);

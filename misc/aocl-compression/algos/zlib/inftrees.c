@@ -1,5 +1,6 @@
 /* inftrees.c -- generate Huffman trees for efficient decoding
  * Copyright (C) 1995-2026 Mark Adler
+ * Modifications Copyright (C) 2026, Advanced Micro Devices. All rights reserved.
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
 
@@ -12,15 +13,159 @@
 #  define Z_ONCE
 #endif
 
+/* AOCL_COMBINED_CODE_FORMAT: Huffman entry layout (see inftrees.h for details).
+   1 = combined (non-GCC), 0 = classic (GCC). Defined here, before zutil.h, so
+   the z_once() helper for the runtime-built fixed tables is pulled in. The
+   #ifndef makes inftrees.h's identical block a no-op; keep the two in sync. */
+#ifndef AOCL_COMBINED_CODE_FORMAT
+#  if defined(__GNUC__) && !defined(__clang__)
+#    define AOCL_COMBINED_CODE_FORMAT 0
+#  else
+#    define AOCL_COMBINED_CODE_FORMAT 1
+#  endif
+#endif
+#if AOCL_COMBINED_CODE_FORMAT
+#  ifndef Z_ONCE
+#    define Z_ONCE
+#  endif
+#endif
+
 #include "zutil.h"
 #include "inftrees.h"
 #include "inflate.h"
+
+#ifdef AOCL_ZLIB_OPT
+#include "aocl_zlib_setup.h"
+#include "aocl_zlib_fmv_utils.h"
+#include "aocl_zlib_dispatch_variants.h"
+#endif
 
 #ifndef NULL
 #  define NULL 0
 #endif
 
 #define MAXBITS 15
+
+/* SIMD histogram of Huffman code lengths (ported from zlib-ng).
+   Replaces the serial `count[lens[sym]]++` read-modify-write, whose loop-carried
+   store-forwarding dependency shows up hot in inflate_table on streams that emit
+   many small dynamic blocks. It produces byte-identical count[]. */
+#ifdef AOCL_ZLIB_SSE2_OPT
+#include <immintrin.h>
+
+/* one[16*k] is the k-th unit vector: adding it bumps lane k by one. */
+static const unsigned char __attribute__((aligned(16))) aocl_count_one[256] = {
+    1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+};
+
+/* Accumulate code-length hits into two 8-bit-lane accumulators (pure SSE2, so
+   callable from both the SSE2 and AVX2 stores). 8-bit lanes cap counts at 255,
+   which holds for codes <= 510; all callers (288/32/19) are well within it, and
+   the Assert catches any oversized future caller before a lane overflows. */
+static inline void aocl_count_accumulate(const unsigned short FAR *lens,
+                                         int codes, __m128i *ps1, __m128i *ps2) {
+    int sym;
+    __m128i s1 = _mm_setzero_si128();
+    __m128i s2 = _mm_setzero_si128();
+    Assert(codes <= 510, "aocl_count_lengths: codes > 510 overflows byte lane");
+    if (codes & 1)
+        s1 = _mm_load_si128((const __m128i *)&aocl_count_one[16 * lens[0]]);
+    for (sym = codes & 1; sym < codes; sym += 2) {
+        s1 = _mm_add_epi8(s1, _mm_load_si128((const __m128i *)&aocl_count_one[16 * lens[sym]]));
+        s2 = _mm_add_epi8(s2, _mm_load_si128((const __m128i *)&aocl_count_one[16 * lens[sym + 1]]));
+    }
+    *ps1 = s1;
+    *ps2 = s2;
+}
+
+/* SSE2 store: widen the byte lanes to 16 bits and write count[0..15] as two
+   128-bit stores. */
+static inline void aocl_count_lengths_sse2(const unsigned short FAR *lens,
+                                           int codes, unsigned short *count) {
+    __m128i s1, s2, zero, sum_lo, sum_hi;
+    aocl_count_accumulate(lens, codes, &s1, &s2);
+    zero = _mm_setzero_si128();
+    sum_lo = _mm_add_epi16(_mm_unpacklo_epi8(s1, zero),
+                           _mm_unpacklo_epi8(s2, zero));
+    sum_hi = _mm_add_epi16(_mm_unpackhi_epi8(s1, zero),
+                           _mm_unpackhi_epi8(s2, zero));
+    _mm_storeu_si128((__m128i *)&count[0], sum_lo);
+    _mm_storeu_si128((__m128i *)&count[8], sum_hi);
+}
+
+#ifdef AOCL_ZLIB_AVX2_OPT
+/* AVX2 store: one 256-bit store. Carries the target attribute so it exists even
+   without a global -mavx2; only ever selected after a runtime AVX2 check. */
+__attribute__((__target__("avx2")))
+static inline void aocl_count_lengths_avx2(const unsigned short FAR *lens,
+                                           int codes, unsigned short *count) {
+    __m128i s1, s2;
+    __m256i sum;
+    aocl_count_accumulate(lens, codes, &s1, &s2);
+    sum = _mm256_add_epi16(_mm256_cvtepu8_epi16(s1),
+                           _mm256_cvtepu8_epi16(s2));
+    _mm256_storeu_si256((__m256i *)&count[0], sum);
+}
+#endif /* AOCL_ZLIB_AVX2_OPT */
+#endif /* AOCL_ZLIB_SSE2_OPT */
+
+#ifdef AOCL_ZLIB_OPT
+/* Scalar reference histogram */
+static void count_lengths_scalar(const unsigned short FAR *lens, int codes,
+                                 unsigned short *count) {
+    int len, sym;
+    for (len = 0; len <= MAXBITS; len++)
+        count[len] = 0;
+    for (sym = 0; sym < codes; sym++)
+        count[lens[sym]]++;
+}
+
+/* Runtime-selected histogram; retargeted by aocl_setup_count_lengths to the
+   scalar reference under zlibOptOff, else the best SIMD variant for the CPU. */
+static void (*count_lengths_fp)(const unsigned short FAR *, int,
+                                unsigned short *) = count_lengths_scalar;
+
+void ZLIB_INTERNAL aocl_setup_count_lengths(int optOff, CpuFeatures cpuFeatures)
+{
+    if (UNLIKELY(optOff == 1))
+    {
+        count_lengths_fp = count_lengths_scalar;
+    }
+    else
+    {
+        /* FMV variant table (highest priority first). */
+        static const AoclZlibCountLengthsVariant count_variants[] = {
+#ifdef AOCL_ZLIB_AVX2_OPT
+            { FEATURE_AVX2, aocl_count_lengths_avx2 },
+#endif
+#ifdef AOCL_ZLIB_SSE2_OPT
+            { FEATURE_SSE2, aocl_count_lengths_sse2 },
+#endif
+            { 0,            count_lengths_scalar }
+        };
+
+        /* Select first compatible FMV variant for detected CPU features. */
+        size_t variant_index = aocl_zlib_select_fmv_variant(
+            count_variants,
+            AOCL_ZLIB_ARRAY_SIZE(count_variants),
+            sizeof(count_variants[0]),
+            offsetof(AoclZlibCountLengthsVariant, required_features),
+            cpuFeatures);
+
+        if (variant_index < AOCL_ZLIB_ARRAY_SIZE(count_variants)) {
+            count_lengths_fp = count_variants[variant_index].count_lengths_impl;
+            return;
+        }
+    }
+}
+#endif /* AOCL_ZLIB_OPT */
 
 const char inflate_copyright[] =
    " inflate 1.3.2.f-AOCL-ZLIB Copyright 1995-2026 Mark Adler ";
@@ -113,10 +258,16 @@ int ZLIB_INTERNAL inflate_table(codetype type, unsigned short FAR *lens,
      */
 
     /* accumulate lengths for codes (assumes lens[] all in 0..MAXBITS) */
-    for (len = 0; len <= MAXBITS; len++)
-        count[len] = 0;
-    for (sym = 0; sym < codes; sym++)
-        count[lens[sym]]++;
+#ifdef AOCL_ZLIB_OPT
+    count_lengths_fp(lens, (int)codes, count);
+#else
+    {
+        for (len = 0; len <= MAXBITS; len++)
+            count[len] = 0;
+        for (sym = 0; sym < codes; sym++)
+            count[lens[sym]]++;
+    }
+#endif
 
     /* bound code lengths, force root to be within code lengths */
     root = *bits;
@@ -226,8 +377,23 @@ int ZLIB_INTERNAL inflate_table(codetype type, unsigned short FAR *lens,
             here.val = work[sym];
         }
         else if (work[sym] >= match) {
-            here.op = (unsigned char)(extra[work[sym] - match]);
-            here.val = base[work[sym] - match];
+#if AOCL_COMBINED_CODE_FORMAT
+            /* Combined format: fold extra-bit count into op/bits so the decoder
+               can consume code+extra in a single DROPBITS and extract extra with
+               one shift (EXTRA_BITS). here.bits currently holds code_bits.
+             */
+            if (!zlibOptOff) {
+                unsigned char ex = (unsigned char)(extra[work[sym] - match]);
+                here.op = COMBINE_OP(ex, here.bits);
+                here.bits = COMBINE_BITS(here.bits, ex);
+                here.val = base[work[sym] - match];
+            }
+            else
+#endif
+            {
+                here.op = (unsigned char)(extra[work[sym] - match]);
+                here.val = base[work[sym] - match];
+            }
         }
         else {
             here.op = (unsigned char)(32 + 64);         /* end of block */
@@ -351,6 +517,49 @@ local void buildtables(void) {
 #  include "inffixed.h"
 #endif /* BUILDFIXED */
 
+#if AOCL_COMBINED_CODE_FORMAT && !defined(BUILDFIXED)
+/* Combined-format fixed tables, built once at runtime. inffixed.h holds the
+   classic layout, which the opt-on decoders would misread, so rebuild the fixed
+   length/distance tables via inflate_table() (emits combined entries when
+   zlibOptOff==0).
+   Size = 512 length + 32 distance entries, matching inflate_table()'s output;
+   keep in sync with the fixed-code layout or the distance build overflows. */
+#define AOCL_FIXED_LENGTH_ENTRIES 512
+#define AOCL_FIXED_DIST_ENTRIES   32
+static code aocl_fixed[AOCL_FIXED_LENGTH_ENTRIES + AOCL_FIXED_DIST_ENTRIES];
+static code *aocl_lenfix;
+static code *aocl_distfix;
+static z_once_t aocl_fixed_built = Z_ONCE_INIT;
+/* Thread-safety: publication is ordered only on the C11-atomics z_once path.
+   The non-atomic fallback (see zutil.h) may double-build or expose a half-built
+   table, but it is reached only without C11 atomics and is already documented
+   as not thread-safe. */
+
+local void aocl_build_combined_fixed(void) {
+    unsigned sym, bits;
+    static code *next;
+    unsigned short lens[288], work[288];
+
+    /* literal/length table */
+    sym = 0;
+    while (sym < 144) lens[sym++] = 8;
+    while (sym < 256) lens[sym++] = 9;
+    while (sym < 280) lens[sym++] = 7;
+    while (sym < 288) lens[sym++] = 8;
+    next = aocl_fixed;
+    aocl_lenfix = next;
+    bits = 9;
+    inflate_table(LENS, lens, 288, &next, &bits, work);
+
+    /* distance table */
+    sym = 0;
+    while (sym < 32) lens[sym++] = 5;
+    aocl_distfix = next;
+    bits = 5;
+    inflate_table(DISTS, lens, 32, &next, &bits, work);
+}
+#endif /* AOCL_COMBINED_CODE_FORMAT && !BUILDFIXED */
+
 /*
    Return state with length and distance decoding tables and index sizes set to
    fixed code decoding.  Normally this returns fixed tables from inffixed.h.
@@ -365,10 +574,28 @@ void inflate_fixed(struct inflate_state FAR *state) {
 #ifdef BUILDFIXED
     z_once(&built, buildtables);
 #endif /* BUILDFIXED */
+#if AOCL_COMBINED_CODE_FORMAT && !defined(BUILDFIXED)
+    /* Opt-on decoders need combined-format tables; opt-off keeps the classic
+       static tables so its decoders match the reference build exactly. */
+    if (!zlibOptOff) {
+        z_once(&aocl_fixed_built, aocl_build_combined_fixed);
+        state->lencode = aocl_lenfix;
+        state->lenbits = 9;
+        state->distcode = aocl_distfix;
+        state->distbits = 5;
+#ifdef AOCL_ZLIB_OPT
+        state->opt_off = 0;     /* combined-format fixed tables installed */
+#endif
+        return;
+    }
+#endif /* AOCL_COMBINED_CODE_FORMAT && !BUILDFIXED */
     state->lencode = lenfix;
     state->lenbits = 9;
     state->distcode = distfix;
     state->distbits = 5;
+#ifdef AOCL_ZLIB_OPT
+    state->opt_off = 1;       /* classic (reference) fixed tables installed */
+#endif
 }
 
 #ifdef MAKEFIXED

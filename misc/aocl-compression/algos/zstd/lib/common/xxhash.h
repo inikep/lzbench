@@ -4275,7 +4275,7 @@ do { \
 #  if XXH_SIZE_OPT >= 1
 #    define XXH_PREFETCH(ptr) (void)(ptr)
 #  elif defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))  /* _mm_prefetch() not defined outside of x86/x64 */
-#    include <mmintrin.h>   /* https://msdn.microsoft.com/fr-fr/library/84szxsww(v=vs.90).aspx */
+#    include <mmintrin.h>   /* Microsoft Specific SIMD extension */
 #    define XXH_PREFETCH(ptr)  _mm_prefetch((const char*)(ptr), _MM_HINT_T0)
 #  elif defined(__GNUC__) && ( (__GNUC__ >= 4) || ( (__GNUC__ == 3) && (__GNUC_MINOR__ >= 1) ) )
 #    define XXH_PREFETCH(ptr)  __builtin_prefetch((ptr), 0 /* rw==read */, 3 /* locality */)
@@ -4858,7 +4858,7 @@ XXH_FORCE_INLINE void XXH_writeLE64(void* dst, xxh_u64 v64)
 }
 
 /* Several intrinsic functions below are supposed to accept __int64 as argument,
- * as documented in https://software.intel.com/sites/landingpage/IntrinsicsGuide/ .
+ * as documented in intel IntrinsicsGuide .
  * However, several environments do not define __int64 type,
  * requiring a workaround.
  */

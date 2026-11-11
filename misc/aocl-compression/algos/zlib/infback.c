@@ -219,6 +219,11 @@ int ZEXPORT inflateBack(z_streamp strm, in_func in, void FAR *in_desc,
     state->mode = TYPE;
     state->last = 0;
     state->whave = 0;
+#ifdef AOCL_ZLIB_OPT
+    /* Starting value; re-captured at each table build (dynamic LENS and
+       inflate_fixed) so decoders read the format their live tables were built in. */
+    state->opt_off = zlibOptOff;
+#endif
     next = strm->next_in;
     have = next != Z_NULL ? strm->avail_in : 0;
     hold = 0;
@@ -411,6 +416,7 @@ int ZEXPORT inflateBack(z_streamp strm, in_func in, void FAR *in_desc,
             state->next = state->codes;
             state->lencode = (code const FAR *)(state->next);
             state->lenbits = 10;
+            state->opt_off = zlibOptOff;  /* bind entry format to these tables */
 #endif /* AOCL_ZLIB_OPT */
             ret = inflate_table(LENS, state->lens, state->nlen, &(state->next),
                                 &(state->lenbits), state->work);
@@ -450,20 +456,21 @@ int ZEXPORT inflateBack(z_streamp strm, in_func in, void FAR *in_desc,
             /* get a literal, length, or end-of-block code */
             for (;;) {
                 here = state->lencode[BITS(state->lenbits)];
-                if ((unsigned)(here.bits) <= bits) break;
+                if (CODE_BITS(here, INFLATE_OPT_OFF(state)) <= bits) break;
                 PULLBYTE();
             }
             if (here.op && (here.op & 0xf0) == 0) {
                 last = here;
                 for (;;) {
+                    unsigned last_bits = CODE_BITS(last, INFLATE_OPT_OFF(state));
                     here = state->lencode[last.val +
-                            (BITS(last.bits + last.op) >> last.bits)];
-                    if ((unsigned)(last.bits + here.bits) <= bits) break;
+                            (BITS(last_bits + (last.op & 15)) >> last_bits)];
+                    if ((unsigned)(last_bits + CODE_BITS(here, INFLATE_OPT_OFF(state))) <= bits) break;
                     PULLBYTE();
                 }
-                DROPBITS(last.bits);
+                DROPBITS(CODE_BITS(last, INFLATE_OPT_OFF(state)));
             }
-            DROPBITS(here.bits);
+            DROPBITS(CODE_BITS(here, INFLATE_OPT_OFF(state)));
             state->length = (unsigned)here.val;
 
             /* process literal */
@@ -493,7 +500,7 @@ int ZEXPORT inflateBack(z_streamp strm, in_func in, void FAR *in_desc,
             }
 
             /* length code -- get extra bits, if any */
-            state->extra = (unsigned)(here.op) & 15;
+            state->extra = CODE_EXTRA(here, INFLATE_OPT_OFF(state));
             if (state->extra != 0) {
                 NEEDBITS(state->extra);
                 state->length += BITS(state->extra);
@@ -504,20 +511,21 @@ int ZEXPORT inflateBack(z_streamp strm, in_func in, void FAR *in_desc,
             /* get distance code */
             for (;;) {
                 here = state->distcode[BITS(state->distbits)];
-                if ((unsigned)(here.bits) <= bits) break;
+                if (CODE_BITS(here, INFLATE_OPT_OFF(state)) <= bits) break;
                 PULLBYTE();
             }
             if ((here.op & 0xf0) == 0) {
                 last = here;
                 for (;;) {
+                    unsigned last_bits = CODE_BITS(last, INFLATE_OPT_OFF(state));
                     here = state->distcode[last.val +
-                            (BITS(last.bits + last.op) >> last.bits)];
-                    if ((unsigned)(last.bits + here.bits) <= bits) break;
+                            (BITS(last_bits + (last.op & 15)) >> last_bits)];
+                    if ((unsigned)(last_bits + CODE_BITS(here, INFLATE_OPT_OFF(state))) <= bits) break;
                     PULLBYTE();
                 }
-                DROPBITS(last.bits);
+                DROPBITS(CODE_BITS(last, INFLATE_OPT_OFF(state)));
             }
-            DROPBITS(here.bits);
+            DROPBITS(CODE_BITS(here, INFLATE_OPT_OFF(state)));
             if (here.op & 64) {
                 strm->msg = (z_const char *)"invalid distance code";
                 state->mode = BAD;
@@ -526,7 +534,7 @@ int ZEXPORT inflateBack(z_streamp strm, in_func in, void FAR *in_desc,
             state->offset = (unsigned)here.val;
 
             /* get distance extra bits, if any */
-            state->extra = (unsigned)(here.op) & 15;
+            state->extra = CODE_EXTRA(here, INFLATE_OPT_OFF(state));
             if (state->extra != 0) {
                 NEEDBITS(state->extra);
                 state->offset += BITS(state->extra);

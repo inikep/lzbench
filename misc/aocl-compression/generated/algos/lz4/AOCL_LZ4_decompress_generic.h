@@ -1,7 +1,7 @@
 /*
    LZ4 - Fast LZ compression algorithm
    Copyright (C) 2011-2020, Yann Collet.
-   Modifications Copyright (C) 2024-2025, Advanced Micro Devices. All rights reserved.
+   Modifications Copyright (C) 2024-2026, Advanced Micro Devices. All rights reserved.
 
    BSD 2-Clause License (http://www.opensource.org/licenses/bsd-license.php)
 
@@ -35,7 +35,7 @@
 
 
 #ifdef AOCL_LZ4_OPT
-#ifdef AOCL_ENABLE_THREADS
+#if defined(AOCL_ENABLE_THREADS) && !defined(AOCL_USE_TBB)
 #define AOCL_LZ4_DGV_LOG_PREFIX "Thread [id: %d] : "
 #define AOCL_LZ4_DGV_LOG_UNFORMATTED(logType, logCtx, str) \
         LOG_FORMATTED(logType, logCtx, AOCL_LZ4_DGV_LOG_PREFIX str, omp_get_thread_num())
@@ -340,8 +340,15 @@ AOCL_LZ4_decompress_generic(
             /* copy literals */
             cpy = op+length;
 
+            /* First assert is the pre-existing MFLIMIT >= WILDCOPYLENGTH invariant
+             * that the AVX wildcopy paths elsewhere in this file still rely on; keep
+             * it here. The other two constrain the tail guard: it must cover the
+             * LZ4_wildCopy8 overrun (>=8) in the else branch and must not be
+             * stricter than the encoder (<= MFLIMIT). */
             LZ4_STATIC_ASSERT(MFLIMIT >= WILDCOPYLENGTH);
-            if ((cpy>oend-MFLIMIT) || (ip+length>iend-(2+1+LASTLITERALS))) {
+            LZ4_STATIC_ASSERT(LZ4_DEC_LIT_TAIL >= 8);
+            LZ4_STATIC_ASSERT(LZ4_DEC_LIT_TAIL <= MFLIMIT);
+            if ((cpy>oend-LZ4_DEC_LIT_TAIL) || (ip+length>iend-(2+1+LASTLITERALS))) {
                 /* We've either hit the input parsing restriction or the output parsing restriction.
                  * In the normal scenario, decoding a full block, it must be the last sequence,
                  * otherwise it's an error (invalid input or dimensions).
@@ -380,7 +387,7 @@ AOCL_LZ4_decompress_generic(
 
                         DEBUGLOG(5, "should have been last run of literals")
                         DEBUGLOG(5, "ip(%p) + length(%i) = %p != iend (%p)", ip, (int)length, ip+length, iend);
-                        DEBUGLOG(5, "or cpy(%p) > (oend-MFLIMIT)(%p)", cpy, oend-MFLIMIT);
+                        DEBUGLOG(5, "or cpy(%p) > (oend-LZ4_DEC_LIT_TAIL)(%p)", cpy, oend-LZ4_DEC_LIT_TAIL);
                         DEBUGLOG(5, "after writing %u bytes / %i bytes available", (unsigned)(op-(BYTE*)dst), outputSize);
                         goto _output_error;
                     }
@@ -527,4 +534,3 @@ AOCL_LZ4_decompress_generic(
     }
 }
 #endif
-

@@ -1,4 +1,4 @@
-AOCL-Compression v5.3.2 - LICENSE
+AOCL-Compression v6.0.0 - LICENSE
 
 SECTION 1: AMD CONTRIBUTIONS
 

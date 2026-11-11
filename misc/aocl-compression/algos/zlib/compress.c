@@ -17,7 +17,7 @@
 
 int zlibOptOff = 0; // default, run reference code
 static int setup_ok_zlib = 0; // flag to indicate status of dynamic dispatcher setup
-#ifndef AOCL_ENABLE_THREADS
+#if !defined(AOCL_ENABLE_THREADS) || defined(AOCL_USE_TBB)
 static atomic_flag setup_zlib = ATOMIC_FLAG_INIT;
 #endif /* AOCL_ENABLE_THREADS */
 
@@ -204,6 +204,65 @@ static z_size_t compressBound_MT_generic(z_size_t sourceLen, const int wrap) {
     return sz2 + wrapper_size;
 }
 
+typedef struct {
+    aocl_thread_group_t *thread_group_handle;
+    int level;
+    int wrap;
+} compress2_mt_compress_parallel_ctx_t;
+
+static void compress2_mt_compress_parallel_worker(AOCL_UINT32 thread_id, void *context)
+{
+    compress2_mt_compress_parallel_ctx_t *ctx = (compress2_mt_compress_parallel_ctx_t *)context;
+    aocl_thread_group_t *thread_group_handle = ctx->thread_group_handle;
+    int level = ctx->level;
+    int wrap = ctx->wrap;
+    aocl_thread_info_t cur_thread_info;
+
+#ifdef AOCL_THREADS_LOG
+    printf("Compress Thread [id: %d] : Inside parallel region\n", (int)thread_id);
+#endif
+    AOCL_UINT32 cmpr_bound_pad;
+    AOCL_UINT32 is_error = Z_OK;
+    if (thread_id != (thread_group_handle->num_threads - 1))
+        cmpr_bound_pad = compressBound_ST_raw(thread_group_handle->common_part_src_size);
+    else
+        cmpr_bound_pad = compressBound_ST_raw(thread_group_handle->common_part_src_size +
+                                thread_group_handle->leftover_part_src_bytes);
+    if (aocl_do_partition_compress_mt(thread_group_handle, &cur_thread_info, cmpr_bound_pad, thread_id) == 0)
+    {
+        if (thread_id != (thread_group_handle->num_threads - 1))
+            is_error = compress2_ST_raw(&cur_thread_info, level, Z_SYNC_FLUSH);
+        else
+            is_error = compress2_ST_raw(&cur_thread_info, level, Z_FINISH);
+        cur_thread_info.last_bytes_len = CALCULATE_CHECKSUM(cur_thread_info.partition_src, cur_thread_info.partition_src_size, wrap);
+    }
+#ifdef AOCL_THREADS_LOG
+    printf("Compress Thread [id: %d] : Return value %d\n", (int)thread_id, is_error);
+#endif
+    thread_group_handle->threads_info_list[thread_id].partition_src = cur_thread_info.partition_src;
+    thread_group_handle->threads_info_list[thread_id].dst_trap = cur_thread_info.dst_trap;
+    thread_group_handle->threads_info_list[thread_id].additional_state_info = NULL;
+    thread_group_handle->threads_info_list[thread_id].dst_trap_size = cur_thread_info.dst_trap_size;
+    thread_group_handle->threads_info_list[thread_id].partition_src_size = cur_thread_info.partition_src_size;
+    thread_group_handle->threads_info_list[thread_id].last_bytes_len = cur_thread_info.last_bytes_len;
+    thread_group_handle->threads_info_list[thread_id].is_error = is_error;
+    thread_group_handle->threads_info_list[thread_id].num_child_threads = 0;
+}
+
+typedef struct {
+    aocl_thread_group_t *thread_group_handle;
+} compress2_mt_memcpy_parallel_ctx_t;
+
+static void compress2_mt_memcpy_parallel_worker(AOCL_UINT32 thread_id, void *context)
+{
+    compress2_mt_memcpy_parallel_ctx_t *ctx = (compress2_mt_memcpy_parallel_ctx_t *)context;
+    aocl_thread_group_t *thread_group_handle = ctx->thread_group_handle;
+    aocl_thread_info_t cur_thread_info;
+
+    cur_thread_info = thread_group_handle->threads_info_list[thread_id];
+    memcpy(thread_group_handle->dst + cur_thread_info.partition_src_size,
+        cur_thread_info.dst_trap, cur_thread_info.dst_trap_size);
+}
 
 static inline int compress2_MT_generic(Bytef *dest, z_size_t *destLen, const Bytef *source,
                       z_size_t sourceLen, int level, const int wrap) {
@@ -245,44 +304,22 @@ static inline int compress2_MT_generic(Bytef *dest, z_size_t *destLen, const Byt
     {
         *destLen = rap_metadata_len;
 #ifdef AOCL_THREADS_LOG
+#ifndef AOCL_USE_TBB
         printf("Compress Thread [id: %d] : Before parallel region\n", omp_get_thread_num());
 #endif
-
-#pragma omp parallel private(cur_thread_info) shared(thread_group_handle) num_threads(thread_group_handle.num_threads)
+#endif
         {
+            compress2_mt_compress_parallel_ctx_t compress_parallel_ctx;
+            compress_parallel_ctx.thread_group_handle = &thread_group_handle;
+            compress_parallel_ctx.level = level;
+            compress_parallel_ctx.wrap = wrap;
+            aocl_parallel_for(thread_group_handle.num_threads, compress2_mt_compress_parallel_worker,
+                &compress_parallel_ctx);
+        }
 #ifdef AOCL_THREADS_LOG
-            printf("Compress Thread [id: %d] : Inside parallel region\n", omp_get_thread_num());
-#endif
-            AOCL_UINT32 thread_id = omp_get_thread_num();
-            AOCL_UINT32 cmpr_bound_pad;
-            AOCL_UINT32 is_error = Z_OK;
-            if (thread_id != (thread_group_handle.num_threads - 1))
-                cmpr_bound_pad = compressBound_ST_raw(thread_group_handle.common_part_src_size);
-            else
-                cmpr_bound_pad = compressBound_ST_raw(thread_group_handle.common_part_src_size + 
-                                        thread_group_handle.leftover_part_src_bytes);
-            if (aocl_do_partition_compress_mt(&thread_group_handle, &cur_thread_info, cmpr_bound_pad, thread_id) == 0)
-            {
-                if (thread_id != (thread_group_handle.num_threads - 1))
-                    is_error = compress2_ST_raw(&cur_thread_info, level, Z_SYNC_FLUSH);
-                else
-                    is_error = compress2_ST_raw(&cur_thread_info, level, Z_FINISH);
-                cur_thread_info.last_bytes_len = CALCULATE_CHECKSUM(cur_thread_info.partition_src, cur_thread_info.partition_src_size, wrap);
-            } //aocl_do_partition_compress_mt
-#ifdef AOCL_THREADS_LOG
-            printf("Compress Thread [id: %d] : Return value %d\n", omp_get_thread_num(), is_error);
-#endif
-            thread_group_handle.threads_info_list[thread_id].partition_src = cur_thread_info.partition_src;
-            thread_group_handle.threads_info_list[thread_id].dst_trap = cur_thread_info.dst_trap;
-            thread_group_handle.threads_info_list[thread_id].additional_state_info = NULL;
-            thread_group_handle.threads_info_list[thread_id].dst_trap_size = cur_thread_info.dst_trap_size;
-            thread_group_handle.threads_info_list[thread_id].partition_src_size = cur_thread_info.partition_src_size;
-            thread_group_handle.threads_info_list[thread_id].last_bytes_len = cur_thread_info.last_bytes_len; // save checksum
-            thread_group_handle.threads_info_list[thread_id].is_error = is_error;
-            thread_group_handle.threads_info_list[thread_id].num_child_threads = 0;
-        } //#pragma omp parallel
-#ifdef AOCL_THREADS_LOG
+#ifndef AOCL_USE_TBB
         printf("Compress Thread [id: %d] : After parallel region\n", omp_get_thread_num());
+#endif
 #endif
         //Post processing in single-threaded mode: Prepares RAP frame and joins the last sequences of the neighboring threads
 
@@ -341,12 +378,18 @@ static inline int compress2_MT_generic(Bytef *dest, z_size_t *destLen, const Byt
         }
 
         /* copy compressed data from threads to dst multi-threaded */
-#pragma omp parallel private(cur_thread_info) shared(thread_group_handle) num_threads(thread_group_handle.num_threads)
         {
-            AOCL_UINT32 thread_cnt = omp_get_thread_num();
-            cur_thread_info = thread_group_handle.threads_info_list[thread_cnt];
-            memcpy(thread_group_handle.dst + cur_thread_info.partition_src_size, //cur_thread_info.partition_src_size contains cur_offset
-                cur_thread_info.dst_trap, cur_thread_info.dst_trap_size);
+            compress2_mt_memcpy_parallel_ctx_t memcpy_parallel_ctx;
+            memcpy_parallel_ctx.thread_group_handle = &thread_group_handle;
+            /* Copy-out has no per-partition status: a swallowed backend
+             * exception must fail, not return a truncated buffer as success. */
+            if (aocl_parallel_for(thread_group_handle.num_threads, compress2_mt_memcpy_parallel_worker,
+                &memcpy_parallel_ctx) != 0)
+            {
+                LOG_UNFORMATTED(ERR, logCtx, "Multi-threaded compress copy-out failed");
+                aocl_destroy_parallel_compress_mt(&thread_group_handle);
+                return Z_MEM_ERROR;
+            }
         }
         thread_group_handle.dst += *destLen - rap_metadata_len - header_size;
         int trailer_size = insert_Trailer_generic((Bytef*)thread_group_handle.dst, checksum, sourceLen, wrap);

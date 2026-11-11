@@ -103,7 +103,7 @@
  * aocl_zlib_fmv_utils.h and aocl_zlib_dispatch_variants.h. */
 
 static int setup_ok_zlib_inflate = 0; // flag to indicate status of dynamic dispatcher setup
-#ifndef AOCL_ENABLE_THREADS
+#if !defined(AOCL_ENABLE_THREADS) || defined(AOCL_USE_TBB)
 static atomic_flag setup_zlib_inflate = ATOMIC_FLAG_INIT;
 #endif
 
@@ -152,6 +152,11 @@ int ZEXPORT inflateResetKeep(z_streamp strm) {
     state->lencode = state->distcode = state->next = state->codes;
     state->sane = 1;
     state->back = -1;
+#ifdef AOCL_ZLIB_OPT
+    /* Starting value for the entry-format latch; re-captured at each table
+       build (inflate_table / inflate_fixed) before any decode reads it. */
+    state->opt_off = zlibOptOff;
+#endif
     Tracev((stderr, "inflate: reset\n"));
     return Z_OK;
 }
@@ -1021,6 +1026,7 @@ int ZEXPORT inflate(z_streamp strm, int flush) {
             state->next = state->codes;
             state->lencode = (const code FAR *)(state->next);
             state->lenbits = 10;
+            state->opt_off = zlibOptOff;  /* bind entry format to these tables */
 #endif /* AOCL_ZLIB_OPT */
             ret = inflate_table(LENS, state->lens, state->nlen, &(state->next),
                                 &(state->lenbits), state->work);
@@ -1069,22 +1075,29 @@ int ZEXPORT inflate(z_streamp strm, int flush) {
             state->back = 0;
             for (;;) {
                 here = state->lencode[BITS(state->lenbits)];
-                if ((unsigned)(here.bits) <= bits) break;
+                if (CODE_BITS(here, INFLATE_OPT_OFF(state)) <= bits) break;
                 PULLBYTE();
             }
             if (here.op && (here.op & 0xf0) == 0) {
                 last = here;
                 for (;;) {
+                    unsigned last_bits = CODE_BITS(last, INFLATE_OPT_OFF(state));
                     here = state->lencode[last.val +
-                            (BITS(last.bits + last.op) >> last.bits)];
-                    if ((unsigned)(last.bits + here.bits) <= bits) break;
+                            (BITS(last_bits + (last.op & 15)) >> last_bits)];
+                    if ((unsigned)(last_bits + CODE_BITS(here, INFLATE_OPT_OFF(state))) <= bits) break;
                     PULLBYTE();
                 }
-                DROPBITS(last.bits);
-                state->back += last.bits;
+                {
+                    unsigned last_bits = CODE_BITS(last, INFLATE_OPT_OFF(state));
+                    DROPBITS(last_bits);
+                    state->back += last_bits;
+                }
             }
-            DROPBITS(here.bits);
-            state->back += here.bits;
+            {
+                unsigned code_bits = CODE_BITS(here, INFLATE_OPT_OFF(state));
+                DROPBITS(code_bits);
+                state->back += code_bits;
+            }
             state->length = (unsigned)here.val;
             if ((int)(here.op) == 0) {
                 Tracevv((stderr, here.val >= 0x20 && here.val < 0x7f ?
@@ -1104,7 +1117,7 @@ int ZEXPORT inflate(z_streamp strm, int flush) {
                 state->mode = BAD;
                 break;
             }
-            state->extra = (unsigned)(here.op) & 15;
+            state->extra = CODE_EXTRA(here, INFLATE_OPT_OFF(state));
             state->mode = LENEXT;
                 /* fallthrough */
         case LENEXT:
@@ -1121,29 +1134,36 @@ int ZEXPORT inflate(z_streamp strm, int flush) {
         case DIST:
             for (;;) {
                 here = state->distcode[BITS(state->distbits)];
-                if ((unsigned)(here.bits) <= bits) break;
+                if (CODE_BITS(here, INFLATE_OPT_OFF(state)) <= bits) break;
                 PULLBYTE();
             }
             if ((here.op & 0xf0) == 0) {
                 last = here;
                 for (;;) {
+                    unsigned last_bits = CODE_BITS(last, INFLATE_OPT_OFF(state));
                     here = state->distcode[last.val +
-                            (BITS(last.bits + last.op) >> last.bits)];
-                    if ((unsigned)(last.bits + here.bits) <= bits) break;
+                            (BITS(last_bits + (last.op & 15)) >> last_bits)];
+                    if ((unsigned)(last_bits + CODE_BITS(here, INFLATE_OPT_OFF(state))) <= bits) break;
                     PULLBYTE();
                 }
-                DROPBITS(last.bits);
-                state->back += last.bits;
+                {
+                    unsigned last_bits = CODE_BITS(last, INFLATE_OPT_OFF(state));
+                    DROPBITS(last_bits);
+                    state->back += last_bits;
+                }
             }
-            DROPBITS(here.bits);
-            state->back += here.bits;
+            {
+                unsigned code_bits = CODE_BITS(here, INFLATE_OPT_OFF(state));
+                DROPBITS(code_bits);
+                state->back += code_bits;
+            }
             if (here.op & 64) {
                 strm->msg = (z_const char *)"invalid distance code";
                 state->mode = BAD;
                 break;
             }
             state->offset = (unsigned)here.val;
-            state->extra = (unsigned)(here.op) & 15;
+            state->extra = CODE_EXTRA(here, INFLATE_OPT_OFF(state));
             state->mode = DISTEXT;
                 /* fallthrough */
         case DISTEXT:
@@ -1687,6 +1707,10 @@ unsigned long ZEXPORT inflateCodesUsed(z_streamp strm) {
 #ifdef AOCL_ZLIB_OPT
 /* AOCL-Compression defined setup function that sets up ZLIB with the right
  *  AMD optimized zlib routines depending upon the CPU features. */
+/* Picks the fast-path impl at runtime by zlibOptOff. The table entry format is
+   captured per stream into state->opt_off at table-build time (read via
+   INFLATE_OPT_OFF()), so a later flip of zlibOptOff can't desync a live
+   stream's assumed format from its built tables. See inftrees.h. */
 static void aocl_setup_inflate_fmv(int optOff, CpuFeatures cpuFeatures)
 {
     if (UNLIKELY(optOff == 1))
@@ -1729,6 +1753,7 @@ void ZLIB_INTERNAL aocl_setup_inflate(int optOff, CpuFeatures cpuFeatures) {
         optOff = optOff ? 1 : get_disable_opt_flags(0);
         zlibOptOff = optOff;
         aocl_setup_inflate_fmv(optOff, cpuFeatures);
+        aocl_setup_count_lengths(optOff, cpuFeatures);
         setup_ok_zlib_inflate = 1;
     }
     AOCL_EXIT_CRITICAL(setup_zlib_inflate)
@@ -1741,6 +1766,7 @@ static void aocl_setup_native(void) {
         int optOff = get_disable_opt_flags(0);
         zlibOptOff = optOff;
         aocl_setup_inflate_fmv(optOff, cpuFeatures);
+        aocl_setup_count_lengths(optOff, cpuFeatures);
         setup_ok_zlib_inflate = 1;
     }
     AOCL_EXIT_CRITICAL(setup_zlib_inflate)

@@ -264,8 +264,16 @@ extern z_const char * const z_errmsg[10]; /* indexed by 2-zlib_error */
   Create a local z_once() function depending on the availability of atomics.
  */
 
-/* Check for the availability of atomics. */
-#if defined(__STDC__) && __STDC_VERSION__ >= 201112L && \
+/* Check for the availability of C11 atomics.
+
+   Note: the check must not require __STDC__ to be defined. clang-cl (Clang in
+   MSVC mode) and MSVC do not define __STDC__, yet both provide a conforming
+   C11 <stdatomic.h>. Keying off __STDC__ dropped those compilers into the
+   non-atomic fallback below, whose "#warning zlib not thread-safe" is fatal
+   under /WX and also silently lost thread-safety. Detect atomics from
+   __STDC_VERSION__ (C11+) plus the absence of __STDC_NO_ATOMICS__, which is the
+   portable, compiler-agnostic signal. */
+#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L && \
     !defined(__STDC_NO_ATOMICS__)
 
 #include <stdatomic.h>
@@ -294,7 +302,12 @@ local void z_once(z_once_t *state, void (*init)(void)) {
 
 #else   /* no atomics */
 
-#warning zlib not thread-safe
+/* No C11 atomics: best-effort (not strictly atomic) fallback. Advise via
+   #pragma message, not #warning (which is fatal under /WX or -Werror). The
+   paren form and __GNUC__ (also set by clang) cover MSVC, GCC and Clang. */
+#if defined(_MSC_VER) || defined(__GNUC__)
+#  pragma message("zlib: C11 atomics unavailable; z_once() is not thread-safe")
+#endif
 
 typedef struct z_once_s {
     volatile int begun;

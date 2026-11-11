@@ -83,7 +83,7 @@ extern "C" {
 #endif
 #endif
 
-#define AOCL_COMPRESSION_LIBRARY_VERSION "AOCL-Compression 5.3.2"
+#define AOCL_COMPRESSION_LIBRARY_VERSION "AOCL-Compression 6.0.0"
 #define INTERNAL_LIBRARY_VERSION "AOCL LOSSLESS DATA COMPRESSION 4.0"
 /// @endcond /* DOXYGEN_SHOULD_SKIP_THIS */
 
@@ -169,6 +169,8 @@ typedef struct
  * |:-----------|:------------|
  * | Success    |Returns an upper bound on the compressed size.      |
  * | Fail       |`ERR_COMPRESSION_FAILED`                            |
+ * | ^          |`ERR_UNSUPPORTED_METHOD`                            |
+ * | ^          |`ERR_EXCLUDED_METHOD`                               |
  */
 EXPORT_SYM_DYN int64_t aocl_llc_compressBound(aocl_compression_type codec_type,
                                             size_t inSize);
@@ -188,6 +190,8 @@ EXPORT_SYM_DYN int64_t aocl_llc_compressBound(aocl_compression_type codec_type,
  * | Success    |Number of bytes decompressed      |
  * | Fail       |`ERR_COMPRESSION_FAILED`          |
  * | ^          |`ERR_COMPRESSION_INVALID_OUTPUT`  |
+ * | ^          |`ERR_UNSUPPORTED_METHOD`          |
+ * | ^          |`ERR_EXCLUDED_METHOD`             |
  */
 EXPORT_SYM_DYN int64_t aocl_llc_compress(aocl_compression_desc *handle,
                             aocl_compression_type codec_type);
@@ -206,6 +210,8 @@ EXPORT_SYM_DYN int64_t aocl_llc_compress(aocl_compression_desc *handle,
  * | Success    |Numbers of bytes decompressed     |
  * | Fail       |`ERR_COMPRESSION_FAILED`          |
  * | ^          |`ERR_COMPRESSION_INVALID_OUTPUT`  |
+ * | ^          |`ERR_UNSUPPORTED_METHOD`          |
+ * | ^          |`ERR_EXCLUDED_METHOD`             |
  * 
  */
 
@@ -226,6 +232,7 @@ EXPORT_SYM_DYN int64_t aocl_llc_decompress(aocl_compression_desc *handle,
  * | Success    | \b 0                           |
  * | Fail       | `ERR_UNSUPPORTED_METHOD`       |
  * | ^          | `ERR_EXCLUDED_METHOD`          |
+ * | ^          | `ERR_UNSUPPORTED_METHOD`       |
  * 
  */
 
@@ -277,15 +284,20 @@ EXPORT_SYM_DYN const char *aocl_llc_version(void);
 EXPORT_SYM_DYN int32_t aocl_llc_skip_rap_frame(char* src, int32_t src_size);
 
 /**
- * @brief Interface API to set maximum number of OpenMP threads used by AOCL
+ * @brief Interface API to set the maximum number of threads used by AOCL
  * multithreaded compression/decompression flow for the calling application
- * thread.
+ * thread. Applies to whichever threading backend the library was built with
+ * (OpenMP or TBB).
  *
  * @note  This API does not validate or prevent thread oversubscription.
  *        Application-level thread orchestration remains the caller's
  *        responsibility.
  * 
- * If this API is not called, thread selection defaults to `omp_get_max_threads()`.
+ * If this API is not called, thread selection defaults to the backend maximum:
+ * the `AOCL_NUM_THREADS` environment variable if set to a positive integer,
+ * otherwise `omp_get_max_threads()` for the OpenMP backend (which honors
+ * `OMP_NUM_THREADS`) or the hardware concurrency (honoring `OMP_NUM_THREADS`)
+ * for the TBB backend.
  *
  * | Parameters      | Direction   | Description |
  * |:----------------|:-----------:|:------------|

@@ -40,8 +40,14 @@
 #define THREADS_H
 
 #include <stdlib.h>
+/* The OpenMP backend (and any non-TBB consumer, e.g. the test harness) still
+ * needs the <omp.h> declarations. TBB library builds define AOCL_USE_TBB and
+ * must not depend on OpenMP, so the include is gated accordingly. */
+#if !defined(AOCL_USE_TBB)
 #include <omp.h>
+#endif
 #include "api/types.h"
+#include "threads/aocl_threading.h"
 
 /****************************************************************************************************************************************************************
  * RAP (Random Access Point) Frame and Metadata Format specification:                                                                                           *
@@ -419,11 +425,13 @@ EXPORT_SYM_THREADS AOCL_INT32 aocl_get_rap_frame_bound_mt(void);
 EXPORT_SYM_THREADS AOCL_INT32 aocl_skip_rap_frame_mt(AOCL_CHAR* src, AOCL_UINTP src_size);
 
 /**
- * @brief Set maximum number of OpenMP threads for AOCL MT flow for the
- * calling application thread.
+ * @brief Set maximum number of threads for AOCL MT flow for the calling
+ * application thread (applies to whichever threading backend the library was
+ * built with).
  *
- * If this API is not called for a calling thread, AOCL MT flow defaults to
- * `omp_get_max_threads()`.
+ * If this API is not called for a calling thread, AOCL MT flow defaults to the
+ * backend maximum returned by `aocl_get_max_threads()` (i.e. AOCL_NUM_THREADS
+ * if set, otherwise the backend's native default).
  *
  * @param max_threads Maximum threads to use. Must be > 0.
  *
@@ -436,17 +444,18 @@ EXPORT_SYM_THREADS AOCL_INT32 aocl_skip_rap_frame_mt(AOCL_CHAR* src, AOCL_UINTP 
 EXPORT_SYM_THREADS AOCL_INT32 aocl_set_max_threads_mt(AOCL_INT32 max_threads);
 
 /**
- * @brief Get effective maximum number of OpenMP threads for AOCL MT flow.
+ * @brief Get effective maximum number of threads for AOCL MT flow.
  *
  * Returns the effective maximum number of threads for the calling application
  * thread. If a per-thread maximum has been configured via
  * `aocl_set_max_threads_mt()`, the effective value is
- * `min(configured_max, omp_get_max_threads())`. If no per-thread maximum has
- * been configured, this is equivalent to `omp_get_max_threads()`.
+ * `min(configured_max, aocl_get_max_threads())`. If no per-thread maximum has
+ * been configured, this is equivalent to `aocl_get_max_threads()` (the backend
+ * maximum, honoring AOCL_NUM_THREADS).
  *
  * Note: Setting `configured_max` greater than or equal to
- * `omp_get_max_threads()` effectively disables the cap, since the effective
- * value will then be `omp_get_max_threads()`.
+ * `aocl_get_max_threads()` effectively disables the cap, since the effective
+ * value will then be `aocl_get_max_threads()`.
  *
  * @return
  * | Result  | Description |

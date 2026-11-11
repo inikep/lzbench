@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2025, Advanced Micro Devices. All rights reserved.
+ * Copyright (C) 2025-2026, Advanced Micro Devices. All rights reserved.
  * 
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
@@ -160,6 +160,29 @@ void bz_mt_free_checksum_nodes(Int32 num_threads, mt_data_list *mt_head_table)
     }
 }
 
+typedef struct {
+   aocl_thread_group_t *thread_group_handle;
+   aocl_thread_info_t *thread_data_table;
+   Char *dest;
+} aocl_bzip2_mt_postproc_memcpy_ctx_t;
+
+static void aocl_bzip2_mt_postproc_memcpy_worker(AOCL_UINT32 thread_id, void *context)
+{
+   aocl_bzip2_mt_postproc_memcpy_ctx_t *ctx = (aocl_bzip2_mt_postproc_memcpy_ctx_t *)context;
+   aocl_thread_info_t *thread_data_table = ctx->thread_data_table;
+   Char *dest = ctx->dest;
+
+   AOCL_CHAR *dst_single = thread_data_table[thread_id].dst_trap;
+   AOCL_UINTP dst_size = thread_data_table[thread_id].dst_trap_size;
+
+   if (thread_id != 0)
+   {
+      dst_single += BZIP2_HEADER_BYTES;
+   }
+
+   memcpy(dest+thread_data_table[thread_id].partition_src_size, dst_single, dst_size);
+}
+
 /*
     Performs post-processing steps after multi-threaded BZIP2 compression.
     It combines the compressed data from each thread, calculates the final checksum, and appends it to the output.
@@ -202,20 +225,17 @@ UInt32 aocl_bzip2_mt_post_processing(Char *dest, aocl_thread_group_t *thread_gro
         checksum = bz_mt_cur_thread_checksum(mt_head_table[thread_id].head, checksum);
     }
     
-    // Copy the data from all threads to dest.
-    #pragma omp parallel shared(thread_group_handle) num_threads(thread_group_handle->num_threads)
-    {
-        Int32 thread_id = omp_get_thread_num();
-        AOCL_CHAR *dst_single = thread_data_table[thread_id].dst_trap;
-        AOCL_UINTP dst_size = thread_data_table[thread_id].dst_trap_size;
-
-        if (thread_id != 0)
-        {
-            dst_single += BZIP2_HEADER_BYTES;
-        }
-
-        memcpy(dest+thread_data_table[thread_id].partition_src_size, dst_single, dst_size);
-    }
+    aocl_bzip2_mt_postproc_memcpy_ctx_t memcpy_ctx = {
+        thread_group_handle,
+        thread_data_table,
+        dest,
+    };
+    /* Copy-out has no per-partition status: a swallowed backend exception must
+     * fail (return 0), not return a truncated size as success. */
+    if (aocl_parallel_for((AOCL_UINT32)thread_group_handle->num_threads,
+                      aocl_bzip2_mt_postproc_memcpy_worker,
+                      &memcpy_ctx) != 0)
+        return 0;
     
     output = dest + offset;
 

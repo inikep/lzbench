@@ -47,7 +47,7 @@
 #ifdef AOCL_ZLIB_OPT
 #include "aocl_zlib_setup.h"
 static int setup_ok_zlib_tree = 0; // flag to indicate status of dynamic dispatcher setup
-#ifndef AOCL_ENABLE_THREADS
+#if !defined(AOCL_ENABLE_THREADS) || defined(AOCL_USE_TBB)
 static atomic_flag setup_zlib_tree = ATOMIC_FLAG_INIT;
 #endif /* AOCL_ENABLE_THREADS */
 #endif /* AOCL_ZLIB_OPT */

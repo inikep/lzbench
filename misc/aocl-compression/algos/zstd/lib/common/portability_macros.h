@@ -1,6 +1,6 @@
 /*
  * Copyright (c) Meta Platforms, Inc. and affiliates.
- * All rights reserved.
+ * Modifications Copyright (C) 2026, Advanced Micro Devices. All rights reserved.
  *
  * This source code is licensed under both the BSD-style license (found in the
  * LICENSE file in the root directory of this source tree) and the GPLv2 (found
@@ -155,8 +155,17 @@
  *
  * Additionally, any function that may be called indirectly must begin
  * with ZSTD_CET_ENDBRANCH.
+ *
+ * AOCL: the upstream guard is __ELF__-only, so on Windows PE/COFF targets
+ * (the MinGW make build compiles this GAS assembly) the ENDBR landing pads
+ * were dropped, leaving huf_decompress_amd64.S's indirectly-called entry
+ * points unprotected under -fcf-protection. cet.h's assembler path defines
+ * _CET_ENDBR from __CET__ alone (the .note.gnu.property emission it guards on
+ * __ELF__ is ELF-only and correctly stays off for PE), so also take this path
+ * on Windows to emit endbr64 there. Self-gating: _CET_ENDBR is empty unless
+ * the compiler was invoked with -fcf-protection (which sets __CET__).
  */
-#if defined(__ELF__) && (defined(__x86_64__) || defined(__i386__)) \
+#if (defined(__ELF__) || defined(_WIN32)) && (defined(__x86_64__) || defined(__i386__)) \
     && defined(__has_include)
 # if __has_include(<cet.h>)
 #  include <cet.h>
