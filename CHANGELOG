@@ -14,6 +14,8 @@ v2.x.y (work-in-progress)
 - updated lz4 to 1.11.0 (by @data-man)
 - updated lzav to 7.1 (thanks to @avaneev)
 - updated mbrotli to 0.5.20 (by @Mnwa)
+- updated openzl to 0.3.0; compresses with format version 27, which enables PivCo Huffman in its LZ graph;
+               openzl_serial gets levels 1-7 (the LZ graph of 0.2.x had only one, now level 1)
 - updated slz to 1.4-dev5 (by @wtarreau)
 - updated zxc to 1.0.0 (by @hellobertrand)
 - improvement: `make check-updates` (tools/check-updates.py) lists codecs with a newer upstream version, from NAME_UPSTREAM in mk/<codec>.mk

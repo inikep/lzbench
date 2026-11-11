@@ -638,7 +638,7 @@ int64_t lzbench_mzstd_decompress(char *inbuf, size_t insize, char *outbuf, size_
 #include <openzl/codecs/zl_segmenters.h>
 
 // The OpenZL format version used for the compression in lzbench
-#define LZBENCH_OPENZL_FORMAT_VERSION 24
+#define LZBENCH_OPENZL_FORMAT_VERSION 27
 
 typedef struct {
     ZL_Compressor* cgraph;
@@ -675,6 +675,15 @@ char* lzbench_openzl_init_serial(size_t insize, size_t level, size_t windowLog)
     // ZL_GRAPH_LZ: standard graph for LZ compression, offer performance similar to Zstd.
     // Used for serial data (aka raw bytes).
     ZL_Report report = ZL_Compressor_selectStartingGraphID(params->cgraph, ZL_GRAPH_LZ);
+    if (ZL_isError(report)) {
+      printf("OpenZL initialisation error: %s\n", ZL_Compressor_getErrorContextString(params->cgraph, report));
+      abort();
+    }
+
+    // Levels 1-7 select the LZ parameters, from the "fast" strategy (level 1) to "lazy2"
+    // (level 7), like zstd levels 1-7; higher levels are clamped to 7. Without a level the
+    // graph would use ZL_COMPRESSIONLEVEL_DEFAULT (6).
+    report = ZL_Compressor_setParameter(params->cgraph, ZL_CParam_compressionLevel, level);
     if (ZL_isError(report)) {
       printf("OpenZL initialisation error: %s\n", ZL_Compressor_getErrorContextString(params->cgraph, report));
       abort();

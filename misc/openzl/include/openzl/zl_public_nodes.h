@@ -46,6 +46,7 @@
 #include "openzl/codecs/zl_split_by_struct.h"      // IWYU pragma: export
 #include "openzl/codecs/zl_store.h"                // IWYU pragma: export
 #include "openzl/codecs/zl_tokenize.h"             // IWYU pragma: export
+#include "openzl/codecs/zl_transformer.h"          // IWYU pragma: export
 #include "openzl/codecs/zl_transpose.h"            // IWYU pragma: export
 #include "openzl/codecs/zl_zigzag.h"               // IWYU pragma: export
 #include "openzl/codecs/zl_zstd.h"                 // IWYU pragma: export

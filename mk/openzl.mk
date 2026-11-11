@@ -76,7 +76,9 @@ OPENZL_OBJS := $(addprefix misc/openzl/src/openzl/, \
     codecs/partition/decode_partition_bitpack_fusion.o codecs/partition/decode_partition_kernel.o \
     codecs/partition/encode_partition_binding.o codecs/partition/encode_partition_bitpack.o \
     codecs/partition/encode_partition_kernel.o codecs/pivco_huffman/arch/decode_pivco_arch.o \
+    codecs/pivco_huffman/arch/decode_pivco_arm.o codecs/pivco_huffman/arch/decode_pivco_avx2.o \
     codecs/pivco_huffman/arch/decode_pivco_avx512.o codecs/pivco_huffman/arch/encode_pivco_arch.o \
+    codecs/pivco_huffman/arch/encode_pivco_arm.o codecs/pivco_huffman/arch/encode_pivco_avx2.o \
     codecs/pivco_huffman/arch/encode_pivco_avx512.o codecs/pivco_huffman/common_pivco_kernel.o \
     codecs/pivco_huffman/decode_pivco_binding.o codecs/pivco_huffman/decode_pivco_kernel.o \
     codecs/pivco_huffman/encode_pivco_binding.o codecs/pivco_huffman/encode_pivco_kernel.o \
@@ -115,9 +117,10 @@ OPENZL_OBJS := $(addprefix misc/openzl/src/openzl/, \
     common/a1cbor_helpers.o common/allocation.o common/errors.o common/limits.o common/logging.o \
     common/materializer_ctx.o common/opaque.o common/operation_context.o common/refcount.o \
     common/sha256.o common/stream.o common/unique_id.o common/wire_format.o compress/cctx.o \
-    compress/cdictmgr.o compress/cgraph.o compress/cnode.o compress/cnodes.o compress/compress2.o \
-    compress/compressor_serialization.o compress/dyngraph_interface.o compress/enc_interface.o \
-    compress/encode_frameheader.o compress/gcparams.o compress/graph_registry.o compress/graphmgr.o \
+    compress/cdictmgr.o compress/cgraph.o compress/cnode.o compress/cnodes.o \
+    compress/codec_output_cache.o compress/compress2.o compress/compressor_serialization.o \
+    compress/dyngraph_interface.o compress/enc_interface.o compress/encode_frameheader.o \
+    compress/gcparams.o compress/graph_registry.o compress/graphmgr.o \
     compress/graphs/automated_compressor_explorer.o compress/graphs/generic_clustering_graph.o \
     compress/graphs/sddl/simple_data_description_language.o \
     compress/graphs/sddl/simple_data_description_language_source_code.o \
@@ -128,10 +131,24 @@ OPENZL_OBJS := $(addprefix misc/openzl/src/openzl/, \
     compress/rtgraphs.o compress/segmenter.o compress/segmenters/segmenter_numeric.o \
     compress/segmenters/segmenter_serial.o compress/selector.o compress/selectors/ml/features.o \
     compress/selectors/ml/gbt.o compress/selectors/ml/ml_selector_graph.o \
-    compress/selectors/ml/mlselector.o compress/selectors/ml/selector_numeric_model.o \
-    compress/selectors/selector_brute_force.o compress/selectors/selector_compress.o \
-    compress/selectors/selector_constant.o compress/selectors/selector_genericLZ.o \
-    compress/selectors/selector_numeric.o compress/selectors/selector_store.o compress/trStates.o \
+    compress/selectors/ml/mlselector.o compress/selectors/selector_brute_force.o \
+    compress/selectors/selector_compress.o compress/selectors/selector_constant.o \
+    compress/selectors/selector_genericLZ.o compress/selectors/selector_numeric.o \
+    compress/selectors/selector_store.o compress/selectors/transformer/cardinality.o \
+    compress/selectors/transformer/generated/score_numeric16.o \
+    compress/selectors/transformer/generated/score_numeric32.o \
+    compress/selectors/transformer/generated/score_numeric64.o \
+    compress/selectors/transformer/generated/score_numeric8.o \
+    compress/selectors/transformer/generic_numeric_decide16.o \
+    compress/selectors/transformer/generic_numeric_decide32.o \
+    compress/selectors/transformer/generic_numeric_decide64.o \
+    compress/selectors/transformer/generic_numeric_decide8.o \
+    compress/selectors/transformer/numeric_extract.o \
+    compress/selectors/transformer/numeric_stats.o \
+    compress/selectors/transformer/static_core_select.o \
+    compress/selectors/transformer/static_fallback_select.o \
+    compress/selectors/transformer/static_index_select.o \
+    compress/selectors/transformer/wide_arith.o compress/trStates.o \
     decompress/decode_frameheader.o decompress/decoder_fusion.o decompress/decompress2.o \
     decompress/dictx.o decompress/dtransforms.o decompress/gdparams.o decompress/reflection.o \
     dict/bundle.o dict/dict.o dict/dictloader.o dict/fatbundle_dictloader.o fse/common/debug.o \

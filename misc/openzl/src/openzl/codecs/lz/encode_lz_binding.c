@@ -3,6 +3,7 @@
 #include "openzl/codecs/lz/encode_lz_binding.h"
 
 #include "openzl/codecs/common/fast_table.h"
+#include "openzl/codecs/entropy/encode_entropy_binding.h"
 #include "openzl/codecs/lz/common_field_lz.h"
 #include "openzl/codecs/lz/encode_field_lz_literals_selector.h"
 #include "openzl/codecs/lz/encode_lz_kernel.h"
@@ -135,43 +136,66 @@ ZL_Report EI_fieldLz(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
     return ZL_returnValue(5);
 }
 
-static int getCompressionLevelEncoder(const ZL_Encoder* eictx)
+static ZL_LzParameters getLzParams(const ZL_Encoder* eictx, size_t srcSize)
 {
-    const ZL_IntParam compressionLevel =
-            ZL_Encoder_getLocalIntParam(eictx, ZL_LzParam_compressionLevel);
-    if (compressionLevel.paramId == ZL_LP_INVALID_PARAMID) {
-        return ZL_Encoder_getCParam(eictx, ZL_CParam_compressionLevel);
-    } else {
-        return compressionLevel.paramValue;
+    const ZL_LocalIntParams intParams = ZL_Encoder_getLocalIntParams(eictx);
+
+    int level                 = 0;
+    ZL_LzParameters overrides = { 0 };
+
+    for (size_t i = 0; i < intParams.nbIntParams; ++i) {
+        const int value = intParams.intParams[i].paramValue;
+        switch (intParams.intParams[i].paramId) {
+            case ZL_LzParam_compressionLevel:
+                level = value;
+                break;
+            case ZL_LzParam_acceleration:
+                overrides.acceleration = (uint32_t)value;
+                break;
+            case ZL_LzParam_windowLog:
+                overrides.windowLog = (uint32_t)value;
+                break;
+            case ZL_LzParam_strategy:
+                overrides.strategy = (ZL_LzStrategy)value;
+                break;
+            case ZL_LzParam_hashLog1:
+                overrides.hashLog1 = (uint32_t)value;
+                break;
+            case ZL_LzParam_hashLog2:
+                overrides.hashLog2 = (uint32_t)value;
+                break;
+            case ZL_LzParam_hashLength:
+                overrides.hashLength = (uint32_t)value;
+                break;
+            case ZL_LzParam_searchLog:
+                overrides.searchLog = (uint32_t)value;
+                break;
+            default:
+                continue;
+        }
     }
-}
-
-static int getAcceleration(const ZL_Encoder* eictx)
-{
-    const ZL_IntParam acceleration =
-            ZL_Encoder_getLocalIntParam(eictx, ZL_LzParam_acceleration);
-    if (acceleration.paramId == ZL_LP_INVALID_PARAMID) {
-        const int compressionLevel = getCompressionLevelEncoder(eictx);
-        return compressionLevel < 0 ? -compressionLevel : 1;
-    } else {
-        return ZL_MAX(acceleration.paramValue, 1);
-    }
-}
-
-static uint32_t getWindowLog(const ZL_Encoder* eictx, size_t srcSize)
-{
-    const ZL_IntParam windowLogParam =
-            ZL_Encoder_getLocalIntParam(eictx, ZL_LzParam_windowLog);
-
-    int windowLog = ZL_LZ_MAX_WINDOW_LOG;
-    if (windowLogParam.paramId != ZL_LP_INVALID_PARAMID) {
-        windowLog = windowLogParam.paramValue;
+    if (level == 0) {
+        level = ZL_Encoder_getCParam(eictx, ZL_CParam_compressionLevel);
     }
 
-    windowLog = ZL_MIN(windowLog, ZL_nextPow2(srcSize));
+    ZL_LzParameters params = ZL_LzParameters_default(level, srcSize);
+#define ZL_LZPARAMETERS_OVERRIDE(field)     \
+    do {                                    \
+        if (overrides.field != 0) {         \
+            params.field = overrides.field; \
+        }                                   \
+    } while (0)
+    ZL_LZPARAMETERS_OVERRIDE(strategy);
+    ZL_LZPARAMETERS_OVERRIDE(windowLog);
+    ZL_LZPARAMETERS_OVERRIDE(hashLog1);
+    ZL_LZPARAMETERS_OVERRIDE(hashLog2);
+    ZL_LZPARAMETERS_OVERRIDE(hashLength);
+    ZL_LZPARAMETERS_OVERRIDE(acceleration);
+    ZL_LZPARAMETERS_OVERRIDE(searchLog);
+#undef ZL_LZPARAMETERS_OVERRIDE
 
-    return (uint32_t)ZL_MAX(
-            ZL_LZ_MIN_WINDOW_LOG, ZL_MIN(windowLog, ZL_LZ_MAX_WINDOW_LOG));
+    ZL_LzParameters_adjust(&params, srcSize);
+    return params;
 }
 
 ZL_Report EI_lz(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
@@ -192,9 +216,9 @@ ZL_Report EI_lz(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
 
     size_t const maxNumSeq = ZL_Lz_maxNumSequences(srcSize);
     // Offsets are up to than 2^windowLog-1; use 32-bits when they won't fit u16
-    const uint32_t windowLog = getWindowLog(eictx, srcSize);
+    const ZL_LzParameters params = getLzParams(eictx, srcSize);
     const size_t offsetEltWidth =
-            (windowLog > 16) ? sizeof(uint32_t) : sizeof(uint16_t);
+            (params.windowLog > 16) ? sizeof(uint32_t) : sizeof(uint16_t);
 
     // Create output streams
     size_t const literalsCapacity = srcSize + ZL_LZ_LIT_OVER_LENGTH;
@@ -213,10 +237,9 @@ ZL_Report EI_lz(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
     ZL_ERR_IF_NULL(matchLengths, allocation);
 
     // Allocate hash table from scratch space
-    size_t const hashTableSize =
-            ZS_FastTable_tableSize(ZL_Lz_tableLog(windowLog));
-    void* hashTableMem = ZL_Encoder_getScratchSpace(eictx, hashTableSize);
-    ZL_ERR_IF_NULL(hashTableMem, allocation);
+    size_t const scratchSize = ZL_Lz_scratchBytes(&params);
+    void* scratchMem         = ZL_Encoder_getScratchSpace(eictx, scratchSize);
+    ZL_ERR_IF_NULL(scratchMem, allocation);
 
     ZL_Lz_OutSequences dst = {
         .literals         = (uint8_t*)ZL_Output_ptr(literals),
@@ -235,9 +258,8 @@ ZL_Report EI_lz(ZL_Encoder* eictx, const ZL_Input* ins[], size_t nbIns)
             &dst,
             (const uint8_t*)ZL_Input_ptr(in),
             srcSize,
-            hashTableMem,
-            windowLog,
-            getAcceleration(eictx));
+            scratchMem,
+            &params);
 
     // Write the original size as a varint codec header
     uint8_t header[ZL_VARINT_LENGTH_64];
@@ -487,27 +509,45 @@ static ZL_Report setEntropyDestinationOrOverride(
         ZL_GraphIDList customGraphs,
         int overrideParam,
         ZL_GraphID entropyGraph,
-        int minGainForHuffmanBytes)
+        int minGainForHuffmanBytes,
+        int minGainForHuffmanPct)
 {
     ZL_RESULT_DECLARE_SCOPE_REPORT(edge);
 
     const ZL_GraphID override =
             getGraph(gctx, customGraphs, overrideParam, ZL_GRAPH_ILLEGAL);
     if (override.gid != ZL_GRAPH_ILLEGAL.gid) {
-        ZL_ERR_IF_ERR(ZL_Edge_setDestination(edge, override));
-    } else {
-        ZL_ERR_IF_ERR(ZL_Edge_setEntropyDestination(
-                edge, entropyGraph, minGainForHuffmanBytes, -1));
+        entropyGraph = override;
     }
+    ZL_ERR_IF_ERR(ZL_Edge_setEntropyDestination(
+            edge, entropyGraph, minGainForHuffmanBytes, minGainForHuffmanPct));
     return ZL_returnSuccess();
+}
+
+static int getIntParamOrDefault(const ZL_Graph* gctx, int key, int dflt)
+{
+    const ZL_IntParam param = ZL_Graph_getLocalIntParam(gctx, key);
+    if (param.paramId == ZL_LP_INVALID_PARAMID) {
+        return dflt;
+    } else {
+        return param.paramValue;
+    }
 }
 
 /**
  * Rough estimate of the compressed size of muxed lengths for fast compression
  * levels.
  */
-static size_t guessMuxedEntropySize(size_t numSequences)
+static size_t guessMuxedEntropySize(
+        size_t numSequences,
+        int minGainForHuffmanBytes,
+        int minGainForHuffmanPct)
 {
+    size_t add =
+            minGainForHuffmanBytes > 0 ? (size_t)minGainForHuffmanBytes : 0;
+    if (minGainForHuffmanPct > 0) {
+        add = ZL_MAX(add, (numSequences * (size_t)minGainForHuffmanPct) / 100);
+    }
     // Estimate the encoded size optimistically at 60% compressibility.
     // This is lower than the typical encoded size for muxed lengths.
     const size_t encodedSize = (6 * numSequences) / 10;
@@ -515,7 +555,25 @@ static size_t guessMuxedEntropySize(size_t numSequences)
     // skipping Huffman more aggressively on smaller inputs, and attempting it
     // more on larger inputs.
     const size_t headerSize = 75;
-    return headerSize + encodedSize;
+    return headerSize + encodedSize + add;
+}
+
+/// Select the Huffman graph that is supported and expected to be the most
+/// efficient for the current data.
+static ZL_GraphID
+huffmanGraph(int formatVersion, int compressionLevel, size_t srcSize)
+{
+    if (compressionLevel < 0) {
+        return ZL_GRAPH_STORE;
+    }
+    if (formatVersion >= ZL_HUFFMAN_PIVCO_MIN_FORMAT_VERSION
+        && srcSize >= (1u << 14)) {
+        // Use PivCo on larger inputs where it is expected to be significantly
+        // faster to decode.
+        return ZL_GRAPH_HUFFMAN_PIVCO;
+    } else {
+        return ZL_GRAPH_HUFFMAN;
+    }
 }
 
 ZL_Report EI_lzDynGraph(ZL_Graph* gctx, ZL_Edge* inputs[], size_t nbIns)
@@ -528,7 +586,13 @@ ZL_Report EI_lzDynGraph(ZL_Graph* gctx, ZL_Edge* inputs[], size_t nbIns)
     // The combination of a small percent of the source size and a fixed
     // component strongly discourages Huffman for small inputs where the speed
     // penalty is large, and has little impact on large inputs.
-    const int minGainForHuffmanBytes = (int)(inputSize / 200) + 50;
+    const int minGainForHuffmanBytes = getIntParamOrDefault(
+            gctx,
+            ZL_LzParam_minGainForEntropyBytes,
+            (int)(inputSize / 200) + 50);
+    const int minGainForHuffmanPct =
+            getIntParamOrDefault(gctx, ZL_LzParam_minGainForEntropyPct, -1);
+    const int formatVersion = ZL_Graph_getCParam(gctx, ZL_CParam_formatVersion);
 
     const ZL_LocalParams* localParams = GCTX_getAllLocalParams(gctx);
 
@@ -546,8 +610,6 @@ ZL_Report EI_lzDynGraph(ZL_Graph* gctx, ZL_Edge* inputs[], size_t nbIns)
 
     const int compressionLevel        = getCompressionLevelGraph(gctx);
     const ZL_GraphIDList customGraphs = ZL_Graph_getCustomGraphs(gctx);
-    const ZL_GraphID huffOrStore =
-            compressionLevel >= 0 ? ZL_GRAPH_HUFFMAN : ZL_GRAPH_STORE;
 
     // Heuristic: Send offsets that take up to 13 bits directly to bitpack.
     // After this size, the loss becomes too large to justify the boost to
@@ -570,8 +632,12 @@ ZL_Report EI_lzDynGraph(ZL_Graph* gctx, ZL_Edge* inputs[], size_t nbIns)
             literals,
             customGraphs,
             ZL_LzParam_literalsGraphIdx,
-            huffOrStore,
-            minGainForHuffmanBytes));
+            huffmanGraph(
+                    formatVersion,
+                    compressionLevel,
+                    ZL_Input_contentSize(ZL_Edge_getData(literals))),
+            minGainForHuffmanBytes,
+            minGainForHuffmanPct));
     ZL_ERR_IF_ERR(ZL_Edge_setDestination(offsets, offsetsGraph));
 
     ZL_Edge* muxInputs[2] = { literalLengths, matchLengths };
@@ -589,7 +655,8 @@ ZL_Report EI_lzDynGraph(ZL_Graph* gctx, ZL_Edge* inputs[], size_t nbIns)
 
         const size_t muxedStoreSize =
                 ZL_Input_contentSize(ZL_Edge_getData(muxStreams.edges[0]));
-        const size_t muxedSizeGuess = guessMuxedEntropySize(muxedStoreSize);
+        size_t muxedSizeGuess = guessMuxedEntropySize(
+                muxedStoreSize, minGainForHuffmanBytes, minGainForHuffmanPct);
         // Guess the compressibility of the muxed lengths. When Huffman is
         // likely to not provide enough benefit, don't even try it. This is
         // mainly important for small inputs, where the cost of evaluating
@@ -600,10 +667,13 @@ ZL_Report EI_lzDynGraph(ZL_Graph* gctx, ZL_Edge* inputs[], size_t nbIns)
                 muxStreams.edges[0],
                 customGraphs,
                 ZL_LzParam_muxedBytesGraphIdx,
-                muxedSizeGuess + (size_t)minGainForHuffmanBytes < muxedStoreSize
-                        ? huffOrStore
-                        : ZL_GRAPH_STORE,
-                minGainForHuffmanBytes));
+                muxedSizeGuess < muxedStoreSize ? huffmanGraph(
+                                                          formatVersion,
+                                                          compressionLevel,
+                                                          muxedStoreSize)
+                                                : ZL_GRAPH_STORE,
+                minGainForHuffmanBytes,
+                minGainForHuffmanPct));
 
         ZL_ERR_IF_ERR(setEntropyDestinationOrOverride(
                 gctx,
@@ -611,7 +681,8 @@ ZL_Report EI_lzDynGraph(ZL_Graph* gctx, ZL_Edge* inputs[], size_t nbIns)
                 customGraphs,
                 ZL_LzParam_overflowLengthsGraphIdx,
                 ZL_GRAPH_COMPRESS_SMALL_LENGTHS,
-                minGainForHuffmanBytes));
+                minGainForHuffmanBytes,
+                minGainForHuffmanPct));
     }
 
     return ZL_returnSuccess();
