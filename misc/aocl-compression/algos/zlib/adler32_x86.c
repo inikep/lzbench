@@ -52,7 +52,7 @@ static void aocl_setup_native(void);
 #endif
 
 static int setup_ok_zlib_adler = 0; // flag to indicate status of dynamic dispatcher setup
-#ifndef AOCL_ENABLE_THREADS
+#if !defined(AOCL_ENABLE_THREADS) || defined(AOCL_USE_TBB)
 static atomic_flag setup_zlib_adler = ATOMIC_FLAG_INIT;
 #endif /* AOCL_ENABLE_THREADS */
 
@@ -82,6 +82,7 @@ static inline uint32_t adler32_with_copy(uint32_t adler, Bytef *dst, const Bytef
 static uint32_t (*adler32_x86_with_copy_fp)(uint32_t adler, Bytef* dst, const Bytef* buf, z_size_t len, const short copy) =
 adler32_with_copy;
 
+#ifdef AOCL_ZLIB_AVX_OPT
 // This function separation prevents compiler from generating VZEROUPPER instruction
 // because of transition from VEX to Non-VEX code resulting in performance drop
 static inline uint32_t adler32_rem_len_with_copy(uint32_t adler, Bytef *dst, const Bytef *buf, z_size_t len, const short copy)
@@ -118,7 +119,6 @@ static inline uint32_t adler32_rem_len_with_copy(uint32_t adler, Bytef *dst, con
     return sum_A | (sum_B << 16);
 }
 
-#ifdef AOCL_ZLIB_AVX_OPT
 __attribute__((__target__("avx"))) // uses SSSE3 intrinsics
 static inline uint32_t adler32_x86_avx_with_copy(uint32_t adler, Bytef *dst, const Bytef *buf, z_size_t len, const short copy)
 {

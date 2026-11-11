@@ -185,6 +185,25 @@ LZ4LIB_API const char* LZ4_versionString (void);
 #ifdef AOCL_LZ4_MATCH_SKIP_OPT_LDS_STRAT1
 #define AOCL_LZ4_MATCH_SKIPPING_THRESHOLD 3
 #endif /* AOCL_LZ4_MATCH_SKIP_OPT_LDS_STRAT1 */
+
+/* LZ4 decode software prefetch hints (value-tested toggles + distances).
+ * -DAOCL_LZ4_DEC_PREFETCH=0 disables; distances overridable from CMake/Make.
+ * Sweep-tuned on Zen-class / cold 4 KiB zswap pages. */
+#ifndef AOCL_LZ4_DEC_PREFETCH
+#define AOCL_LZ4_DEC_PREFETCH 1
+#endif
+#ifndef AOCL_LZ4_DEC_PREFETCH_DEEPER
+#define AOCL_LZ4_DEC_PREFETCH_DEEPER 1
+#endif
+#ifndef AOCL_LZ4_DEC_PREFETCH_IN_DIST
+#define AOCL_LZ4_DEC_PREFETCH_IN_DIST 96      /* read-ahead into compressed input (bytes) */
+#endif
+#ifndef AOCL_LZ4_DEC_PREFETCH_OUT_DIST
+#define AOCL_LZ4_DEC_PREFETCH_OUT_DIST 128    /* write-intent into output (bytes) */
+#endif
+#ifndef AOCL_LZ4_DEC_PREFETCH_DEEPER_DIST
+#define AOCL_LZ4_DEC_PREFETCH_DEEPER_DIST 192 /* second, deeper read-ahead (bytes) */
+#endif
 #endif /* AOCL_LZ4_OPT */
 
 /*-************************************
@@ -559,7 +578,7 @@ typedef union LZ4_stream_u LZ4_stream_t;  /* incomplete type (defined later) */
  Note about RC_INVOKED
 
  - RC_INVOKED is predefined symbol of rc.exe (the resource compiler which is part of MSVC/Visual Studio).
-   https://docs.microsoft.com/en-us/windows/win32/menurc/predefined-macros
+   Microsoft predefined macros
 
  - Since rc.exe is a legacy compiler, it truncates long symbol (> 30 chars)
    and reports warning "RC4011: identifier truncated".
@@ -568,7 +587,7 @@ typedef union LZ4_stream_u LZ4_stream_t;  /* incomplete type (defined later) */
    "#if !defined(RC_INVOKED) ... #endif" block that means
    "skip this block when rc.exe is trying to read it".
 */
-#if !defined(RC_INVOKED) /* https://docs.microsoft.com/en-us/windows/win32/menurc/predefined-macros */
+#if !defined(RC_INVOKED) /* Microsoft predefined macros */
 #if !defined(LZ4_STATIC_LINKING_ONLY_DISABLE_MEMORY_ALLOCATION)
 /**
  * @name Streaming Compression Functions
@@ -801,7 +820,7 @@ typedef union LZ4_streamDecode_u LZ4_streamDecode_t;   /* tracking context */
  * @{
  */
 
-#if !defined(RC_INVOKED) /* https://docs.microsoft.com/en-us/windows/win32/menurc/predefined-macros */
+#if !defined(RC_INVOKED) /* Microsoft predefined macros */
 #if !defined(LZ4_STATIC_LINKING_ONLY_DISABLE_MEMORY_ALLOCATION)
 /*! LZ4_createStreamDecode() and LZ4_freeStreamDecode() :
  *  creation / destruction of streaming decompression tracking context.
@@ -1176,6 +1195,15 @@ LZ4LIB_API void Test_LZ4_renormDictT(LZ4_stream_t_internal* LZ4_dict, int nextSi
 LZ4LIB_API int Test_AOCL_LZ4_decompress_generic_mt(const char* src, char* dst, int srcSize,
                                                    int outputSize, int is_last_thread);
 #endif /* AOCL_ENABLE_THREADS && AOCL_LZ4_AVX_OPT */
+/* Test wrapper for LZ4_compress_fast_extState_fastReset. The function itself is
+ * declared LZ4LIB_STATIC_API, which expands to nothing unless
+ * LZ4_PUBLISH_STATIC_FUNCTIONS is defined -- so it carries no __declspec(dllexport)
+ * and is absent from the DLL export table on Windows. On Linux the default
+ * visibility makes it linkable anyway, which is why the gtest only fails for
+ * MinGW/MSVC shared builds. Route the test through an LZ4LIB_API wrapper, the
+ * same pattern lz4hc.h already uses for Test_LZ4_compress_HC_extStateHC_fastReset. */
+LZ4LIB_API int Test_LZ4_compress_fast_extState_fastReset(void* state, const char* src, char* dst,
+                                                         int srcSize, int dstCapacity, int acceleration);
 #endif /* AOCL_UNIT_TEST */
 
 /// @endcond /* DOXYGEN_SHOULD_SKIP_THIS */

@@ -8,7 +8,8 @@ compression and decompression methods which facilitate the applications to
 easily integrate and use them.
 AOCL-Compression supports lz4, zlib/deflate, lzma, zstd, bzip2, snappy, and lz4hc
 based compression and decompression methods along with their native APIs.
-The library offers openMP based multi-threaded implementation for all the methods
+The library offers a multi-threaded implementation for all the methods, using
+either OpenMP or oneTBB as the threading backend selected at build time
 (for LZMA, only multi-threaded compression is supported).
 It supports the dynamic dispatcher feature that executes the most optimal
 function variant implemented using Function Multi-versioning thereby offering
@@ -83,6 +84,9 @@ On Windows, the build is supported under MSYS2 with the MinGW-w64 toolchain (`ma
    ```
    make BUILD_TYPE=Debug BUILD_STATIC_LIBS=1 AOCL_ENABLE_THREADS=1
    ```
+   When `AOCL_ENABLE_THREADS=1`, the threading backend is selected with `AOCL_THREADING_BACKEND`
+   (`OPENMP` by default, or `TBB`; a TBB build requires the TBB development package
+   and links no OpenMP runtime).
 4. Run tests when enabled:
    ```
    make test AOCL_TEST_COVERAGE=1
@@ -94,6 +98,7 @@ On Windows, the build is supported under MSYS2 with the MinGW-w64 toolchain (`ma
    ```
 * NOTE: <br>
    1. **GoogleTest**: Required to build and execute the test suite
+   2. **TBB**: Required only when building with `AOCL_THREADING_BACKEND=TBB`
 
 GNU Make Example
 ----------------
@@ -104,10 +109,20 @@ make BUILD_TYPE=Debug BUILD_STATIC_LIBS=1 AOCL_ENABLE_THREADS=1 -j
 make test AOCL_TEST_COVERAGE=1
 ```
 
+Build a shared library with the TBB threading backend (Linux/Unix only) and run tests:
+```
+make clean
+make AOCL_ENABLE_THREADS=1 AOCL_THREADING_BACKEND=TBB -j
+make test AOCL_TEST_COVERAGE=1 AOCL_ENABLE_THREADS=1 AOCL_THREADING_BACKEND=TBB
+```
+
 Building on Windows
 -------------------
 As a prerequisite, make Microsoft Visual Studio® available along with <br>
 __Desktop development with C++__ toolset that includes the Clang compiler.
+The Windows build uses the MSVC ClangCL toolset and requires __Clang 13.0 or
+later__ (the Release security flags enable CET / EH-continuation metadata via
+`/guard:ehcont`, which clang-cl supports from LLVM 13).
 
 Building with Visual Studio IDE (GUI)
 -------------------------------------
@@ -151,6 +166,7 @@ AOCL_ZSTD_DYN_BLOCK_SIZE            |  Enable ZSTD dynamic block size determinat
 AOCL_DECOMPRESS_FAST                |  Enable fast decompression modes that might compromise on compression speed / ratio to produce streams that decompress faster. Supported values: {1,2,3} ZSTD, {1,2} Snappy, {1} LZ4. (Disabled by default)
 AOCL_COMPRESS_FAST                  |  Enable fast compression modes that might compromise on compression ratio but compress faster. Supported values: {1,2} ZSTD. (Disabled by default)
 AOCL_TEST_COVERAGE                  |  Enable GTest, AOCL test bench and third party test bench based CTest suite (Disabled by default)
+AOCL_TEST_COVERAGE_EXT              |  Enable extended GTest coverage that broadens the tested surface of non-deprecated ZSTD and LZ4 APIs. Implies AOCL_TEST_COVERAGE (Disabled by default)
 AOCL_ENABLE_LOG_FEATURE             |  Enables logging through environment variable `AOCL_ENABLE_LOG` (Disabled by default)
 CODE_COVERAGE                       |  Enable code coverage (GCC/gcov for Linux and Clang/llvm-cov for both Linux and Windows) (Disabled by default)
 ASAN                                |  Enable Address Sanitizer checks. Only supported on Linux/Debug build (Disabled by default)
@@ -170,12 +186,14 @@ AOCL_EXCLUDE_SNAPPY                 |  Exclude SNAPPY compression method from th
 AOCL_EXCLUDE_ZLIB                   |  Exclude ZLIB compression method from the library build (Disabled by default)
 AOCL_EXCLUDE_ZSTD                   |  Exclude ZSTD compression method from the library build (Disabled by default)
 AOCL_XZ_UTILS_LZMA_API_EXPERIMENTAL |  Build with xz utils lzma APIs. Experimental feature with limited API support (Disabled by default)
-AOCL_ENABLE_THREADS                 |  Enable multi-threaded compression and decompression using SMP based openMP threads (Disabled by default)
+AOCL_ENABLE_THREADS                 |  Enable multi-threaded compression and decompression using SMP based threads (Disabled by default)
+AOCL_THREADING_BACKEND              |  Threading backend to use when AOCL_ENABLE_THREADS is enabled: OPENMP or TBB (OPENMP by default)
 TEST_COVERAGE_THIRD_PARTY           |  Enable third party test bench based CTest suite (Disabled by default)
 NATIVE_ENABLE_THREADS               |  Enable native multi-threaded compression for supported methods (Disabled by default)
 AOCL_TEST_FUZZER                    |  Enable fuzz test along with GTest. Only supported on Linux with the Clang compiler (Disabled by default)
 AOCL_TEST_FUZZER_WITH_CORPUS        |  Run fuzz tests with corpus. Only supported on Linux with the Clang compiler (Disabled by default)
 ENABLE_FAST_MATH                    |  Enable fast-math optimizations (Disabled by default)
+AOCL_MAX_ISA_LEVEL                  |  Cap the maximum ISA optimization level compiled into the library: SSE2, AVX, AVX2, or AVX512 (AVX512 by default, all levels enabled). UNIX only; ignored on Windows.
 BUILD_UTILITY                       |  Enable third party utility build: minigzip(zlib), zstd_utility(zstd) (Disabled by default)
 AOCL_BZIP2_HUFFMAN_ITERATIONS       |  Control number of BZIP2 Huffman tables refinement iterations (1-4). Lower values are faster but reduce compression ratio. (Default: 3)
 AOCL_LLC_PREFIX                     |  Prefix library symbols (Disabled by default)
@@ -357,6 +375,45 @@ Following are a few sample commands that can be executed in the build directory 
  To run GTest test cases for a specific method<br>
  `ctest -R <METHOD_NAME_IN_CAPITALS>`
 
+Extended API test coverage
+--------------------------
+
+The `AOCL_TEST_COVERAGE_EXT` option enables an additional set of GTest cases
+that broaden the tested surface of the public, non-deprecated ZSTD and LZ4 APIs,
+extending coverage to entry points not exercised by the base suite. Enabling it
+automatically turns on `AOCL_TEST_COVERAGE`, so a single switch is sufficient.
+
+CMake:
+
+`cmake .. -DAOCL_TEST_COVERAGE_EXT=ON`
+
+GNU Make:
+
+`make AOCL_TEST_COVERAGE_EXT=1`
+
+The extended cases are grouped under three parametrized fixtures instantiated
+with a per-method prefix, so their full suite names are `ZSTD/ZSTD_ext`,
+`LZ4/LZ4_ext` and `LZ4HC/LZ4HC_ext` (the leading `ZSTD/`, `LZ4/`, `LZ4HC/` is the
+instantiation prefix, and each case is suffixed with a `/<n>` parameter index).
+A filter must account for that prefix; a bare `ZSTD_ext.*` will not match.
+
+To build and run only the extended cases after enabling the option, filter by
+the parametrized suite name, e.g.:
+
+`zstd_gtest  --gtest_filter='ZSTD/ZSTD_ext.*'`
+`lz4_gtest   --gtest_filter='LZ4/LZ4_ext.*'`
+`lz4hc_gtest --gtest_filter='LZ4HC/LZ4HC_ext.*'`
+
+Filtering note: because the extended cases live under those three fixtures
+rather than one suite per API, the per-API `ctest -R <METHOD_NAME_IN_CAPITALS>`
+filter does not select an individual extended API on its own. Every extended
+test name still embeds its API (for example
+`ZSTD/ZSTD_ext.AOCL_Compression_zstd_ZSTD_isFrame_valid_common_1/0`), so target
+one API with a substring filter instead, e.g. `ctest -R ZSTD_isFrame` or, at the
+executable, `zstd_gtest --gtest_filter='*ZSTD_isFrame*'`. The parametrization
+also means each case is instantiated once per dynamic-dispatcher configuration
+(the `/<n>` suffix: the reference path plus each supported ISA level).
+
 Running fuzzer tests
 --------------------
 
@@ -476,9 +533,17 @@ Multi-threaded Compression and Decompression
 - AOCL-Compression provides parallel compression and decompression capabilities for multiple formats:
   lz4, lz4hc, zlib (including zlib, deflate, and gzip formats), zstd, snappy, bzip2, and lzma.
   Note: For lzma, only multi-threaded compression is currently supported.
-- The parallel processing is implemented using OpenMP multi-threading. To enable parallel decompression
-  of compressed streams and files, AOCL-Compression introduces a RAP (Random Access Point) frame format.
-- Enable multi-threading support by using the `AOCL_ENABLE_THREADS` configuration option.
+- The parallel processing is implemented over a backend-agnostic threading layer that can use either
+  OpenMP or oneTBB, selected at build time via `AOCL_THREADING_BACKEND` (OPENMP by default; TBB builds
+  link no OpenMP runtime). To enable parallel decompression of compressed streams and files,
+  AOCL-Compression introduces a RAP (Random Access Point) frame format.
+- Enable multi-threading support by using the `AOCL_ENABLE_THREADS` configuration option, and optionally
+  select the backend with `AOCL_THREADING_BACKEND=OPENMP|TBB`.
+- The number of threads can be controlled with the `AOCL_NUM_THREADS` environment variable, which takes
+  precedence on both backends. When it is unset, the OpenMP backend falls back to `omp_get_max_threads()`
+  (which honors `OMP_NUM_THREADS`), and the TBB backend falls back to `OMP_NUM_THREADS` if set, otherwise
+  the hardware concurrency. A per-application-thread cap set via the `aocl_llc_set_max_threads()` API
+  applies on top of this for both backends.
 - A stream compressed with multi-threaded AOCL-Compression library can be decompressed using any
   single-threaded standard decompressor by simply skipping the initial block of bytes containing
   the RAP frame present at the start of the stream.

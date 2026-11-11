@@ -196,7 +196,9 @@ extern UInt32 BZ2_crc32Table[256];
 
 #ifdef AOCL_ENABLE_THREADS
 
+#ifndef AOCL_USE_TBB
 #include <omp.h>
+#endif
 
 typedef struct mt_checksum_node {
    UInt32 checksum;

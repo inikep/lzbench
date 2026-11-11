@@ -125,4 +125,16 @@ struct inflate_state {
     int sane;                   /* if false, allow invalid distance too far */
     int back;                   /* bits back of last unprocessed length/lit */
     unsigned was;               /* initial length of match */
+#ifdef AOCL_ZLIB_OPT
+    int opt_off;                /* zlibOptOff captured at table-build time; decoders
+                                   read this (not the live global) so a mid-stream
+                                   flip can't desync entry format from the tables. */
+#endif
 };
+
+/* Per-stream entry-format selector; decoders read this, not global zlibOptOff. */
+#ifdef AOCL_ZLIB_OPT
+#  define INFLATE_OPT_OFF(state) ((state)->opt_off)
+#else
+#  define INFLATE_OPT_OFF(state) (zlibOptOff)
+#endif

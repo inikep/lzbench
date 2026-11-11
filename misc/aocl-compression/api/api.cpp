@@ -44,6 +44,58 @@
 #include "threads/threads.h"
 #endif
 
+//Operations selectable through the unified dispatch table. Used by
+//aocl_validate_codec() to check the availability of the exact operation
+//the caller requested (exclusion is per-operation, not per-codec).
+typedef enum
+{
+    AOCL_CODEC_OP_COMPRESS_BOUND = 0,
+    AOCL_CODEC_OP_COMPRESS,
+    AOCL_CODEC_OP_DECOMPRESS,
+    AOCL_CODEC_OP_SETUP,
+    AOCL_CODEC_OP_DESTROY
+} aocl_codec_op;
+
+//Single validation point for every unified API entry point. It first rejects
+//an out-of-range codec_type (before any aocl_codec[] access, so no OOB read),
+//then rejects a codec whose requested operation was compiled out of this build
+//(its function pointer is NULL). Returns 0 when the operation is usable.
+static AOCL_INT32 aocl_validate_codec(aocl_compression_type codec_type,
+                                      aocl_codec_op op, const AOCL_CHAR *op_name)
+{
+    if ((codec_type < LZ4) || (codec_type >= AOCL_COMPRESSOR_ALGOS_NUM))
+    {
+        LOG_FORMATTED(ERR, logCtx,
+            "%s failed !! compression method is not supported.", op_name);
+        return ERR_UNSUPPORTED_METHOD;
+    }
+
+    AOCL_INTP available = 0;
+    switch (op)
+    {
+        case AOCL_CODEC_OP_COMPRESS_BOUND:
+            available = (aocl_codec[codec_type].compressBound != NULL); break;
+        case AOCL_CODEC_OP_COMPRESS:
+            available = (aocl_codec[codec_type].compress != NULL); break;
+        case AOCL_CODEC_OP_DECOMPRESS:
+            available = (aocl_codec[codec_type].decompress != NULL); break;
+        case AOCL_CODEC_OP_SETUP:
+            available = (aocl_codec[codec_type].setup != NULL); break;
+        case AOCL_CODEC_OP_DESTROY:
+            available = (aocl_codec[codec_type].destroy != NULL); break;
+    }
+
+    if (!available)
+    {
+        LOG_FORMATTED(ERR, logCtx,
+            "%s failed !! compression method is excluded from this library build.",
+            op_name);
+        return ERR_EXCLUDED_METHOD;
+    }
+
+    return 0;
+}
+
 //Unified API function to get compressBound based on the input size
 AOCL_INT64 aocl_llc_compressBound(aocl_compression_type codec_type,
                             AOCL_UINTP inSize)
@@ -51,6 +103,16 @@ AOCL_INT64 aocl_llc_compressBound(aocl_compression_type codec_type,
     AOCL_INT64 ret;
 
     LOG_UNFORMATTED(TRACE, logCtx, "Enter");
+
+    {
+        AOCL_INT32 valid = aocl_validate_codec(codec_type,
+            AOCL_CODEC_OP_COMPRESS_BOUND, "compressBound");
+        if (valid != 0)
+        {
+            LOG_UNFORMATTED(TRACE, logCtx, "Exit");
+            return valid;
+        }
+    }
 
     LOG_FORMATTED(INFO, logCtx,
        "Calling compressBound for method: %s", aocl_codec[codec_type].codec_name);
@@ -75,6 +137,16 @@ AOCL_INT64 aocl_llc_compress(aocl_compression_desc *handle,
     timeVal startTime, endTime;
 
     LOG_UNFORMATTED(TRACE, logCtx, "Enter");
+
+    {
+        AOCL_INT32 valid = aocl_validate_codec(codec_type,
+            AOCL_CODEC_OP_COMPRESS, "compress");
+        if (valid != 0)
+        {
+            LOG_UNFORMATTED(TRACE, logCtx, "Exit");
+            return valid;
+        }
+    }
 
     LOG_FORMATTED(INFO, logCtx,
        "Calling compression method: %s", aocl_codec[codec_type].codec_name);
@@ -117,6 +189,16 @@ AOCL_INT64 aocl_llc_decompress(aocl_compression_desc *handle,
     
     LOG_UNFORMATTED(TRACE, logCtx, "Enter");
 
+    {
+        AOCL_INT32 valid = aocl_validate_codec(codec_type,
+            AOCL_CODEC_OP_DECOMPRESS, "decompress");
+        if (valid != 0)
+        {
+            LOG_UNFORMATTED(TRACE, logCtx, "Exit");
+            return valid;
+        }
+    }
+
     LOG_FORMATTED(INFO, logCtx,
        "Calling decompression method: %s", aocl_codec[codec_type].codec_name);
     initTimer(clkTick);
@@ -153,11 +235,14 @@ AOCL_INT32 aocl_llc_setup(aocl_compression_desc *handle,
 
     LOG_UNFORMATTED(TRACE, logCtx, "Enter");
 
-    if ((codec_type < LZ4) || (codec_type >= AOCL_COMPRESSOR_ALGOS_NUM))
     {
-        LOG_UNFORMATTED(ERR, logCtx,
-            "setup failed !! compression method is not supported.");
-        return ERR_UNSUPPORTED_METHOD;
+        AOCL_INT32 valid = aocl_validate_codec(codec_type,
+            AOCL_CODEC_OP_SETUP, "setup");
+        if (valid != 0)
+        {
+            LOG_UNFORMATTED(TRACE, logCtx, "Exit");
+            return valid;
+        }
     }
 
     LOG_FORMATTED(INFO, logCtx,
@@ -168,21 +253,11 @@ AOCL_INT32 aocl_llc_setup(aocl_compression_desc *handle,
     LOG_FORMATTED(INFO, logCtx,
        "Calling setup method for: %s", aocl_codec[codec_type].codec_name);
 
-    if (aocl_codec[codec_type].setup)
-    {
-        handle->workBuf = aocl_codec[codec_type].setup (handle->optOff,
-                                                        handle->optLevel,
-                                                        handle->inSize,
-                                                        handle->level,
-                                                        handle->optVar);
-    }
-    else
-    {
-        LOG_UNFORMATTED(ERR, logCtx,
-            "setup failed !! compression method is excluded from this library build.");
-        LOG_UNFORMATTED(TRACE, logCtx, "Exit");
-        return ERR_EXCLUDED_METHOD;
-    }
+    handle->workBuf = aocl_codec[codec_type].setup (handle->optOff,
+                                                    handle->optLevel,
+                                                    handle->inSize,
+                                                    handle->level,
+                                                    handle->optVar);
 
     LOG_UNFORMATTED(TRACE, logCtx, "Exit");
     return 0;
@@ -194,13 +269,16 @@ AOCL_VOID aocl_llc_destroy(aocl_compression_desc *handle,
 {
     LOG_UNFORMATTED(TRACE, logCtx, "Enter");
 
+    if (aocl_validate_codec(codec_type, AOCL_CODEC_OP_DESTROY, "destroy") != 0)
+    {
+        LOG_UNFORMATTED(TRACE, logCtx, "Exit");
+        return;
+    }
+
     LOG_FORMATTED(INFO, logCtx,
        "Calling destroy method for: %s", aocl_codec[codec_type].codec_name);
 
-    if (aocl_codec[codec_type].destroy)
-    {
-        aocl_codec[codec_type].destroy(handle->workBuf);
-    }
+    aocl_codec[codec_type].destroy(handle->workBuf);
 
     LOG_UNFORMATTED(TRACE, logCtx, "Exit");
 }

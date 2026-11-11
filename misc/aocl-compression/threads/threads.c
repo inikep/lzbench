@@ -44,11 +44,24 @@
 #include "utils/utils.h"
 
 #ifdef AOCL_UNIT_TEST
-int(*test_omp_get_max_threads_fp)(void) = omp_get_max_threads;
+static int aocl_get_max_threads_int(void) { return (int)aocl_get_max_threads(); }
+int(*test_omp_get_max_threads_fp)(void) = aocl_get_max_threads_int;
 #endif
 
+/* The user-set max-thread cap is per application thread: two threads must be
+ * able to hold independent caps (see api_gtest set_max_threads_common_4/5).
+ * Under OpenMP this is expressed with threadprivate; under any other backend
+ * (e.g. TBB, where _OPENMP is not defined) we fall back to a thread-local
+ * storage qualifier so the same per-thread semantics hold. Without this, the
+ * cap would become a shared global and concurrent setters would race. */
+#if defined(_OPENMP)
 static AOCL_INT32 aocl_user_max_threads_mt = 0;
 #pragma omp threadprivate(aocl_user_max_threads_mt)
+#elif defined(_MSC_VER)
+static __declspec(thread) AOCL_INT32 aocl_user_max_threads_mt = 0;
+#else
+static __thread AOCL_INT32 aocl_user_max_threads_mt = 0;
+#endif
 
 AOCL_INT32 aocl_set_max_threads_mt(AOCL_INT32 max_threads)
 {
@@ -65,7 +78,7 @@ AOCL_INT32 aocl_set_max_threads_mt(AOCL_INT32 max_threads)
 AOCL_UINT32 aocl_get_max_threads_mt(void)
 {
 #ifndef AOCL_UNIT_TEST
-    AOCL_UINT32 max_threads = omp_get_max_threads();
+    AOCL_UINT32 max_threads = aocl_get_max_threads();
 #else
     AOCL_UINT32 max_threads = test_omp_max_threads_get();
 #endif
@@ -152,8 +165,8 @@ AOCL_INT32 aocl_setup_parallel_compress_mt(aocl_thread_group_t *thread_grp,
 #ifdef AOCL_THREADS_LOG
     printf("Input stream size: [%td], common_part_src_size: [%ld], leftover_part_src_bytes: [%ld]\n",
         thread_grp->src_size, thread_grp->common_part_src_size, thread_grp->leftover_part_src_bytes);
-    printf("Number of max threads: [%d], Number of threads set for execution: [%d]\n",
-        omp_get_max_threads(), thread_grp->num_threads);
+    printf("Number of max threads: [%u], Number of threads set for execution: [%d]\n",
+        aocl_get_max_threads(), thread_grp->num_threads);
 #endif
 
     AOCL_INT32 rap_frame_len = 0;
@@ -460,24 +473,22 @@ static AOCL_UINTP aocl_calculate_dst_offset_internal(AOCL_CHAR const *source, AO
  * metadata from the RAP frame embedded in thread_grp->src.
  *
  * dst_size contract (thread_grp->dst_size):
- *   > 0  — Caller knows the destination buffer size. This function validates
- *           that (dst_offset + dst_trap_size) fits within dst_size before
- *           forming the dst_trap pointer. Returns INSUFFICIENT_DST_SPACE if
- *           the partition would overflow the destination buffer.
- *   == 0 — Caller does not know the destination size at setup time (e.g.
- *           snappy, which decompresses directly into the caller-provided buffer
- *           without a post-parallel copy step). In this mode the dst bounds
- *           check is skipped entirely; dst_trap is always set. The caller is
- *           responsible for its own output-bounds enforcement. dst_trap_size
- *           (read from untrusted RAP metadata) must be re-validated by the
- *           caller's decompressor before any write.
+ *   The caller always supplies the destination buffer size (0 means a
+ *   zero-length buffer). This function validates that (dst_offset +
+ *   dst_trap_size) fits within dst_size and returns INSUFFICIENT_DST_SPACE if
+ *   the partition would overflow the destination buffer. The check is
+ *   unconditional and fail-closed: there is no "skip the bounds check" mode, so
+ *   no dst_size value can disable the per-partition write bound.
  *
  * Return values:
  *   AOCL_MT_DECOMP_PARTITION_SUCCESS          (0)  — dst_trap and all fields valid.
  *   AOCL_MT_DECOMP_PARTITION_EMPTY_SRC        (1)  — partition_src_size == 0; dst_trap is NULL.
  *   AOCL_MT_DECOMP_PARTITION_ERR_INSUFFICIENT_DST_SPACE (-1)
- *       Only returned when dst_size > 0. dst_trap IS set (dst_offset was safe);
- *       dst_trap_size exceeds the remaining destination space.
+ *       The partition cannot be written safely: it would overflow the
+ *       destination buffer (dst_offset + dst_trap_size > dst_size), the
+ *       cumulative offset overflowed (dst_offset == SIZE_MAX sentinel), or the
+ *       destination is NULL. dst_trap is NOT set (left NULL); all checks run
+ *       before the dst_trap pointer is formed.
  *   AOCL_MT_DECOMP_PARTITION_ERR_INVALID_RAP_FRAME (-2)
  *       RAP partition metadata is inconsistent with the source buffer.
  *       dst_trap is NOT set (NULL). Callers must not dereference dst_trap.
@@ -517,23 +528,26 @@ AOCL_INT32 aocl_do_partition_decompress_mt(const aocl_thread_group_t* thread_grp
                                         cur_rap_pos + RAP_DATA_BYTES));
     AOCL_UINTP dst_offset = aocl_calculate_dst_offset_internal(thread_grp->src, thread_id);
 
-    /* Always form dst_trap before the bounds check so callers that pass
-     * dst_size=0 (e.g. snappy) can use dst_trap regardless of the result.
-     * dst_offset is a UINT32 sum, so dst + dst_offset cannot wrap a 64-bit
-     * address space; on ILP32 the setup guard on num_main_threads caps
-     * dst_offset to at most (src_size - 16) which is <= UINT32_MAX. */
-    cur_thread_info->dst_trap = thread_grp->dst + dst_offset;
-
-    /* Validate dst bounds only when the caller supplied a real destination
-     * size. Callers that pass dst_size=0 accept responsibility for their own
-     * output-bounds enforcement (see contract above). */
-    if (thread_grp->dst_size > 0) {
-        if (dst_offset > thread_grp->dst_size ||
-            cur_thread_info->dst_trap_size > thread_grp->dst_size - dst_offset) {
-            LOG_FORMATTED(ERR, logCtx, "Thread %u: Decompression failed, destination buffer too small.", thread_id);
-            return AOCL_MT_DECOMP_PARTITION_ERR_INSUFFICIENT_DST_SPACE;
-        }
+    /* Validate bounds (subtraction-safe) before forming dst_trap. Reject the
+     * SIZE_MAX overflow sentinel from aocl_calculate_dst_offset_internal
+     * explicitly (it is ambiguous with a real dst_size == SIZE_MAX). On failure
+     * dst_trap stays NULL (cur_thread_info was memset at entry). */
+    if (dst_offset == (AOCL_UINTP)SIZE_MAX ||
+        dst_offset > thread_grp->dst_size ||
+        cur_thread_info->dst_trap_size > thread_grp->dst_size - dst_offset) {
+        LOG_FORMATTED(ERR, logCtx, "Thread %u: Decompression failed, destination buffer too small.", thread_id);
+        return AOCL_MT_DECOMP_PARTITION_ERR_INSUFFICIENT_DST_SPACE;
     }
+
+    /* Reject a NULL destination before the pointer arithmetic (NULL + offset is
+     * undefined). A non-empty partition has already been established above
+     * (partition_src_size != 0), so it cannot write into a NULL buffer. */
+    if (thread_grp->dst == NULL) {
+        return AOCL_MT_DECOMP_PARTITION_ERR_INSUFFICIENT_DST_SPACE;
+    }
+
+    /* Bounds valid and dst non-NULL: dst_offset <= dst_size, so in-object. */
+    cur_thread_info->dst_trap = thread_grp->dst + dst_offset;
 
 #ifdef AOCL_THREADS_LOG
     printf("aocl_do_partition_decompress_mt(): thread id: [%d]\n",
@@ -587,7 +601,7 @@ AOCL_INT32 aocl_set_partition_stats_mt(aocl_thread_group_t *thread_grp,
 #ifdef AOCL_UNIT_TEST
 /* Functions to override omp_get_max_threads() for unit testing */
 static int test_omp_max_threads = 1;
-#ifndef AOCL_ENABLE_THREADS
+#if !defined(AOCL_ENABLE_THREADS) || defined(AOCL_USE_TBB)
 static atomic_flag setup_test_omp_max_threads = ATOMIC_FLAG_INIT;
 #endif
 int omp_get_max_threads_manual(void) 
@@ -597,7 +611,7 @@ int omp_get_max_threads_manual(void)
 
 int test_omp_max_threads_set(int max_threads) 
 {
-    int max_limit = omp_get_max_threads();
+    int max_limit = (int)aocl_get_max_threads();
     if (max_threads > max_limit) 
     {
         return 0;
@@ -625,7 +639,7 @@ void test_omp_max_threads_reset(void)
 {
     AOCL_ENTER_CRITICAL(setup_test_omp_max_threads)
     test_omp_max_threads = 1;
-    test_omp_get_max_threads_fp = omp_get_max_threads;
+    test_omp_get_max_threads_fp = aocl_get_max_threads_int;
     AOCL_EXIT_CRITICAL(setup_test_omp_max_threads)
 }
 #endif

@@ -62,17 +62,27 @@
 
 #endif /* AOCL_ENABLE_LOG_FEATURE */
 
+#include <stdlib.h>
+
 #ifdef AOCL_CL_STATS
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
+#endif
+/* Only LARGE_INTEGER and the QueryPerformance* calls are needed here, and both
+ * live in the core portion of <windows.h>. WIN32_LEAN_AND_MEAN keeps out the
+ * RPC/OLE headers, whose rpcndr.h declares a global `typedef unsigned char
+ * byte;`. Under C++17 or later that is ambiguous with std::byte in any TU that
+ * has done `using namespace std;` (every gtest source, via gtest_utils.h).
+ * The clash is include-order dependent, so it surfaces in only some TUs. */
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
 typedef LARGE_INTEGER timer;
 typedef LARGE_INTEGER timeVal;
 #else
 #include <unistd.h>
-#include <stdlib.h>
 #include <time.h>
 typedef struct timespec timer;
 typedef struct timespec timeVal;
@@ -82,7 +92,7 @@ typedef struct timespec timeVal;
 
 /* Place content that needs to run within a critical section
  * between AOCL_ENTER_CRITICAL() and AOCL_EXIT_CRITICAL() calls */
-#ifdef AOCL_ENABLE_THREADS
+#if defined(AOCL_ENABLE_THREADS) && !defined(AOCL_USE_TBB)
 #define AOCL_BUILD_PRAGMA(x) _Pragma (#x)
 #define AOCL_ENTER_CRITICAL(func) AOCL_BUILD_PRAGMA(omp critical (func)) {
 #define AOCL_EXIT_CRITICAL(func) }
@@ -104,7 +114,7 @@ static atomic_flag setup_logs __attribute__((unused)) = ATOMIC_FLAG_INIT;
         _mm_pause();                                                                    \
     }
 #define AOCL_EXIT_CRITICAL(flag) atomic_flag_clear(&flag);
-#endif /* AOCL_ENABLE_THREADS */
+#endif /* AOCL_ENABLE_THREADS && !AOCL_USE_TBB */
 
 #include <string.h>
 #include <stdio.h>
@@ -130,7 +140,6 @@ extern "C" {
 
 #ifdef AOCL_ENABLE_LOG_FEATURE
 #ifdef _WIN32
-#include <stdlib.h>
 #define SET_MAX_LOG_LEVEL(logCtx)\
 {\
                             AOCL_ENTER_CRITICAL(setup_logs)\
@@ -258,7 +267,6 @@ extern "C" {
                 (endTime.QuadPart - startTime.QuadPart))/timerClk.QuadPart)
 #else
 #include <unistd.h>
-#include <stdlib.h>
 #include <time.h>
 #define initTimer(timer)
 #define getTime(timeVal) clock_gettime(CLOCK_REALTIME, &timeVal)

@@ -46,7 +46,7 @@
  * aocl_zlib_fmv_utils.h and aocl_zlib_dispatch_variants.h. */
 
 static int setup_ok_zlib_longest = 0; // flag to indicate status of dynamic dispatcher setup
-#ifndef AOCL_ENABLE_THREADS
+#if !defined(AOCL_ENABLE_THREADS) || defined(AOCL_USE_TBB)
 static atomic_flag setup_zlib_longest = ATOMIC_FLAG_INIT;
 #endif /* AOCL_ENABLE_THREADS */
 

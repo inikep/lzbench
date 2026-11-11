@@ -76,7 +76,7 @@ static void aocl_setup_native(void);
 #endif /* AOCL_ZSTD_OPT */
 
 static int setup_ok_zstd_decode = 0; // flag to indicate status of dynamic dispatcher setup
-#ifndef AOCL_ENABLE_THREADS
+#if !defined(AOCL_ENABLE_THREADS) || defined(AOCL_USE_TBB)
 static atomic_flag setup_zstd_decode = ATOMIC_FLAG_INIT;
 #endif
 

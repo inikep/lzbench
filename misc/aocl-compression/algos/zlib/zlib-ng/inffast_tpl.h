@@ -1,6 +1,6 @@
 /* inffast.c -- fast decoding
  * Copyright (C) 1995-2017 Mark Adler
- * Modifications Copyright (C) 2023-2025, Advanced Micro Devices. All rights reserved.
+ * Modifications Copyright (C) 2023-2026, Advanced Micro Devices. All rights reserved.
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
 
@@ -107,13 +107,21 @@ void ZLIB_INTERNAL INFLATE_FAST(z_streamp strm, unsigned start) {
        with (1<<bits)-1 to drop those excess bits so that, on function exit, we
        keep the invariant that (state->hold >> state->bits) == 0.
     */
-    unsigned bits;              /* local strm->bits */
+#if defined(__GNUC__) && !defined(__clang__)
+    unsigned bits;              /* GCC: wide bit counter */
+#else
+    uint8_t bits;               /* non-GCC: byte-wide counter (zlib-ng x86 bits_t) so
+                                   DROPBITS/REFILL use byte ops without re-zero-extend */
+#endif
     uint64_t hold;              /* local strm->hold */
     unsigned lmask;             /* mask for first level of length codes */
     unsigned dmask;             /* mask for first level of distance codes */
     code const *lcode;          /* local strm->lencode */
     code const *dcode;          /* local strm->distcode */
-    const code *here;           /* retrieved table entry */
+    code here;                  /* retrieved table entry (loaded by value) */
+#if AOCL_COMBINED_CODE_FORMAT
+    uint64_t old;               /* look-behind accumulator for EXTRA_BITS */
+#endif
     unsigned op;                /* code bits, operation, extra bits, or */
                                 /*  window position, window bytes to copy */
     unsigned len;               /* match length, unused bytes */
@@ -140,71 +148,158 @@ void ZLIB_INTERNAL INFLATE_FAST(z_streamp strm, unsigned start) {
     lmask = (1U << state->lenbits) - 1;
     dmask = (1U << state->distbits) - 1;
 
+    /* Bit-budget invariant: the refill reserve below assumes lenbits <= 10
+       (callers request 10/9, inflate_table only shrinks the root). The Assert
+       catches a future root-size increase before it under-reserves and reads
+       `in` out of bounds; if lenbits must exceed 10, bump the reserve. */
+    Assert(state->lenbits <= 10, "inffast: lenbits > 10 breaks refill reserve");
+    /* Refill reserve: distance code + distance extra + next top length lookup.
+       Derived from lenbits (not a bare 10) and cached out of the hot loop. */
+    const unsigned refill_reserve = MAX_BITS + MAX_DIST_EXTRA_BITS + state->lenbits;
+
     /* Detect if out and window point to the same memory allocation. In this instance it is
        necessary to use safe chunk copy functions to prevent overwriting the window. If the
        window is overwritten then future matches with far distances will fail to copy correctly. */
     extra_safe = (wsize != 0 && out >= window && out + INFLATE_FAST_MIN_LEFT <= window + state->wbufsize);
 
+    /* Refill hold to >= 56 bits. Precondition: bits in [0, 63] (Assert guards
+       it; on non-GCC `bits` is uint8_t, so an underflow would wrap and break
+       both the shift and the pointer step). Consumes 7 - (bits >> 3) bytes,
+       written as (63 ^ bits) >> 3, which is equal only for bits in [0, 63]. */
 #define REFILL() do { \
+        Assert(bits < 64, "inffast REFILL: bit counter underflow"); \
         hold |= load_64_bits(in, bits); \
-        in += 7; \
-        in -= ((bits >> 3) & 7); \
+        in += (63 ^ bits) >> 3; \
         bits |= 56; \
     } while (0)
 
+    /* Table-entry accessors. There is a single unconditional decode path: the
+       upstream zlib-ng 3-literal chain, loaded by value, with no asm
+       register-pin (asm barriers around the accumulator measurably regress
+       Clang here). The GCC and non-GCC builds share this chain; they differ
+       only in the bit-counter width (see the `bits` declaration above) and in
+       whether the combined entry format is used (AOCL_COMBINED_CODE_FORMAT). */
+#define HERE_OP      (here.op)
+#define HERE_BITS    (here.bits)
+#define HERE_VAL     (here.val)
+#define HLIKELY(x)   ZNG_LIKELY(x)
+#define HUNLIKELY(x) ZNG_UNLIKELY(x)
+
+    /* Combined-format helpers (non-GCC). Save the accumulator before dropping a
+       code's bits so the extra bits can be extracted from it with one shift. */
+#if AOCL_COMBINED_CODE_FORMAT
+#  define OLD_SAVE()  (old = hold)
+#else
+#  define OLD_SAVE()  ((void)0)
+#endif
+
     /* decode literals and length/distances until end-of-block or not enough
        input data or output space */
+    /* Prime the bit accumulator once before the loop. Every in-loop refill is
+       then issued *behind* the first table lookup so the refill's load latency
+       overlaps the table load instead of feeding straight into it (this hot
+       loop is latency-bound on the hold/table dependency chain). */
+    REFILL();
     do {
+        /* Look up first, then refill so the load overlaps the lookup. Decode up
+           to three back-to-back literals per iteration (zlib-ng 3-literal chain,
+           by value). */
+        here = lcode[hold & lmask];
         REFILL();
-        here = lcode + (hold & lmask);
-        if (here->op == 0) {
-            uint16_t litout = (unsigned char)(here->val);
-            DROPBITS(here->bits);
-            here = lcode + (hold & lmask);
-            if (here->op == 0) {
-                litout |= ((uint16_t)((unsigned char)(here->val)) << 8);
-                *((uint16_t*)out) = litout; out += 2;
-                DROPBITS(here->bits);
-                here = lcode + (hold & lmask);
-            } else {
-                *out++ = (unsigned char)litout;
+        OLD_SAVE();
+        DROPBITS(here.bits);
+        if (HLIKELY(here.op == 0)) {
+            *out++ = (unsigned char)(here.val);
+            here = lcode[hold & lmask];
+            OLD_SAVE();
+            DROPBITS(here.bits);
+            if (HLIKELY(here.op == 0)) {
+                *out++ = (unsigned char)(here.val);
+                here = lcode[hold & lmask];
+                OLD_SAVE();
+                DROPBITS(here.bits);
+                if (HLIKELY(here.op == 0)) {
+                    *out++ = (unsigned char)(here.val);
+                    continue;
+                }
+                goto dolen_tail;
             }
+            goto dolen_tail;
         }
+        goto dolen_tail;
       dolen:
-        DROPBITS(here->bits);
-        op = here->op;
-        if (op == 0) {                          /* literal */
-            Tracevv((stderr, here->val >= 0x20 && here->val < 0x7f ?
+        OLD_SAVE();
+        DROPBITS(here.bits);
+      dolen_tail:
+        op = HERE_OP;
+        if (HUNLIKELY(op == 0)) {               /* literal */
+            Tracevv((stderr, HERE_VAL >= 0x20 && HERE_VAL < 0x7f ?
                     "inflate:         literal '%c'\n" :
-                    "inflate:         literal 0x%02x\n", here->val));
-            *out++ = (unsigned char)(here->val);
-        } else if (op & 16) {                     /* length base */
-            len = here->val;
+                    "inflate:         literal 0x%02x\n", HERE_VAL));
+            *out++ = (unsigned char)(HERE_VAL);
+        } else if (HLIKELY(op & 16)) {            /* length base */
+#if AOCL_COMBINED_CODE_FORMAT
+            /* Decode format is bound to the table via state->opt_off (captured
+               at table-build time), NOT the live global zlibOptOff. This makes a
+               mid-stream flip of the process-global harmless: opt_off==0 means
+               inflate_table() emitted combined leaves, so decode combined;
+               otherwise decode classic. */
+            if (HLIKELY(!INFLATE_OPT_OFF(state))) {
+                len = (unsigned)HERE_VAL + (unsigned)EXTRA_BITS(old, here, op);
+            } else {
+                len = HERE_VAL;
+                op &= MAX_BITS;                   /* number of extra bits */
+                len += BITS(op);
+                DROPBITS(op);
+            }
+#else
+            len = HERE_VAL;
             op &= MAX_BITS;                       /* number of extra bits */
             len += BITS(op);
             DROPBITS(op);
+#endif
             Tracevv((stderr, "inflate:         length %u\n", len));
-            here = dcode + (hold & dmask);
-            if (bits < MAX_BITS + MAX_DIST_EXTRA_BITS) {
+            here = dcode[hold & dmask];
+            /* Reserve bits for the distance code + its extra bits AND the next
+               iteration's top length lookup (see refill_reserve above). On
+               non-GCC `bits` is uint8_t, so refill_reserve must stay < 256
+               (it is: <= 38). */
+            if (bits < refill_reserve) {
                 REFILL();
             }
           dodist:
-            DROPBITS(here->bits);
-            op = here->op;
-            if (op & 16) {                      /* distance base */
-                dist = here->val;
+            OLD_SAVE();
+            DROPBITS(HERE_BITS);
+            op = HERE_OP;
+            if (HLIKELY(op & 16)) {             /* distance base */
+#if AOCL_COMBINED_CODE_FORMAT
+                /* See the length-base note above: format is bound to the table
+                   via state->opt_off, not the live global zlibOptOff. */
+                if (HLIKELY(!INFLATE_OPT_OFF(state))) {
+                    dist = (unsigned)HERE_VAL + (unsigned)EXTRA_BITS(old, here, op);
+                } else {
+                    dist = HERE_VAL;
+                    op &= MAX_BITS;             /* number of extra bits */
+                    dist += BITS(op);
+                    DROPBITS(op);
+                }
+#else
+                dist = HERE_VAL;
                 op &= MAX_BITS;                 /* number of extra bits */
                 dist += BITS(op);
+#endif
 #ifdef INFLATE_STRICT
                 if (dist > state->dmax) {
                     SET_BAD("invalid distance too far back");
                     break;
                 }
 #endif
+#if !AOCL_COMBINED_CODE_FORMAT
                 DROPBITS(op);
+#endif
                 Tracevv((stderr, "inflate:         distance %u\n", dist));
                 op = (unsigned)(out - beg);     /* max distance in output */
-                if (dist > op) {                /* see if copy from window */
+                if (HUNLIKELY(dist > op)) {     /* see if copy from window */
                     op = dist - op;             /* distance back in window */
                     if (op > whave) {
 #ifdef INFLATE_ALLOW_INVALID_DISTANCE_TOOFAR_ARRR
@@ -287,15 +382,15 @@ void ZLIB_INTERNAL INFLATE_FAST(z_streamp strm, unsigned start) {
                     else
                         out = CHUNKMEMSET(out, out - dist, len);
                 }
-            } else if ((op & 64) == 0) {          /* 2nd level distance code */
-                here = dcode + here->val + BITS(op);
+            } else if (HLIKELY((op & 64) == 0)) { /* 2nd level distance code */
+                here = dcode[here.val + BITS(op)];
                 goto dodist;
             } else {
                 SET_BAD("invalid distance code");
                 break;
             }
-        } else if ((op & 64) == 0) {              /* 2nd level length code */
-            here = lcode + here->val + BITS(op);
+        } else if (HLIKELY((op & 64) == 0)) {     /* 2nd level length code */
+            here = lcode[here.val + BITS(op)];
             goto dolen;
         } else if (op & 32) {                     /* end-of-block */
             Tracevv((stderr, "inflate:         end of block\n"));

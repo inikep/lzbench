@@ -59,6 +59,12 @@ typedef struct {
 
 typedef struct {
     CpuFeatures required_features;
+    void (*count_lengths_impl)(const unsigned short FAR *, int,
+                               unsigned short *);
+} AoclZlibCountLengthsVariant;
+
+typedef struct {
+    CpuFeatures required_features;
     void (*impl)(deflate_state *);
 } AoclZlibSlideHashVariant;
 

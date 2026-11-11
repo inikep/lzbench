@@ -1,5 +1,6 @@
 /* inffast.c -- fast decoding
  * Copyright (C) 1995-2026 Mark Adler
+ * Modifications Copyright (C) 2026, Advanced Micro Devices. All rights reserved.
  * For conditions of distribution and use, see copyright notice in zlib.h
  */
 
@@ -7,6 +8,12 @@
 #include "inftrees.h"
 #include "inflate.h"
 #include "inffast.h"
+
+#if defined(__GNUC__) || defined(__clang__)
+#  define AOCL_INFFAST_ALIGN __attribute__((aligned(64)))
+#else
+#  define AOCL_INFFAST_ALIGN
+#endif
 
 #ifdef ASMINF
 #  pragma message("Assembler code may have bugs -- use at your own risk")
@@ -47,6 +54,7 @@
       requires strm->avail_out >= 258 for each loop to avoid checking for
       output space.
  */
+AOCL_INFFAST_ALIGN
 void ZLIB_INTERNAL inflate_fast(z_streamp strm, unsigned start) {
     struct inflate_state FAR *state;
     z_const unsigned char FAR *in;      /* local strm->next_in */
@@ -106,7 +114,7 @@ void ZLIB_INTERNAL inflate_fast(z_streamp strm, unsigned start) {
         }
         here = lcode + (hold & lmask);
       dolen:
-        op = (unsigned)(here->bits);
+        op = CODE_BITS(*here, INFLATE_OPT_OFF(state));
         hold >>= op;
         bits -= op;
         op = (unsigned)(here->op);
@@ -118,7 +126,7 @@ void ZLIB_INTERNAL inflate_fast(z_streamp strm, unsigned start) {
         }
         else if (op & 16) {                     /* length base */
             len = (unsigned)(here->val);
-            op &= 15;                           /* number of extra bits */
+            op = CODE_EXTRA(*here, INFLATE_OPT_OFF(state));             /* number of extra bits */
             if (op) {
                 if (bits < op) {
                     hold += (unsigned long)(*in++) << bits;
@@ -137,13 +145,13 @@ void ZLIB_INTERNAL inflate_fast(z_streamp strm, unsigned start) {
             }
             here = dcode + (hold & dmask);
           dodist:
-            op = (unsigned)(here->bits);
+            op = CODE_BITS(*here, INFLATE_OPT_OFF(state));
             hold >>= op;
             bits -= op;
             op = (unsigned)(here->op);
             if (op & 16) {                      /* distance base */
                 dist = (unsigned)(here->val);
-                op &= 15;                       /* number of extra bits */
+                op = CODE_EXTRA(*here, INFLATE_OPT_OFF(state));         /* number of extra bits */
                 if (bits < op) {
                     hold += (unsigned long)(*in++) << bits;
                     bits += 8;

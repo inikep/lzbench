@@ -178,7 +178,7 @@ static void aocl_setup_native(void);
 /* flag to indicate status of dynamic dispatcher setup */
 static int setup_ok_zlib_crc = 0;
 #endif /* AOCL_ZLIB_OPT */
-#ifndef AOCL_ENABLE_THREADS
+#if !defined(AOCL_ENABLE_THREADS) || defined(AOCL_USE_TBB)
 static atomic_flag setup_zlib_crc = ATOMIC_FLAG_INIT;
 #endif /* AOCL_ENABLE_THREADS */
 

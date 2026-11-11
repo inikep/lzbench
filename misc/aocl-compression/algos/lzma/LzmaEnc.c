@@ -112,7 +112,7 @@ static void aocl_setup_native(void);
 #endif
 
 static int setup_ok_lzma_encode = 0; // flag to indicate status of dynamic dispatcher setup
-#ifndef AOCL_ENABLE_THREADS
+#if !defined(AOCL_ENABLE_THREADS) || defined(AOCL_USE_TBB)
 static atomic_flag setup_lzmaenc = ATOMIC_FLAG_INIT;
 #endif
 
@@ -749,6 +749,11 @@ static unsigned GetOptimum(CLzmaEnc* p, UInt32 position);
 
 void LzmaEnc_SaveState(CLzmaEncHandle pp)
 {
+  if (pp == NULL)
+  {
+    LOG_UNFORMATTED(ERR, logCtx, "LzmaEnc_SaveState: Invalid CLzmaEncHandle");
+    return;
+  }
   CLzmaEnc *p = (CLzmaEnc *)pp;
   CSaveState *dest = &p->saveState;
   
@@ -775,6 +780,11 @@ void LzmaEnc_SaveState(CLzmaEncHandle pp)
 
 void LzmaEnc_RestoreState(CLzmaEncHandle pp)
 {
+  if (pp == NULL)
+  {
+    LOG_UNFORMATTED(ERR, logCtx, "LzmaEnc_RestoreState: Invalid CLzmaEncHandle");
+    return;
+  }
   CLzmaEnc *dest = (CLzmaEnc *)pp;
   const CSaveState *p = &dest->saveState;
 
@@ -3738,6 +3748,18 @@ static void LzmaEnc_Destruct(CLzmaEnc *p, ISzAllocPtr alloc, ISzAllocPtr allocBi
 void LzmaEnc_Destroy(CLzmaEncHandle p, ISzAllocPtr alloc, ISzAllocPtr allocBig)
 {
   AOCL_SETUP_NATIVE();
+  /* Guard against NULL so a destroy on an unset/NULL handle is a no-op
+   * instead of dereferencing/freeing an invalid pointer (CPUPL-8846). This
+   * only covers the NULL case; it cannot detect an already-freed (dangling,
+   * non-NULL) handle. Callers must still not reuse or re-destroy a handle
+   * after LzmaEnc_Destroy(): the handle is invalid once destroyed. */
+  if (p == NULL)
+  {
+    /* Documented no-op path (see LzmaEnc.h): keep it quiet at TRACE rather
+     * than ERR so a valid NULL call does not emit spurious error logs. */
+    LOG_UNFORMATTED(TRACE, logCtx, "LzmaEnc_Destroy called with NULL handle; no-op");
+    return;
+  }
   LzmaEnc_Destruct((CLzmaEnc *)p, alloc, allocBig);
   ISzAlloc_Free(alloc, p);
 }
@@ -4327,6 +4349,11 @@ UInt32 LzmaEnc_GetNumAvailableBytes(CLzmaEncHandle pp)
 
 const Byte *LzmaEnc_GetCurBuf(CLzmaEncHandle pp)
 {
+  if (pp == NULL)
+  {
+    LOG_UNFORMATTED(ERR, logCtx, "LzmaEnc_GetCurBuf: Invalid CLzmaEncHandle");
+    return NULL;
+  }
   const CLzmaEnc *p = (CLzmaEnc *)pp;
   return p->matchFinder.GetPointerToCurrentPos(p->matchFinderObj) - p->additionalOffset;
 }
@@ -5788,6 +5815,59 @@ SRes LzmaEnc_MemEncode_st_2nd_pass(CLzmaEncHandle pp, Byte *dest, SizeT *destLen
  * MT Pass 2 functions - End
  *************************************/
 
+typedef struct
+{
+  aocl_thread_group_t *thread_group_handle;
+  int writeEndMark;
+  ISzAllocPtr alloc;
+  ISzAllocPtr allocBig;
+  const CLzmaEncProps *props;
+} AOCL_LzmaEncode_MT_parallel_ctx;
+
+static void AOCL_LzmaEncode_MT_parallel_worker(AOCL_UINT32 thread_id, void *context)
+{
+  AOCL_LzmaEncode_MT_parallel_ctx *ctx = (AOCL_LzmaEncode_MT_parallel_ctx *)context;
+  aocl_thread_group_t *thread_group_handle = ctx->thread_group_handle;
+  aocl_thread_info_t cur_thread_info;
+  AOCL_UINT32 cmpr_bound_pad = 0;
+  AOCL_UINT32 is_error = 1;
+  SizeT local_result = 0;
+  SequenceEntry *head = NULL;
+  SequenceEntry *tail = NULL;
+
+  if (aocl_do_partition_compress_mt(thread_group_handle, &cur_thread_info, cmpr_bound_pad, thread_id) == 0)
+  {
+    CLzmaEnc *p = (CLzmaEnc *)LzmaEnc_Create(ctx->alloc);
+    SRes res;
+    if (p)
+    {
+      ICompressProgress *curProgress = NULL;
+      CLzmaEncProps props_cur = *ctx->props;
+      props_cur.srcLen = cur_thread_info.partition_src_size;
+      res = LzmaEnc_SetProps_fp(p, &props_cur);
+      if (res == SZ_OK)
+      {
+        local_result = cur_thread_info.dst_trap_size;
+        p->rc.flushData = False;
+        res = LzmaEnc_MemEncode_mt_1st_pass(p, (Byte *)cur_thread_info.dst_trap, &local_result,
+            (const Byte *)cur_thread_info.partition_src, cur_thread_info.partition_src_size,
+            ctx->writeEndMark, curProgress, ctx->alloc, ctx->allocBig, &head, &tail);
+        is_error = res;
+      }
+    }
+    LzmaEnc_Destroy(p, ctx->alloc, ctx->allocBig);
+  }
+
+  thread_group_handle->threads_info_list[thread_id].partition_src = cur_thread_info.partition_src;
+  thread_group_handle->threads_info_list[thread_id].dst_trap = cur_thread_info.dst_trap;
+  thread_group_handle->threads_info_list[thread_id].additional_state_info = head;
+  thread_group_handle->threads_info_list[thread_id].dst_trap_size = local_result;
+  thread_group_handle->threads_info_list[thread_id].partition_src_size = cur_thread_info.partition_src_size;
+  thread_group_handle->threads_info_list[thread_id].last_bytes_len = 0;
+  thread_group_handle->threads_info_list[thread_id].is_error = is_error;
+  thread_group_handle->threads_info_list[thread_id].num_child_threads = 0;
+}
+
  SRes AOCL_LzmaEncode_MT(Byte *dest, SizeT *destLen, const Byte *src, SizeT srcLen,
   const CLzmaEncProps *props, Byte *propsEncoded, SizeT *propsSize, int writeEndMark,
   ICompressProgress *progress, ISzAllocPtr alloc, ISzAllocPtr allocBig)
@@ -5849,51 +5929,13 @@ SRes LzmaEnc_MemEncode_st_2nd_pass(CLzmaEncHandle pp, Byte *dest, SizeT *destLen
   }
   else
   {
-#pragma omp parallel private(cur_thread_info) shared(thread_group_handle) num_threads(thread_group_handle.num_threads)
-    {
-      // size_t maxSrcSize = thread_group_handle.common_part_src_size + thread_group_handle.leftover_part_src_bytes;
-      AOCL_UINT32 cmpr_bound_pad = 0; //Number of additional bytes beyond srcSize that could be written
-      AOCL_UINT32 is_error = 1;
-      AOCL_UINT32 thread_id = omp_get_thread_num();
-      SizeT local_result = 0;
-      SequenceEntry* head = NULL;
-      SequenceEntry* tail = NULL;
-
-      if (aocl_do_partition_compress_mt(&thread_group_handle, &cur_thread_info, cmpr_bound_pad, thread_id) == 0)
-      {
-        /* Copying cctx directly to cur_cctx might result in data associated with
-        * pointer members being shared between threads. Hence create new cur_cctx
-        * objects for each thread and set necessary parameters here */
-        CLzmaEnc* p = (CLzmaEnc*)LzmaEnc_Create(alloc);
-        SRes res;
-        if (p)
-        {
-          ICompressProgress* curProgress = NULL;
-          CLzmaEncProps props_cur = *props;
-          props_cur.srcLen = cur_thread_info.partition_src_size; // same srcLen value must be set here and passed to LzmaEnc_MemEncode()
-          res = LzmaEnc_SetProps_fp(p, &props_cur);
-          if (res == SZ_OK)
-          {
-            local_result = cur_thread_info.dst_trap_size;
-            p->rc.flushData = False; // do not flush data in 1st pass
-            res = LzmaEnc_MemEncode_mt_1st_pass(p, (Byte*)cur_thread_info.dst_trap, &local_result,
-                (const Byte*)cur_thread_info.partition_src, cur_thread_info.partition_src_size,
-                writeEndMark, curProgress, alloc, allocBig, &head, &tail);
-            is_error = res;
-          }
-        }
-        LzmaEnc_Destroy(p, alloc, allocBig);
-      }//aocl_do_partition_compress_mt
-
-      thread_group_handle.threads_info_list[thread_id].partition_src = cur_thread_info.partition_src;
-      thread_group_handle.threads_info_list[thread_id].dst_trap = cur_thread_info.dst_trap;
-      thread_group_handle.threads_info_list[thread_id].additional_state_info = head;
-      thread_group_handle.threads_info_list[thread_id].dst_trap_size = local_result;
-      thread_group_handle.threads_info_list[thread_id].partition_src_size = cur_thread_info.partition_src_size;
-      thread_group_handle.threads_info_list[thread_id].last_bytes_len = 0;
-      thread_group_handle.threads_info_list[thread_id].is_error = is_error;
-      thread_group_handle.threads_info_list[thread_id].num_child_threads = 0;
-    }//#pragma omp parallel
+    AOCL_LzmaEncode_MT_parallel_ctx parallel_ctx;
+    parallel_ctx.thread_group_handle = &thread_group_handle;
+    parallel_ctx.writeEndMark = writeEndMark;
+    parallel_ctx.alloc = alloc;
+    parallel_ctx.allocBig = allocBig;
+    parallel_ctx.props = props;
+    aocl_parallel_for(thread_group_handle.num_threads, AOCL_LzmaEncode_MT_parallel_worker, &parallel_ctx);
 
     /* Post processing in single - threaded mode : */
 

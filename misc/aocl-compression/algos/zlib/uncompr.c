@@ -108,11 +108,64 @@ static inline int validate_Checksum(AOCL_UINT32 checksum, const Bytef *source,
 #endif
     return isValid;
 }
+typedef struct {
+    aocl_thread_group_t *thread_group_handle;
+    int wrap;
+} uncompress2_mt_parallel_ctx_t;
+
+static void uncompress2_mt_parallel_worker(AOCL_UINT32 thread_id, void *context)
+{
+    uncompress2_mt_parallel_ctx_t *ctx = (uncompress2_mt_parallel_ctx_t *)context;
+    aocl_thread_group_t *thread_group_handle = ctx->thread_group_handle;
+    int wrap = ctx->wrap;
+    aocl_thread_info_t cur_thread_info;
+
+#ifdef AOCL_THREADS_LOG
+    printf("Decompress Thread [id: %d] : Inside parallel region\n", (int)thread_id);
+#endif
+    AOCL_UINT32 is_error = 1;
+    AOCL_INT32 thread_parallel_res = 0;
+
+    AOCL_MT_PROCESS_PARTITION_START((*thread_group_handle), ti_cur, thread_id)
+    thread_parallel_res = aocl_do_partition_decompress_mt(thread_group_handle,
+        &cur_thread_info, AOCL_MT_CUR_THREAD_SERIAL_ID(ti_cur));
+    ti_cur->additional_state_info = NULL;
+
+    if (thread_parallel_res == AOCL_MT_DECOMP_PARTITION_SUCCESS)
+    {
+        z_size_t dst_trap_size = (z_size_t)cur_thread_info.dst_trap_size;
+        z_size_t part_src_size = (z_size_t)cur_thread_info.partition_src_size;
+        is_error = uncompress2_ST_raw((Bytef *)cur_thread_info.dst_trap, &dst_trap_size,
+                                    (Bytef *)cur_thread_info.partition_src, &part_src_size, -1 * MAX_WBITS);
+        cur_thread_info.dst_trap_size = (AOCL_UINTP)dst_trap_size;
+        cur_thread_info.partition_src_size = (AOCL_UINTP)part_src_size;
+        cur_thread_info.last_bytes_len = CALCULATE_CHECKSUM(cur_thread_info.dst_trap, cur_thread_info.dst_trap_size, wrap);
+    }
+    else if (thread_parallel_res == AOCL_MT_DECOMP_PARTITION_EMPTY_SRC)
+    {
+        is_error = 0;
+    }
+    else
+    {
+        is_error = 3;
+    }
+#ifdef AOCL_THREADS_LOG
+    printf("Decompress Thread [id: %d] : Return value %d\n", (int)thread_id, is_error);
+#endif
+    ti_cur->partition_src = cur_thread_info.partition_src;
+    ti_cur->dst_trap = cur_thread_info.dst_trap;
+    ti_cur->dst_trap_size = cur_thread_info.dst_trap_size;
+    ti_cur->partition_src_size = cur_thread_info.partition_src_size;
+    ti_cur->last_bytes_len = cur_thread_info.last_bytes_len;
+    ti_cur->is_error = is_error;
+    ti_cur->num_child_threads = 0;
+    AOCL_MT_PROCESS_PARTITION_END(ti_cur)
+}
+
 static inline int uncompress2_z_MT_generic(Bytef *dest, z_size_t *destLen, const Bytef *source,
                         z_size_t *sourceLen, const int wrap) {
     int result = Z_OK;
     aocl_thread_group_t thread_group_handle;
-    aocl_thread_info_t cur_thread_info;
     AOCL_INT32 use_ST_decompressor = 0;
     AOCL_UINT32 thread_cnt = 0;
     AOCL_INT32 rap_metadata_len = 0;
@@ -163,56 +216,21 @@ static inline int uncompress2_z_MT_generic(Bytef *dest, z_size_t *destLen, const
     else
     {
 #ifdef AOCL_THREADS_LOG
+#ifndef AOCL_USE_TBB
         printf("Decompress Thread [id: %d] : Before parallel region\n", omp_get_thread_num());
 #endif
-#pragma omp parallel private(cur_thread_info) shared(thread_group_handle) num_threads(thread_group_handle.num_threads)
+#endif
         {
+            uncompress2_mt_parallel_ctx_t decompress_parallel_ctx;
+            decompress_parallel_ctx.thread_group_handle = &thread_group_handle;
+            decompress_parallel_ctx.wrap = wrap;
+            aocl_parallel_for(thread_group_handle.num_threads, uncompress2_mt_parallel_worker,
+                &decompress_parallel_ctx);
+        }
 #ifdef AOCL_THREADS_LOG
-            printf("Decompress Thread [id: %d] : Inside parallel region\n", omp_get_thread_num());
-#endif
-            AOCL_UINT32 is_error = 1;
-            AOCL_UINT32 thread_id = omp_get_thread_num();
-            AOCL_INT32 thread_parallel_res = 0;
-
-            AOCL_MT_PROCESS_PARTITION_START(thread_group_handle, ti_cur, thread_id)
-            thread_parallel_res = aocl_do_partition_decompress_mt(&thread_group_handle, 
-                &cur_thread_info, AOCL_MT_CUR_THREAD_SERIAL_ID(ti_cur));
-            ti_cur->additional_state_info = NULL;
-
-            if (thread_parallel_res == AOCL_MT_DECOMP_PARTITION_SUCCESS)
-            {
-                z_size_t dst_trap_size = (z_size_t)cur_thread_info.dst_trap_size;
-                z_size_t part_src_size = (z_size_t)cur_thread_info.partition_src_size;
-                is_error = uncompress2_ST_raw((Bytef *)cur_thread_info.dst_trap, &dst_trap_size,
-                                            (Bytef *)cur_thread_info.partition_src, &part_src_size, -1 * MAX_WBITS);
-                cur_thread_info.dst_trap_size = (AOCL_UINTP)dst_trap_size;
-                cur_thread_info.partition_src_size = (AOCL_UINTP)part_src_size;
-                cur_thread_info.last_bytes_len = CALCULATE_CHECKSUM(cur_thread_info.dst_trap, cur_thread_info.dst_trap_size, wrap);
-            }//aocl_do_partition_decompress_mt
-            else if (thread_parallel_res == AOCL_MT_DECOMP_PARTITION_EMPTY_SRC)
-            {
-                is_error = 0;
-            }
-            else // thread_parallel_res == AOCL_MT_DECOMP_PARTITION_ERR_INSUFFICIENT_DST_SPACE
-            {
-                // uncompress2_ST_raw already returns values from 0 to 2, hence for identifying an error 3 is used.
-                is_error = 3;
-            }
-#ifdef AOCL_THREADS_LOG
-            printf("Decompress Thread [id: %d] : Return value %d\n", omp_get_thread_num(), is_error);
-#endif
-            ti_cur->partition_src = cur_thread_info.partition_src;
-            ti_cur->dst_trap = cur_thread_info.dst_trap;
-            ti_cur->dst_trap_size = cur_thread_info.dst_trap_size;
-            ti_cur->partition_src_size = cur_thread_info.partition_src_size;
-            ti_cur->last_bytes_len = cur_thread_info.last_bytes_len; // storing checksum value
-            ti_cur->is_error = is_error;
-            ti_cur->num_child_threads = 0;
-            AOCL_MT_PROCESS_PARTITION_END(ti_cur)
-
-        }//#pragma omp parallel
-#ifdef AOCL_THREADS_LOG
+#ifndef AOCL_USE_TBB
         printf("Decompress Thread [id: %d] : After parallel region\n", omp_get_thread_num());
+#endif
 #endif
 
 
