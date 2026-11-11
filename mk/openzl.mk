@@ -15,7 +15,7 @@ ifneq ($(shell echo|$(CC) $(CODE_FLAGS) -dM -E - 2>/dev/null|grep -c '__SIZEOF_P
     DONT_BUILD_OPENZL ?= 1
 endif
 
-OPENZL_OBJS := $(addprefix lz+entropy/openzl/src/openzl/, \
+OPENZL_OBJS := $(addprefix misc/openzl/src/openzl/, \
     codecs/bitSplit/common_bitSplit_kernel.o codecs/bitSplit/decode_bitSplit_binding.o \
     codecs/bitSplit/decode_bitSplit_kernel.o codecs/bitSplit/encode_bitSplit_binding.o \
     codecs/bitSplit/encode_bitSplit_kernel.o codecs/bitSplit/encode_bitsplit_bf16_binding.o \
@@ -142,6 +142,6 @@ OPENZL_OBJS := $(addprefix lz+entropy/openzl/src/openzl/, \
     shared/detail/pdqsort2.o shared/detail/pdqsort4.o shared/detail/pdqsort8.o shared/estimate.o \
     shared/histogram.o shared/numeric_operations.o)
 # assembled from huf_decompress_amd64.S
-OPENZL_OBJS  += lz+entropy/openzl/src/openzl/fse/decompress/huf_decompress_amd64.o
-OPENZL_FLAGS := -I$(SRC)lz+entropy/zstd/lib -I$(SRC)lz/lz4/lib -I$(SRC)lz+entropy/openzl/include -I$(SRC)lz+entropy/openzl/src
+OPENZL_OBJS  += misc/openzl/src/openzl/fse/decompress/huf_decompress_amd64.o
+OPENZL_FLAGS := -I$(SRC)lz+entropy/zstd/lib -I$(SRC)lz/lz4/lib -I$(SRC)misc/openzl/include -I$(SRC)misc/openzl/src
 OPENZL_NEEDS := ZSTD LZ4
