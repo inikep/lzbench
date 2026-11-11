@@ -1,6 +1,7 @@
 # density: a Rust crate, built into the Rust codecs' library (see "Rust codecs"
 # in the Makefile)
 CODECS += DENSITY
+DENSITY_UPSTREAM := git-tags https://github.com/g1mv/density
 
 ifneq ($(DONT_BUILD_DENSITY),1)
     ifneq ($(HAVE_RUST),1)

@@ -1,5 +1,6 @@
 # quicklz: quicklz151b7.c is compiled once per compression level
 CODECS += QUICKLZ
+QUICKLZ_UPSTREAM := frozen quicklz.com is gone since 2016
 QUICKLZ_OBJS  := lz/quicklz/quicklz_lvl1.o lz/quicklz/quicklz_lvl2.o lz/quicklz/quicklz_lvl3.o
 QUICKLZ_FLAGS  = -DQLZ_COMPRESSION_LEVEL=$*
 

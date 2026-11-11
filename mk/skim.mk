@@ -1,5 +1,6 @@
 # skim: a Zig library, needs the zig compiler
 CODECS += SKIM
+SKIM_UPSTREAM := git-tags https://github.com/vantorrewannes/skim pattern=(\d+\.\d+\.\d+)-alpha
 
 # zig build-lib is not given a -target, so libskim.a is built for the build
 # machine: it cannot be linked into a cross, -m32 or Windows build.

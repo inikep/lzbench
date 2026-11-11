@@ -1,5 +1,6 @@
 # lbzip2
 CODECS += LBZIP2
+LBZIP2_UPSTREAM := git-tags https://github.com/caius72/lbzip2
 LBZIP2_OBJS := $(addprefix bwt/lbzip2/, \
     crctab.o decode.o divbwt.o encode.o parse.o lbzip2_lzbench.o)
 # -Ibwt/lbzip2 also picks up the <arpa/inet.h> shim there, which MinGW needs.

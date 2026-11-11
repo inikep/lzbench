@@ -1,5 +1,6 @@
 # libdeflate
 CODECS += LIBDEFLATE
+LIBDEFLATE_UPSTREAM := git-tags https://github.com/ebiggers/libdeflate
 LIBDEFLATE_OBJS := $(addprefix lz+entropy/libdeflate/lib/, \
     adler32.o crc32.o deflate_compress.o deflate_decompress.o gzip_compress.o gzip_decompress.o \
     utils.o zlib_compress.o zlib_decompress.o x86/cpu_features.o arm/cpu_features.o)

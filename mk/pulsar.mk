@@ -1,6 +1,7 @@
 # pulsar: a Rust crate, built into the Rust codecs' library (see "Rust codecs"
 # in the Makefile)
 CODECS += PULSAR
+PULSAR_UPSTREAM := git-tags https://github.com/ceedot-rock/pulsar-best
 
 ifneq ($(DONT_BUILD_PULSAR),1)
     ifneq ($(HAVE_RUST),1)

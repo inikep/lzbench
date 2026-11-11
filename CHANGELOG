@@ -4,8 +4,11 @@ v2.x.y (work-in-progress)
 - added lz4frame 1.11.0 (lz4 frame format with built-in multithreaded compression, -I#; levels 1-12 as the lz4 CLI)
 - added mzstd 0.2.11 (mzstd, mzstd_fast; Zstandard in safe Rust, by @Mnwa)
 - added wlz4 1.3.0 (wlz4, wlz4fast, wlz4hc) and wzip 1.3.0 (by @icodywu)
-- added zlib-turbo 1.1.0 (by @icodywu)
+- added zlib-turbo 1.2.2 (by @icodywu)
 - updated zlib to 1.4 (by @tansy)
+- updated gipfeli to 2016-08-16 (config.h detects __builtin_ctz and __builtin_expect from __GNUC__);
+  lzfse/lzvn (2017-05-22), lzg (2023-08-31) and lzham (2022-01-03) were already at upstream HEAD,
+  whose later commits change only README files
 - updated aceapex to 2.6.1 (thanks to @yasha1971-coder); adds aceapex_fast (levels 1-8): the FAST profile, LZ77 without an entropy stage
 - updated kanzi to 2.6.0 (by @flanglet)
 - updated lz4 to 1.11.0 (by @data-man)
@@ -13,6 +16,7 @@ v2.x.y (work-in-progress)
 - updated mbrotli to 0.5.20 (by @Mnwa)
 - updated slz to 1.4-dev5 (by @wtarreau)
 - updated zxc to 1.0.0 (by @hellobertrand)
+- improvement: `make check-updates` (tools/check-updates.py) lists codecs with a newer upstream version, from NAME_UPSTREAM in mk/<codec>.mk
 - improvement: the Makefile describes each codec in its own mk/<codec>.mk (objects, flags,
                platform checks) instead of spreading it over the 1,400-line Makefile;
                CONTRIBUTING.md shows the mk file for a new codec

@@ -1,5 +1,6 @@
 # openzl
 CODECS += OPENZL
+OPENZL_UPSTREAM := git-tags https://github.com/facebook/openzl desc=openzl_u8
 
 # OpenZL aborts on big-endian CPUs ("support for big endian not implemented
 # yet")

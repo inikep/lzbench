@@ -1,5 +1,6 @@
 # brotli
 CODECS += BROTLI
+BROTLI_UPSTREAM := git-tags https://github.com/google/brotli
 BROTLI_OBJS := $(addprefix lz+entropy/brotli/, \
     common/constants.o common/context.o common/dictionary.o common/platform.o common/transform.o \
     dec/bit_reader.o dec/decode.o dec/huffman.o dec/prefix.o dec/state.o dec/static_init.o \

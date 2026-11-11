@@ -1,6 +1,7 @@
 # mbrotli: a Rust crate, built into the Rust codecs' library (see "Rust codecs"
 # in the Makefile) and called through its C ABI (mbrotli-ffi)
 CODECS += MBROTLI
+MBROTLI_UPSTREAM := git-tags https://github.com/M-Compressors/mbrotli
 
 ifneq ($(DONT_BUILD_MBROTLI),1)
     ifneq ($(HAVE_RUST),1)

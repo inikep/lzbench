@@ -1,5 +1,6 @@
 # bsc (libbsc)
 CODECS += BSC
+BSC_UPSTREAM := git-tags https://github.com/IlyaGrebnov/libbsc desc=bsc1
 
 # bsc assumes a little-endian CPU: its round trip fails on s390x
 ifeq ($(TARGET_BIG_ENDIAN),1)

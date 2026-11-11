@@ -1,5 +1,6 @@
 # nvcomp: CUDA only (make ENABLE_CUDA=1). Enabled with BENCH_HAS_NVCOMP rather
 # than disabled with BENCH_REMOVE_NVCOMP, so it is an object group, not a codec.
+NVCOMP_UPSTREAM := frozen versions after 2.2 are not open source desc=nvcomp_lz4
 ifeq ($(HAVE_CUDA),1)
 ifneq ($(DONT_BUILD_NVCOMP),1)
     DEFINES    += -DBENCH_HAS_NVCOMP
