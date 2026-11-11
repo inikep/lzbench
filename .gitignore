@@ -55,4 +55,16 @@ lzbench
 # backups, old versions
 *~
 
+# Python bytecode (doc/results/*.py, tools/*.py)
+__pycache__/
+*.py[cod]
+
+# Zig build outputs (skim; misc/skim/.gitignore covers only that directory)
+.zig-cache/
+zig-out/
+
+# macOS
+.DS_Store
+*.dSYM/
+
 todo.txt
