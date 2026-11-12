@@ -1,3 +1,19 @@
+Changes in 2.12.1 (October 21, 2026)
+- Fixed compilation errors and warnings with MSVC for ARM64 and ARM64EC targets.
+- Fixed incorrect results on big-endian AArch64 targets, and of libsais64 and libsais16x64 on all big-endian targets.
+- Fixed byte-order detection on big-endian BSD targets.
+- Big-endian targets now always use the portable (non-SIMD) code.
+
+Changes in 2.12.0 (October 18, 2026)
+- Changed license to Apache License 2.0 with LLVM Exceptions.
+- Support for cyclic Burrows-Wheeler transform and inverse BWT construction (e.g. as used by bzip2).
+- Significantly improved performance of inverse BWT, both single- and multi-threaded.
+- Improved performance of suffix array and Burrows-Wheeler transform construction.
+- Fixed crashes and incorrect results when OpenMP provides fewer threads than requested (e.g. under OMP_THREAD_LIMIT).
+- Fixed out-of-bounds memory access in inverse BWT for inputs that are not a valid BWT.
+- Fixed handling of invalid alphabet sizes, of alphabets larger than 2^31 symbols (libsais64, libsais16x64) and of very large thread counts in 32-bit builds.
+- Resolved compiler warnings with GCC 16.
+
 Changes in 2.10.4 (September 1, 2025)
 - Tuned prefetch distance for improved throughput.
 

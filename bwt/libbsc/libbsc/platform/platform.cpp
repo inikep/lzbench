@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -53,6 +53,15 @@ static void bsc_cpuid(unsigned int regs[4], unsigned int level)
 {
 #if defined(_MSC_VER)
     __cpuid((int *)regs, (int)level);
+#elif defined(LIBBSC_x86_64)
+    __asm__ __volatile__
+    (
+        "xchg %%rbx, %%rdi\n\t"
+        "cpuid\n\t"
+        "xchg %%rbx, %%rdi" 
+        : "=a"(regs[0]), "=D"(regs[1]), "=c"(regs[2]), "=d"(regs[3])
+        : "a"(level), "c"(0)
+    );
 #else
     __asm__ __volatile__
     (
@@ -213,6 +222,11 @@ int bsc_platform_init(int features, void* (* malloc)(size_t size), void* (* zero
     {
 	bsc_free_fn = free;
     }
+
+    /* Detect the CPU features here, before concurrent callers can
+       reach the dispatched functions, so that they only read the
+       cached value. */
+    bsc_get_cpu_features();
 
 #if defined(_WIN32)
 

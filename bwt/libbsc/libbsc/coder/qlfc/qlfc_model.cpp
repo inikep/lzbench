@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ See also the bsc and libbsc web site:
 
 --*/
 
+#include <stddef.h>
 #include <stdlib.h>
 #include <memory.h>
 
@@ -39,7 +40,6 @@ See also the bsc and libbsc web site:
 #include "../../platform/platform.h"
 
 QlfcStatisticalModel1 g_QlfcStatisticalModel1;
-QlfcStatisticalModel2 g_QlfcStatisticalModel2;
 
 void bsc_qlfc_memset(void * dst, int size, short v)
 {
@@ -67,23 +67,21 @@ int bsc_qlfc_init_static_model()
             g_QlfcStatisticalModel1.mixerOfRunExponent[context][bit].Init();
     }
 
-    bsc_qlfc_memset(&g_QlfcStatisticalModel1.Rank, sizeof(g_QlfcStatisticalModel1.Rank), 2048);
-    bsc_qlfc_memset(&g_QlfcStatisticalModel1.Run, sizeof(g_QlfcStatisticalModel1.Run), 2048);
-
-    bsc_qlfc_memset(&g_QlfcStatisticalModel2.Rank, sizeof(g_QlfcStatisticalModel2.Rank), 4096);
-    bsc_qlfc_memset(&g_QlfcStatisticalModel2.Run, sizeof(g_QlfcStatisticalModel2.Run), 1024);
-
     return LIBBSC_NO_ERROR;
 }
 
-void bsc_qlfc_init_model(QlfcStatisticalModel1 * model)
+NOINLINE void bsc_qlfc_init_model(QlfcStatisticalModel1 * model)
 {
-    memcpy(model, &g_QlfcStatisticalModel1, sizeof(QlfcStatisticalModel1));
+    bsc_qlfc_memset(&model->Rank, sizeof(model->Rank), 2048);
+    bsc_qlfc_memset(&model->Run, sizeof(model->Run), 2048);
+
+    memcpy(&model->mixerOfRank, &g_QlfcStatisticalModel1.mixerOfRank, sizeof(QlfcStatisticalModel1) - offsetof(QlfcStatisticalModel1, mixerOfRank));
 }
 
-void bsc_qlfc_init_model(QlfcStatisticalModel2 * model)
+NOINLINE void bsc_qlfc_init_model(QlfcStatisticalModel2 * model)
 {
-    memcpy(model, &g_QlfcStatisticalModel2, sizeof(QlfcStatisticalModel2));
+    bsc_qlfc_memset(&model->Rank, sizeof(model->Rank), 4096);
+    bsc_qlfc_memset(&model->Run, sizeof(model->Run), 1024);
 }
 
 /*-----------------------------------------------------------*/

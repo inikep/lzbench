@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -91,7 +91,7 @@ unsigned int ADLER32_FUNCTION_NAME (const unsigned char * T, int n, int features
     unsigned int sum1 = 1;
     unsigned int sum2 = 0;
 
-#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSSE3 || LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
+#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2 || LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
 
     while ((((uintptr_t)T & 31) != 0) && n > 0)
     {
@@ -174,6 +174,42 @@ unsigned int ADLER32_FUNCTION_NAME (const unsigned char * T, int n, int features
         v_s2 = _mm_add_epi32(v_s2, _mm_shuffle_epi32(v_s2, _MM_SHUFFLE(2, 3, 0, 1)));
         v_s2 = _mm_add_epi32(v_s2, _mm_shuffle_epi32(v_s2, _MM_SHUFFLE(1, 0, 3, 2)));
         sum2 += _mm_cvtsi128_si32(v_s2);
+#elif LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
+        const __m128i tap1 = _mm_setr_epi16(32, 31, 30, 29, 28, 27, 26, 25);
+        const __m128i tap2 = _mm_setr_epi16(24, 23, 22, 21, 20, 19, 18, 17);
+        const __m128i tap3 = _mm_setr_epi16(16, 15, 14, 13, 12, 11, 10,  9);
+        const __m128i tap4 = _mm_setr_epi16( 8,  7,  6,  5,  4,  3,  2,  1);
+        const __m128i zero = _mm_setzero_si128();
+
+        __m128i v_ps = _mm_set_epi32(0, 0, 0, sum1 * (NMAX / 32));
+        __m128i v_s2 = _mm_setzero_si128();
+        __m128i v_s1 = _mm_setzero_si128();
+
+        for (int i = 0; i < NMAX / 32; ++i)
+        {
+            const __m128i bytes1 = _mm_load_si128((const __m128i *)(T));
+            const __m128i bytes2 = _mm_load_si128((const __m128i *)(T + 16));
+
+            v_ps = _mm_add_epi32(v_ps, v_s1);
+
+            v_s1 = _mm_add_epi32(v_s1, _mm_sad_epu8(bytes1, zero));
+            v_s2 = _mm_add_epi32(v_s2, _mm_add_epi32(_mm_madd_epi16(_mm_unpacklo_epi8(bytes1, zero), tap1), _mm_madd_epi16(_mm_unpackhi_epi8(bytes1, zero), tap2)));
+
+            v_s1 = _mm_add_epi32(v_s1, _mm_sad_epu8(bytes2, zero));
+            v_s2 = _mm_add_epi32(v_s2, _mm_add_epi32(_mm_madd_epi16(_mm_unpacklo_epi8(bytes2, zero), tap3), _mm_madd_epi16(_mm_unpackhi_epi8(bytes2, zero), tap4)));
+
+            T += 32;
+        }
+
+        v_s2 = _mm_add_epi32(v_s2, _mm_slli_epi32(v_ps, 5));
+
+        v_s1 = _mm_add_epi32(v_s1, _mm_shuffle_epi32(v_s1, _MM_SHUFFLE(2, 3, 0, 1)));
+        v_s1 = _mm_add_epi32(v_s1, _mm_shuffle_epi32(v_s1, _MM_SHUFFLE(1, 0, 3, 2)));
+        sum1 += _mm_cvtsi128_si32(v_s1);
+
+        v_s2 = _mm_add_epi32(v_s2, _mm_shuffle_epi32(v_s2, _MM_SHUFFLE(2, 3, 0, 1)));
+        v_s2 = _mm_add_epi32(v_s2, _mm_shuffle_epi32(v_s2, _MM_SHUFFLE(1, 0, 3, 2)));
+        sum2 += _mm_cvtsi128_si32(v_s2);
 #elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
         uint32x4_t v_s2 = make_uint32x4(0, 0, 0, sum1 * (NMAX / 32));
         uint32x4_t v_s1 = make_uint32x4(0, 0, 0, 0);
@@ -236,6 +272,27 @@ unsigned int ADLER32_FUNCTION_NAME (const unsigned char * T, int n, int features
     }
 
     MOD(sum1); MOD(sum2);
+
+    return sum1 | (sum2 << 16);
+}
+
+#endif
+
+#if !defined(LIBBSC_DYNAMIC_CPU_DISPATCH) || LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_SSE2
+
+unsigned int bsc_adler32_combine(unsigned int adler1, unsigned int adler2, int n2)
+{
+    unsigned int rem  = (unsigned int)(n2 % BASE);
+    unsigned int sum1 = adler1 & 0xffff;
+    unsigned int sum2 = (rem * sum1) % BASE;
+
+    sum1 += (adler2 & 0xffff) + BASE - 1;
+    sum2 += (adler1 >> 16) + (adler2 >> 16) + BASE - rem;
+
+    if (sum1 >= BASE) sum1 -= BASE;
+    if (sum1 >= BASE) sum1 -= BASE;
+    if (sum2 >= 2 * BASE) sum2 -= 2 * BASE;
+    if (sum2 >= BASE) sum2 -= BASE;
 
     return sum1 | (sum2 << 16);
 }

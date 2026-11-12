@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -102,6 +102,7 @@ int paramFeatures()
 
 #ifdef _WIN32
     #include <windows.h>
+    #include <io.h>
 
     static unsigned long long bsc_now_ns() 
     {
@@ -123,9 +124,50 @@ int paramFeatures()
 
         return ns + fractional_ns;
     }
+
+    typedef HANDLE BSC_FILEHANDLE;
+
+    #define BSC_INVALID_FILEHANDLE INVALID_HANDLE_VALUE
+
+    static BSC_FILEHANDLE bsc_open_positional(FILE * file, bool write)
+    {
+        HANDLE handle = (HANDLE)_get_osfhandle(_fileno(file));
+        if (handle == INVALID_HANDLE_VALUE || GetFileType(handle) != FILE_TYPE_DISK) return BSC_INVALID_FILEHANDLE;
+
+        return ReOpenFile(handle, write ? GENERIC_WRITE : GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, FILE_FLAG_OVERLAPPED);
+    }
+
+    static void bsc_close_positional(BSC_FILEHANDLE handle)
+    {
+        if (handle != BSC_INVALID_FILEHANDLE) CloseHandle(handle);
+    }
+
+    static bool bsc_positional_io(BSC_FILEHANDLE handle, unsigned char * buffer, int size, BSC_FILEOFFSET offset, bool write)
+    {
+        if (offset < 0) return false;
+
+        OVERLAPPED overlapped; memset(&overlapped, 0, sizeof(overlapped));
+
+        overlapped.Offset       = (DWORD)((unsigned long long)offset >>  0);
+        overlapped.OffsetHigh   = (DWORD)((unsigned long long)offset >> 32);
+        overlapped.hEvent       = CreateEvent(NULL, TRUE, FALSE, NULL);
+
+        if (overlapped.hEvent == NULL) return false;
+
+        DWORD bytes = 0;
+        BOOL  result = write ? WriteFile(handle, buffer, (DWORD)size, NULL, &overlapped) : ReadFile(handle, buffer, (DWORD)size, NULL, &overlapped);
+        if (result || GetLastError() == ERROR_IO_PENDING) result = GetOverlappedResult(handle, &overlapped, &bytes, TRUE);
+
+        CloseHandle(overlapped.hEvent);
+
+        return result && bytes == (DWORD)size;
+    }
 #else
     #include <time.h>
     #include <sys/time.h>
+    #include <unistd.h>
+    #include <errno.h>
+    #include <sys/stat.h>
 
     static unsigned long long bsc_now_ns()
     {
@@ -157,6 +199,38 @@ int paramFeatures()
 
         return (unsigned long long)tv.tv_sec * 1000000000ull + (unsigned long long)tv.tv_usec * 1000ull;
      }
+
+    typedef int BSC_FILEHANDLE;
+
+    #define BSC_INVALID_FILEHANDLE (-1)
+
+    static BSC_FILEHANDLE bsc_open_positional(FILE * file, bool write)
+    {
+        struct stat st;
+        if (sizeof(off_t) < sizeof(BSC_FILEOFFSET) || fstat(fileno(file), &st) != 0 || !S_ISREG(st.st_mode)) return BSC_INVALID_FILEHANDLE;
+
+        return fileno(file);
+    }
+
+    static void bsc_close_positional(BSC_FILEHANDLE handle)
+    {
+    }
+
+    static bool bsc_positional_io(BSC_FILEHANDLE handle, unsigned char * buffer, int size, BSC_FILEOFFSET offset, bool write)
+    {
+        if (offset < 0) return false;
+
+        while (size > 0)
+        {
+            ssize_t bytes = write ? pwrite(handle, buffer, (size_t)size, (off_t)offset) : pread(handle, buffer, (size_t)size, (off_t)offset);
+            if (bytes < 0 && errno == EINTR) continue;
+            if (bytes <= 0) return false;
+
+            buffer += bytes; size -= (int)bytes; offset += (BSC_FILEOFFSET)bytes;
+        }
+
+        return true;
+    }
 #endif
 
 int segmentedBlock[256];
@@ -473,19 +547,30 @@ void Compression(char * argv[])
 
         if (numThreads < 2 * nBlocks) paramEnableMultiThreading = 0;
         if (numThreads > 1 * nBlocks) numThreads = nBlocks;
+        if (numThreads < 1 * nBlocks)
+        {
+            int nRounds = (nBlocks + numThreads - 1) / numThreads;
+            numThreads  = (nBlocks + nRounds - 1) / nRounds;
+        }
     }
 
     if (numThreads > 1)
     {
         #pragma omp parallel num_threads(numThreads)
         {
-            compression_omp(argv[2], fInput, inFileSize, argv[4], fOutput, outFileSize, segmentationStart, segmentationEnd);
+            compression_omp(argv[2], fInput, inFileSize, argv[3], fOutput, outFileSize, segmentationStart, segmentationEnd);
         }
     }
     else
 #endif
     {
-        compression_omp(argv[2], fInput, inFileSize, argv[4], fOutput, outFileSize, segmentationStart, segmentationEnd);
+        compression_omp(argv[2], fInput, inFileSize, argv[3], fOutput, outFileSize, segmentationStart, segmentationEnd);
+    }
+
+    if (fflush(fOutput))
+    {
+        fprintf(stderr, "IO error on file: %s!\n", argv[3]);
+        exit(1);
     }
 
     startTime = bsc_now_ns() - startTime;
@@ -495,13 +580,16 @@ void Compression(char * argv[])
     fclose(fInput); fclose(fOutput);
 }
 
-void decompression_omp(char * input_name, FILE * fInput, BSC_FILEOFFSET& inFileSize, char * output_name, FILE * fOutput, BSC_FILEOFFSET& outFileSize)
+void decompression_omp(char * input_name, FILE * fInput, BSC_FILEHANDLE hInput, BSC_FILEOFFSET& inFileSize, char * output_name, FILE * fOutput, BSC_FILEHANDLE hOutput, BSC_FILEOFFSET& outFileSize)
 {
     int bufferSize = -1; unsigned char * buffer = NULL;
+
+    bool positional = (hInput != BSC_INVALID_FILEHANDLE) && (hOutput != BSC_INVALID_FILEHANDLE);
 
     while (true)
     {
         BSC_FILEOFFSET  blockOffset     = 0;
+        BSC_FILEOFFSET  payloadOffset   = 0;
 
         signed char     sortingContexts = 0;
         signed char     recordSize      = 0;
@@ -576,7 +664,16 @@ void decompression_omp(char * input_name, FILE * fInput, BSC_FILEOFFSET& inFileS
 
                 memcpy(buffer, bscBlockHeader, LIBBSC_HEADER_SIZE);
 
-                if (fread(buffer + LIBBSC_HEADER_SIZE, blockSize - LIBBSC_HEADER_SIZE, 1, fInput) != 1)
+                if (positional)
+                {
+                    payloadOffset = BSC_FTELL(fInput);
+                    if ((blockSize == LIBBSC_HEADER_SIZE) || (blockSize - LIBBSC_HEADER_SIZE > inFileSize - payloadOffset) || BSC_FSEEK(fInput, payloadOffset + (blockSize - LIBBSC_HEADER_SIZE), SEEK_SET))
+                    {
+                        fprintf(stderr, "\nUnexpected end of file: %s!\n", input_name);
+                        exit(1);
+                    }
+                }
+                else if (fread(buffer + LIBBSC_HEADER_SIZE, blockSize - LIBBSC_HEADER_SIZE, 1, fInput) != 1)
                 {
                     fprintf(stderr, "\nUnexpected end of file: %s!\n", input_name);
                     exit(1);
@@ -585,6 +682,17 @@ void decompression_omp(char * input_name, FILE * fInput, BSC_FILEOFFSET& inFileS
         }
 
         if (dataSize == 0) break;
+
+        if (positional && !bsc_positional_io(hInput, buffer + LIBBSC_HEADER_SIZE, blockSize - LIBBSC_HEADER_SIZE, payloadOffset, false))
+        {
+#ifdef LIBBSC_OPENMP
+            #pragma omp critical(print)
+#endif
+            {
+                fprintf(stderr, "\nUnexpected end of file: %s!\n", input_name);
+                exit(1);
+            }
+        }
 
         int result = bsc_decompress(buffer, blockSize, buffer, dataSize, paramFeatures());
         if (result < LIBBSC_NO_ERROR)
@@ -641,20 +749,34 @@ void decompression_omp(char * input_name, FILE * fInput, BSC_FILEOFFSET& inFileS
             }
         }
 
-#ifdef LIBBSC_OPENMP
-        #pragma omp critical(output)
-#endif
+        if (positional && !bsc_positional_io(hOutput, buffer, dataSize, blockOffset, true))
         {
-            if (BSC_FSEEK(fOutput, blockOffset, SEEK_SET))
+#ifdef LIBBSC_OPENMP
+            #pragma omp critical(print)
+#endif
             {
                 fprintf(stderr, "\nIO error on file: %s!\n", output_name);
                 exit(1);
             }
+        }
 
-            if ((int)fwrite(buffer, 1, dataSize, fOutput) != dataSize)
+#ifdef LIBBSC_OPENMP
+        #pragma omp critical(output)
+#endif
+        {
+            if (!positional)
             {
-                fprintf(stderr, "\nIO error on file: %s!\n", output_name);
-                exit(1);
+                if (BSC_FSEEK(fOutput, blockOffset, SEEK_SET))
+                {
+                    fprintf(stderr, "\nIO error on file: %s!\n", output_name);
+                    exit(1);
+                }
+
+                if ((int)fwrite(buffer, 1, dataSize, fOutput) != dataSize)
+                {
+                    fprintf(stderr, "\nIO error on file: %s!\n", output_name);
+                    exit(1);
+                }
             }
 
             outFileSize += (int)(dataSize);
@@ -722,6 +844,9 @@ void Decompression(char * argv[])
         exit(1);
     }
 
+    BSC_FILEHANDLE hInput  = bsc_open_positional(fInput, false);
+    BSC_FILEHANDLE hOutput = bsc_open_positional(fOutput, true);
+
     unsigned long long startTime = bsc_now_ns();
 
 #ifdef LIBBSC_OPENMP
@@ -746,14 +871,16 @@ void Decompression(char * argv[])
     {
         #pragma omp parallel num_threads(numThreads) if(numThreads > 1)
         {
-            decompression_omp(argv[2], fInput, inFileSize, argv[3], fOutput, outFileSize);
+            decompression_omp(argv[2], fInput, hInput, inFileSize, argv[3], fOutput, hOutput, outFileSize);
         }
     }
     else
 #endif
     {
-        decompression_omp(argv[2], fInput, inFileSize, argv[3], fOutput, outFileSize);
+        decompression_omp(argv[2], fInput, hInput, inFileSize, argv[3], fOutput, hOutput, outFileSize);
     }
+
+    bsc_close_positional(hInput); bsc_close_positional(hOutput);
 
     if (BSC_FSEEK(fOutput, 0, SEEK_END))
     {
@@ -826,7 +953,17 @@ void ShowUsage(void)
     fprintf(stdout,"Options may be combined into one, like -b128p -m5e1\n");
 #endif
 
-    exit(0);
+    exit(1);
+}
+
+int ParseNumber(const char * strNum, const char * strEnd)
+{
+    long long number = 0;
+    for (; strNum < strEnd; ++strNum)
+    {
+        number = number * 10 + (*strNum - '0'); if (number > 2147483647) number = 2147483647;
+    }
+    return (int)number;
 }
 
 void ProcessSwitch(char * s)
@@ -843,15 +980,16 @@ void ProcessSwitch(char * s)
             case 'b':
             {
                 char * strNum = s; while ((*s >= '0') && (*s <= '9')) s++;
-                paramBlockSize = atoi(strNum); if (paramBlockSize < 10000) paramBlockSize *= 1024 * 1024;
-                if ((paramBlockSize < 10000) || (paramBlockSize > 2047 * 1024 * 1024)) ShowUsage();
+                long long blockSize = ParseNumber(strNum, s); if (blockSize < 10000) blockSize *= 1024 * 1024;
+                if ((blockSize < 10000) || (blockSize > 2047 * 1024 * 1024)) ShowUsage();
+                paramBlockSize = (int)blockSize;
                 break;
             }
 
             case 'm':
             {
                 char * strNum = s; while ((*s >= '0') && (*s <= '9')) s++;
-                switch (atoi(strNum))
+                switch (ParseNumber(strNum, s))
                 {
                     case 0   : paramBlockSorter = LIBBSC_BLOCKSORTER_BWT; break;
 
@@ -896,7 +1034,7 @@ void ProcessSwitch(char * s)
             case 'H':
             {
                 char * strNum = s; while ((*s >= '0') && (*s <= '9')) s++;
-                paramLZPHashSize = atoi(strNum);
+                paramLZPHashSize = ParseNumber(strNum, s);
                 if ((paramLZPHashSize < 10) || (paramLZPHashSize > 28)) ShowUsage();
                 break;
             }
@@ -904,7 +1042,7 @@ void ProcessSwitch(char * s)
             case 'M':
             {
                 char * strNum = s; while ((*s >= '0') && (*s <= '9')) s++;
-                paramLZPMinLen = atoi(strNum);
+                paramLZPMinLen = ParseNumber(strNum, s);
                 if ((paramLZPMinLen < 4) || (paramLZPMinLen > 255)) ShowUsage();
                 break;
             }
@@ -920,7 +1058,7 @@ void ProcessSwitch(char * s)
             case 'T':
             {
                 char * strNum = s; while ((*s >= '0') && (*s <= '9')) s++;
-                int numThreads = atoi(strNum);
+                int numThreads = ParseNumber(strNum, s);
                 if (numThreads > 1) omp_set_num_threads(numThreads);
                 if (numThreads < 2) paramEnableParallelProcessing = paramEnableMultiThreading = 0;
                 break;
@@ -969,8 +1107,8 @@ int main(int argc, char * argv[])
 #endif
 #endif
 
-    fprintf(stdout, "This is bsc, Block Sorting Compressor. Version %s, 9 September 2025.\n", LIBBSC_VERSION_STRING);
-    fprintf(stdout, "Copyright (c) 2009-2025 Ilya Grebnov <Ilya.Grebnov@gmail.com>.\n\n");
+    fprintf(stdout, "This is bsc, Block Sorting Compressor. Version %s, 21 October 2026.\n", LIBBSC_VERSION_STRING);
+    fprintf(stdout, "Copyright (c) 2009-2026 Ilya Grebnov <Ilya.Grebnov@gmail.com>.\n\n");
 
     ProcessCommandline(argc, argv);
 

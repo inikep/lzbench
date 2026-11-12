@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -48,6 +48,18 @@ public:
         int delta1 = probability * adaptationRate1 - (threshold1 * adaptationRate1);
         
         probability = probability - ((bit ? delta1 : delta0) >> 12);
+    }
+
+    static INLINE void UpdateBitEncode(unsigned int bit, short & probability, const int threshold0, const int adaptationRate0, const int threshold1, const int adaptationRate1)
+    {
+        int delta0 = probability * adaptationRate0 - ((4096 - threshold0) * adaptationRate0 - 4095);
+        int delta1 = probability * adaptationRate1 - (threshold1 * adaptationRate1);
+
+#if defined(__GNUC__) && !defined(__clang__)
+        probability = probability - ((delta0 + ((delta1 - delta0) & (0 - (int)bit))) >> 12);
+#else
+        probability = probability - ((bit ? delta1 : delta0) >> 12);
+#endif
     }
 
     static INLINE void UpdateBit0(short & probability, const int threshold, const int adaptationRate)
@@ -135,11 +147,14 @@ public:
         const int weight            = stretchedProbability & 255;
         const int index             = (stretchedProbability + 2048) >> 8;
         const int probability       = bsc_squash(stretchedProbability);
-        const int mappedProbability = probabilityMap[index] + (((probabilityMap[index + 1] - probabilityMap[index]) * weight) >> 8);
+
+        short * RESTRICT probabilityMapEntry = & probabilityMap[index];
+
+        const int mappedProbability = probabilityMapEntry[0] + (((probabilityMapEntry[1] - probabilityMapEntry[0]) * weight) >> 8);
         const int mixedProbability  = (3 * probability + mappedProbability) >> 2;
 
-        ProbabilityCounter::UpdateBit0(probabilityMap[index], threshold, adaptationRate);
-        ProbabilityCounter::UpdateBit0(probabilityMap[index + 1], threshold, adaptationRate);
+        ProbabilityCounter::UpdateBit0(probabilityMapEntry[0], threshold, adaptationRate);
+        ProbabilityCounter::UpdateBit0(probabilityMapEntry[1], threshold, adaptationRate);
 
         const int eps = mixedProbability - 4095;
 
@@ -167,11 +182,14 @@ public:
         const int weight            = stretchedProbability & 255;
         const int index             = (stretchedProbability + 2048) >> 8;
         const int probability       = bsc_squash(stretchedProbability);
-        const int mappedProbability = probabilityMap[index] + (((probabilityMap[index + 1] - probabilityMap[index]) * weight) >> 8);
+
+        short * RESTRICT probabilityMapEntry = & probabilityMap[index];
+
+        const int mappedProbability = probabilityMapEntry[0] + (((probabilityMapEntry[1] - probabilityMapEntry[0]) * weight) >> 8);
         const int mixedProbability  = (3 * probability + mappedProbability) >> 2;
 
-        ProbabilityCounter::UpdateBit1(probabilityMap[index], threshold, adaptationRate);
-        ProbabilityCounter::UpdateBit1(probabilityMap[index + 1], threshold, adaptationRate);
+        ProbabilityCounter::UpdateBit1(probabilityMapEntry[0], threshold, adaptationRate);
+        ProbabilityCounter::UpdateBit1(probabilityMapEntry[1], threshold, adaptationRate);
 
         const int eps = mixedProbability - 1;
 

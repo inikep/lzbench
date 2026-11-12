@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -40,7 +40,7 @@ extern "C" {
     /**
     * Preprocess a memory block by LZP algorithm.
     * @param input      - the input memory block of n bytes.
-    * @param output     - the output memory block of n bytes.
+    * @param output     - the output memory block of n bytes (can be input).
     * @param n          - the length of the input/output memory blocks.
     * @param hashSize   - the hash table size.
     * @param minLen     - the minimum match length.
@@ -56,10 +56,11 @@ extern "C" {
     * @param n          - the length of the input memory block.
     * @param hashSize   - the hash table size.
     * @param minLen     - the minimum match length.
+    * @param adler32    - if not NULL, receives the Adler-32 checksum of the original memory block.
     * @param features   - the set of additional features.
     * @return The length of original memory block if no error occurred, error code otherwise.
     */
-    int bsc_lzp_decompress(const unsigned char * input, unsigned char * output, int n, int hashSize, int minLen, int features);
+    int bsc_lzp_decompress(const unsigned char * input, unsigned char * output, int n, int hashSize, int minLen, unsigned int * adler32, int features);
 
 #ifdef __cplusplus
 }

@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -45,6 +45,15 @@ extern "C" {
     * @return the value of cyclic redundancy check.
     */
     unsigned int bsc_adler32(const unsigned char * T, int n, int features);
+
+    /**
+    * Combines Adler-32 checksums of two adjacent memory blocks.
+    * @param adler1     - the checksum of the first memory block.
+    * @param adler2     - the checksum of the second memory block.
+    * @param n2         - the length of the second memory block.
+    * @return the checksum of both memory blocks.
+    */
+    unsigned int bsc_adler32_combine(unsigned int adler1, unsigned int adler2, int n2);
 
 #ifdef __cplusplus
 }

@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -47,12 +47,16 @@ See also the bsc and libbsc web site:
 #define LIBBSC_CPU_FEATURE_AVX512CD  9
 #define LIBBSC_CPU_FEATURE_AVX512BW  10
 
-#if (defined(_M_AMD64) || defined(_M_X64) || defined(__amd64) || defined(__x86_64__)) && !defined(LIBBSC_x86_64)
+#if (defined(_M_AMD64) || defined(_M_X64) || defined(__amd64) || defined(__x86_64__)) && !defined(_M_ARM64EC) && !defined(LIBBSC_x86_64)
     #define LIBBSC_x86_64 1
 #endif
 
 #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(LIBBSC_AArch64)
     #define LIBBSC_AArch64 1
+#endif
+
+#if (defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)) || defined(__BIG_ENDIAN__)
+    #error "libbsc requires a little-endian target."
 #endif
 
 #ifndef LIBBSC_CPU_FEATURE

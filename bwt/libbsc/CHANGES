@@ -1,3 +1,14 @@
+Changes in 3.4.0 (October 21, 2026)
+- Updated libsais to v2.12.1.
+- Fixed data corruption in multithreaded compression (present since 3.1.0).
+- Due to this fix, an upgrade to this version is strongly recommended.
+- Improved LZP compression and decompression performance.
+- Improved QLFC compression and decompression performance.
+- Improved multi-block compression and decompression performance.
+- Improved robustness under memory pressure and on 32-bit systems.
+- Fixed command-line error handling.
+- Support for ARM64EC builds; big-endian targets are rejected at compile time.
+
 Changes in 3.3.12 (September 9, 2025)
 - Updated libsais to v2.10.4.
 - Cross-platform monotonic nanosecond clock.
@@ -47,7 +58,7 @@ Changes in 3.3.1 (February, 15 2023)
 
 Changes in 3.3.0 (February, 10 2023)
 - Improved GPU acceleration performance of forward ST algorithm.
-- Implemented GPU acceleration of forward Burrows–Wheeler transform.
+- Implemented GPU acceleration of forward Burrows-Wheeler transform.
 
 Changes in 3.2.5 (November, 23 2022)
 - Fixed data corruption issue in LZP encoder.

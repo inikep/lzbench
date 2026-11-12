@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -183,6 +183,11 @@ int bsc_bwt_encode(unsigned char * T, int n, unsigned char * num_indexes, int * 
         return index;
     }
 
+    if ((size_t)n > ((size_t)-1) / sizeof(int))
+    {
+        return LIBBSC_NOT_ENOUGH_MEMORY;
+    }
+
     if (int * RESTRICT A = (int *)bsc_malloc(n * sizeof(int)))
     {
         if (num_indexes != NULL && indexes != NULL)
@@ -291,6 +296,10 @@ int bsc_bwt_decode(unsigned char * T, int n, int index, unsigned char num_indexe
     if (n <= 1 || bsc_bwt_gpu_decode(T, n, index, features) == 0)
     {
         return LIBBSC_NO_ERROR;
+    }
+    if ((size_t)n + 1 > ((size_t)-1) / sizeof(int))
+    {
+        return LIBBSC_NOT_ENOUGH_MEMORY;
     }
     if (int * P = (int *)bsc_malloc((n + 1) * sizeof(int)))
     {

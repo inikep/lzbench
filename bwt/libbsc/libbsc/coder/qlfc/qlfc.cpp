@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -182,19 +182,15 @@ See also the bsc and libbsc web site:
 INLINE ptrdiff_t QLFC_TRANSFORM_SCAN_FUNCTION_NAME (const unsigned char * RESTRICT input, ptrdiff_t i, unsigned char currentChar)
 {
 #if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
-    __m128i v = _mm_set1_epi8(currentChar);
-
     while (i >= 16)
     {
-        i -= 16; int m = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_loadu_si128((const __m128i *)(input + i)), v)) ^ 0xffff;
+        i -= 16; int m = _mm_movemask_epi8(_mm_cmpeq_epi8(_mm_loadu_si128((const __m128i *)(input + i)), _mm_loadu_si128((const __m128i *)(input + i + 1)))) ^ 0xffff;
         if (m != 0) { return i + bsc_bit_scan_reverse((unsigned int)(m)); }
     }
 #elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
-    unsigned long long v = currentChar; v |= (v << 8); v |= (v << 16); v |= (v << 32);
-
     while (i >= 8)
     {
-        i -= 8; unsigned long long m = (*(const unsigned long long *)(input + i)) ^ v;
+        i -= 8; unsigned long long m = (*(const unsigned long long *)(input + i)) ^ (*(const unsigned long long *)(input + i + 1));
         if (m != 0) { return i + (bsc_bit_scan_reverse64(m) / 8); }
     }
 #endif
@@ -568,15 +564,12 @@ int QLFC_ADAPTIVE_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
         {
             bool bit0 = false, bit1 = false;
 
-            for (int c = 0; c < ALPHABET_SIZE; ++c)
+            for (int c = (currentChar >> (bit + 1)) << (bit + 1); c < ((currentChar >> (bit + 1)) + 1) << (bit + 1); ++c)
             {
                 if (c == prevChar || usedChar[c] == 0)
                 {
-                    if ((currentChar >> (bit + 1)) == (c >> (bit + 1)))
-                    {
-                        if (c & (1 << bit)) bit1 = true; else bit0 = true;
-                        if (bit0 && bit1) break;
-                    }
+                    if (c & (1 << bit)) bit1 = true; else bit0 = true;
+                    if (bit0 && bit1) break;
                 }
             }
 
@@ -588,7 +581,7 @@ int QLFC_ADAPTIVE_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
 
         if (currentChar == prevChar)
         {
-            maxRank = bsc_bit_scan_reverse(rank - 1);
+            maxRank = rank > 1 ? bsc_bit_scan_reverse(rank - 1) : 0;
             break;
         }
 
@@ -723,7 +716,7 @@ int QLFC_ADAPTIVE_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
 
                 for (int context = 1, bit = bitRankSize - 1; bit >= 0; --bit)
                 {
-                    if (rank & (1 << bit))
+                    if ((rank >> bit) & 1)
                     {
                         int probability0 = charPredictor[context], probability1 = statePredictor[context], probability2 = staticPredictor[context];
 
@@ -762,7 +755,7 @@ int QLFC_ADAPTIVE_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
             {
                 mixer = & model->mixerOfRankEscape[context];
 
-                if (rank & (1 << bit))
+                if ((rank >> bit) & 1)
                 {
                     int probability0 = charPredictor[context], probability1 = statePredictor[context], probability2 = staticPredictor[context];
 
@@ -858,7 +851,7 @@ int QLFC_ADAPTIVE_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
 
             for (int context = 1, bit = bitRunSize - 1; bit >= 0; --bit)
             {
-                if (runSize & (1 << bit))
+                if ((runSize >> bit) & 1)
                 {
                     int probability0 = charPredictor[context], probability1 = statePredictor[context], probability2 = staticPredictor[context];
 
@@ -934,15 +927,12 @@ int QLFC_STATIC_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned char
         {
             bool bit0 = false, bit1 = false;
 
-            for (int c = 0; c < ALPHABET_SIZE; ++c)
+            for (int c = (currentChar >> (bit + 1)) << (bit + 1); c < ((currentChar >> (bit + 1)) + 1) << (bit + 1); ++c)
             {
                 if (c == prevChar || usedChar[c] == 0)
                 {
-                    if ((currentChar >> (bit + 1)) == (c >> (bit + 1)))
-                    {
-                        if (c & (1 << bit)) bit1 = true; else bit0 = true;
-                        if (bit0 && bit1) break;
-                    }
+                    if (c & (1 << bit)) bit1 = true; else bit0 = true;
+                    if (bit0 && bit1) break;
                 }
             }
 
@@ -954,7 +944,7 @@ int QLFC_STATIC_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned char
 
         if (currentChar == prevChar)
         {
-            maxRank = bsc_bit_scan_reverse(rank - 1);
+            maxRank = rank > 1 ? bsc_bit_scan_reverse(rank - 1) : 0;
             break;
         }
 
@@ -1087,9 +1077,9 @@ int QLFC_STATIC_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned char
                     int probability = (charPredictor[context] * F_RANK_MM_LR0 + statePredictor[context] * F_RANK_MM_LR1 + staticPredictor[context] * F_RANK_MM_LR2) >> 5;
 
                     unsigned int b = (rank >> bit) & 1;
-                    ProbabilityCounter::UpdateBit(b, statePredictor[context],  F_RANK_MS_TH0, F_RANK_MS_AR0, F_RANK_MS_TH1, F_RANK_MS_AR1);
-                    ProbabilityCounter::UpdateBit(b, charPredictor[context],   F_RANK_MC_TH0, F_RANK_MC_AR0, F_RANK_MC_TH1, F_RANK_MC_AR1);
-                    ProbabilityCounter::UpdateBit(b, staticPredictor[context], F_RANK_MP_TH0, F_RANK_MP_AR0, F_RANK_MP_TH1, F_RANK_MP_AR1);
+                    ProbabilityCounter::UpdateBitEncode(b, statePredictor[context],  F_RANK_MS_TH0, F_RANK_MS_AR0, F_RANK_MS_TH1, F_RANK_MS_AR1);
+                    ProbabilityCounter::UpdateBitEncode(b, charPredictor[context],   F_RANK_MC_TH0, F_RANK_MC_AR0, F_RANK_MC_TH1, F_RANK_MC_AR1);
+                    ProbabilityCounter::UpdateBitEncode(b, staticPredictor[context], F_RANK_MP_TH0, F_RANK_MP_AR0, F_RANK_MP_TH1, F_RANK_MP_AR1);
 
                     context += context + b; coder.EncodeBit(b, probability);
                 }
@@ -1108,9 +1098,9 @@ int QLFC_STATIC_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned char
                 int probability = (charPredictor[context] * F_RANK_PM_LR0 + statePredictor[context] * F_RANK_PM_LR1 + staticPredictor[context] * F_RANK_PM_LR2) >> 5;
 
                 unsigned int b = (rank >> bit) & 1;
-                ProbabilityCounter::UpdateBit(b, statePredictor[context],  F_RANK_PS_TH0, F_RANK_PS_AR0, F_RANK_PS_TH1, F_RANK_PS_AR1);
-                ProbabilityCounter::UpdateBit(b, charPredictor[context],   F_RANK_PC_TH0, F_RANK_PC_AR0, F_RANK_PC_TH1, F_RANK_PC_AR1);
-                ProbabilityCounter::UpdateBit(b, staticPredictor[context], F_RANK_PP_TH0, F_RANK_PP_AR0, F_RANK_PP_TH1, F_RANK_PP_AR1);
+                ProbabilityCounter::UpdateBitEncode(b, statePredictor[context],  F_RANK_PS_TH0, F_RANK_PS_AR0, F_RANK_PS_TH1, F_RANK_PS_AR1);
+                ProbabilityCounter::UpdateBitEncode(b, charPredictor[context],   F_RANK_PC_TH0, F_RANK_PC_AR0, F_RANK_PC_TH1, F_RANK_PC_AR1);
+                ProbabilityCounter::UpdateBitEncode(b, staticPredictor[context], F_RANK_PP_TH0, F_RANK_PP_AR0, F_RANK_PP_TH1, F_RANK_PP_AR1);
 
                 context += context + b; coder.EncodeBit(b, probability);
             }
@@ -1183,9 +1173,9 @@ int QLFC_STATIC_ENCODE_FUNCTION_NAME (const unsigned char * input, unsigned char
                 int probability = (charPredictor[context] * F_RUN_MM_LR0 + statePredictor[context] * F_RUN_MM_LR1 + staticPredictor[context] * F_RUN_MM_LR2) >> 5;
 
                 unsigned int b = (runSize >> bit) & 1;
-                ProbabilityCounter::UpdateBit(b, statePredictor[context],  F_RUN_MS_TH0, F_RUN_MS_AR0, F_RUN_MS_TH1, F_RUN_MS_AR1);
-                ProbabilityCounter::UpdateBit(b, charPredictor[context],   F_RUN_MC_TH0, F_RUN_MC_AR0, F_RUN_MC_TH1, F_RUN_MC_AR1);
-                ProbabilityCounter::UpdateBit(b, staticPredictor[context], F_RUN_MP_TH0, F_RUN_MP_AR0, F_RUN_MP_TH1, F_RUN_MP_AR1);
+                ProbabilityCounter::UpdateBitEncode(b, statePredictor[context],  F_RUN_MS_TH0, F_RUN_MS_AR0, F_RUN_MS_TH1, F_RUN_MS_AR1);
+                ProbabilityCounter::UpdateBitEncode(b, charPredictor[context],   F_RUN_MC_TH0, F_RUN_MC_AR0, F_RUN_MC_TH1, F_RUN_MC_AR1);
+                ProbabilityCounter::UpdateBitEncode(b, staticPredictor[context], F_RUN_MP_TH0, F_RUN_MP_AR0, F_RUN_MP_TH1, F_RUN_MP_AR1);
 
                 int ctx = context + context + b; context++; if (bitRunSize <= 5) { context = ctx; } coder.EncodeBit(b, probability);
             }
@@ -1228,21 +1218,18 @@ int QLFC_FAST_ENCODE_FUNCTION_NAME (const unsigned char * RESTRICT input, unsign
         {
             bool bit0 = false, bit1 = false;
 
-            for (int c = 0; c < ALPHABET_SIZE; ++c)
+            for (int c = (currentChar >> (bit + 1)) << (bit + 1); c < ((currentChar >> (bit + 1)) + 1) << (bit + 1); ++c)
             {
                 if (c == prevChar || usedChar[c] == 0)
                 {
-                    if ((currentChar >> (bit + 1)) == (c >> (bit + 1)))
-                    {
-                        if (c & (1 << bit)) bit1 = true; else bit0 = true;
-                        if (bit0 && bit1) break;
-                    }
+                    if (c & (1 << bit)) bit1 = true; else bit0 = true;
+                    if (bit0 && bit1) break;
                 }
             }
 
             if (bit0 && bit1)
             {
-                coder.EncodeBit<1>(currentChar & (1 << bit), 1);
+                coder.EncodeBit<1>((currentChar >> bit) & 1, 1);
             }
         }
 
@@ -1469,15 +1456,12 @@ int QLFC_ADAPTIVE_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
         {
             bool bit0 = false, bit1 = false;
 
-            for (int c = 0; c < ALPHABET_SIZE; ++c)
+            for (int c = currentChar << (bit + 1); c < (currentChar + 1) << (bit + 1); ++c)
             {
                 if (c == prevChar || usedChar[c] == 0)
                 {
-                    if (currentChar == (c >> (bit + 1)))
-                    {
-                        if (c & (1 << bit)) bit1 = true; else bit0 = true;
-                        if (bit0 && bit1) break;
-                    }
+                    if (c & (1 << bit)) bit1 = true; else bit0 = true;
+                    if (bit0 && bit1) break;
                 }
             }
 
@@ -1496,7 +1480,7 @@ int QLFC_ADAPTIVE_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
 
         if (currentChar == prevChar)
         {
-            maxRank = bsc_bit_scan_reverse(rank - 1);
+            maxRank = rank > 1 ? bsc_bit_scan_reverse(rank - 1) : 0;
             break;
         }
 
@@ -1719,7 +1703,21 @@ int QLFC_ADAPTIVE_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned ch
             contextRank4 = ((contextRank4 << 2) | (rank < 3    ? rank : 3)) & 0xff;
             contextRun   = ((contextRun   << 1) | (runSize < 3 ? 1    : 0)) & 0xf;
 
-            for (; runSize > 0; --runSize) output[i++] = currentChar;
+            if (((unsigned int)runSize <= 16) && (i <= n - 16))
+            {
+#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
+                _mm_storeu_si128((__m128i *)(output + i), _mm_set1_epi8((char)currentChar));
+#elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
+                vst1q_u8(output + i, vdupq_n_u8((unsigned char)currentChar));
+#else
+                memset(output + i, currentChar, 16);
+#endif
+                i += runSize;
+            }
+            else
+            {
+                for (; runSize > 0; --runSize) output[i++] = currentChar;
+            }
         }
         else
         {
@@ -1779,15 +1777,12 @@ int QLFC_STATIC_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char
         {
             bool bit0 = false, bit1 = false;
 
-            for (int c = 0; c < ALPHABET_SIZE; ++c)
+            for (int c = currentChar << (bit + 1); c < (currentChar + 1) << (bit + 1); ++c)
             {
                 if (c == prevChar || usedChar[c] == 0)
                 {
-                    if (currentChar == (c >> (bit + 1)))
-                    {
-                        if (c & (1 << bit)) bit1 = true; else bit0 = true;
-                        if (bit0 && bit1) break;
-                    }
+                    if (c & (1 << bit)) bit1 = true; else bit0 = true;
+                    if (bit0 && bit1) break;
                 }
             }
 
@@ -1806,7 +1801,7 @@ int QLFC_STATIC_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char
 
         if (currentChar == prevChar)
         {
-            maxRank = bsc_bit_scan_reverse(rank - 1);
+            maxRank = rank > 1 ? bsc_bit_scan_reverse(rank - 1) : 0;
             break;
         }
 
@@ -1840,18 +1835,22 @@ int QLFC_STATIC_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char
                 while (true)
                 {
                     if (bitRankSize == maxRank) break;
-                    if (coder.DecodeBit((*charPredictor * F_RANK_EM_LR0 + *statePredictor * F_RANK_EM_LR1 + *staticPredictor * F_RANK_EM_LR2) >> 5))
+
+                    int probability = (*charPredictor * F_RANK_EM_LR0 + *statePredictor * F_RANK_EM_LR1 + *staticPredictor * F_RANK_EM_LR2) >> 5;
+                    if (coder.PeakBit(probability))
                     {
                         ProbabilityCounter::UpdateBit1(*statePredictor,  F_RANK_ES_TH1, F_RANK_ES_AR1); statePredictor++;
                         ProbabilityCounter::UpdateBit1(*charPredictor,   F_RANK_EC_TH1, F_RANK_EC_AR1); charPredictor++;
                         ProbabilityCounter::UpdateBit1(*staticPredictor, F_RANK_EP_TH1, F_RANK_EP_AR1); staticPredictor++;
                         bitRankSize++;
+                        coder.DecodeBit1(probability);
                     }
                     else
                     {
                         ProbabilityCounter::UpdateBit0(*statePredictor,  F_RANK_ES_TH0, F_RANK_ES_AR0);
                         ProbabilityCounter::UpdateBit0(*charPredictor,   F_RANK_EC_TH0, F_RANK_EC_AR0);
                         ProbabilityCounter::UpdateBit0(*staticPredictor, F_RANK_EP_TH0, F_RANK_EP_AR0);
+                        coder.DecodeBit0(probability);
                         break;
                     }
                 }
@@ -1949,18 +1948,21 @@ int QLFC_STATIC_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char
             int runSize = 1, bitRunSize = 1;
             while (true)
             {
-                if (coder.DecodeBit((*charPredictor * F_RUN_EM_LR0 + *statePredictor * F_RUN_EM_LR1 + *staticPredictor * F_RUN_EM_LR2) >> 5))
+                int probability = (*charPredictor * F_RUN_EM_LR0 + *statePredictor * F_RUN_EM_LR1 + *staticPredictor * F_RUN_EM_LR2) >> 5;
+                if (coder.PeakBit(probability))
                 {
                     ProbabilityCounter::UpdateBit1(*statePredictor,  F_RUN_ES_TH1, F_RUN_ES_AR1); statePredictor++;
                     ProbabilityCounter::UpdateBit1(*charPredictor,   F_RUN_EC_TH1, F_RUN_EC_AR1); charPredictor++;
                     ProbabilityCounter::UpdateBit1(*staticPredictor, F_RUN_EP_TH1, F_RUN_EP_AR1); staticPredictor++;
                     bitRunSize++;
+                    coder.DecodeBit1(probability);
                 }
                 else
                 {
                     ProbabilityCounter::UpdateBit0(*statePredictor,  F_RUN_ES_TH0, F_RUN_ES_AR0);
                     ProbabilityCounter::UpdateBit0(*charPredictor,   F_RUN_EC_TH0, F_RUN_EC_AR0);
                     ProbabilityCounter::UpdateBit0(*staticPredictor, F_RUN_EP_TH0, F_RUN_EP_AR0);
+                    coder.DecodeBit0(probability);
                     break;
                 }
             }
@@ -1986,7 +1988,21 @@ int QLFC_STATIC_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char
             contextRank4 = ((contextRank4 << 2) | (rank < 3    ? rank : 3)) & 0xff;
             contextRun   = ((contextRun   << 1) | (runSize < 3 ? 1    : 0)) & 0xf;
         
-            for (; runSize > 0; --runSize) output[i++] = currentChar;
+            if (((unsigned int)runSize <= 16) && (i <= n - 16))
+            {
+#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
+                _mm_storeu_si128((__m128i *)(output + i), _mm_set1_epi8((char)currentChar));
+#elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
+                vst1q_u8(output + i, vdupq_n_u8((unsigned char)currentChar));
+#else
+                memset(output + i, currentChar, 16);
+#endif
+                i += runSize;
+            }
+            else
+            {
+                for (; runSize > 0; --runSize) output[i++] = currentChar;
+            }
         }
         else
         {
@@ -2033,15 +2049,12 @@ int QLFC_FAST_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char *
         {
             bool bit0 = false, bit1 = false;
 
-            for (int c = 0; c < ALPHABET_SIZE; ++c)
+            for (int c = currentChar << (bit + 1); c < (currentChar + 1) << (bit + 1); ++c)
             {
                 if (c == prevChar || usedChar[c] == 0)
                 {
-                    if (currentChar == (c >> (bit + 1)))
-                    {
-                        if (c & (1 << bit)) bit1 = true; else bit0 = true;
-                        if (bit0 && bit1) break;
-                    }
+                    if (c & (1 << bit)) bit1 = true; else bit0 = true;
+                    if (bit0 && bit1) break;
                 }
             }
 
@@ -2181,7 +2194,21 @@ int QLFC_FAST_DECODE_FUNCTION_NAME (const unsigned char * input, unsigned char *
                         runSize += runSize + b;
                     }
 
-                    for (; runSize > 0; --runSize) { *output++ = currentChar; }
+                    if ((runSize <= 16) && (output + 16 <= outputEnd))
+                    {
+#if LIBBSC_CPU_FEATURE >= LIBBSC_CPU_FEATURE_SSE2
+                        _mm_storeu_si128((__m128i *)output, _mm_set1_epi8((char)currentChar));
+#elif LIBBSC_CPU_FEATURE == LIBBSC_CPU_FEATURE_A64
+                        vst1q_u8(output, vdupq_n_u8((unsigned char)currentChar));
+#else
+                        memset(output, currentChar, 16);
+#endif
+                        output += runSize;
+                    }
+                    else
+                    {
+                        for (; runSize > 0; --runSize) { *output++ = currentChar; }
+                    }
                 }
                 else
                 {
@@ -2264,6 +2291,29 @@ int bsc_qlfc_fast_encode_block(const unsigned char * input, unsigned char * outp
         bsc_free(model);
     };
     return LIBBSC_NOT_ENOUGH_MEMORY;
+}
+
+int bsc_qlfc_model_size(int coder)
+{
+    return coder == LIBBSC_CODER_QLFC_FAST ? (int)sizeof(QlfcStatisticalModel2) : (int)sizeof(QlfcStatisticalModel1);
+}
+
+int bsc_qlfc_encode_block_model(const unsigned char * input, unsigned char * output, unsigned char * buffer, int inputSize, int outputSize, int coder, void * model)
+{
+    if (coder == LIBBSC_CODER_QLFC_STATIC)   return bsc_qlfc_static_encode  (input, output, buffer, inputSize, outputSize, (QlfcStatisticalModel1 *)model);
+    if (coder == LIBBSC_CODER_QLFC_ADAPTIVE) return bsc_qlfc_adaptive_encode(input, output, buffer, inputSize, outputSize, (QlfcStatisticalModel1 *)model);
+    if (coder == LIBBSC_CODER_QLFC_FAST)     return bsc_qlfc_fast_encode    (input, output, buffer, inputSize, outputSize, (QlfcStatisticalModel2 *)model);
+
+    return LIBBSC_BAD_PARAMETER;
+}
+
+int bsc_qlfc_decode_block_model(const unsigned char * input, unsigned char * output, int coder, void * model)
+{
+    if (coder == LIBBSC_CODER_QLFC_STATIC)   return bsc_qlfc_static_decode  (input, output, (QlfcStatisticalModel1 *)model);
+    if (coder == LIBBSC_CODER_QLFC_ADAPTIVE) return bsc_qlfc_adaptive_decode(input, output, (QlfcStatisticalModel1 *)model);
+    if (coder == LIBBSC_CODER_QLFC_FAST)     return bsc_qlfc_fast_decode    (input, output, (QlfcStatisticalModel2 *)model);
+
+    return LIBBSC_BAD_PARAMETER;
 }
 
 int bsc_qlfc_static_decode_block(const unsigned char * input, unsigned char * output)
