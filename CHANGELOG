@@ -12,7 +12,7 @@ v2.x.y (work-in-progress)
 - updated aceapex to 2.6.1 (thanks to @yasha1971-coder); adds aceapex_fast (levels 1-8): the FAST profile, LZ77 without an entropy stage
 - updated kanzi to 2.6.0 (by @flanglet)
 - updated libbsc to 3.4.0; fixes data corruption in multithreaded compression (present since 3.1.0),
-  faster LZP, QLFC and multi-block compression and decompression
+  faster LZP, QLFC and multi-block compression and decompression; bsc builds on 32-bit ARM again (lzbench#293)
 - updated lz4 to 1.11.0 (by @data-man)
 - updated lzav to 7.2 (thanks to @avaneev)
 - updated mbrotli to 0.5.20 (by @Mnwa)

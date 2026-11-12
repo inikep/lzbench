@@ -7,12 +7,6 @@ ifeq ($(TARGET_BIG_ENDIAN),1)
     DONT_BUILD_BSC ?= 1
 endif
 
-# On 32-bit ARM (armv5/v7) bsc crashes in its multithreaded decompress path
-# (lzbench#293).
-ifneq (,$(filter arm armeb armv%,$(TARGET_ARCH)))
-    DONT_BUILD_BSC ?= 1
-endif
-
 BSC_OBJS := bwt/libbsc/libbsc/bwt/libsais/libsais.o
 BSC_OBJS += $(addprefix bwt/libbsc/libbsc/, \
     adler32/adler32.o bwt/bwt.o coder/coder.o coder/qlfc/qlfc.o coder/qlfc/qlfc_model.o \
