@@ -8,7 +8,7 @@
 This file is a part of bsc and/or libbsc, a program and a library for
 lossless, block-sorting data compression.
 
-   Copyright (c) 2009-2024 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -97,6 +97,36 @@ extern "C" {
     * @return the length of decompressed memory block if no error occurred, error code otherwise.
     */
     int bsc_qlfc_fast_decode_block(const unsigned char * input, unsigned char * output);
+
+    /**
+    * Returns the size of the model used by a Quantized Local Frequency Coding algorithm.
+    * @param coder      - the entropy coding algorithm.
+    * @return the size of the model in bytes.
+    */
+    int bsc_qlfc_model_size(int coder);
+
+    /**
+    * Compress a memory block using Quantized Local Frequency Coding algorithm and the caller's model.
+    * @param input      - the input memory block of n bytes.
+    * @param output     - the output memory block of n bytes.
+    * @param buffer     - the temporary memory block of inputSize bytes.
+    * @param inputSize  - the length of the input memory block.
+    * @param outputSize - the length of the output memory block.
+    * @param coder      - the entropy coding algorithm.
+    * @param model      - the model memory block of bsc_qlfc_model_size(coder) bytes.
+    * @return the length of compressed memory block if no error occurred, error code otherwise.
+    */
+    int bsc_qlfc_encode_block_model(const unsigned char * input, unsigned char * output, unsigned char * buffer, int inputSize, int outputSize, int coder, void * model);
+
+    /**
+    * Decompress a memory block using Quantized Local Frequency Coding algorithm and the caller's model.
+    * @param input      - the input memory block of n bytes.
+    * @param output     - the output memory block of n bytes.
+    * @param coder      - the entropy coding algorithm.
+    * @param model      - the model memory block of bsc_qlfc_model_size(coder) bytes.
+    * @return the length of decompressed memory block if no error occurred, error code otherwise.
+    */
+    int bsc_qlfc_decode_block_model(const unsigned char * input, unsigned char * output, int coder, void * model);
 
 #ifdef __cplusplus
 }

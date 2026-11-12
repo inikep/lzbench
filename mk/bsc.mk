@@ -2,7 +2,7 @@
 CODECS += BSC
 BSC_UPSTREAM := git-tags https://github.com/IlyaGrebnov/libbsc desc=bsc1
 
-# bsc assumes a little-endian CPU: its round trip fails on s390x
+# bsc needs a little-endian CPU (3.4.0 has an #error for big-endian targets)
 ifeq ($(TARGET_BIG_ENDIAN),1)
     DONT_BUILD_BSC ?= 1
 endif

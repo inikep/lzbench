@@ -10,7 +10,7 @@ block-sorting data compression algorithms.
 libbsc is a library based on bsc, it uses the same algorithms
 as bsc and enables you to compress memory blocks.
 
-Copyright (c) 2009-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
+Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
 See file AUTHORS for a full list of contributors.
 
@@ -21,7 +21,7 @@ See the bsc and libbsc web site:
 Software License:
 -----------------
 
-Copyright (c) 2009-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
+Copyright (c) 2009-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -70,3 +70,28 @@ You also need to install latest graphics drivers that support CUDA.
 longer than 2 seconds will trigger the Timeout Detection and Recovery (TDR) mechanism.
 Detailed information on disabling the Windows TDR is available at:
 http://msdn.microsoft.com/en-us/windows/hardware/gg487368.aspx#E2
+
+Installation
+------------
+1. Make sure you have typical build tools: cmake, make or another build tool,
+   and C/C++ compilers.
+2. Clone this repo locally and cd to it.
+3. Configure and build the project:
+
+       cmake -S . -B build
+       cmake --build build
+
+   To build libbsc as a shared library, configure with:
+
+       cmake -S . -B build -DBSC_BUILD_SHARED_LIB=ON
+       cmake --build build
+
+   If you do not want CUDA support, add `-DBSC_ENABLE_CUDA=OFF`.
+
+4. Optionally run the tests:
+
+       ctest --test-dir build --output-on-failure
+
+5. Install the library and command-line tool:
+
+       sudo cmake --install build

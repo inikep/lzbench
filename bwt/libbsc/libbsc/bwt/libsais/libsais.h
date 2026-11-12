@@ -3,19 +3,22 @@
 This file is a part of libsais, a library for linear time suffix array,
 longest common prefix array and burrows wheeler transform construction.
 
-   Copyright (c) 2021-2025 Ilya Grebnov <ilya.grebnov@gmail.com>
+   Copyright (c) 2021-2026 Ilya Grebnov <ilya.grebnov@gmail.com>
 
-   Licensed under the Apache License, Version 2.0 (the "License");
-   you may not use this file except in compliance with the License.
-   You may obtain a copy of the License at
+   Licensed under the Apache License, Version 2.0 with LLVM Exceptions
+   (the "License"); you may not use this file except in compliance with
+   the License. You may obtain a copy of the License in the file LICENSE
+   distributed with this software or at
 
-       http://www.apache.org/licenses/LICENSE-2.0
+       https://llvm.org/LICENSE.txt
 
    Unless required by applicable law or agreed to in writing, software
    distributed under the License is distributed on an "AS IS" BASIS,
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+   SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 Please see the file LICENSE for full copyright information.
 
@@ -25,9 +28,9 @@ Please see the file LICENSE for full copyright information.
 #define LIBSAIS_H 1
 
 #define LIBSAIS_VERSION_MAJOR   2
-#define LIBSAIS_VERSION_MINOR   10
-#define LIBSAIS_VERSION_PATCH   4
-#define LIBSAIS_VERSION_STRING  "2.10.4"
+#define LIBSAIS_VERSION_MINOR   12
+#define LIBSAIS_VERSION_PATCH   1
+#define LIBSAIS_VERSION_STRING  "2.12.1"
 
 #ifdef _WIN32
     #ifdef LIBSAIS_SHARED
@@ -52,6 +55,7 @@ extern "C" {
     /**
     * Creates the libsais context that allows reusing allocated memory with each libsais operation. 
     * In multi-threaded environments, use one context per thread for parallel executions.
+    * With the extra space fs of at least n / 2, operations using this context allocate no memory.
     * @return the libsais context, NULL otherwise.
     */
     LIBSAIS_API void * libsais_create_ctx(void);
@@ -60,6 +64,7 @@ extern "C" {
     /**
     * Creates the libsais context that allows reusing allocated memory with each parallel libsais operation using OpenMP. 
     * In multi-threaded environments, use one context per thread for parallel executions.
+    * With the extra space fs of at least n / 2, operations using this context allocate no memory.
     * @param threads The number of OpenMP threads to use (can be 0 for OpenMP default).
     * @return the libsais context, NULL otherwise.
     */
@@ -196,6 +201,18 @@ extern "C" {
     LIBSAIS_API int32_t libsais_bwt_aux(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, int32_t fs, int32_t * freq, int32_t r, int32_t * I);
 
     /**
+    * Constructs the cyclic burrows-wheeler transformed string (BWT) of a given string (rotations sorted without end-of-string symbol, as in bzip2).
+    * @param T [0..n-1] The input string.
+    * @param U [0..n-1] The output string (can be T).
+    * @param A [0..n-1+fs] The temporary array.
+    * @param n The length of the given string.
+    * @param fs The extra space available at the end of A array (0 should be enough for most cases).
+    * @param freq [0..255] The output symbol frequency table (can be NULL).
+    * @return The primary index (0-based row of the given string among its sorted rotations) if no error occurred, -1 or -2 otherwise.
+    */
+    LIBSAIS_API int32_t libsais_bwt_cyclic(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, int32_t fs, int32_t * freq);
+
+    /**
     * Constructs the burrows-wheeler transformed string (BWT) of a given string using libsais context.
     * @param ctx The libsais context.
     * @param T [0..n-1] The input string.
@@ -222,6 +239,19 @@ extern "C" {
     * @return 0 if no error occurred, -1 or -2 otherwise.
     */
     LIBSAIS_API int32_t libsais_bwt_aux_ctx(const void * ctx, const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, int32_t fs, int32_t * freq, int32_t r, int32_t * I);
+
+    /**
+    * Constructs the cyclic burrows-wheeler transformed string (BWT) of a given string (rotations sorted without end-of-string symbol, as in bzip2) using libsais context.
+    * @param ctx The libsais context.
+    * @param T [0..n-1] The input string.
+    * @param U [0..n-1] The output string (can be T).
+    * @param A [0..n-1+fs] The temporary array.
+    * @param n The length of the given string.
+    * @param fs The extra space available at the end of A array (0 should be enough for most cases).
+    * @param freq [0..255] The output symbol frequency table (can be NULL).
+    * @return The primary index (0-based row of the given string among its sorted rotations) if no error occurred, -1 or -2 otherwise.
+    */
+    LIBSAIS_API int32_t libsais_bwt_cyclic_ctx(const void * ctx, const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, int32_t fs, int32_t * freq);
 
 #if defined(LIBSAIS_OPENMP)
     /**
@@ -251,6 +281,19 @@ extern "C" {
     * @return 0 if no error occurred, -1 or -2 otherwise.
     */
     LIBSAIS_API int32_t libsais_bwt_aux_omp(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, int32_t fs, int32_t * freq, int32_t r, int32_t * I, int32_t threads);
+
+    /**
+    * Constructs the cyclic burrows-wheeler transformed string (BWT) of a given string (rotations sorted without end-of-string symbol, as in bzip2) in parallel using OpenMP.
+    * @param T [0..n-1] The input string.
+    * @param U [0..n-1] The output string (can be T).
+    * @param A [0..n-1+fs] The temporary array.
+    * @param n The length of the given string.
+    * @param fs The extra space available at the end of A array (0 should be enough for most cases).
+    * @param freq [0..255] The output symbol frequency table (can be NULL).
+    * @param threads The number of OpenMP threads to use (can be 0 for OpenMP default).
+    * @return The primary index (0-based row of the given string among its sorted rotations) if no error occurred, -1 or -2 otherwise.
+    */
+    LIBSAIS_API int32_t libsais_bwt_cyclic_omp(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, int32_t fs, int32_t * freq, int32_t threads);
 #endif
 
     /**
@@ -328,6 +371,31 @@ extern "C" {
     */
     LIBSAIS_API int32_t libsais_unbwt_aux_ctx(const void * ctx, const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, const int32_t * freq, int32_t r, const int32_t * I);
 
+    /**
+    * Constructs the original string from a given cyclic burrows-wheeler transformed string (BWT) with primary index.
+    * @param T [0..n-1] The input string.
+    * @param U [0..n-1] The output string (can be T).
+    * @param A [0..n] The temporary array (NOTE, temporary array must be n + 1 size).
+    * @param n The length of the given string.
+    * @param freq [0..255] The input symbol frequency table (can be NULL).
+    * @param i The primary index (0-based row of the original string among its sorted rotations).
+    * @return 0 if no error occurred, -1 or -2 otherwise.
+    */
+    LIBSAIS_API int32_t libsais_unbwt_cyclic(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, const int32_t * freq, int32_t i);
+
+    /**
+    * Constructs the original string from a given cyclic burrows-wheeler transformed string (BWT) with primary index using libsais reverse BWT context.
+    * @param ctx The libsais reverse BWT context.
+    * @param T [0..n-1] The input string.
+    * @param U [0..n-1] The output string (can be T).
+    * @param A [0..n] The temporary array (NOTE, temporary array must be n + 1 size).
+    * @param n The length of the given string.
+    * @param freq [0..255] The input symbol frequency table (can be NULL).
+    * @param i The primary index (0-based row of the original string among its sorted rotations).
+    * @return 0 if no error occurred, -1 or -2 otherwise.
+    */
+    LIBSAIS_API int32_t libsais_unbwt_cyclic_ctx(const void * ctx, const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, const int32_t * freq, int32_t i);
+
 #if defined(LIBSAIS_OPENMP)
     /**
     * Constructs the original string from a given burrows-wheeler transformed string (BWT) with primary index in parallel using OpenMP.
@@ -355,6 +423,19 @@ extern "C" {
     * @return 0 if no error occurred, -1 or -2 otherwise.
     */
     LIBSAIS_API int32_t libsais_unbwt_aux_omp(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, const int32_t * freq, int32_t r, const int32_t * I, int32_t threads);
+
+    /**
+    * Constructs the original string from a given cyclic burrows-wheeler transformed string (BWT) with primary index in parallel using OpenMP.
+    * @param T [0..n-1] The input string.
+    * @param U [0..n-1] The output string (can be T).
+    * @param A [0..n] The temporary array (NOTE, temporary array must be n + 1 size).
+    * @param n The length of the given string.
+    * @param freq [0..255] The input symbol frequency table (can be NULL).
+    * @param i The primary index (0-based row of the original string among its sorted rotations).
+    * @param threads The number of OpenMP threads to use (can be 0 for OpenMP default).
+    * @return 0 if no error occurred, -1 or -2 otherwise.
+    */
+    LIBSAIS_API int32_t libsais_unbwt_cyclic_omp(const uint8_t * T, uint8_t * U, int32_t * A, int32_t n, const int32_t * freq, int32_t i, int32_t threads);
 #endif
 
     /**
