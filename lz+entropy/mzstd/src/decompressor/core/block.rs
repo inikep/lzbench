@@ -10,6 +10,7 @@ use ::core::ops::Range;
 use fearless_simd::Simd;
 
 use super::BlockError;
+use super::ahead::WriteAhead;
 use super::copy::MatchCopy;
 use super::dictionary::DecoderEntropy;
 use super::literals::LiteralsDecoder;
@@ -161,9 +162,10 @@ impl BlockDecoder {
     ) -> Result<usize, BlockError> {
         let Target { out, op, context } = target;
         let tree = context.entropy.map(|entropy| &entropy.huffman);
-        let (literals, used) = self
-            .literals
-            .decode(simd, content, context.block_max, tree)?;
+        let ahead = out.ahead();
+        let (literals, used) =
+            self.literals
+                .decode(simd, content, context.block_max, tree, ahead)?;
         let sequences = content.get(used..).unwrap_or(&[]);
         let (count, header_size) = self.sequences.read_header_on(simd, sequences)?;
         if count == 0 {
@@ -208,6 +210,12 @@ pub(crate) trait BlockOutput {
     /// stops.
     fn grows(&self) -> bool {
         true
+    }
+
+    /// The output the next block will write, for this block's literal
+    /// loops to prefetch; nothing by default.
+    fn ahead(&self) -> WriteAhead {
+        WriteAhead::NONE
     }
 
     /// Cuts the buffer at `at` and appends `literals`, then a match of

@@ -26,6 +26,7 @@ use alloc::boxed::Box;
 use fearless_simd::Simd;
 
 use super::BlockError;
+use super::ahead::prefetch_write;
 use super::bits::BitContainer;
 use super::block::Target;
 use super::copy::{
@@ -492,7 +493,13 @@ impl SequenceDecoder<'_> {
 /// execute stops the loop for the caller's cold path. Without it, such a
 /// sequence is executed exactly in place, as the reference does, and the
 /// loop runs to the end.
-struct Executor<'a, 'b, const GROW: bool> {
+///
+/// With `AHEAD`, each sequence also prefetches for writing a block's
+/// maximum past its end ([`prefetch_write`]): the caller sets it while
+/// the next block's whole room lies in the output, so the hint stays
+/// inside it. It is a parameter of the type rather than a field so that
+/// the loop keeps a constant distance and no value to hold.
+struct Executor<'a, 'b, const GROW: bool, const AHEAD: bool> {
     /// The output, from the lowest byte a match may reach, cut to the
     /// block's maximum and the overlength.
     out: &'a mut [u8],
@@ -507,7 +514,7 @@ struct Executor<'a, 'b, const GROW: bool> {
     dictionary: &'b [u8],
 }
 
-impl<const GROW: bool> Executor<'_, '_, GROW> {
+impl<const GROW: bool, const AHEAD: bool> Executor<'_, '_, GROW, AHEAD> {
     /// Executes `pending`, then decodes and executes the `left` sequences
     /// before the last one, and the last one unless `last` was taken,
     /// until one stops the loop; that sequence is returned unexecuted.
@@ -609,6 +616,9 @@ impl<const GROW: bool> Executor<'_, '_, GROW> {
                 }
             } else {
                 wildcopy_match(simd, copy, self.out, lit_end, offset, match_length);
+            }
+            if AHEAD {
+                prefetch_write(self.out, match_end + BLOCK_SIZE_MAX);
             }
         } else {
             if GROW {
@@ -872,21 +882,29 @@ impl SequenceTables {
         let mut left = count - 1;
         let mut last = true;
         if !room.grows() {
-            let mut executor = Executor::<false> {
-                out: cut_output(room.buffer(), base, room_end),
-                op,
-                lits,
-                lp,
-                block_limit,
-                window,
-                dictionary,
-            };
-            executor.run(simd, copy, &mut decoder, &mut left, &mut last, None)?;
-            (op, lp) = (executor.op, executor.lp);
+            // A whole room of the largest block after this one's: every
+            // address the loop prefetches then lies in the output.
+            let ahead = room.ahead().covers(BLOCK_SIZE_MAX);
+            macro_rules! fixed {
+                ($ahead:literal) => {{
+                    let mut executor = Executor::<false, $ahead> {
+                        out: cut_output(room.buffer(), base, room_end),
+                        op,
+                        lits,
+                        lp,
+                        block_limit,
+                        window,
+                        dictionary,
+                    };
+                    executor.run(simd, copy, &mut decoder, &mut left, &mut last, None)?;
+                    (executor.op, executor.lp)
+                }};
+            }
+            (op, lp) = if ahead { fixed!(true) } else { fixed!(false) };
         }
         let mut pending = None;
         while left != 0 || last || pending.is_some() {
-            let mut executor = Executor::<true> {
+            let mut executor = Executor::<true, false> {
                 out: cut_output(room.buffer(), base, room_end),
                 op,
                 lits,

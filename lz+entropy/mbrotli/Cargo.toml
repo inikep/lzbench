@@ -3,17 +3,28 @@
 # crates that are not vendored). The library sources in src/ are unmodified.
 [package]
 name = "mbrotli"
-version = "0.5.20"
+version = "0.5.22"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 description = "Fast Brotli (RFC 7932 and RFC 9841) compression and decompression in safe Rust; encoding is byte-identical to Google's reference encoder"
 repository = "https://github.com/M-Compressors/mbrotli"
-homepage = "https://github.com/M-Compressors/mbrotli"
+homepage = "https://m-compressors.github.io/mbrotli/"
 documentation = "https://docs.rs/mbrotli"
 readme = "README.md"
 keywords = ["brotli", "compression", "encoder", "simd"]
 categories = ["compression", "algorithms", "no-std"]
+exclude = [
+    ".github/**",
+    "architecture/**",
+    "benchmarks/**",
+    "brotli-ffi/**",
+    "docs/**",
+    "fuzz/**",
+    "mbrotli-ffi/**",
+    "specifications/**",
+    "target/**",
+]
 
 [dependencies.fearless_simd]
 version = "1"
@@ -73,3 +84,7 @@ diagnostics = []
 # Keeping the names avoids unexpected_cfgs warnings from the unmodified sources.
 experimental = []
 hotpath = []
+hotpath-cpu = []
+hotpath-alloc = []
+hotpath-callgrind = []
+hotpath-cloud = []

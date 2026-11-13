@@ -113,8 +113,10 @@ unsafe fn process<T>(
         Ok(args) => args,
         Err(_) => return MbrotliResult::InvalidParameter,
     };
-    // SAFETY: caller guarantees a live exclusive handle; all argument regions
-    // have been checked to be disjoint from it and each other.
+    // SAFETY: `validated` is Ok only if `handle_region` accepted the handle, so
+    // it is non-null and aligned; the contract makes a non-null handle a live,
+    // exclusive allocation. All argument regions are disjoint from it and each
+    // other.
     let handle = unsafe { &mut *handle };
     let result = if handle.poisoned {
         (0, 0, MbrotliResult::Error)
@@ -135,8 +137,9 @@ unsafe fn process<T>(
             _ => (0, 0, MbrotliResult::Error),
         }
     };
-    // SAFETY: both writable slots were validated and are disjoint; buffer borrows
-    // have ended. Neither slot overlaps the live handle reference.
+    // SAFETY: `LengthSlot::new` accepted both slots, so they are non-null and
+    // aligned, and the contract makes them writable; they are disjoint, buffer
+    // borrows have ended, and neither overlaps the live handle reference.
     unsafe {
         input_len.write(result.0);
         output_len.write(result.1);
@@ -268,8 +271,9 @@ mod tests {
         assert!(create::<u64>(|| Err(FfiError::Panic)).is_null());
         let handle = create(|| Ok(0u64));
         assert!(!handle.is_null());
-        // SAFETY: handle belongs to this test, all counts are live and disjoint,
-        // and empty buffers may be null. Destroy transfers ownership exactly once.
+        // SAFETY: handle is the non-null allocation asserted above and belongs to
+        // this test, all counts are live and disjoint, and empty buffers may be
+        // null. Destroy transfers ownership exactly once.
         unsafe {
             let (mut read, mut written) = (0, 0);
             let status = process(

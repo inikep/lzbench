@@ -205,10 +205,11 @@ fn shift(mut bytes: &mut [u8], parameter: u16, all: bool) {
         if bytes.len() < length {
             break;
         }
-        let mut scalar = u32::from(first & mask);
-        for &byte in &bytes[1..length] {
-            scalar = (scalar << 6) | u32::from(byte & 63);
-        }
+        let mut scalar = bytes[1..length]
+            .iter()
+            .fold(u32::from(first & mask), |scalar, &byte| {
+                (scalar << 6) | u32::from(byte & 63)
+            });
         scalar += addend;
         for byte in bytes[1..length].iter_mut().rev() {
             *byte = (*byte & 0xc0) | (scalar as u8 & 63);

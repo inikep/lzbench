@@ -55,7 +55,10 @@ pub enum InvalidDataKind {
     /// An invalid Huffman tree description.
     #[error("Huffman tree description")]
     HuffmanTable,
-    /// A Huffman bitstream that is not consumed exactly.
+    /// A Huffman literal stream the reference decoder rejects: one that
+    /// does not end exactly at its first bit where zstd 1.5.7 checks that,
+    /// one that reads too far into the bytes before it, or a malformed
+    /// jump table.
     #[error("Huffman bitstream")]
     HuffmanStream,
     /// An invalid FSE table description.

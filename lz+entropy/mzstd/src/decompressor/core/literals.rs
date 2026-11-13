@@ -15,8 +15,9 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
+use super::ahead::WriteAhead;
 use super::copy::WILDCOPY_OVERLENGTH;
-use super::huffman::{FIXED_OUT, HuffmanTable};
+use super::huffman::{FIXED_OUT, HuffmanTable, TableKind};
 use crate::decompressor::InvalidDataKind;
 use crate::shared::format::EncodingType;
 
@@ -141,6 +142,7 @@ impl LiteralsDecoder {
         content: &'a [u8],
         block_max: usize,
         dictionary: Option<&HuffmanTable>,
+        ahead: WriteAhead,
     ) -> Result<(Literals<'a>, usize), InvalidDataKind> {
         let invalid = InvalidDataKind::LiteralsSection;
         if content.len() < MIN_COMPRESSED_BLOCK {
@@ -221,6 +223,7 @@ impl LiteralsDecoder {
                     self.tree = TreeSource::Missing;
                     let table = self.huffman.get_or_insert_with(Box::default);
                     let used = table.read(section)?;
+                    table.set_kind(TableKind::for_block(four_streams, size, compressed));
                     self.tree = TreeSource::Own;
                     section.get(used..).ok_or(invalid)?
                 } else {
@@ -240,10 +243,17 @@ impl LiteralsDecoder {
                 let buffer = &mut self.buffer[..room];
                 if self.tree == TreeSource::Dictionary {
                     let table = dictionary.ok_or(invalid)?;
-                    table.decode_streams_shared(simd, streams, buffer, size, four_streams)?;
+                    table.decode_streams_shared(
+                        simd,
+                        streams,
+                        buffer,
+                        size,
+                        four_streams,
+                        ahead,
+                    )?;
                 } else {
                     let table = self.huffman.as_deref_mut().ok_or(invalid)?;
-                    table.decode_streams(simd, streams, buffer, size, four_streams)?;
+                    table.decode_streams(simd, streams, buffer, size, four_streams, ahead)?;
                 }
                 let buffer = &self.buffer[..len];
                 Ok((
@@ -265,7 +275,13 @@ mod tests {
     fn decode(content: &[u8]) -> Result<(Vec<u8>, usize), InvalidDataKind> {
         let mut decoder = LiteralsDecoder::default();
         decoder
-            .decode(fearless_simd::Fallback::new(), content, 1 << 17, None)
+            .decode(
+                fearless_simd::Fallback::new(),
+                content,
+                1 << 17,
+                None,
+                WriteAhead::NONE,
+            )
             .map(|(literals, used)| {
                 assert!(literals.bytes.len() >= literals.len + WILDCOPY_OVERLENGTH);
                 (literals.as_slice().to_vec(), used)
@@ -312,7 +328,8 @@ mod tests {
                     fearless_simd::Fallback::new(),
                     &[4 << 3, 0, 0, 0, 0],
                     3,
-                    None
+                    None,
+                    WriteAhead::NONE
                 )
                 .map(|_| ()),
             Err(InvalidDataKind::LiteralsSection)
@@ -362,7 +379,13 @@ mod tests {
         content.push(stream);
         let mut decoder = LiteralsDecoder::default();
         let (literals, used) = decoder
-            .decode(fearless_simd::Fallback::new(), &content, 1 << 17, None)
+            .decode(
+                fearless_simd::Fallback::new(),
+                &content,
+                1 << 17,
+                None,
+                WriteAhead::NONE,
+            )
             .expect("valid");
         assert_eq!(literals.as_slice(), [0, 1]);
         assert_eq!(used, 8);
@@ -371,7 +394,13 @@ mod tests {
         let bytes = u32::to_le_bytes(header);
         let treeless = [bytes[0], bytes[1], bytes[2], stream, 0];
         let (literals, used) = decoder
-            .decode(fearless_simd::Fallback::new(), &treeless, 1 << 17, None)
+            .decode(
+                fearless_simd::Fallback::new(),
+                &treeless,
+                1 << 17,
+                None,
+                WriteAhead::NONE,
+            )
             .expect("valid");
         assert_eq!(literals.as_slice(), [0, 1]);
         assert_eq!(used, 4);
@@ -382,7 +411,13 @@ mod tests {
         wide.extend_from_slice(&[1, 0, 1, 0, 1, 0]);
         assert_eq!(
             decoder
-                .decode(fearless_simd::Fallback::new(), &wide, 1 << 17, None)
+                .decode(
+                    fearless_simd::Fallback::new(),
+                    &wide,
+                    1 << 17,
+                    None,
+                    WriteAhead::NONE
+                )
                 .map(|_| ()),
             Err(InvalidDataKind::HuffmanStream)
         );
@@ -396,10 +431,78 @@ mod tests {
         // only when it is 0x01.
         *widest.last_mut().expect("stream") = 0x01;
         let (literals, used) = decoder
-            .decode(fearless_simd::Fallback::new(), &widest, 1 << 17, None)
+            .decode(
+                fearless_simd::Fallback::new(),
+                &widest,
+                1 << 17,
+                None,
+                WriteAhead::NONE,
+            )
             .expect("valid");
         assert_eq!(literals.as_slice(), [0, 1, 0, 1, 0, 1]);
         assert_eq!(used, 15);
+    }
+
+    /// A literals section of `size` literals over `payload`, in size
+    /// format 0 (one stream) or 2 (four streams), and a slack byte.
+    fn section(kind: u32, four: bool, size: usize, payload: &[u8]) -> Vec<u8> {
+        let mut content = if four {
+            let header = kind | 2 << 2 | (size as u32) << 4 | (payload.len() as u32) << 18;
+            header.to_le_bytes().to_vec()
+        } else {
+            let header = kind | (size as u32) << 4 | (payload.len() as u32) << 14;
+            header.to_le_bytes()[..3].to_vec()
+        };
+        content.extend_from_slice(payload);
+        content.extend_from_slice(&[0, 0]);
+        content
+    }
+
+    #[test]
+    fn treeless_blocks_keep_the_decoder_the_reference_read_their_tree_for() {
+        // The RFC example tree, whose A is the code 1.
+        let tree = [132u8, 0x43, 0x20, 0x10];
+        // A stream of `10`: A and a lone bit, which only the reference's
+        // pair decoder accepts, by capping the bits its last pair reads.
+        let lone = section(3, false, 1, &[0b0000_0110]);
+        let decode = |decoder: &mut LiteralsDecoder, content: &[u8]| {
+            decoder
+                .decode(
+                    fearless_simd::Fallback::new(),
+                    content,
+                    1 << 17,
+                    None,
+                    WriteAhead::NONE,
+                )
+                .map(|(literals, _)| literals.as_slice().to_vec())
+        };
+        // Four streams of 4000 A each compress well enough for the
+        // reference to read the tree for pairs.
+        let mut four = tree.to_vec();
+        let stream = [alloc::vec![0xff; 500], alloc::vec![0x01]].concat();
+        for _ in 0..3 {
+            four.extend_from_slice(&(stream.len() as u16).to_le_bytes());
+        }
+        for _ in 0..4 {
+            four.extend_from_slice(&stream);
+        }
+        assert_eq!(
+            TableKind::for_block(true, 16_000, four.len()),
+            TableKind::Pairs
+        );
+        let mut decoder = LiteralsDecoder::default();
+        let content = section(2, true, 16_000, &four);
+        assert_eq!(decode(&mut decoder, &content), Ok(alloc::vec![0; 16_000]));
+        assert_eq!(decode(&mut decoder, &lone), Ok(alloc::vec![0]));
+        // A single-stream block reads its tree for single symbols.
+        let mut single = tree.to_vec();
+        single.extend_from_slice(&[0xff, 0x01]);
+        let content = section(2, false, 8, &single);
+        assert_eq!(decode(&mut decoder, &content), Ok(alloc::vec![0; 8]));
+        assert_eq!(
+            decode(&mut decoder, &lone),
+            Err(InvalidDataKind::HuffmanStream)
+        );
     }
 
     #[test]
@@ -420,7 +523,8 @@ mod tests {
                     fearless_simd::Fallback::new(),
                     &treeless,
                     1 << 17,
-                    Some(&dictionary)
+                    Some(&dictionary),
+                    WriteAhead::NONE
                 )
                 .map(|_| ()),
             Err(InvalidDataKind::LiteralsSection)
@@ -429,7 +533,13 @@ mod tests {
         // The dictionary's tree is required once the frame inherits it.
         assert_eq!(
             decoder
-                .decode(fearless_simd::Fallback::new(), &treeless, 1 << 17, None)
+                .decode(
+                    fearless_simd::Fallback::new(),
+                    &treeless,
+                    1 << 17,
+                    None,
+                    WriteAhead::NONE
+                )
                 .map(|_| ()),
             Err(InvalidDataKind::LiteralsSection)
         );
@@ -439,6 +549,7 @@ mod tests {
                 &treeless,
                 1 << 17,
                 Some(&dictionary),
+                WriteAhead::NONE,
             )
             .expect("valid");
         assert_eq!((literals.as_slice(), used), (&[0u8, 1][..], 4));
@@ -455,6 +566,7 @@ mod tests {
                 &content,
                 1 << 17,
                 Some(&dictionary),
+                WriteAhead::NONE,
             )
             .expect("valid");
         let own = own.as_slice().to_vec();
@@ -467,6 +579,7 @@ mod tests {
                 &treeless,
                 1 << 17,
                 Some(&dictionary),
+                WriteAhead::NONE,
             )
             .expect("the frame's own tree");
         assert_eq!(again.as_slice(), own);

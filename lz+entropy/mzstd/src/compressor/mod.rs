@@ -17,14 +17,16 @@ mod internal;
 pub mod io;
 #[cfg(not(feature = "no_std"))]
 pub mod parallel;
+mod parameter;
 mod session;
 
 pub use config::{
-    CompressionParams, ConfigError, EncoderConfig, LdmParams, Level, LongDistanceMatching,
-    Parameter, SizeOverflow, Strategy,
+    CompressionParams, ConfigError, DictionaryAttach, EncoderConfig, LdmParams, Level,
+    LongDistanceMatching, Parameter, SizeOverflow, Strategy, Switch,
 };
 pub use encoder::{Compressor, CompressorBuilder};
 pub use error::EncodeError;
+pub use parameter::CParameter;
 pub use session::{
     EncoderSession, EncoderSessionOwned, EncoderStatus, InputSize, Operation, Progress,
     StreamConfig,

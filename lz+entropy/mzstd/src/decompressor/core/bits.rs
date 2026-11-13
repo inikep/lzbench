@@ -298,6 +298,92 @@ impl Sentinel {
     pub(crate) const fn skip(&mut self, count: u32) {
         self.bits <<= count & 63;
     }
+
+    /// The container and the position, for a loop that keeps them apart
+    /// ([`Parked`]).
+    #[inline(always)]
+    pub(crate) const fn into_parts(self) -> (u64, usize) {
+        (self.bits, self.pos)
+    }
+
+    /// A sentinel from its [`Self::into_parts`].
+    #[inline(always)]
+    pub(crate) const fn from_parts(bits: u64, pos: usize) -> Self {
+        Self { bits, pos }
+    }
+
+    /// [`Self::reload`] for a container and a position kept apart: the
+    /// same refill, with the position read from and written back to
+    /// `parked`. Its branch on whether the word lies inside `src` is one
+    /// the compiler cannot remove, so each refill ends a basic block.
+    #[inline(always)]
+    pub(crate) fn reload_parked(bits: &mut u64, parked: &Parked, src: &[u8]) -> bool {
+        let mut sentinel = Self::from_parts(*bits, parked.get());
+        let refilled = sentinel.reload(src);
+        parked.set(sentinel.pos);
+        *bits = sentinel.bits;
+        refilled
+    }
+}
+
+/// A stream position that stays in memory.
+///
+/// A loop over four streams keeps each one's bit container on a chain of
+/// dependent table lookups and needs its position only once a round, to
+/// refill. With more values than registers, the compiler decides which
+/// ones go to the stack, and a container that does adds a store and a
+/// load to its chain every round. A position read and written through
+/// atomic accesses is not a candidate for a register at all, which leaves
+/// the registers to the containers. The accesses are ordinary loads and
+/// stores on every target, and nothing else sees the value.
+#[cfg(target_has_atomic = "ptr")]
+#[derive(Debug)]
+pub(crate) struct Parked(core::sync::atomic::AtomicUsize);
+
+#[cfg(target_has_atomic = "ptr")]
+impl Parked {
+    /// Parks `value`.
+    pub(crate) const fn new(value: usize) -> Self {
+        Self(core::sync::atomic::AtomicUsize::new(value))
+    }
+
+    /// The value.
+    #[inline(always)]
+    pub(crate) fn get(&self) -> usize {
+        self.0.load(core::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Replaces the value.
+    #[inline(always)]
+    pub(crate) fn set(&self, value: usize) {
+        self.0.store(value, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+/// A stream position on targets without pointer-sized atomics, where it
+/// is an ordinary value.
+#[cfg(not(target_has_atomic = "ptr"))]
+#[derive(Debug)]
+pub(crate) struct Parked(core::cell::Cell<usize>);
+
+#[cfg(not(target_has_atomic = "ptr"))]
+impl Parked {
+    /// Parks `value`.
+    pub(crate) const fn new(value: usize) -> Self {
+        Self(core::cell::Cell::new(value))
+    }
+
+    /// The value.
+    #[inline(always)]
+    pub(crate) const fn get(&self) -> usize {
+        self.0.get()
+    }
+
+    /// Replaces the value.
+    #[inline(always)]
+    pub(crate) fn set(&self, value: usize) {
+        self.0.set(value);
+    }
 }
 
 /// A forward little-endian bit reader for FSE table descriptions.
@@ -464,6 +550,39 @@ mod tests {
         assert!(!checked.reload(&src[..checked.remaining(0) + 6]));
         assert_eq!(checked.peek(0), before.peek(0));
         assert_eq!(checked.remaining(0), before.remaining(0));
+    }
+
+    #[test]
+    fn parked_positions_refill_like_the_sentinel_they_came_from() {
+        let src: [u8; 24] = core::array::from_fn(|index| index as u8 * 7 + 3);
+        let mut bits = BitContainer::new(&src[..16]).expect("terminated");
+        bits.reload_fast(&src[..16]);
+        let mut whole = Sentinel::from_container(bits, &src, 0);
+        let (mut container, position) = whole.into_parts();
+        let parked = Parked::new(position);
+        assert_eq!(parked.get(), position);
+        for skip in [8, 13, 3, 20] {
+            whole.skip(skip);
+            container <<= skip;
+            assert!(whole.reload(&src));
+            assert!(Sentinel::reload_parked(&mut container, &parked, &src));
+            assert_eq!(whole.into_parts(), (container, parked.get()));
+            let rebuilt = Sentinel::from_parts(container, parked.get());
+            assert_eq!(rebuilt.peek(0), whole.peek(0));
+            assert_eq!(rebuilt.remaining(0), whole.remaining(0));
+        }
+        // A word that would leave the buffer refuses the refill and leaves
+        // both parts as they were.
+        container <<= 8;
+        let before = (container, parked.get());
+        assert!(!Sentinel::reload_parked(
+            &mut container,
+            &parked,
+            &src[..parked.get() + 6]
+        ));
+        assert_eq!((container, parked.get()), before);
+        parked.set(3);
+        assert_eq!(parked.get(), 3);
     }
 
     #[test]

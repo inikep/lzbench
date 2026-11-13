@@ -72,6 +72,7 @@ impl FramedCompressorBuilder {
     /// Returns invalid encoder settings or inconsistent framing profiles/budgets.
     pub fn build(self) -> Result<FramedCompressor, E> {
         Engine::validate(*self.config.framing_config())?;
+        self.config.encoder_config().validate_standard_frames()?;
         let mut builder = Compressor::builder(*self.config.encoder_config());
         if let Some(backend) = self.backend {
             builder = builder.with_backend(backend);
@@ -174,6 +175,7 @@ impl FramedCompressor {
     pub fn reconfigure(&mut self, config: FramedEncodeConfig) -> Result<(), E> {
         Engine::validate(*config.framing_config())?;
         config.encoder_config().validate()?;
+        config.encoder_config().validate_standard_frames()?;
         if self.active {
             self.recover();
         } else {

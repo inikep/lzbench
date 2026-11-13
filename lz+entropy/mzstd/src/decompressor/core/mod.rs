@@ -8,6 +8,8 @@
 //!   weight decoder;
 //! - [`huffman`]: Huffman tree descriptions and one- or four-stream literal
 //!   decoding;
+//! - [`ahead`]: write prefetches for the output the next block will write,
+//!   which the four-stream literal loops issue;
 //! - [`literals`] and [`sequences`]: the two sections of a compressed block,
 //!   including sequence execution against the history;
 //! - [`block`]: block headers and the per-frame entropy state;
@@ -23,6 +25,7 @@
 //! [`crate::decompressor::DecodeError`] alongside limit, checksum and
 //! lifecycle errors.
 
+mod ahead;
 mod bits;
 mod block;
 mod copy;
@@ -38,6 +41,7 @@ mod stream;
 #[cfg(test)]
 pub(crate) use dictionary::tests::dictionary as test_dictionary;
 pub(crate) use dictionary::{DecoderEntropy, DictView};
+pub(crate) use frame::{FrameHeader, MAGIC_SIZE, header_size};
 pub(crate) use stream::Stream;
 
 use crate::decompressor::InvalidDataKind;

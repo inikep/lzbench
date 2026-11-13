@@ -1,19 +1,33 @@
-# Trimmed for lzbench: dev-dependencies, benches, the workspace and the hotpath
-# feature were stubbed out (they reference files and crates that are not
-# vendored). The library sources in src/ are unmodified.
+# Trimmed for lzbench: dev-dependencies, benches, examples, the workspace and
+# hotpath features were stubbed out (they reference files and crates that are
+# not vendored). The library sources in src/ are unmodified.
 [package]
 name = "mzstd"
-version = "0.2.11"
+version = "0.2.14"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 description = "Zstandard (RFC 8878) compression and decompression in safe Rust; single-threaded encoding is byte-identical to zstd 1.5.7"
 repository = "https://github.com/M-Compressors/mzstd"
-homepage = "https://github.com/M-Compressors/mzstd"
+homepage = "https://m-compressors.github.io/mzstd/"
 documentation = "https://docs.rs/mzstd"
 readme = "README.md"
 keywords = ["zstd", "zstandard", "compression", "encoder", "decoder"]
 categories = ["compression", "algorithms", "no-std"]
+exclude = [
+    ".github/**",
+    "architecture/**",
+    "benchmarks/**",
+    "docs/**",
+    "fuzz/**",
+    "hotpath/**",
+    "mzstd-ffi/**",
+    "scripts/**",
+    "specifications/**",
+    "target/**",
+    "testdata/**",
+    "zstd-ffi/**",
+]
 
 [dependencies.thiserror]
 version = "2"
@@ -58,6 +72,7 @@ compression = [
 ]
 decompression = [
     "dep:borrowed-buf",
+    "dep:branches",
     "dep:fearless_simd",
     "dep:fearless_simd_macros",
     "dep:thiserror",
@@ -79,7 +94,11 @@ no_std = ["fearless_simd?/libm"]
 # surface may not. It adds nothing without a codec.
 framed = []
 
-# Declared but inert in lzbench: upstream wires it to a profiler crate that is
-# not vendored here. Keeping the name avoids unexpected_cfgs warnings from the
-# unmodified sources.
+# Declared but inert in lzbench: upstream wires these to a profiler crate that
+# is not vendored here. Keeping the names avoids unexpected_cfgs warnings from
+# the unmodified sources.
 hotpath = []
+hotpath-cpu = []
+hotpath-alloc = []
+hotpath-callgrind = []
+hotpath-cloud = []

@@ -18,8 +18,18 @@
 //! after `ZSTD_CCtx_loadDictionary_advanced`.
 //!
 //! Parallel compression writes valid frames that decode to the input but are
-//! not those of the reference's multithreaded mode. The magicless format,
-//! `targetCBlockSize` and external sequence producers are not supported.
+//! not those of the reference's multithreaded mode. External sequence
+//! producers are not supported.
+//!
+//! # Reference parameters by number
+//!
+//! `CParameter` turns a `(ZSTD_cParameter, value)` pair, as containers such
+//! as OpenZL store them, into a checked setting that
+//! `EncoderConfig::with_parameter` applies; `FrameFormat::Magicless` drops
+//! the four magic bytes from encoder output and from decoder input;
+//! `DictionaryBuilder::with_level_parameters` prepares a dictionary like
+//! `ZSTD_createCDict_advanced`, usable by any compressor like a referenced
+//! `ZSTD_CDict`.
 //!
 //! # Choose your API
 //!
@@ -264,11 +274,15 @@ mod backend;
 #[cfg(any(feature = "compression", feature = "decompression"))]
 pub mod dictionary;
 #[cfg(any(feature = "compression", feature = "decompression"))]
+mod format;
+#[cfg(any(feature = "compression", feature = "decompression"))]
 mod retention;
 #[cfg(any(feature = "compression", feature = "decompression"))]
 mod shared;
 #[cfg(any(feature = "compression", feature = "decompression"))]
 pub use backend::Backend;
+#[cfg(any(feature = "compression", feature = "decompression"))]
+pub use format::{FrameFormat, FrameFormatError};
 #[cfg(any(feature = "compression", feature = "decompression"))]
 pub use retention::RetentionPolicy;
 
@@ -287,9 +301,10 @@ pub mod io;
 pub mod compressor;
 #[cfg(feature = "compression")]
 pub use compressor::{
-    CompressionParams, Compressor, CompressorBuilder, ConfigError, EncodeError, EncoderConfig,
-    EncoderSession, EncoderSessionOwned, EncoderStatus, InputSize, LdmParams, Level,
-    LongDistanceMatching, Operation, Parameter, Progress, SizeOverflow, Strategy, StreamConfig,
+    CParameter, CompressionParams, Compressor, CompressorBuilder, ConfigError, DictionaryAttach,
+    EncodeError, EncoderConfig, EncoderSession, EncoderSessionOwned, EncoderStatus, InputSize,
+    LdmParams, Level, LongDistanceMatching, Operation, Parameter, Progress, SizeOverflow, Strategy,
+    StreamConfig, Switch,
 };
 
 #[cfg(feature = "decompression")]

@@ -347,14 +347,13 @@ impl Container {
                 limit: 678,
             });
         }
-        for (i, code) in codes.iter().enumerate() {
-            if !(code.iter().all(u8::is_ascii_uppercase) || matches!(code, b"id" | b"mt"))
+        if codes.iter().enumerate().any(|(i, code)| {
+            !(code.iter().all(u8::is_ascii_uppercase) || matches!(code, b"id" | b"mt"))
                 || codes[..i].contains(code)
-            {
-                return Err(FramingError::Invalid(
-                    "invalid or duplicate repeated field code",
-                ));
-            }
+        }) {
+            return Err(FramingError::Invalid(
+                "invalid or duplicate repeated field code",
+            ));
         }
         let bytes = size_of_val(codes);
         self.check_buffer(bytes)?;

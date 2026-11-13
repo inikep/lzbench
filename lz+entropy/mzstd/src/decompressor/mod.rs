@@ -53,6 +53,7 @@ mod decoder;
 mod error;
 #[cfg(feature = "framed")]
 pub mod framing;
+mod header;
 mod session;
 
 #[cfg(not(feature = "no_std"))]
@@ -64,6 +65,7 @@ pub(crate) use self::core::{DecoderEntropy, DictView};
 pub use config::{DecodeLimits, DecoderConfig, FrameMode};
 pub use decoder::{Decompressor, DecompressorBuilder};
 pub use error::{DecodeConfigError, DecodeError, InvalidDataKind};
+pub use header::{FrameHeaderInfo, FrameKind};
 pub use session::{
     DecodeFailure, DecodeOperation, DecodeProgress, DecoderSession, DecoderSessionOwned,
     DecoderStatus,

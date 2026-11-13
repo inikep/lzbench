@@ -169,7 +169,7 @@ impl CDict {
             requested.fparams.no_dict_id,
             &LoadParams {
                 use_row_match_finder,
-                force_window: false,
+                force_window: requested.force_window,
                 ldm: None,
             },
             TableLoad::Full,
@@ -200,16 +200,25 @@ impl CDict {
     }
 
     /// `ZSTD_shouldAttachDict` for a frame of `pledged` bytes.
-    pub(crate) fn should_attach(&self, pref: AttachPref, pledged: u64) -> bool {
+    ///
+    /// `force_window` (`ZSTD_c_forceMaxWindow`) turns attaching off: an
+    /// attached dictionary is not handled by the window enforcement.
+    pub(crate) fn should_attach(&self, pref: AttachPref, pledged: u64, force_window: bool) -> bool {
         let cutoff = ATTACH_DICT_SIZE_CUTOFFS[self.ms.cparams.strategy as usize];
         (pledged <= cutoff || pledged == CONTENT_SIZE_UNKNOWN || pref == AttachPref::ForceAttach)
             && pref != AttachPref::ForceCopy
+            && !force_window
     }
 
     /// The parameter mode a frame of `pledged` bytes resolves with
     /// (`ZSTD_getCParamMode`).
-    pub(crate) fn cparam_mode(&self, pref: AttachPref, pledged: u64) -> CParamMode {
-        if self.should_attach(pref, pledged) {
+    pub(crate) fn cparam_mode(
+        &self,
+        pref: AttachPref,
+        pledged: u64,
+        force_window: bool,
+    ) -> CParamMode {
+        if self.should_attach(pref, pledged, force_window) {
             CParamMode::AttachDict
         } else {
             CParamMode::NoAttachDict

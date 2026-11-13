@@ -194,7 +194,7 @@ pub(crate) fn build_seq_store(
 /// Writes `Number_of_Sequences` in its shortest form at the start of `dst`,
 /// which has room for three bytes, returning the field's size. A block
 /// holds fewer than `LONG_NB_SEQ + 0x10000` sequences.
-fn write_sequence_count(dst: &mut [u8], nb_seq: usize) -> usize {
+pub(crate) fn write_sequence_count(dst: &mut [u8], nb_seq: usize) -> usize {
     if nb_seq < 128 {
         dst[0] = nb_seq as u8;
         1

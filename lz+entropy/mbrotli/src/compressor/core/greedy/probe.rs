@@ -101,11 +101,10 @@ pub(crate) fn sample_store_outlook(block: &[u8]) -> Option<StoreOutlook> {
     // Counted only for a block that is not repetitive: a run of one byte
     // would chain every increment through the same counter.
     let mut histogram = [0u32; 256];
-    for window in windows.iter() {
-        for byte in window.to_le_bytes() {
-            histogram[usize::from(byte)] += 1;
-        }
-    }
+    windows
+        .iter()
+        .flat_map(|window| window.to_le_bytes())
+        .for_each(|byte| histogram[usize::from(byte)] += 1);
     Some(
         if bits_entropy(&histogram) >= INCOMPRESSIBLE_BITS * (samples * WINDOW) as f64 {
             StoreOutlook::Incompressible

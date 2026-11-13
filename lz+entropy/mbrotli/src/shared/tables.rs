@@ -185,9 +185,7 @@ const fn reverse_extras(mut extras: [u8; MAX_REPS_SYMBOLS], end: usize) -> [u8; 
     let mut low = 0;
     let mut high = end - 1;
     while low < high {
-        let extra = extras[low];
-        extras[low] = extras[high];
-        extras[high] = extra;
+        extras.swap(low, high);
         low += 1;
         high -= 1;
     }
@@ -204,12 +202,8 @@ const fn reverse_runs(
     let mut low = start;
     let mut high = end - 1;
     while low < high {
-        let symbol = symbols[low];
-        symbols[low] = symbols[high];
-        symbols[high] = symbol;
-        let extra = extras[low];
-        extras[low] = extras[high];
-        extras[high] = extra;
+        symbols.swap(low, high);
+        extras.swap(low, high);
         low += 1;
         high -= 1;
     }

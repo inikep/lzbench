@@ -10,10 +10,45 @@ parallel compression when a workload benefits from it.
 [![Crates.io](https://img.shields.io/crates/v/mbrotli.svg)][crate]
 [![docs.rs](https://docs.rs/mbrotli/badge.svg)][api]
 [![Tests](https://github.com/M-Compressors/mbrotli/actions/workflows/ci.yml/badge.svg?branch=master)][ci]
-[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#License)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![hotpath-cloud](https://img.shields.io/endpoint?url=https://hotpath.rs/badge-cloud.json)](https://hotpath.rs/app/repos/M-Compressors/mbrotli)
 
-[Quick start](#quick-start) · [Benchmarks](#performance) · [`Read` / `Write`](#read-and-write-streaming) · [API guide][guide] · [Compatibility](#compatibility) · [Changelog][changelog]
+**[Documentation][site]** · [Getting started][start] · [Choose your API][guide] · [Examples][examples] · [Benchmarks](#performance) · [API reference][api] · [Changelog][changelog]
+
+## Quick start
+
+Requires **Rust 1.89 or later**.
+
+```toml
+[dependencies]
+mbrotli = "0.5.22"
+```
+
+```rust
+use mbrotli::{Compressor, Decompressor, EncoderConfig, Quality};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let input = "brotli ".repeat(1000);
+    let config = EncoderConfig::default().with_quality(Quality::Q5);
+    let mut encoder = Compressor::new(config)?;
+    let compressed = encoder.compress(input.as_bytes())?;
+
+    let mut decoder = Decompressor::new(Default::default())?;
+    assert_eq!(decoder.decompress(&compressed)?, input.as_bytes());
+
+    println!("{} -> {} bytes", input.len(), compressed.len());
+    Ok(())
+}
+```
+
+Two defaults to know before shipping:
+
+- **Set the quality explicitly.** `EncoderConfig::default()` uses quality 11, the most
+  expensive compression search. See [configuration][configuration].
+- **Set limits for untrusted input.** Decoder budgets are unlimited by default. See
+  [decompression and limits][decoder-guide].
+
+[Getting started][start] continues with memory reuse, streaming and feature selection.
 
 ## Why mbrotli?
 
@@ -23,456 +58,164 @@ parallel compression when a workload benefits from it.
   against Google Brotli under [equivalent streaming settings](#compatibility).
 - **Native Rust I/O.** Compress and decompress through one-shot Vec/slice APIs,
   `std::io::Read` / `Write` adapters, or explicit incremental sessions.
+- **Sans-I/O sessions.** `Encoder` and `Decoder` sessions work only with the buffers you
+  pass in and never perform I/O themselves, so you can drive them from blocking code,
+  async runtimes, or your own event loop.
 - **Reusable state.** Keep codec workspaces and destination buffers across requests instead
   of rebuilding them for every payload.
 - **You control the threads.** Run parallel compression with scoped threads, Rayon,
   or your own scheduler. The library does not create a thread pool.
 
+## Choose your API
+
+Compression and decompression expose the same I/O shapes. Pick the one that matches
+how your application already moves bytes.
+
+| I/O shape | Compression | Decompression | Guide |
+| --- | --- | --- | --- |
+| Return a new `Vec<u8>` | `Compressor::compress` | `Decompressor::decompress` | [Getting started][start] |
+| Append to a Vec or write into a slice | `compress_into`, `compress_to_slice` | `decompress_into`, `decompress_to_slice` | [Buffers and memory reuse][memory] |
+| Pull through `std::io::Read` | `Compressor::reader` | `Decompressor::reader` | [Read / Write I/O][io] |
+| Push through `std::io::Write` | `Compressor::writer` | `Decompressor::writer` | [Read / Write I/O][io] |
+| Drive buffers yourself, no I/O | `start` → `EncoderSession` | `start` → `DecoderSession` | Sans I/O [compression][sans-io-enc], [decompression][sans-io-dec] |
+| Split one input across your threads | `ParallelCompressor` | Ordinary `Decompressor` | [Parallel compression][parallel] |
+| Several resources in one container | `FramedCompressor` | `FramedDecompressor` | [Framing containers][frames], `experimental` |
+
+The [full API table][guide] also lists owned sessions and the parallel reader, writer
+and streaming entry points.
+
 ## Performance
 
-### lzbench (independent)
-
-<details>
-<summary>lzbench 2.4 results for mbrotli 0.5.2 and Google Brotli 1.2.0</summary>
-
-[lzbench](https://github.com/inikep/lzbench) is a long-running open-source
-in-memory benchmark: every codec is built from source into one binary with the
-same compiler and flags and runs on the same data and machine. Its maintainer ran
-these results, not us: lzbench 2.4 (gcc 15.2), the 211 MB
-[Silesia corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia), one
-thread of an AMD EPYC 9555P with turbo disabled. [Full table][lzbench-results].
-
-mbrotli 0.5.2 against Google Brotli 1.2.0; bold marks the faster result. Ratio is
-the compressed size as a percentage of the input and matches for both.
-
-| Level | Compress mbrotli | Compress brotli | Decompress mbrotli | Decompress brotli | Ratio, % |
-| ----: | ---------------: | --------------: | -----------------: | ----------------: | -------: |
-| -11   |   **0.67 MB/s**  |       0.56 MB/s |           371 MB/s |      **383 MB/s** | 23.78 |
-| -8    |   **14.4 MB/s**  |       12.6 MB/s |           419 MB/s |      **443 MB/s** | 26.96 |
-| -5    |       50.0 MB/s  |   **53.3 MB/s** |           388 MB/s |      **419 MB/s** | 28.10 |
-| -2    |        127 MB/s  |    **139 MB/s** |           349 MB/s |      **378 MB/s** | 32.12 |
-| -0    |        341 MB/s  |        341 MB/s |           291 MB/s |      **322 MB/s** | 37.01 |
-
-**Summary:** the same compressed size as Google Brotli (+0.005% at -11),
-**14–20% faster** compression at -8 and -11, within 9% at lower levels, and
-decompression 3–10% behind C. This historical external table measures mbrotli
-0.5.2; the current local library comparison follows below.
-
-</details>
-
-### Our benchmarks
-
-Full library comparisons cover 432 encoding and 384 decoding cases on the
-recorded optimized checkout. Results vary by workload and quality.
-
-#### Compression
+### Compression
 
 ![Compression speed and output size relative to Google C Brotli across qualities 0–11][bench-chart]
 
-**Recorded 2026-10-30 · AMD Ryzen 9 7950X VDS · Linux · window 22 · cold serial APIs.**
-Across all 96 corpus/quality pairs, mbrotli's median speed / C is **1.099×**,
-with lower mean latency in **67/96** cases. Each quality bar takes the
-median of eight equally weighted per-dataset ratios, including empty and tiny
-inputs. A speed ratio above **1×** is faster; a size ratio below **1×** is smaller.
-Point counts and corpus medians do not establish statistical significance.
-
-The benchmark includes construction, allocation, compression and disposal.
-Results apply to the [recorded source and machine][bench-qualities].
+Across 96 corpus/quality pairs, mbrotli's median compression speed is **1.099×**
+Google C Brotli, with lower mean latency in **67/96** cases. A speed ratio above
+**1×** is faster; a size ratio below **1×** is smaller.
 
 [Per-dataset results and methodology][benchmarks] · [Raw measurements][bench-csv] · [Reproduce][benchmarking]
 
-#### Decompression
+### Decompression
 
 ![Decompression speed relative to Google C Brotli by source quality][decoder-bench-chart]
 
-**Recorded 2026-10-30 · AMD Ryzen 9 7950X VDS · Linux · window 22 · cold serial APIs.**
-Google C, mbrotli, Rust brotli and Burli restore identical C-generated streams
-at source qualities **0–11** in all **384 cases**. SIMD Brotli shares the Rust
-Brotli decoder project and is omitted; Burli decodes every source quality.
-
-Across 96 corpus/quality pairs, mbrotli's median speed is **2.588× C**
-and **1.006× Burli**. Per-quality C-relative medians range from
-**2.547× to 3.461×**. These are medians of direct per-dataset
-time ratios with equal input weight. Throughput counts restored bytes.
-Construction, allocation, decode and disposal are timed; C receives the known
-output capacity and Rust Brotli includes its native 4 KiB I/O adapter.
+Across 96 corpus/quality pairs, mbrotli's median decompression speed is **2.588× C**
+and **1.006× Burli**; per-quality medians against C range from **2.547× to 3.461×**.
+All decoders restore identical C-generated streams.
 
 [Per-quality and dataset results][decoder-benchmarks] · [Raw measurements][decoder-bench-csv] · [Methodology and limits][decoder-bench-report]
 
-## Quick start
+Both charts were recorded on 2026-10-30 on an AMD Ryzen 9 7950X VDS under Linux, with
+window 22 and cold serial APIs: construction, allocation, the codec call and disposal
+are all timed. Each bar is the median of eight equally weighted per-dataset ratios,
+including empty and tiny inputs. Results vary by workload and quality, apply to the
+[recorded source and machine][bench-qualities], and do not establish statistical
+significance.
 
-Requires **Rust 1.89 or later**. Add it to your project:
-
-```toml
-[dependencies]
-mbrotli = "0.5.20"
-```
-
-```rust
-use mbrotli::{Compressor, EncoderConfig, Quality};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let input = "brotli ".repeat(1000);
-    let config = EncoderConfig::default().with_quality(Quality::Q5);
-    let mut encoder = Compressor::new(config)?;
-
-    let compressed = encoder.compress(input.as_bytes())?;
-    println!("{} -> {} bytes", input.len(), compressed.len());
-    Ok(())
-}
-```
-
-Set the quality explicitly for your workload. `EncoderConfig::default()` uses
-**quality 11**, the most expensive compression search.
-
-## Choose your API
-
-Compression and decompression expose the same core I/O shapes. Pick the shape that
-matches how your application already moves bytes. `ParallelCompressor` is a separate
-execution strategy for compression: it splits the input into independent segments and
-hands them to your executor as tasks, either for a whole input at once or for input
-that arrives in chunks. It requires `std`.
-
-| I/O shape | Compression | Decompression |
-| --- | --- | --- |
-| Return a new `Vec<u8>` | `Compressor::compress` | `Decompressor::decompress` |
-| Append to an existing Vec | `compress_into` | `decompress_into` |
-| Write into a caller-owned slice | `compress_to_slice` | `decompress_to_slice` |
-| Pull output through `std::io::Read` | `Compressor::reader` | `Decompressor::reader` |
-| Push input through `std::io::Write` | `Compressor::writer` | `Decompressor::writer` |
-| Drive input/output incrementally | `start` → `EncoderSession` | `start` → `DecoderSession` |
-| Same, with the session owning the codec | `into_session` → `EncoderSessionOwned` | `into_session` → `DecoderSessionOwned` |
-| Split one known input across your threads | `ParallelCompressor::prepare_slice` / `prepare_source` → `ScopedParallelBatch` | — |
-| Stream chunked input across your threads | `ParallelCompressor::start` → `ParallelEncoderSession` + `ParallelTaskQueue` | — |
-| Same, with the session owning the compressor | `ParallelCompressor::into_session` → `ParallelEncoderSessionOwned` | — |
-| Pull parallel output through `std::io::Read` | `ParallelCompressor::reader` → `ParallelEncoderReader` + `ParallelTaskQueue` | — |
-| Push input through `std::io::Write` across your threads | `ParallelCompressor::writer` → `ParallelEncoderWriter` + `ParallelTaskQueue` | — |
-
-### Reuse memory between payloads
-
-`Compressor` and `Decompressor` own reusable working state. Keep the codec and your
-output buffer alive across operations when allocation reuse matters.
+### External benchmarks
 
 <details>
-<summary>Example: reuse the compressor and output buffer</summary>
+<summary>lzbench 2.4.1 results for mbrotli 0.5.20 and Google Brotli 1.2.0</summary>
 
-```rust
-use mbrotli::{Compressor, EncoderConfig, Quality};
+[lzbench](https://github.com/inikep/lzbench) is a long-running open-source
+in-memory benchmark: every codec is built from source into one binary with the
+same compiler and flags and runs on the same data and machine. We ran lzbench
+master at [`a6fa8aa`][lzbench-commit] (lzbench 2.4.1, gcc 15.2, C and Rust
+codecs built with `-march=native`) on the 211 MB `silesia.tar` of the
+[Silesia corpus](http://sun.aei.polsl.pl/~sdeor/index.php?page=silesia),
+pinned to one thread of an AMD Ryzen 9 7950X VDS, with `-t8,8`.
+[Command and raw output][lzbench-run]. The lzbench maintainer's independent
+run of mbrotli 0.5.2 is in the [lzbench 2.4 table][lzbench-results].
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut encoder = Compressor::new(
-        EncoderConfig::default().with_quality(Quality::Q5),
-    )?;
-    let mut output = Vec::new();
+mbrotli 0.5.20 against Google Brotli 1.2.0; bold marks the faster result. Ratio
+is the compressed size as a percentage of the input.
 
-    for input in [b"first payload".as_slice(), b"second payload".as_slice()] {
-        output.clear(); // Keep the allocation; compress_into appends.
-        let written = encoder.compress_into(input, &mut output)?;
-        assert_eq!(written, 0..output.len());
-    }
-    Ok(())
-}
-```
+| Level | Compress mbrotli | Compress brotli | Decompress mbrotli | Decompress brotli | Ratio, % |
+| ----: | ---------------: | --------------: | -----------------: | ----------------: | -------: |
+| -11   |   **1.23 MB/s**  |       0.80 MB/s |       **713 MB/s** |          587 MB/s | 23.83 (brotli 23.82) |
+| -8    |   **21.8 MB/s**  |       15.5 MB/s |       **862 MB/s** |          662 MB/s | 26.96 |
+| -5    |   **78.2 MB/s**  |       71.1 MB/s |       **788 MB/s** |          601 MB/s | 28.10 |
+| -2    |        186 MB/s  |    **197 MB/s** |       **703 MB/s** |          542 MB/s | 32.12 |
+| -0    |    **549 MB/s**  |        531 MB/s |       **585 MB/s** |          452 MB/s | 37.02 |
+
+**Summary:** the same compressed size as Google Brotli at qualities 0–8 and
++0.03% at 11; **41% and 54% faster** compression at -8 and -11, 10% faster at
+-5, and within run-to-run noise at -0 and -2 (a repeat of -2 measured 203 MB/s
+for mbrotli and 204 MB/s for brotli); decompression **22–31% faster** at every
+level.
 
 </details>
 
-## `Read` and `Write` streaming
-
-Both codecs provide synchronous adapters for the standard Rust I/O traits. The two
-adapter shapes are complementary:
-
-- `reader(...)` wraps an input `Read` and exposes transformed bytes through `Read`.
-- `writer(...)` wraps an output `Write` and accepts source bytes through `Write`.
-
-That means you can plug Brotli into an existing pull-based or push-based pipeline
-without first collecting the whole payload in memory.
-
-### Compression I/O
-
-`Compressor::reader` consumes **uncompressed** bytes from a `Read` source and yields
-**compressed** bytes. `Compressor::writer` accepts **uncompressed** bytes and writes
-**compressed** bytes to its sink. Encoder writers must be explicitly finished;
-dropping one abandons the stream.
-
-<details>
-<summary>Compression with both <code>Read</code> and <code>Write</code></summary>
-
-```rust
-use mbrotli::{Compressor, EncoderConfig, InputSize, Quality};
-use std::io::{Read, Write};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let payload = b"streamed payload";
-    // Pull model: read compressed bytes from an uncompressed source.
-    let mut encoder = Compressor::new(
-        EncoderConfig::default().with_quality(Quality::Q5),
-    )?;
-    let stream = InputSize::Exact(payload.len() as u64).into();
-    let mut reader = encoder.reader(&payload[..], stream)?;
-    let mut compressed_from_reader = Vec::new();
-    reader.read_to_end(&mut compressed_from_reader)?;
-
-    // Push model: write uncompressed bytes into a compressed sink.
-    let mut encoder = Compressor::new(
-        EncoderConfig::default().with_quality(Quality::Q5),
-    )?;
-    let stream = InputSize::Exact(payload.len() as u64).into();
-    let mut writer = encoder.writer(Vec::new(), stream)?;
-    writer.write_all(payload)?;
-    let compressed_from_writer = writer
-        .finish()
-        .map_err(mbrotli::io::FinishError::into_error)?;
-
-    assert_eq!(compressed_from_reader, compressed_from_writer);
-    Ok(())
-}
-```
-
-</details>
-
-`flush()` makes accepted input decodable without ending the encoder stream, and flush
-boundaries can affect compressed bytes. Use `finish()` when the stream is complete.
-
-### Decompression I/O
-
-`Decompressor::reader` consumes a **compressed** `Read` source and yields the
-**decompressed** payload. `Decompressor::writer` accepts **compressed** bytes and
-writes the **decompressed** payload to its sink.
-
-<details>
-<summary>Decompression with both <code>Read</code> and <code>Write</code></summary>
-
-```rust
-use mbrotli::{DecodeStreamConfig, DecoderConfig, Decompressor};
-use std::io::{Read, Write};
-
-fn decode_with_reader(compressed: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut decoder = Decompressor::new(DecoderConfig::default())?;
-    let mut reader = decoder.reader(compressed, DecodeStreamConfig::default())?;
-    let mut output = Vec::new();
-    reader.read_to_end(&mut output)?;
-    Ok(output)
-}
-
-fn decode_with_writer(compressed: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut decoder = Decompressor::new(DecoderConfig::default())?;
-    let mut writer = decoder.writer(Vec::new(), DecodeStreamConfig::default())?;
-    writer.write_all(compressed)?;
-    Ok(writer
-        .finish()
-        .map_err(mbrotli::io::FinishError::into_error)?)
-}
-```
-
-</details>
-
-The decoder adapters use bounded internal buffering. Reader read-ahead can be recovered
-with `into_parts()`, while decoder-writer finalization reports truncated or invalid
-input instead of silently accepting an incomplete stream.
-
-## Parallel compression
-
-Parallel compression is independent of the `Read`/`Write` adapters. It changes how
-one compression job is scheduled: mbrotli splits the input into segments, exposes
-work items to the caller, and assembles the completed segments back into one Brotli
-stream. The library does not create or own a thread pool.
-
-<details>
-<summary>Example: parallel compression with scoped threads</summary>
-
-```rust
-use mbrotli::compressor::parallel::{
-    BatchConfig, ParallelCompressor, ParallelConfig, TaskCount,
-};
-use mbrotli::{EncoderConfig, Quality};
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let input = vec![b'a'; 8 << 20];
-    let mut encoder = ParallelCompressor::new(
-        EncoderConfig::default().with_quality(Quality::Q5),
-        ParallelConfig::default(),
-    )?;
-    let mut batch = encoder.prepare_slice(
-        &input,
-        BatchConfig::auto(TaskCount::available()?),
-    )?;
-    let tasks = batch.take_tasks()?;
-
-    std::thread::scope(|scope| {
-        for task in tasks {
-            scope.spawn(move || task.run());
-        }
-    });
-
-    let mut output = Vec::new();
-    batch.finish_into(&mut output)?;
-    println!("{} -> {} bytes", input.len(), output.len());
-    Ok(())
-}
-```
-
-</details>
-
-For fixed segment settings, parallel output is deterministic across task counts, but
-it can differ in bytes and size from serial compression. The example stages compressed
-segments in memory; see the [parallel guide][parallel] for budgets, disk staging,
-file input, and other executors.
-
-When input arrives in chunks, `ParallelCompressor::start(window)` returns a
-`ParallelEncoderSession` and a `ParallelTaskQueue`: every full segment becomes a task
-your executors take from the queue, and `process` delivers finished segments in input
-order while later ones still encode. Without a flush, its output is byte-identical to
-`prepare_slice` over the same bytes.
-
-## Native decompression
-
-`Decompressor` provides reusable Vec/slice APIs, incremental sessions, and synchronous
-reader/writer adapters. Vec appends are rolled back on failure. The decoder specializes command loops
-and history copies for the selected CPU backend using safe `fearless_simd` abstractions.
-
-**Configure limits for untrusted input.** Numeric budgets are unlimited by default.
-This example accepts standard windows and sets explicit input, output, and workspace
-budgets; choose limits appropriate for your application.
-
-```rust
-use mbrotli::{DecodeLimits, DecoderConfig, Decompressor, WindowLimit};
-
-fn decode_payload(input: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let limits = DecodeLimits::default()
-        .with_max_input_bytes(Some(1 << 20))
-        .with_max_output_bytes(Some(8 << 20))
-        .with_max_workspace_bytes(Some(32 << 20));
-    let config = DecoderConfig::default()
-        .with_window_limit(WindowLimit::standard(24)?)
-        .with_limits(limits);
-    let mut decoder = Decompressor::new(config)?;
-
-    Ok(decoder.decompress(input)?)
-}
-```
-
-The workspace budget excludes caller-owned output and borrowed dictionaries; it is
-not a total process-memory limit. Retain the decoder across calls when reuse matters.
-See [decoder configuration and semantics][decoder] and [compatibility evidence][decoder-checks].
-
-## Structured framing
-
-With `compression,experimental`, a separate reusable owner encodes ordered
-resources and metadata into one container. It supports alloc-backed one-shot
-and native sessions; its writer and encoded reader require std APIs.
-
-```rust
-use mbrotli::framing::{FramedCompressor, FramedInput, FramedItem, FramedResource};
-let items = [FramedItem::Resource(FramedResource::from(&b"hello"[..]))];
-let mut encoder = FramedCompressor::new(Default::default())?;
-let bytes = encoder.compress(FramedInput::from(items.as_slice()))?;
-assert_eq!(&bytes[..4], &[0x91, 10, 66, 82]);
-# Ok::<(), Box<dyn std::error::Error>>(())
-```
-
-Use `encoder.framed_writer(sink, stream_config)` for gradually arriving resource
-payload, or `encoder.framed_reader(input, stream_config)` to read encoded bytes
-lazily. [API examples and migration](docs/dictionaries.md) cover metadata,
-dictionaries and the move from the experimental raw-owner factory.
-
-With `decompression,experimental`, `FramedDecompressor` decodes a container into
-`FramedOutput`: resources in wire order with their metadata, global metadata, and
-the validated container layout. Keep the decoder across calls to reuse its storage.
-Compression support is optional; the decoder can be built on its own.
-
-To decode `bytes` from the encoding example above:
-
-```rust
-use mbrotli::framing::FramedDecompressor;
-let mut decoder = FramedDecompressor::new(Default::default())?;
-let output = decoder.decompress(&bytes)?;
-assert_eq!(output.resources.len(), 1);
-assert_eq!(output.resources[0].data, b"hello");
-# Ok::<(), Box<dyn std::error::Error>>(())
-```
-
-For incremental input, `decoder.start(stream_config)` exposes resource and metadata
-events with payload fragments. With std APIs, `decoder.framed_reader(source,
-stream_config)` wraps a `BufRead` source and exposes `next_event()`. This event
-reader preserves resource boundaries; it does not flatten the container into one
-`Read` stream.
-
-`FramedDecodeConfig` defaults to `InputMode::FramedOnly`; `InputMode::Auto` also
-accepts a raw Brotli member. `FramedDecodeLimits` configures resource, input, output,
-metadata and workspace budgets. External dictionary references use an explicit
-`DictionaryResolver`; resource checksums are recorded without verification.
-The owner, one-shot APIs and native sessions also work with `no_std` and `alloc`;
-`FramedReader` requires std APIs. See [framed decoder mechanics](architecture/framed-decoder.md)
-for validation, dictionaries and streaming semantics.
-
-## Select only the codecs you need
-
-The default feature set is `std`, `compression`, and `decompression`. Disable default
-features to select one codec or use `no_std` with `alloc`. For an alloc-backed decoder:
-
-```toml
-[dependencies]
-mbrotli = { version = "0.5.20", default-features = false, features = ["no_std", "decompression"] }
-```
-
-Add `"compression"` for both codecs, or use `"std"` instead of `"no_std"` for standard
-I/O support. `no_std` requires a global allocator; it excludes I/O adapters, parallel
-compression, framed I/O adapters, and profiling, and uses compile-time
-SIMD selection. The experimental framed decoder supports `no_std` with `alloc`;
-its `FramedReader` I/O adapter requires std APIs.
-Cargo features are additive: another dependency can re-enable a codec or `std`.
-Leave `std` and `hotpath*` disabled throughout the dependency graph for a std-free build.
+TurboBench results are available in the [TurboBench repository](https://github.com/powturbo/TurboBench).
 
 ## Compatibility
 
 The test reference in `brotli-ffi/vendor/brotli` is pinned to
 **Google Brotli v1.2.0**, revision `4508218e`. Ordinary encoding at qualities
-**0–11** and windows **10–24** is compared
-byte-for-byte with equivalent C streaming settings.
-
-That comparison requires matching configuration, dictionary, declared input size,
-flush boundaries, and continuation offset. C one-shot shortcuts or arbitrary C chunk
+**0–11** and windows **10–24** is compared byte-for-byte with equivalent C
+streaming settings: the same configuration, dictionary, declared input size, flush
+boundaries, and continuation offset. C one-shot shortcuts or arbitrary C chunk
 schedules can produce different bytes. Within mbrotli's serial APIs, matching those
 settings preserves output across input chunk sizes, SIMD backends, and buffer reuse.
 This is format compatibility, not a drop-in replacement for another crate's Rust API.
 
-| Codec capability | Availability |
+| Format | Availability |
 | --- | --- |
 | Standard Brotli (RFC 7932) | Qualities 0–11 |
 | Large Window Brotli | Qualities 3–11 |
 | Prepared LZ77 prefix dictionaries | Qualities 5–11 |
-| Serialized dictionaries and custom static dictionary encoding | `experimental`; qualities 5–11 |
-| Headerless stream continuations | `experimental`; qualities 2–11 |
-| Shared Brotli framed compressor, structured input and native sessions | `compression,experimental`; std or alloc |
-| Framed encoder writer/reader adapters | `compression,experimental`; not available with `no_std` |
-| Framed decoder, structured output and native events | `decompression,experimental`; std or alloc |
-| Framed decoder event reader | `decompression,experimental`; not available with `no_std` |
+| Serialized and custom static dictionaries, headerless continuations, Shared Brotli framing | `experimental` feature; the API may change in a patch release |
 
-Unsupported combinations return errors. External dictionary references require the
-same dictionaries at the decoder. Large Window and shared-dictionary streams require
-a decoder that supports the corresponding extension. C-based end-to-end validation
-of Large Window encoding covers windows up to 30 bits; wider declarations use separate
-checks and do not have the same independent C-decoder evidence.
-
-Enable the `experimental` Cargo feature to use the gated formats. Their API may change
-in a patch release, and custom static encoding and framing have separate validation
-from the ordinary encoder's byte-identity checks. See the [dictionary and format guide][dictionaries].
+Unsupported combinations return errors. The [capability table][capabilities] has the
+per-format details, and [compatibility and validation][validation] states each claim
+with its oracle and its limits.
 
 ## Validation
 
 The repository includes differential tests against the pinned C encoder and decoder,
-cross-API and cross-backend checks, AFL++ fuzz targets, Miri checks, AddressSanitizer and [formal verification](architecture/formal-verification.md) via lean4
-workflows. Read the [compatibility and validation guide][validation] and the
-[native decoder checks][decoder-checks] for supported configurations,
-reproduction commands, and limitations.
+cross-API and cross-backend checks, AFL++ fuzz targets, Miri, AddressSanitizer, and
+[formal verification][formal] of selected code in Lean 4. See the
+[validation guide][validation] and the [native decoder checks][decoder-checks] for
+supported configurations, reproduction commands, and limitations.
 
 The crate enforces `#![cfg_attr(not(test), forbid(unsafe_code))]`. This describes
 mbrotli's production implementation, not every transitive dependency: SIMD intrinsics
 are encapsulated by `fearless_simd`, and differential tests use a C FFI reference.
 
-## Documentation and contributing
+## Cargo features
 
-[API reference][api] · [User guide][guide] · [Dictionaries][dictionaries] · [Parallel compression][parallel] · [Architecture][architecture]
+The default feature set is `std`, `compression`, and `decompression`. Disable default
+features to select one codec or to build for `no_std` with `alloc`:
+
+```toml
+[dependencies]
+mbrotli = { version = "0.5.22", default-features = false, features = ["no_std", "decompression"] }
+```
+
+`experimental` enables framing, serialized dictionaries and continuations. See
+[Cargo features][features] for every combination and what `no_std` excludes.
+
+## Documentation
+
+| If you want to | Read |
+| --- | --- |
+| Build a first round trip | [Getting started][start] |
+| Find the right entry point | [Choose your API][guide] |
+| Tune quality, window, or features | [Configuration and features][configuration] |
+| Control allocations | [Buffers and memory reuse][memory] |
+| Decode untrusted input | [Decompression and limits][decoder-guide] |
+| Stream with readers, writers, or sessions | [Streaming and completion][streaming] |
+| Use several cores | [Parallel compression][parallel] |
+| Use dictionaries or Large Window | [Dictionaries and extended formats][dictionaries] |
+| Package several resources | [Framing containers][frames] |
+| Look up a type or method | [API reference on docs.rs][api] |
+| Understand the implementation | [Architecture][architecture] |
+
+The same pages live in [`docs/`](docs/README.md) and
+[`architecture/`](architecture/README.md) in this repository.
+
+## Contributing
 
 Bug reports with a minimal input, codec settings, and reproduction steps are welcome.
 For performance reports, include the CPU, compiler, feature set, and workload.
@@ -486,17 +229,30 @@ in [SECURITY.md][security], not as public issues.
 
 ## License
 
-[MIT](LICENSE-MIT) or [APACHE 2.0](LICENSE-APACHE) at your option. The encoder builds on the work of the [Google Brotli project][google-brotli].
+[MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE) at your option. The encoder builds on the work of the [Google Brotli project][google-brotli].
 
+[site]: https://m-compressors.github.io/mbrotli/
+[start]: https://m-compressors.github.io/mbrotli/docs/getting-started.html
+[guide]: https://m-compressors.github.io/mbrotli/docs/
+[examples]: https://m-compressors.github.io/mbrotli/docs/examples/
+[configuration]: https://m-compressors.github.io/mbrotli/docs/configuration.html
+[features]: https://m-compressors.github.io/mbrotli/docs/configuration.html#cargo-features
+[capabilities]: https://m-compressors.github.io/mbrotli/docs/configuration.html#what-each-quality-supports
+[memory]: https://m-compressors.github.io/mbrotli/docs/memory.html
+[decoder-guide]: https://m-compressors.github.io/mbrotli/docs/decompression.html
+[streaming]: https://m-compressors.github.io/mbrotli/docs/streaming.html
+[io]: https://m-compressors.github.io/mbrotli/docs/io.html
+[sans-io-enc]: https://m-compressors.github.io/mbrotli/docs/sans-io-compression.html
+[sans-io-dec]: https://m-compressors.github.io/mbrotli/docs/sans-io-decompression.html
+[parallel]: https://m-compressors.github.io/mbrotli/docs/parallel.html
+[frames]: https://m-compressors.github.io/mbrotli/docs/frames.html
+[dictionaries]: https://m-compressors.github.io/mbrotli/docs/dictionaries.html
+[architecture]: https://m-compressors.github.io/mbrotli/architecture/
+[formal]: ./architecture/formal-verification.md
 [crate]: https://crates.io/crates/mbrotli
 [api]: https://docs.rs/mbrotli
 [ci]: https://github.com/M-Compressors/mbrotli/actions/workflows/ci.yml
-[license]: #license
 [changelog]: ./CHANGELOG.md
-[guide]: ./docs/README.md
-[parallel]: ./docs/parallel.md
-[dictionaries]: ./docs/dictionaries.md
-[decoder]: ./architecture/decompressor.md
 [decoder-checks]: ./architecture/decompressor-compatibility.md
 [validation]: ./docs/correctness.md
 [development]: ./docs/development.md
@@ -504,7 +260,6 @@ in [SECURITY.md][security], not as public issues.
 [conduct]: ./CODE_OF_CONDUCT.md
 [security]: ./SECURITY.md
 [mismatch]: https://github.com/M-Compressors/mbrotli/issues/new?template=output_mismatch.yml
-[architecture]: ./architecture/README.md
 [benchmarks]: ./docs/benchmarks/README.md
 [bench-qualities]: ./docs/benchmarks/encoders/README.md
 [bench-csv]: ./docs/benchmarks/encoder-comparison.csv
@@ -517,3 +272,5 @@ in [SECURITY.md][security], not as public issues.
 [decoder-bench-chart]: ./docs/benchmarks/decoders/charts/overview.svg
 [decoder-bench-report]: ./docs/benchmarks/decoder-comparison.md
 [lzbench-results]: https://github.com/inikep/lzbench/blob/2706ba16721e947a9240c70d080b8efa3f752da0/doc/lzbench24_sorted.md
+[lzbench-commit]: https://github.com/inikep/lzbench/tree/a6fa8aa758932a02841c0cc68c07e5abf8870951
+[lzbench-run]: ./docs/benchmarks/lzbench-2026-11-08.md

@@ -177,17 +177,9 @@ impl RingBuffer {
         // The two head bytes and the margin are zero, exactly as the reference
         // leaves them; `vec!` already provided that for a fresh allocation and
         // the copy above never reaches past `keep`.
-        for index in 0..SLACK_FOR_EIGHT_BYTE_HASHING {
-            if let Some(byte) = self.data.get_mut(HEAD_ROOM + self.cur_size + index) {
-                *byte = 0;
-            }
-        }
-        if let Some(byte) = self.data.get_mut(0) {
-            *byte = 0;
-        }
-        if let Some(byte) = self.data.get_mut(1) {
-            *byte = 0;
-        }
+        let margin = HEAD_ROOM + self.cur_size;
+        self.data[..HEAD_ROOM].fill(0);
+        self.data[margin..margin + SLACK_FOR_EIGHT_BYTE_HASHING].fill(0);
     }
 
     /// Appends `bytes` to a window still holding only the written prefix,

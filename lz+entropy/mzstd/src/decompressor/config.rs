@@ -1,4 +1,5 @@
 use super::DecodeConfigError;
+use crate::FrameFormat;
 
 /// Which frames one operation decodes.
 ///
@@ -170,6 +171,7 @@ impl Default for DecodeLimits {
 pub struct DecoderConfig {
     frame_mode: FrameMode,
     limits: DecodeLimits,
+    format: FrameFormat,
 }
 
 impl DecoderConfig {
@@ -177,6 +179,7 @@ impl DecoderConfig {
     pub const DEFAULT: Self = Self {
         frame_mode: FrameMode::Concatenated,
         limits: DecodeLimits::DEFAULT,
+        format: FrameFormat::Standard,
     };
 
     /// Sets which frames an operation decodes.
@@ -191,6 +194,35 @@ impl DecoderConfig {
     pub const fn with_limits(mut self, limits: DecodeLimits) -> Self {
         self.limits = limits;
         self
+    }
+
+    /// Sets the frame format to read (`ZSTD_d_format`).
+    ///
+    /// With [`FrameFormat::Magicless`] a frame starts at its header, as the
+    /// encoder's magicless frames do, and skippable frames do not exist.
+    /// The format of a frame cannot be detected, so it must match the
+    /// encoder's.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mzstd::{DecoderConfig, Decompressor, FrameFormat};
+    /// // "hello" as one raw block in a single-segment frame, without its magic.
+    /// let frame = [0x20, 0x05, 0x29, 0x00, 0x00, b'h', b'e', b'l', b'l', b'o'];
+    /// let config = DecoderConfig::default().with_format(FrameFormat::Magicless);
+    /// assert_eq!(Decompressor::new(config).decompress(&frame)?, b"hello");
+    /// # Ok::<(), mzstd::DecodeError>(())
+    /// ```
+    #[must_use]
+    pub const fn with_format(mut self, format: FrameFormat) -> Self {
+        self.format = format;
+        self
+    }
+
+    /// The frame format to read.
+    #[must_use]
+    pub const fn format(&self) -> FrameFormat {
+        self.format
     }
 
     /// Which frames an operation decodes.

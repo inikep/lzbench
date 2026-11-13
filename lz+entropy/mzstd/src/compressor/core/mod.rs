@@ -1,6 +1,7 @@
 //! Private compressor implementation: a port of the reference encoder.
 
 pub(crate) mod block;
+pub(crate) mod block_stats;
 pub(crate) mod cctx;
 pub(crate) mod cdict;
 #[cfg(test)]
@@ -23,6 +24,7 @@ pub(crate) mod presplit;
 pub(crate) mod seq_store;
 pub(crate) mod split_block;
 pub(crate) mod stream;
+pub(crate) mod superblock;
 pub(crate) mod window;
 
 #[cfg(test)]
@@ -57,7 +59,7 @@ pub(crate) fn begin_frame(
             let applied = requested.resolve_for(
                 pledged,
                 cdict.content_size(),
-                cdict.cparam_mode(pref, pledged),
+                cdict.cparam_mode(pref, pledged, requested.force_window),
             );
             engine.begin_with_dict(applied, pledged, cdict, pref, segments)
         }
@@ -354,6 +356,7 @@ pub(crate) mod advanced_tests {
                 content_size: pick(2) == 0,
                 checksum: pick(2) == 0,
                 no_dict_id: false,
+                ..FrameParams::default()
             },
             ldm,
             ..RequestedParams::default()

@@ -17,7 +17,10 @@ const PULL_CHUNK: usize = BLOCK_SIZE_MAX + (BLOCK_SIZE_MAX >> 8) + BLOCK_HEADER_
 /// Compresses everything written to it into an inner writer.
 ///
 /// Compressed bytes are kept until the sink has taken them, so a sink that
-/// writes short or fails loses nothing; the next call carries on. The frame
+/// writes short or fails loses nothing; the next call carries on. A write
+/// whose input the session has taken returns that count even when the sink
+/// then fails, so the caller never offers those bytes again; the next call
+/// reports the failure. The frame
 /// is only terminated by [`Self::try_finish`] or [`Self::finish`]; dropping
 /// the adapter abandons it.
 ///
@@ -86,11 +89,26 @@ impl<'c, W: Write> EncoderWriter<'c, W> {
         Ok(())
     }
 
+    /// [`Self::drain`] once the session has taken `consumed` input bytes
+    /// of the current call: a sink failure then ends the call with that
+    /// count, since the caller must not offer those bytes again. The
+    /// undelivered output stays pending and the next call reports the
+    /// failure again. With nothing consumed the failure is returned.
+    fn drain_accepted(&mut self, consumed: usize) -> std::result::Result<(), Result<usize>> {
+        match self.drain() {
+            Ok(()) => Ok(()),
+            Err(_) if consumed > 0 => Err(Ok(consumed)),
+            Err(error) => Err(Err(error)),
+        }
+    }
+
     /// Runs `operation` until it needs nothing more, delivering output.
     fn run(&mut self, mut input: &[u8], operation: Operation) -> Result<usize> {
         let mut consumed = 0;
         loop {
-            self.drain()?;
+            if let Err(result) = self.drain_accepted(consumed) {
+                return result;
+            }
             let progress = self
                 .session
                 .process(input, &mut self.buffer, operation)
@@ -98,7 +116,9 @@ impl<'c, W: Write> EncoderWriter<'c, W> {
             consumed += progress.consumed;
             input = &input[progress.consumed..];
             self.pending = 0..progress.produced;
-            self.drain()?;
+            if let Err(result) = self.drain_accepted(consumed) {
+                return result;
+            }
             match progress.status {
                 EncoderStatus::NeedsOutput => {}
                 EncoderStatus::Finished => return Ok(consumed),

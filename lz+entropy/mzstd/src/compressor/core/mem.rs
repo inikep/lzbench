@@ -165,9 +165,9 @@ pub(crate) fn count_at_simd<S: fearless_simd::Simd>(
     count_slices_simd(simd, &src[ip..], &src[m..])
 }
 
-/// [`count_at_simd`] for a match `m` behind `ip`: the first eight bytes at
-/// `m` lie inside `src` whenever those at `ip` do, so one test covers both
-/// loads.
+/// [`count_at_simd`] for a match `m` behind `ip`: the first sixteen bytes
+/// at `m` lie inside `src` whenever those at `ip` do, so one test covers
+/// both loads.
 #[inline(always)]
 pub(crate) fn count_behind_simd<S: fearless_simd::Simd>(
     simd: S,
@@ -177,12 +177,27 @@ pub(crate) fn count_behind_simd<S: fearless_simd::Simd>(
 ) -> usize {
     let (ip, m) = (ip & u32::MAX as usize, m & u32::MAX as usize);
     if m < ip
-        && let Some(a) = src.get(ip..ip + 8).and_then(<[u8]>::first_chunk::<8>)
-        && let Some(b) = src.get(m..m + 8).and_then(<[u8]>::first_chunk::<8>)
+        && let Some(a) = src.get(ip..ip + 16).and_then(<[u8]>::first_chunk::<16>)
+        && let Some(b) = src.get(m..m + 16).and_then(<[u8]>::first_chunk::<16>)
     {
-        let difference = u64::from_le_bytes(*a) ^ u64::from_le_bytes(*b);
+        // Two scalar words rather than one 16-byte compare: the count is
+        // on the path to the next search, which starts where the match
+        // ends, and a vector compare reaches a general register later
+        // than two loads and an XOR do.
+        let word = |bytes: &[u8; 16], at: usize| {
+            let mut word = [0u8; 8];
+            word.copy_from_slice(&bytes[at..at + 8]);
+            u64::from_le_bytes(word)
+        };
+        let difference = word(a, 0) ^ word(b, 0);
         if difference != 0 {
             return difference.trailing_zeros() as usize >> 3;
+        }
+        // A second word inline: most matches that outlast the first end
+        // in it, and the out-of-line scan costs several words' worth.
+        let difference = word(a, 8) ^ word(b, 8);
+        if difference != 0 {
+            return 8 + (difference.trailing_zeros() as usize >> 3);
         }
     }
     count_slices_simd(simd, &src[ip..], &src[m..])
@@ -276,6 +291,17 @@ fn count_tail(a: &[u8], b: &[u8], matched: usize) -> usize {
     }
 }
 
+/// How many bytes `a` and `b` share at their ends: how far a match extends
+/// backwards when `a` ends at its position and `b` at its candidate.
+#[inline(always)]
+pub(crate) fn common_suffix(a: &[u8], b: &[u8]) -> usize {
+    a.iter()
+        .rev()
+        .zip(b.iter().rev())
+        .take_while(|(x, y)| x == y)
+        .count()
+}
+
 /// The two segments of history visible to one block.
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct Window<'a> {
@@ -320,11 +346,10 @@ impl Window<'_> {
         if a >= boundary {
             return self.count_2segments(a, b, limit, boundary, boundary);
         }
-        let mut n = 0u32;
-        while a + n < limit && self.byte_at(a + n) == self.byte_at(b + n) {
-            n += 1;
-        }
-        n as usize
+        (a..limit)
+            .zip(b..)
+            .take_while(|&(x, y)| self.byte_at(x) == self.byte_at(y))
+            .count()
     }
 
     /// `ZSTD_count_2segments`: a match starting in `ext` at `m` continues
@@ -481,6 +506,18 @@ pub(crate) fn matches64(src: &[u8], at: u32, word: u64) -> bool {
     *candidate(src, at, &word) == word
 }
 
+/// [`matches64`] with branches, as [`matches32_branchy`] is for four bytes:
+/// where the window is several times the hash table's span, a candidate is
+/// rarely stale, and the range test predicts well.
+#[inline(always)]
+pub(crate) fn matches64_branchy(src: &[u8], at: u32, word: u64) -> bool {
+    let at = at as usize;
+    match src.get(at..at + 8) {
+        Some(bytes) => u64::from_le_bytes(bytes.try_into().unwrap_or_default()) == word,
+        None => false,
+    }
+}
+
 /// Hints that `src[at]` will be read soon (`PREFETCH_L1`). The pointer only
 /// reaches the prefetch instruction, so an offset past the end is harmless.
 #[inline(always)]
@@ -606,6 +643,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn common_suffix_stops_at_the_first_difference_or_the_shorter_side() {
+        assert_eq!(common_suffix(b"", b""), 0);
+        assert_eq!(common_suffix(b"abc", b""), 0);
+        assert_eq!(common_suffix(b"", b"abc"), 0);
+        assert_eq!(common_suffix(b"xbc", b"ybc"), 2);
+        assert_eq!(common_suffix(b"abc", b"abd"), 0);
+        assert_eq!(common_suffix(b"bc", b"abc"), 2);
+        assert_eq!(common_suffix(b"abc", b"bc"), 2);
+        assert_eq!(common_suffix(b"abc", b"abc"), 3);
+    }
+
+    #[test]
     fn candidate_words_reject_stale_indices_and_partial_tails() {
         let bytes: alloc::vec::Vec<_> = (0..32u8).collect();
         for start in 0..8 {
@@ -628,12 +677,24 @@ mod tests {
                         matches64(history, at, u64::from_le_bytes(word64)),
                         index as usize >= start && index as usize + 8 <= end
                     );
+                    assert_eq!(
+                        matches32_branchy(history, at, u32::from_le_bytes(word32)),
+                        matches32(history, at, u32::from_le_bytes(word32))
+                    );
+                    assert_eq!(
+                        matches64_branchy(history, at, u64::from_le_bytes(word64)),
+                        matches64(history, at, u64::from_le_bytes(word64))
+                    );
                     assert!(!matches32(history, at, u32::MAX));
                     assert!(!matches64(history, at, u64::MAX));
+                    assert!(!matches32_branchy(history, at, u32::MAX));
+                    assert!(!matches64_branchy(history, at, u64::MAX));
                 }
                 for at in u32::MAX - 8..=u32::MAX {
                     assert!(!matches32(history, at, 0));
                     assert!(!matches64(history, at, 0));
+                    assert!(!matches32_branchy(history, at, 0));
+                    assert!(!matches64_branchy(history, at, 0));
                 }
             }
         }
@@ -842,6 +903,31 @@ mod tests {
                     let expected = count_slices(&bytes[ip..], &bytes[m..]);
                     let got = fearless_simd::dispatch!(backend.0, simd => count_at_simd(simd, &bytes, ip, m));
                     assert_eq!(got, expected, "{backend} ip {ip} m {m}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn counts_behind_end_in_either_inline_word_or_the_long_scan() {
+        // A match `gap` bytes behind its position that ends after `run`
+        // equal bytes, with `tail` bytes of `src` after the position:
+        // runs that end in the first word, in the second, exactly between
+        // them and past both, with and without sixteen bytes to load.
+        for backend in crate::Backend::available() {
+            for gap in [1usize, 3, 8, 16, 40] {
+                for tail in [0usize, 1, 7, 8, 9, 15, 16, 17, 23, 24, 40, 200] {
+                    for run in (0..=tail).filter(|run| *run <= 26 || *run == tail) {
+                        let ip = gap + 4;
+                        let mut src: alloc::vec::Vec<u8> =
+                            (0..ip + tail).map(|i| (i % gap) as u8).collect();
+                        if let Some(byte) = src.get_mut(ip + run) {
+                            *byte ^= 0x80;
+                        }
+                        let count = fearless_simd::dispatch!(backend.0, simd =>
+                            count_behind_simd(simd, &src, ip, ip - gap));
+                        assert_eq!(count, run, "{backend} gap {gap} tail {tail}");
+                    }
                 }
             }
         }

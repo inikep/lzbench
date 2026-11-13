@@ -14,12 +14,13 @@ pub(super) fn serialize(
     capacity: usize,
 ) -> Result<Vec<u8>, FramingError> {
     let mut content = super::bytes(capacity)?;
-    for field in fields {
-        if codes.is_none_or(|codes| codes.contains(&field.code)) {
-            content.extend_from_slice(&field.code);
-            number(field.value.len() as u64, &mut content)?;
-            content.extend_from_slice(field.value);
-        }
+    let selected = fields
+        .iter()
+        .filter(|field| codes.is_none_or(|codes| codes.contains(&field.code)));
+    for field in selected {
+        content.extend_from_slice(&field.code);
+        number(field.value.len() as u64, &mut content)?;
+        content.extend_from_slice(field.value);
     }
     Ok(content)
 }

@@ -105,29 +105,25 @@ impl Xxh64 {
     pub(crate) fn digest(&self) -> u64 {
         let mut hash = if self.total >= 32 {
             let [v1, v2, v3, v4] = self.lanes;
-            let mut hash = v1
+            let merged = v1
                 .rotate_left(1)
                 .wrapping_add(v2.rotate_left(7))
                 .wrapping_add(v3.rotate_left(12))
                 .wrapping_add(v4.rotate_left(18));
-            for lane in self.lanes {
-                hash = merge_round(hash, lane);
-            }
-            hash
+            self.lanes.into_iter().fold(merged, merge_round)
         } else {
             self.seed.wrapping_add(PRIME_5)
         };
         hash = hash.wrapping_add(self.total);
 
-        let mut tail = &self.pending[..self.pending_len];
-        while let Some((word, rest)) = tail.split_first_chunk::<8>() {
+        let (words, mut tail) = self.pending[..self.pending_len].as_chunks::<8>();
+        words.iter().for_each(|word| {
             hash ^= round(0, read_u64(word));
             hash = hash
                 .rotate_left(27)
                 .wrapping_mul(PRIME_1)
                 .wrapping_add(PRIME_4);
-            tail = rest;
-        }
+        });
         if let Some((word, rest)) = tail.split_first_chunk::<4>() {
             hash ^= u64::from(u32::from_le_bytes(*word)).wrapping_mul(PRIME_1);
             hash = hash
@@ -136,10 +132,10 @@ impl Xxh64 {
                 .wrapping_add(PRIME_3);
             tail = rest;
         }
-        for &byte in tail {
+        tail.iter().for_each(|&byte| {
             hash ^= u64::from(byte).wrapping_mul(PRIME_5);
             hash = hash.rotate_left(11).wrapping_mul(PRIME_1);
-        }
+        });
         avalanche(hash)
     }
 }

@@ -374,15 +374,15 @@ impl Engine {
             for (original, copy) in originals.zip(copies) {
                 let original = original.value.as_ref().ok_or(E::InvalidState)?;
                 let copy = copy.value.as_ref().ok_or(E::InvalidState)?;
-                for (code, &present) in selected.iter().enumerate() {
-                    if present
+                let differs = selected.iter().enumerate().any(|(code, &present)| {
+                    present
                         && !original
                             .fields()
                             .filter(|f| field_code(f.code) == code)
                             .eq(copy.fields().filter(|f| field_code(f.code) == code))
-                    {
-                        return Err(E::InvalidMetadata);
-                    }
+                });
+                if differs {
+                    return Err(E::InvalidMetadata);
                 }
             }
         }
@@ -1522,17 +1522,20 @@ impl Engine {
             .repeated_metadata
             .try_reserve_exact(self.repeat_count)
             .map_err(|_| E::AllocationFailed)?;
-        for (r, data) in self.resources.iter().zip(data) {
-            resources.push(DecodedResource {
-                index: r.header.index,
-                source: r.header.source,
-                hidden: r.header.hidden,
-                metadata: r.metadata.and_then(|i| self.metadata[i].value.take()),
-                data,
-                footer_metadata: r.footer.and_then(|i| self.metadata[i].value.take()),
-                checksum: r.checksum,
-            });
-        }
+        resources.extend(
+            self.resources
+                .iter()
+                .zip(data)
+                .map(|(r, data)| DecodedResource {
+                    index: r.header.index,
+                    source: r.header.source,
+                    hidden: r.header.hidden,
+                    metadata: r.metadata.and_then(|i| self.metadata[i].value.take()),
+                    data,
+                    footer_metadata: r.footer.and_then(|i| self.metadata[i].value.take()),
+                    checksum: r.checksum,
+                }),
+        );
         for m in &mut self.metadata {
             if let Some(value) = m.value.take() {
                 if let Some(original) = m.original {
