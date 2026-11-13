@@ -12,7 +12,7 @@
 
 use alloc::vec::Vec;
 
-use super::bits::{BitWriter, ByteBuffer};
+use super::bits::{BitWriter, ByteBuffer, MAX_BITS_PER_WRITE};
 use super::block_split::{BlockSplit, MAX_NUMBER_OF_BLOCK_TYPES};
 use super::command::Command;
 use super::constants::{NUM_COMMAND_SYMBOLS, NUM_LITERAL_SYMBOLS};
@@ -212,12 +212,14 @@ fn build_and_store_block_split_code(
     let mut type_histo = [0u32; MAX_BLOCK_TYPE_SYMBOLS];
     let mut length_histo = [0u32; NUM_BLOCK_LEN_SYMBOLS];
     let mut calculator = BlockTypeCodeCalculator::new();
-    for index in 0..split.num_blocks {
-        let type_code = calculator.next(split.types[index]);
+    let types = &split.types[..split.num_blocks];
+    let lengths = &split.lengths[..split.num_blocks];
+    for (index, (&block_type, &length)) in types.iter().zip(lengths).enumerate() {
+        let type_code = calculator.next(block_type);
         if index != 0 {
             type_histo[type_code] += 1;
         }
-        length_histo[block_length_prefix_code(split.lengths[index])] += 1;
+        length_histo[block_length_prefix_code(length)] += 1;
     }
     store_var_len_uint8(num_types - 1, w);
     if num_types > 1 {
@@ -431,14 +433,9 @@ fn store_trivial_context_map(
     w.write(4, (repeat_code - 1) as u64);
     arena.histogram[repeat_code] = num_types as u32;
     arena.histogram[0] = 1;
-    for slot in arena
-        .histogram
-        .iter_mut()
-        .take(alphabet_size)
-        .skip(context_bits)
-    {
-        *slot = 1;
-    }
+    // `num_types > 1`, so `context_bits < alphabet_size`, and the slice above
+    // already bounded `alphabet_size`.
+    arena.histogram[context_bits..alphabet_size].fill(1);
     build_and_store_huffman_tree(
         &arena.histogram,
         alphabet_size,
@@ -1041,7 +1038,38 @@ fn store_static_distance_huffman_tree(w: &mut BitWriter) {
     w.write(28, 0x0369_DC03);
 }
 
+/// Literals a command may carry and still take the branch-free paths of
+/// [`build_histograms`] and [`store_data_with_huffman_codes`].
+///
+/// Three general literal codes are at most 45 bits, which leaves room for a
+/// typical command and distance code in one 56-bit write. On the Silesia
+/// corpus at quality 2, 85% of commands insert at most three literals (46%
+/// none, 25% one, 10% two), and a loop over so short a run of varying length
+/// is mispredicted about once per command.
+const SHORT_RUN: usize = 3;
+
+/// The [`SHORT_RUN`] input bytes at `position`, when they are one slice.
+///
+/// A command with fewer literals reads into the bytes its copy covers, which
+/// the callers mask out; at the end of the input or across the ring's wrap
+/// there is no such slice and the callers take their general path.
+#[inline(always)]
+fn short_run(input: &[u8], position: usize, mask: usize) -> Option<&[u8; SHORT_RUN]> {
+    contiguous(input, position, mask, SHORT_RUN)?.first_chunk()
+}
+
 /// Gathers the three histograms of a meta-block (`BuildHistograms`).
+///
+/// The three totals are counted in locals and added once at the end. Counted
+/// through [`Histogram::add`](super::histogram::Histogram::add), each total
+/// is read from and written back to the histogram for every symbol, which
+/// chains every command to the one before it through a stored value.
+///
+/// A command with at most [`SHORT_RUN`] literals counts all [`SHORT_RUN`]
+/// bytes at its position, adding zero for the ones past its run, and every
+/// command adds its distance symbol, zero when it has none: neither needs a
+/// branch on the command. Longer runs are counted from one slice of the
+/// input wherever they do not wrap the ring.
 fn build_histograms(
     input: &[u8],
     start_pos: usize,
@@ -1052,22 +1080,57 @@ fn build_histograms(
     dist_histo: &mut super::histogram::HistogramDistance,
 ) {
     let mut pos = start_pos;
+    let mut num_commands = 0usize;
+    let mut num_literals = 0usize;
+    let mut num_distances = 0usize;
     for command in commands {
-        cmd_histo.add(usize::from(command.cmd_prefix));
-        for _ in 0..command.insert_len {
-            lit_histo.add(usize::from(input.get(pos & mask).copied().unwrap_or(0)));
-            pos += 1;
+        if let Some(count) = cmd_histo.data.get_mut(usize::from(command.cmd_prefix)) {
+            *count += 1;
+            num_commands += 1;
         }
-        pos += command.copy_len() as usize;
-        if command.has_distance() {
-            dist_histo.add(usize::from(command.distance_code()));
+        let insert_len = command.insert_len as usize;
+        if insert_len <= SHORT_RUN
+            && let Some(short) = short_run(input, pos, mask)
+        {
+            for (index, &literal) in short.iter().enumerate() {
+                lit_histo.data[usize::from(literal)] += u32::from(index < insert_len);
+            }
+        } else if let Some(literals) = contiguous(input, pos, mask, insert_len) {
+            for &literal in literals {
+                lit_histo.data[usize::from(literal)] += 1;
+            }
+        } else {
+            for offset in 0..insert_len {
+                let literal = input.get((pos + offset) & mask).copied().unwrap_or(0);
+                lit_histo.data[usize::from(literal)] += 1;
+            }
+        }
+        num_literals += insert_len;
+        pos += insert_len + command.copy_len() as usize;
+        let has_distance = command.has_distance();
+        if let Some(count) = dist_histo
+            .data
+            .get_mut(usize::from(command.distance_code()))
+        {
+            *count += u32::from(has_distance);
+            num_distances += usize::from(has_distance);
         }
     }
+    cmd_histo.total_count += num_commands;
+    lit_histo.total_count += num_literals;
+    dist_histo.total_count += num_distances;
 }
 
 /// Writes every command with one fixed set of codes.
 ///
-/// Mirrors `StoreDataWithHuffmanCodes`.
+/// Mirrors `StoreDataWithHuffmanCodes`. A command with at most
+/// [`SHORT_RUN`] literals is assembled whole — command code and extra bits,
+/// literal codes, distance code and extra bits — and, when that is at most
+/// [`MAX_BITS_PER_WRITE`] bits, stored with one write. The literal codes past
+/// the run and the distance of a command that has none are masked to zero
+/// bits rather than skipped, so the common command costs one store and no
+/// branch that depends on its shape. The fields are concatenated in the order
+/// separate writes would emit them, so the bits are the same.
 #[expect(
     clippy::too_many_arguments,
     reason = "mirrors StoreDataWithHuffmanCodes, whose parameters are all needed"
@@ -1093,47 +1156,86 @@ fn store_data_with_huffman_codes(
     for command in commands {
         let cmd_code = usize::from(command.cmd_prefix);
         let (nbits, bits) = command.extra_bits();
-        w.write_pair(
-            u32::from(cmd_depth[cmd_code]),
-            u64::from(cmd_bits[cmd_code]),
-            nbits,
-            bits,
-        );
+        let cmd_width = u32::from(cmd_depth[cmd_code]);
+        let cmd_value = u64::from(cmd_bits[cmd_code]);
         let insert_len = command.insert_len as usize;
-        if let Some(literals) = contiguous(input, pos, mask, insert_len) {
-            // General literal codes use at most 15 bits. Two codes fit in
-            // one 30-bit write; their order is the same as individual writes.
-            let (pairs, tail) = literals.as_chunks::<2>();
-            for &[first, second] in pairs {
-                let first = usize::from(first);
-                let second = usize::from(second);
-                let first_width = u32::from(lit_depth[first]);
-                let width = first_width + u32::from(lit_depth[second]);
-                let bits =
-                    u64::from(lit_bits[first]) | (u64::from(lit_bits[second]) << first_width);
-                w.write(width, bits);
-            }
-            for &literal in tail {
+        let has_distance = command.has_distance();
+        let dist_code = usize::from(command.distance_code());
+        if insert_len <= SHORT_RUN
+            && let Some(short) = short_run(input, pos, mask)
+        {
+            let mut lit_width = 0u32;
+            let mut lit_value = 0u64;
+            for (index, &literal) in short.iter().enumerate() {
+                let keep = 0u32.wrapping_sub(u32::from(index < insert_len));
                 let literal = usize::from(literal);
-                w.write(u32::from(lit_depth[literal]), u64::from(lit_bits[literal]));
+                lit_value |= u64::from(u32::from(lit_bits[literal]) & keep) << lit_width;
+                lit_width += u32::from(lit_depth[literal]) & keep;
+            }
+            // All ones for a command that codes a distance, zero otherwise.
+            let keep = 0u32.wrapping_sub(u32::from(has_distance));
+            let dist_width = u32::from(dist_depth.get(dist_code).copied().unwrap_or(0)) & keep;
+            let dist_value =
+                u64::from(u32::from(dist_bits.get(dist_code).copied().unwrap_or(0)) & keep);
+            let extra_width = command.distance_extra_bits() & keep;
+            let extra_value = u64::from(command.dist_extra & keep);
+            let total = cmd_width + nbits + lit_width + dist_width + extra_width;
+            if total <= MAX_BITS_PER_WRITE {
+                let mut width = cmd_width;
+                let mut value = cmd_value | (bits << width);
+                width += nbits;
+                value |= lit_value << width;
+                width += lit_width;
+                value |= dist_value << width;
+                width += dist_width;
+                value |= extra_value << width;
+                w.write(total, value);
+            } else {
+                w.write_pair(cmd_width, cmd_value, nbits, bits);
+                if insert_len != 0 {
+                    w.write(lit_width, lit_value);
+                }
+                if has_distance {
+                    w.write_pair(dist_width, dist_value, extra_width, extra_value);
+                }
             }
         } else {
-            for offset in 0..insert_len {
-                let literal = usize::from(input.get((pos + offset) & mask).copied().unwrap_or(0));
-                w.write(u32::from(lit_depth[literal]), u64::from(lit_bits[literal]));
+            w.write_pair(cmd_width, cmd_value, nbits, bits);
+            if let Some(literals) = contiguous(input, pos, mask, insert_len) {
+                // General literal codes use at most 15 bits. Two codes fit in
+                // one 30-bit write; their order is the same as individual writes.
+                let (pairs, tail) = literals.as_chunks::<2>();
+                for &[first, second] in pairs {
+                    let first = usize::from(first);
+                    let second = usize::from(second);
+                    let first_width = u32::from(lit_depth[first]);
+                    let width = first_width + u32::from(lit_depth[second]);
+                    let bits =
+                        u64::from(lit_bits[first]) | (u64::from(lit_bits[second]) << first_width);
+                    w.write(width, bits);
+                }
+                for &literal in tail {
+                    let literal = usize::from(literal);
+                    w.write(u32::from(lit_depth[literal]), u64::from(lit_bits[literal]));
+                }
+            } else {
+                for offset in 0..insert_len {
+                    let literal =
+                        usize::from(input.get((pos + offset) & mask).copied().unwrap_or(0));
+                    w.write(u32::from(lit_depth[literal]), u64::from(lit_bits[literal]));
+                }
+            }
+            if has_distance {
+                w.write_pair(
+                    u32::from(dist_depth[dist_code]),
+                    u64::from(dist_bits[dist_code]),
+                    command.distance_extra_bits(),
+                    u64::from(command.dist_extra),
+                );
             }
         }
         pos += insert_len;
         pos += command.copy_len() as usize;
-        if command.has_distance() {
-            let dist_code = usize::from(command.distance_code());
-            w.write_pair(
-                u32::from(dist_depth[dist_code]),
-                u64::from(dist_bits[dist_code]),
-                command.distance_extra_bits(),
-                u64::from(command.dist_extra),
-            );
-        }
     }
 }
 
@@ -1246,6 +1348,163 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    /// Commands of every shape the short-run paths distinguish: zero to
+    /// more than [`SHORT_RUN`] literals, short and long copies, the last
+    /// distance, near and far explicit distances, and a trailing insert.
+    fn mixed_commands() -> Vec<Command> {
+        let dist = DistanceParams::default();
+        let mut commands = Vec::new();
+        for insert in 0..=SHORT_RUN + 3 {
+            for (copy, distance_code) in [
+                (2usize, 0usize),
+                (5, 17),
+                (20, 16 + 1000),
+                (300, 16 + 3_000_000),
+            ] {
+                commands.push(Command::new(&dist, insert, copy, 0, distance_code));
+            }
+        }
+        commands.push(Command::insert_only(2));
+        commands
+    }
+
+    /// The input layouts a run of literals can meet: one flat slice, a ring
+    /// whose mask it wraps, and a buffer that ends inside the commands.
+    fn layouts(input: &[u8]) -> [(&[u8], usize, usize); 3] {
+        [
+            (input, 0, usize::MAX),
+            (&input[..512], 500, 511),
+            (&input[..40], 0, usize::MAX),
+        ]
+    }
+
+    #[test]
+    fn short_commands_match_field_by_field_writes_in_one_or_several_stores() {
+        let input: Vec<u8> = (0..4096u32).map(|value| (value * 37 + 11) as u8).collect();
+        let commands = mixed_commands();
+        // Shallow codes keep a whole command inside one write; the deepest
+        // ones push it past the writer's limit and onto the split path.
+        for deep in [false, true] {
+            let lit_depth: [u8; NUM_LITERAL_SYMBOLS] =
+                core::array::from_fn(|index| if deep { 15 } else { (index % 9) as u8 });
+            let lit_bits: [u16; NUM_LITERAL_SYMBOLS] = core::array::from_fn(|index| {
+                (index as u16 * 57 + 1) & ((1u16 << lit_depth[index]) - 1)
+            });
+            let cmd_depth: [u8; NUM_COMMAND_SYMBOLS] =
+                core::array::from_fn(|index| if deep { 15 } else { (index % 7 + 1) as u8 });
+            let cmd_bits: [u16; NUM_COMMAND_SYMBOLS] = core::array::from_fn(|index| {
+                (index as u16 * 29 + 3) & ((1u16 << cmd_depth[index]) - 1)
+            });
+            let dist_depth: [u8; 64] =
+                core::array::from_fn(|index| if deep { 15 } else { (index % 5 + 1) as u8 });
+            let dist_bits: [u16; 64] = core::array::from_fn(|index| {
+                (index as u16 * 13 + 7) & ((1u16 << dist_depth[index]) - 1)
+            });
+            for alignment in [0, 3, 7] {
+                if cfg!(miri) && alignment == 3 {
+                    continue;
+                }
+                for (data, start, mask) in layouts(&input) {
+                    let actual = written(|writer| {
+                        writer.write(alignment, (1 << alignment) - 1);
+                        store_data_with_huffman_codes(
+                            data,
+                            start,
+                            mask,
+                            &commands,
+                            &lit_depth,
+                            &lit_bits,
+                            &cmd_depth,
+                            &cmd_bits,
+                            &dist_depth,
+                            &dist_bits,
+                            writer,
+                        );
+                    });
+                    let expected = written(|writer| {
+                        writer.write(alignment, (1 << alignment) - 1);
+                        let mut pos = start;
+                        for command in &commands {
+                            let code = usize::from(command.cmd_prefix);
+                            writer.write(u32::from(cmd_depth[code]), u64::from(cmd_bits[code]));
+                            let (width, bits) = command.extra_bits();
+                            writer.write(width, bits);
+                            for _ in 0..command.insert_len {
+                                let literal =
+                                    usize::from(data.get(pos & mask).copied().unwrap_or(0));
+                                writer.write(
+                                    u32::from(lit_depth[literal]),
+                                    u64::from(lit_bits[literal]),
+                                );
+                                pos += 1;
+                            }
+                            pos += command.copy_len() as usize;
+                            if command.has_distance() {
+                                let code = usize::from(command.distance_code());
+                                writer
+                                    .write(u32::from(dist_depth[code]), u64::from(dist_bits[code]));
+                                writer.write(
+                                    command.distance_extra_bits(),
+                                    u64::from(command.dist_extra),
+                                );
+                            }
+                        }
+                    });
+                    assert_eq!(
+                        actual, expected,
+                        "deep {deep}, alignment {alignment}, start {start}, mask {mask}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn histograms_match_symbol_by_symbol_counting_in_every_layout() {
+        let input: Vec<u8> = (0..4096u32).map(|value| (value * 37 + 11) as u8).collect();
+        let commands = mixed_commands();
+        for (data, start, mask) in layouts(&input) {
+            let mut literals = crate::shared::histogram::HistogramLiteral::default();
+            let mut command_codes = crate::shared::histogram::HistogramCommand::default();
+            let mut distances = crate::shared::histogram::HistogramDistance::default();
+            // Totals accumulate onto what the histograms already hold.
+            literals.add(7);
+            command_codes.add(3);
+            distances.add(1);
+            let mut expected = (literals.clone(), command_codes.clone(), distances.clone());
+            build_histograms(
+                data,
+                start,
+                mask,
+                &commands,
+                &mut literals,
+                &mut command_codes,
+                &mut distances,
+            );
+            let mut pos = start;
+            for command in &commands {
+                expected.1.add(usize::from(command.cmd_prefix));
+                for _ in 0..command.insert_len {
+                    expected
+                        .0
+                        .add(usize::from(data.get(pos & mask).copied().unwrap_or(0)));
+                    pos += 1;
+                }
+                pos += command.copy_len() as usize;
+                if command.has_distance() {
+                    expected.2.add(usize::from(command.distance_code()));
+                }
+            }
+            assert_eq!(literals.data, expected.0.data, "start {start}, mask {mask}");
+            assert_eq!(literals.total_count, expected.0.total_count);
+            assert_eq!(command_codes.data, expected.1.data);
+            assert_eq!(command_codes.total_count, expected.1.total_count);
+            assert_eq!(distances.data, expected.2.data);
+            assert_eq!(distances.total_count, expected.2.total_count);
+            assert!(distances.total_count > 1, "some commands carry a distance");
         }
     }
 

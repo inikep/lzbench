@@ -267,6 +267,11 @@ impl Bounds {
         Self { lower, upper }
     }
 
+    /// Bounds from `lower` to `upper`, both included.
+    pub(crate) const fn inclusive(lower: i64, upper: i64) -> Self {
+        Self::new(lower, upper)
+    }
+
     /// Whether `value` lies within the bounds.
     pub(crate) const fn contains(self, value: i64) -> bool {
         value >= self.lower && value <= self.upper
@@ -302,6 +307,13 @@ pub(crate) const LDM_BUCKET_SIZE_LOG_BOUNDS: Bounds =
     Bounds::new(LDM_BUCKETSIZELOG_MIN as i64, LDM_BUCKETSIZELOG_MAX as i64);
 pub(crate) const LDM_HASH_RATE_LOG_BOUNDS: Bounds =
     Bounds::new(LDM_HASHRATELOG_MIN as i64, LDM_HASHRATELOG_MAX as i64);
+
+/// `ZSTD_BLOCKSPLITTER_LEVEL_MAX`.
+pub(crate) const BLOCK_SPLITTER_LEVEL_MAX: u8 = 6;
+/// `ZSTD_BLOCKSIZE_MAX_MIN..=ZSTD_BLOCKSIZE_MAX`.
+pub(crate) const MAX_BLOCK_SIZE_BOUNDS: Bounds = Bounds::new(1 << 10, BLOCK_SIZE_MAX as i64);
+/// `ZSTD_TARGETCBLOCKSIZE_MIN..=ZSTD_TARGETCBLOCKSIZE_MAX`.
+pub(crate) const TARGET_C_BLOCK_SIZE_BOUNDS: Bounds = Bounds::new(1340, BLOCK_SIZE_MAX as i64);
 
 impl CParams {
     /// Clamps every parameter into range (`ZSTD_clampCParams`).

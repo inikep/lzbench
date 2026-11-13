@@ -10,7 +10,7 @@
 use ::core::fmt;
 
 use super::fse::SeqTable;
-use super::huffman::HuffmanTable;
+use super::huffman::{HuffmanTable, TableKind};
 use super::sequences::{SymbolType, read_table};
 use crate::decompressor::InvalidDataKind;
 use crate::shared::format::REP_NUM;
@@ -59,6 +59,8 @@ impl DecoderEntropy {
         let rest = |position: usize| dictionary.get(position..).unwrap_or_default();
         let mut huffman = HuffmanTable::default();
         position += huffman.read(rest(position))?;
+        // ZSTD_loadDEntropy reads a dictionary's tree for pairs.
+        huffman.set_kind(TableKind::Pairs);
         huffman.build_shared();
         let (offsets, used) = read_table(SymbolType::Offsets, rest(position))?;
         position += used;
@@ -154,6 +156,8 @@ pub(crate) mod tests {
         let (entropy, end) = DecoderEntropy::load(&bytes).expect("valid");
         assert_eq!(end, bytes.len() - 8);
         assert_eq!(entropy.reps, [1, 4, 8]);
+        // ZSTD_loadDEntropy reads the tree for pairs.
+        assert_eq!(entropy.huffman.kind(), TableKind::Pairs);
         assert_eq!(entropy.offsets.log(), 5);
         assert!(entropy.retained_bytes() > 0);
         assert!(alloc::format!("{entropy:?}").contains("reps"));

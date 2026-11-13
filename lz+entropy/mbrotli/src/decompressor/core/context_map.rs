@@ -165,10 +165,7 @@ impl ContextMap {
                         return Ok(false);
                     };
                     if mtf != 0 {
-                        let mut symbols = [0u8; 256];
-                        for (i, value) in symbols.iter_mut().enumerate() {
-                            *value = i as u8;
-                        }
+                        let mut symbols: [u8; 256] = core::array::from_fn(|i| i as u8);
                         for value in &mut self.values {
                             let index = usize::from(*value);
                             *value = symbols[index];

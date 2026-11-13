@@ -58,6 +58,17 @@ impl CTable {
     };
 }
 
+impl CTable {
+    /// The transform [`CState::advance`] takes for `symbol`.
+    ///
+    /// The index is masked to the table's size: a symbol the table was
+    /// built for is always in range.
+    #[inline(always)]
+    pub(crate) const fn transform(&self, symbol: u8) -> SymbolTransform {
+        self.symbol_tt[symbol as usize & (MAX_SYMBOLS - 1)]
+    }
+}
+
 impl Default for CTable {
     fn default() -> Self {
         Self::EMPTY
@@ -123,24 +134,24 @@ fn normalize_m2(
     let low_threshold = (total >> table_log) as u32;
     let mut low_one = ((total * 3) >> (table_log + 1)) as u32;
 
-    for s in 0..symbols {
-        if count[s] == 0 {
-            norm[s] = 0;
+    for (n, &c) in norm[..symbols].iter_mut().zip(count) {
+        if c == 0 {
+            *n = 0;
             continue;
         }
-        if count[s] <= low_threshold {
-            norm[s] = low_prob_count;
+        if c <= low_threshold {
+            *n = low_prob_count;
             distributed += 1;
-            total -= count[s] as usize;
+            total -= c as usize;
             continue;
         }
-        if count[s] <= low_one {
-            norm[s] = 1;
+        if c <= low_one {
+            *n = 1;
             distributed += 1;
-            total -= count[s] as usize;
+            total -= c as usize;
             continue;
         }
-        norm[s] = NOT_YET_ASSIGNED;
+        *n = NOT_YET_ASSIGNED;
     }
     let mut to_distribute = (1u32 << table_log) - distributed;
 
@@ -151,11 +162,11 @@ fn normalize_m2(
     if total / to_distribute as usize > low_one as usize {
         // Risk of rounding to zero.
         low_one = ((total * 3) / (to_distribute as usize * 2)) as u32;
-        for s in 0..symbols {
-            if norm[s] == NOT_YET_ASSIGNED && count[s] <= low_one {
-                norm[s] = 1;
+        for (n, &c) in norm[..symbols].iter_mut().zip(count) {
+            if *n == NOT_YET_ASSIGNED && c <= low_one {
+                *n = 1;
                 distributed += 1;
-                total -= count[s] as usize;
+                total -= c as usize;
             }
         }
         to_distribute = (1u32 << table_log) - distributed;
@@ -165,12 +176,12 @@ fn normalize_m2(
         // Every symbol is rare: give the remainder to the most frequent.
         let mut max_v = 0;
         let mut max_c = 0;
-        for (s, &c) in count.iter().enumerate().take(symbols) {
+        count[..symbols].iter().enumerate().for_each(|(s, &c)| {
             if c > max_c {
                 max_v = s;
                 max_c = c;
             }
-        }
+        });
         norm[max_v] += to_distribute as i16;
         return Ok(());
     }
@@ -637,6 +648,25 @@ impl<'t> CState<'t> {
             i64::from(self.table.state_table[index as usize & ((1 << STATE_TABLE_LOG) - 1)]);
     }
 
+    /// `FSE_encodeSymbol` without the write: moves to the state the
+    /// symbol of `transform` leads to and returns the bits that leaves in
+    /// the stream with their number, at most [`STATE_TABLE_LOG`].
+    ///
+    /// A caller that encodes several states per step joins their bits
+    /// before it touches its writer, so the states' chains of dependent
+    /// table loads do not wait on the writer's bit position. The count is
+    /// masked to four bits, which changes nothing and tells the compiler
+    /// that it is a valid shift.
+    #[inline(always)]
+    pub(crate) fn advance(&mut self, transform: SymbolTransform) -> (u64, u32) {
+        let nb_bits_out = ((self.value + i64::from(transform.delta_nb_bits)) >> 16) as u32 & 15;
+        let bits = self.value as u64 & ((1 << nb_bits_out) - 1);
+        let index = (self.value >> nb_bits_out) + i64::from(transform.delta_find_state);
+        self.value =
+            i64::from(self.table.state_table[index as usize & ((1 << STATE_TABLE_LOG) - 1)]);
+        (bits, nb_bits_out)
+    }
+
     /// `FSE_flushCState`.
     pub(crate) fn flush(&self, writer: &mut BitWriter<'_>) {
         writer.add_bits(self.value as u64, self.table.table_log);
@@ -808,6 +838,44 @@ mod tests {
     }
 
     #[test]
+    fn secondary_normalization_matches_the_reference_on_its_rare_branches() {
+        // A long tail of ones leaves the rest too little of the table, so
+        // the low threshold is raised and a second pass catches the 600.
+        let mut raised = [1u32; 16];
+        raised[13] = 600;
+        raised[14] = 4693;
+        raised[15] = 4694;
+        // Every symbol rounds up to two cells, then counts as rare.
+        let all_rare = [1u32; 22];
+        for count in [&raised[..], &all_rare[..]] {
+            let total: usize = count.iter().map(|&c| c as usize).sum();
+            for low_prob in [false, true] {
+                let mut norm = alloc::vec![0i16; count.len()];
+                let log =
+                    normalize_count(&mut norm, 5, count, total, count.len() as u32 - 1, low_prob);
+                let (expected, expected_log) =
+                    zstd_ffi::oracle::fse_normalize_count(count, total, 5, low_prob)
+                        .expect("the reference normalizes");
+                assert_eq!(log, Ok(expected_log as u32), "{count:?}");
+                assert_eq!(norm, expected, "{count:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn rare_symbols_give_the_remainder_to_the_first_most_frequent() {
+        let mut count = [10u32; 24];
+        count[0] = 9;
+        count[2] = 11;
+        count[3] = 11;
+        let mut norm = [0i16; 24];
+        assert_eq!(normalize_m2(&mut norm, 5, &count, 241, 23, 1), Ok(()));
+        let mut expected = [1i16; 24];
+        expected[2] = 9;
+        assert_eq!(norm, expected);
+    }
+
+    #[test]
     fn normalization_matches_the_reference() {
         for count in histograms() {
             let total: usize = count.iter().map(|&c| c as usize).sum();
@@ -858,6 +926,45 @@ mod tests {
         state.encode(&mut writer, 7);
         state.flush(&mut writer);
         assert_eq!(writer.close(), 1);
+    }
+
+    #[test]
+    fn advancing_a_state_writes_what_encoding_a_symbol_writes() {
+        let norm = [16i16, 8, 5, 2, -1, 0];
+        let mut table = CTable::default();
+        table.build(&norm, 5, 5);
+        let mut single = CTable::default();
+        single.build_rle(3);
+        for (table, symbols) in [
+            (&table, &[0u8, 1, 4, 2, 0, 0, 3, 1, 4, 4, 0, 2][..]),
+            (&single, &[3u8, 3, 3][..]),
+        ] {
+            let mut expected = [0u8; 64];
+            let mut direct = BitWriter::new(&mut expected).expect("capacity");
+            let mut dst = [0u8; 64];
+            let mut writer = BitWriter::new(&mut dst).expect("capacity");
+            let first = u32::from(symbols[0]);
+            let mut encoded = CState::with_first_symbol(table, first);
+            let mut advanced = CState::with_first_symbol(table, first);
+            for &symbol in &symbols[1..] {
+                encoded.encode(&mut direct, u32::from(symbol));
+                direct.flush();
+                let (bits, count) = advanced.advance(table.transform(symbol));
+                assert!(count <= STATE_TABLE_LOG);
+                assert_eq!(bits >> count, 0, "nothing above the bits");
+                writer.add_bits_fast(bits, count);
+                writer.flush();
+                assert_eq!(advanced.value, encoded.value);
+            }
+            encoded.flush(&mut direct);
+            advanced.flush(&mut writer);
+            let size = direct.close();
+            assert_eq!(writer.close(), size);
+            assert_eq!(dst[..size], expected[..size]);
+        }
+        // A symbol past the transforms reads a masked slot, never out of
+        // bounds.
+        assert_eq!(table.transform(MAX_SYMBOLS as u8 + 1), table.transform(1));
     }
 
     #[test]

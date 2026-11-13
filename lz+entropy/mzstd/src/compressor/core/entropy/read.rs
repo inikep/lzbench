@@ -247,8 +247,8 @@ fn build_dtable(ncount: &NCount) -> [DecodeRow; 1 << WEIGHT_TABLE_LOG_MAX] {
     let mask = table_size - 1;
     let step = (table_size >> 1) + (table_size >> 3) + 3;
     let mut position = 0;
-    for s in 0..symbols {
-        for _ in 0..ncount.counts[s].max(0) {
+    for (s, &count) in ncount.counts[..symbols].iter().enumerate() {
+        for _ in 0..count.max(0) {
             rows[position].symbol = s as u8;
             position = (position + step) & mask;
             while position > high_threshold {
@@ -325,9 +325,15 @@ pub(crate) fn read_stats(src: &[u8]) -> Result<HufStats, Malformed> {
         if i_size + 1 > src.len() || o_size >= HUF_WEIGHTS {
             return Err(Malformed);
         }
-        for n in (0..o_size).step_by(2) {
-            weights[n] = body[n / 2] >> 4;
-            weights[n + 1] = body[n / 2] & 15;
+        // An odd count also writes the slot past the last weight, which
+        // the implied last weight overwrites below.
+        for (pair, &byte) in weights
+            .as_chunks_mut::<2>()
+            .0
+            .iter_mut()
+            .zip(&body[..i_size])
+        {
+            *pair = [byte >> 4, byte & 15];
         }
     } else {
         if i_size + 1 > src.len() {
@@ -386,31 +392,41 @@ pub(crate) fn read_ctable(table: &mut CTable, src: &[u8]) -> Result<(usize, bool
     *table = CTable::default();
     table.table_log = table_log;
     table.max_symbol_value = nb_symbols as u32 - 1;
-    for n in 0..nb_symbols {
-        let w = u32::from(stats.weights[n]);
-        table.nb_bits[n] = if w == 0 { 0 } else { (table_log + 1 - w) as u8 };
-    }
+    table.nb_bits[..nb_symbols]
+        .iter_mut()
+        .zip(&stats.weights[..nb_symbols])
+        .for_each(|(bits, &weight)| {
+            let w = u32::from(weight);
+            *bits = if w == 0 { 0 } else { (table_log + 1 - w) as u8 };
+        });
 
     let mut nb_per_rank = [0u16; HUF_TABLE_LOG_MAX as usize + 2];
     let mut val_per_rank = [0u16; HUF_TABLE_LOG_MAX as usize + 2];
-    for n in 0..nb_symbols {
-        nb_per_rank[usize::from(table.nb_bits[n])] += 1;
-    }
+    table
+        .nb_bits
+        .iter()
+        .take(nb_symbols)
+        .for_each(|&bits| nb_per_rank[usize::from(bits)] += 1);
     let mut min: u16 = 0;
     for n in (1..=table_log as usize).rev() {
         val_per_rank[n] = min;
         min += nb_per_rank[n];
         min >>= 1;
     }
-    for n in 0..nb_symbols {
-        let bits = usize::from(table.nb_bits[n]);
-        // Symbols without a code take a value the encoder never writes;
-        // the reference stores it, this table keeps zero as `build` does.
-        if bits != 0 {
-            table.value[n] = val_per_rank[bits];
-        }
-        val_per_rank[bits] = val_per_rank[bits].wrapping_add(1);
-    }
+    table
+        .value
+        .iter_mut()
+        .zip(&table.nb_bits)
+        .take(nb_symbols)
+        .for_each(|(value, &bits)| {
+            let bits = usize::from(bits);
+            // Symbols without a code take a value the encoder never writes;
+            // the reference stores it, this table keeps zero as `build` does.
+            if bits != 0 {
+                *value = val_per_rank[bits];
+            }
+            val_per_rank[bits] = val_per_rank[bits].wrapping_add(1);
+        });
     Ok((stats.size, has_zero_weights))
 }
 

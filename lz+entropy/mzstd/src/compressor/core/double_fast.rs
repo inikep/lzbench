@@ -10,7 +10,8 @@ use super::cdict::TableLoad;
 use super::fast::{DictBytes, rep_index_ok, tags_match, write_tagged_index};
 use super::match_state::{BlockInput, DictMatchState, MatchState};
 use super::mem::{
-    count_at_simd, count_slices_simd, hash_ptr, hash_word, load32, load64, prefetch_l1, try_load64,
+    count_at_simd, count_slices_simd, hash_ptr, hash_word, load32, load64, matches32,
+    matches32_branchy, matches64, matches64_branchy, prefetch_l1, try_load64,
 };
 use super::params::SHORT_CACHE_TAG_BITS;
 use super::seq_store::{SeqStore, offset_to_offbase, repcode_to_offbase};
@@ -172,13 +173,22 @@ fn compress_block_mls<S: Simd, const MLS: u32>(
     // bounds.
     let in_prefix =
         block.start >= prefix_lowest_index && offset_1.max(offset_2) <= ip - prefix_lowest_index;
+    let branchy = takes_branches(cparams.window_log, cparams.hash_log);
     let (literals, [rep_1, rep_2]) = if in_prefix {
         let scan = scan(prefix_lowest_index);
         let ip = (ip - prefix_lowest_index) as usize;
         let reps = [offset_1, offset_2];
         macro_rules! scan {
             ($hl:literal, $hs:literal) => {
-                compress_scan_widths::<S, MLS, $hl, $hs>(simd, tables, seq_store, &scan, ip, reps)
+                if branchy {
+                    compress_scan_widths::<S, MLS, $hl, $hs, true>(
+                        simd, tables, seq_store, &scan, ip, reps,
+                    )
+                } else {
+                    compress_scan_widths::<S, MLS, $hl, $hs, false>(
+                        simd, tables, seq_store, &scan, ip, reps,
+                    )
+                }
             };
         }
         // The table widths of the default parameters (`hashLog`, `chainLog`
@@ -192,19 +202,22 @@ fn compress_block_mls<S: Simd, const MLS: u32>(
             (5, 18, 18) => scan!(18, 18),
             (5, 16, 15) => scan!(16, 15),
             (4, 17, 16) => scan!(17, 16),
-            _ => compress_scan::<S, MLS, true, 0, 0>(simd, tables, seq_store, &scan, ip, reps),
+            _ if branchy => {
+                compress_scan::<S, MLS, true, 0, 0, true>(simd, tables, seq_store, &scan, ip, reps)
+            }
+            _ => {
+                compress_scan::<S, MLS, true, 0, 0, false>(simd, tables, seq_store, &scan, ip, reps)
+            }
         }
     } else {
         let scan = scan(base);
         let ip = (ip - base) as usize;
-        compress_scan::<S, MLS, false, 0, 0>(
-            simd,
-            tables,
-            seq_store,
-            &scan,
-            ip,
-            [offset_1, offset_2],
-        )
+        let reps = [offset_1, offset_2];
+        if branchy {
+            compress_scan::<S, MLS, false, 0, 0, true>(simd, tables, seq_store, &scan, ip, reps)
+        } else {
+            compress_scan::<S, MLS, false, 0, 0, false>(simd, tables, seq_store, &scan, ip, reps)
+        }
     };
     offset_1 = rep_1;
     offset_2 = rep_2;
@@ -225,6 +238,18 @@ fn compress_block_mls<S: Simd, const MLS: u32>(
         offset_saved2
     };
     literals
+}
+
+/// Whether a `dfast` block tests its candidates with branches rather than
+/// selects. A long-table slot goes stale only when nothing overwrites it for
+/// a whole window, which is rare once the window spans sixteen times the
+/// table (level 3 above 1 MiB): the range tests then predict well. With
+/// smaller windows, or tables about as large as the window (level 4), many
+/// entries are stale and a select spares the mispredictions. ClickHouse's
+/// zstd makes the same choice (`useCmov = windowLog < hashLog + 4`); both
+/// forms accept the same candidates, so the output does not change.
+const fn takes_branches(window_log: u32, hash_log: u32) -> bool {
+    window_log >= hash_log + 4
 }
 
 /// The two hash tables a `dfast` block reads and fills.
@@ -323,7 +348,13 @@ impl<'t, const MLS: u32, const HL: u32, const HS: u32> Slots<'t, MLS, HL, HS> {
 /// selects the widths at run time.
 #[simd]
 #[inline(never)]
-fn compress_scan_widths<S: Simd, const MLS: u32, const HL: u32, const HS: u32>(
+fn compress_scan_widths<
+    S: Simd,
+    const MLS: u32,
+    const HL: u32,
+    const HS: u32,
+    const BRANCHY: bool,
+>(
     simd: S,
     tables: Tables<'_>,
     seq_store: &mut SeqStore,
@@ -331,7 +362,7 @@ fn compress_scan_widths<S: Simd, const MLS: u32, const HL: u32, const HS: u32>(
     ip: usize,
     reps: [u32; 2],
 ) -> (usize, [u32; 2]) {
-    compress_scan::<S, MLS, true, HL, HS>(simd, tables, seq_store, scan, ip, reps)
+    compress_scan::<S, MLS, true, HL, HS, BRANCHY>(simd, tables, seq_store, scan, ip, reps)
 }
 
 /// The search and match loop of `ZSTD_compressBlock_doubleFast_noDict_generic`
@@ -340,8 +371,18 @@ fn compress_scan_widths<S: Simd, const MLS: u32, const HL: u32, const HS: u32>(
 ///
 /// `IN_PREFIX` states that `scan.prefix_lowest` is zero, so the candidates'
 /// history is all of `src` and its lower bound the window index `origin`.
+/// `BRANCHY` tests candidates with branches rather than selects
+/// ([`matches64_branchy`], [`matches32_branchy`]); both accept the same
+/// candidates.
 #[inline(always)]
-fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool, const HL: u32, const HS: u32>(
+fn compress_scan<
+    S: Simd,
+    const MLS: u32,
+    const IN_PREFIX: bool,
+    const HL: u32,
+    const HS: u32,
+    const BRANCHY: bool,
+>(
     simd: S,
     tables: Tables<'_>,
     seq_store: &mut SeqStore,
@@ -376,6 +417,20 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool, const HL: u32, 
     // compiled-in widths moved the loop into its own function it saves
     // 1-3% (i7-13700KF, 2026-10-18).
     let count = |a: usize, b: usize| count_at_simd(simd, src, a, b);
+    let long_matches = |history: &[u8], at: u32, word: u64| {
+        if BRANCHY {
+            matches64_branchy(history, at, word)
+        } else {
+            matches64(history, at, word)
+        }
+    };
+    let short_matches = |history: &[u8], at: u32, word: u32| {
+        if BRANCHY {
+            matches32_branchy(history, at, word)
+        } else {
+            matches32(history, at, word)
+        }
+    };
 
     let Tables {
         long: hash_long,
@@ -454,7 +509,7 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool, const HL: u32, 
             }
 
             let slot_l1 = slots.long(word1);
-            if super::mem::matches64(history, idxl0.wrapping_sub(prefix_lowest_index), word0) {
+            if long_matches(history, idxl0.wrapping_sub(prefix_lowest_index), word0) {
                 let matchl0 = (idxl0 - base) as usize;
                 let m_length = count(ip + 8, matchl0 + 8) + 8;
                 break Next::Found {
@@ -465,7 +520,7 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool, const HL: u32, 
             }
 
             let idxl1 = slot_l1.get();
-            if super::mem::matches32(
+            if short_matches(
                 history,
                 idxs0.wrapping_sub(prefix_lowest_index),
                 word0 as u32,
@@ -548,7 +603,7 @@ fn compress_scan<S: Simd, const MLS: u32, const IN_PREFIX: bool, const HL: u32, 
                 let mut m_length = count(ip + 4, matchs0 + 4) + 4;
                 let mut offset = ip - matchs0;
                 // This second long candidate uses a strict lower limit in C.
-                if super::mem::matches64(
+                if long_matches(
                     &history[1..],
                     idxl1.wrapping_sub(prefix_lowest_index + 1),
                     word1,
@@ -1347,6 +1402,80 @@ mod tests {
                 let size = compress_once_into(&mut engine, &requested, None, &input, 1, &mut dst)
                     .expect("compresses");
                 assert!(dst[..size] == expected[..], "{backend} level {level}");
+            }
+        }
+    }
+
+    #[test]
+    fn candidates_take_branches_only_where_the_window_dwarfs_the_table() {
+        let branches = |level: i32, size: u64| {
+            let cparams = level_cparams(level, size);
+            takes_branches(cparams.window_log, cparams.hash_log)
+        };
+        assert!(branches(3, 4 << 20));
+        assert!(!branches(4, 4 << 20));
+        assert!(!branches(3, 300_000));
+        assert!(!branches(3, 64 << 10));
+        assert!(takes_branches(21, 17));
+        assert!(!takes_branches(20, 17));
+    }
+
+    #[test]
+    fn streams_past_the_window_compress_like_the_reference() {
+        use super::super::stream::{EndOp, Stream};
+        use alloc::vec::Vec;
+        use zstd_ffi::oracle::Directive;
+        // No declared size: the window is the level's own (2 MiB), so level
+        // 3 takes branches, level 4 selects, and three megabytes slide the
+        // window, which moves searches out of the prefix.
+        let input = [
+            corpus::text(1_200_000, 31),
+            corpus::binary(900_000, 32),
+            corpus::text(1_000_000, 33),
+        ]
+        .concat();
+        let mut steps: Vec<(&[u8], Directive)> = input
+            .chunks(64 << 10)
+            .map(|data| (data, Directive::Continue))
+            .collect();
+        steps.push((&[], Directive::End));
+        for level in [3, 4] {
+            let expected =
+                oracle::compress_stream(&oracle::Params::level(level), &steps).expect("oracle");
+            let requested = RequestedParams {
+                compression_level: level,
+                ..RequestedParams::default()
+            };
+            for backend in Backend::available() {
+                let mut engine = Engine::with_backend(backend);
+                let mut state = Stream::new();
+                let mut out = Vec::new();
+                let mut buffer = vec![0u8; 1 << 17];
+                for &(data, directive) in &steps {
+                    let op = match directive {
+                        Directive::End => EndOp::End,
+                        _ => EndOp::Continue,
+                    };
+                    let mut at = 0;
+                    loop {
+                        let step = state
+                            .compress(
+                                &mut engine,
+                                &requested,
+                                None,
+                                &mut buffer[..],
+                                &data[at..],
+                                op,
+                            )
+                            .expect("stream");
+                        at += step.consumed;
+                        out.extend_from_slice(&buffer[..step.produced]);
+                        if at == data.len() && (op != EndOp::End || step.remaining == 0) {
+                            break;
+                        }
+                    }
+                }
+                assert!(out == expected, "{backend} level {level}");
             }
         }
     }

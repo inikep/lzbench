@@ -183,18 +183,16 @@ impl<const N: usize> BlockSplitter<N> {
         } else if self.block_size > 0 {
             let entropy =
                 bits_entropy(&self.histograms[self.curr_histogram_ix].data[..self.alphabet_size]);
-            let mut combined_entropy = [0.0f64; 2];
-            let mut diff = [0.0f64; 2];
-            for j in 0..2 {
-                let last = self.last_histogram_ix[j];
-                // The combined histogram is only materialised if the block
-                // merges; its entropy is summed in place.
-                combined_entropy[j] = bits_entropy_of_sum(
+            // The combined histogram is only materialised if the block
+            // merges; its entropy is summed in place.
+            let combined_entropy = self.last_histogram_ix.map(|last| {
+                bits_entropy_of_sum(
                     &self.histograms[self.curr_histogram_ix].data[..self.alphabet_size],
                     &self.histograms[last].data[..self.alphabet_size],
-                );
-                diff[j] = combined_entropy[j] - entropy - self.last_entropy[j];
-            }
+                )
+            });
+            let diff: [f64; 2] =
+                ::core::array::from_fn(|j| combined_entropy[j] - entropy - self.last_entropy[j]);
 
             if self.split.num_types < MAX_NUMBER_OF_BLOCK_TYPES
                 && diff[0] > self.split_threshold
@@ -326,9 +324,7 @@ impl ContextBlockSplitter {
         // As above: only the first block type's histograms exist cleared.
         histograms.reserve(histograms_size + num_contexts);
         histograms.truncate(num_contexts);
-        for histogram in histograms.iter_mut() {
-            histogram.clear();
-        }
+        histograms.iter_mut().for_each(HistogramLiteral::clear);
         histograms.resize(num_contexts, HistogramLiteral::default());
         Self {
             alphabet_size,
@@ -400,11 +396,13 @@ impl ContextBlockSplitter {
         if self.num_blocks == 0 {
             self.split.lengths.push(self.block_size as u32);
             self.split.types.push(0);
-            for index in 0..contexts {
-                self.last_entropy[index] =
-                    bits_entropy(&self.histograms[index].data[..self.alphabet_size]);
-                self.last_entropy[contexts + index] = self.last_entropy[index];
-            }
+            self.last_entropy[..contexts]
+                .iter_mut()
+                .zip(&self.histograms)
+                .for_each(|(entropy, histogram)| {
+                    *entropy = bits_entropy(&histogram.data[..self.alphabet_size]);
+                });
+            self.last_entropy.copy_within(..contexts, contexts);
             self.num_blocks += 1;
             self.split.num_types += 1;
             self.advance_histograms();
@@ -437,10 +435,8 @@ impl ContextBlockSplitter {
                 self.split.types.push(self.split.num_types as u8);
                 self.last_histogram_ix[1] = self.last_histogram_ix[0];
                 self.last_histogram_ix[0] = self.split.num_types * contexts;
-                for (index, &entropy) in entropy.iter().enumerate().take(contexts) {
-                    self.last_entropy[contexts + index] = self.last_entropy[index];
-                    self.last_entropy[index] = entropy;
-                }
+                self.last_entropy.copy_within(..contexts, contexts);
+                self.last_entropy[..contexts].copy_from_slice(&entropy[..contexts]);
                 self.num_blocks += 1;
                 self.split.num_types += 1;
                 self.advance_histograms();

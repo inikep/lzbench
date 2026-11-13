@@ -28,10 +28,8 @@ pub(crate) fn count(
         return result;
     }
     let full = count_parallel(src);
-    let mut max = 255usize;
-    while full[max] == 0 {
-        max -= 1;
-    }
+    // `src` is not empty here, so some counter is not zero.
+    let max = full.iter().rposition(|&c| c != 0).unwrap_or(0);
     if max > bound {
         debug_assert!(check, "trusted input above its bound");
         return Err(EntropyError::MaxSymbolValueTooSmall);

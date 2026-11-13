@@ -453,13 +453,17 @@ impl CTable {
             min += nb_per_rank[n];
             min >>= 1;
         }
-        for n in 0..alphabet_size {
-            let bits = usize::from(self.nb_bits[n]);
-            // The reference advances the rank-0 counter too, but never stores
-            // a code for a symbol without a length.
-            self.value[n] = if bits == 0 { 0 } else { val_per_rank[bits] };
-            val_per_rank[bits] = val_per_rank[bits].wrapping_add(1);
-        }
+        self.value
+            .iter_mut()
+            .zip(&self.nb_bits)
+            .take(alphabet_size)
+            .for_each(|(value, &bits)| {
+                let bits = usize::from(bits);
+                // The reference advances the rank-0 counter too, but never stores
+                // a code for a symbol without a length.
+                *value = if bits == 0 { 0 } else { val_per_rank[bits] };
+                val_per_rank[bits] = val_per_rank[bits].wrapping_add(1);
+            });
         self.table_log = max_nb_bits;
         self.max_symbol_value = max_symbol_value;
     }
@@ -552,9 +556,11 @@ impl CTable {
             *weight = (huff_log as usize + 1 - n) as u8;
         }
         let mut weights = [0u8; SYMBOL_VALUE_MAX as usize + 1];
-        for n in 0..max_symbol_value as usize {
-            weights[n] = bits_to_weight[usize::from(self.nb_bits[n])];
-        }
+        weights
+            .iter_mut()
+            .zip(&self.nb_bits)
+            .take(max_symbol_value as usize)
+            .for_each(|(weight, &bits)| *weight = bits_to_weight[usize::from(bits)]);
 
         let Some((head, rest)) = dst.split_first_mut() else {
             return Err(CoreError::DstSizeTooSmall);
@@ -575,14 +581,15 @@ impl CTable {
             return Err(CoreError::Generic);
         }
         let size = (max_symbol_value as usize).div_ceil(2) + 1;
-        if size > dst.len() {
+        if size > rest.len() + 1 {
             return Err(CoreError::DstSizeTooSmall);
         }
-        dst[0] = (128 + (max_symbol_value - 1)) as u8;
+        *head = (128 + (max_symbol_value - 1)) as u8;
         weights[max_symbol_value as usize] = 0;
-        for n in (0..max_symbol_value as usize).step_by(2) {
-            dst[n / 2 + 1] = (weights[n] << 4) + weights[n + 1];
-        }
+        rest.iter_mut()
+            .zip(weights.as_chunks::<2>().0)
+            .take(size - 1)
+            .for_each(|(byte, &[high, low])| *byte = (high << 4) + low);
         Ok(size)
     }
 }

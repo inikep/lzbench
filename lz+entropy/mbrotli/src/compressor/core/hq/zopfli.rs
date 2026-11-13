@@ -859,13 +859,12 @@ fn prefix_match_length(left: &[u8], right: &[u8], limit: usize) -> usize {
         }
         matched += 8;
     }
-    for (left_byte, right_byte) in left_tail.iter().zip(right_tail) {
-        if left_byte != right_byte {
-            break;
-        }
-        matched += 1;
-    }
     matched
+        + left_tail
+            .iter()
+            .zip(right_tail)
+            .take_while(|(left_byte, right_byte)| left_byte == right_byte)
+            .count()
 }
 
 /// Shortest attached-dictionary match the high-quality search collects.

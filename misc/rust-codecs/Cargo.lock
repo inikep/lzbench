@@ -47,7 +47,7 @@ dependencies = [
 
 [[package]]
 name = "mbrotli"
-version = "0.5.20"
+version = "0.5.22"
 dependencies = [
  "borrowed-buf",
  "branches",
@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "mzstd"
-version = "0.2.11"
+version = "0.2.14"
 dependencies = [
  "borrowed-buf",
  "branches",
@@ -78,7 +78,7 @@ dependencies = [
 
 [[package]]
 name = "mzstd-ffi"
-version = "0.2.11"
+version = "0.2.14"
 dependencies = [
  "mzstd",
  "thiserror",

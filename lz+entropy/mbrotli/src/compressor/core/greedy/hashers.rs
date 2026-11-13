@@ -880,9 +880,7 @@ impl<
             }
             return;
         }
-        for ix in start..end {
-            self.store(data, mask, ix);
-        }
+        (start..end).for_each(|ix| self.store(data, mask, ix));
     }
 
     #[inline(always)]
@@ -1841,60 +1839,62 @@ impl<const BUCKETS: usize, const BLOCK: usize, const SLOTS: usize>
             unreachable!("dense positions have the bucket shape");
         };
         let dense: &mut [[u32; BLOCK]; BUCKETS] = dense;
-        for ((&entry, count), slots) in sparse
+        sparse
             .entries
             .iter()
+            .copied()
             .zip(layout.num.iter_mut())
             .zip(dense.iter_mut())
-        {
-            if entry >> GENERATION_SHIFT != sparse.generation {
-                continue;
-            }
-            let (stored, offset) = sparse.decode_entry(entry);
-            *count = stored;
-            match SparseLayout::<BUCKETS, BLOCK>::block(offset) {
-                Some(BlockRef::Full(index)) => {
-                    if let Some(block) = sparse.blocks.get(index) {
-                        *slots = *block;
-                    }
-                }
-                Some(BlockRef::Starter(index)) => {
-                    if let Some(starter) = sparse.starters.get(index)
-                        && let Some(top) = slots.last_chunk_mut::<STARTER_SLOTS>()
-                    {
-                        *top = *starter;
-                    }
-                }
-                None => {}
-            }
-        }
-        if let Some(tags) = layout.dense_tags.as_deref_mut() {
-            let Ok(tags): Result<&mut [[u8; BLOCK]; BUCKETS], _> =
-                tags.as_chunks_mut::<BLOCK>().0.try_into()
-            else {
-                unreachable!("dense tags have the bucket shape");
-            };
-            for (&entry, bucket) in sparse.entries.iter().zip(tags.iter_mut()) {
-                if entry >> GENERATION_SHIFT != sparse.generation {
-                    continue;
-                }
-                let (_, offset) = sparse.decode_entry(entry);
+            .filter(|((entry, _), _)| *entry >> GENERATION_SHIFT == sparse.generation)
+            .for_each(|((entry, count), slots)| {
+                let (stored, offset) = sparse.decode_entry(entry);
+                *count = stored;
                 match SparseLayout::<BUCKETS, BLOCK>::block(offset) {
                     Some(BlockRef::Full(index)) => {
-                        if let Some(block) = sparse.block_tags.get(index) {
-                            *bucket = *block;
+                        if let Some(block) = sparse.blocks.get(index) {
+                            *slots = *block;
                         }
                     }
                     Some(BlockRef::Starter(index)) => {
-                        if let Some(starter) = sparse.starter_tags.get(index)
-                            && let Some(top) = bucket.last_chunk_mut::<STARTER_SLOTS>()
+                        if let Some(starter) = sparse.starters.get(index)
+                            && let Some(top) = slots.last_chunk_mut::<STARTER_SLOTS>()
                         {
                             *top = *starter;
                         }
                     }
                     None => {}
                 }
-            }
+            });
+        if let Some(tags) = layout.dense_tags.as_deref_mut() {
+            let Ok(tags): Result<&mut [[u8; BLOCK]; BUCKETS], _> =
+                tags.as_chunks_mut::<BLOCK>().0.try_into()
+            else {
+                unreachable!("dense tags have the bucket shape");
+            };
+            sparse
+                .entries
+                .iter()
+                .copied()
+                .zip(tags.iter_mut())
+                .filter(|(entry, _)| *entry >> GENERATION_SHIFT == sparse.generation)
+                .filter_map(|(entry, bucket)| {
+                    SparseLayout::<BUCKETS, BLOCK>::block(sparse.decode_entry(entry).1)
+                        .map(|block| (block, bucket))
+                })
+                .for_each(|(block, bucket)| match block {
+                    BlockRef::Full(index) => {
+                        if let Some(block) = sparse.block_tags.get(index) {
+                            *bucket = *block;
+                        }
+                    }
+                    BlockRef::Starter(index) => {
+                        if let Some(starter) = sparse.starter_tags.get(index)
+                            && let Some(top) = bucket.last_chunk_mut::<STARTER_SLOTS>()
+                        {
+                            *top = *starter;
+                        }
+                    }
+                });
         }
         layout
     }
@@ -2776,8 +2776,8 @@ fn probe_last_distances<S: Simd, const BLOCK: usize>(
         probe_derived_distances::<S, BLOCK>(simd, query, &mut best_len, &mut found);
     } else {
         // The probe count is a constant, so this loop unrolls.
-        for index in 0..count {
-            let backward = query.cache[index] as usize;
+        for (index, &distance) in query.cache[..count].iter().enumerate() {
+            let backward = distance as usize;
             let prev_ix = cur_ix.wrapping_sub(backward);
             if prev_ix >= cur_ix || backward > max_backward {
                 continue;
@@ -3038,9 +3038,7 @@ impl<const HASH64: bool, const BUCKETS: usize, const BLOCK: usize> MatchRun
     }
 
     fn store_range(&mut self, data: &[u8], mask: usize, start: usize, end: usize) {
-        for ix in start..end {
-            self.store(data, mask, ix);
-        }
+        (start..end).for_each(|ix| self.store(data, mask, ix));
     }
 
     #[inline(always)]
@@ -3119,9 +3117,7 @@ impl<const HASH64: bool, const BUCKETS: usize, const BLOCK: usize> MatchRun
             }
             return;
         }
-        for ix in start..end {
-            self.store(data, mask, ix);
-        }
+        (start..end).for_each(|ix| self.store(data, mask, ix));
     }
 
     #[inline(always)]
@@ -3562,9 +3558,7 @@ impl<const NUM_BANKS: usize, const BANK_BITS: u32, const LAST: usize> Matcher
         let words = contiguous(data, start, mask, len)
             .and_then(|_| data.get(start & mask..(start & mask) + len + 3));
         let Some(words) = words else {
-            for ix in start..end {
-                self.store(data, mask, ix);
-            }
+            (start..end).for_each(|ix| self.store(data, mask, ix));
             return;
         };
         for (ix, word) in (start..end).zip(words.windows(4)) {
@@ -4311,6 +4305,42 @@ mod tests {
                 assert_eq!(actual.dense_tags, expected.dense_tags);
             }
         }
+    }
+
+    #[test]
+    fn a_chain_store_range_records_what_single_stores_record() {
+        fn check<const NUM_BANKS: usize, const BANK_BITS: u32, const LAST: usize>(
+            shape: ChainShape,
+        ) {
+            // A 1 KiB ring with a tail: ranges inside it, up to the mask, and
+            // across it, which takes the per-position fallback.
+            let data: Vec<u8> = (0..1024 + 64)
+                .map(|i: usize| (i * 131 % 251) as u8 ^ (i >> 3) as u8)
+                .collect();
+            let mask = 1023;
+            let nodes = |matcher: &ChainMatcher<NUM_BANKS, BANK_BITS, LAST>| {
+                matcher
+                    .slots
+                    .iter()
+                    .map(|slot| (slot.next, slot.delta))
+                    .collect::<Vec<_>>()
+            };
+            for (start, end) in [(0, 0), (5, 200), (1000, 1024), (1000, 1100), (2040, 2100)] {
+                let mut ranged = ChainMatcher::<NUM_BANKS, BANK_BITS, LAST>::new(shape);
+                let mut single = ChainMatcher::<NUM_BANKS, BANK_BITS, LAST>::new(shape);
+                ranged.store_range(&data, mask, start, end);
+                for ix in start..end {
+                    single.store(&data, mask, ix);
+                }
+                assert_eq!(ranged.addr, single.addr, "{start}..{end}");
+                assert_eq!(ranged.head, single.head, "{start}..{end}");
+                assert_eq!(ranged.tiny_hash, single.tiny_hash, "{start}..{end}");
+                assert_eq!(ranged.free_slot_idx, single.free_slot_idx, "{start}..{end}");
+                assert_eq!(nodes(&ranged), nodes(&single), "{start}..{end}");
+            }
+        }
+        check::<1, 16, 4>(Q5_CHAIN);
+        check::<512, 9, 16>(Q9_CHAIN);
     }
 
     #[test]

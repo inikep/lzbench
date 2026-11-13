@@ -5,12 +5,12 @@ use fearless_simd::Simd;
 use fearless_simd_macros::simd;
 
 use super::bits::BitWriter;
-use super::fse::{self, CState, CTable};
+use super::fse::{self, CState, CTable, SymbolTransform};
 use super::{FseRepeat, FseTables};
 use crate::Backend;
 use crate::compressor::core::error::CoreError;
 use crate::compressor::core::params::Strategy;
-use crate::compressor::core::seq_store::{CODE_COUNT_SLOTS, SeqStore};
+use crate::compressor::core::seq_store::{CODE_COUNT_SLOTS, SeqCodes, SeqDef, SeqStore};
 use crate::shared::format::{
     DEFAULT_MAX_OFF, EncodingType, LL_DEFAULT_NORM, LL_DEFAULT_NORM_LOG, LL_FSE_LOG, MAX_LL,
     MAX_ML, MAX_OFF, MAX_SEQ, ML_DEFAULT_NORM, ML_DEFAULT_NORM_LOG, ML_FSE_LOG, OF_DEFAULT_NORM,
@@ -100,14 +100,16 @@ fn ncount_cost(count: &[u32], max: u32, nb_seq: usize, fse_log: u32) -> Result<u
 
 /// Entropy bound of `count` in bits (`ZSTD_entropyCost`).
 fn entropy_cost(count: &[u32], max: u32, total: usize) -> usize {
-    let mut cost: u32 = 0;
-    for &c in &count[..=max as usize] {
-        let mut norm = ((256 * c as usize) / total) as u32;
-        if c != 0 && norm == 0 {
-            norm = 1;
-        }
-        cost = cost.wrapping_add(c.wrapping_mul(INVERSE_PROBABILITY_LOG256[norm as usize]));
-    }
+    let cost = count[..=max as usize]
+        .iter()
+        .copied()
+        .fold(0u32, |cost, c| {
+            let mut norm = ((256 * c as usize) / total) as u32;
+            if c != 0 && norm == 0 {
+                norm = 1;
+            }
+            cost.wrapping_add(c.wrapping_mul(INVERSE_PROBABILITY_LOG256[norm as usize]))
+        });
     (cost >> 8) as usize
 }
 
@@ -143,12 +145,15 @@ pub(crate) fn cross_entropy_cost(
     max: u32,
 ) -> usize {
     let shift = 8 - accuracy_log;
-    let mut cost = 0usize;
-    for s in 0..=max as usize {
-        let norm_acc = if norm[s] != -1 { norm[s] as u32 } else { 1 };
-        let norm256 = norm_acc << shift;
-        cost += count[s] as usize * INVERSE_PROBABILITY_LOG256[norm256 as usize] as usize;
-    }
+    let cost = count
+        .iter()
+        .zip(norm)
+        .take(max as usize + 1)
+        .fold(0usize, |cost, (&c, &n)| {
+            let norm_acc = if n != -1 { n as u32 } else { 1 };
+            let norm256 = norm_acc << shift;
+            cost + c as usize * INVERSE_PROBABILITY_LOG256[norm256 as usize] as usize
+        });
     cost >> 8
 }
 
@@ -470,12 +475,90 @@ pub(crate) fn encode(
     store: &SeqStore,
     backend: Backend,
 ) -> Result<usize, CoreError> {
-    fearless_simd::dispatch!(backend.0, simd => encode_on(simd, dst, tables, store))
+    let n = store.nb_seq();
+    encode_slice(
+        dst,
+        tables,
+        &store.sequences()[..n],
+        &store.codes[..n],
+        backend,
+    )
+}
+
+/// [`encode`] for a run of a store's sequences and their codes, as a
+/// sub-block holds them.
+///
+/// # Errors
+///
+/// As [`encode`]; an empty run has no bitstream.
+pub(crate) fn encode_slice(
+    dst: &mut [u8],
+    tables: &FseTables,
+    sequences: &[SeqDef],
+    codes: &[SeqCodes],
+    backend: Backend,
+) -> Result<usize, CoreError> {
+    fearless_simd::dispatch!(backend.0, simd => encode_on(simd, dst, tables, sequences, codes))
 }
 
 /// Bits of extra values one sequence may add without a flush: the 64-bit
 /// container holds up to 7 pending bits and the three states' bits.
 const EXTRA_BITS_WITHOUT_FLUSH: u32 = 64 - 7 - (LL_FSE_LOG + ML_FSE_LOG + OFF_FSE_LOG);
+
+/// Sequences [`encode_on`] prepares before it encodes them.
+const ENCODE_BATCH: usize = 64;
+
+/// Room for the bytes a batch completes, seven a sequence at most, and
+/// the container stored after the last of them; a power of two plus the
+/// container, so a position is masked rather than bounds checked.
+const PACKED_BYTES: usize = (ENCODE_BATCH * 7).next_power_of_two() + size_of::<u64>();
+
+/// One sequence prepared for [`encode_on`]'s state loop.
+#[derive(Clone, Copy, Default)]
+struct Pending {
+    /// The sequence's extra bits ([`SeqCodes::extra`]).
+    extra: u64,
+    /// The transforms its offset, match length and literal length codes
+    /// select.
+    of: SymbolTransform,
+    ml: SymbolTransform,
+    ll: SymbolTransform,
+    /// Number of bits in `extra`.
+    extra_bits: u32,
+}
+
+/// Fills `pending` with the last sequences of `codes` and `seqs`, the last
+/// one first, and returns how many it took: all that fit, or those after
+/// the last sequence whose extra bits do not fit the container beside
+/// the states' bits.
+///
+/// Out of line, so the loop has every register to itself: inlined, it
+/// shares them with the states its caller keeps across batches.
+#[simd]
+#[inline(never)]
+fn prepare<S: Simd>(
+    simd: S,
+    tables: &FseTables,
+    codes: &[SeqCodes],
+    seqs: &[SeqDef],
+    pending: &mut [Pending; ENCODE_BATCH],
+) -> usize {
+    let mut ready = 0;
+    for ((&codes, seq), slot) in codes.iter().zip(seqs).rev().zip(pending) {
+        if u32::from(codes.extra_bits) >= EXTRA_BITS_WITHOUT_FLUSH {
+            break;
+        }
+        *slot = Pending {
+            extra: codes.extra(seq),
+            of: tables.offcode.transform(codes.of),
+            ml: tables.matchlength.transform(codes.ml),
+            ll: tables.litlength.transform(codes.ll),
+            extra_bits: u32::from(codes.extra_bits),
+        };
+        ready += 1;
+    }
+    ready
+}
 
 /// [`encode`] inside `simd`'s feature context.
 #[simd]
@@ -483,16 +566,16 @@ fn encode_on<S: Simd>(
     simd: S,
     dst: &mut [u8],
     tables: &FseTables,
-    store: &SeqStore,
+    sequences: &[SeqDef],
+    codes: &[SeqCodes],
 ) -> Result<usize, CoreError> {
     let Some(mut writer) = BitWriter::new(dst) else {
         return Err(CoreError::DstSizeTooSmall);
     };
-    let n = store.nb_seq();
-    let Some((last, codes)) = store.codes[..n].split_last() else {
+    let Some((last, codes)) = codes.split_last() else {
         return Err(CoreError::Generic);
     };
-    let Some((last_seq, seqs)) = store.sequences()[..n].split_last() else {
+    let Some((last_seq, seqs)) = sequences.split_last() else {
         return Err(CoreError::Generic);
     };
 
@@ -503,18 +586,69 @@ fn encode_on<S: Simd>(
     writer.add_bits_fast(last.extra(last_seq), u32::from(last.extra_bits));
     writer.flush();
 
-    for (&codes, seq) in codes.iter().zip(seqs).rev() {
-        state_of.encode(&mut writer, u32::from(codes.of));
-        state_ml.encode(&mut writer, u32::from(codes.ml));
-        state_ll.encode(&mut writer, u32::from(codes.ll));
-        let extra_bits = u32::from(codes.extra_bits);
-        let extra = codes.extra(seq);
-        if extra_bits < EXTRA_BITS_WITHOUT_FLUSH {
-            writer.add_bits_fast(extra, extra_bits);
+    // Sequences are encoded a batch at a time, in two loops. The first
+    // gathers what depends on a sequence alone: its extra bits and the
+    // transform each of its three codes selects. The second advances the
+    // states and packs the stream into a local buffer. It reads one
+    // record per sequence and indexes only the state tables, so the
+    // states, whose chains of dependent table loads bound it, stay in
+    // registers together with the bit container.
+    let mut pending = [Pending::default(); ENCODE_BATCH];
+    let mut packed = [0u8; PACKED_BYTES];
+    let mut remaining = codes.len();
+    while remaining != 0 {
+        let batch = remaining.min(ENCODE_BATCH);
+        let batch_codes = &codes[remaining - batch..remaining];
+        let batch_seqs = &seqs[remaining - batch..remaining];
+        let ready = prepare(simd, tables, batch_codes, batch_seqs, &mut pending);
+        // A sequence adds at most 56 bits to the fewer than eight left
+        // pending, so it completes at most seven bytes: the masked
+        // position is the position, and eight bytes fit after it.
+        let (mut container, mut bit_pos) = writer.pending();
+        let mut filled = 0usize;
+        // The stream is packed in place while the destination has a whole
+        // buffer's room left, and through the local buffer near its end.
+        let in_place = writer.room::<PACKED_BYTES>();
+        let direct = in_place.is_some();
+        let target = match in_place {
+            Some(room) => room,
+            None => &mut packed,
+        };
+        for slot in &pending[..ready] {
+            let (of_bits, of_count) = state_of.advance(slot.of);
+            let (ml_bits, ml_count) = state_ml.advance(slot.ml);
+            let (ll_bits, ll_count) = state_ll.advance(slot.ll);
+            let state_bits = of_bits | ml_bits << of_count | ll_bits << (of_count + ml_count);
+            let state_count = of_count + ml_count + ll_count;
+            container |= (state_bits | slot.extra << state_count) << bit_pos;
+            bit_pos += state_count + slot.extra_bits;
+            let at = filled & (PACKED_BYTES - 1 - size_of::<u64>());
+            if let Some(window) = target.get_mut(at..at + size_of::<u64>()) {
+                window.copy_from_slice(&container.to_le_bytes());
+            }
+            filled += (bit_pos >> 3) as usize;
+            container >>= bit_pos & !7;
+            bit_pos &= 7;
+        }
+        if direct {
+            writer.advance(filled, container, bit_pos);
         } else {
-            // Flushes only move whole bytes out of the container, so where
-            // they fall does not change the stream: this one makes room,
-            // and the second one splits the at most 63 extra bits.
+            writer.append(&packed[..filled.min(PACKED_BYTES)], container, bit_pos);
+        }
+        remaining -= ready;
+        if ready < batch {
+            // The batch stopped at a sequence whose extra bits do not fit
+            // the container beside the states' bits. Flushes only move
+            // whole bytes out of the container, so where they fall does
+            // not change the stream: the first one makes room, and the
+            // second one splits the at most 63 extra bits.
+            remaining -= 1;
+            let (codes, seq) = (codes[remaining], &seqs[remaining]);
+            state_of.encode(&mut writer, u32::from(codes.of));
+            state_ml.encode(&mut writer, u32::from(codes.ml));
+            state_ll.encode(&mut writer, u32::from(codes.ll));
+            let extra_bits = u32::from(codes.extra_bits);
+            let extra = codes.extra(seq);
             writer.flush();
             writer.add_bits(extra, EXTRA_BITS_WITHOUT_FLUSH);
             writer.flush();
@@ -522,8 +656,8 @@ fn encode_on<S: Simd>(
                 extra >> EXTRA_BITS_WITHOUT_FLUSH,
                 extra_bits - EXTRA_BITS_WITHOUT_FLUSH,
             );
+            writer.flush();
         }
-        writer.flush();
     }
 
     state_ml.flush(&mut writer);
@@ -617,12 +751,69 @@ mod tests {
     }
 
     #[test]
+    fn batches_take_the_last_sequences_first_and_stop_at_wide_extra_bits() {
+        let mut store = SeqStore::default();
+        store.reserve(1 << 17, 4);
+        // The third sequence's offset and lengths carry 16 + 16 + 20 extra
+        // bits, more than fit the container beside the states' bits.
+        store.store_seq_only(18, offset_to_offbase(100), 38);
+        store.store_seq_only(0, repcode_to_offbase(1), 4);
+        store.store_seq_only(0xFFFF, offset_to_offbase(1 << 20), 0xFFFF + 3);
+        store.store_seq_only(3, offset_to_offbase(9), 5);
+        store.store_seq_only(40, offset_to_offbase(70_000), 300);
+        let prev = FseTables::default();
+        let mut next = FseTables::default();
+        let mut headers = [0u8; 256];
+        build_statistics(
+            &mut store,
+            &prev,
+            &mut next,
+            &mut headers,
+            Strategy::Fast,
+            Backend::default(),
+        )
+        .expect("statistics");
+        let codes = &store.codes[..5];
+        let seqs = store.sequences();
+        assert!(u32::from(codes[2].extra_bits) >= EXTRA_BITS_WITHOUT_FLUSH);
+        for backend in Backend::available() {
+            let take = |codes: &[SeqCodes], seqs: &[SeqDef]| {
+                let mut pending = [Pending::default(); ENCODE_BATCH];
+                let ready = fearless_simd::dispatch!(backend.0, simd =>
+                    prepare(simd, &next, codes, seqs, &mut pending));
+                (ready, pending)
+            };
+            // All five: the two after the wide one, the last first.
+            let (ready, pending) = take(codes, seqs);
+            assert_eq!(ready, 2, "{backend}");
+            for (slot, at) in pending[..ready].iter().zip([4usize, 3]) {
+                assert_eq!(slot.extra, codes[at].extra(&seqs[at]), "{backend} {at}");
+                assert_eq!(slot.extra_bits, u32::from(codes[at].extra_bits));
+                assert_eq!(slot.of, next.offcode.transform(codes[at].of));
+                assert_eq!(slot.ml, next.matchlength.transform(codes[at].ml));
+                assert_eq!(slot.ll, next.litlength.transform(codes[at].ll));
+            }
+            // Ending at the wide one: nothing; before it: both.
+            assert_eq!(take(&codes[..3], &seqs[..3]).0, 0, "{backend}");
+            assert_eq!(take(&codes[..2], &seqs[..2]).0, 2, "{backend}");
+            assert_eq!(take(&[], &[]).0, 0, "{backend}");
+        }
+    }
+
+    #[test]
     fn fused_encoding_matches_the_reference_loop() {
         let mut seed = 0x9E37_79B9_7F4A_7C15u64;
         for (count, long) in [
             (1usize, None),
             (2, None),
             (7, Some(true)),
+            // Around one and two batches of the state loop, which takes
+            // every sequence but the last.
+            (ENCODE_BATCH, None),
+            (ENCODE_BATCH + 1, None),
+            (ENCODE_BATCH + 2, None),
+            (2 * ENCODE_BATCH + 1, None),
+            (2 * ENCODE_BATCH + 2, None),
             (300, None),
             (300, Some(false)),
             (5000, Some(true)),

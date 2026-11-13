@@ -397,16 +397,17 @@ impl SerializedDictionaryData {
                 transforms_available,
             )?;
         }
-        if let Some(map) = &context_map {
-            for (context, &index) in map.iter().enumerate() {
-                if usize::from(index) >= combinations.len() {
-                    return Err(SerializedError::UndefinedCombination {
-                        context,
-                        index,
-                        available: combinations.len(),
-                    });
-                }
-            }
+        if let Some((context, &index)) = context_map
+            .iter()
+            .flatten()
+            .enumerate()
+            .find(|&(_, &index)| usize::from(index) >= combinations.len())
+        {
+            return Err(SerializedError::UndefinedCombination {
+                context,
+                index,
+                available: combinations.len(),
+            });
         }
         Ok(Self {
             prefix,
@@ -780,17 +781,14 @@ pub(crate) fn parse_exact(
 /// Cannot overflow: a length is at most thirty-one and an exponent at most
 /// fifteen, so the total is under a megabyte.
 fn word_data_len(size_bits: &[u8; NUM_ENCODED_LENGTHS]) -> Result<usize, WordListError> {
-    let mut total = 0usize;
-    for (index, &bits) in size_bits.iter().enumerate() {
-        let length = MIN_WORD_LENGTH + index;
-        if bits > MAX_SIZE_BITS {
-            return Err(WordListError::TooManySizeBits { length, bits });
-        }
-        if bits != 0 {
-            total += length << bits;
-        }
-    }
-    Ok(total)
+    size_bits
+        .iter()
+        .zip(MIN_WORD_LENGTH..)
+        .try_fold(0usize, |total, (&bits, length)| match bits {
+            0 => Ok(total),
+            1..=MAX_SIZE_BITS => Ok(total + (length << bits)),
+            _ => Err(WordListError::TooManySizeBits { length, bits }),
+        })
 }
 
 /// Parses one transform list, prefix and suffix table included.

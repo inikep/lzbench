@@ -210,9 +210,12 @@ impl Core {
             return Err(EncodeError::InputSizeMismatch { declared });
         }
         let output_len = output.capacity();
+        let requested = dictionary.map_or(compressor.requested, |dictionary| {
+            dictionary.requested_for(&compressor.requested)
+        });
         let result = compressor.stream.compress(
             &mut compressor.engine,
-            &compressor.requested,
+            &requested,
             dictionary.map(|dictionary| dictionary.cdict()),
             output,
             input,

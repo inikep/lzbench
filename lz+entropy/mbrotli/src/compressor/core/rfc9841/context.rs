@@ -147,8 +147,7 @@ impl SharedContextInner {
             });
         }
 
-        let mut total = 0u64;
-        for attachment in &attachments {
+        let total = attachments.iter().try_fold(0u64, |total, attachment| {
             let length = attachment.len() as u64;
             if length > MAX_PREFIX_SEGMENT_BYTES {
                 return Err(SharedBrotliError::DictionaryTooLarge {
@@ -156,8 +155,8 @@ impl SharedContextInner {
                     limit: MAX_PREFIX_SEGMENT_BYTES,
                 });
             }
-            total += length;
-        }
+            Ok(total + length)
+        })?;
         if total > limits.max_prefix_bytes {
             return Err(SharedBrotliError::DictionaryTooLarge {
                 bytes: total,
@@ -304,13 +303,16 @@ fn estimate_allocation(attachments: &[Box<[u8]>]) -> Option<u64> {
     // it and the cumulative offset that addresses it.
     const PER_ATTACHMENT: u64 = (size_of::<Box<[u8]>>() + size_of::<u64>()) as u64;
 
-    let mut total = size_of::<SharedContextInner>() as u64;
-    for attachment in attachments {
-        let length = attachment.len() as u64;
-        total = total.checked_add(length)?.checked_add(PER_ATTACHMENT)?;
-        total = total.checked_add(PreparedPrefix::allocation_bound(attachment.len())?)?;
-    }
-    Some(total)
+    attachments.iter().try_fold(
+        size_of::<SharedContextInner>() as u64,
+        |total, attachment| {
+            let length = attachment.len() as u64;
+            total
+                .checked_add(length)?
+                .checked_add(PER_ATTACHMENT)?
+                .checked_add(PreparedPrefix::allocation_bound(attachment.len())?)
+        },
+    )
 }
 
 #[cfg(test)]

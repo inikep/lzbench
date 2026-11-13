@@ -242,14 +242,18 @@ impl Compressor {
     }
 
     /// The dictionary's tables, when it serves this compressor's
-    /// configuration.
+    /// configuration, and the parameters frames compressed with it resolve
+    /// with.
     fn dictionary_tables<'d>(
         &self,
         dictionary: Option<&'d PreparedDictionary>,
-    ) -> Result<Option<&'d CDict>, EncodeError> {
+    ) -> Result<(Option<&'d CDict>, RequestedParams), EncodeError> {
         match dictionary {
-            None => Ok(None),
-            Some(dictionary) if dictionary.serves(&self.requested) => Ok(Some(dictionary.cdict())),
+            None => Ok((None, self.requested)),
+            Some(dictionary) if dictionary.serves(&self.requested) => Ok((
+                Some(dictionary.cdict()),
+                dictionary.requested_for(&self.requested),
+            )),
             Some(_) => Err(EncodeError::DictionaryMismatch),
         }
     }
@@ -260,7 +264,7 @@ impl Compressor {
         src: &[u8],
         dst: &mut Vec<u8>,
     ) -> Result<Range<usize>, EncodeError> {
-        let cdict = self.dictionary_tables(dictionary)?;
+        let (cdict, requested) = self.dictionary_tables(dictionary)?;
         let bound = Self::max_compressed_size(src.len())?;
         let start = dst.len();
         let limit = start.checked_add(bound).ok_or(SizeOverflow)?;
@@ -268,13 +272,13 @@ impl Compressor {
             // A single block needs its full bound anyway. Keep the direct
             // slice path here, without another call for empty/tiny frames.
             dst.resize(limit, 0);
-            self.compress_to_slice_with(cdict, src, &mut dst[start..])
+            self.compress_to_slice_with(cdict, &requested, src, &mut dst[start..])
         } else {
             self.stream.reset_session();
             let id = self.next_id();
             let result = super::core::compress_once_append(
                 &mut self.engine,
-                &self.requested,
+                &requested,
                 cdict,
                 src,
                 id,
@@ -317,19 +321,21 @@ impl Compressor {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn compress_to_slice(&mut self, src: &[u8], dst: &mut [u8]) -> Result<usize, EncodeError> {
-        self.compress_to_slice_with(None, src, dst)
+        let requested = self.requested;
+        self.compress_to_slice_with(None, &requested, src, dst)
     }
 
     fn compress_to_slice_with(
         &mut self,
         cdict: Option<&CDict>,
+        requested: &RequestedParams,
         src: &[u8],
         dst: &mut [u8],
     ) -> Result<usize, EncodeError> {
         self.stream.reset_session();
         let id = self.next_id();
         let result =
-            super::core::compress_once_into(&mut self.engine, &self.requested, cdict, src, id, dst)
+            super::core::compress_once_into(&mut self.engine, requested, cdict, src, id, dst)
                 .map_err(|error| EncodeError::from_core(error, dst.len(), Some(src.len() as u64)));
         self.apply_retention();
         result
@@ -364,27 +370,23 @@ impl Compressor {
         src: &[u8],
         dst: &mut [MaybeUninit<u8>],
     ) -> Result<usize, EncodeError> {
-        self.compress_to_uninit_with(None, src, dst)
+        let requested = self.requested;
+        self.compress_to_uninit_with(None, &requested, src, dst)
     }
 
     fn compress_to_uninit_with(
         &mut self,
         cdict: Option<&CDict>,
+        requested: &RequestedParams,
         src: &[u8],
         dst: &mut [MaybeUninit<u8>],
     ) -> Result<usize, EncodeError> {
         self.stream.reset_session();
         let id = self.next_id();
         let capacity = dst.len();
-        let result = super::core::compress_once_uninit(
-            &mut self.engine,
-            &self.requested,
-            cdict,
-            src,
-            id,
-            dst,
-        )
-        .map_err(|error| EncodeError::from_core(error, capacity, Some(src.len() as u64)));
+        let result =
+            super::core::compress_once_uninit(&mut self.engine, requested, cdict, src, id, dst)
+                .map_err(|error| EncodeError::from_core(error, capacity, Some(src.len() as u64)));
         self.apply_retention();
         result
     }
@@ -520,8 +522,8 @@ impl Compressor {
         src: &[u8],
         dst: &mut [u8],
     ) -> Result<usize, EncodeError> {
-        let cdict = self.dictionary_tables(Some(dictionary))?;
-        self.compress_to_slice_with(cdict, src, dst)
+        let (cdict, requested) = self.dictionary_tables(Some(dictionary))?;
+        self.compress_to_slice_with(cdict, &requested, src, dst)
     }
 
     /// Writes the frame for `src`, compressed with `dictionary`, into
@@ -555,8 +557,8 @@ impl Compressor {
         src: &[u8],
         dst: &mut [MaybeUninit<u8>],
     ) -> Result<usize, EncodeError> {
-        let cdict = self.dictionary_tables(Some(dictionary))?;
-        self.compress_to_uninit_with(cdict, src, dst)
+        let (cdict, requested) = self.dictionary_tables(Some(dictionary))?;
+        self.compress_to_uninit_with(cdict, &requested, src, dst)
     }
 
     /// Starts an incremental frame compressed with `dictionary`, borrowing

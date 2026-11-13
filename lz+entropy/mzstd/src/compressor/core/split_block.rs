@@ -9,20 +9,18 @@
 use alloc::vec::Vec;
 
 use super::block::{self, Build};
+use super::block_stats::{self, FseMetadata, HufMetadata};
 use super::cctx::{Engine, no_compress_block, rle_compress_block, write_block_header};
 use super::entropy::hist;
-use super::entropy::huf::{self, Flags};
 use super::entropy::sequences::{self, CodeKind, LITERAL_LENGTHS, MATCH_LENGTHS, OFFSETS};
-use super::entropy::{FseTables, HufTables, Tables};
+use super::entropy::{HufTables, Tables};
 use super::error::{CoreError, is_error_code};
 use super::mem;
-use super::params::Strategy;
 use super::seq_store::{
     CODE_COUNT_SLOTS, CodeCounts, LongLength, SeqStore, offbase_is_repcode, offset_to_offbase,
     update_rep,
 };
 use super::window::Segments;
-use crate::Backend;
 use crate::shared::format::{
     BLOCK_COMPRESSED, BLOCK_HEADER_SIZE, EncodingType, LL_BITS, LONG_NB_SEQ, MIN_MATCH, ML_BITS,
     REP_NUM,
@@ -32,143 +30,6 @@ use crate::shared::format::{
 const MAX_NB_BLOCK_SPLITS: usize = 196;
 /// `MIN_SEQUENCES_BLOCK_SPLITTING`.
 const MIN_SEQUENCES_BLOCK_SPLITTING: usize = 300;
-/// `ZSTD_MAX_HUF_HEADER_SIZE`.
-const MAX_HUF_HEADER_SIZE: usize = 128;
-/// `ZSTD_MAX_FSE_HEADERS_SIZE`.
-const MAX_FSE_HEADERS_SIZE: usize = (53 * 9 + 36 * 9 + 32 * 8usize).div_ceil(8);
-
-/// `ZSTD_hufCTablesMetadata_t`.
-#[derive(Copy, Clone, Debug)]
-struct HufMetadata {
-    kind: EncodingType,
-    /// Size of the table description; may hold a reference error code.
-    des_size: usize,
-}
-
-/// `ZSTD_fseCTablesMetadata_t`.
-#[derive(Copy, Clone, Debug)]
-struct FseMetadata {
-    ll_type: EncodingType,
-    of_type: EncodingType,
-    ml_type: EncodingType,
-    tables_size: usize,
-}
-
-/// `ZSTD_buildBlockEntropyStats_literals`.
-fn build_literals_stats(
-    src: &[u8],
-    prev: &HufTables,
-    next: &mut HufTables,
-    disabled: bool,
-    optimal_depth: bool,
-) -> Result<HufMetadata, CoreError> {
-    let src_size = src.len();
-    next.clone_from(prev);
-    let basic = HufMetadata {
-        kind: EncodingType::Basic,
-        des_size: 0,
-    };
-    if disabled {
-        return Ok(basic);
-    }
-    let min_lit_size = if prev.repeat == huf::Repeat::Valid {
-        6
-    } else {
-        63
-    };
-    if src_size <= min_lit_size {
-        return Ok(basic);
-    }
-    let mut count = [0u32; 256];
-    let mut max_symbol_value = 255;
-    let largest = hist::count(&mut count, &mut max_symbol_value, src, false)? as usize;
-    if largest == src_size {
-        return Ok(HufMetadata {
-            kind: EncodingType::Rle,
-            des_size: 0,
-        });
-    }
-    if largest <= (src_size >> 7) + 4 {
-        return Ok(basic);
-    }
-    let mut repeat = prev.repeat;
-    if repeat == huf::Repeat::Check && !prev.table.validate(&count, max_symbol_value) {
-        repeat = huf::Repeat::None;
-    }
-    *next.table = huf::CTable::EMPTY;
-    let flags = Flags {
-        optimal_depth,
-        ..Flags::default()
-    };
-    let huff_log = huf::optimal_table_log(11, src_size, max_symbol_value, &count, flags);
-    let huff_log = next.table.build(&count, max_symbol_value, huff_log)?;
-    let new_c_size = next
-        .table
-        .estimate_compressed_size(&count, max_symbol_value);
-    let mut description = [0u8; MAX_HUF_HEADER_SIZE];
-    let h_size = super::error::as_code(next.table.write(
-        &mut description,
-        max_symbol_value,
-        huff_log,
-    ));
-    if repeat != huf::Repeat::None {
-        let old_c_size = prev
-            .table
-            .estimate_compressed_size(&count, max_symbol_value);
-        if old_c_size < src_size
-            && (old_c_size <= h_size.wrapping_add(new_c_size)
-                || h_size.wrapping_add(12) >= src_size)
-        {
-            next.clone_from(prev);
-            return Ok(HufMetadata {
-                kind: EncodingType::Repeat,
-                des_size: 0,
-            });
-        }
-    }
-    if new_c_size.wrapping_add(h_size) >= src_size {
-        next.clone_from(prev);
-        return Ok(basic);
-    }
-    next.repeat = huf::Repeat::Check;
-    if is_error_code(h_size) {
-        return Err(CoreError::Generic);
-    }
-    Ok(HufMetadata {
-        kind: EncodingType::Compressed,
-        des_size: h_size,
-    })
-}
-
-/// `ZSTD_buildBlockEntropyStats_sequences`.
-fn build_sequences_stats(
-    store: &mut SeqStore,
-    prev: &FseTables,
-    next: &mut FseTables,
-    strategy: Strategy,
-    backend: Backend,
-) -> Result<FseMetadata, CoreError> {
-    if store.nb_seq() == 0 {
-        next.litlength_repeat = super::entropy::FseRepeat::None;
-        next.offcode_repeat = super::entropy::FseRepeat::None;
-        next.matchlength_repeat = super::entropy::FseRepeat::None;
-        return Ok(FseMetadata {
-            ll_type: EncodingType::Basic,
-            of_type: EncodingType::Basic,
-            ml_type: EncodingType::Basic,
-            tables_size: 0,
-        });
-    }
-    let mut buffer = [0u8; MAX_FSE_HEADERS_SIZE];
-    let stats = sequences::build_statistics(store, prev, next, &mut buffer, strategy, backend)?;
-    Ok(FseMetadata {
-        ll_type: stats.ll_type,
-        of_type: stats.of_type,
-        ml_type: stats.ml_type,
-        tables_size: stats.size,
-    })
-}
-
 /// `ZSTD_estimateBlockSize_literal`.
 fn estimate_literals(
     literals: &[u8],
@@ -296,22 +157,15 @@ fn estimate_block_size(
 
 /// `ZSTD_buildEntropyStatisticsAndEstimateSubBlockSize`.
 fn estimate_sub_block_size(engine: &mut Engine, store: &mut SeqStore) -> Result<usize, CoreError> {
-    let strategy = engine.applied.cparams.strategy;
-    let disabled = engine.applied.literals_compression_disabled();
-    let huf_metadata = build_literals_stats(
-        store.literals(),
-        &engine.prev.entropy.huf,
-        &mut engine.next.entropy.huf,
-        disabled,
-        strategy >= Strategy::BtUltra,
-    )?;
-    let fse_metadata = build_sequences_stats(
+    let metadata = block_stats::build_block_entropy_stats(
         store,
-        &engine.prev.entropy.fse,
-        &mut engine.next.entropy.fse,
-        strategy,
+        &engine.prev.entropy,
+        &mut engine.next.entropy,
+        engine.applied.cparams.strategy,
+        engine.applied.literals_compression_disabled(),
         engine.backend,
     )?;
+    let (huf_metadata, fse_metadata) = (metadata.huf, metadata.fse);
     Ok(estimate_block_size(
         store,
         &engine.next.entropy,
@@ -434,8 +288,7 @@ fn resolve_off_codes(d_rep: &mut [u32; REP_NUM], c_rep: &mut [u32; REP_NUM], sto
         LongLength::Literal(pos) => pos as usize,
         _ => nb_seq,
     };
-    for idx in 0..nb_seq {
-        let seq = &mut store.sequences_mut()[idx];
+    for (idx, seq) in store.sequences_mut()[..nb_seq].iter_mut().enumerate() {
         let ll0 = seq.lit_length == 0 && idx != long_lit_len_idx;
         let off_base = seq.off_base;
         if offbase_is_repcode(off_base) {

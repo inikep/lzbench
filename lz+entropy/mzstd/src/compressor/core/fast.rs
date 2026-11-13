@@ -13,8 +13,8 @@ use fearless_simd_macros::simd;
 use super::cdict::TableLoad;
 use super::match_state::{BlockInput, DictMatchState, MatchState};
 use super::mem::{
-    count_at_simd, count_behind_simd, count_slices_simd, hash_at, hash_ptr, hash_word, load32,
-    load64, prefetch_l1, probe_pair, probe_window, window_word,
+    common_suffix, count_at_simd, count_behind_simd, count_slices_simd, hash_at, hash_ptr,
+    hash_word, load32, load64, prefetch_l1, probe_pair, probe_window, window_word,
 };
 use super::params::SHORT_CACHE_TAG_BITS;
 use super::seq_store::{
@@ -324,10 +324,25 @@ fn compress_scan_adaptive<
     reps: [u32; 2],
 ) -> (usize, [u32; 2]) {
     let mut stopped = false;
-    let eligible = scan.src.len() - scan.start == FULL_BLOCK_LITERALS
+    let block_len = scan.src.len() - scan.start;
+    // The cursor's destinations hold any block of a store sized for full
+    // blocks: at most `FULL_BLOCK_LITERALS` literals and, with matches of
+    // four bytes or more, `FULL_BLOCK_SEQUENCES` sequences.
+    let fits = block_len <= FULL_BLOCK_LITERALS
         && store.max_nb_seq == FULL_BLOCK_SEQUENCES
         && store.max_nb_lit >= FULL_BLOCK_LITERALS;
-    if !eligible {
+    // Once an earlier block allocated and zeroed the full-block
+    // destinations, the cursor costs nothing to start: the whole block
+    // runs on it, with no vector pushes and no copy at a promotion. That
+    // includes the shorter blocks the pre-splitter cuts.
+    if fits && store.has_full_block() {
+        return store.with_full_block_cursor(|cursor| {
+            compress_cursor_scan::<S, MLS, IN_PREFIX, HLOG, BRANCHY, ORIGIN>(
+                simd, table, cursor, scan, ip, reps,
+            )
+        });
+    }
+    if !fits || block_len != FULL_BLOCK_LITERALS {
         return compress_scan::<S, SeqStore, MLS, IN_PREFIX, HLOG, BRANCHY, ORIGIN, false>(
             simd,
             table,
@@ -470,11 +485,22 @@ fn compress_scan<
         (1 << HLOG) - 1
     };
     assert!(!table.is_empty() && table.len() > mask);
-    // The search keeps references to the slots it will write rather than
-    // their hashes, so a slot is bounds checked once, where its hash is
-    // computed.
     let table = Cell::from_mut(table).as_slice_of_cells();
     let hash = |p: usize| hash_at::<MLS>(src, p, hlog) & mask;
+    // Reads the candidate of the position whose word is `word` and puts
+    // the position's own index `current` in its place.
+    //
+    // The reference reads a position's slot, then writes it, with no other
+    // access to the table in between: it reads `ip0`'s before a search and
+    // writes it when the search starts, reads `ip1`'s after `ip0`'s
+    // candidate failed and writes it at once, and where a match ends the
+    // search before that it writes `ip1`'s slot all the same. Reading and
+    // writing in one step, for `ip0` and `ip1` together, therefore leaves
+    // the table as the reference does. The one exception is the read of
+    // the next `ip0`'s slot before the loop's exit test, which no write
+    // follows when the test fails: here the exit test comes first.
+    let enter =
+        |word: u64, current: u32| table[hash_word::<MLS>(word, hlog) & mask].replace(current);
     'start: loop {
         // The reference keeps `ip0..ip3`; at every probe `ip1` is `ip0 + 1`
         // and `ip3` is `ip2 + 1`, so only `ip0` and `ip2` are kept here,
@@ -489,58 +515,51 @@ fn compress_scan<
         let Some((mut w0, mut w2)) = probe_pair(src, ip0, step) else {
             break 'start;
         };
-        let slot = |word: u64| &table[hash_word::<MLS>(word, hlog) & mask];
-        let mut slot0 = slot(window_word::<0>(w0));
-        let mut slot1 = slot(window_word::<1>(w0));
-        let mut match_idx = slot0.get();
-        let mut current0;
+        // The candidates of `ip0` and `ip1`: both are known before either
+        // is compared, so their bytes load side by side.
+        let mut candidate0 = enter(window_word::<0>(w0), index(ip0));
+        let mut candidate1 = enter(window_word::<1>(w0), index(ip0) + 1);
+        // The index last entered for a searched position when a match is
+        // found: `ip0`'s, or `ip1`'s when the match is there.
+        let current0;
 
-        // Which way the search found a match.
+        // Which way the search found a match; an offset match carries its
+        // candidate's index.
         enum Found {
             Rep,
-            Offset,
+            Offset(u32),
         }
         let found = loop {
             // Probe `ip0` (and the repcode at `ip2`); `ip1` is `ip0 + 1`.
             let rval = read32(ip2 - rep_offset1 as usize);
-            current0 = index(ip0);
-            slot0.set(current0);
             if window_word::<0>(w2) as u32 == rval && rep_offset1 > 0 {
-                slot1.set(current0 + 1);
+                current0 = index(ip0);
                 ip0 = ip2;
                 break Found::Rep;
             }
             if candidate_matches::<BRANCHY>(
                 history,
-                match_idx.wrapping_sub(prefix_start_index),
+                candidate0.wrapping_sub(prefix_start_index),
                 window_word::<0>(w0) as u32,
             ) {
-                slot1.set(current0 + 1);
-                break Found::Offset;
+                current0 = index(ip0);
+                break Found::Offset(candidate0);
             }
 
-            match_idx = slot1.get();
-            slot0 = slot1;
-            slot1 = slot(window_word::<0>(w2));
-            ip0 += 1;
-
-            // Probe `ip0` (the old `ip1`); `ip1` is now the old `ip2`.
-            current0 = index(ip0);
-            slot0.set(current0);
+            // Probe `ip1`, which becomes `ip0`.
             if candidate_matches::<BRANCHY>(
                 history,
-                match_idx.wrapping_sub(prefix_start_index),
+                candidate1.wrapping_sub(prefix_start_index),
                 window_word::<1>(w0) as u32,
             ) {
+                ip0 += 1;
+                current0 = index(ip0);
                 if step <= 4 {
-                    slot1.set(index(ip2));
+                    table[hash_word::<MLS>(window_word::<0>(w2), hlog) & mask].set(index(ip2));
                 }
-                break Found::Offset;
+                break Found::Offset(candidate1);
             }
 
-            match_idx = slot1.get();
-            slot0 = slot1;
-            slot1 = slot(window_word::<1>(w2));
             ip0 = ip2;
             w0 = w2;
             ip2 = ip0 + step;
@@ -555,6 +574,8 @@ fn compress_scan<
                 Some(window) => w2 = window,
                 None => break 'start,
             }
+            candidate0 = enter(window_word::<0>(w0), index(ip0));
+            candidate1 = enter(window_word::<1>(w0), index(ip0) + 1);
         };
 
         let (offcode, mut m_length, match0);
@@ -568,7 +589,7 @@ fn compress_scan<
                 offcode = repcode_to_offbase(1);
                 m_length = back + 4;
             }
-            Found::Offset => {
+            Found::Offset(match_idx) => {
                 let mut m0 = (match_idx - base) as usize;
                 rep_offset2 = rep_offset1;
                 rep_offset1 = (ip0 - m0) as u32;
@@ -878,13 +899,8 @@ fn compress_block_ext_dict_mls<S: Simd, const MLS: u32>(
                 // The match extends backwards within its own segment, down
                 // to the segment's lowest valid index (offset 0 there).
                 let (history, at) = locate(idx);
-                let mut at = at as usize;
-                let mut back = 0;
-                while ip0 > anchor && at > 0 && src[ip0 - 1] == history[at - 1] {
-                    ip0 -= 1;
-                    at -= 1;
-                    back += 1;
-                }
+                let back = common_suffix(&src[anchor..ip0], &history[..at as usize]);
+                ip0 -= back;
                 match0 = idx - back as u32;
                 m_length = back + 4;
             }
@@ -1152,16 +1168,11 @@ fn compress_block_dms_mls<S: Simd, const MLS: u32>(
                     let offset = curr
                         .wrapping_sub(dict_match_index)
                         .wrapping_sub(dict.index_delta);
-                    let mut dict_match = dict_offset as usize;
-                    let mut length = dict.count_2segments(simd, src, ip0 + 4, dict_match + 4) + 4;
-                    while ip0 > anchor
-                        && dict_match > 0
-                        && src[ip0 - 1] == dict.bytes[dict_match - 1]
-                    {
-                        ip0 -= 1;
-                        dict_match -= 1;
-                        length += 1;
-                    }
+                    let dict_match = dict_offset as usize;
+                    let forward = dict.count_2segments(simd, src, ip0 + 4, dict_match + 4) + 4;
+                    let back = common_suffix(&src[anchor..ip0], &dict.bytes[..dict_match]);
+                    ip0 -= back;
+                    let length = forward + back;
                     offset_2 = offset_1;
                     offset_1 = offset;
                     seq_store.store_seq_from(
@@ -1181,14 +1192,12 @@ fn compress_block_dms_mls<S: Simd, const MLS: u32>(
                 match_index.wrapping_sub(prefix_start_index),
                 read32(ip0),
             ) {
-                let mut m = (match_index - prefix_start_index) as usize;
+                let m = (match_index - prefix_start_index) as usize;
                 let offset = (ip0 - m) as u32;
-                let mut length = count_at_simd(simd, src, ip0 + 4, m + 4) + 4;
-                while ip0 > anchor && m > 0 && src[ip0 - 1] == src[m - 1] {
-                    ip0 -= 1;
-                    m -= 1;
-                    length += 1;
-                }
+                let forward = count_at_simd(simd, src, ip0 + 4, m + 4) + 4;
+                let back = common_suffix(&src[anchor..ip0], &src[..m]);
+                ip0 -= back;
+                let length = forward + back;
                 offset_2 = offset_1;
                 offset_1 = offset;
                 seq_store.store_seq_from(
@@ -1698,6 +1707,46 @@ pub(crate) mod tests {
                 assert_eq!(optimized.literals(), reference.literals(), "{backend}");
                 assert_eq!(optimized.long_length, reference.long_length, "{backend}");
                 assert_eq!(optimized_table, reference_table, "{backend}");
+                assert_eq!(
+                    optimized.on_cursor(),
+                    promotes == Some(true),
+                    "{backend}: a fresh store promotes only dense full blocks"
+                );
+
+                // A store that already holds the full-block destinations
+                // runs any block that fits them on the cursor from its
+                // start, shorter ones included.
+                let mut kept = empty.clone();
+                kept.with_full_block_cursor(|_| ());
+                kept.reset();
+                let mut kept_table = table.clone();
+                let actual = fearless_simd::dispatch!(backend.0, simd =>
+                    compress_scan_adaptive::<_, 5, IN_PREFIX, 13, false, 0>(
+                        simd, &mut kept_table, &mut kept, &scan, ip, [0, 0],
+                    )
+                );
+                assert!(kept.on_cursor(), "{backend}");
+                assert_eq!(actual, expected, "{backend}");
+                assert_eq!(kept.sequences(), reference.sequences(), "{backend}");
+                assert_eq!(kept.literals(), reference.literals(), "{backend}");
+                assert_eq!(kept.long_length, reference.long_length, "{backend}");
+                assert_eq!(kept_table, reference_table, "{backend}");
+
+                // A store sized for three-byte matches may hold more
+                // sequences than the destinations: it keeps its vectors.
+                let mut wide = SeqStore::default();
+                wide.reserve(FULL_BLOCK_LITERALS, 3);
+                wide.with_full_block_cursor(|_| ());
+                wide.reset();
+                let mut wide_table = table.clone();
+                let actual = fearless_simd::dispatch!(backend.0, simd =>
+                    compress_scan_adaptive::<_, 5, IN_PREFIX, 13, false, 0>(
+                        simd, &mut wide_table, &mut wide, &scan, ip, [0, 0],
+                    )
+                );
+                assert!(!wide.on_cursor(), "{backend}");
+                assert_eq!(actual, expected, "{backend}");
+                assert_eq!(wide.sequences(), reference.sequences(), "{backend}");
             }
         }
 
@@ -1709,8 +1758,11 @@ pub(crate) mod tests {
         let mut late = corpus::random(70_000, 0x512c_0ffe);
         late.extend_from_slice(&alice[..FULL_BLOCK_LITERALS - late.len()]);
         check::<true>(&late, 0, 0, FULL_BLOCK_LITERALS, Some(false));
-        // An incomplete block must retain the unpaused vector parser.
+        // An incomplete block must retain the unpaused vector parser
+        // until the store holds the destinations; so does the half block
+        // the pre-splitter cuts.
         check::<true>(alice, 0, 0, FULL_BLOCK_LITERALS - 1, None);
+        check::<true>(alice, 0, 0, FULL_BLOCK_LITERALS / 2, None);
         // A later streaming block has readable history, a nonzero start,
         // and a clipped history lower bound; it can still use the cursor.
         let mut history = alice[..4096].to_vec();

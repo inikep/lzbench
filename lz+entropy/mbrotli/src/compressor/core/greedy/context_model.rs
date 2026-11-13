@@ -47,13 +47,12 @@ pub(crate) fn context(prev1: u8, prev2: u8) -> usize {
 /// coded together with the rest of the byte, so the "at least one bit per
 /// symbol" floor does not apply.
 fn estimate_entropy(population: &[u32]) -> f64 {
-    let mut total = 0usize;
-    let mut result = 0f64;
-    for &value in population {
-        let value = value as usize;
-        total += value;
-        result += value as f64 * fast_log2(value);
-    }
+    let (total, result) = population
+        .iter()
+        .fold((0usize, 0f64), |(total, result), &value| {
+            let value = value as usize;
+            (total + value, result + value as f64 * fast_log2(value))
+        });
     total as f64 * fast_log2(total) - result
 }
 

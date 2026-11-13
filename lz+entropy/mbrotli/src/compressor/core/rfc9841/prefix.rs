@@ -123,14 +123,12 @@ impl PrefixSources {
         if logical >= self.total_len() {
             return None;
         }
-        for index in 0..self.segments.len() {
-            let end = self.starts.get(index + 1).copied().unwrap_or(0);
-            if logical < end {
-                let start = self.starts.get(index).copied().unwrap_or(0);
-                return Some((index, (logical - start) as usize));
-            }
-        }
-        None
+        self.starts
+            .iter()
+            .zip(self.starts.get(1..)?)
+            .enumerate()
+            .find(|&(_, (_, &end))| logical < end)
+            .map(|(index, (&start, _))| (index, (logical - start) as usize))
     }
 
     /// Returns the contiguous bytes from `logical` to the end of its segment.

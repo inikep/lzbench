@@ -201,15 +201,15 @@ fn histogram_combine<const N: usize>(
     let mut min_cluster_size = 1usize;
     pairs.clear();
 
-    for idx1 in 0..num_clusters {
-        for idx2 in idx1 + 1..num_clusters {
+    for (idx1, &first) in clusters[..num_clusters].iter().enumerate() {
+        for &second in &clusters[idx1 + 1..num_clusters] {
             compare_and_push_to_queue(
                 out,
                 tmp,
                 cluster_size,
                 data_size,
-                clusters[idx1],
-                clusters[idx2],
+                first,
+                second,
                 max_num_pairs,
                 pairs,
             );
@@ -409,18 +409,21 @@ pub(crate) fn cluster_histograms<const N: usize>(
     out.reserve(in_size);
     symbols.clear();
     symbols.extend(0..in_size as u32);
-    for histogram in input {
+    out.extend(input.iter().map(|histogram| {
         let mut copy = histogram.clone();
         copy.bit_cost = population_cost(histogram, data_size);
-        out.push(copy);
-    }
+        copy
+    }));
 
     let mut num_clusters = 0usize;
     let mut index = 0usize;
     while index < in_size {
         let num_to_combine = (in_size - index).min(MAX_INPUT_HISTOGRAMS);
-        for j in 0..num_to_combine {
-            arena.clusters[num_clusters + j] = (index + j) as u32;
+        for (slot, id) in arena.clusters[num_clusters..num_clusters + num_to_combine]
+            .iter_mut()
+            .zip(index as u32..)
+        {
+            *slot = id;
         }
         let pairs_capacity = MAX_INPUT_HISTOGRAMS * MAX_INPUT_HISTOGRAMS / 2;
         let num_new_clusters = histogram_combine(

@@ -61,6 +61,10 @@ pub(crate) fn dict_params(
             zstd_ffi::ZSTD_c_forceAttachDict,
             pref_value(requested.attach_dict_pref),
         )
+        .with(
+            zstd_ffi::ZSTD_c_forceMaxWindow,
+            i32::from(requested.force_window),
+        )
         .with_dictionary(Dictionary {
             bytes: dict.to_vec(),
             content_type: content_type(content),
@@ -179,4 +183,35 @@ fn empty_and_tiny_dictionaries_behave_like_the_reference() {
             check(&requested, b"", DictionaryContent::Zstd, &inputs);
         }
     }
+}
+
+#[test]
+fn a_forced_window_never_attaches_and_obeys_the_window_like_the_reference() {
+    let (trained, records) = trained();
+    let inputs = inputs(&records);
+    for level in [-3, 1, 3, 7, 12, 19] {
+        for pref in [
+            AttachPref::Default,
+            AttachPref::ForceAttach,
+            AttachPref::ForceCopy,
+            AttachPref::ForceLoad,
+        ] {
+            let mut requested = request(level, None, pref);
+            requested.force_window = true;
+            check(&requested, &trained, DictionaryContent::Auto, &inputs);
+        }
+    }
+}
+
+#[test]
+fn a_forced_window_decides_against_attaching() {
+    let (trained, _) = trained();
+    let requested = request(3, None, AttachPref::ForceAttach);
+    let cdict =
+        CDict::new(Box::from(&trained[..]), DictionaryContent::Auto, &requested).expect("prepares");
+    assert!(cdict.should_attach(AttachPref::ForceAttach, 1 << 20, false));
+    assert!(!cdict.should_attach(AttachPref::ForceAttach, 1 << 20, true));
+    assert!(cdict.should_attach(AttachPref::Default, 100, false));
+    assert!(!cdict.should_attach(AttachPref::Default, 100, true));
+    assert!(!cdict.should_attach(AttachPref::ForceCopy, 100, false));
 }

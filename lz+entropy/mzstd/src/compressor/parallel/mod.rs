@@ -229,9 +229,12 @@ impl ParallelCompressor {
     ///
     /// # Errors
     ///
-    /// [`ConfigError`] when a parameter is out of range.
+    /// [`ConfigError`] when a parameter is out of range or the configuration
+    /// selects the magicless format, which only
+    /// [`Compressor`](crate::Compressor) writes.
     pub fn new(config: EncoderConfig, parallel: ParallelConfig) -> Result<Self, ConfigError> {
         config.validate()?;
+        config.validate_standard_frames()?;
         Ok(Self {
             config,
             requested: requested_params(&config),

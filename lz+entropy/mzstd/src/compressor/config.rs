@@ -7,13 +7,17 @@
 //! contract).
 
 use core::fmt;
+use core::num::NonZeroU32;
 
 use thiserror::Error;
 
+use crate::FrameFormat;
+
 use super::core::params::{
-    CHAIN_LOG_BOUNDS, HASH_LOG_BOUNDS, LDM_BUCKET_SIZE_LOG_BOUNDS, LDM_HASH_LOG_BOUNDS,
-    LDM_HASH_RATE_LOG_BOUNDS, LDM_MIN_MATCH_BOUNDS, MIN_MATCH_BOUNDS, SEARCH_LOG_BOUNDS,
-    TARGET_LENGTH_BOUNDS, WINDOW_LOG_BOUNDS,
+    BLOCK_SPLITTER_LEVEL_MAX, CHAIN_LOG_BOUNDS, HASH_LOG_BOUNDS, LDM_BUCKET_SIZE_LOG_BOUNDS,
+    LDM_HASH_LOG_BOUNDS, LDM_HASH_RATE_LOG_BOUNDS, LDM_MIN_MATCH_BOUNDS, MAX_BLOCK_SIZE_BOUNDS,
+    MIN_MATCH_BOUNDS, SEARCH_LOG_BOUNDS, TARGET_C_BLOCK_SIZE_BOUNDS, TARGET_LENGTH_BOUNDS,
+    WINDOW_LOG_BOUNDS,
 };
 
 /// A compression level: negative levels trade ratio for speed, `1..=22`
@@ -43,6 +47,20 @@ impl Level {
     pub const MAX: Self = Self(super::core::params::MAX_CLEVEL);
     /// The reference's default level, `3`.
     pub const DEFAULT: Self = Self(super::core::params::DEFAULT_CLEVEL);
+
+    /// The level `ZSTD_CCtx_setParameter` stores for `value`: clamped into
+    /// range, with `0` as the default.
+    pub(crate) const fn clamped(value: i32) -> Self {
+        if value == 0 {
+            Self::DEFAULT
+        } else if value < Self::MIN.0 {
+            Self::MIN
+        } else if value > Self::MAX.0 {
+            Self::MAX
+        } else {
+            Self(value)
+        }
+    }
 
     /// The level as the reference's integer.
     ///
@@ -135,6 +153,21 @@ pub enum Strategy {
 }
 
 impl Strategy {
+    pub(crate) const fn from_core(core: super::core::params::Strategy) -> Self {
+        use super::core::params::Strategy as Core;
+        match core {
+            Core::Fast => Self::Fast,
+            Core::DFast => Self::DoubleFast,
+            Core::Greedy => Self::Greedy,
+            Core::Lazy => Self::Lazy,
+            Core::Lazy2 => Self::Lazy2,
+            Core::BtLazy2 => Self::BtLazy2,
+            Core::BtOpt => Self::BtOpt,
+            Core::BtUltra => Self::BtUltra,
+            Core::BtUltra2 => Self::BtUltra2,
+        }
+    }
+
     pub(crate) const fn to_core(self) -> super::core::params::Strategy {
         use super::core::params::Strategy as Core;
         match self {
@@ -257,10 +290,61 @@ impl CompressionParams {
         target_length, with_target_length, "`1..=131072`";
     }
 
+    /// The parameters the reference's level table gives `level` for an input
+    /// of `source_size` bytes and a dictionary of `dictionary_size` bytes
+    /// (`ZSTD_getCParams`).
+    ///
+    /// A `source_size` of `0` means unknown, as in the reference. Every
+    /// field is set except a target length of `0`, which is the same as
+    /// the default.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mzstd::{CompressionParams, Level, Strategy};
+    ///
+    /// let params = CompressionParams::for_level(Level::try_from(19)?, 0, 0);
+    /// assert_eq!(params.strategy(), Some(Strategy::BtUltra2));
+    /// assert_eq!(params.window_log(), Some(23));
+    /// // A small input shrinks the tables.
+    /// let small = CompressionParams::for_level(Level::try_from(19)?, 1000, 0);
+    /// assert!(small.window_log() < params.window_log());
+    /// # Ok::<(), mzstd::ConfigError>(())
+    /// ```
+    #[must_use]
+    pub fn for_level(level: Level, source_size: u64, dictionary_size: usize) -> Self {
+        use super::core::params::{CONTENT_SIZE_UNKNOWN, CParamMode, level_cparams_for};
+        let hint = if source_size == 0 {
+            CONTENT_SIZE_UNKNOWN
+        } else {
+            source_size
+        };
+        let core = level_cparams_for(
+            level.get(),
+            hint,
+            dictionary_size as u64,
+            CParamMode::Unknown,
+        );
+        Self::default()
+            .with_window_log(core.window_log)
+            .with_hash_log(core.hash_log)
+            .with_chain_log(core.chain_log)
+            .with_search_log(core.search_log)
+            .with_min_match(core.min_match)
+            .with_target_length(core.target_length)
+            .with_strategy(Strategy::from_core(core.strategy))
+    }
+
     /// Selects a strategy (`ZSTD_c_strategy`).
     #[must_use]
     pub const fn with_strategy(mut self, strategy: Strategy) -> Self {
         self.strategy = Some(strategy);
+        self
+    }
+
+    /// Sets or clears the strategy.
+    pub(crate) const fn with_strategy_option(mut self, strategy: Option<Strategy>) -> Self {
+        self.strategy = strategy;
         self
     }
 
@@ -291,6 +375,14 @@ pub struct LdmParams {
 }
 
 impl LdmParams {
+    /// Every value derived, as [`Default`] has it.
+    const NONE: Self = Self {
+        hash_log: None,
+        min_match: None,
+        bucket_size_log: None,
+        hash_rate_log: None,
+    };
+
     param_accessors! {
         /// Base-2 logarithm of the LDM table size (`ZSTD_c_ldmHashLog`).
         hash_log, with_hash_log, "`6..=30`";
@@ -325,6 +417,103 @@ pub enum LongDistanceMatching {
     Enabled(LdmParams),
 }
 
+/// A three-way parameter switch (`ZSTD_ParamSwitch_e`): the reference decides
+/// ([`Switch::Auto`]), or the caller forces the feature on or off.
+///
+/// # Examples
+///
+/// ```
+/// use mzstd::Switch;
+///
+/// assert_eq!(Switch::default(), Switch::Auto);
+/// assert_eq!(i32::from(Switch::Disabled), 2);
+/// ```
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash)]
+pub enum Switch {
+    /// Decided from the other parameters (`ZSTD_ps_auto`).
+    #[default]
+    Auto,
+    /// Forced on (`ZSTD_ps_enable`).
+    Enabled,
+    /// Forced off (`ZSTD_ps_disable`).
+    Disabled,
+}
+
+impl Switch {
+    pub(crate) const fn to_core(self) -> super::core::params::ParamSwitch {
+        use super::core::params::ParamSwitch as Core;
+        match self {
+            Self::Auto => Core::Auto,
+            Self::Enabled => Core::Enable,
+            Self::Disabled => Core::Disable,
+        }
+    }
+}
+
+impl From<Switch> for i32 {
+    fn from(switch: Switch) -> Self {
+        match switch {
+            Switch::Auto => 0,
+            Switch::Enabled => 1,
+            Switch::Disabled => 2,
+        }
+    }
+}
+
+/// How a dictionary prepared with [`DictionaryBuilder`](crate::dictionary::DictionaryBuilder)
+/// reaches a frame (`ZSTD_c_forceAttachDict`, `ZSTD_dictAttachPref_e`).
+///
+/// The choice never changes the decoded data; it changes the compressed
+/// bytes and the speed.
+///
+/// # Examples
+///
+/// ```
+/// use mzstd::DictionaryAttach;
+///
+/// assert_eq!(DictionaryAttach::default(), DictionaryAttach::Default);
+/// assert_eq!(i32::from(DictionaryAttach::Load), 3);
+/// ```
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash)]
+pub enum DictionaryAttach {
+    /// Attach for inputs up to a size cutoff that depends on the
+    /// dictionary's strategy, copy beyond it (`ZSTD_dictDefaultAttach`).
+    #[default]
+    Default,
+    /// Always search the dictionary's own tables in place
+    /// (`ZSTD_dictForceAttach`).
+    Attach,
+    /// Always copy the dictionary's tables into the context
+    /// (`ZSTD_dictForceCopy`).
+    Copy,
+    /// Index the dictionary's bytes again with the compressor's own
+    /// parameters (`ZSTD_dictForceLoad`).
+    Load,
+}
+
+impl DictionaryAttach {
+    pub(crate) const fn to_core(self) -> super::core::cdict::AttachPref {
+        use super::core::cdict::AttachPref as Core;
+        match self {
+            Self::Default => Core::Default,
+            Self::Attach => Core::ForceAttach,
+            Self::Copy => Core::ForceCopy,
+            Self::Load => Core::ForceLoad,
+        }
+    }
+}
+
+impl From<DictionaryAttach> for i32 {
+    fn from(attach: DictionaryAttach) -> Self {
+        match attach {
+            DictionaryAttach::Default => 0,
+            DictionaryAttach::Attach => 1,
+            DictionaryAttach::Copy => 2,
+            DictionaryAttach::Load => 3,
+        }
+    }
+}
+
 /// Everything that configures a [`Compressor`](super::Compressor).
 ///
 /// # Examples
@@ -346,8 +535,19 @@ pub struct EncoderConfig {
     params: CompressionParams,
     checksum: bool,
     content_size: bool,
-    long_distance: LongDistanceMatching,
+    ldm_switch: Switch,
+    ldm: LdmParams,
     size_hint: Option<u32>,
+    format: FrameFormat,
+    dictionary_id: bool,
+    literal_compression: Switch,
+    dictionary_attach: DictionaryAttach,
+    force_max_window: bool,
+    row_match_finder: Switch,
+    post_block_splitter: Switch,
+    block_splitter_level: u8,
+    max_block_size: Option<u32>,
+    target_compressed_block_size: Option<NonZeroU32>,
 }
 
 impl Default for EncoderConfig {
@@ -379,8 +579,19 @@ impl EncoderConfig {
             },
             checksum: false,
             content_size: true,
-            long_distance: LongDistanceMatching::Auto,
+            ldm_switch: Switch::Auto,
+            ldm: LdmParams::NONE,
             size_hint: None,
+            format: FrameFormat::Standard,
+            dictionary_id: true,
+            literal_compression: Switch::Auto,
+            dictionary_attach: DictionaryAttach::Default,
+            force_max_window: false,
+            row_match_finder: Switch::Auto,
+            post_block_splitter: Switch::Auto,
+            block_splitter_level: 0,
+            max_block_size: None,
+            target_compressed_block_size: None,
         }
     }
 
@@ -440,14 +651,64 @@ impl EncoderConfig {
     /// Configures the long distance matcher.
     #[must_use]
     pub const fn with_long_distance_matching(mut self, ldm: LongDistanceMatching) -> Self {
-        self.long_distance = ldm;
+        match ldm {
+            LongDistanceMatching::Auto => {
+                self.ldm_switch = Switch::Auto;
+                self.ldm = LdmParams::NONE;
+            }
+            LongDistanceMatching::Disabled => {
+                self.ldm_switch = Switch::Disabled;
+                self.ldm = LdmParams::NONE;
+            }
+            LongDistanceMatching::Enabled(params) => {
+                self.ldm_switch = Switch::Enabled;
+                self.ldm = params;
+            }
+        }
         self
+    }
+
+    /// Replaces the match finder parameters with `f(params)`.
+    pub(crate) fn map_params(
+        mut self,
+        f: impl FnOnce(CompressionParams) -> CompressionParams,
+    ) -> Self {
+        self.params = f(self.params);
+        self
+    }
+
+    /// Replaces the long distance matcher's values with `f(values)`, keeping
+    /// its switch.
+    pub(crate) fn map_ldm(mut self, f: impl FnOnce(LdmParams) -> LdmParams) -> Self {
+        self.ldm = f(self.ldm);
+        self
+    }
+
+    /// Switches the long distance matcher, keeping its explicit values.
+    pub(crate) const fn with_ldm_switch(mut self, switch: Switch) -> Self {
+        self.ldm_switch = switch;
+        self
+    }
+
+    /// The long distance matcher's explicit values, whichever way it is
+    /// switched.
+    pub(crate) const fn ldm_params(&self) -> LdmParams {
+        self.ldm
+    }
+
+    /// The long distance matcher's switch.
+    pub(crate) const fn ldm_switch(&self) -> Switch {
+        self.ldm_switch
     }
 
     /// The long distance matcher setting.
     #[must_use]
     pub const fn long_distance_matching(&self) -> LongDistanceMatching {
-        self.long_distance
+        match self.ldm_switch {
+            Switch::Auto => LongDistanceMatching::Auto,
+            Switch::Disabled => LongDistanceMatching::Disabled,
+            Switch::Enabled => LongDistanceMatching::Enabled(self.ldm),
+        }
     }
 
     /// Expected input size of streams whose size is not declared
@@ -464,6 +725,228 @@ impl EncoderConfig {
         self.size_hint
     }
 
+    /// Selects the frame format (`ZSTD_c_format`); see [`FrameFormat`].
+    ///
+    /// Magicless frames are written by [`Compressor`](super::Compressor)
+    /// only; the parallel and framed compressors reject them.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mzstd::{Compressor, EncoderConfig, FrameFormat};
+    ///
+    /// let config = EncoderConfig::default().with_format(FrameFormat::Magicless);
+    /// let frame = Compressor::new(config)?.compress(b"payload")?;
+    /// // The standard frame without its four magic bytes.
+    /// let standard = Compressor::default().compress(b"payload")?;
+    /// assert_eq!(frame, standard[4..]);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub const fn with_format(mut self, format: FrameFormat) -> Self {
+        self.format = format;
+        self
+    }
+
+    /// The frame format.
+    #[must_use]
+    pub const fn format(&self) -> FrameFormat {
+        self.format
+    }
+
+    /// Writes the dictionary ID into frame headers when a dictionary has one
+    /// (`ZSTD_c_dictIDFlag`, default on).
+    #[must_use]
+    pub const fn with_dictionary_id(mut self, dictionary_id: bool) -> Self {
+        self.dictionary_id = dictionary_id;
+        self
+    }
+
+    /// Whether frame headers name the dictionary's ID.
+    #[must_use]
+    pub const fn dictionary_id(&self) -> bool {
+        self.dictionary_id
+    }
+
+    /// Whether literals are entropy coded (`ZSTD_c_literalCompressionMode`):
+    /// [`Switch::Disabled`] stores them raw, which decompresses faster and
+    /// compresses worse. [`Switch::Auto`] decides from the strategy.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mzstd::{Compressor, EncoderConfig, Switch};
+    ///
+    /// let payload: String = (0..200).map(|i| format!("item {i} holds {} ", i * 7)).collect();
+    /// let raw = EncoderConfig::default().with_literal_compression(Switch::Disabled);
+    /// let coded = Compressor::default().compress(payload.as_bytes())?;
+    /// let stored = Compressor::new(raw)?.compress(payload.as_bytes())?;
+    /// assert_ne!(coded, stored);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub const fn with_literal_compression(mut self, literal_compression: Switch) -> Self {
+        self.literal_compression = literal_compression;
+        self
+    }
+
+    /// The literal compression switch.
+    #[must_use]
+    pub const fn literal_compression(&self) -> Switch {
+        self.literal_compression
+    }
+
+    /// How a dictionary reaches a frame (`ZSTD_c_forceAttachDict`).
+    #[must_use]
+    pub const fn with_dictionary_attach(mut self, attach: DictionaryAttach) -> Self {
+        self.dictionary_attach = attach;
+        self
+    }
+
+    /// How a dictionary reaches a frame.
+    #[must_use]
+    pub const fn dictionary_attach(&self) -> DictionaryAttach {
+        self.dictionary_attach
+    }
+
+    /// Keeps dictionary content reachable only inside the window
+    /// (`ZSTD_c_forceMaxWindow`); it also turns attaching a dictionary off.
+    #[must_use]
+    pub const fn with_force_max_window(mut self, force: bool) -> Self {
+        self.force_max_window = force;
+        self
+    }
+
+    /// Whether the window is enforced on dictionary content.
+    #[must_use]
+    pub const fn force_max_window(&self) -> bool {
+        self.force_max_window
+    }
+
+    /// Forces the row-based match finder on or off for the lazy strategies
+    /// (`ZSTD_c_useRowMatchFinder`).
+    #[must_use]
+    pub const fn with_row_match_finder(mut self, row: Switch) -> Self {
+        self.row_match_finder = row;
+        self
+    }
+
+    /// The row match finder switch.
+    #[must_use]
+    pub const fn row_match_finder(&self) -> Switch {
+        self.row_match_finder
+    }
+
+    /// Splits blocks after sequence generation (`ZSTD_c_splitAfterSequences`).
+    #[must_use]
+    pub const fn with_post_block_splitter(mut self, split: Switch) -> Self {
+        self.post_block_splitter = split;
+        self
+    }
+
+    /// The post-sequence block splitter switch.
+    #[must_use]
+    pub const fn post_block_splitter(&self) -> Switch {
+        self.post_block_splitter
+    }
+
+    /// Effort of the splitter that cuts blocks before matching
+    /// (`ZSTD_c_blockSplitterLevel`): `0` automatic, `1` never, `2..=6`
+    /// increasing effort.
+    #[must_use]
+    pub const fn with_block_splitter_level(mut self, level: u8) -> Self {
+        self.block_splitter_level = level;
+        self
+    }
+
+    /// The pre-matching block splitter level.
+    #[must_use]
+    pub const fn block_splitter_level(&self) -> u8 {
+        self.block_splitter_level
+    }
+
+    /// Caps the uncompressed size of a block (`ZSTD_c_maxBlockSize`);
+    /// `None` keeps the format's 128 KiB. Valid sizes are `1024..=131072`.
+    #[must_use]
+    pub const fn with_max_block_size(mut self, size: Option<u32>) -> Self {
+        self.max_block_size = size;
+        self
+    }
+
+    /// The block size cap, if any.
+    #[must_use]
+    pub const fn max_block_size(&self) -> Option<u32> {
+        self.max_block_size
+    }
+
+    /// Asks for compressed blocks of about this many bytes
+    /// (`ZSTD_c_targetCBlockSize`); `None` (the default) sets no target.
+    ///
+    /// With a target, each block of up to 128 KiB (or
+    /// [`with_max_block_size`](Self::with_max_block_size)) is cut into
+    /// sub-blocks whose compressed size is close to `size`, so a receiver can
+    /// start decoding before the whole block has arrived. The first
+    /// sub-block carries the block's entropy tables and the others reuse
+    /// them, which costs compression ratio: the smaller the target, the
+    /// larger the frame. The output stays a standard Zstandard frame, byte
+    /// for byte the reference's. The target takes the place of the post-match
+    /// block splitter ([`with_post_block_splitter`](Self::with_post_block_splitter)),
+    /// which then has no effect.
+    ///
+    /// A target below `1340` (`ZSTD_TARGETCBLOCKSIZE_MIN`, the payload of an
+    /// ethernet, Wi-Fi or 4G frame) is raised to it, as
+    /// `ZSTD_CCtx_setParameter` does. A target above `131072`
+    /// (`ZSTD_TARGETCBLOCKSIZE_MAX`) is refused when the compressor is
+    /// built.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use core::num::NonZeroU32;
+    /// use mzstd::{Compressor, EncoderConfig};
+    ///
+    /// let text = b"the quick brown fox jumps over the lazy dog. ".repeat(4000);
+    /// let config = EncoderConfig::default()
+    ///     .with_target_compressed_block_size(NonZeroU32::new(1340));
+    /// assert_eq!(
+    ///     config.target_compressed_block_size(),
+    ///     NonZeroU32::new(1340)
+    /// );
+    /// let frame = Compressor::new(config)?.compress(&text)?;
+    /// // The frame is a standard one: it opens with the Zstandard magic number.
+    /// assert_eq!(frame[..4], [0x28, 0xB5, 0x2F, 0xFD]);
+    /// // Larger than without a target, as every sub-block but the first
+    /// // reuses the first one's tables.
+    /// let plain = Compressor::default().compress(&text)?;
+    /// assert!(frame.len() >= plain.len());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub const fn with_target_compressed_block_size(mut self, size: Option<NonZeroU32>) -> Self {
+        self.target_compressed_block_size = size;
+        self
+    }
+
+    /// The target compressed block size, if any, as it was set (before
+    /// the minimum is applied).
+    #[must_use]
+    pub const fn target_compressed_block_size(&self) -> Option<NonZeroU32> {
+        self.target_compressed_block_size
+    }
+
+    /// Rejects the magicless format, for containers that write the magic
+    /// number themselves.
+    #[cfg(any(feature = "framed", not(feature = "no_std")))]
+    pub(crate) fn validate_standard_frames(&self) -> Result<(), ConfigError> {
+        match self.format {
+            FrameFormat::Standard => Ok(()),
+            FrameFormat::Magicless => Err(ConfigError::Unsupported {
+                id: 10,
+                value: i32::from(FrameFormat::Magicless),
+            }),
+        }
+    }
+
     /// Checks every explicit value against its range.
     pub(crate) fn validate(&self) -> Result<(), ConfigError> {
         let p = &self.params;
@@ -477,19 +960,46 @@ impl EncoderConfig {
             p.target_length,
             TARGET_LENGTH_BOUNDS,
         )?;
-        if let LongDistanceMatching::Enabled(ldm) = self.long_distance {
-            check(Parameter::LdmHashLog, ldm.hash_log, LDM_HASH_LOG_BOUNDS)?;
-            check(Parameter::LdmMinMatch, ldm.min_match, LDM_MIN_MATCH_BOUNDS)?;
-            check(
-                Parameter::LdmBucketSizeLog,
-                ldm.bucket_size_log,
-                LDM_BUCKET_SIZE_LOG_BOUNDS,
-            )?;
-            check(
-                Parameter::LdmHashRateLog,
-                ldm.hash_rate_log,
-                LDM_HASH_RATE_LOG_BOUNDS,
-            )?;
+        let ldm = self.ldm;
+        check(Parameter::LdmHashLog, ldm.hash_log, LDM_HASH_LOG_BOUNDS)?;
+        check(Parameter::LdmMinMatch, ldm.min_match, LDM_MIN_MATCH_BOUNDS)?;
+        check(
+            Parameter::LdmBucketSizeLog,
+            ldm.bucket_size_log,
+            LDM_BUCKET_SIZE_LOG_BOUNDS,
+        )?;
+        check(
+            Parameter::LdmHashRateLog,
+            ldm.hash_rate_log,
+            LDM_HASH_RATE_LOG_BOUNDS,
+        )?;
+        if self.block_splitter_level > BLOCK_SPLITTER_LEVEL_MAX {
+            return Err(ConfigError::OutOfRange {
+                parameter: Parameter::BlockSplitterLevel,
+                value: i64::from(self.block_splitter_level),
+                min: 0,
+                max: i64::from(BLOCK_SPLITTER_LEVEL_MAX),
+            });
+        }
+        if let Some(size) = self.max_block_size
+            && !MAX_BLOCK_SIZE_BOUNDS.contains(i64::from(size))
+        {
+            return Err(ConfigError::OutOfRange {
+                parameter: Parameter::MaxBlockSize,
+                value: i64::from(size),
+                min: MAX_BLOCK_SIZE_BOUNDS.lower,
+                max: MAX_BLOCK_SIZE_BOUNDS.upper,
+            });
+        }
+        if let Some(size) = self.target_compressed_block_size
+            && i64::from(size.get()) > TARGET_C_BLOCK_SIZE_BOUNDS.upper
+        {
+            return Err(ConfigError::OutOfRange {
+                parameter: Parameter::TargetCompressedBlockSize,
+                value: i64::from(size.get()),
+                min: TARGET_C_BLOCK_SIZE_BOUNDS.lower,
+                max: TARGET_C_BLOCK_SIZE_BOUNDS.upper,
+            });
         }
         if let Some(hint) = self.size_hint
             && hint > i32::MAX as u32
@@ -561,6 +1071,29 @@ pub enum Parameter {
     SegmentSize,
     /// The parallel task count.
     TaskCount,
+    /// [`EncoderConfig::with_format`] (`ZSTD_c_format`).
+    Format,
+    /// [`EncoderConfig::with_dictionary_attach`] (`ZSTD_c_forceAttachDict`).
+    DictionaryAttach,
+    /// [`EncoderConfig::with_literal_compression`]
+    /// (`ZSTD_c_literalCompressionMode`).
+    LiteralCompression,
+    /// The long distance matching switch (`ZSTD_c_enableLongDistanceMatching`).
+    LongDistanceMatching,
+    /// [`EncoderConfig::with_post_block_splitter`] (`ZSTD_c_splitAfterSequences`).
+    PostBlockSplitter,
+    /// [`EncoderConfig::with_block_splitter_level`] (`ZSTD_c_blockSplitterLevel`).
+    BlockSplitterLevel,
+    /// [`EncoderConfig::with_row_match_finder`] (`ZSTD_c_useRowMatchFinder`).
+    RowMatchFinder,
+    /// [`EncoderConfig::with_max_block_size`] (`ZSTD_c_maxBlockSize`).
+    MaxBlockSize,
+    /// [`EncoderConfig::with_target_compressed_block_size`]
+    /// (`ZSTD_c_targetCBlockSize`).
+    TargetCompressedBlockSize,
+    /// The reference parameter with this numeric ID, which has no counterpart
+    /// of its own here (see [`CParameter::Ignored`](super::CParameter::Ignored)).
+    Other(i32),
 }
 
 impl fmt::Display for Parameter {
@@ -581,6 +1114,16 @@ impl fmt::Display for Parameter {
             Self::SizeHint => "size hint",
             Self::SegmentSize => "segment size",
             Self::TaskCount => "task count",
+            Self::Format => "frame format",
+            Self::DictionaryAttach => "dictionary attach preference",
+            Self::LiteralCompression => "literal compression mode",
+            Self::LongDistanceMatching => "long distance matching switch",
+            Self::PostBlockSplitter => "post-sequence block splitter",
+            Self::BlockSplitterLevel => "block splitter level",
+            Self::RowMatchFinder => "row match finder switch",
+            Self::MaxBlockSize => "maximum block size",
+            Self::TargetCompressedBlockSize => "target compressed block size",
+            Self::Other(id) => return write!(f, "zstd parameter {id}"),
         })
     }
 }
@@ -601,6 +1144,22 @@ impl fmt::Display for Parameter {
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Error)]
 #[non_exhaustive]
 pub enum ConfigError {
+    /// A reference parameter ID that does not exist.
+    #[error("unknown zstd parameter {id}")]
+    UnknownParameter {
+        /// The rejected numeric `ZSTD_cParameter`.
+        id: i32,
+    },
+    /// A reference parameter this crate does not implement with this value:
+    /// multithreading, or a value the single-threaded reference itself
+    /// rejects.
+    #[error("zstd parameter {id} does not support the value {value}")]
+    Unsupported {
+        /// The numeric `ZSTD_cParameter`.
+        id: i32,
+        /// The rejected value.
+        value: i32,
+    },
     /// A parameter is outside its valid range.
     #[error("{parameter} {value} is outside {min}..={max}")]
     OutOfRange {

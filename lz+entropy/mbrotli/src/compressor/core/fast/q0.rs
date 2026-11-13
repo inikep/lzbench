@@ -31,8 +31,8 @@ use fearless_simd_macros::simd;
 
 use super::bits::{BitWriter, ByteBuffer};
 use super::commands::one_pass::{
-    emit_copy_len, emit_copy_len_last_distance, emit_distance, emit_insert_len, emit_literals,
-    emit_long_insert_len,
+    emit_command, emit_copy_and_distance, emit_copy_len, emit_copy_len_last_distance,
+    emit_distance, emit_insert_len, emit_literals, emit_long_insert_len,
 };
 use super::commands::{fast_log2, log2_floor_non_zero, store_meta_block_header};
 use super::constants::{
@@ -478,45 +478,67 @@ fn compress_fragment_impl<
                 let insert = base - next_emit;
                 ip += matched;
 
-                if insert < SHORT_INSERT_LIMIT {
-                    emit_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
-                } else if should_use_uncompressed_mode(
-                    metablock_start,
-                    next_emit,
-                    insert,
-                    literal_ratio,
-                ) {
-                    emit_uncompressed_meta_block(
+                // The common command — a short insert and a short copy — is
+                // written whole; see `emit_command`. An independent fragment
+                // spells its copies differently and takes the general path.
+                if !INDEPENDENT
+                    && emit_command(
                         data,
-                        metablock_start,
-                        base,
-                        mlen_storage_ix - 3,
+                        next_emit,
+                        insert,
+                        distance as usize,
+                        distance == last_distance,
+                        matched,
+                        lit_depth,
+                        lit_bits,
+                        cmd_depth,
+                        cmd_bits,
+                        cmd_histo,
                         w,
-                    );
-                    input_size -= base - input;
-                    input = base;
-                    next_emit = input;
-                    restart_meta_block = true;
-                    break 'scan;
-                } else {
-                    emit_long_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
-                }
-                emit_literals(data, next_emit, insert, lit_depth, lit_bits, w);
-
-                if !INDEPENDENT && distance == last_distance {
-                    w.write(u32::from(cmd_depth[64]), u64::from(cmd_bits[64]));
-                    cmd_histo[64] += 1;
-                } else {
-                    emit_distance(distance as usize, cmd_depth, cmd_bits, cmd_histo, w);
+                    )
+                {
                     last_distance = distance;
-                }
-                if INDEPENDENT {
-                    // The insert command already copied two bytes. Encode the
-                    // remaining copy explicitly, including its distance.
-                    emit_copy_len(matched - 2, cmd_depth, cmd_bits, cmd_histo, w);
-                    emit_distance(distance as usize, cmd_depth, cmd_bits, cmd_histo, w);
                 } else {
-                    emit_copy_len_last_distance(matched, cmd_depth, cmd_bits, cmd_histo, w);
+                    if insert < SHORT_INSERT_LIMIT {
+                        emit_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
+                    } else if should_use_uncompressed_mode(
+                        metablock_start,
+                        next_emit,
+                        insert,
+                        literal_ratio,
+                    ) {
+                        emit_uncompressed_meta_block(
+                            data,
+                            metablock_start,
+                            base,
+                            mlen_storage_ix - 3,
+                            w,
+                        );
+                        input_size -= base - input;
+                        input = base;
+                        next_emit = input;
+                        restart_meta_block = true;
+                        break 'scan;
+                    } else {
+                        emit_long_insert_len(insert, cmd_depth, cmd_bits, cmd_histo, w);
+                    }
+                    emit_literals(data, next_emit, insert, lit_depth, lit_bits, w);
+
+                    if !INDEPENDENT && distance == last_distance {
+                        w.write(u32::from(cmd_depth[64]), u64::from(cmd_bits[64]));
+                        cmd_histo[64] += 1;
+                    } else {
+                        emit_distance(distance as usize, cmd_depth, cmd_bits, cmd_histo, w);
+                        last_distance = distance;
+                    }
+                    if INDEPENDENT {
+                        // The insert command already copied two bytes. Encode the
+                        // remaining copy explicitly, including its distance.
+                        emit_copy_len(matched - 2, cmd_depth, cmd_bits, cmd_histo, w);
+                        emit_distance(distance as usize, cmd_depth, cmd_bits, cmd_histo, w);
+                    } else {
+                        emit_copy_len_last_distance(matched, cmd_depth, cmd_bits, cmd_histo, w);
+                    }
                 }
 
                 next_emit = ip;
@@ -550,8 +572,17 @@ fn compress_fragment_impl<
                     }
                     ip += matched;
                     last_distance = (base - candidate) as i64;
-                    emit_copy_len(matched, cmd_depth, cmd_bits, cmd_histo, w);
-                    emit_distance(last_distance as usize, cmd_depth, cmd_bits, cmd_histo, w);
+                    if !emit_copy_and_distance(
+                        matched,
+                        last_distance as usize,
+                        cmd_depth,
+                        cmd_bits,
+                        cmd_histo,
+                        w,
+                    ) {
+                        emit_copy_len(matched, cmd_depth, cmd_bits, cmd_histo, w);
+                        emit_distance(last_distance as usize, cmd_depth, cmd_bits, cmd_histo, w);
+                    }
 
                     next_emit = ip;
                     if ip >= ip_limit {

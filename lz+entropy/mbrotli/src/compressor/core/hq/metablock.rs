@@ -74,14 +74,12 @@ fn recompute_distance_prefixes(
     if original.postfix_bits == new.postfix_bits && original.num_direct == new.num_direct {
         return;
     }
-    for command in commands {
-        if command.has_distance() {
-            let distance = command.restore_distance_code(original) as usize;
-            let (prefix, extra) =
-                prefix_encode_copy_distance(distance, new.num_direct, new.postfix_bits);
-            command.dist_prefix = prefix;
-            command.dist_extra = extra;
-        }
+    for command in commands.iter_mut().filter(|command| command.has_distance()) {
+        let distance = command.restore_distance_code(original) as usize;
+        let (prefix, extra) =
+            prefix_encode_copy_distance(distance, new.num_direct, new.postfix_bits);
+        command.dist_prefix = prefix;
+        command.dist_extra = extra;
     }
 }
 
@@ -100,10 +98,7 @@ fn compute_distance_cost(
         original.postfix_bits == new.postfix_bits && original.num_direct == new.num_direct;
     let mut extra_bits = 0f64;
 
-    for command in commands {
-        if !command.has_distance() {
-            continue;
-        }
+    for command in commands.iter().filter(|command| command.has_distance()) {
         let dist_prefix = if equal_params {
             command.dist_prefix
         } else {
@@ -355,10 +350,9 @@ impl MetaBlockBuilder {
                 .resize(mb.literal_split.num_types << LITERAL_CONTEXT_BITS, 0);
             for block_type in (0..mb.literal_split.num_types).rev() {
                 let assigned = mb.literal_context_map[block_type];
-                for context in 0..(1usize << LITERAL_CONTEXT_BITS) {
-                    mb.literal_context_map[(block_type << LITERAL_CONTEXT_BITS) + context] =
-                        assigned;
-                }
+                mb.literal_context_map[block_type << LITERAL_CONTEXT_BITS..]
+                    [..1 << LITERAL_CONTEXT_BITS]
+                    .fill(assigned);
             }
         }
 

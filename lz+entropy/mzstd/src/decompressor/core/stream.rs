@@ -19,12 +19,12 @@ use alloc::vec::Vec;
 
 use borrowed_buf::BorrowedBuf;
 
+use super::ahead::WriteAhead;
 use super::block::{BlockHeader, BlockKind, BlockOutput};
 use super::copy::WILDCOPY_OVERLENGTH;
 use super::dictionary::DictView;
 use super::frame::{FrameDecoder, FrameHeader, MAGIC_SIZE, header_size};
 use super::history::{History, Sink};
-use crate::Backend;
 use crate::decompressor::{
     DecodeError, DecodeFailure, DecodeOperation, DecodeProgress, DecoderConfig, DecoderStatus,
     FrameMode, InvalidDataKind,
@@ -33,6 +33,7 @@ use crate::shared::format::{
     BLOCK_HEADER_SIZE, CHECKSUM_SIZE, MAGIC_NUMBER, MAGIC_SKIPPABLE_MASK, MAGIC_SKIPPABLE_START,
     SKIPPABLE_HEADER_SIZE,
 };
+use crate::{Backend, FrameFormat};
 
 /// Size of a skippable frame's size field.
 const SKIPPABLE_SIZE_FIELD: usize = SKIPPABLE_HEADER_SIZE - MAGIC_SIZE;
@@ -352,6 +353,11 @@ impl Stream {
                         }
                         return Ok(DecoderStatus::NeedsInput);
                     }
+                    if self.config.format() == FrameFormat::Magicless {
+                        // A magicless frame starts at its header.
+                        self.state = State::FrameHeader;
+                        continue;
+                    }
                     if !fill(&mut self.scratch, input, MAGIC_SIZE) {
                         return Ok(DecoderStatus::NeedsInput);
                     }
@@ -507,6 +513,7 @@ impl Stream {
             frame_end: None,
             cut,
             limit: 0,
+            ahead: WriteAhead::NONE,
         };
         out.filled = out.buffer.len();
         let result = self.walk(src, &mut out, dictionary);
@@ -534,6 +541,7 @@ impl Stream {
             buffer: dst,
             filled: 0,
             frame_end: 0,
+            ahead: WriteAhead::NONE,
         };
         self.walk(src, &mut out, dictionary).ok()?;
         Some(out.filled)
@@ -555,6 +563,7 @@ impl Stream {
             buffer: BorrowedBuf::from(dst),
             filled: 0,
             frame_end: 0,
+            ahead: WriteAhead::NONE,
         };
         self.walk(src, &mut out, dictionary).ok()?;
         Some(out.filled)
@@ -590,21 +599,23 @@ impl Stream {
                 }
                 return Err(DecodeError::UnexpectedEndOfInput);
             }
-            let magic = u32::from_le_bytes(reader.take_array()?);
-            if is_skippable(magic) {
-                let size = u32::from_le_bytes(reader.take_array()?);
-                if size > SKIPPABLE_PAYLOAD_MAX {
-                    return Err(InvalidDataKind::SkippableFrame.into());
+            if self.config.format() == FrameFormat::Standard {
+                let magic = u32::from_le_bytes(reader.take_array()?);
+                if is_skippable(magic) {
+                    let size = u32::from_le_bytes(reader.take_array()?);
+                    if size > SKIPPABLE_PAYLOAD_MAX {
+                        return Err(InvalidDataKind::SkippableFrame.into());
+                    }
+                    reader.take(size as usize)?;
+                    complete_frames += 1;
+                    if self.config.frame_mode() == FrameMode::Single {
+                        return single_end(&reader, src);
+                    }
+                    continue;
                 }
-                reader.take(size as usize)?;
-                complete_frames += 1;
-                if self.config.frame_mode() == FrameMode::Single {
-                    return single_end(&reader, src);
+                if magic != MAGIC_NUMBER {
+                    return Err(InvalidDataKind::Magic.into());
                 }
-                continue;
-            }
-            if magic != MAGIC_NUMBER {
-                return Err(InvalidDataKind::Magic.into());
             }
             let descriptor = reader.data.get(reader.position).copied();
             let descriptor = descriptor.ok_or(match limit {
@@ -717,11 +728,17 @@ struct VecOutput<'a> {
     cut: bool,
     /// How far the block in progress may extend the buffer.
     limit: usize,
+    /// The spare capacity the next block will write.
+    ahead: WriteAhead,
 }
 
 impl BlockOutput for VecOutput<'_> {
     fn buffer(&mut self) -> &mut [u8] {
         self.buffer
+    }
+
+    fn ahead(&self) -> WriteAhead {
+        self.ahead
     }
 
     fn grow(&mut self, end: usize) -> bool {
@@ -796,11 +813,18 @@ impl Output for VecOutput<'_> {
             // frame's end; the buffer is cut back to it.
             self.buffer.truncate(len);
             self.limit = len;
+            self.ahead = next_room(self.buffer.as_ptr(), len, block_max, self.buffer.capacity());
             return Ok(self);
         }
         let bound = self.frame_end.and_then(|end| end.checked_add(slack));
         reserve_output(self.buffer, wanted, bound)?;
         self.limit = wanted;
+        self.ahead = next_room(
+            self.buffer.as_ptr(),
+            wanted,
+            block_max,
+            self.buffer.capacity(),
+        );
         Ok(self)
     }
 
@@ -827,6 +851,16 @@ impl Output for VecOutput<'_> {
         }
         Ok(Some(&self.buffer[start..]))
     }
+}
+
+/// The `block_max` bytes after `room_end`, where the next block will
+/// write, cut at `limit`: what the current block's literal loops prefetch.
+fn next_room(base: *const u8, room_end: usize, block_max: usize, limit: usize) -> WriteAhead {
+    WriteAhead::within(
+        base,
+        room_end,
+        room_end.saturating_add(block_max).min(limit),
+    )
 }
 
 /// Makes room for `len` bytes in `buffer`, without initializing them.
@@ -860,11 +894,17 @@ struct SliceOutput<'a> {
     buffer: &'a mut [u8],
     filled: usize,
     frame_end: usize,
+    /// The bytes the next block will write.
+    ahead: WriteAhead,
 }
 
 impl BlockOutput for SliceOutput<'_> {
     fn buffer(&mut self) -> &mut [u8] {
         &mut self.buffer[..self.frame_end]
+    }
+
+    fn ahead(&self) -> WriteAhead {
+        self.ahead
     }
 
     fn grow(&mut self, _end: usize) -> bool {
@@ -898,7 +938,12 @@ impl Output for SliceOutput<'_> {
         }
     }
 
-    fn reserve(&mut self, _block_max: usize) -> Result<&mut dyn BlockOutput, DecodeError> {
+    fn reserve(&mut self, block_max: usize) -> Result<&mut dyn BlockOutput, DecodeError> {
+        let room_end = self
+            .filled
+            .saturating_add(block_max + WILDCOPY_OVERLENGTH)
+            .min(self.frame_end);
+        self.ahead = next_room(self.buffer.as_ptr(), room_end, block_max, self.frame_end);
         Ok(self)
     }
 
@@ -923,11 +968,17 @@ struct UninitOutput<'a> {
     /// Bytes of output, never more than `buffer.len()`.
     filled: usize,
     frame_end: usize,
+    /// The bytes the next block's room will zero.
+    ahead: WriteAhead,
 }
 
 impl BlockOutput for UninitOutput<'_> {
     fn buffer(&mut self) -> &mut [u8] {
         self.buffer.filled_mut()
+    }
+
+    fn ahead(&self) -> WriteAhead {
+        self.ahead
     }
 
     /// The block's whole room is zeroed before it starts.
@@ -979,6 +1030,8 @@ impl Output for UninitOutput<'_> {
             .saturating_add(block_max + WILDCOPY_OVERLENGTH)
             .min(self.frame_end);
         self.zero_to(end);
+        let base = self.buffer.filled().as_ptr();
+        self.ahead = next_room(base, end, block_max, self.frame_end);
         Ok(self)
     }
 
@@ -1331,6 +1384,7 @@ mod tests {
             frame_end: None,
             cut: true,
             limit: 0,
+            ahead: WriteAhead::NONE,
         };
         // Room for a block is reserved, not zeroed.
         let room = out.reserve(10).expect("room");
@@ -1431,6 +1485,7 @@ mod tests {
             buffer: BorrowedBuf::from(&mut storage[..]),
             filled: 0,
             frame_end: 0,
+            ahead: WriteAhead::NONE,
         };
         assert!(matches!(
             out.begin_frame(None, 0),
@@ -1464,6 +1519,7 @@ mod tests {
             buffer: BorrowedBuf::from(&mut storage[..]),
             filled: 0,
             frame_end: 0,
+            ahead: WriteAhead::NONE,
         };
         out.begin_frame(Some(40), 0).expect("fits");
         assert!(

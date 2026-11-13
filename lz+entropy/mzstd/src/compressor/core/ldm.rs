@@ -152,16 +152,6 @@ impl Gear {
         }
     }
 
-    /// `ZSTD_ldm_gear_reset`.
-    fn reset(&mut self, data: &[u8]) {
-        let mut hash = self.rolling;
-        for &byte in data {
-            hash = (hash << 1).wrapping_add(GEAR_TAB[usize::from(byte)]);
-        }
-        // The reference forgets the fed bytes: the state is left unchanged.
-        let _ = hash;
-    }
-
     /// `ZSTD_ldm_gear_feed`: records split points into `splits`, stopping
     /// when the batch is full; returns how many bytes were consumed and how
     /// many splits were recorded.
@@ -371,8 +361,9 @@ impl LdmState {
         if ((end - start) as usize) < min_match_length as usize {
             return Ok((iend - anchor) as usize);
         }
+        // `ZSTD_ldm_gear_reset` is not ported: it hashes into a local and
+        // leaves the state unchanged, here and after a match below.
         let mut gear = Gear::new(params);
-        gear.reset(prefix.slice(start, start + min_match_length));
         ip += i64::from(min_match_length);
 
         while ip < ilimit {
@@ -398,8 +389,7 @@ impl LdmState {
                 // candidate.
                 let mut best: Option<(usize, usize, usize, u32)> = None;
                 let bucket = hash << params.bucket_size_log;
-                for slot in bucket..bucket + ents_per_bucket {
-                    let cur = self.hash_table[slot];
+                for &cur in &self.hash_table[bucket..bucket + ents_per_bucket] {
                     if cur.checksum != checksum || cur.offset <= lowest_index {
                         continue;
                     }
@@ -440,9 +430,6 @@ impl LdmState {
                 self.insert_entry(hash, new_entry, params.bucket_size_log);
                 anchor = i64::from(split) + forward as i64;
                 if anchor > ip + hashed {
-                    gear.reset(
-                        prefix.slice((anchor - i64::from(min_match_length)) as u32, anchor as u32),
-                    );
                     ip = anchor - hashed;
                     break;
                 }

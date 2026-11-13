@@ -35,6 +35,7 @@ pub(crate) fn store_meta_block_header(
 
 /// Quality 0 command emitters, writing prefix codes directly to the stream.
 pub(crate) mod one_pass {
+    use super::super::bits::MAX_BITS_PER_WRITE;
     use super::{BitWriter, ByteBuffer, LONG_INSERT_LIMIT, log2_floor_non_zero};
 
     /// Writes a prefix code and its extra bits as one call.
@@ -271,6 +272,251 @@ pub(crate) mod one_pass {
         histo[code] += 1;
     }
 
+    /// A command symbol and the number of extra bits that follow it.
+    #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+    pub(crate) struct LengthCode {
+        /// Symbol in the 128 entry fast alphabet.
+        code: u8,
+        /// Extra bits after the symbol.
+        extra_bits: u8,
+    }
+
+    /// Builds the table of a length family whose direct codes end at
+    /// `direct` and whose two-prefix codes take over from there.
+    ///
+    /// Below `direct` the symbol is `length + direct_base` with no extra
+    /// bits; from there `tail = length - tail_bias` has `log2(tail) - 1`
+    /// extra bits and the symbol `2 * nbits + (tail >> nbits) + prefix_base`.
+    /// These are the first two branches of `EmitInsertLen`, `EmitCopyLen`
+    /// and `EmitCopyLenLastDistance`, tabulated so that picking between them
+    /// is a load rather than a branch on the length.
+    const fn length_codes<const N: usize>(
+        direct: usize,
+        direct_base: isize,
+        tail_bias: usize,
+        prefix_base: usize,
+    ) -> [LengthCode; N] {
+        let mut table = [LengthCode {
+            code: 0,
+            extra_bits: 0,
+        }; N];
+        let mut length = 0;
+        while length < N {
+            table[length] = if length < direct {
+                LengthCode {
+                    // Lengths the encoder never emits wrap into the alphabet.
+                    code: ((length as isize + direct_base) & 127) as u8,
+                    extra_bits: 0,
+                }
+            } else {
+                let tail = length - tail_bias;
+                let nbits = log2_floor_non_zero(tail) - 1;
+                LengthCode {
+                    code: (((nbits as usize) << 1) + (tail >> nbits) + prefix_base) as u8,
+                    extra_bits: nbits as u8,
+                }
+            };
+            length += 1;
+        }
+        table
+    }
+
+    /// Insert lengths the tables cover (the first two branches of
+    /// [`emit_insert_len`]).
+    const TABLED_INSERTS: usize = 130;
+
+    /// Copy lengths after an explicit distance the tables cover (the first
+    /// two branches of [`emit_copy_len`]).
+    const TABLED_COPIES: usize = 134;
+
+    /// Copy lengths at the last distance the tables cover (the first two
+    /// branches of [`emit_copy_len_last_distance`]).
+    const TABLED_LAST_COPIES: usize = 72;
+
+    /// Symbols of insert lengths below [`TABLED_INSERTS`].
+    static INSERT_CODES: [LengthCode; TABLED_INSERTS] = length_codes(6, 40, 2, 42);
+
+    /// Symbols of copy lengths below [`TABLED_COPIES`].
+    static COPY_CODES: [LengthCode; TABLED_COPIES] = length_codes(10, 14, 6, 20);
+
+    /// Symbols of last-distance copy lengths below [`TABLED_LAST_COPIES`].
+    static LAST_COPY_CODES: [LengthCode; TABLED_LAST_COPIES] = length_codes(12, -4, 8, 4);
+
+    /// Literals [`emit_command`] packs next to the insert symbol.
+    const PACKED_LITERALS: usize = 4;
+
+    /// Returns a tabled length's symbol, its width and its bits, extra bits
+    /// included. `tail` is the length less the family's tail bias.
+    ///
+    /// The extra bits of a two-prefix code are the low `nbits` bits of the
+    /// tail, which is `tail - (prefix << nbits)`; a direct code has none, so
+    /// the mask is empty and a tail that wrapped below zero contributes
+    /// nothing.
+    #[inline(always)]
+    fn tabled(
+        entry: LengthCode,
+        tail: usize,
+        depth: &[u8; 128],
+        bits: &[u16; 128],
+    ) -> (usize, u32, u64) {
+        let code = symbol(usize::from(entry.code));
+        let extra_bits = u32::from(entry.extra_bits);
+        let width = u32::from(depth[code]);
+        let extra = tail as u64 & ((1u64 << extra_bits) - 1);
+        (
+            code,
+            width + extra_bits,
+            u64::from(bits[code]) | (extra << width),
+        )
+    }
+
+    /// Returns the symbol, width and bits of a backward distance, extra bits
+    /// included: what [`emit_distance`] writes.
+    #[inline(always)]
+    fn distance_symbol(distance: usize, depth: &[u8; 128], bits: &[u16; 128]) -> (usize, u32, u64) {
+        let d = distance + 3;
+        let nbits = log2_floor_non_zero(d) - 1;
+        let prefix = (d >> nbits) & 1;
+        let offset = (2 + prefix) << nbits;
+        let code = symbol(2 * (nbits as usize - 1) + prefix + 80);
+        let width = u32::from(depth[code]);
+        (
+            code,
+            width + nbits,
+            u64::from(bits[code]) | (((d - offset) as u64) << width),
+        )
+    }
+
+    /// Writes a whole command of a serial fragment: the insert length, its
+    /// literals, the distance (or the symbol that repeats the last one) and
+    /// the copy length.
+    ///
+    /// Returns `false`, having written nothing, for a command the tables do
+    /// not cover: an insert of [`TABLED_INSERTS`] or more, a copy of
+    /// [`TABLED_LAST_COPIES`] or more, or literals too close to the end of
+    /// `data` to load as a group. The caller then emits it field by field.
+    ///
+    /// The bits are those of [`emit_insert_len`], [`emit_literals`], the
+    /// distance and [`emit_copy_len_last_distance`] in that order. What
+    /// differs is how they are reached. Each length family's symbol comes
+    /// from a table, so which of its code ranges a length falls in is not a
+    /// branch; the distance and the last-distance symbol are selected, not
+    /// branched on; and the first [`PACKED_LITERALS`] literal codes are
+    /// computed for every command, the ones past the run masked to zero bits.
+    /// On the Silesia corpus 72% of these commands insert at most four
+    /// literals and 83% copy fewer than twelve bytes, so the lengths vary too
+    /// much to predict and too little to be worth a loop. Fields that fit the
+    /// writer's 56 bits together share a store: a typical command is one
+    /// store where it was four.
+    #[inline(always)]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one command's fields and the code tables they are written with"
+    )]
+    pub(crate) fn emit_command(
+        data: &[u8],
+        start: usize,
+        insertlen: usize,
+        distance: usize,
+        repeats_distance: bool,
+        copylen: usize,
+        lit_depth: &[u8; 256],
+        lit_bits: &[u16; 256],
+        depth: &[u8; 128],
+        bits: &[u16; 128],
+        histo: &mut [u32; 128],
+        w: &mut BitWriter<'_, impl ByteBuffer + ?Sized>,
+    ) -> bool {
+        let (Some(&insert), Some(&copy), Some(first)) = (
+            INSERT_CODES.get(insertlen),
+            LAST_COPY_CODES.get(copylen),
+            data.get(start..)
+                .and_then(|rest| rest.first_chunk::<PACKED_LITERALS>()),
+        ) else {
+            return false;
+        };
+        let (insert_code, insert_width, insert_value) =
+            tabled(insert, insertlen.wrapping_sub(2), depth, bits);
+        let (copy_code, copy_width, copy_value) =
+            tabled(copy, copylen.wrapping_sub(8), depth, bits);
+        let (explicit_code, explicit_width, explicit_value) =
+            distance_symbol(distance, depth, bits);
+        let (distance_code, distance_width, distance_value) = if repeats_distance {
+            (64, u32::from(depth[64]), u64::from(bits[64]))
+        } else {
+            (explicit_code, explicit_width, explicit_value)
+        };
+        histo[insert_code] += 1;
+        histo[distance_code] += 1;
+        histo[copy_code] += 1;
+
+        let mut literal_width = 0u32;
+        let mut literal_value = 0u64;
+        for (index, &literal) in first.iter().enumerate() {
+            let keep = 0u32.wrapping_sub(u32::from(index < insertlen));
+            let literal = usize::from(literal);
+            literal_value |= u64::from(u32::from(lit_bits[literal]) & keep) << literal_width;
+            literal_width += u32::from(lit_depth[literal]) & keep;
+        }
+
+        // At most 14 + 16 and 15 + 5 bits: always one write.
+        let tail_width = distance_width + copy_width;
+        let tail_value = distance_value | (copy_value << distance_width);
+        let head_width = insert_width + literal_width;
+        if insertlen <= PACKED_LITERALS && head_width + tail_width <= MAX_BITS_PER_WRITE {
+            w.write(
+                head_width + tail_width,
+                insert_value | (literal_value << insert_width) | (tail_value << head_width),
+            );
+            return true;
+        }
+        w.write_pair(insert_width, insert_value, literal_width, literal_value);
+        if insertlen > PACKED_LITERALS {
+            emit_literals(
+                data,
+                start + PACKED_LITERALS,
+                insertlen - PACKED_LITERALS,
+                lit_depth,
+                lit_bits,
+                w,
+            );
+        }
+        w.write(tail_width, tail_value);
+        true
+    }
+
+    /// Writes a copy length and the explicit distance that follows it with
+    /// one store: [`emit_copy_len`] then [`emit_distance`].
+    ///
+    /// Returns `false`, having written nothing, for a copy of
+    /// [`TABLED_COPIES`] or more, which the caller emits field by field. A
+    /// tabled copy is at most 15 + 5 bits and a distance at most 14 + 16, so
+    /// the pair always fits the writer's 56 bits.
+    #[inline(always)]
+    pub(crate) fn emit_copy_and_distance(
+        copylen: usize,
+        distance: usize,
+        depth: &[u8; 128],
+        bits: &[u16; 128],
+        histo: &mut [u32; 128],
+        w: &mut BitWriter<'_, impl ByteBuffer + ?Sized>,
+    ) -> bool {
+        let Some(&copy) = COPY_CODES.get(copylen) else {
+            return false;
+        };
+        let (copy_code, copy_width, copy_value) =
+            tabled(copy, copylen.wrapping_sub(6), depth, bits);
+        let (distance_code, distance_width, distance_value) =
+            distance_symbol(distance, depth, bits);
+        histo[copy_code] += 1;
+        histo[distance_code] += 1;
+        w.write(
+            copy_width + distance_width,
+            copy_value | (distance_value << copy_width),
+        );
+        true
+    }
+
     /// Shortest literal run for which the four-at-a-time loop pays off.
     ///
     /// Below this a run yields at most one quadruple, and the extra split costs
@@ -379,6 +625,40 @@ pub(crate) mod one_pass {
             width += u32::from(depth[index]);
         }
         w.write(width, value);
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn length_tables_hold_the_first_two_code_ranges_of_each_family() {
+            // Evaluated here at run time; the statics were built by the
+            // compiler from the same calls.
+            let inserts: [LengthCode; TABLED_INSERTS] = length_codes(6, 40, 2, 42);
+            let copies: [LengthCode; TABLED_COPIES] = length_codes(10, 14, 6, 20);
+            let last_copies: [LengthCode; TABLED_LAST_COPIES] = length_codes(12, -4, 8, 4);
+            assert_eq!(inserts, INSERT_CODES);
+            assert_eq!(copies, COPY_CODES);
+            assert_eq!(last_copies, LAST_COPY_CODES);
+
+            // The ends of the direct and of the two-prefix ranges, as
+            // `emit_insert_len`, `emit_copy_len` and
+            // `emit_copy_len_last_distance` code them.
+            let entry = |code, extra_bits| LengthCode { code, extra_bits };
+            assert_eq!(inserts[0], entry(40, 0));
+            assert_eq!(inserts[5], entry(45, 0));
+            assert_eq!(inserts[6], entry(46, 1));
+            assert_eq!(inserts[129], entry(55, 5));
+            assert_eq!(copies[4], entry(18, 0));
+            assert_eq!(copies[9], entry(23, 0));
+            assert_eq!(copies[10], entry(24, 1));
+            assert_eq!(copies[133], entry(33, 5));
+            assert_eq!(last_copies[4], entry(0, 0));
+            assert_eq!(last_copies[11], entry(7, 0));
+            assert_eq!(last_copies[12], entry(8, 1));
+            assert_eq!(last_copies[71], entry(15, 4));
+        }
     }
 }
 
@@ -612,6 +892,161 @@ mod tests {
                 one_pass::emit_distance(distance, &depth, &bits, histo, w);
             });
             assert_eq!(used, vec![code], "distance {distance}");
+        }
+    }
+
+    /// Code tables with every depth the tree builders can produce.
+    ///
+    /// `deep` gives every symbol its longest code — fifteen bits for a
+    /// command, fourteen for a distance or a literal — which is what pushes
+    /// a whole command past one write.
+    fn command_tables(deep: bool) -> ([u8; 128], [u16; 128], [u8; 256], [u16; 256]) {
+        let depth: [u8; 128] = core::array::from_fn(|code| match (deep, code < 64) {
+            (true, true) => 15,
+            (true, false) => 14,
+            (false, _) => (code % 9 + 1) as u8,
+        });
+        let bits: [u16; 128] =
+            core::array::from_fn(|code| (code as u16 * 211 + 5) & ((1u16 << depth[code]) - 1));
+        let lit_depth: [u8; 256] =
+            core::array::from_fn(|literal| if deep { 14 } else { (literal % 12 + 1) as u8 });
+        let lit_bits: [u16; 256] = core::array::from_fn(|literal| {
+            (literal as u16 * 97 + 3) & ((1u16 << lit_depth[literal]) - 1)
+        });
+        (depth, bits, lit_depth, lit_bits)
+    }
+
+    /// Runs `emit` on a zeroed buffer and returns its bytes, the final
+    /// position and the histogram.
+    fn emitted(emit: impl FnOnce(&mut [u32; 128], &mut BitWriter)) -> (Vec<u8>, usize, [u32; 128]) {
+        let mut storage = vec![0u8; 512];
+        let mut histo = [0u32; 128];
+        let position = {
+            let mut w = BitWriter::new(&mut storage, 0);
+            // An odd start exercises every shift.
+            w.write(3, 5);
+            emit(&mut histo, &mut w);
+            assert!(!w.overflowed());
+            w.position()
+        };
+        (storage, position, histo)
+    }
+
+    #[test]
+    fn whole_commands_match_field_by_field_emission_on_both_sides_of_every_table() {
+        let data: Vec<u8> = (0..400u32).map(|index| (index * 131 + 7) as u8).collect();
+        let inserts: Vec<usize> = if cfg!(miri) {
+            vec![0, 1, 4, 5, 6, 129, 130]
+        } else {
+            (0..=140).collect()
+        };
+        let copies: Vec<usize> = if cfg!(miri) {
+            vec![5, 11, 12, 71, 72]
+        } else {
+            (4..=80).collect()
+        };
+        for deep in [false, true] {
+            let (depth, bits, lit_depth, lit_bits) = command_tables(deep);
+            for &insert in &inserts {
+                for &copy in &copies {
+                    for (distance, repeats) in [(1usize, false), (77, true), (262_128, false)] {
+                        if cfg!(miri) && distance == 1 {
+                            continue;
+                        }
+                        let start = 3;
+                        let mut handled = false;
+                        let actual = emitted(|histo, w| {
+                            handled = one_pass::emit_command(
+                                &data, start, insert, distance, repeats, copy, &lit_depth,
+                                &lit_bits, &depth, &bits, histo, w,
+                            );
+                        });
+                        assert_eq!(
+                            handled,
+                            insert < 130 && copy < 72,
+                            "insert {insert}, copy {copy}"
+                        );
+                        if !handled {
+                            // A refused command writes nothing.
+                            assert_eq!(actual.1, 3, "insert {insert}, copy {copy}");
+                            assert_eq!(actual.2, [0; 128]);
+                            continue;
+                        }
+                        let expected = emitted(|histo, w| {
+                            one_pass::emit_insert_len(insert, &depth, &bits, histo, w);
+                            one_pass::emit_literals(&data, start, insert, &lit_depth, &lit_bits, w);
+                            if repeats {
+                                w.write(u32::from(depth[64]), u64::from(bits[64]));
+                                histo[64] += 1;
+                            } else {
+                                one_pass::emit_distance(distance, &depth, &bits, histo, w);
+                            }
+                            one_pass::emit_copy_len_last_distance(copy, &depth, &bits, histo, w);
+                        });
+                        assert_eq!(
+                            actual, expected,
+                            "deep {deep}, insert {insert}, copy {copy}, distance {distance}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_whole_command_is_refused_when_its_literals_cannot_be_loaded_together() {
+        let (depth, bits, lit_depth, lit_bits) = command_tables(false);
+        let data = [1u8, 2, 3, 4, 5];
+        let attempt = |start: usize| {
+            let mut handled = false;
+            let written = emitted(|histo, w| {
+                handled = one_pass::emit_command(
+                    &data, start, 1, 9, false, 5, &lit_depth, &lit_bits, &depth, &bits, histo, w,
+                );
+            });
+            (handled, written.1)
+        };
+        let (handled, position) = attempt(1);
+        assert!(handled);
+        assert!(position > 3);
+        // Three bytes are left: fewer than the group the emitter loads.
+        assert_eq!(attempt(2), (false, 3));
+        assert_eq!(attempt(6), (false, 3));
+    }
+
+    #[test]
+    fn copies_with_a_distance_match_field_by_field_emission_on_both_sides_of_the_table() {
+        let copies: Vec<usize> = if cfg!(miri) {
+            vec![5, 9, 10, 133, 134]
+        } else {
+            (2..=140).collect()
+        };
+        for deep in [false, true] {
+            let (depth, bits, _, _) = command_tables(deep);
+            for &copy in &copies {
+                for distance in [1usize, 2, 3, 5, 4093, 262_128] {
+                    let mut handled = false;
+                    let actual = emitted(|histo, w| {
+                        handled = one_pass::emit_copy_and_distance(
+                            copy, distance, &depth, &bits, histo, w,
+                        );
+                    });
+                    assert_eq!(handled, copy < 134, "copy {copy}");
+                    if !handled {
+                        assert_eq!(actual.1, 3, "copy {copy}");
+                        assert_eq!(actual.2, [0; 128]);
+                        continue;
+                    }
+                    let expected = emitted(|histo, w| {
+                        one_pass::emit_copy_len(copy, &depth, &bits, histo, w);
+                        one_pass::emit_distance(distance, &depth, &bits, histo, w);
+                    });
+                    assert_eq!(
+                        actual, expected,
+                        "deep {deep}, copy {copy}, distance {distance}"
+                    );
+                }
+            }
         }
     }
 

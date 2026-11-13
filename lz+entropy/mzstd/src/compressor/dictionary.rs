@@ -8,9 +8,10 @@
 
 use alloc::boxed::Box;
 
-use super::config::EncoderConfig;
+use super::config::{CompressionParams, EncoderConfig, Level};
 use super::core::cctx::{FrameParams, RequestedParams};
 use super::core::cdict::CDict;
+use super::core::params::DEFAULT_CLEVEL;
 use super::internal::requested_params;
 use crate::dictionary::{DictionaryContent, DictionaryError, DictionaryId};
 
@@ -39,6 +40,7 @@ pub struct DictionaryBuilder<'a> {
     bytes: &'a [u8],
     content: DictionaryContent,
     config: EncoderConfig,
+    level_parameters: Option<Level>,
 }
 
 impl<'a> DictionaryBuilder<'a> {
@@ -60,6 +62,7 @@ impl<'a> DictionaryBuilder<'a> {
             bytes,
             content: DictionaryContent::Auto,
             config: EncoderConfig::default(),
+            level_parameters: None,
         }
     }
 
@@ -104,6 +107,48 @@ impl<'a> DictionaryBuilder<'a> {
         self
     }
 
+    /// Prepares the dictionary like `ZSTD_createCDict_advanced` with
+    /// `ZSTD_getCParams(level, 0, size)`, for use by any compressor.
+    ///
+    /// The dictionary's tables are built with the parameters of `level` for a
+    /// dictionary of this size, and every compressor accepts it whatever its
+    /// own configuration, as `ZSTD_CCtx_refCDict` lets any context use a
+    /// `ZSTD_CDict`. Overrides [`Self::with_config`].
+    ///
+    /// Compressing with such a dictionary follows `ZSTD_CCtx_refCDict`
+    /// rather than `ZSTD_CCtx_loadDictionary`, which differ in zstd 1.5.7:
+    ///
+    /// - the compressor's own level is ignored, and the default level's
+    ///   parameters stand in for it when sizing the window; the other
+    ///   explicit parameters of the compressor (window log and so on) still
+    ///   apply;
+    /// - the frame attaches or copies the dictionary's tables by input size
+    ///   (see [`DictionaryAttach`](crate::DictionaryAttach)) and never
+    ///   re-indexes the dictionary with the compressor's parameters, except
+    ///   under [`DictionaryAttach::Load`](crate::DictionaryAttach::Load).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use mzstd::dictionary::DictionaryBuilder;
+    /// use mzstd::{Compressor, EncoderConfig, Level};
+    ///
+    /// let dictionary = DictionaryBuilder::new(b"the quick brown fox jumps over the lazy dog")
+    ///     .with_level_parameters(Level::try_from(9)?)
+    ///     .build()?;
+    /// // A compressor at another level can use it.
+    /// let config = EncoderConfig::default().with_level(Level::try_from(1)?);
+    /// let frame = Compressor::new(config)?
+    ///     .compress_with_dictionary(&dictionary, b"the quick brown fox")?;
+    /// assert!(!frame.is_empty());
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    #[must_use]
+    pub const fn with_level_parameters(mut self, level: Level) -> Self {
+        self.level_parameters = Some(level);
+        self
+    }
+
     /// Copies and prepares the dictionary.
     ///
     /// # Errors
@@ -125,16 +170,27 @@ impl<'a> DictionaryBuilder<'a> {
     /// assert_eq!(DictionaryBuilder::new(&bytes).build().unwrap_err(), DictionaryError::Corrupted);
     /// ```
     pub fn build(self) -> Result<PreparedDictionary, DictionaryError> {
-        self.config.validate()?;
-        let requested = requested_params(&self.config);
+        let config = match self.level_parameters {
+            // `ZSTD_createCDict_advanced`: the default level with the
+            // level's parameters for this dictionary size as overrides.
+            Some(level) => EncoderConfig::default().with_params(CompressionParams::for_level(
+                level,
+                0,
+                self.bytes.len(),
+            )),
+            None => self.config,
+        };
+        config.validate()?;
+        let requested = requested_params(&config);
         let cdict = CDict::new(Box::from(self.bytes), self.content, &requested)?;
         Ok(PreparedDictionary {
             inner: Box::new(Prepared {
                 #[cfg(feature = "decompression")]
                 decode: crate::dictionary::decode::parse_decode_parts(self.bytes, self.content)?,
                 cdict,
-                config: self.config,
+                config,
                 key: dictionary_key(&requested),
+                standalone: self.level_parameters.is_some(),
             }),
         })
     }
@@ -144,7 +200,10 @@ impl<'a> DictionaryBuilder<'a> {
 /// it but the frame options.
 pub(crate) fn dictionary_key(requested: &RequestedParams) -> RequestedParams {
     RequestedParams {
-        fparams: FrameParams::default(),
+        fparams: FrameParams {
+            no_dict_id: requested.fparams.no_dict_id,
+            ..FrameParams::default()
+        },
         ..*requested
     }
 }
@@ -187,6 +246,9 @@ struct Prepared {
     cdict: CDict,
     config: EncoderConfig,
     key: RequestedParams,
+    /// Whether any compressor may use the dictionary, as `ZSTD_CCtx_refCDict`
+    /// allows (see [`DictionaryBuilder::with_level_parameters`]).
+    standalone: bool,
     /// The decoder's tables, so the dictionary also decodes its frames.
     #[cfg(feature = "decompression")]
     decode: crate::dictionary::decode::DecodeParts,
@@ -291,7 +353,25 @@ impl PreparedDictionary {
     /// Whether compressors with `requested` parameters may use this
     /// dictionary.
     pub(crate) fn serves(&self, requested: &RequestedParams) -> bool {
-        dictionary_key(requested) == self.inner.key
+        self.inner.standalone || dictionary_key(requested) == self.inner.key
+    }
+
+    /// The parameters a compressor with `requested` resolves frames with
+    /// when it uses this dictionary.
+    ///
+    /// `ZSTD_CCtx_init_compressStream2` replaces the context's level with the
+    /// level of a referenced `ZSTD_CDict` (`0`, the default level, for one
+    /// created with `ZSTD_createCDict_advanced`), but not with that of the
+    /// dictionary `ZSTD_CCtx_loadDictionary` makes.
+    pub(crate) fn requested_for(&self, requested: &RequestedParams) -> RequestedParams {
+        if self.inner.standalone {
+            RequestedParams {
+                compression_level: DEFAULT_CLEVEL,
+                ..*requested
+            }
+        } else {
+            *requested
+        }
     }
 }
 

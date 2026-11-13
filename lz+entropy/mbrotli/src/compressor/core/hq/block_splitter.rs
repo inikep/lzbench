@@ -212,9 +212,10 @@ fn initial_entropy_codes<const N: usize>(
     let length = data.len();
     let mut seed = Rand(7);
     let block_length = length / num_histograms;
-    for histogram in histograms.iter_mut().take(num_histograms) {
-        histogram.clear();
-    }
+    histograms
+        .iter_mut()
+        .take(num_histograms)
+        .for_each(Histogram::clear);
     for (index, histogram) in histograms.iter_mut().enumerate().take(num_histograms) {
         let mut pos = length * index / num_histograms;
         if index != 0 && block_length != 0 {
@@ -278,17 +279,18 @@ fn assign_blocks_scalar(input: BlockCosts<'_>) {
     } = input;
     let num_histograms = cost.len();
     let bitmap_len = num_histograms.div_ceil(8);
-    for byte_ix in 0..data.len() {
+    for (byte_ix, &symbol) in data.iter().enumerate() {
         let ix = byte_ix * bitmap_len;
-        let symbol = usize::from(data[byte_ix]);
+        let symbol = usize::from(symbol);
         let insert_cost_ix = symbol * num_histograms;
         let mut min_cost = 1e99f64;
         let mut block_switch_cost = block_switch_bitcost;
 
-        for k in 0..num_histograms {
-            cost[k] += insert_cost[insert_cost_ix + k];
-            if cost[k] < min_cost {
-                min_cost = cost[k];
+        let row = &insert_cost[insert_cost_ix..][..num_histograms];
+        for (k, (slot, &price)) in cost.iter_mut().zip(row).enumerate() {
+            *slot += price;
+            if *slot < min_cost {
+                min_cost = *slot;
                 block_id[byte_ix] = k as u8;
             }
         }
@@ -297,10 +299,10 @@ fn assign_blocks_scalar(input: BlockCosts<'_>) {
         if byte_ix < PROLOGUE_LENGTH {
             block_switch_cost *= PROLOGUE_BASE + PROLOGUE_MULTIPLIER * byte_ix as f64;
         }
-        for k in 0..num_histograms {
-            cost[k] -= min_cost;
-            if cost[k] >= block_switch_cost {
-                cost[k] = block_switch_cost;
+        for (k, slot) in cost.iter_mut().enumerate() {
+            *slot -= min_cost;
+            if *slot >= block_switch_cost {
+                *slot = block_switch_cost;
                 switch_signal[ix + (k >> 3)] |= 1u8 << (k & 7);
             }
         }
@@ -507,9 +509,10 @@ fn build_block_histograms<const N: usize>(
     num_histograms: usize,
     histograms: &mut [Histogram<N>],
 ) {
-    for histogram in histograms.iter_mut().take(num_histograms) {
-        histogram.clear();
-    }
+    histograms
+        .iter_mut()
+        .take(num_histograms)
+        .for_each(Histogram::clear);
     for (&symbol, &id) in data.iter().zip(block_ids) {
         histograms[usize::from(id)].add(usize::from(symbol));
     }
@@ -587,15 +590,17 @@ fn cluster_blocks<const N: usize>(
             HISTOGRAMS_PER_BATCH,
             max_num_pairs,
         );
-        for j in 0..num_new_clusters {
-            let cluster = arena.new_clusters[j] as usize;
+        for (j, &cluster) in arena.new_clusters[..num_new_clusters].iter().enumerate() {
+            let cluster = cluster as usize;
             arena.all_histograms.push(arena.batch[cluster].clone());
             arena.cluster_size.push(arena.sizes[cluster]);
             arena.remap[cluster] = j as u32;
         }
-        for j in 0..num_to_combine {
-            arena.histogram_symbols[index + j] =
-                (num_clusters + arena.remap[arena.symbols[j] as usize] as usize) as u32;
+        for (slot, &symbol) in arena.histogram_symbols[index..index + num_to_combine]
+            .iter_mut()
+            .zip(&arena.symbols[..num_to_combine])
+        {
+            *slot = (num_clusters + arena.remap[symbol as usize] as usize) as u32;
         }
         num_clusters += num_new_clusters;
         index += HISTOGRAMS_PER_BATCH;
@@ -643,8 +648,7 @@ fn cluster_blocks<const N: usize>(
                 &mut arena.tmp,
                 alphabet_size,
             );
-            for j in 0..num_final_clusters {
-                let cluster = arena.clusters[j];
+            for &cluster in &arena.clusters[..num_final_clusters] {
                 let bits = move_cost(
                     &arena.assign,
                     &arena.all_histograms[cluster as usize],
@@ -825,10 +829,10 @@ impl BlockSplitter {
         let mut from_pos = pos & mask;
         for command in commands {
             let insert_len = command.insert_len as usize;
-            for offset in 0..insert_len {
-                let literal = data.get((from_pos + offset) & mask).copied().unwrap_or(0);
-                self.literals.push(u16::from(literal));
-            }
+            self.literals.extend(
+                (from_pos..from_pos + insert_len)
+                    .map(|offset| u16::from(data.get(offset & mask).copied().unwrap_or(0))),
+            );
             from_pos = (from_pos + insert_len + command.copy_len() as usize) & mask;
         }
         split_byte_vector(

@@ -333,9 +333,9 @@ pub(crate) fn convert_bit_depths_to_symbols(depth: &[u8], len: usize, bits: &mut
     });
     bl_count[0] = 0;
     let mut code = 0u16;
-    for i in 1..MAX_HUFFMAN_BITS {
-        code = (code + bl_count[i - 1]) << 1;
-        next_code[i] = code;
+    for (next, &count) in next_code[1..].iter_mut().zip(&bl_count) {
+        code = (code + count) << 1;
+        *next = code;
     }
     if n <= nonzero.len() {
         for &i in &nonzero[..n] {
@@ -503,15 +503,14 @@ fn store_code_length_code(
     bitdepth: &[u8; CODE_LENGTH_CODES],
     w: &mut BitWriter<'_, impl ByteBuffer + ?Sized>,
 ) {
-    let mut codes_to_store = CODE_LENGTH_CODES;
-    if num_codes > 1 {
-        while codes_to_store > 0 {
-            if bitdepth[STORAGE_ORDER[codes_to_store - 1]] != 0 {
-                break;
-            }
-            codes_to_store -= 1;
-        }
-    }
+    let codes_to_store = if num_codes > 1 {
+        STORAGE_ORDER
+            .iter()
+            .rposition(|&order| bitdepth[order] != 0)
+            .map_or(0, |last| last + 1)
+    } else {
+        CODE_LENGTH_CODES
+    };
     let mut skip_some = 0usize;
     if bitdepth[STORAGE_ORDER[0]] == 0 && bitdepth[STORAGE_ORDER[1]] == 0 {
         skip_some = if bitdepth[STORAGE_ORDER[2]] == 0 {
@@ -571,13 +570,14 @@ pub(crate) fn store_huffman_tree(
         bitdepth[code] = 0;
     }
 
-    for i in 0..runs.len {
-        let ix = usize::from(runs.symbols[i]);
+    let extra_bits = &runs.extra_bits[..runs.len];
+    for (&symbol, &extra) in runs.symbols[..runs.len].iter().zip(extra_bits) {
+        let ix = usize::from(symbol);
         w.write(u32::from(bitdepth[ix]), u64::from(symbols[ix]));
         if ix == REPEAT_PREVIOUS_CODE_LENGTH {
-            w.write(2, u64::from(runs.extra_bits[i]));
+            w.write(2, u64::from(extra));
         } else if ix == REPEAT_ZERO_CODE_LENGTH {
-            w.write(3, u64::from(runs.extra_bits[i]));
+            w.write(3, u64::from(extra));
         }
     }
 }

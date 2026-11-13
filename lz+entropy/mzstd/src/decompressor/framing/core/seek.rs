@@ -856,9 +856,10 @@ impl<'a> Operation<'a> {
                     return Err(E::UnexpectedEndOfInput.into());
                 }
             } else {
-                while self.next < self.plan.len() && !self.plan[self.next].decode {
-                    self.next += 1;
-                }
+                self.next += self.plan[self.next..]
+                    .iter()
+                    .take_while(|slot| !slot.decode)
+                    .count();
                 if self.next == self.plan.len() {
                     return Ok(0);
                 }

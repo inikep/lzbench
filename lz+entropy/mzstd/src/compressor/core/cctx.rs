@@ -23,12 +23,12 @@ use super::params::{
 use super::presplit;
 use super::seq_store::SeqStore;
 use super::window::{Addr, CURRENT_MAX, Segments};
-use crate::Backend;
 use crate::shared::format::{
     BLOCK_COMPRESSED, BLOCK_HEADER_SIZE, BLOCK_RAW, BLOCK_RLE, BLOCK_SIZE_MAX,
     FRAME_HEADER_SIZE_MAX, MAGIC_NUMBER, REP_NUM, REP_START, WINDOW_LOG_ABSOLUTE_MIN,
 };
 use crate::shared::xxhash::Xxh64;
+use crate::{Backend, FrameFormat};
 
 /// `ZSTD_MAX_INPUT_SIZE` on 64-bit targets.
 const MAX_INPUT_SIZE: u64 = 0xFF00_FF00_FF00_FF00;
@@ -55,6 +55,8 @@ pub(crate) struct FrameParams {
     pub(crate) checksum: bool,
     /// Omit the dictionary ID.
     pub(crate) no_dict_id: bool,
+    /// Whether the frame starts with the magic number (`ZSTD_c_format`).
+    pub(crate) format: FrameFormat,
 }
 
 impl Default for FrameParams {
@@ -63,6 +65,7 @@ impl Default for FrameParams {
             content_size: true,
             checksum: false,
             no_dict_id: false,
+            format: FrameFormat::Standard,
         }
     }
 }
@@ -133,10 +136,16 @@ pub(crate) struct RequestedParams {
     pub(crate) pre_block_splitter_level: i32,
     /// `0` for the format maximum.
     pub(crate) max_block_size: usize,
+    /// `ZSTD_c_targetCBlockSize` as `ZSTD_CCtxParams_setParameter` stores
+    /// it: `0` for no target, else at least `ZSTD_TARGETCBLOCKSIZE_MIN`.
+    pub(crate) target_c_block_size: usize,
     pub(crate) use_row_match_finder: ParamSwitch,
     /// Whether a dictionary is attached, copied or loaded
     /// (`ZSTD_c_forceAttachDict`).
     pub(crate) attach_dict_pref: AttachPref,
+    /// `ZSTD_c_forceMaxWindow`: dictionary content obeys the window, and a
+    /// dictionary is never attached.
+    pub(crate) force_window: bool,
 }
 
 impl Default for RequestedParams {
@@ -151,8 +160,10 @@ impl Default for RequestedParams {
             post_block_splitter: ParamSwitch::Auto,
             pre_block_splitter_level: 0,
             max_block_size: 0,
+            target_c_block_size: 0,
             use_row_match_finder: ParamSwitch::Auto,
             attach_dict_pref: AttachPref::Default,
+            force_window: false,
         }
     }
 }
@@ -168,7 +179,11 @@ pub(crate) struct AppliedParams {
     pub(crate) post_block_splitter: bool,
     pub(crate) pre_block_splitter_level: i32,
     pub(crate) max_block_size: usize,
+    /// `0` when blocks are not cut to a compressed size
+    /// (`ZSTD_useTargetCBlockSize` is `target_c_block_size != 0`).
+    pub(crate) target_c_block_size: usize,
     pub(crate) use_row_match_finder: ParamSwitch,
+    pub(crate) force_window: bool,
 }
 
 impl AppliedParams {
@@ -237,10 +252,12 @@ impl RequestedParams {
                 == ParamSwitch::Enable,
             pre_block_splitter_level: self.pre_block_splitter_level,
             max_block_size: params::resolve_max_block_size(self.max_block_size),
+            target_c_block_size: self.target_c_block_size,
             use_row_match_finder: params::resolve_row_match_finder(
                 self.use_row_match_finder,
                 &cparams,
             ),
+            force_window: self.force_window,
         }
     }
 }
@@ -383,7 +400,7 @@ impl Engine {
                 self.applied.fparams.no_dict_id,
                 &super::cdict::LoadParams {
                     use_row_match_finder: self.applied.use_row_match_finder,
-                    force_window: false,
+                    force_window: self.applied.force_window,
                     ldm: ldm_enabled.then_some(&ldm_params),
                 },
                 super::cdict::TableLoad::Fast,
@@ -394,7 +411,7 @@ impl Engine {
             return Ok(());
         }
         let window_log = applied.cparams.window_log;
-        if cdict.should_attach(pref, pledged) {
+        if cdict.should_attach(pref, pledged, applied.force_window) {
             // ZSTD_resetCCtx_byAttachingCDict: tables sized for the input
             // alone, the dictionary's parameters otherwise.
             let mut cparams = params::adjust_cparams_for(
@@ -515,6 +532,7 @@ impl Engine {
                 window_log: self.applied.cparams.window_log,
                 dict_id: self.dict_id,
                 no_dict_id: fparams.no_dict_id,
+                format: fparams.format,
                 checksum: fparams.checksum,
                 content_size: fparams.content_size,
                 pledged,
@@ -725,7 +743,11 @@ impl Engine {
 
             let view = self.ms.window.view(segments, block_end);
             let block_src = view.prefix.slice(ip, block_end);
-            let c_size = if self.applied.post_block_splitter {
+            let c_size = if self.applied.target_c_block_size != 0 {
+                super::superblock::compress_block(
+                    self, segments, &view, ip, block_end, out, last_block,
+                )?
+            } else if self.applied.post_block_splitter {
                 super::split_block::compress_split_block(
                     self, segments, &view, ip, block_end, out, last_block,
                 )?
@@ -799,6 +821,8 @@ struct FrameHeaderFields {
     dict_id: u32,
     /// Leaves the dictionary ID out even when it is not zero.
     no_dict_id: bool,
+    /// Whether the magic number precedes the header.
+    format: FrameFormat,
     /// Announces a content checksum after the last block.
     checksum: bool,
     /// Declares `pledged` as the frame's content size.
@@ -814,6 +838,7 @@ fn write_frame_header(dst: &mut [u8], header: FrameHeaderFields) -> Result<usize
         window_log,
         dict_id,
         no_dict_id,
+        format,
         checksum,
         content_size,
         pledged,
@@ -839,8 +864,11 @@ fn write_frame_header(dst: &mut [u8], header: FrameHeaderFields) -> Result<usize
     if dst.len() < FRAME_HEADER_SIZE_MAX {
         return Err(CoreError::DstSizeTooSmall);
     }
-    dst[..4].copy_from_slice(&MAGIC_NUMBER.to_le_bytes());
-    let mut pos = 4;
+    let mut pos = 0;
+    if format == FrameFormat::Standard {
+        dst[..4].copy_from_slice(&MAGIC_NUMBER.to_le_bytes());
+        pos = 4;
+    }
     dst[pos] = descriptor;
     pos += 1;
     if !single_segment {

@@ -278,26 +278,28 @@ impl TransformLayout {
         let transform_count = usize::from(cursor.byte()?);
         let triples = cursor.position;
         let triples_bytes = cursor.take(transform_count * 3)?;
-        let mut shifts = false;
-        for triple in triples_bytes.as_chunks::<3>().0 {
-            if usize::from(triple[0]) >= count || usize::from(triple[2]) >= count || triple[1] > 22
-            {
-                return Err(Error::InvalidSerializedDictionary);
-            }
-            shifts |= triple[1] >= 21;
-        }
+        let triple_list = triples_bytes.as_chunks::<3>().0;
+        let shifts =
+            triple_list
+                .iter()
+                .try_fold(false, |shifts, &[prefix, operation, suffix]| {
+                    if usize::from(prefix) >= count
+                        || usize::from(suffix) >= count
+                        || operation > 22
+                    {
+                        return Err(Error::InvalidSerializedDictionary);
+                    }
+                    Ok(shifts | (operation >= 21))
+                })?;
         let params = if shifts {
             let start = cursor.position;
             let parameters = cursor.take(transform_count * 2)?;
-            for (triple, pair) in triples_bytes
-                .as_chunks::<3>()
-                .0
+            if triple_list
                 .iter()
                 .zip(parameters.as_chunks::<2>().0)
+                .any(|(&[_, operation, _], &pair)| operation < 21 && pair != [0, 0])
             {
-                if triple[1] < 21 && *pair != [0, 0] {
-                    return Err(Error::InvalidSerializedDictionary);
-                }
+                return Err(Error::InvalidSerializedDictionary);
             }
             Some(start)
         } else {

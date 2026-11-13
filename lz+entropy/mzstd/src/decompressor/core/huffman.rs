@@ -17,10 +17,20 @@
 //! it, a table of symbol pairs decodes up to two symbols per lookup. Each
 //! stream then finishes on its own with the single-symbol table and the
 //! reference's cautious loop, and must be consumed exactly.
+//!
+//! The reference accepts more: its fast four-stream path does not check
+//! where a stream ends, and its pair decoder caps a stream's last read.
+//! When the exact decoder rejects a section, [`reference`] decodes it
+//! again as the reference does, with the decoder type ([`TableKind`]) the
+//! reference would use, and its verdict stands.
+
+mod reference;
 
 use alloc::boxed::Box;
 
-use super::bits::{BitContainer, Sentinel};
+pub(crate) use self::reference::TableKind;
+use super::ahead::WriteAhead;
+use super::bits::{BitContainer, Parked, Sentinel};
 use super::fse::{MAX_WEIGHTS, decode_weights};
 use crate::decompressor::InvalidDataKind;
 use crate::shared::format::{BLOCK_SIZE_MAX, LIT_HUF_LOG, highbit32};
@@ -101,6 +111,216 @@ impl PairRow {
     }
 }
 
+/// One slot of a [`PairTable`], read with an atomic load.
+///
+/// The load is an ordinary one on every target, but one the compiler may
+/// not vectorize. The four streams look their pairs up side by side, and
+/// given AVX-512 the compiler otherwise packs the four lookups into a
+/// gather, whose latency then sits on every stream's chain of dependent
+/// lookups. No slot is written while a table is shared: [`Self::get_mut`]
+/// needs the table exclusively.
+#[cfg(target_has_atomic = "32")]
+#[derive(Debug)]
+#[repr(transparent)]
+struct PairSlot(core::sync::atomic::AtomicU32);
+
+#[cfg(target_has_atomic = "32")]
+impl PairSlot {
+    /// An empty slot.
+    const fn new() -> Self {
+        Self(core::sync::atomic::AtomicU32::new(0))
+    }
+
+    /// The row.
+    #[inline(always)]
+    fn get(&self) -> PairRow {
+        PairRow(self.0.load(core::sync::atomic::Ordering::Relaxed))
+    }
+
+    /// The row's word, to write.
+    #[inline(always)]
+    fn get_mut(&mut self) -> &mut u32 {
+        self.0.get_mut()
+    }
+}
+
+/// One slot of a [`PairTable`] on targets without 32-bit atomics.
+#[cfg(not(target_has_atomic = "32"))]
+#[derive(Debug)]
+#[repr(transparent)]
+struct PairSlot(u32);
+
+#[cfg(not(target_has_atomic = "32"))]
+impl PairSlot {
+    /// An empty slot.
+    const fn new() -> Self {
+        Self(0)
+    }
+
+    /// The row.
+    #[inline(always)]
+    const fn get(&self) -> PairRow {
+        PairRow(self.0)
+    }
+
+    /// The row's word, to write.
+    #[inline(always)]
+    const fn get_mut(&mut self) -> &mut u32 {
+        &mut self.0
+    }
+}
+
+/// The pair rows of one tree.
+#[derive(Debug)]
+struct PairTable(Box<[PairSlot; PAIR_SIZE]>);
+
+impl PairTable {
+    /// A table of empty rows.
+    fn new() -> Self {
+        Self(Box::new([const { PairSlot::new() }; PAIR_SIZE]))
+    }
+
+    /// The row of the 11-bit `index`; the mask shows it in bounds and
+    /// changes no index a lookup makes.
+    #[inline(always)]
+    fn row(&self, index: usize) -> PairRow {
+        self.0[index & PAIR_MASK].get()
+    }
+
+    /// The slots, to build the table.
+    fn slots_mut(&mut self) -> &mut [PairSlot; PAIR_SIZE] {
+        &mut self.0
+    }
+
+    /// The rows in index order.
+    fn rows(&self) -> impl Iterator<Item = PairRow> + '_ {
+        self.0.iter().map(PairSlot::get)
+    }
+}
+
+impl Clone for PairTable {
+    fn clone(&self) -> Self {
+        let mut copy = Self::new();
+        for (slot, row) in copy.0.iter_mut().zip(self.rows()) {
+            *slot.get_mut() = row.0;
+        }
+        copy
+    }
+}
+
+impl PartialEq for PairTable {
+    fn eq(&self, other: &Self) -> bool {
+        self.rows().eq(other.rows())
+    }
+}
+
+impl Eq for PairTable {}
+
+/// One slot of a [`LockstepRows`] table: a [`Row`] read with an atomic
+/// load, for the reason [`PairSlot`] is.
+#[cfg(target_has_atomic = "16")]
+#[derive(Debug)]
+#[repr(transparent)]
+struct RowSlot(core::sync::atomic::AtomicU16);
+
+#[cfg(target_has_atomic = "16")]
+impl RowSlot {
+    /// An empty slot.
+    const fn new() -> Self {
+        Self(core::sync::atomic::AtomicU16::new(0))
+    }
+
+    /// The row.
+    #[inline(always)]
+    fn get(&self) -> Row {
+        self.0.load(core::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// The row, to write.
+    #[inline(always)]
+    fn get_mut(&mut self) -> &mut Row {
+        self.0.get_mut()
+    }
+}
+
+/// One slot of a [`LockstepRows`] table on targets without 16-bit
+/// atomics.
+#[cfg(not(target_has_atomic = "16"))]
+#[derive(Debug)]
+#[repr(transparent)]
+struct RowSlot(Row);
+
+#[cfg(not(target_has_atomic = "16"))]
+impl RowSlot {
+    /// An empty slot.
+    const fn new() -> Self {
+        Self(0)
+    }
+
+    /// The row.
+    #[inline(always)]
+    const fn get(&self) -> Row {
+        self.0
+    }
+
+    /// The row, to write.
+    #[inline(always)]
+    const fn get_mut(&mut self) -> &mut Row {
+        &mut self.0
+    }
+}
+
+/// A copy of a tree's single-symbol rows for the loop that looks the four
+/// streams up side by side ([`single_rounds_lockstep`]): the same rows,
+/// behind loads the compiler cannot pack into a gather. Every other
+/// reader keeps the plain rows.
+#[derive(Debug)]
+struct LockstepRows(Box<[RowSlot; TABLE_SIZE]>);
+
+impl LockstepRows {
+    /// A table of empty rows.
+    fn new() -> Self {
+        Self(Box::new([const { RowSlot::new() }; TABLE_SIZE]))
+    }
+
+    /// The row of the 12-bit `index`; the mask shows it in bounds and
+    /// changes no index a lookup makes.
+    #[inline(always)]
+    fn row(&self, index: usize) -> Row {
+        self.0[index & INDEX_MASK].get()
+    }
+
+    /// Copies `rows` in, through exclusive references, as plain words.
+    fn copy_from(&mut self, rows: &[Row; TABLE_SIZE]) {
+        for (slot, &row) in self.0.iter_mut().zip(rows) {
+            *slot.get_mut() = row;
+        }
+    }
+
+    /// The rows in index order.
+    fn rows(&self) -> impl Iterator<Item = Row> + '_ {
+        self.0.iter().map(RowSlot::get)
+    }
+}
+
+impl Clone for LockstepRows {
+    fn clone(&self) -> Self {
+        let mut copy = Self::new();
+        for (slot, row) in copy.0.iter_mut().zip(self.rows()) {
+            *slot.get_mut() = row;
+        }
+        copy
+    }
+}
+
+impl PartialEq for LockstepRows {
+    fn eq(&self, other: &Self) -> bool {
+        self.rows().eq(other.rows())
+    }
+}
+
+impl Eq for LockstepRows {}
+
 /// Packs a row.
 const fn row(symbol: u8, nb_bits: u32) -> Row {
     nb_bits as Row | ((symbol as Row) << 8)
@@ -124,9 +344,16 @@ pub(crate) struct HuffmanTable {
     rows: Box<[Row; TABLE_SIZE]>,
     /// Pair rows for trees of at most [`PAIR_BITS`], allocated on first
     /// use.
-    pairs: Option<Box<[PairRow; PAIR_SIZE]>>,
+    pairs: Option<PairTable>,
     /// Whether `pairs` describes the current tree.
     pairs_valid: bool,
+    /// The rows again for the lockstep loop, allocated on first use.
+    lockstep: Option<LockstepRows>,
+    /// Whether `lockstep` describes the current tree.
+    lockstep_valid: bool,
+    /// The decoder the reference reads this tree for, which decides how it
+    /// treats stream ends the exact decoder rejects.
+    kind: TableKind,
 }
 
 impl Default for HuffmanTable {
@@ -136,6 +363,9 @@ impl Default for HuffmanTable {
             rows: Box::new([0; TABLE_SIZE]),
             pairs: None,
             pairs_valid: false,
+            lockstep: None,
+            lockstep_valid: false,
+            kind: TableKind::Single,
         }
     }
 }
@@ -230,7 +460,7 @@ fn decode_tail(
 #[inline(always)]
 fn decode_pair_tail(
     rows: &[Row; TABLE_SIZE],
-    pairs: &[PairRow; PAIR_SIZE],
+    pairs: &PairTable,
     mut bits: BitContainer,
     src: &[u8],
     out: &mut [u8],
@@ -248,7 +478,7 @@ fn decode_pair_tail(
         bits.reload(src);
         let mut written = 0;
         for _ in 0..LOOKUPS {
-            let pair = pairs[bits.look_nonzero(PAIR_BITS) as usize & PAIR_MASK];
+            let pair = pairs.row(bits.look_nonzero(PAIR_BITS) as usize);
             bits.skip(u32::from(pair.nb_bits()));
             window[written..written + 2].copy_from_slice(&pair.symbols().to_le_bytes());
             written += pair.count();
@@ -324,11 +554,14 @@ fn windows<const K: usize>(segment: &mut [u8], from: usize) -> core::slice::Iter
 /// reference's `HUF_4X1_DECODE_SYMBOL`, so a round keeps no symbols in
 /// registers. The windows come from walking the four segments, each cut
 /// to the shortest one, in `K`-byte chunks, so they need no bounds checks.
+/// Each complete round also prefetches part of the next block's output
+/// (`ahead`).
 #[inline(always)]
 fn single_rounds<const K: usize>(
     rows: &[Row; TABLE_SIZE],
     streams: &mut FourStreams<'_>,
     sentinels: &mut [Sentinel; 4],
+    ahead: &mut WriteAhead,
 ) -> [usize; 4] {
     let src = streams.src;
     let [b1, b2, b3, b4, end] = streams.segments;
@@ -380,16 +613,131 @@ fn single_rounds<const K: usize>(
                 3
             } else {
                 done += K;
+                ahead.step();
                 continue;
             };
-            for count in &mut decoded[..stopped] {
-                *count = K;
-            }
+            decoded
+                .iter_mut()
+                .take(stopped)
+                .for_each(|count| *count = K);
             break 'rounds;
         }
     }
     *sentinels = s;
     decoded.map(|extra| done + extra)
+}
+
+/// The `K`-byte window of `segment` at `from`, if it has one.
+#[inline(always)]
+fn window_at<const K: usize>(segment: &mut [u8], from: usize) -> Option<&mut [u8; K]> {
+    segment.get_mut(from..)?.first_chunk_mut::<K>()
+}
+
+/// [`single_rounds`] with the four streams in lockstep, the way the
+/// reference's assembly loop decodes: the streams refill, then every step
+/// looks one symbol up in each stream, so four chains of dependent
+/// lookups overlap without the processor having to reach across a whole
+/// stream's round for the next stream's.
+///
+/// A round keeps the four containers in registers. The stream positions,
+/// read once a round, are [`Parked`] in memory, and the round's windows
+/// are cut after the refill, so the refill holds nothing but the
+/// containers. Each refill ends a basic block, and so does each half of a
+/// lookup step: four like operations in one block are what the compiler
+/// packs into vector registers, which puts every stream's chain through
+/// them. A refill fails only when the clamp's limit is out of range; the
+/// streams that did refill then hold a valid, merely refilled, state. The
+/// rounds, their bounds and the decoded symbols are those of
+/// [`single_rounds`]. Returns `None` for a row without bits, which no
+/// complete tree has: the section is then invalid.
+#[inline(always)]
+fn single_rounds_lockstep<const K: usize>(
+    rows: &LockstepRows,
+    streams: &mut FourStreams<'_>,
+    sentinels: &mut [Sentinel; 4],
+    ahead: &mut WriteAhead,
+) -> Option<[usize; 4]> {
+    let src = streams.src;
+    let [b1, b2, b3, b4, end] = streams.segments;
+    // The fourth segment is the shortest.
+    let length = end - b4;
+    let mut done = 0;
+    let segments = streams.out.get_mut(b1..end).and_then(|out| {
+        let (first, rest) = out.split_at_mut_checked(b2 - b1)?;
+        let (second, rest) = rest.split_at_mut_checked(b3 - b2)?;
+        let (third, fourth) = rest.split_at_mut_checked(b4 - b3)?;
+        Some([
+            first.get_mut(..length)?,
+            second.get_mut(..length)?,
+            third.get_mut(..length)?,
+            fourth,
+        ])
+    });
+    let Some([first, second, third, fourth]) = segments else {
+        return Some([0; 4]);
+    };
+    let [(mut c1, p1), (mut c2, p2), (mut c3, p3), (mut c4, p4)] =
+        sentinels.map(Sentinel::into_parts);
+    let parked = [p1, p2, p3, p4].map(Parked::new);
+    let [p1, p2, p3, p4] = &parked;
+    'rounds: loop {
+        let now = [
+            Sentinel::from_parts(c1, p1.get()),
+            Sentinel::from_parts(c2, p2.get()),
+            Sentinel::from_parts(c3, p3.get()),
+            Sentinel::from_parts(c4, p4.get()),
+        ];
+        let rounds = affordable_rounds(&now, &streams.starts).min((length - done) / K);
+        if rounds == 0 {
+            break;
+        }
+        for _ in 0..rounds {
+            if !Sentinel::reload_parked(&mut c1, p1, src)
+                || !Sentinel::reload_parked(&mut c2, p2, src)
+                || !Sentinel::reload_parked(&mut c3, p3, src)
+                || !Sentinel::reload_parked(&mut c4, p4, src)
+            {
+                break 'rounds;
+            }
+            let (Some(w1), Some(w2), Some(w3), Some(w4)) = (
+                window_at::<K>(first, done),
+                window_at::<K>(second, done),
+                window_at::<K>(third, done),
+                window_at::<K>(fourth, done),
+            ) else {
+                break 'rounds;
+            };
+            for (((s1, s2), s3), s4) in w1.iter_mut().zip(w2).zip(w3).zip(w4) {
+                let r1 = rows.row((c1 >> LOOKUP_SHIFT) as usize);
+                let r2 = rows.row((c2 >> LOOKUP_SHIFT) as usize);
+                c1 <<= r1 & 63;
+                c2 <<= r2 & 63;
+                *s1 = row_symbol(r1);
+                *s2 = row_symbol(r2);
+                if r2 == 0 {
+                    return None;
+                }
+                let r3 = rows.row((c3 >> LOOKUP_SHIFT) as usize);
+                let r4 = rows.row((c4 >> LOOKUP_SHIFT) as usize);
+                c3 <<= r3 & 63;
+                c4 <<= r4 & 63;
+                *s3 = row_symbol(r3);
+                *s4 = row_symbol(r4);
+                if r4 == 0 {
+                    return None;
+                }
+            }
+            done += K;
+            ahead.step();
+        }
+    }
+    *sentinels = [
+        Sentinel::from_parts(c1, p1.get()),
+        Sentinel::from_parts(c2, p2.get()),
+        Sentinel::from_parts(c3, p3.get()),
+        Sentinel::from_parts(c4, p4.get()),
+    ];
+    Some([done; 4])
 }
 
 /// Pair lookups per stream per round.
@@ -420,7 +768,7 @@ const PAIR_WINDOW: usize = 3 * (PAIR_LOOKUPS - 1) + 2;
 /// bounds with a compare and a conditional move instead of a branch each.
 #[inline(always)]
 fn pair_rounds(
-    pairs: &[PairRow; PAIR_SIZE],
+    pairs: &PairTable,
     streams: &mut FourStreams<'_>,
     sentinels: &mut [Sentinel; 4],
 ) -> [usize; 4] {
@@ -505,9 +853,9 @@ fn pair_rounds(
             };
             let (mut n1, mut n2, mut n3, mut n4) = (0, 0, 0, 0);
             for _ in 0..PAIR_LOOKUPS {
-                let p1 = pairs[s1.peek(PAIR_SHIFT)];
-                let p2 = pairs[s2.peek(PAIR_SHIFT)];
-                let p3 = pairs[s3.peek(PAIR_SHIFT)];
+                let p1 = pairs.row(s1.peek(PAIR_SHIFT));
+                let p2 = pairs.row(s2.peek(PAIR_SHIFT));
+                let p3 = pairs.row(s3.peek(PAIR_SHIFT));
                 s1.skip(p1.0);
                 s2.skip(p2.0);
                 s3.skip(p3.0);
@@ -519,7 +867,7 @@ fn pair_rounds(
                 n3 += p3.count();
             }
             for _ in 0..PAIR_LOOKUPS {
-                let p4 = pairs[s4.peek(PAIR_SHIFT)];
+                let p4 = pairs.row(s4.peek(PAIR_SHIFT));
                 s4.skip(p4.0);
                 w4[n4..n4 + 2].copy_from_slice(&p4.symbols().to_le_bytes());
                 n4 += p4.count();
@@ -550,12 +898,12 @@ pub(crate) const FIXED_OUT: usize = BLOCK_SIZE_MAX + PAIR_WINDOW;
 /// symbols decoded.
 #[inline(always)]
 fn pair_lookup(
-    pairs: &[PairRow; PAIR_SIZE],
+    pairs: &PairTable,
     sentinel: &mut Sentinel,
     out: &mut [u8; FIXED_OUT],
     op: &mut usize,
 ) {
-    let pair = pairs[sentinel.peek(PAIR_SHIFT)];
+    let pair = pairs.row(sentinel.peek(PAIR_SHIFT));
     sentinel.skip(pair.0);
     out[*op..*op + 2].copy_from_slice(&pair.symbols().to_le_bytes());
     *op += pair.count();
@@ -572,14 +920,16 @@ fn pair_lookup(
 /// `3 * PAIR_LOOKUPS` (the type of a count bounds it) before its last
 /// store, so every store provably lies inside the buffer with no check.
 /// The round counts keep each stream's stores inside its own segment, as
-/// [`pair_rounds`] does.
+/// [`pair_rounds`] does. Each round also prefetches part of the next
+/// block's output (`ahead`).
 #[inline(always)]
 fn pair_rounds_fixed(
-    pairs: &[PairRow; PAIR_SIZE],
+    pairs: &PairTable,
     src: &[u8],
     out: &mut [u8; FIXED_OUT],
     segments: [usize; 5],
     sentinels: &mut [Sentinel; 4],
+    ahead: &mut WriteAhead,
 ) -> [usize; 4] {
     const {
         assert!(PAIR_LOOKUPS * PAIR_BITS as usize + 7 <= 63);
@@ -621,6 +971,7 @@ fn pair_rounds_fixed(
             let refilled = refilled & s3.reload_within(src, src_limit);
             pair_lookup(pairs, s4, out, &mut o4);
             let refilled = refilled & s4.reload_within(src, src_limit);
+            ahead.step();
             if !refilled {
                 ops = [o1, o2, o3, o4];
                 break 'rounds;
@@ -640,29 +991,52 @@ fn pair_rounds_fixed(
     ]
 }
 
-/// [`pair_rounds_fixed`] one stream at a time, for AVX-512 feature
-/// contexts: each stream makes its round's lookups, then refills behind a
-/// branch.
+/// [`pair_rounds_fixed`] with the four streams in lockstep, the way the
+/// reference's assembly loop decodes: every lookup step takes one pair
+/// from each stream, so four chains of dependent lookups overlap, and the
+/// streams refill together at the end of a round.
 ///
-/// Given AVX-512, the compiler packs the lockstep loop's four containers
-/// into one vector and their lookups and refills into gathers, which runs
-/// the streams as a single dependency chain. The refill's branch ends a
-/// basic block after every stream, so each chain stays scalar, and the
-/// processor still overlaps the four of them. The rounds, their bounds and
-/// the decoded symbols are those of [`pair_rounds_fixed`].
+/// It is the loop for AVX-512 feature contexts. There the compiler packs
+/// four streams' plain table loads into one gather, which is why
+/// [`PairTable`] is read with atomic loads: they stay four scalar loads.
+/// The four containers and the four output positions are the values a
+/// round keeps on its chains; the stream positions, read once a round,
+/// are [`Parked`] in memory so that they do not compete with the
+/// containers for registers. Each round also prefetches part of the next
+/// block's output (`ahead`). The rounds, their bounds and the decoded
+/// symbols are those of [`pair_rounds_fixed`].
 #[inline(always)]
-fn pair_rounds_serial(
-    pairs: &[PairRow; PAIR_SIZE],
+fn pair_rounds_lockstep(
+    pairs: &PairTable,
     src: &[u8],
     out: &mut [u8; FIXED_OUT],
     segments: [usize; 5],
     sentinels: &mut [Sentinel; 4],
+    ahead: &mut WriteAhead,
 ) -> [usize; 4] {
     let starts = [segments[0], segments[1], segments[2], segments[3]];
     let mut ops = starts;
-    let mut s = *sentinels;
+    let [(mut b1, p1), (mut b2, p2), (mut b3, p3), (mut b4, p4)] =
+        sentinels.map(Sentinel::into_parts);
+    let parked = [p1, p2, p3, p4].map(Parked::new);
+    let [p1, p2, p3, p4] = &parked;
+    // One pair of one stream: the reference's `HUF_4X2_DECODE_SYMBOL`.
+    macro_rules! lookup {
+        ($bits:ident, $op:ident) => {{
+            let pair = pairs.row(($bits >> PAIR_SHIFT) as usize);
+            $bits <<= pair.0 & 63;
+            out[$op..$op + 2].copy_from_slice(&pair.symbols().to_le_bytes());
+            $op += pair.count();
+        }};
+    }
     'rounds: loop {
-        let mut rounds = affordable_rounds(&s, &[0; 5]);
+        let now = [
+            Sentinel::from_parts(b1, p1.get()),
+            Sentinel::from_parts(b2, p2.get()),
+            Sentinel::from_parts(b3, p3.get()),
+            Sentinel::from_parts(b4, p4.get()),
+        ];
+        let mut rounds = affordable_rounds(&now, &[0; 5]);
         for (op, end) in ops.iter().zip(&segments[1..]) {
             rounds = rounds
                 .min((end - op).saturating_sub(PAIR_WINDOW - PAIR_ROUND_BYTES) / PAIR_ROUND_BYTES);
@@ -670,20 +1044,35 @@ fn pair_rounds_serial(
         if rounds == 0 {
             break;
         }
+        let [mut o1, mut o2, mut o3, mut o4] = ops;
         for _ in 0..rounds {
-            for (sentinel, op) in s.iter_mut().zip(&mut ops) {
-                let mut o = *op & OUT_MASK;
-                for _ in 0..PAIR_LOOKUPS {
-                    pair_lookup(pairs, sentinel, out, &mut o);
-                }
-                *op = o;
-                if !sentinel.reload(src) {
-                    break 'rounds;
-                }
+            [o1, o2, o3, o4] = [o1, o2, o3, o4].map(|op| op & OUT_MASK);
+            for _ in 0..PAIR_LOOKUPS {
+                lookup!(b1, o1);
+                lookup!(b2, o2);
+                lookup!(b3, o3);
+                lookup!(b4, o4);
+            }
+            ahead.step();
+            // Each refill ends a basic block, so the four are not packed
+            // into one gather.
+            if !Sentinel::reload_parked(&mut b1, p1, src)
+                || !Sentinel::reload_parked(&mut b2, p2, src)
+                || !Sentinel::reload_parked(&mut b3, p3, src)
+                || !Sentinel::reload_parked(&mut b4, p4, src)
+            {
+                ops = [o1, o2, o3, o4];
+                break 'rounds;
             }
         }
+        ops = [o1, o2, o3, o4];
     }
-    *sentinels = s;
+    *sentinels = [
+        Sentinel::from_parts(b1, p1.get()),
+        Sentinel::from_parts(b2, p2.get()),
+        Sentinel::from_parts(b3, p3.get()),
+        Sentinel::from_parts(b4, p4.get()),
+    ];
     [
         ops[0] - starts[0],
         ops[1] - starts[1],
@@ -726,9 +1115,7 @@ fn fill_long_runs(
     for &symbol in symbols {
         let chunk = [row(symbol, nb_bits); 16];
         if let Some(run) = rows.get_mut(start..start + len) {
-            for rows in run.as_chunks_mut::<16>().0 {
-                *rows = chunk;
-            }
+            run.as_chunks_mut::<16>().0.fill(chunk);
         }
         start += len;
     }
@@ -742,7 +1129,19 @@ impl HuffmanTable {
             + self
                 .pairs
                 .as_ref()
-                .map_or(0, |_| size_of::<[PairRow; PAIR_SIZE]>())
+                .map_or(0, |_| size_of::<[PairSlot; PAIR_SIZE]>())
+            + self
+                .lockstep
+                .as_ref()
+                .map_or(0, |_| size_of::<[RowSlot; TABLE_SIZE]>())
+    }
+
+    /// Copies the rows into the table the lockstep loop reads.
+    fn build_lockstep(&mut self) {
+        self.lockstep
+            .get_or_insert_with(LockstepRows::new)
+            .copy_from(&self.rows);
+        self.lockstep_valid = true;
     }
 
     /// Parses a tree description at the start of `src` into this table,
@@ -769,6 +1168,7 @@ impl HuffmanTable {
             (decode_weights(compressed, &mut weights)?, 1 + size)
         };
         self.pairs_valid = false;
+        self.lockstep_valid = false;
         self.fill(&mut weights, count)?;
         Ok(used)
     }
@@ -875,9 +1275,9 @@ impl HuffmanTable {
         // The single rows of an 11-bit index: a code of at most 11 bits
         // fills both 12-bit rows that share its top 11 bits.
         let single = |index: usize| rows[(index & PAIR_MASK) << (LOOKUP_BITS - PAIR_BITS)];
-        let pairs = self
-            .pairs
-            .get_or_insert_with(|| Box::new([PairRow::default(); PAIR_SIZE]));
+        // The slots are written through exclusive references, as plain
+        // words: only the decoders' reads are atomic loads.
+        let pairs = self.pairs.get_or_insert_with(PairTable::new).slots_mut();
         // The first run of each length is built from the rows; later runs
         // of that length copy it, swapping in their own first symbol.
         let mut series = (0, 0, 0);
@@ -893,8 +1293,11 @@ impl HuffmanTable {
             if first_bits == series_bits && series_start + len <= index {
                 let (built, rest) = pairs.split_at_mut(index);
                 let delta = own.wrapping_sub(series_own);
-                for (pair, model) in rest[..end - index].iter_mut().zip(&built[series_start..]) {
-                    *pair = PairRow(model.0.wrapping_add(delta));
+                for (pair, model) in rest[..end - index]
+                    .iter_mut()
+                    .zip(&mut built[series_start..])
+                {
+                    *pair.get_mut() = model.get_mut().wrapping_add(delta);
                 }
             } else {
                 series = (first_bits, index, own);
@@ -906,7 +1309,7 @@ impl HuffmanTable {
                     } else {
                         PairRow(0)
                     };
-                    *pair = PairRow(next.0 + own);
+                    *pair.get_mut() = next.0 + own;
                 }
             }
             index = end;
@@ -926,7 +1329,8 @@ impl HuffmanTable {
     /// start of `buffer`, with `simd`'s target features. The pair rows are
     /// built on first use. A `buffer` of at least [`FIXED_OUT`] bytes lets
     /// the pair loop run over a buffer of a fixed size; the bytes after the
-    /// literals are left as they were.
+    /// literals are left as they were. The four-stream loops prefetch
+    /// `ahead` for writing as they go, which changes no result.
     #[fearless_simd_macros::simd]
     pub(crate) fn decode_streams<S: fearless_simd::Simd>(
         &mut self,
@@ -935,8 +1339,18 @@ impl HuffmanTable {
         buffer: &mut [u8],
         size: usize,
         four_streams: bool,
+        ahead: WriteAhead,
     ) -> Result<(), InvalidDataKind> {
-        decode_with(self, src, buffer, size, four_streams, serial(simd))
+        decode_with(
+            &mut *self,
+            src,
+            buffer,
+            size,
+            four_streams,
+            lockstep(simd),
+            ahead,
+        )
+        .or_else(|_| self.decode_as_reference(src, buffer, size, four_streams))
     }
 
     /// Decodes literals as [`Self::decode_streams`] with a table that may
@@ -950,25 +1364,63 @@ impl HuffmanTable {
         buffer: &mut [u8],
         size: usize,
         four_streams: bool,
+        ahead: WriteAhead,
     ) -> Result<(), InvalidDataKind> {
-        decode_with(self, src, buffer, size, four_streams, serial(simd))
+        decode_with(self, src, buffer, size, four_streams, lockstep(simd), ahead)
+            .or_else(|_| self.decode_as_reference(src, buffer, size, four_streams))
     }
 
-    /// Builds the pair rows ahead of time, for a table that is then shared.
+    /// Decodes a section the exact decoder rejected as the reference
+    /// would, whose verdict then stands. Out of line, so that the hot
+    /// loops' code is unchanged.
+    #[cold]
+    #[inline(never)]
+    fn decode_as_reference(
+        &self,
+        src: &[u8],
+        buffer: &mut [u8],
+        size: usize,
+        four_streams: bool,
+    ) -> Result<(), InvalidDataKind> {
+        let out = buffer
+            .get_mut(..size)
+            .ok_or(InvalidDataKind::HuffmanStream)?;
+        reference::decode(self, src, out, four_streams)
+    }
+
+    /// Records the decoder the reference reads this tree for; treeless
+    /// blocks keep it.
+    pub(crate) const fn set_kind(&mut self, kind: TableKind) {
+        self.kind = kind;
+    }
+
+    /// The decoder the reference reads this tree for.
+    #[cfg(test)]
+    pub(crate) const fn kind(&self) -> TableKind {
+        self.kind
+    }
+
+    /// Builds the pair rows and the lockstep loop's copy of the single
+    /// rows ahead of time, for a table that is then shared.
     pub(crate) fn build_shared(&mut self) {
         self.build_pairs();
+        self.build_lockstep();
     }
 }
 
 /// A table's rows as one decode reaches them: a table the decoder owns
-/// builds its pair rows on first use, a shared one only offers rows built
-/// before it was shared. Both decode the same symbols.
+/// builds its pair rows and its lockstep copy on first use, a shared one
+/// only offers what was built before it was shared. Both decode the same
+/// symbols.
 trait TableAccess {
     /// The table.
     fn table(&self) -> &HuffmanTable;
 
     /// The pair rows of the current tree, if available.
-    fn pairs(&mut self) -> Option<&[PairRow; PAIR_SIZE]>;
+    fn pairs(&mut self) -> Option<&PairTable>;
+
+    /// The current tree's rows for the lockstep loop, if available.
+    fn lockstep(&mut self) -> Option<&LockstepRows>;
 }
 
 impl TableAccess for &mut HuffmanTable {
@@ -978,15 +1430,23 @@ impl TableAccess for &mut HuffmanTable {
     }
 
     #[inline(always)]
-    fn pairs(&mut self) -> Option<&[PairRow; PAIR_SIZE]> {
+    fn pairs(&mut self) -> Option<&PairTable> {
         if !self.pairs_valid {
             self.build_pairs();
         }
         if self.pairs_valid {
-            self.pairs.as_deref()
+            self.pairs.as_ref()
         } else {
             None
         }
+    }
+
+    #[inline(always)]
+    fn lockstep(&mut self) -> Option<&LockstepRows> {
+        if !self.lockstep_valid {
+            self.build_lockstep();
+        }
+        self.lockstep.as_ref()
     }
 }
 
@@ -997,20 +1457,30 @@ impl TableAccess for &HuffmanTable {
     }
 
     #[inline(always)]
-    fn pairs(&mut self) -> Option<&[PairRow; PAIR_SIZE]> {
+    fn pairs(&mut self) -> Option<&PairTable> {
         if self.pairs_valid {
-            self.pairs.as_deref()
+            self.pairs.as_ref()
+        } else {
+            None
+        }
+    }
+
+    #[inline(always)]
+    fn lockstep(&mut self) -> Option<&LockstepRows> {
+        if self.lockstep_valid {
+            self.lockstep.as_ref()
         } else {
             None
         }
     }
 }
 
-/// Whether `simd`'s features include AVX-512, with which the pair loop
-/// decodes the streams one at a time ([`pair_rounds_serial`]). Constant for
-/// each backend, so the test folds away.
+/// Whether `simd`'s features include AVX-512, with which the fixed-buffer
+/// pair loop decodes the four streams in lockstep
+/// ([`pair_rounds_lockstep`]). Constant for each backend, so the test
+/// folds away.
 #[inline(always)]
-fn serial<S: fearless_simd::Simd>(simd: S) -> bool {
+fn lockstep<S: fearless_simd::Simd>(simd: S) -> bool {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     return simd.level().as_avx512().is_some();
     #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
@@ -1020,7 +1490,7 @@ fn serial<S: fearless_simd::Simd>(simd: S) -> bool {
     }
 }
 
-/// Decodes `out.len()` literals from one stream or four streams; `serial`
+/// Decodes `out.len()` literals from one stream or four streams; `lockstep`
 /// as for [`decode_four`].
 #[inline(always)]
 fn decode_with<T: TableAccess>(
@@ -1029,7 +1499,8 @@ fn decode_with<T: TableAccess>(
     buffer: &mut [u8],
     size: usize,
     four_streams: bool,
-    serial: bool,
+    lockstep: bool,
+    ahead: WriteAhead,
 ) -> Result<(), InvalidDataKind> {
     let out = buffer
         .get_mut(..size)
@@ -1038,12 +1509,12 @@ fn decode_with<T: TableAccess>(
         return table.table().decode_stream(src, out);
     }
     let pairs = prefers_pairs(size, src.len());
-    decode_four(table, src, buffer, size, pairs, serial)
+    decode_four(table, src, buffer, size, pairs, lockstep, ahead)
 }
 
 /// Decodes four streams after their jump table, with the pair rows in the
-/// fast loops when `pairs` is set; `serial` decodes a fixed-size buffer's
-/// pairs one stream at a time.
+/// fast loops when `pairs` is set; `lockstep` decodes a fixed-size buffer's
+/// pairs with the four streams in lockstep.
 #[inline(always)]
 fn decode_four<T: TableAccess>(
     mut table: T,
@@ -1051,7 +1522,8 @@ fn decode_four<T: TableAccess>(
     buffer: &mut [u8],
     size: usize,
     pairs: bool,
-    serial: bool,
+    lockstep: bool,
+    mut ahead: WriteAhead,
 ) -> Result<(), InvalidDataKind> {
     let invalid = InvalidDataKind::HuffmanStream;
     let out_len = size;
@@ -1097,21 +1569,37 @@ fn decode_four<T: TableAccess>(
             segments,
         };
         done = if let (Some(pairs), Some(fixed)) = (pairs, fixed) {
-            if serial {
-                pair_rounds_serial(pairs, streams, fixed, segments, &mut sentinels)
+            if lockstep {
+                pair_rounds_lockstep(pairs, streams, fixed, segments, &mut sentinels, &mut ahead)
             } else {
-                pair_rounds_fixed(pairs, streams, fixed, segments, &mut sentinels)
+                pair_rounds_fixed(pairs, streams, fixed, segments, &mut sentinels, &mut ahead)
             }
         } else if let Some(pairs) = pairs {
             four.out = &mut buffer[..out_len];
             pair_rounds(pairs, &mut four, &mut sentinels)
         } else {
             four.out = &mut buffer[..out_len];
-            let single = table.table();
-            if single.log <= 11 {
-                single_rounds::<5>(&single.rows, &mut four, &mut sentinels)
-            } else {
-                single_rounds::<4>(&single.rows, &mut four, &mut sentinels)
+            // A table the decoder owns copies its rows for the lockstep
+            // loop on first use; a shared one that has no copy decodes a
+            // stream's round at a time.
+            let short = table.table().log <= 11;
+            match (table.lockstep(), short) {
+                (Some(rows), true) => {
+                    single_rounds_lockstep::<5>(rows, &mut four, &mut sentinels, &mut ahead)
+                        .ok_or(invalid)?
+                }
+                (Some(rows), false) => {
+                    single_rounds_lockstep::<4>(rows, &mut four, &mut sentinels, &mut ahead)
+                        .ok_or(invalid)?
+                }
+                (None, short) => {
+                    let single = table.table();
+                    if short {
+                        single_rounds::<5>(&single.rows, &mut four, &mut sentinels, &mut ahead)
+                    } else {
+                        single_rounds::<4>(&single.rows, &mut four, &mut sentinels, &mut ahead)
+                    }
+                }
             }
         };
         for ((container, sentinel), &start) in bits.iter_mut().zip(sentinels).zip(&starts) {
@@ -1121,7 +1609,7 @@ fn decode_four<T: TableAccess>(
     let table = table.table();
     let rows = &*table.rows;
     let tail_pairs = if pairs && table.pairs_valid {
-        table.pairs.as_deref()
+        table.pairs.as_ref()
     } else {
         None
     };
@@ -1141,7 +1629,7 @@ fn decode_four<T: TableAccess>(
 mod tests {
     use super::*;
 
-    fn read(src: &[u8]) -> Result<(HuffmanTable, usize), InvalidDataKind> {
+    pub(super) fn read(src: &[u8]) -> Result<(HuffmanTable, usize), InvalidDataKind> {
         let mut table = HuffmanTable::default();
         let used = table.read(src)?;
         Ok((table, used))
@@ -1149,7 +1637,7 @@ mod tests {
 
     /// The RFC 8878 example tree: A B C D E F with weights 4 3 2 0 1 1,
     /// as symbols 0..=5, described directly.
-    fn example_table() -> HuffmanTable {
+    pub(super) fn example_table() -> HuffmanTable {
         // Five listed weights (F is implied): header 127 + 5, then 4|3, 2|0, 1|_.
         let src = [132, 0x43, 0x20, 0x10];
         let (table, used) = read(&src).expect("valid tree");
@@ -1201,7 +1689,14 @@ mod tests {
         src.extend_from_slice(&[0b0000_1101; 4]);
         let mut out = [0u8; 8];
         table
-            .decode_streams(fearless_simd::Fallback::new(), &src, &mut out, 8, true)
+            .decode_streams(
+                fearless_simd::Fallback::new(),
+                &src,
+                &mut out,
+                8,
+                true,
+                WriteAhead::NONE,
+            )
             .expect("valid");
         assert_eq!(out, [0, 1, 0, 1, 0, 1, 0, 1]);
     }
@@ -1219,7 +1714,8 @@ mod tests {
                 &[1, 0, 1, 0, 1],
                 &mut out,
                 8,
-                true
+                true,
+                WriteAhead::NONE
             ),
             invalid
         );
@@ -1230,13 +1726,21 @@ mod tests {
                 &oversized,
                 &mut out,
                 8,
-                true
+                true,
+                WriteAhead::NONE
             ),
             invalid
         );
         let short = [1, 0, 1, 0, 1, 0, 1, 1, 1];
         assert_eq!(
-            table.decode_streams(fearless_simd::Fallback::new(), &short, &mut out, 8, true),
+            table.decode_streams(
+                fearless_simd::Fallback::new(),
+                &short,
+                &mut out,
+                8,
+                true,
+                WriteAhead::NONE
+            ),
             invalid
         );
         let streams = [1, 0, 1, 0, 1, 0, 1, 1, 1, 1];
@@ -1246,13 +1750,21 @@ mod tests {
                 &streams,
                 &mut [0u8; 5],
                 5,
-                true
+                true,
+                WriteAhead::NONE
             ),
             invalid
         );
         // More literals than the buffer holds.
         assert_eq!(
-            table.decode_streams(fearless_simd::Fallback::new(), &streams, &mut out, 9, true),
+            table.decode_streams(
+                fearless_simd::Fallback::new(),
+                &streams,
+                &mut out,
+                9,
+                true,
+                WriteAhead::NONE
+            ),
             invalid
         );
     }
@@ -1330,7 +1842,7 @@ mod tests {
     }
 
     /// One stream holding `symbols`, decoded first to last.
-    fn encode(table: &HuffmanTable, symbols: &[u8]) -> alloc::vec::Vec<u8> {
+    pub(super) fn encode(table: &HuffmanTable, symbols: &[u8]) -> alloc::vec::Vec<u8> {
         let codes = codes(table);
         let mut writer = StreamWriter::default();
         for &symbol in symbols.iter().rev() {
@@ -1341,7 +1853,7 @@ mod tests {
     }
 
     /// A jump table and four streams for `symbols`.
-    fn encode_four(table: &HuffmanTable, symbols: &[u8]) -> alloc::vec::Vec<u8> {
+    pub(super) fn encode_four(table: &HuffmanTable, symbols: &[u8]) -> alloc::vec::Vec<u8> {
         // Three segments of a quarter rounded up; the fourth takes the rest.
         let segment = symbols.len().div_ceil(4);
         let streams: alloc::vec::Vec<_> = (0..4)
@@ -1366,7 +1878,7 @@ mod tests {
     }
 
     /// Symbols the table can code, in a skewed pseudo-random mix.
-    fn message(table: &HuffmanTable, len: usize, seed: u64) -> alloc::vec::Vec<u8> {
+    pub(super) fn message(table: &HuffmanTable, len: usize, seed: u64) -> alloc::vec::Vec<u8> {
         let codes = codes(table);
         let alphabet: alloc::vec::Vec<u8> = (0..=255u8)
             .filter(|&s| codes[usize::from(s)].1 > 0)
@@ -1385,14 +1897,14 @@ mod tests {
     }
 
     /// The weights 12, 11, ..., 1 and an implied 1: a complete 12-bit tree.
-    fn twelve_bit_table() -> HuffmanTable {
+    pub(super) fn twelve_bit_table() -> HuffmanTable {
         read(&[139, 0xcb, 0xa9, 0x87, 0x65, 0x43, 0x21])
             .expect("valid")
             .0
     }
 
     /// Eight-bit codes for all 256 symbols, as direct weights of 1.
-    fn flat_table() -> HuffmanTable {
+    pub(super) fn flat_table() -> HuffmanTable {
         let mut src = alloc::vec![128 + 127];
         src.extend_from_slice(&[0x11; 64]);
         read(&src).expect("valid").0
@@ -1404,18 +1916,36 @@ mod tests {
             for len in [6, 7, 64, 333, 4_000, 20_000] {
                 let symbols = message(&table, len, len as u64);
                 let src = encode_four(&table, &symbols);
-                for (pairs, serial) in [(false, false), (true, false), (true, true)] {
+                for (pairs, lockstep) in [(false, false), (true, false), (true, true)] {
                     let mut out = alloc::vec![0xee; len];
-                    decode_four(&mut table, &src, &mut out, len, pairs, serial).expect("valid");
+                    decode_four(
+                        &mut table,
+                        &src,
+                        &mut out,
+                        len,
+                        pairs,
+                        lockstep,
+                        WriteAhead::NONE,
+                    )
+                    .expect("valid");
                     assert_eq!(out, symbols, "log {} len {len} pairs {pairs}", table.log);
                     // A buffer of the fixed size decodes alike and keeps the
-                    // bytes after the literals, in lockstep or serially.
+                    // bytes after the literals, in lockstep or three and one.
                     let mut fixed = alloc::vec![0xee; FIXED_OUT + 3];
-                    decode_four(&mut table, &src, &mut fixed, len, pairs, serial).expect("valid");
+                    decode_four(
+                        &mut table,
+                        &src,
+                        &mut fixed,
+                        len,
+                        pairs,
+                        lockstep,
+                        WriteAhead::NONE,
+                    )
+                    .expect("valid");
                     assert_eq!(
                         fixed[..len],
                         symbols,
-                        "fixed len {len} pairs {pairs} serial {serial}"
+                        "fixed len {len} pairs {pairs} lockstep {lockstep}"
                     );
                     assert!(fixed[len..].iter().all(|&byte| byte == 0xee));
                 }
@@ -1441,6 +1971,7 @@ mod tests {
                                     &mut out,
                                     len,
                                     four,
+                                    WriteAhead::NONE,
                                 )
                                 .expect("valid");
                             assert_eq!(out[..len], symbols, "prebuilt {prebuilt} four {four}");
@@ -1449,7 +1980,14 @@ mod tests {
                 }
                 let mut out = alloc::vec![0xee; len];
                 table
-                    .decode_streams(fearless_simd::Fallback::new(), &src, &mut out, len, true)
+                    .decode_streams(
+                        fearless_simd::Fallback::new(),
+                        &src,
+                        &mut out,
+                        len,
+                        true,
+                        WriteAhead::NONE,
+                    )
                     .expect("valid");
                 assert_eq!(out, symbols);
                 let single = encode(&table, &symbols);
@@ -1461,6 +1999,7 @@ mod tests {
                         &mut out,
                         len,
                         false,
+                        WriteAhead::NONE,
                     )
                     .expect("valid");
                 assert_eq!(out, symbols);
@@ -1471,10 +2010,10 @@ mod tests {
     #[test]
     fn four_streams_decode_alike_on_every_backend() {
         for backend in crate::Backend::available() {
-            let serial = fearless_simd::dispatch!(backend.0, simd => serial(simd));
-            // AVX-512 decodes serially; other levels may too, where the
+            let lockstep = fearless_simd::dispatch!(backend.0, simd => lockstep(simd));
+            // AVX-512 decodes in lockstep; other levels may too, where the
             // build's baseline already has AVX-512.
-            assert!(serial || backend.name() != "avx512");
+            assert!(lockstep || backend.name() != "avx512");
             for mut table in [example_table(), twelve_bit_table(), flat_table()] {
                 for len in [6, 333, 20_000] {
                     let symbols = message(&table, len, len as u64);
@@ -1482,6 +2021,7 @@ mod tests {
                     let mut fixed = alloc::vec![0xee; FIXED_OUT + 3];
                     fearless_simd::dispatch!(backend.0, simd => table.decode_streams(
                         simd, &src, &mut fixed, len, true,
+                        WriteAhead::NONE,
                     ))
                     .expect("valid");
                     assert_eq!(fixed[..len], symbols, "{backend} log {}", table.log);
@@ -1490,6 +2030,7 @@ mod tests {
                     let mut shared = alloc::vec![0xee; FIXED_OUT];
                     fearless_simd::dispatch!(backend.0, simd => table.decode_streams_shared(
                         simd, &src, &mut shared, len, true,
+                        WriteAhead::NONE,
                     ))
                     .expect("valid");
                     assert_eq!(shared[..len], symbols, "{backend} shared");
@@ -1503,16 +2044,24 @@ mod tests {
         let mut table = flat_table();
         let symbols = message(&table, 20_000, 3);
         let src = encode_four(&table, &symbols);
-        for (pairs, serial) in [(false, false), (true, false), (true, true)] {
+        for (pairs, lockstep) in [(false, false), (true, false), (true, true)] {
             // One symbol fewer leaves bits in every stream, one more reads
             // past the start of the last one.
             for len in [symbols.len() - 1, symbols.len() + 1] {
                 for room in [len, FIXED_OUT] {
                     let mut out = alloc::vec![0; room];
                     assert_eq!(
-                        decode_four(&mut table, &src, &mut out, len, pairs, serial),
+                        decode_four(
+                            &mut table,
+                            &src,
+                            &mut out,
+                            len,
+                            pairs,
+                            lockstep,
+                            WriteAhead::NONE
+                        ),
                         Err(InvalidDataKind::HuffmanStream),
-                        "pairs {pairs} serial {serial} len {len} room {room}"
+                        "pairs {pairs} lockstep {lockstep} len {len} room {room}"
                     );
                 }
             }
@@ -1523,7 +2072,7 @@ mod tests {
     fn pair_tails_decode_exactly_at_output_boundaries() {
         for mut table in [example_table(), flat_table()] {
             table.build_pairs();
-            let pairs = table.pairs.as_deref().expect("pair rows");
+            let pairs = table.pairs.as_ref().expect("pair rows");
             for len in [0, 1, 2, 3, 7, 10, 11, 12, 15, 16, 17, 31, 32, 1000] {
                 let symbols = message(&table, len, len as u64 + 1);
                 let source = encode(&table, &symbols);
@@ -1548,16 +2097,203 @@ mod tests {
     }
 
     #[test]
+    fn lockstep_rows_copy_the_single_rows() {
+        for mut table in [example_table(), twelve_bit_table(), flat_table()] {
+            assert!(table.lockstep.is_none() && !table.lockstep_valid);
+            let before = table.retained_bytes();
+            table.build_lockstep();
+            assert!(table.lockstep_valid);
+            assert_eq!(table.retained_bytes(), before + 2 * TABLE_SIZE);
+            let copy = table.lockstep.as_ref().expect("built");
+            assert!(copy.rows().eq(table.rows.iter().copied()));
+            for index in [0, 1, TABLE_SIZE / 2, TABLE_SIZE - 1] {
+                assert_eq!(copy.row(index), table.rows[index]);
+                // An index past the table is masked into it.
+                assert_eq!(copy.row(index + TABLE_SIZE), table.rows[index]);
+            }
+            // Copies compare and clone by their rows.
+            let clone = copy.clone();
+            assert_eq!(&clone, copy);
+            assert_ne!(clone, LockstepRows::new());
+            assert_eq!(table.clone(), table);
+            // An owned table hands the copy out, a new tree invalidates
+            // it, and a shared table offers it only once it is built.
+            let mut owned = &mut table;
+            assert!(owned.lockstep().is_some());
+            let src = [132, 0x43, 0x20, 0x10];
+            table.read(&src).expect("valid");
+            assert!(!table.lockstep_valid);
+            let mut shared = &table;
+            assert!(shared.lockstep().is_none());
+            table.build_shared();
+            let mut shared = &table;
+            assert!(shared.lockstep().is_some() && shared.pairs().is_some());
+        }
+    }
+
+    #[test]
+    fn pair_tables_compare_and_clone_by_their_rows() {
+        let mut table = example_table();
+        table.build_pairs();
+        let pairs = table.pairs.as_ref().expect("built");
+        let clone = pairs.clone();
+        assert_eq!(&clone, pairs);
+        assert!(clone.rows().eq(pairs.rows()));
+        assert_ne!(clone, PairTable::new());
+        // An index past the table is masked into it.
+        assert_eq!(pairs.row(5 + PAIR_SIZE), pairs.row(5));
+    }
+
+    #[test]
+    fn a_row_without_bits_ends_the_lockstep_loop_as_invalid() {
+        let table = flat_table();
+        let symbols = message(&table, 4_000, 7);
+        let src = encode_four(&table, &symbols);
+        let (jump, streams) = src.split_first_chunk::<6>().expect("jump table");
+        let size = |at: usize| usize::from(u16::from_le_bytes([jump[at], jump[at + 1]]));
+        let starts = [
+            0,
+            size(0),
+            size(0) + size(2),
+            size(0) + size(2) + size(4),
+            streams.len(),
+        ];
+        let sentinels = || -> [Sentinel; 4] {
+            core::array::from_fn(|index| {
+                let stream = &streams[starts[index]..starts[index + 1]];
+                let mut bits = BitContainer::new(stream).expect("stream");
+                bits.reload_fast(stream);
+                Sentinel::from_container(bits, streams, starts[index])
+            })
+        };
+        let segment = symbols.len().div_ceil(4);
+        let segments = [0, segment, 2 * segment, 3 * segment, symbols.len()];
+        let run = |rows: &LockstepRows| {
+            let mut out = alloc::vec![0xeeu8; symbols.len()];
+            let mut ahead = WriteAhead::NONE;
+            let mut four = FourStreams {
+                src: streams,
+                starts,
+                out: &mut out,
+                segments,
+            };
+            let done = single_rounds_lockstep::<5>(rows, &mut four, &mut sentinels(), &mut ahead);
+            (done, out)
+        };
+        // The tree's own rows decode whole rounds of every stream.
+        let mut rows = LockstepRows::new();
+        rows.copy_from(&table.rows);
+        let (done, out) = run(&rows);
+        let done = done.expect("valid rows");
+        assert!(done[0] >= 5 && done.iter().all(|&count| count == done[0]));
+        for (index, &count) in done.iter().enumerate() {
+            let at = segments[index];
+            assert!(
+                out[at..at + count] == symbols[at..at + count],
+                "stream {index}"
+            );
+        }
+        // Rows without bits belong to no tree.
+        assert_eq!(run(&LockstepRows::new()).0, None);
+    }
+
+    #[test]
+    fn lockstep_loops_stop_at_a_missing_window_refill_or_row() {
+        let mut table = flat_table();
+        let symbols = message(&table, 4_000, 11);
+        let src = encode_four(&table, &symbols);
+        let (jump, streams) = src.split_first_chunk::<6>().expect("jump table");
+        let size = |at: usize| usize::from(u16::from_le_bytes([jump[at], jump[at + 1]]));
+        let starts = [
+            0,
+            size(0),
+            size(0) + size(2),
+            size(0) + size(2) + size(4),
+            streams.len(),
+        ];
+        let sentinels = || -> [Sentinel; 4] {
+            core::array::from_fn(|index| {
+                let stream = &streams[starts[index]..starts[index + 1]];
+                let mut bits = BitContainer::new(stream).expect("stream");
+                bits.reload_fast(stream);
+                Sentinel::from_container(bits, streams, starts[index])
+            })
+        };
+        let segment = symbols.len().div_ceil(4);
+        let segments = [0, segment, 2 * segment, 3 * segment, symbols.len()];
+        let single = |rows: &LockstepRows, src: &[u8], room: usize| {
+            let mut out = alloc::vec![0xeeu8; room];
+            let mut ahead = WriteAhead::NONE;
+            let mut four = FourStreams {
+                src,
+                starts,
+                out: &mut out,
+                segments,
+            };
+            let done = single_rounds_lockstep::<5>(rows, &mut four, &mut sentinels(), &mut ahead);
+            (done, out)
+        };
+        let mut rows = LockstepRows::new();
+        rows.copy_from(&table.rows);
+
+        // An output shorter than its segments has no windows, and a source
+        // that ends before the streams' positions refills none of them:
+        // nothing decodes, and neither is an error of the loop's.
+        for (src, room) in [(streams, symbols.len() - 1), (&streams[..4], symbols.len())] {
+            let (done, out) = single(&rows, src, room);
+            assert_eq!(done, Some([0; 4]), "room {room}");
+            assert!(out.iter().all(|&byte| byte == 0xee));
+        }
+
+        // A row without bits under the fourth stream alone is caught by
+        // the second half of a step.
+        let index = |stream: usize| (sentinels()[stream].into_parts().0 >> LOOKUP_SHIFT) as usize;
+        assert_ne!(index(1), index(3));
+        let mut broken = table.rows.clone();
+        broken[index(3)] = 0;
+        rows.copy_from(&broken);
+        assert_eq!(single(&rows, streams, symbols.len()).0, None);
+
+        // The pair loop looks up before it refills: on the cut source it
+        // decodes one round from the containers it was given and stops.
+        table.build_pairs();
+        let pairs = table.pairs.as_ref().expect("pair rows");
+        let mut out = alloc::vec![0xeeu8; FIXED_OUT];
+        let fixed = out.first_chunk_mut::<FIXED_OUT>().expect("fixed size");
+        let mut ahead = WriteAhead::NONE;
+        let done = pair_rounds_lockstep(
+            pairs,
+            &streams[..4],
+            fixed,
+            segments,
+            &mut sentinels(),
+            &mut ahead,
+        );
+        for (stream, &count) in done.iter().enumerate() {
+            let at = segments[stream];
+            assert!((PAIR_LOOKUPS..=PAIR_ROUND_BYTES).contains(&count));
+            assert!(
+                out[at..at + count] == symbols[at..at + count],
+                "stream {stream}"
+            );
+        }
+
+        // Empty slots read as rows without bits.
+        assert_eq!(PairSlot::new().get(), PairRow(0));
+        assert_eq!(RowSlot::new().get(), 0);
+    }
+
+    #[test]
     fn pair_rows_hold_two_symbols_when_both_codes_fit() {
         let mut table = example_table();
         table.build_pairs();
-        let pairs = table.pairs.as_deref().expect("built");
+        let pairs = table.pairs.as_ref().expect("built");
         // A = 1, then A again: two symbols in two bits.
-        let both = pairs[0b11 << (PAIR_BITS - 2)];
+        let both = pairs.row(0b11 << (PAIR_BITS - 2));
         assert_eq!(both, PairRow::new(0, 2, 2));
         assert_eq!((both.symbols(), both.nb_bits(), both.count()), (0, 2, 2));
         // E = 0000, then A = 1: E in the low byte, A in the high one.
-        let two = pairs[0b1 << (PAIR_BITS - 5)];
+        let two = pairs.row(0b1 << (PAIR_BITS - 5));
         assert_eq!((two.symbols(), two.nb_bits(), two.count()), (4, 5, 2));
         assert!(table.pairs_valid);
         assert_eq!(table.retained_bytes(), 2 * TABLE_SIZE + 4 * PAIR_SIZE);
@@ -1606,8 +2342,8 @@ mod tests {
                 assert!(!table.pairs_valid && table.pairs.is_none());
                 continue;
             }
-            let pairs = table.pairs.as_deref().expect("built");
-            for (index, &pair) in pairs.iter().enumerate() {
+            let pairs = table.pairs.as_ref().expect("built");
+            for (index, pair) in pairs.rows().enumerate() {
                 assert_eq!(
                     pair,
                     naive_pair(&table.rows, index),
