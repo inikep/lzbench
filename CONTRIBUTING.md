@@ -24,19 +24,34 @@ deliberate choice — please do not propose converting a codec to a submodule. T
 The trade-off is that local patches must be re-applied when a codec is updated. If you carry one
 forward, say so in the commit message so it is not silently lost on the next update.
 
-## 3. Updating Existing Codecs
+## 3. Codec Sources
+Copy a codec's files from a tagged upstream release, so that anyone can fetch the same tag and
+compare it with what lzbench builds:
+
+- The version in `bench/lzbench.h` and `README.md` is the tag's version, and the "Last update"
+  column in `README.md` is the tag's release date.
+- Do not take the files from an untagged commit, a development branch or a local working tree, and
+  do not give the codec a version number that has not been released. If you maintain the codec, tag
+  a release upstream first and add that release to lzbench.
+- Copy the release's files unchanged, apart from the local patches lzbench needs (see
+  [No Git Submodules](#2-no-git-submodules)); list those patches in the commit message.
+- If an upstream does not tag releases at all, take a specific commit and name it in the version,
+  as in `lzsse 2019-04-18 (1847c3e827)`, and use `git-head` in `XXXX_UPSTREAM`.
+
+## 4. Updating Existing Codecs
 `make check-updates` lists the codecs that have a newer upstream version, and codecs taken from a
 commit that have newer commits. It reads where each codec is published from `mk/<codec>.mk`.
 
 When updating an existing codec, please follow these steps:
 
-- Update the codec files (e.g., `lz+entropy/zlib-ng/*`).
+- Update the codec files (e.g., `lz+entropy/zlib-ng/*`) from the new tagged upstream release (see
+  [Codec Sources](#3-codec-sources)).
 - Update the codec's `mk/<codec>.mk` if there are new source files that need to be built.
 - Update the codec version in `bench/lzbench.h` and `README.md`.
 - Add a new entry in `CHANGELOG`
 - Refer to example commit: [Update zlib-ng to 2.2.5](https://github.com/inikep/lzbench/commit/5eed568).
 
-## 4. Adding New Codecs
+## 5. Adding New Codecs
 Before proposing a new codec for inclusion, please make sure it is a good fit for lzbench:
 
 - The codec must be open source, with source code that can be included in or built with lzbench.
@@ -54,6 +69,8 @@ When adding a new codec, please follow these steps:
     range coding (e.g. zlib, zstd, brotli, xz)
   - `bwt`: BWT-based codecs (e.g. bzip2, bsc)
   - `misc`: everything else, e.g. context mixing, PPM, or libraries with several algorithms
+
+  Take the files from a tagged upstream release (see [Codec Sources](#3-codec-sources)).
 - Add a new codec to `README.md` with a proper link to the upstream repository.
 - Add a new entry in `CHANGELOG`
 - Add declarations of compression and decompression functions in `bench/codecs.h`.
