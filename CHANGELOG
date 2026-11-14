@@ -1,6 +1,7 @@
 v2.x.y (work-in-progress)
 - added AOCL-Compression 6.0.0 (AMD optimized lz4/lz4hc/lzma/bzip2/snappy/zlib/zstd, prefixed aocl-)
 - added go-brrr 1.3.0 (by @molecule-man)
+- added indexed_bzip2 2.0.0 (by @mxmlnkn)
 - added lz4frame 1.11.0 (lz4 frame format with built-in multithreaded compression, -I#; levels 1-12 as the lz4 CLI)
 - added mzstd 0.2.14 (mzstd, mzstd_fast; Zstandard in safe Rust, by @Mnwa)
 - added wlz4 1.3.0 (wlz4, wlz4fast, wlz4hc) and wzip 1.3.0 (by @icodywu)
@@ -355,14 +356,14 @@ v0.9 (Nov 23, 2015)
 - added: blosclz 2015-11-10
 - added: gipfeli 2015-11-01 with bugfixes from https://github.com/jibsen/gipfeli
 - added: lzo1 and lzo1a
-- added the "-oX" option: output text format 1=Markdown, 2=text, 3=CSV 
+- added the "-oX" option: output text format 1=Markdown, 2=text, 3=CSV
 - added the "-pX" option: print time for all iterations: 1=fastest 2=average 3=median
 - added the "-tX" and "-uX" options: set min. time in seconds for compression and decompression
 - added the "-l" option: list of available compressors and aliases
 - fixed: memory allocation cost for brieflz, lzo, lzrw, wflz is now not included in timings
 - fixed: UCL available again as ucl_nrv2b/ucl_nrv2d/ucl_nrv2e or alias "ucl"
 - fixed: LZO available again as lzo1b/lzo1c/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a or alias "lzo"
-- fixed: wfLZ, lzmat, shrinker compiled with -O2 because they crash with gcc 4.9+ and -O3 
+- fixed: wfLZ, lzmat, shrinker compiled with -O2 because they crash with gcc 4.9+ and -O3
 
 v0.8 (Nov 11, 2015)
 - the "-cX" option: sort results by column number X

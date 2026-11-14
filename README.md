@@ -67,6 +67,7 @@ sources, the Notes column says so.
 | [bsc 3.4.0](https://github.com/IlyaGrebnov/libbsc) | 2026-10-21 | |
 | [bzip2 1.0.8](https://www.sourceware.org/bzip2/downloads.html) | 2019-07-13 | |
 | [bzip3 1.5.4](https://github.com/kspalaiologos/bzip3) | 2026-09-07 | |
+| [indexed_bzip2 2.0.0](https://github.com/mxmlnkn/librapidarchive) | 2026-11-13 | |
 | [crush 1.0](https://sourceforge.net/projects/crush/) | 2013-07-01 | |
 | [density 0.16.6](https://github.com/g1mv/density) | 2025-08-27 | Linux x86-64 and macOS only — requires the Rust toolchain (skipped for 32-bit, cross-compiled and Windows builds) |
 | [fastlz 0.5.0](https://github.com/ariya/FastLZ) | 2020-02-02 | |
