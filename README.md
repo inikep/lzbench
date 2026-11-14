@@ -123,7 +123,7 @@ sources, the Notes column says so.
 | [gipfeli 2016-08-16](https://github.com/google/gipfeli) | 2016-08-16 | Decompression file mismatch when compiled with GCC 14.2 using -O3 |
 | [lzmat 1.01 v1.0](https://github.com/nemequ/lzmat) | 2008-07-08 | Build fixed in lzbench for 64-bit (pointer arithmetic truncated through `MP_U32`). Decompression bugs; may segfault with GCC 4.9+ using -O3 |
 | [lzrw 15-Jul-1991](https://en.wikipedia.org/wiki/LZRW) | 1991-07-15 | May segfault with GCC 4.9+ using -O3 |
-| [wflz 2015-09-16](https://github.com/ShaneWF/wflz) | 2015-09-16 | May segfault with GCC 4.9+ using -O3 |
+| [wflz 2015-09-16](https://github.com/ShaneYCG/wflz) | 2015-09-16 | May segfault with GCC 4.9+ using -O3 |
 | [yappy 2014-03-22](https://encode.su/threads/2825-Yappy-(working)-compressor) | 2014-03-22 | Disabled on big-endian PowerPC; segfault with GCC 13.3.0 on 32-bit ARM (arm-linux-gnueabi) |
 
 Benchmarks
