@@ -8,7 +8,7 @@
 
 // Library version
 #define MISA77_VERSION_MAJOR 0
-#define MISA77_VERSION_MINOR 6
+#define MISA77_VERSION_MINOR 7
 #define MISA77_VERSION_PATCH 0
 #define MISA77_VERSION_NUMBER                                                                      \
     (MISA77_VERSION_MAJOR * 10000 + MISA77_VERSION_MINOR * 100 + MISA77_VERSION_PATCH)
@@ -83,8 +83,6 @@ namespace misa77
     // Returns number of bytes written to `dst`, and 0 on failure.
     // PRECONDITION: (dcfg.safe = true) OR (`src` and `src_size` must correspond to a valid misa77
     // stream) Passing (dcfg.safe = false) and an invalid misa77 stream is UB!
-    // NOTE: safe decompression of the heavy format (streams from levels >= config::heavy_lb) is
-    // not supported yet; safe mode returns 0 for such streams without writing to `dst`.
     uint64_t decompress(const uint8_t* __restrict src,
                         uint64_t src_size,
                         uint8_t* __restrict dst,

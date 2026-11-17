@@ -268,8 +268,8 @@ static const compressor_desc_t comp_desc[] =
     { "mbrotli22",  "mbrotli 0.5.22 -d22",     "LZ77 + Huffman",              0,  11,   22,  BENCH_POOL_MT, lzbench_mbrotli_compress,    lzbench_mbrotli_decompress,    NULL,                    NULL },
     { "mbrotli24",  "mbrotli 0.5.22 -d24",     "LZ77 + Huffman",              0,  11,   24,  BENCH_POOL_MT, lzbench_mbrotli_compress,    lzbench_mbrotli_decompress,    NULL,                    NULL },
     { "memlz",      "memlz 0.5 beta",          "LZP",                         0,   0,    0,  BENCH_POOL_MT, lzbench_memlz_compress,      lzbench_memlz_decompress,      lzbench_memlz_init,      lzbench_memlz_deinit },
-    { "misa77",      "misa77 0.6.0",          "LZ77",                        -1,   4,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_decompress,      NULL, NULL },
-    { "misa77_safe", "misa77 0.6.0 safe",     "LZ77",                        -1,   3,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_safe_decompress, NULL, NULL },
+    { "misa77",      "misa77 0.7.0",          "LZ77",                        -1,   4,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_decompress,      NULL, NULL },
+    { "misa77_safe", "misa77 0.7.0 safe",     "LZ77",                        -1,   4,    0,  BENCH_POOL_MT, lzbench_misa77_compress,     lzbench_misa77_safe_decompress, NULL, NULL },
     { "mzstd",      "mzstd 0.2.14",            "LZ77 + FSE/Huffman",          1,  22,    0,  BENCH_POOL_MT, lzbench_mzstd_compress,      lzbench_mzstd_decompress,      NULL,                    NULL },
     { "mzstd_fast", "mzstd 0.2.14 --fast",     "LZ77 + FSE/Huffman",         -5,  -1,    0,  BENCH_POOL_MT, lzbench_mzstd_compress,      lzbench_mzstd_decompress,      NULL,                    NULL },
     { "nvcomp_lz4", "nvcomp_lz4 2.2.0",        "LZ77",                        0,   7,    0,  BENCH_POOL_MT, lzbench_nvcomp_compress,     lzbench_nvcomp_decompress,     lzbench_nvcomp_init,     lzbench_nvcomp_deinit },
@@ -378,7 +378,7 @@ static const alias_desc_t alias_desc[] =
     { "LZ",   "Represents LZ-based compressors without an entropy coder.",
               "memcpy/aceapex_fast,1,2,3,4/brieflz,1,3,6,8/crush,0,2/fastlz,1,2/kanzi,1/lizard,10,12,15,19,20,22,25,29/lz4fast,17,9,3/lz4/lz4frame,1,12/lz4hc,1,4,9,12/lzav/" \
               "lzf,0,1/lzg,1,4,6,8/lzjb/lzo1/lzo1a/lzo1b,1,3,6,9,99,999/lzo1c,1,3,6,9,99,999/lzo1f/lzo1x/lzo1y/lzo1z/lzo2a/" \
-              "lzsse2,1,6,12,16/lzsse4fast/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/memlz/misa77,-1,0,1,2,3,4/misa77_safe,-1,0,1,2,3/quicklz,1,2,3/" \
+              "lzsse2,1,6,12,16/lzsse4fast/lzsse4,1,6,12,16/lzsse8,1,6,12,16/lzvn/memlz/misa77,-1,0,1,2,3,4/misa77_safe,-1,0,1,2,3,4/quicklz,1,2,3/" \
               "snappy/tamp,8,12,15/tornado,2/ucl_nrv2b,1,6,9/ucl_nrv2d,1,6,9/ucl_nrv2e,1,6,9/wlz4fast,17,9,3/wlz4/wlz4hc,0,2,6,10,12/" \
               "yalz77,1,6,12/zpaq,1" },
     // LZ+ENTROPY: LZ codecs, or levels of them, followed by Huffman, FSE/ANS or range coding

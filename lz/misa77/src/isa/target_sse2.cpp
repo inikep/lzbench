@@ -16,6 +16,7 @@
 #include "decompressor_zoo/heavy_unsafe_dimpl.h"
 #include "decompressor_zoo/light_safe_dimpl.h"
 #include "decompressor_zoo/light_unsafe_dimpl.h"
+#include "format.h"
 #include "isa/lib_sse2.h"
 
 #include <cstdint>
@@ -49,9 +50,9 @@ namespace misa77
                              uint64_t dst_cap,
                              dconfig dcfg)
     {
-        if ((uint64_t(1) << format_bit) & src[7])
+        // heavy
+        if ((src[7] & format_mask) != format_light)
         {
-            // heavy
             if (dcfg.safe)
                 return heavy_safe_dimpl<lib_sse2>(src, src_size, dst, dst_cap);
             return heavy_unsafe_dimpl<lib_sse2>(src, src_size, dst, dst_cap);

@@ -26,6 +26,16 @@ namespace misa77
             _mm256_storeu_si256(reinterpret_cast<__m256i*>(src + dis), reg);
         }
 
+        // Copies `src[0, vector_width)` to `src[dis, dis + vector_width)`.
+        // We can have `dis = 0` here!!!
+        // We need this because `dis = 0` is sometimes convenient but the memcpy in the portable
+        // policy becomes UB
+        [[gnu::always_inline]]
+        static inline void safe_cyccpy(uint8_t* src, uint64_t dis)
+        {
+            return cyccpy(src, dis);
+        }
+
         // Copies `src[0, vector_width)` to `dst[0, vector_width)`.
         // It's guaranteed that the two ranges don't alias.
         [[gnu::always_inline]]
