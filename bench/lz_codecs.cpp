@@ -730,8 +730,7 @@ int64_t lzbench_misa77_compress(char* inbuf, size_t insize, char* outbuf, size_t
 }
 
 // The decompressor detects the format (light for levels -1..3, heavy for level 4) from the
-// stream itself. misa77_safe stops at level 3 because the heavy format has no safe decoder
-// yet (misa77::decompress with dconfig(true) rejects heavy streams by returning 0).
+// stream itself. misa77_safe uses the bounds-checked decoders, which both formats have.
 int64_t lzbench_misa77_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
 {
     return (int64_t)misa77::decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);

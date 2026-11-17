@@ -7,8 +7,8 @@
 #include <cstdint>
 #include <cstring>
 
-// ISA-agnostic helpers.
-// See src/isa for ISA-specialized helpers
+// ISA-agnostic helpers
+// See src/isa for ISA-specialized helpers.
 
 namespace misa77
 {

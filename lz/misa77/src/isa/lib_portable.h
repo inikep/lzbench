@@ -41,6 +41,19 @@ namespace misa77
         // Any internal representation of 32 bytes of contiguous data is fine.
         using vec = std::array<uint8_t, vector_width>;
 
+        // Copies `src[0, vector_width)` to `src[dis, dis + vector_width)`.
+        // We can have `dis = 0` here!!!
+        // We need this because `dis = 0` is sometimes convenient but the memcpy in the portable
+        // policy becomes UB
+        [[gnu::always_inline]]
+        static inline void safe_cyccpy(uint8_t* src, uint64_t dis)
+        {
+            // please vectorise this compiler san uwu
+            vec tmp;
+            memcpy(tmp.data(), src, vector_width);
+            memcpy(src + dis, tmp.data(), vector_width);
+        }
+
         // Return internal representation of `src[0, vector_width)`.
         [[gnu::always_inline]]
         static inline vec loadvec(const uint8_t* src)

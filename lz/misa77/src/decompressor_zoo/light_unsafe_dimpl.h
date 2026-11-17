@@ -60,11 +60,11 @@ namespace misa77
                 lit_len += pot_add;
                 ++control;
 
-                constexpr uint64_t block = 255;
-                if (pot_add == block) [[unlikely]]
+                constexpr uint64_t ext_full = 255;
+                if (pot_add == ext_full) [[unlikely]]
                 {
-                    while (*control == block) [[unlikely]]
-                        lit_len += block, ++control;
+                    while (*control == ext_full) [[unlikely]]
+                        lit_len += ext_full, ++control;
                     lit_len += *control, ++control;
                 }
             }

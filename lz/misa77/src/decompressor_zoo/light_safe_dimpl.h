@@ -86,13 +86,13 @@ namespace misa77
                 lit_len += pot_add;
                 ++control;
 
-                constexpr uint64_t block = 255;
-                if (pot_add == block) [[unlikely]]
+                constexpr uint64_t ext_full = 255;
+                if (pot_add == ext_full) [[unlikely]]
                 {
                     // Bounded, shouldn't just keep reading ahead as it finds 255s
-                    while (*control == block) [[unlikely]]
+                    while (*control == ext_full) [[unlikely]]
                     {
-                        lit_len += block, ++control;
+                        lit_len += ext_full, ++control;
                         if (control >= literals) [[unlikely]]
                             return false;
                     }
@@ -168,13 +168,13 @@ namespace misa77
                 lit_len += pot_add;
                 ++control;
 
-                constexpr uint64_t block = 255;
-                if (pot_add == block) [[unlikely]]
+                constexpr uint64_t ext_full = 255;
+                if (pot_add == ext_full) [[unlikely]]
                 {
                     // Bounded, shouldn't just keep reading ahead as it finds 255s
-                    while (*control == block) [[unlikely]]
+                    while (*control == ext_full) [[unlikely]]
                     {
-                        lit_len += block, ++control;
+                        lit_len += ext_full, ++control;
                         if (control >= literals) [[unlikely]]
                             return 0;
                     }

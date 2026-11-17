@@ -42,11 +42,11 @@ namespace misa77
             // Write this unconditionally first, if it's wrong we'll just overwrite
             dst[dlpos] = static_cast<uint8_t>(n);
 
-            constexpr uint64_t block = 255;
-            if (n >= block) [[unlikely]]
+            constexpr uint64_t ext_full = 255;
+            if (n >= ext_full) [[unlikely]]
             {
-                while (n >= block) [[unlikely]]
-                    dst[dlpos] = block, ++dlpos, n -= block;
+                while (n >= ext_full) [[unlikely]]
+                    dst[dlpos] = ext_full, ++dlpos, n -= ext_full;
                 dst[dlpos] = static_cast<uint8_t>(n);
             }
 

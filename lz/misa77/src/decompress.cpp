@@ -36,8 +36,8 @@ namespace misa77
 
     // Returns number of bytes written to `dst`, and 0 on failure.
     // Resolves the best decode path once per call, depending on the ISA.
-    // PRECONDITION: `src` and `src_size` must correspond to a valid misa77 stream.
-    // `decompress` does not validate input, and malformed/malicious data can lead to UB or worse.
+    // PRECONDITION: (dcfg.safe = true) OR (`src` and `src_size` must correspond to a valid misa77
+    // stream) Passing (dcfg.safe = false) and an invalid misa77 stream is UB!
     uint64_t decompress(const uint8_t* __restrict src,
                         uint64_t src_size,
                         uint8_t* __restrict dst,

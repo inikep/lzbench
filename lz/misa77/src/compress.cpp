@@ -3,6 +3,7 @@
 // Copyright (c) 2026 Shreyas Ghildiyal <nonadhocproblems@gmail.com>
 
 #include "compress_dispatch.h"
+#include "format.h"
 #include "misa77/misa77.h"
 
 #include <cstdint>
@@ -20,7 +21,7 @@ namespace misa77
                    + src_size + (src_size / uint64_t(255)) +
                    uint64_t(16); // compressed data length upper-bound
         else
-            return uint64_t(8) + uint64_t(8) + src_size + (src_size / uint64_t(32)) + uint64_t(64);
+            return heavy::compressed_size_bound(src_size);
     }
 
     // Returns number of bytes written to `dst`, and 0 on failure.

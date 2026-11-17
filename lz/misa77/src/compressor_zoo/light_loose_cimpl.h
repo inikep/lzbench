@@ -44,11 +44,11 @@ namespace misa77
             // Write this unconditionally first, if it's wrong we'll just overwrite
             dst[dlpos] = static_cast<uint8_t>(n);
 
-            constexpr uint64_t block = 255;
-            if (n >= block) [[unlikely]]
+            constexpr uint64_t ext_full = 255;
+            if (n >= ext_full) [[unlikely]]
             {
-                while (n >= block) [[unlikely]]
-                    dst[dlpos] = block, ++dlpos, n -= block;
+                while (n >= ext_full) [[unlikely]]
+                    dst[dlpos] = ext_full, ++dlpos, n -= ext_full;
                 dst[dlpos] = static_cast<uint8_t>(n);
             }
 
@@ -132,7 +132,7 @@ namespace misa77
         // Last remembered match
         uint64_t cand_pos = 0, cand_len = 0, cand_lst = 0;
 
-        // Adaptive variable that reflects values of lit_len we've been getting for recent blocks
+        // Adaptive variable that reflects values of lit_len we've been getting for recent sequences
         int64_t regime = 0;
 
         while (pos + max_match_len <= match_end_limit)
