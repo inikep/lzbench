@@ -1,0 +1,55 @@
+/* Prefix the vendored libsais symbols so another libsais copy, such as the one used by lzbench's
+ * libbsc codec, can be linked into the same binary. libsais.h includes this header before the API
+ * declarations, so definitions, declarations, and callers all use the prefixed names. */
+
+#pragma once
+
+#ifndef LIBRAPIDARCHIVE_LIBSAIS_PREFIX
+#define LIBRAPIDARCHIVE_LIBSAIS_PREFIX librapidarchive_
+#endif
+
+#define LIBRAPIDARCHIVE_LIBSAIS_CONCAT_(prefix, name) prefix##name
+#define LIBRAPIDARCHIVE_LIBSAIS_CONCAT(prefix, name) LIBRAPIDARCHIVE_LIBSAIS_CONCAT_(prefix, name)
+#define LIBRAPIDARCHIVE_LIBSAIS_RENAME(name) \
+    LIBRAPIDARCHIVE_LIBSAIS_CONCAT(LIBRAPIDARCHIVE_LIBSAIS_PREFIX, name)
+
+#define libsais LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais)
+#define libsais_bwt LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_bwt)
+#define libsais_bwt_aux LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_bwt_aux)
+#define libsais_bwt_aux_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_bwt_aux_ctx)
+#define libsais_bwt_aux_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_bwt_aux_omp)
+#define libsais_bwt_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_bwt_ctx)
+#define libsais_bwt_cyclic LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_bwt_cyclic)
+#define libsais_bwt_cyclic_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_bwt_cyclic_ctx)
+#define libsais_bwt_cyclic_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_bwt_cyclic_omp)
+#define libsais_bwt_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_bwt_omp)
+#define libsais_create_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_create_ctx)
+#define libsais_create_ctx_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_create_ctx_omp)
+#define libsais_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_ctx)
+#define libsais_free_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_free_ctx)
+#define libsais_gsa LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_gsa)
+#define libsais_gsa_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_gsa_ctx)
+#define libsais_gsa_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_gsa_omp)
+#define libsais_int LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_int)
+#define libsais_int_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_int_omp)
+#define libsais_lcp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_lcp)
+#define libsais_lcp_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_lcp_omp)
+#define libsais_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_omp)
+#define libsais_plcp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_plcp)
+#define libsais_plcp_gsa LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_plcp_gsa)
+#define libsais_plcp_gsa_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_plcp_gsa_omp)
+#define libsais_plcp_int LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_plcp_int)
+#define libsais_plcp_int_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_plcp_int_omp)
+#define libsais_plcp_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_plcp_omp)
+#define libsais_unbwt LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt)
+#define libsais_unbwt_aux LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt_aux)
+#define libsais_unbwt_aux_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt_aux_ctx)
+#define libsais_unbwt_aux_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt_aux_omp)
+#define libsais_unbwt_create_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt_create_ctx)
+#define libsais_unbwt_create_ctx_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt_create_ctx_omp)
+#define libsais_unbwt_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt_ctx)
+#define libsais_unbwt_cyclic LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt_cyclic)
+#define libsais_unbwt_cyclic_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt_cyclic_ctx)
+#define libsais_unbwt_cyclic_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt_cyclic_omp)
+#define libsais_unbwt_free_ctx LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt_free_ctx)
+#define libsais_unbwt_omp LIBRAPIDARCHIVE_LIBSAIS_RENAME(libsais_unbwt_omp)

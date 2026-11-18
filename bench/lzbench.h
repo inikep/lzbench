@@ -229,6 +229,7 @@ static const compressor_desc_t comp_desc[] =
 #if !defined(BENCH_REMOVE_GPUCOMPACT) && defined(BENCH_HAS_CUDA)
     { "gpucompact", "gpucompact 1.1",          "BWT + tANS",                  1,   5,    0,  NO_THREADING,  lzbench_gpucompact_compress, lzbench_gpucompact_decompress, lzbench_gpucompact_init,  lzbench_gpucompact_deinit },
 #endif
+    { "indexed_bzip2", "indexed_bzip2 2.0.0",  "BWT + Huffman",               1,   9,    0,  FULL_THREADING, lzbench_indexed_bzip2_compress, lzbench_indexed_bzip2_decompress, NULL,               NULL },
     { "kanzi",      "kanzi 2.6.0",             "LZ77, ROLZ, BWT or CM",       1,   9,    0, FULL_THREADING, lzbench_kanzi_compress,      lzbench_kanzi_decompress,      NULL,                    NULL },
     { "lbzip2",     "lbzip2 2.6.5",            "BWT + Huffman",               1,   9,    0,  BENCH_POOL_MT, lzbench_lbzip2_compress,     lzbench_lbzip2_decompress,     NULL,                    NULL },
     { "libdeflate", "libdeflate 1.26",         "LZ77 + Huffman",              1,  12,    0,  BENCH_POOL_MT, lzbench_libdeflate_compress, lzbench_libdeflate_decompress, NULL,                    NULL },
@@ -388,7 +389,7 @@ static const alias_desc_t alias_desc[] =
               "mzstd_fast,-5,-3,-1/mzstd,1,2,5,8,11,15,18,22/slz_deflate/slz_gzip/tornado,6,11,16/wzip,0,1,3,5,9,11,13/xz,1,3,5,7,9/" \
               "zlib,1,6,9/zlib-ng,1,6,9/zlib-turbo,1,6,9,12/zling,0,2,4/zstd_fast,-5,-3,-1/zstd,1,2,5,8,11,15,18,22/zxc,1,3,6" },
     { "SYMMETRIC", "Includes compressors with similar compression and decompression speeds.",
-              "memcpy/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,1,5,9/density,1,2,3/kanzi,5,6,7,8,9/lbzip2,1,5,9/ppmd8,1,4,9/pulsar/skim/zpaq,5" },
+              "memcpy/bsc1/bsc4/bsc5/bzip2,1,5,9/bzip3,1,5,9/density,1,2,3/indexed_bzip2,1,5,9/kanzi,5,6,7,8,9/lbzip2,1,5,9/ppmd8,1,4,9/pulsar/skim/zpaq,5" },
     { "ALL",  "Represents all major compressors.",
               "LZ/LZ+ENTROPY/SYMMETRIC" },
     // CI uses FASTEST for multi-threaded testing (except Tornado, which is disabled as it has issues with incompressible data)
@@ -399,7 +400,7 @@ static const alias_desc_t alias_desc[] =
               "misa77,0/misa77_safe,0/quicklz,1/snappy/tamp,8/ucl_nrv2b,1/ucl_nrv2d,1/ucl_nrv2e,1/wlz4fast,99/wlz4hc,0/yalz77,1/zpaq,1/" \
 /* LZ+ENTROPY */ "aceapex,3/brotli,0/fastlzma2,1/gobrrr,0/libdeflate,1/lzfse/lzham,0/lzlib,0/lzma,0/mbrotli,0/mzstd_fast,-5/mzstd,1/" \
               "slz_deflate,1/wzip,0/xz,0/zlib,1/zlib-ng,1/zlib-turbo,1/zling,0/zstd_fast,-5/zstd,1/zxc,1/" \
-  /* SYMMETR */ "bsc1/bzip2,1/bzip3,1/density,1/lbzip2,1/ppmd8,1/skim" },
+  /* SYMMETR */ "bsc1/bzip2,1/bzip3,1/density,1/indexed_bzip2,1/lbzip2,1/ppmd8,1/skim" },
     { "SLOW", "Lists very slow compressors.",
               "memcpy/glza" },
     { "BUGGY", "Lists potentially unstable codecs that may cause segmentation faults.",
