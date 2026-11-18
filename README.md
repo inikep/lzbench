@@ -67,7 +67,6 @@ sources, the Notes column says so.
 | [bsc 3.4.0](https://github.com/IlyaGrebnov/libbsc) | 2026-10-21 | |
 | [bzip2 1.0.8](https://www.sourceware.org/bzip2/downloads.html) | 2019-07-13 | |
 | [bzip3 1.5.4](https://github.com/kspalaiologos/bzip3) | 2026-09-07 | |
-| [indexed_bzip2 2.0.0](https://github.com/mxmlnkn/librapidarchive) | 2026-11-18 | Adds `bz2_prefix.h` to prefix the vendored modified bzip2+libsais to not clash with other bzip2 versions. |
 | [crush 1.0](https://sourceforge.net/projects/crush/) | 2013-07-01 | |
 | [density 0.16.6](https://github.com/g1mv/density) | 2025-08-27 | Linux x86-64 and macOS only — requires the Rust toolchain (skipped for 32-bit, cross-compiled and Windows builds) |
 | [fastlz 0.5.0](https://github.com/ariya/FastLZ) | 2020-02-02 | |
@@ -75,6 +74,7 @@ sources, the Notes column says so.
 | [glza 0.12](https://encode.su/threads/2427-GLZA) | 2026-03-23 | |
 | [go-brrr 1.3.0](https://github.com/molecule-man/go-brrr) | 2026-10-11 | Brotli in Go. Requires [Go](https://go.dev) 1.22+. Skips 32-bit, cross and Windows builds. Uses `lz+entropy/gobrrr/ffi/ffi.go` for the C archive. Vendor copy omits tests, tools and `golang.org/x/tools`. |
 | [gpucompact 1.1](https://github.com/UDPSendToFailed/gpucompact) | 2026-08-14 | CUDA only |
+| [indexed_bzip2 2.0.0](https://github.com/mxmlnkn/librapidarchive) | 2026-11-18 | Patched in lzbench: `bz2_prefix.h` and `libsais_prefix.h` (included from `libsais.h`) prefix the symbols of the vendored modified bzip2 and libsais, so they don't clash with the bzip2 and bsc codecs |
 | [kanzi 2.6.0](https://github.com/flanglet/kanzi-cpp) | 2026-09-26 | |
 | [lbzip2 2.6.5](https://github.com/caius72/lbzip2) | 2026-08-18 | bzip2 format; benchmarked single-threaded |
 | [libdeflate v1.26](https://github.com/ebiggers/libdeflate) | 2026-08-22 | |

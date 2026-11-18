@@ -6,7 +6,6 @@ INDEXED_BZIP2_FLAGS := -std=c++17 -DLIBRAPIDARCHIVE_WITH_BZIP2_COMPRESSION \
     -I$(SRC)bwt/librapidarchive/src/external/bzip2 \
     -I$(SRC)bwt/librapidarchive/src/external/bzip2_version \
     -include $(SRC)bwt/librapidarchive/src/external/bzip2/bz2_prefix.h
-INDEXED_BZIP2_NEEDS := BZIP2
 
 # The compression path uses the librapidarchive bzip2, which has the precomputed-CRC entry point and
 # the libsais forward BWT. Prefix the bzip2 and libsais symbols because the stock bzip2 and libbsc
