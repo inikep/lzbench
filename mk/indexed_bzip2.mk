@@ -9,7 +9,8 @@ INDEXED_BZIP2_FLAGS := -std=c++17 -DLIBRAPIDARCHIVE_WITH_BZIP2_COMPRESSION \
 INDEXED_BZIP2_NEEDS := BZIP2
 
 # The compression path uses the librapidarchive bzip2, which has the precomputed-CRC entry point and
-# the libsais forward BWT. Prefix its symbols because the stock bzip2 codec is linked as well.
+# the libsais forward BWT. Prefix the bzip2 and libsais symbols because the stock bzip2 and libbsc
+# codecs are linked as well.
 ifeq (,$(filter 1,$(DONT_BUILD_INDEXED_BZIP2)))
 INDEXED_BZIP2_BZIP2_OBJS := $(addprefix bwt/librapidarchive/src/external/bzip2/, \
     blocksort.o huffman.o crctable.o randtable.o compress.o bzlib.o) \
