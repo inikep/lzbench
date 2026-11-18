@@ -20,7 +20,7 @@
 
 
 #define PROGNAME "lzbench"
-#define PROGVERSION "2.4.1"
+#define PROGVERSION "2.4.2"
 #ifndef BENCH_REMOVE_AOCL
     #define PAD_SIZE (16*1024)
     // Covers AOCL LZMA/Snappy worst-case output bounds.
