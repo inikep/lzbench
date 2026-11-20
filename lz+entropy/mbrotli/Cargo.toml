@@ -3,7 +3,7 @@
 # crates that are not vendored). The library sources in src/ are unmodified.
 [package]
 name = "mbrotli"
-version = "0.5.22"
+version = "0.5.23"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
