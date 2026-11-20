@@ -2,13 +2,13 @@
 # crate-type reduced to rlib.
 [package]
 name = "mzstd-ffi"
-version = "0.2.14"
+version = "0.2.15"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"
 description = "C ABI for mzstd: one-shot and streaming Zstandard compression and decompression"
 repository = "https://github.com/M-Compressors/mzstd"
-homepage = "https://github.com/M-Compressors/mzstd"
+homepage = "https://m-compressors.github.io/mzstd/"
 readme = "README.md"
 keywords = ["zstd", "zstandard", "compression", "ffi", "c"]
 categories = ["compression", "external-ffi-bindings"]
@@ -21,7 +21,7 @@ crate-type = ["rlib"]
 
 [dependencies.mzstd]
 path = ".."
-version = "0.2.14"
+version = "0.2.15"
 default-features = false
 features = ["std", "compression", "decompression"]
 

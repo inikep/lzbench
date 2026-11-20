@@ -21,7 +21,7 @@ crate-type = ["rlib"]
 
 [dependencies.mbrotli]
 path = ".."
-version = "0.5.22"
+version = "0.5.23"
 default-features = false
 features = ["std", "compression", "decompression"]
 
