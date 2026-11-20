@@ -3,7 +3,7 @@
 # not vendored). The library sources in src/ are unmodified.
 [package]
 name = "mzstd"
-version = "0.2.14"
+version = "0.2.15"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"

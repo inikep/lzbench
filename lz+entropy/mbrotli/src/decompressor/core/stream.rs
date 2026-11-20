@@ -1265,7 +1265,11 @@ impl Stream {
                 }
                 if distance_block.remaining == 0 {
                     cold();
-                    if !distance_block.switch_ready() {
+                    // `switch_fast` needs 54 buffered bits; `distance_need`
+                    // above guarantees only 40 (47 for a large window).
+                    if !distance_block.switch_ready()
+                        || (bits.count() < 54 && !bits.refill_rest(&mut rest))
+                    {
                         {
                             save!(
                                 saved_literals = 0,

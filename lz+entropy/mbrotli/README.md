@@ -21,7 +21,7 @@ Requires **Rust 1.89 or later**.
 
 ```toml
 [dependencies]
-mbrotli = "0.5.22"
+mbrotli = "0.5.23"
 ```
 
 ```rust
@@ -190,7 +190,7 @@ features to select one codec or to build for `no_std` with `alloc`:
 
 ```toml
 [dependencies]
-mbrotli = { version = "0.5.22", default-features = false, features = ["no_std", "decompression"] }
+mbrotli = { version = "0.5.23", default-features = false, features = ["no_std", "decompression"] }
 ```
 
 `experimental` enables framing, serialized dictionaries and continuations. See

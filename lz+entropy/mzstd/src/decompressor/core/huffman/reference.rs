@@ -295,7 +295,8 @@ impl Table<'_> {
         let mut p = p;
         if end.saturating_sub(p) >= 8 {
             let (lookups, room) = if self.log <= FAST_LOG { (5, 9) } else { (4, 7) };
-            while (bits.reload(src) == Status::Unfinished) & (p < end - room) {
+            // `p < pEnd - room`; eight literals leave `pEnd - 9` before `p`.
+            while (bits.reload(src) == Status::Unfinished) & (p + room < end) {
                 for _ in 0..lookups {
                     p += self.pair(bits, out, p);
                 }
@@ -406,9 +407,10 @@ fn four(table: Table<'_>, kind: TableKind, src: &[u8], out: &mut [u8]) -> bool {
     };
     let mut bits = [b1, b2, b3, b4];
     let mut ops = [0, segment, 2 * segment, 3 * segment];
+    // `oend - 3` or `oend - 7`, read only once eight literals remain.
     let (lookups, olimit) = match kind {
         TableKind::Single => (4, n - 3),
-        TableKind::Pairs => (4, n - 7),
+        TableKind::Pairs => (4, n.saturating_sub(7)),
     };
     if n - ops[3] >= 8 {
         let mut unfinished = true;
@@ -654,7 +656,7 @@ mod tests {
         for table in [example_table(), twelve_bit_table(), flat_table()] {
             for kind in [TableKind::Single, TableKind::Pairs] {
                 let table = with_kind(table.clone(), kind);
-                for len in [0, 1, 2, 6, 7, 9, 13, 64, 333, 4_000, 20_000] {
+                for len in [0, 1, 2, 6, 7, 8, 9, 10, 13, 64, 333, 4_000, 20_000] {
                     let symbols = message(&table, len, len as u64 + 5);
                     let label = alloc::format!("log {} {kind:?} len {len}", table.log);
                     let single = encode(&table, &symbols);
@@ -670,6 +672,28 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn eight_pair_literals_skip_the_five_lookup_loop() {
+        // ClusterFuzzLite's decode_dictionary crash: a dictionary's pair
+        // table decoding eight literals from one stream. The reference's
+        // `p < pEnd - 9` is false there, and computing `end - 9` overflowed.
+        // Nine flat bytes are a whole word plus one, so the stream reloads
+        // as unfinished before the loop test.
+        let table = with_kind(flat_table(), TableKind::Pairs);
+        let symbols = message(&table, 8, 11);
+        let stream = encode(&table, &symbols);
+        assert_eq!(stream.len(), 9);
+        assert_eq!(port(&table, &stream, 8, false), Ok(symbols));
+        // The general four-stream path computes `oend - 7` for six
+        // literals and never reads it.
+        let table = with_kind(example_table(), TableKind::Pairs);
+        let symbols = message(&table, 6, 5);
+        assert_eq!(
+            port(&table, &encode_four(&table, &symbols), 6, true),
+            Ok(symbols)
+        );
     }
 
     #[test]
