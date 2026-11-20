@@ -183,8 +183,8 @@ static const compressor_desc_t comp_desc[] =
      //                                                                      last_level,       mt_mode,
      // name,       name_version,    algorithm,                     first_level,  additional_param,  compress_func,               decompress_func,               init_func,               deinit_func,             max_input_size
     { "memcpy",     "memcpy",                  "copy",                        0,   0,    0,  BENCH_POOL_MT, lzbench_memcpy,              lzbench_memcpy,                NULL,                    NULL },
-    { "aceapex",    "aceapex 2.6.1",           "LZ77 + FSE/Huffman",          1,   3,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
-    { "aceapex_fast","aceapex 2.6.1 fast",      "LZ77",                        1,   8,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_fast_init, lzbench_aceapex_deinit },
+    { "aceapex",    "aceapex 2.6.3",           "LZ77 + FSE/Huffman",          1,   4,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_init,    lzbench_aceapex_deinit },
+    { "aceapex_fast","aceapex 2.6.3 fast",      "LZ77",                        1,   8,    0, FULL_THREADING, lzbench_aceapex_compress,    lzbench_aceapex_decompress,    lzbench_aceapex_fast_init, lzbench_aceapex_deinit },
     { "aceapex_cuda","aceapex_cuda 0.9",       "LZ77 + FSE/Huffman",          1,   2,    0,  NO_THREADING,  lzbench_aceapex_compress,    lzbench_aceapex_cuda_decompress, lzbench_aceapex_cuda_init, lzbench_aceapex_cuda_deinit },
 #ifndef BENCH_REMOVE_AOCL
     { "aocl-lz4",   "aocl-lz4 6.0.0",          "LZ77",                        0,   0,    0,  BENCH_POOL_MT, lzbench_aocl_lz4_compress,   lzbench_aocl_lz4_decompress,   lzbench_aocl_lz4_init,   lzbench_aocl_lz4_deinit },
@@ -412,7 +412,7 @@ static const alias_desc_t alias_desc[] =
     { "MAINSTREAM", "Represents mainstream compressors.",
               "memcpy/lz4fast,17,9,5/lz4/lz4hc,1,3,9/zstd_fast,-5,-3,-1/zstd,1,3,7,12,17,22/zlib,1,6,9/lzma,0,4,9/bzip2,1,9/ppmd8,4" },
     { "INT_MT", "Covers all compressors supporting internal multi-threading with -I option.",
-              "memcpy/bsc0/bsc1/bsc4/bsc5/bsc6/fastlzma2,1,5,10/kanzi,1,2,3,4,5,6,7/lz4frame,1,9,12/lzham,1,4/lzma,0,4,9/xz,0,4,9/zlib-turbo,4,6,9/zstd,1,5,9,14,18,22" },
+              "memcpy/aceapex,1,2/aceapex_fast,1/bsc0/bsc1/bsc4/bsc5/bsc6/fastlzma2,1,5,10/kanzi,1,2,3,4,5,6,7/lz4frame,1,9,12/lzham,1,4/lzma,0,4,9/xz,0,4,9/zlib-turbo,4,6,9/zstd,1,5,9,14,18,22" },
     // OPT: levels that use an optimal (dynamic programming) parser, from each codec's source: brieflz leparse/btparse,
     // brotli zopfli (quality 10-11), fast-lzma2 FL2_opt/ultra, libdeflate near-optimal, lizard optimalPrice, lz4hc
     // LZ4HC_CLEVEL_OPT_MIN, lzham, lzlib and 7-zip/xz LZMA normal mode, zstd btopt/btultra

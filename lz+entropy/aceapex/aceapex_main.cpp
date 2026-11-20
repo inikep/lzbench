@@ -27,19 +27,24 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #endif
+#ifdef _WIN32
+#include <process.h>
+#endif
 #ifndef MAP_HUGE_2MB
 #define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
 #endif
 #include <pthread.h>
 #include <atomic>
+#include <new>
 #include <thread>
 #include <vector>
 #include <unordered_map>
 #include <algorithm>
 #include <zstd.h>
+#include <zstd_errors.h>   // ZSTD_getErrorCode: out of memory told from a corrupt frame (2.6.3)
 #define XXH_STATIC_LINKING_ONLY
-#ifndef ACEAPEX_NO_XXH
-#define XXH_IMPLEMENTATION
+#if !defined(ACEAPEX_NO_XXH) && !defined(XXH_INLINE_ALL)
+#define XXH_INLINE_ALL      // xxHash private to aceapex (static): no global XXH* to clash with a host's copy (lzbench #366)
 #endif
 #include "xxhash.h"
 #define OUR_CHECKSUM(buf,sz) XXH3_64bits(buf,sz)
@@ -53,20 +58,46 @@
 #define BLOCK_SIZE   (1 * 1024 * 1024)
 // Per-call state is thread-local (30.09: two library calls at once - lzbench -T2 - shared the block
 // size, the decode error flag and the DNA hint, and 2 of 4569 files came back as errors; 2.1.0 gave
-// wrong bytes on 22). A thread started inside a call inherits its caller's state through ax_thread.
+// wrong bytes on 22). A thread started inside a call inherits its caller's state through AxThreads::spawn.
 static thread_local size_t g_block_size = BLOCK_SIZE; // runtime adaptive, set in encode_file
 extern thread_local int g_input_is_dna;
+extern thread_local int g_enc_level;
 static thread_local std::atomic<int> t_dec_err_own{0};
 static thread_local std::atomic<int>* t_dec_err = nullptr;
 static inline std::atomic<int>& ax_dec_err(){ return t_dec_err ? *t_dec_err : t_dec_err_own; }
 #define g_dec_err (ax_dec_err())
-struct AxSpawn { void* (*fn)(void*); void* arg; std::atomic<int>* err; size_t bs; int dna; };
+// 2.6.3: an allocation that fails inside an API call ends that call with ACEAPEX_ERR_MEMORY; no exception leaves the
+// library and none reaches the end of a thread (std::terminate: lzbench aborted on 32-bit, aceapex,1 then aceapex_fast,1
+// on silesia.tar). The public functions (aceapex_api.cpp, ax_api) set t_oom to their call's flag; threads inherit it.
+// ax_nomem marks the call failed (and g_dec_err, which stops the decode paths); ax_guard / ax_guarded run work that may
+// throw on a thread or between a spawn and its join. Outside an API call (t_oom null: the CLI) exceptions go on as before.
+static thread_local std::atomic<int>* t_oom = nullptr;
+static inline void ax_nomem(){ if (t_oom) t_oom->store(1); g_dec_err = 1; }
+static inline bool ax_oom(){ return t_oom && t_oom->load(); }
+static void* ax_guard(void* (*fn)(void*), void* arg){
+    try { return fn(arg); } catch (...) { if (!t_oom) throw; ax_nomem(); return nullptr; } }
+template <class F> static void ax_guarded(F&& f){ try { f(); } catch (...) { if (!t_oom) throw; ax_nomem(); } }
+struct AxSpawn { void* (*fn)(void*); void* arg; std::atomic<int>* err; std::atomic<int>* oom; size_t bs; int dna, lvl; };
 static void* ax_tramp(void* p){ AxSpawn s=*(AxSpawn*)p; delete (AxSpawn*)p;
-    t_dec_err=s.err; g_block_size=s.bs; g_input_is_dna=s.dna; return s.fn(s.arg); }
+    t_dec_err=s.err; t_oom=s.oom; g_block_size=s.bs; g_input_is_dna=s.dna; g_enc_level=s.lvl; return ax_guard(s.fn,s.arg); }
 static std::atomic<long> g_ax_spawned{0};             // threads started by the codec (claim head_enc_threads)
-static int ax_thread(pthread_t* t, void* (*fn)(void*), void* arg){
-    g_ax_spawned.fetch_add(1);
-    return pthread_create(t,nullptr,ax_tramp,new AxSpawn{fn,arg,&ax_dec_err(),g_block_size,g_input_is_dna}); }
+// The threads of one parallel step: spawn(i, ...) starts thread i, join() (or the destructor) joins those started. The
+// table is allocated without throwing; a thread that cannot be started (no memory for the table or its AxSpawn,
+// pthread_create failing) marks the call ACEAPEX_ERR_MEMORY, its work left undone (CLI: done on the caller).
+struct AxThreads {
+    struct T { pthread_t t; bool ok; };
+    T* p; size_t n;
+    explicit AxThreads(size_t k) : p(k ? new (std::nothrow) T[k]() : nullptr), n(p ? k : 0) {}
+    AxThreads(const AxThreads&) = delete; AxThreads& operator=(const AxThreads&) = delete;
+    ~AxThreads() { join(); delete[] p; }
+    void spawn(size_t i, void* (*fn)(void*), void* arg) {
+        AxSpawn* s = i < n ? new (std::nothrow) AxSpawn{fn,arg,&ax_dec_err(),t_oom,g_block_size,g_input_is_dna,g_enc_level} : nullptr;
+        if (s && pthread_create(&p[i].t, nullptr, ax_tramp, s) == 0) { p[i].ok = true; g_ax_spawned.fetch_add(1); return; }
+        delete s;
+        if (t_oom) ax_nomem(); else fn(arg);
+    }
+    void join() { for (size_t i = 0; i < n; i++) if (p[i].ok) { pthread_join(p[i].t, nullptr); p[i].ok = false; } }
+};
 // Encoder thread budget of the current call (2.2.1): encode_file sets it from its `threads`; the entropy
 // stage (literal lanes, the three token streams) keeps to it. Before 2.2.1 that stage started up to
 // 3 + CPU-count threads whatever the budget (lzbench -I1: 146 % CPU). 0 = not set (no cap).
@@ -74,11 +105,11 @@ static thread_local int g_enc_threads = 0;
 static inline int ax_enc_budget(int want){ return g_enc_threads > 0 ? std::max(1, std::min(want, g_enc_threads)) : std::max(1, want); }
 // run a pool-style worker on n threads: n-1 started, one is the caller (n <= 1: no thread at all)
 static void ax_run_pool(int n, void* (*fn)(void*), void* arg){
-    if (n <= 1) { fn(arg); return; }
-    std::vector<pthread_t> t(n-1);
-    for (int i = 0; i < n-1; i++) ax_thread(&t[i], fn, arg);
-    fn(arg);
-    for (int i = 0; i < n-1; i++) pthread_join(t[i], nullptr);
+    if (n <= 1) { ax_guard(fn, arg); return; }
+    AxThreads t((size_t)n-1);
+    for (int i = 0; i < n-1; i++) t.spawn((size_t)i, fn, arg);
+    ax_guard(fn, arg);
+    t.join();
 }
 #define MAX_THREADS  16
 #define BLOCK_MARKER 0xFF
@@ -217,6 +248,18 @@ static inline int find_matches(const uint8_t* src, size_t pos, size_t bstart, si
     }
     return n;
 }
+// The origin table of compress_block, one per thread, freed when the thread ends. A pthread key, not a thread_local
+// unique_ptr (2.6.3): glibc ends the process when it cannot allocate the record of a C++ thread_local destructor ("failed
+// to register TLS destructor: out of memory"), which is exactly when memory runs out. nullptr: no memory.
+static pthread_key_t ax_origin_key; static bool ax_origin_key_ok = false; static pthread_once_t ax_origin_once = PTHREAD_ONCE_INIT;
+static thread_local uint32_t* t_origin = nullptr;
+static uint32_t* ax_origin_table() {
+    if (t_origin) return t_origin;
+    pthread_once(&ax_origin_once, [] { ax_origin_key_ok = pthread_key_create(&ax_origin_key, free) == 0; });
+    uint32_t* p = ax_origin_key_ok ? (uint32_t*)malloc((size_t)1048576 * sizeof(uint32_t)) : nullptr;
+    if (!p || pthread_setspecific(ax_origin_key, p) != 0) { free(p); return nullptr; }
+    return t_origin = p;
+}
 // wlo < bstart (AX_REFSEG, tuning builds): the bytes [wlo, bstart) are a history the block may copy from (a reference
 // segment put before it): entered into the head table first, matches may reach back to wlo. Default wlo = bstart.
 static void compress_block(const uint8_t* src, size_t src_size,
@@ -253,8 +296,8 @@ static void compress_block(const uint8_t* src, size_t src_size,
     // origin[local_pos] = original literal source position (local)
     // heap, on the thread's first encode: as a thread_local array (4 MiB of TLS) every thread of a process linking the
     // library paid 4 MiB of RSS at creation, including decode-only threads (16 stream threads: +64 MiB, found 02.10)
-    static thread_local std::unique_ptr<uint32_t[]> origin_p; if (!origin_p) origin_p.reset(new uint32_t[1048576]);
-    uint32_t* const origin = origin_p.get();
+    uint32_t* const origin = ax_origin_table();
+    if (!origin) { res->overflow = 99; return; }                // no memory: encode_file fails the call
     size_t flat_pos = 0; // track which positions are initialized
     auto init_origin = [&](size_t from, size_t to) {
         for (size_t i = from; i < to && i < 1048576; i++) origin[i] = (uint32_t)i;
@@ -1024,7 +1067,13 @@ static inline void ax_block_out(uint8_t* dst, size_t bstart, size_t bsize, const
 static void* dec_worker(void* arg) {
     DecArgs* a = (DecArgs*)arg;
     std::vector<uint8_t> nbuf;
+#ifdef ACEAPEX_ENV_TUNING
+    // AX_LINEMODEL's sink takes every block: chunked literals above the tile limit (W5's 1 MiB chunks, or LIT_CHUNK
+    // >= 512 KiB) decode here, not on the tile path, and the direct loop below wrote them to dst + bstart
+    if (a->nt || g_ax_out_sink) {
+#else
     if (a->nt) {
+#endif
         for (size_t b = a->bid_start; b < a->bid_end; b++) {
             const BlockOffsets& bo = a->boffs[b]; const size_t bstart = b * a->block_size;
             const size_t bsize = a->dst_size > bstart ? std::min<size_t>((size_t)a->block_size, a->dst_size - bstart) : 0;
@@ -1082,6 +1131,7 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
 {
     g_enc_threads = threads > 0 ? threads : 1;              // entropy stage keeps to this (2.2.1)
     g_block_size = compute_block_size(src_size, threads);
+    g_enc_level = level;                                    // lit_chunk_size(): W5 only for levels 1-2 (2.6.2)
     // Подсказка для lit_chunk_size(): проверяем сам вход, не литералы.
     if(!ax_getenv("LIT_CHUNK"))
         g_input_is_dna = dna_worth(src, src_size < (1u<<22) ? src_size : (1u<<22)) ? 1 : -1;
@@ -1102,15 +1152,27 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
     uint32_t hash_mask = (1u << hash_log) - 1;
     size_t ht_sz = (hash_mask+1);
     uint32_t chain_mask = 1; while ((size_t)chain_mask + 1 < g_block_size) chain_mask = chain_mask * 2 + 1;   // one link per block position
-    ThreadHashTable** htabs=(ThreadHashTable**)calloc(threads,sizeof(ThreadHashTable*));
-    if(!htabs){return false;}
+    // 2.6.3: every failure goes through fail(), which frees what was allocated (until 2.6.2 the hash tables, the block
+    // buffers - about the whole input - and the worker arrays stayed allocated: on 32-bit the next call ran out of memory)
+    ThreadHashTable** htabs=nullptr; BlockResult* results=nullptr; WorkerArgs* wargs=nullptr;
+    raw_lit=raw_off=raw_len=raw_cmd=nullptr;
+    auto release=[&](){
+        if(results) for(size_t b=0;b<num_blocks;b++) {
+            free(results[b].lit_buf); free(results[b].off_buf); free(results[b].len_buf); free(results[b].cmd_buf); }
+        if(htabs) for(int i=0;i<threads;i++) if(htabs[i]) {
+            free(htabs[i]->pos); free(htabs[i]->epoch); free(htabs[i]->chain); free(htabs[i]); }
+        free(htabs); free(results); free(wargs); };
+    auto fail=[&](){ release(); free(raw_lit); free(raw_off); free(raw_len); free(raw_cmd);
+        raw_lit=raw_off=raw_len=raw_cmd=nullptr; return false; };
+    htabs=(ThreadHashTable**)calloc(threads,sizeof(ThreadHashTable*));
+    if(!htabs) return fail();
     for(int i=0;i<threads;i++) {
         htabs[i]=(ThreadHashTable*)calloc(1,sizeof(ThreadHashTable));
-        if(!htabs[i]){return false;}
+        if(!htabs[i]) return fail();
         htabs[i]->pos  =(uint32_t*)calloc(ht_sz,sizeof(uint32_t));
         htabs[i]->epoch=(uint32_t*)calloc(ht_sz,sizeof(uint32_t));
         htabs[i]->chain=(uint32_t*)malloc(((size_t)chain_mask+1)*sizeof(uint32_t));
-        if(!htabs[i]->pos||!htabs[i]->epoch||!htabs[i]->chain){return false;}
+        if(!htabs[i]->pos||!htabs[i]->epoch||!htabs[i]->chain) return fail();
         memset(htabs[i]->chain,0xFF,((size_t)chain_mask+1)*sizeof(uint32_t));
         htabs[i]->cur_epoch=0;
         htabs[i]->hash_mask=hash_mask;
@@ -1124,23 +1186,23 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
         { const char* e=ax_getenv("AX_ATT"); if(e) htabs[i]->max_attempts=atoi(e); }
         { const char* e=ax_getenv("AX_HASH12"); htabs[i]->h16 = e ? atoi(e) : 0; }
     }
-    BlockResult* results=(BlockResult*)calloc(num_blocks,sizeof(BlockResult));
-    if(!results){return false;}
+    results=(BlockResult*)calloc(num_blocks,sizeof(BlockResult));
+    if(!results) return fail();
     PoolState pool;
     pool.src=src; pool.src_size=src_size;
     pool.num_blocks=num_blocks; pool.results=results;
     pool.next_block.store(0);
-    WorkerArgs* wargs=(WorkerArgs*)calloc(threads,sizeof(WorkerArgs));
-    pthread_t* pts=(pthread_t*)calloc(threads,sizeof(pthread_t));
-    if(!wargs||!pts){free(results);return false;}
+    wargs=(WorkerArgs*)calloc(threads,sizeof(WorkerArgs));
+    if(!wargs) return fail();
     for(int i=0;i<threads;i++) { wargs[i].thread_id=i; wargs[i].htab=htabs[i]; wargs[i].pool=&pool; }
-    for(int i=1;i<threads;i++) ax_thread(&pts[i],worker_func,&wargs[i]);   // worker 0 is the caller
-    worker_func(&wargs[0]);
-    for(int i=1;i<threads;i++) pthread_join(pts[i],nullptr);
+    { AxThreads pts(threads>1 ? (size_t)threads-1 : 0);
+      for(int i=1;i<threads;i++) pts.spawn((size_t)i-1,worker_func,&wargs[i]);   // worker 0 is the caller
+      ax_guard(worker_func,&wargs[0]); }
+    if(ax_oom()) return fail();
 
     total_lit=0; total_off=0; total_len=0; total_cmd=0;
     for(size_t b=0;b<num_blocks;b++) {
-        if(results[b].overflow==99) { free(results); return false; }
+        if(results[b].overflow==99) return fail();
         boffs[b].lit_off=total_lit; boffs[b].lit_sz=results[b].lit_size;
         boffs[b].off_off=total_off; boffs[b].off_sz=results[b].off_size;
         boffs[b].len_off=total_len; boffs[b].len_sz=results[b].len_size;
@@ -1154,7 +1216,7 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
     raw_off=(uint8_t*)malloc(total_off?total_off:1);
     raw_len=(uint8_t*)malloc(total_len?total_len:1);
     raw_cmd=(uint8_t*)malloc(total_cmd?total_cmd:1);
-    if(!raw_lit||!raw_off||!raw_len||!raw_cmd){free(results);return false;}
+    if(!raw_lit||!raw_off||!raw_len||!raw_cmd) return fail();
 
     size_t li=0,oi=0,ni=0,ci=0;
     for(size_t b=0;b<num_blocks;b++) {
@@ -1162,14 +1224,8 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
         memcpy(raw_off+oi,results[b].off_buf,results[b].off_size); oi+=results[b].off_size;
         memcpy(raw_len+ni,results[b].len_buf,results[b].len_size); ni+=results[b].len_size;
         memcpy(raw_cmd+ci,results[b].cmd_buf,results[b].cmd_size); ci+=results[b].cmd_size;
-        free(results[b].lit_buf); free(results[b].off_buf);
-        free(results[b].len_buf); free(results[b].cmd_buf);
     }
-    for(int i=0;i<threads;i++) {
-        free(htabs[i]->pos); free(htabs[i]->epoch); free(htabs[i]->chain);
-        free(htabs[i]);
-    }
-    free(htabs); free(results); free(wargs); free(pts);
+    release();
     return true;
 }
  
@@ -1177,8 +1233,11 @@ static bool encode_file(const uint8_t* src, size_t src_size, int threads, int le
 // expected size. Parallel paths raise g_dec_err, which entry points reset and check;
 // the serial range paths return nullptr. Before this an error left malloc garbage in
 // the output and the call reported success (region on a legacy archive, 21.09).
+// 2.6.3: ZSTD_decompress allocates its context; out of memory is not a corrupt frame (ax_nomem: ACEAPEX_ERR_MEMORY)
 static inline bool zdec_ok(void* dst,size_t raw,const void* src,size_t csz){
-    size_t r=ZSTD_decompress(dst,raw,src,csz); return !ZSTD_isError(r)&&r==raw; }
+    size_t r=ZSTD_decompress(dst,raw,src,csz);
+    if(ZSTD_isError(r)&&ZSTD_getErrorCode(r)==ZSTD_error_memory_allocation) ax_nomem();
+    return !ZSTD_isError(r)&&r==raw; }
 
 static void parallel_decode(
     const uint8_t* lit, const uint8_t* off,
@@ -1198,10 +1257,10 @@ static void parallel_decode(
     }
     if (nt == 1) { dec_worker(&dargs[0]); return; }   // threads=1: nothing is spawned
     // the caller decodes the last range itself: nt threads in all, not nt spawned + the caller waiting (2.6.1, lzbench #357)
-    std::vector<pthread_t> dpts(nt-1);
-    for(size_t t=0;t+1<nt;t++) ax_thread(&dpts[t],dec_worker,&dargs[t]);
-    dec_worker(&dargs[nt-1]);
-    for(size_t t=0;t+1<nt;t++) pthread_join(dpts[t],nullptr);
+    AxThreads dpts(nt-1);
+    for(size_t t=0;t+1<nt;t++) dpts.spawn(t,dec_worker,&dargs[t]);
+    ax_guard(dec_worker,&dargs[nt-1]);
+    dpts.join();
 }
  
 // Helper: chunked FSE decompress a stream
@@ -1314,10 +1373,10 @@ static void fse_multi_decomp(const FseStream* st, int n, int threads) {
         for (size_t i; (i = q->next.fetch_add(1)) < n; ) { const AxTokJob& j=(*q->jobs)[i];
             if (!ax_tok_chunk(j.e, j.d, j.raw, j.p, j.z)) g_dec_err=1; }
         return nullptr; };
-    std::vector<pthread_t> pts(threads - 1);
-    for (int t = 0; t < threads - 1; t++) ax_thread(&pts[t],fn, &pool);
-    fn(&pool);
-    for (int t = 0; t < threads - 1; t++) pthread_join(pts[t], nullptr);
+    AxThreads pts((size_t)threads - 1);
+    for (int t = 0; t < threads - 1; t++) pts.spawn((size_t)t, fn, &pool);
+    ax_guard(fn, &pool);
+    pts.join();
 }
 
 // Split an entropy thread budget between the literal stream and the token streams
@@ -1384,13 +1443,15 @@ static uint8_t* dna_compress(const uint8_t* s, size_t n, size_t& out_sz){
     if(!buf){free(seq);free(cse);free(gap);free(val);out_sz=0;return nullptr;}
     uint8_t* p=buf+20;
     int L=lit_level();
-    size_t s1=ZSTD_compress(p,c1,seq,np,L); p+=s1;
-    size_t s2=ZSTD_compress(p,c2,cse,nc,L); p+=s2;
-    size_t s3=nexc?ZSTD_compress(p,c3,gap,nexc*4,L):0; p+=s3;
-    size_t s4=nexc?ZSTD_compress(p,c4,val,nexc,L):0; p+=s4;
+    // a zstd error (out of memory) is not a size: no DNA chunk, the caller keeps plain zstd (2.6.3)
+    size_t s1=ZSTD_compress(p,c1,seq,np,L), s2=0, s3=0, s4=0; bool bad=ZSTD_isError(s1); if(!bad) p+=s1;
+    if(!bad){ s2=ZSTD_compress(p,c2,cse,nc,L); bad=ZSTD_isError(s2); if(!bad) p+=s2; }
+    if(!bad&&nexc){ s3=ZSTD_compress(p,c3,gap,nexc*4,L); bad=ZSTD_isError(s3); if(!bad) p+=s3; }
+    if(!bad&&nexc){ s4=ZSTD_compress(p,c4,val,nexc,L); bad=ZSTD_isError(s4); if(!bad) p+=s4; }
+    free(seq);free(cse);free(gap);free(val);
+    if(bad){ free(buf); out_sz=0; return nullptr; }
     uint32_t h[5]={(uint32_t)nexc,(uint32_t)s1,(uint32_t)s2,(uint32_t)s3,(uint32_t)s4};
     memcpy(buf,h,20);
-    free(seq);free(cse);free(gap);free(val);
     out_sz=20+s1+s2+s3+s4;
     return buf;
 }
@@ -1408,6 +1469,7 @@ __attribute__((aligned(64))) static void dna_decompress(const uint8_t* src, size
     uint8_t* cse=(uint8_t*)malloc(nc?nc:1);
     uint32_t* gap=(uint32_t*)malloc((nexc?nexc:1)*4);
     uint8_t*  val=(uint8_t*)malloc(nexc?nexc:1);
+    if(!seq||!cse||!gap||!val){ free(seq);free(cse);free(gap);free(val); ax_nomem(); return; }   // 2.6.3: was read unchecked
     if(!zdec_ok(seq,np,p,h[1])) g_dec_err=1; p+=h[1];
     if(!zdec_ok(cse,nc,p,h[2])) g_dec_err=1; p+=h[2];
     if(h[3]&&!zdec_ok(gap,nexc*4,p,h[3])) g_dec_err=1; p+=h[3];
@@ -1457,22 +1519,25 @@ static uint8_t* lit_compress_legacy(const uint8_t* src, size_t sz, size_t& out_s
         size_t isz=(t<NW-1)?((off+csz<=sz)?csz:(sz-off)):(sz-off);
         zws[t]={src+off,isz,nullptr,0,ZSTD_compressBound(isz)+8};
         zws[t].out=(uint8_t*)malloc(zws[t].cap);
-        if(!zws[t].out){out_sz=0;return nullptr;}}
-    struct LPool{ ZW* w; std::atomic<int> next; };
-    LPool lp{zws,{0}};
+        if(!zws[t].out){for(int u=0;u<t;u++) free(zws[u].out); out_sz=0;return nullptr;}}
+    // bad: a part not compressed (no zstd context, or zstd out of memory) - the stream is not written (2.6.3: until 2.6.2
+    // a missing context left a part of 0 bytes and a zstd error code was taken for a size)
+    struct LPool{ ZW* w; std::atomic<int> next, bad; };
+    LPool lp{zws,{0},{0}};
     auto zfn=[](void*a)->void*{LPool*q=(LPool*)a;
         for(int i; (i=q->next.fetch_add(1))<NW;){ ZW*z=&q->w[i];
             ZSTD_CCtx*ctx=ZSTD_createCCtx();
-            if(!ctx){z->osz=0; continue;}
+            if(!ctx){z->osz=0; q->bad=1; continue;}
             ZSTD_CCtx_setParameter(ctx,ZSTD_c_compressionLevel,3);
             z->osz=ZSTD_compress2(ctx,z->out,z->cap,z->in,z->isz);
+            if(ZSTD_isError(z->osz)){z->osz=0; q->bad=1;}
             ZSTD_freeCCtx(ctx); }
         return nullptr;};
     ax_run_pool(ax_enc_budget(NW),zfn,&lp);
     size_t hdrsz=8+NW*8,totalsz=hdrsz;
     for(int t=0;t<NW;t++) totalsz+=zws[t].osz;
-    uint8_t* res=(uint8_t*)malloc(totalsz);
-    if(!res){out_sz=0;return nullptr;}
+    uint8_t* res=(lp.bad||ax_oom()) ? nullptr : (uint8_t*)malloc(totalsz);
+    if(!res){for(int t=0;t<NW;t++) free(zws[t].out); out_sz=0;return nullptr;}
     AX_write64(res, sz|(uint64_t(1)<<62));
     uint64_t* zsz=(uint64_t*)(res+8); uint8_t* p=res+hdrsz;
     for(int t=0;t<NW;t++){zsz[t]=zws[t].osz;memcpy(p,zws[t].out,zws[t].osz);p+=zws[t].osz;free(zws[t].out);}
@@ -1486,6 +1551,10 @@ static uint8_t* lit_compress_legacy(const uint8_t* src, size_t sz, size_t& out_s
 // Выставляется один раз в encode_file по выборке из входа.
 // 0 = не проверяли, 1 = входные данные проходят dna_worth, -1 = нет.
 thread_local int g_input_is_dna = 0;
+// Level of the encode_file call on this thread (2.6.2): non-DNA literals of levels 1-2 go in 1 MiB chunks, which the
+// decoder reads in parallel (W5: decode -I8 x1.19-1.24 on Zen 4 and Zen 5 at +0.40..+0.63 % size, results/w5-2026-11-12.txt);
+// levels 3-4 keep the 4-part layout (level 3: +1.35..+1.67 % size, speed not measured).
+thread_local int g_enc_level = 0;
 
 static size_t lit_chunk_size(){
     const char* e=ax_getenv("LIT_CHUNK");
@@ -1500,7 +1569,8 @@ static size_t lit_chunk_size(){
     // для регионального доступа чанкование обязательно на любых данных
     // (без него seek 46 мс против 0.082).
     // the open literal profile has no 4-part zstd layout: it always writes tagged chunks
-    return (g_input_is_dna == 1 || ax_lit_open()) ? 65536 : 0;
+    if (g_input_is_dna == 1 || ax_lit_open()) return 65536;
+    return g_input_is_dna == -1 && (g_enc_level == 1 || g_enc_level == 2) ? 1048576 : 0;
 }
 #define LIT_CHUNK lit_chunk_size()
 
@@ -1520,13 +1590,13 @@ static uint8_t* lit_compress(const uint8_t* src, size_t sz, size_t& out_sz) {
         size_t isz=(off+csz<=sz)?csz:(sz-off);
         zws[t]={src+off,isz,nullptr,0,std::max(ZSTD_compressBound(isz),axo_piece_bound(isz))+8};  // a piece writes rANS before choosing raw
         zws[t].out=(uint8_t*)malloc(zws[t].cap);
-        if(!zws[t].out){out_sz=0;return nullptr;}}
-    struct CPool{ ZW* w; int n; std::atomic<int> next; };
-    CPool cpool{zws.data(),NW,{0}};
+        if(!zws[t].out){for(int u=0;u<t;u++) free(zws[u].out); out_sz=0;return nullptr;}}
+    struct CPool{ ZW* w; int n; std::atomic<int> next, bad; };   // bad: as in lit_compress_legacy (2.6.3)
+    CPool cpool{zws.data(),NW,{0},{0}};
     auto zfn=[](void*a)->void*{
         CPool* p=(CPool*)a;
         ZSTD_CCtx* ctx=ZSTD_createCCtx();
-        if(!ctx) return nullptr;
+        if(!ctx){ p->bad=1; return nullptr; }
         ZSTD_CCtx_setParameter(ctx,ZSTD_c_compressionLevel,lit_level());
         for(;;){ int i=p->next.fetch_add(1); if(i>=p->n) break;
             ZW& z=p->w[i];
@@ -1543,6 +1613,7 @@ static uint8_t* lit_compress(const uint8_t* src, size_t sz, size_t& out_sz) {
                 continue;
             }
             size_t zs=ZSTD_compress2(ctx,z.out+1,z.cap-1,z.in,z.isz);
+            if(ZSTD_isError(zs)){ z.osz=0; p->bad=1; continue; }
             uint8_t* db=nullptr; size_t dsz=0;
             if(dna_worth(z.in,z.isz)) db=dna_compress(z.in,z.isz,dsz);
             if(db && dsz && dsz<zs){
@@ -1556,8 +1627,8 @@ static uint8_t* lit_compress(const uint8_t* src, size_t sz, size_t& out_sz) {
     ax_run_pool(ax_enc_budget(std::min(lit_lanes(),NW)),zfn,&cpool);
     size_t hdrsz=8+8+(size_t)NW*8,totalsz=hdrsz;
     for(int t=0;t<NW;t++) totalsz+=zws[t].osz;
-    uint8_t* res=(uint8_t*)malloc(totalsz);
-    if(!res){out_sz=0;return nullptr;}
+    uint8_t* res=(cpool.bad||ax_oom()) ? nullptr : (uint8_t*)malloc(totalsz);
+    if(!res){for(int t=0;t<NW;t++) free(zws[t].out); out_sz=0;return nullptr;}
     AX_write64(res, sz|(uint64_t(1)<<62)|(uint64_t(1)<<61)|(uint64_t(1)<<60));
     AX_write64(res+8, (uint64_t)CH);   // размер чанка, а не их число
     uint64_t* zsz=(uint64_t*)(res+16); uint8_t* p=res+hdrsz;
@@ -1614,11 +1685,11 @@ static void ax_prefault(uint8_t* p, size_t n, int threads) {
     const size_t H = (size_t)2 << 20, pages = (n + H - 1) / H;
     struct A { uint8_t* p; size_t n, pages, t, T; };
     auto fn = [](void* v) -> void* { A* a = (A*)v; for (size_t k = a->t; k < a->pages; k += a->T) { volatile uint8_t* q = a->p + k * ((size_t)2 << 20); *q = 0; } return nullptr; };
-    std::vector<A> args((size_t)threads); std::vector<pthread_t> th((size_t)threads - 1);
+    std::vector<A> args((size_t)threads); AxThreads th((size_t)threads - 1);
     for (int t = 0; t < threads; t++) args[(size_t)t] = {p, n, pages, (size_t)t, (size_t)threads};
-    for (int t = 1; t < threads; t++) ax_thread(&th[(size_t)t - 1], fn, &args[(size_t)t]);
+    for (int t = 1; t < threads; t++) th.spawn((size_t)t - 1, fn, &args[(size_t)t]);
     fn(&args[0]);
-    for (int t = 1; t < threads; t++) pthread_join(th[(size_t)t - 1], nullptr);
+    th.join();
 }
 
 // One chunk of the literal stream (FSE layout, spec 3.2): where its bytes go (offset in the stream), how many, the
@@ -1681,11 +1752,11 @@ static uint8_t* lit_decompress(const uint8_t* src, size_t src_sz, size_t& orig_s
     if(hw<1) hw=1;
     const int LANES=std::min(hw,(int)ch.size());
     if(LANES<=1){ dfn(&pool); return out; }          // lanes=1: decode inline, spawn nothing
-    ax_prefault(out,orig_sz,LANES);
-    std::vector<pthread_t> pts(LANES-1);
-    for(int t=0;t<LANES-1;t++) ax_thread(&pts[t],dfn,&pool);
-    dfn(&pool);
-    for(int t=0;t<LANES-1;t++) pthread_join(pts[t],nullptr);
+    ax_guarded([&]{ ax_prefault(out,orig_sz,LANES); });   // its table may not fit: out must still be returned (2.6.3)
+    AxThreads pts((size_t)LANES-1);
+    for(int t=0;t<LANES-1;t++) pts.spawn((size_t)t,dfn,&pool);
+    ax_guard(dfn,&pool);
+    pts.join();
     return out;
 }
 // Partial stream unpacking for region reads: touch only the compressed chunks
@@ -1699,7 +1770,7 @@ static uint8_t* fse_range(const uint8_t* src, size_t orig_sz, size_t from, size_
     // Пустой диапазон: поток len не нужен 29% регионов (7478 блоков chr1 из 15 499
     // имеют len_sz=0, медиана 1 байт при таблице 16 байт на блок). Вызов ради нуля
     // байт стоит ~12 us по закону амплификации.
-    if(to<=from){ if(base_off) *base_off=0; return (uint8_t*)calloc(1,1); }
+    if(to<=from){ if(base_off) *base_off=0; uint8_t* e=(uint8_t*)calloc(1,1); if(!e) ax_nomem(); return e; }
     size_t c0=from/CHUNK, c1=(to?to-1:0)/CHUNK;
     if(c1>=nc) c1=nc?nc-1:0;
     size_t win_lo=c0*CHUNK, win_hi=std::min(orig_sz,(c1+1)*CHUNK);
@@ -1708,7 +1779,7 @@ static uint8_t* fse_range(const uint8_t* src, size_t orig_sz, size_t from, size_
     // запрошенного диапазона декодер блоков не читает. Зануление 130 KB на вызов
     // было самой дорогой операцией профиля (memset_avx512, 9.75%).
     uint8_t* out=(uint8_t*)malloc(win_hi>win_lo?win_hi-win_lo:1);
-    if(!out) return nullptr;
+    if(!out){ ax_nomem(); return nullptr; }                     // the call reports ACEAPEX_ERR_MEMORY, not a corrupt archive
     size_t p_off=8+nc*8;
     for(size_t i=0;i<nc;i++){
         size_t d_off=i*CHUNK;
@@ -1726,7 +1797,7 @@ static uint8_t* fse_range(const uint8_t* src, size_t orig_sz, size_t from, size_
 // Литеральный поток: новая схема — чанки LIT_CHUNK, старая — NW равных долей.
 static uint8_t* lit_range(const uint8_t* src, size_t src_sz, size_t& orig_sz,
                           size_t from, size_t to, size_t* base_off=nullptr) {
-    if(!src||src_sz<8){orig_sz=0;return (uint8_t*)malloc(1);}
+    if(!src||src_sz<8){orig_sz=0; uint8_t* e=(uint8_t*)malloc(1); if(!e) ax_nomem(); return e;}
     uint64_t h; memcpy(&h,src,8);
     const bool chunked=(h&(uint64_t(1)<<61))!=0;
     const bool tagged=(h&(uint64_t(1)<<60))!=0;
@@ -1746,7 +1817,7 @@ static uint8_t* lit_range(const uint8_t* src, size_t src_sz, size_t& orig_sz,
     // запрошенного диапазона декодер блоков не читает. Зануление 130 KB на вызов
     // было самой дорогой операцией профиля (memset_avx512, 9.75%).
     uint8_t* out=(uint8_t*)malloc(win_hi>win_lo?win_hi-win_lo:1);
-    if(!out) return nullptr;
+    if(!out){ ax_nomem(); return nullptr; }
     // Only the chunks of [from,to) are visited: the body of the first one starts at the sum of the sizes before it
     // (a straight sum, vectorised; the table was checked above, so it stays inside the stream).
     const int t_lo=(int)std::min<size_t>((size_t)NW,from/csz);
@@ -1919,7 +1990,8 @@ static int do_compress(const char* in_path, const char* out_path, int threads, i
     fseek(fin_w,0,SEEK_END); size_t src_size=(size_t)ftell(fin_w); fseek(fin_w,0,SEEK_SET);
     uint8_t* src=(uint8_t*)malloc(src_size);
     if(!src){fprintf(stderr,"malloc failed\n");fclose(fin_w);return 1;}
-    fread(src,1,src_size,fin_w); fclose(fin_w);
+    if(fread(src,1,src_size,fin_w)!=src_size){fprintf(stderr,"Cannot read: %s\n",in_path);free(src);fclose(fin_w);return 1;}
+    fclose(fin_w);
     bool src_is_mmap=false;
 #else
     int fin_fd=open(in_path,O_RDONLY);
@@ -2067,13 +2139,42 @@ static int do_decompress_stream(const char* in_path, int threads) {
     fprintf(stderr, "  Stream: %lld bytes to stdout in %.3f s (%.2f GB/s), hash OK\n", (long long)n, now_sec() - t0, (double)n / (now_sec() - t0) / 1e9);
     return 0;
 }
-static int do_decompress(const char* in_path, const char* out_path, int threads=8) {
+static int do_decompress(const char* in_path, const char* out_path, int threads=8);
+// `d --out FILE` (FREEZE-4): the original goes to a temporary file next to FILE and is renamed to FILE only when the
+// decode succeeded and its XXH3 matches the header (every do_decompress path returns 0 only then); otherwise the
+// temporary file is removed, FILE is not created (an existing FILE is left as it was) and the exit status is 1. A FILE
+// that exists and is not a regular file (/dev/null, a FIFO, /dev/stdout) is written directly, as before.
+#if !defined(ACEAPEX_NO_MAIN) || defined(ACEAPEX_CLI)
+static int ax_cli_decompress_file(const char* in_path, const char* out_path, int threads) {
+#ifndef _WIN32
+    struct stat st;
+    if (::stat(out_path, &st) == 0 && !S_ISREG(st.st_mode)) return do_decompress(in_path, out_path, threads);
+    const long pid = (long)getpid();
+#else
+    const long pid = (long)_getpid();
+#endif
+    char tmp[4096];
+    if (snprintf(tmp, sizeof tmp, "%s.aceapex-tmp.%ld", out_path, pid) >= (int)sizeof tmp) { fprintf(stderr,"Output path too long: %s\n",out_path); return 1; }
+    const int rc = do_decompress(in_path, tmp, threads);
+    if (rc == 0) {
+#ifdef _WIN32
+        remove(out_path);                                    // rename() does not replace an existing file there
+#endif
+        if (rename(tmp, out_path) == 0) return 0;
+        fprintf(stderr,"Cannot rename %s to %s: %s\n", tmp, out_path, strerror(errno));
+    }
+    remove(tmp);
+    fprintf(stderr,"  %s not written (decode failed or XXH3 mismatch)\n", out_path);
+    return 1;
+}
+#endif
+static int do_decompress(const char* in_path, const char* out_path, int threads) {
     g_dec_err=0;
     double t_wall=now_sec();
     FILE* fin=fopen(in_path,"rb");
     if (!fin) { fprintf(stderr,"Cannot open: %s\n",in_path); return 1; }
     AetHeader hdr;
-    fread(&hdr,sizeof(hdr),1,fin);
+    if (fread(&hdr,sizeof(hdr),1,fin)!=1) { fprintf(stderr,"Cannot read: %s (shorter than the header)\n",in_path); fclose(fin); return 1; }
 #ifdef ACEAPEX_ENV_TUNING
     if (!memcmp(hdr.magic, "AXLINE01", 8)) { fclose(fin); return ax_cli_lm_decompress(in_path, out_path, threads); }
 #endif
@@ -2116,15 +2217,16 @@ static int do_decompress(const char* in_path, const char* out_path, int threads=
 
     uint32_t nb=hdr.num_blocks;
     std::vector<BlockOffsets> boffs(nb);
-    fread(boffs.data(),sizeof(BlockOffsets),nb,fin);
+    if (fread(boffs.data(),sizeof(BlockOffsets),nb,fin)!=nb) { fprintf(stderr,"Cannot read: %s (block table)\n",in_path); fclose(fin); return 1; }
  
     uint8_t* zlit=(uint8_t*)malloc(hdr.zlit_sz);
     uint8_t* zoff=(uint8_t*)malloc(hdr.zoff_sz);
     uint8_t* zlen=(uint8_t*)malloc(hdr.zlen_sz);
     uint8_t* zcmd=(uint8_t*)malloc(hdr.zcmd_sz);
     if(!zlit||!zoff||!zlen||!zcmd){free(zlit);free(zoff);free(zlen);free(zcmd);fclose(fin);return 1;}
-    fread(zlit,1,hdr.zlit_sz,fin); fread(zoff,1,hdr.zoff_sz,fin);
-    fread(zlen,1,hdr.zlen_sz,fin); fread(zcmd,1,hdr.zcmd_sz,fin);
+    if (fread(zlit,1,hdr.zlit_sz,fin)!=hdr.zlit_sz || fread(zoff,1,hdr.zoff_sz,fin)!=hdr.zoff_sz ||
+        fread(zlen,1,hdr.zlen_sz,fin)!=hdr.zlen_sz || fread(zcmd,1,hdr.zcmd_sz,fin)!=hdr.zcmd_sz) {
+        fprintf(stderr,"Cannot read: %s (streams)\n",in_path); free(zlit);free(zoff);free(zlen);free(zcmd); fclose(fin); return 1; }
     fclose(fin);
  
     // Stream headers come from the file: a corrupted length would malloc() garbage.
@@ -2164,8 +2266,8 @@ static int do_decompress(const char* in_path, const char* out_path, int threads=
         *l->out=lit_decompress(l->s,l->sz,*l->osz,l->lanes); return nullptr;};
     FseStream fst[3]={{zoff,off_sz,off},{zlen,len_sz,len},{zcmd,cmd_sz,cmd}};
     if (threads == 1) { litfn(&larg); fse_multi_decomp(fst,3,1); }
-    else { pthread_t lt; ax_thread(&lt,litfn,&larg);
-           fse_multi_decomp(fst,3,tok_t); pthread_join(lt,nullptr); }
+    else { AxThreads lt(1); lt.spawn(0,litfn,&larg);
+           fse_multi_decomp(fst,3,tok_t); lt.join(); }
     if(!lit){free(off);free(len);free(cmd);free(zlit);free(zoff);free(zlen);free(zcmd);return 1;}
     // Четыре потока формата (lit, off, len, cmd) распаковываются одновременно
     // в pthread выше; раздельного времени у них нет, и печатать две одинаковые
@@ -2226,7 +2328,8 @@ static int do_test(const char* in_path, int threads, int level=2) {
     fseek(fin,0,SEEK_END); size_t src_size=(size_t)ftell(fin); fseek(fin,0,SEEK_SET);
     uint8_t* src=(uint8_t*)malloc(src_size);
     if(!src){fclose(fin);return 1;}
-    fread(src,1,src_size,fin); fclose(fin);
+    if(fread(src,1,src_size,fin)!=src_size){fprintf(stderr,"Cannot read: %s\n",in_path);free(src);fclose(fin);return 1;}
+    fclose(fin);
     fprintf(stderr,"[*] Test: %s (%.2f MB) threads=%d\n",in_path,src_size/1e6,threads);
     double t_total_t=now_sec();
     if (ax_fast_level(level)) {                       // fast profile: encode to memory, decode, compare
@@ -2461,7 +2564,7 @@ int main(int argc, char** argv) {
     if ((!strcmp(cmd,"c") || !strcmp(cmd,"d")) && ax_cli_stdin(in)) return 1;
 #endif
     if (!strcmp(cmd,"c")) { if (!out) { fprintf(stderr,"--out required\n"); return 1; } return do_compress(in,out,thr,level); }
-    if (!strcmp(cmd,"d")) { if (!out) { fprintf(stderr,"--out required (or - for stdout)\n"); return 1; } return strcmp(out,"-") ? do_decompress(in,out,thr) : do_decompress_stream(in,thr); }
+    if (!strcmp(cmd,"d")) { if (!out) { fprintf(stderr,"--out required (or - for stdout)\n"); return 1; } return strcmp(out,"-") ? ax_cli_decompress_file(in,out,thr) : do_decompress_stream(in,thr); }
     if (!strcmp(cmd,"t")) return do_test(in,thr,level);
     if (!strcmp(cmd,"r")) {
         if (!out) { fprintf(stderr,"--out required\n"); return 1; }

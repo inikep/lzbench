@@ -8,14 +8,16 @@ extern "C" {
 
 #define ACEAPEX_VERSION_MAJOR 2
 #define ACEAPEX_VERSION_MINOR 6
-#define ACEAPEX_VERSION_PATCH 1
-#define ACEAPEX_VERSION_STRING "2.6.1"
+#define ACEAPEX_VERSION_PATCH 3
+#define ACEAPEX_VERSION_STRING "2.6.3"
 
 /* One-shot compression */
 int64_t aceapex_compress(
     const void* src, size_t src_size,
     void*       dst, size_t dst_capacity,
     int         level,    /* 1=fast, 2=default, 3=l1 encoder on any input (DNA uses l1 at every level, ADR-020);
+                             4 = level 2 with the 4-part literal layout (2.6.2; before 2.6.2 the same bytes as level 2):
+                             levels 1-2 cut non-DNA literals in 1 MiB chunks that decode in parallel, 3-4 do not;
                              11..18 = the FAST profile (2.4.0, docs/FORMAT_FAST.md): no entropy stage, header version 3,
                              min match 16/12/8/5: 11 sparse-probe parse, 12-14 greedy, 15-18 the optimal parse */
     int         threads   /* 0=auto */
@@ -43,8 +45,10 @@ int64_t aceapex_decompress_mt(
    a group's output, the group's token chunks) + the chunk tables: it does not grow with the archive, so a 3 GB
    genome streams through ~40 MB (claim head_stream). threads 0 = the default budget. Flags:
    ACEAPEX_STREAM_VERIFY: XXH3 of the handed-out bytes against the header, ACEAPEX_ERR_DATA on a mismatch (after
-   everything was handed out: the sink sees the bytes before the verdict). Archives whose literal stream is not
-   chunked (written before 2.1 without LIT_CHUNK) are refused with ACEAPEX_ERR_DATA: use aceapex_decompress. */
+   everything was handed out: the sink sees the bytes before the verdict). Both literal layouts of the default profile
+   stream: the chunked one (DNA) with the memory bound above, the 4-chunk one (other data) with about half the literal
+   stream in memory (its 4 chunks are decoded whole; after 2.6.1). Archives of the pre-FSE literal layout are refused
+   with ACEAPEX_ERR_DATA: use aceapex_decompress. */
 typedef int64_t (*aceapex_read_fn)(void* ctx, uint64_t offset, void* buf, size_t len);
 typedef int     (*aceapex_write_fn)(void* ctx, const void* buf, size_t len);   /* 0 = ok, else the stream stops */
 #define ACEAPEX_STREAM_VERIFY 1u
@@ -96,20 +100,8 @@ int64_t aceapex_decompress_ranges(
 /* Bound for output buffer */
 size_t aceapex_compress_bound(size_t src_size);
 
-/* Streaming context (v2.0) */
-typedef struct aceapex_stream_s aceapex_stream_t;
-
-aceapex_stream_t* aceapex_stream_new(int level, int threads);
-int  aceapex_stream_update(aceapex_stream_t* s,
-                           const void* in,  size_t in_size,
-                           void*       out, size_t out_capacity,
-                           size_t*     out_written);
-int  aceapex_stream_finish(aceapex_stream_t* s,
-                           void*   out, size_t out_capacity,
-                           size_t* out_written);
-void aceapex_stream_free(aceapex_stream_t* s);
-
-/* Error codes */
+/* Error codes. 2.6.3: every function returns ACEAPEX_ERR_MEMORY when an allocation fails (malloc or operator new, on
+   the caller's thread or on a thread the call started); no C++ exception leaves the library. */
 #define ACEAPEX_OK           0
 #define ACEAPEX_ERR_BUFFER  -1
 #define ACEAPEX_ERR_DATA    -2

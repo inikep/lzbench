@@ -60,7 +60,7 @@ sources, the Notes column says so.
 
 | Compressor | Last update | Notes |
 | :--- | :--- | :--- |
-| [aceapex 2.6.1](https://github.com/yasha1971-coder/aceapex) | 2026-11-03 | |
+| [aceapex 2.6.3](https://github.com/yasha1971-coder/aceapex) | 2026-11-20 | |
 | [aocl-compression 6.0.0](https://github.com/amd/aocl-compression/releases/tag/6.0.0) | 2026-11-11 | Disabled by default; enable with `make DONT_BUILD_AOCL=0`. Linux x86-64 only — AMD-optimized lz4/lz4hc/lzma/bzip2/snappy/zlib/zstd (compression prefixed `aocl-`); requires GNU binutils (`nm`, `objcopy`); license: BSD 3-Clause / MIT / NCSA |
 | [brieflz 1.3.0](https://github.com/jibsen/brieflz) | 2020-02-15 | |
 | [brotli 1.2.0](https://github.com/google/brotli) | 2025-10-27 | |
