@@ -232,14 +232,14 @@ static size_t enc_optimal(const uint8_t* in, uint32_t n, uint8_t* out, const Par
     const uint32_t HB = 16, HN = 1u << HB, mm = P.mm; e.head.assign(HN, 0xffffffffu); e.chain.assign(n + 1, 0xffffffffu);
     auto H = [&](uint32_t p) { return (rd32(in + p) * 0x9E3779B1u) >> (32 - HB); };
     e.bl.assign(n + 1, 0); e.bd.assign(n + 1, 0);
-    const uint32_t lastp = n > 12 ? n - 12 : 0, LONG = 4096;
+    const uint32_t lastp = n > 12 ? n - 12 : 0, LONG = 4096, NICE = 256;   // NICE: a match this long ends the chain walk
     for (uint32_t pos = 0; pos < lastp; pos++) {
         const uint32_t h = H(pos); uint32_t cand = e.head[h], best = 0, bdist = 0; int dep = P.depth; const uint32_t lim = n - pos - 8;
         while (cand != 0xffffffffu && dep-- > 0) {
             const uint32_t d = pos - cand; if (d > D_MAX + AXF_MIN_DIST || d > WIN) break;
             if (d >= AXF_MIN_DIST && rd32(in + cand) == rd32(in + pos)) {
                 const uint32_t l = match_len(in, pos, cand, lim);
-                if (l > best) { best = l; bdist = d; if (l >= LONG) break; }
+                if (l > best) { best = l; bdist = d; if (l >= NICE) break; }   // long enough: stop the walk (short periods made every candidate run to LONG)
             }
             cand = e.chain[cand];
         }

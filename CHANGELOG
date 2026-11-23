@@ -10,7 +10,7 @@ v2.x.y (work-in-progress)
 - updated gipfeli to 2016-08-16 (config.h detects __builtin_ctz and __builtin_expect from __GNUC__);
   lzfse/lzvn (2017-05-22), lzg (2023-08-31) and lzham (2022-01-03) were already at upstream HEAD,
   whose later commits change only README files
-- updated aceapex to 2.6.1 (thanks to @yasha1971-coder); adds aceapex_fast (levels 1-8): the FAST profile, LZ77 without an entropy stage
+- updated aceapex to 2.6.3 (thanks to @yasha1971-coder); out of memory returns an error code from every API function instead of an exception (it aborted lzbench on 32-bit), reliability fixes in aceapex_decompress_mt and the streaming decoders (overflow-checked header sum, bounded allocation on crafted archives), default-profile levels 1-2 use parallel literal chunks; aceapex_fast (levels 1-8) is the FAST profile, LZ77 without an entropy stage
 - updated kanzi to 2.6.0 (by @flanglet)
 - updated libbsc to 3.4.0; fixes data corruption in multithreaded compression (present since 3.1.0),
   faster LZP, QLFC and multi-block compression and decompression; bsc builds on 32-bit ARM again (lzbench#293)
