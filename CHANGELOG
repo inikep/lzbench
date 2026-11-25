@@ -17,8 +17,10 @@ v2.x.y (work-in-progress)
 - updated lz4 to 1.11.0 (by @data-man)
 - updated lzav to 7.2 (thanks to @avaneev)
 - updated mbrotli to 0.5.23 (by @Mnwa)
-- updated misa77 to 0.7.0 (by @welcome-to-the-sunny-side); level 4 uses a new stream format
-  and gains a safe decoder, so misa77_safe now covers levels -1..4
+- updated misa77 to 0.8.0 (by @welcome-to-the-sunny-side); level 4 uses a new stream format (0.7.0),
+  the new level 5 adds Huffman coding, and decompression is always bounds-checked, so the separate
+  "misa77 safe" codec was removed; misa77 moved from lz/ to lz+entropy/, with levels -1..4 in the LZ alias
+  and level 5 in LZ+ENTROPY
 - updated openzl to 0.3.0; compresses with format version 27, which enables PivCo Huffman in its LZ graph;
                openzl_serial gets levels 1-7 (the LZ graph of 0.2.x had only one, now level 1)
 - updated slz to 1.4.0 (by @wtarreau); text-aware compression is now automatic,

@@ -591,11 +591,9 @@ void lzbench_aocl_zstd_deinit(char* workmem);
 #ifndef BENCH_REMOVE_MISA77
     int64_t lzbench_misa77_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options);
     int64_t lzbench_misa77_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options);
-    int64_t lzbench_misa77_safe_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options);
 #else
     #define lzbench_misa77_compress NULL
     #define lzbench_misa77_decompress NULL
-    #define lzbench_misa77_safe_decompress NULL
 #endif
 
 
