@@ -615,6 +615,28 @@ int64_t lzbench_mbrotli_decompress(char *inbuf, size_t insize, char *outbuf, siz
 
 
 
+#ifndef BENCH_REMOVE_MISA77
+#include "misa77/include/misa77/misa77.h"
+
+int64_t lzbench_misa77_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    // Levels run -1..5 and are monotone in ratio and (inversely) in compression speed:
+    // -1 and 0 = fast compression, 1 = fastest decompression (the library default),
+    // 2 = better ratio, 3 = optimal parse, 4 = "heavy" format, 5 = Huffman-coded "entropy"
+    // format (best ratio, slowest compression).
+    return (int64_t)misa77::compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize, misa77::config((int8_t)codec_options->level));
+}
+
+// The decompressor detects the format (light for levels -1..3, heavy for level 4, entropy for
+// level 5) from the stream itself; it is always bounds-checked.
+int64_t lzbench_misa77_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
+{
+    return (int64_t)misa77::decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
+}
+#endif // BENCH_REMOVE_MISA77
+
+
+
 #ifndef BENCH_REMOVE_MZSTD
 #include "mzstd/mzstd-ffi/include/mzstd.h"
 

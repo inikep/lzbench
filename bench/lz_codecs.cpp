@@ -718,32 +718,6 @@ int64_t lzbench_memlz_decompress(char* inbuf, size_t insize, char* outbuf, size_
 
 
 
-#ifndef BENCH_REMOVE_MISA77
-#include "misa77/misa77.h"
-
-int64_t lzbench_misa77_compress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
-{
-    // Levels run -1..4 and are monotone in ratio and (inversely) in compression speed:
-    // -1 and 0 = fast compression, 1 = fastest decompression (the library default),
-    // 2 = better ratio, 3 = optimal parse, 4 = "heavy" format (best ratio, slowest compression).
-    return (int64_t)misa77::compress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize, misa77::config((int8_t)codec_options->level));
-}
-
-// The decompressor detects the format (light for levels -1..3, heavy for level 4) from the
-// stream itself. misa77_safe uses the bounds-checked decoders, which both formats have.
-int64_t lzbench_misa77_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
-{
-    return (int64_t)misa77::decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize);
-}
-
-int64_t lzbench_misa77_safe_decompress(char* inbuf, size_t insize, char* outbuf, size_t outsize, codec_options_t* codec_options)
-{
-    return (int64_t)misa77::decompress((const uint8_t*)inbuf, insize, (uint8_t*)outbuf, outsize, misa77::dconfig(true));
-}
-#endif // BENCH_REMOVE_MISA77
-
-
-
 #ifndef BENCH_REMOVE_QUICKLZ
 #include "quicklz/quicklz151b7.h"
 
