@@ -1,0 +1,272 @@
+.TH SLZ 1 "November 2026" "libslz 1.4" "User Commands"
+.SH NAME
+slz, unslz, slzcat \- fast gzip, zlib and deflate compression and decompression
+.SH SYNOPSIS
+.B slz
+.RI [ option ]...
+.RI [ file ]...
+.br
+.B slz \-d
+.RI [ option ]...
+.RI [ file ]...
+.br
+.B slz \-dc
+.RI [ option ]...
+.RI [ file ]...
+.SH DESCRIPTION
+.B slz
+is the command-line utility of libslz, a library which compresses streams with
+very little memory and CPU usage, mainly used by servers to compress their
+responses on the fly. It uses the library's compressor and decompressor, and
+the project page and sources given below are those of the library.
+.PP
+.B slz
+compresses data into the gzip format (RFC1952), the zlib format (RFC1950) or
+raw deflate (RFC1951), the formats that web browsers and gzip-compatible tools
+understand. It focuses on speed: even at its best level it is several times
+faster than
+.BR gzip (1),
+for a somewhat larger output. It is well suited to compressing large amounts
+of data on the fly, such as backups sent over a network, logs, or archives,
+when the time spent compressing matters more than the last percent of
+compression ratio.
+.PP
+It also decompresses any gzip, zlib or raw deflate stream, not only those it
+produced, and is usually faster than
+.BR zcat (1)
+at it.
+.PP
+It is used like
+.BR gzip (1).
+Given file names, each
+.I file
+is compressed in place: the output is written to the same name followed by
+the extension of the format
+.RB ( .gz
+for gzip, the default,
+.B .zz
+for zlib and
+.B .dfl
+for raw deflate), it receives the mode, owner and times of
+.IR file ,
+and
+.I file
+is then removed. The name of the file is not stored in the output.
+.PP
+With
+.BR \-d ,
+each
+.I file
+is decompressed in place the same way, to its name without its extension,
+whichever it is. The gzip and zlib formats are recognized from the data
+themselves. Raw deflate cannot be recognized, so it is selected by the
+.B .dfl
+extension, or by
+.BR \-D .
+A file without an extension can only be decompressed to the standard output
+.RB ( \-c ),
+since there would be no name for the output.
+.PP
+Without any file name, or when the name is
+.BR \- ,
+the standard input is processed and the result is written to the standard
+output.
+.PP
+An output file is only created once its input could be opened, and an
+existing output is only replaced with
+.BR \-f .
+On error or interruption, the partial output is removed and the input is
+kept.
+.SH OPTIONS
+.TP
+.BR \-1 " ... " \-9
+Compression level.
+.B \-1
+is the fastest,
+.B \-2
+is the default, and
+.B \-4
+compresses the most; levels above 4 are the same as
+.BR \-4 .
+.B \-0
+does not compress at all and only wraps the data into the selected format.
+.TP
+.B \-c
+Write the result to the standard output and keep the input files. This is the
+default when no file name is given. When several files are given, their
+compressed streams are concatenated. In gzip format, gzip tools, including
+.BR "slz \-d" ,
+decompress such a concatenation as a whole.
+.TP
+.B \-d
+Decompress instead of compressing.
+.TP
+.B \-f
+Force: replace existing output files, compress symbolic links and files which
+already have the extension, and accept to write compressed data to a terminal
+or to read it from one.
+.TP
+.B \-k
+Keep the input files instead of removing them.
+.TP
+.B \-t
+Test: process the inputs without writing anything. With
+.BR \-d ,
+this checks the integrity of compressed files: the exit status tells whether
+they could all be decompressed.
+.TP
+.B \-v
+Report the sizes, the compression ratio and the speed for each input.
+.TP
+.B \-h
+Display a short help and exit.
+.TP
+.B \-n
+Does nothing, accepted for compatibility with
+.BR gzip (1).
+.TP
+.B \-G
+Use the gzip format, with the
+.B .gz
+extension. This is the default when compressing.
+.TP
+.B \-Z
+Use the zlib format, with the
+.B .zz
+extension.
+.TP
+.B \-D
+Use the raw deflate format, with the
+.B .dfl
+extension.
+.PP
+With
+.BR \-d ,
+.BR \-G ,
+.B \-Z
+and
+.B \-D
+force the format of the inputs instead of recognizing it, whatever their
+extension.
+.SS Advanced options
+.TP
+.BI \-K " size"
+Block size used when compressing, 4 MB by default. When decompressing, size of
+the output buffer, 32 kB by default, which is also the minimum. The size is in
+kilobytes, or followed by a
+.BR b ,
+.BR k ,
+.B m
+or
+.B g
+suffix.
+.TP
+.B \-m
+Read the input into a buffer of the block size instead of mapping it into
+memory. This is done automatically for pipes and other inputs which cannot be
+mapped.
+.TP
+.BI \-b " size"
+Only use the first
+.I size
+bytes of each input, with
+.B \-c
+or
+.B \-t
+only.
+.TP
+.BI \-l " loops"
+With
+.BR \-t ,
+process each input
+.I loops
+times, to measure the speed with
+.BR \-v .
+.TP
+.B \-p
+With
+.BR \-t ,
+load the input and the buffers into memory before starting, so that the
+measurement excludes it.
+.SH OTHER NAMES
+When invoked under the name
+.B unslz
+or
+.BR gunzip ,
+.B slz
+behaves as
+.BR "slz \-d" ,
+and when invoked as
+.BR slzcat ,
+.BR zcat ,
+.B gzcat
+or
+.BR zdec ,
+it behaves as
+.BR "slz \-dc" .
+The name
+.B zenc
+is its former name and compresses as usual. These names only need a symbolic
+link to
+.BR slz .
+.SH EXIT STATUS
+0 when all inputs were processed successfully, 1 when at least one of them
+could not be, or on a usage error.
+.SH EXAMPLES
+Compress a file to
+.IR file.gz ,
+removing
+.IR file :
+.PP
+.RS
+slz file
+.RE
+.PP
+Decompress it back, removing
+.IR file.gz :
+.PP
+.RS
+slz \-d file.gz
+.RE
+.PP
+Compress a directory with
+.BR tar (1)
+at the fastest level, and send it over the network:
+.PP
+.RS
+tar cf \- dir | slz \-1 | ssh host 'cat > dir.tar.gz'
+.RE
+.PP
+Read a compressed log without decompressing it to disk:
+.PP
+.RS
+slz \-dc access.log.gz | less
+.RE
+.PP
+Check the integrity of all the compressed files of a directory:
+.PP
+.RS
+slz \-dt *.gz && echo OK
+.RE
+.PP
+Compress a file in zlib format, keeping the original:
+.PP
+.RS
+slz \-Z \-k data.json
+.RE
+.PP
+Measure the compression speed and ratio at each level, on a large file:
+.PP
+.RS
+for l in 1 2 3 4; do slz \-t \-v \-$l file.tar; done
+.RE
+.SH SEE ALSO
+.BR gzip (1),
+.BR zcat (1),
+.BR tar (1)
+.PP
+Project page: <http://www.libslz.org/>
+.br
+Sources: <https://github.com/wtarreau/libslz/>
+.SH AUTHOR
+Willy Tarreau <w+slz@1wt.eu>
