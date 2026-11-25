@@ -2,10 +2,22 @@ TOPDIR     := $(PWD)
 DESTDIR    :=
 PREFIX     := /usr/local
 LIBDIR     := $(PREFIX)/lib
+MANDIR     := $(PREFIX)/share/man
 
 CROSS_COMPILE :=
 CC         := $(CROSS_COMPILE)gcc
 PLATFORM   := $(shell $(CC) -dumpmachine | sed -e 's,-gnu[^-]*,,; s,.*-,,')
+
+# BUILD=release is the default. Setting it to anything else (e.g. "make BUILD="
+# or "make BUILD=dev") makes a development build, which defines SLZ_DEV_BUILD
+# in every C file to expose debugging features. Its name is passed in
+# SLZ_BUILD. Run "make clean" when changing it, the objects don't depend on it.
+BUILD      := release
+ifeq ($(BUILD),release)
+BLD_CFLAGS := -DSLZ_BUILD='"$(BUILD)"'
+else
+BLD_CFLAGS := -DSLZ_BUILD='"$(BUILD)"' -DSLZ_DEV_BUILD
+endif
 
 OPT_CFLAGS := -O3
 CPU_CFLAGS := -fomit-frame-pointer
@@ -14,7 +26,7 @@ DEF_CFLAGS :=
 USR_CFLAGS :=
 LIB_CFLAGS := -fPIC -DPRECOMPUTE_TABLES
 INC_CFLAGS := -I$(TOPDIR)/include
-CFLAGS     := $(OPT_CFLAGS) $(CPU_CFLAGS) $(DEB_CFLAGS) $(DEF_CFLAGS) $(USR_CFLAGS) $(INC_CFLAGS)
+CFLAGS     := $(OPT_CFLAGS) $(CPU_CFLAGS) $(DEB_CFLAGS) $(DEF_CFLAGS) $(BLD_CFLAGS) $(USR_CFLAGS) $(INC_CFLAGS)
 
 LD         := $(CC)
 DEB_LFLAGS := -g
@@ -24,7 +36,7 @@ LDFLAGS    := $(DEB_LFLAGS) $(USR_LFLAGS) $(LIB_LFLAGS)
 
 AR         := $(CROSS_COMPILE)ar
 STRIP      := $(CROSS_COMPILE)strip
-BINS       := zdecode zdec zenc
+BINS       := zdecode slz zenc zdec
 STATIC     := libslz.a
 ifneq ($(filter darwin%, $(PLATFORM)),)
 	SHARED := libslz.dylib
@@ -59,14 +71,14 @@ shared: $(SHARED)
 
 tools: $(BINS)
 
-zdecode: src/zdecode.o
+zdecode: tools/zdecode.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
-zdec: src/zdec.o src/slz_common.o src/uslz.o
+slz: tools/zenc.o src/slz_common.o src/slz.o src/uslz.o
 	$(LD) $(LDFLAGS) -o $@ $^
 
-zenc: src/zenc.o src/slz_common.o src/slz.o
-	$(LD) $(LDFLAGS) -o $@ $^
+zenc zdec: slz
+	ln -sf $^ $@
 
 $(STATIC): src/slz_common.o src/slz.o src/uslz.o
 	$(AR) rv $@ $^
@@ -91,7 +103,7 @@ $(SHARED): $(SONAME)
 %-pic.o: %.c src/slz.h src/tables.h
 	$(CC) $(CFLAGS) $(LIB_CFLAGS) -o $@ -c $<
 
-install: install-headers install-static install-shared install-tools
+install: install-headers install-static install-shared install-tools install-man
 
 install-headers:
 	[ -d "$(DESTDIR)$(PREFIX)/include/." ] || mkdir -p -m 0755 $(DESTDIR)$(PREFIX)/include
@@ -110,14 +122,17 @@ install-shared: shared
 	chmod 644 $(DESTDIR)$(LIBDIR)/$(SONAME)
 
 install-tools: tools
-	$(STRIP) zenc
+	$(STRIP) slz
 	[ -d "$(DESTDIR)$(PREFIX)/bin/." ] || mkdir -p -m 0755 $(DESTDIR)$(PREFIX)/bin
 	cp zdecode $(DESTDIR)$(PREFIX)/bin/zdecode
-	cp zdecode $(DESTDIR)$(PREFIX)/bin/zdec
-	cp zenc $(DESTDIR)$(PREFIX)/bin/zenc
+	cp slz $(DESTDIR)$(PREFIX)/bin/slz
 	chmod 755 $(DESTDIR)$(PREFIX)/bin/zdecode
-	chmod 755 $(DESTDIR)$(PREFIX)/bin/zdec
-	chmod 755 $(DESTDIR)$(PREFIX)/bin/zenc
+	chmod 755 $(DESTDIR)$(PREFIX)/bin/slz
+
+install-man:
+	[ -d "$(DESTDIR)$(MANDIR)/man1/." ] || mkdir -p -m 0755 $(DESTDIR)$(MANDIR)/man1
+	cp tools/slz.1 $(DESTDIR)$(MANDIR)/man1/slz.1
+	chmod 644 $(DESTDIR)$(MANDIR)/man1/slz.1
 
 clean:
 	-rm -f $(BINS) $(OBJS) $(STATIC) $(SHARED) *.[oa] *.so *.so.* *.dylib *~ */*.[oa] */*~

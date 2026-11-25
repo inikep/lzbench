@@ -3,5 +3,6 @@
 *.so
 *.so.*
 
+slz
 zdec
 zenc

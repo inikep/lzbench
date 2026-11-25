@@ -21,7 +21,8 @@ v2.x.y (work-in-progress)
   and gains a safe decoder, so misa77_safe now covers levels -1..4
 - updated openzl to 0.3.0; compresses with format version 27, which enables PivCo Huffman in its LZ graph;
                openzl_serial gets levels 1-7 (the LZ graph of 0.2.x had only one, now level 1)
-- updated slz to 1.4-dev5 (by @wtarreau)
+- updated slz to 1.4.0 (by @wtarreau); text-aware compression is now automatic,
+  so level 5 (the text mode) was removed: slz_deflate, slz_gzip and slz_zlib take levels 1-4
 - updated zxc to 1.0.0 (by @hellobertrand)
 - improvement: `make check-updates` (tools/check-updates.py) lists codecs with a newer upstream version, from NAME_UPSTREAM in mk/<codec>.mk
 - improvement: the Makefile describes each codec in its own mk/<codec>.mk (objects, flags,
